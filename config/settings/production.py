@@ -183,11 +183,6 @@ LOGGING = {
             "propagate": False,
         },
         # Your Django apps
-        "roscoe": {
-            "level": "INFO",
-            "handlers": ["console"],
-            "propagate": False,
-        },
         "roscoe.users": {
             "level": "INFO",
             "handlers": ["console"],

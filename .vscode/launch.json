@@ -13,7 +13,8 @@
       "django": true,
       "autoStartBrowser": false,
       "program": "${workspaceFolder}/manage.py",
-      "envFile": "${workspaceFolder}/_envs/_local/django.env"
+      "envFile": "${workspaceFolder}/_envs/_local/django.env",
+      "justMyCode": false
     },
     {
       "name": "Python: Celery",
@@ -31,7 +32,7 @@
         "debug"
       ],
       "envFile": "${workspaceFolder}/_envs/_local/django.env",
-      "justMyCode": true
+      "justMyCode": false
     }
   ]
 }

@@ -178,10 +178,6 @@ LOGGING = {
             "formatter": "verbose",
         },
     },
-    "django_github_app.models.EventLog": {
-        "level": "DEBUG",
-        "handlers": ["console"],
-    },
     "root": {
         "level": "DEBUG",
         "handlers": ["console"],
@@ -193,7 +189,15 @@ LOGGING = {
             "propagate": False,
         },
         # Errors logged by the SDK itself
-        "sentry_sdk": {"level": "ERROR", "handlers": ["console"], "propagate": False},
+        "sentry_sdk": {
+            "level": "ERROR",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "django_github_app.models.EventLog": {
+            "level": "DEBUG",
+            "handlers": ["console"],
+        },
         "django.security.DisallowedHost": {
             "level": "ERROR",
             "handlers": ["console"],

@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def validate_idf(event, gh_api, **_):
     """
     Dummy EnergyPlus IDF validator.
-    • Creates an 'EnergyPlus validator' check‑run for the new commit.
-    • Downloads every *.idf in that commit’s tree.
+    • Creates an 'EnergyPlus validator' check run for the new commit.
+    • Downloads every *.idf in that commit's tree.
     • Marks the run as failure if any file contains the bytes 'BAD'.
     """
 
@@ -23,7 +23,7 @@ def validate_idf(event, gh_api, **_):
     repo_full = event.data["repository"]["full_name"]
     head_sha = event.data["check_suite"]["head_sha"]
 
-    # 1 Start the check‑run so a line appears quickly in the UI
+    # 1 Start the check run so a line appears quickly in the UI
     run = gh_api.post(
         f"/repos/{repo_full}/check-runs",
         data={
@@ -31,7 +31,7 @@ def validate_idf(event, gh_api, **_):
             "head_sha": head_sha,
             "status": "in_progress",
         },
-    )  # requires Checks → **write** permission :contentReference[oaicite:0]{index=0}
+    )  # requires Checks **write** permission :contentReference[oaicite:0]{index=0}
 
     # 2️  List every blob in the commit tree and filter *.idf
     tree = gh_api.get(f"/repos/{repo_full}/git/trees/{head_sha}?recursive=1")["tree"]
@@ -52,9 +52,9 @@ def validate_idf(event, gh_api, **_):
     #3️  Finish the check run
     conclusion = "failure" if failed else "success"
     summary = (
-        "❌ Files that need fixing:\n" + "\n".join(failed)
+        "❌ Files that need fixing:\n" + "\n".join(failed)
         if failed
-        else "✅ All IDF files passed the dummy check"
+        else "✅ All IDF files passed the dummy check"
     )
 
     gh_api.patch(

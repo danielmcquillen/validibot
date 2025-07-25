@@ -194,7 +194,7 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
-        "django_github_app.models.EventLog": {
+        "django_github_app": {
             "level": "DEBUG",
             "handlers": ["console"],
         },

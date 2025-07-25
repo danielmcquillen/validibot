@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+
+# Use if async
+# from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
@@ -29,9 +31,11 @@ urlpatterns = [
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
     path("gh/", SyncWebhookView.as_view()),
 ]
-if settings.DEBUG:
+
+# If async, use this for static files
+#if settings.DEBUG:
     # Static file serving when using Gunicorn + Uvicorn for local web socket development
-    urlpatterns += staticfiles_urlpatterns()
+#    urlpatterns += staticfiles_urlpatterns()
 
 # API URLS
 urlpatterns += [

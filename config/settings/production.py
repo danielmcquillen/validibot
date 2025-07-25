@@ -178,6 +178,10 @@ LOGGING = {
             "formatter": "verbose",
         },
     },
+    "django_github_app.models.EventLog": {
+        "level": "DEBUG",
+        "handlers": ["console"],
+    },
     "root": {
         "level": "DEBUG",
         "handlers": ["console"],

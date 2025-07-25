@@ -6,4 +6,4 @@ class ValidationsConfig(AppConfig):
     name = "roscoe.validations"
 
     def ready(self):
-        import roscoe.validations.validators
+        import roscoe.validations.validators  # noqa: F401 PLC0415

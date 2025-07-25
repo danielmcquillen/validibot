@@ -24,11 +24,10 @@ urlpatterns = [
     path("users/", include("roscoe.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
     # Your stuff: custom urls includes go here
-    # ...
+    path("validations/", include("roscoe.validations.urls", namespace="validations")),
     # Media files
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
     path("gh/", SyncWebhookView.as_view()),
-    include("roscoe.validations.urls", namespace="validations"),
 ]
 if settings.DEBUG:
     # Static file serving when using Gunicorn + Uvicorn for local web socket development

@@ -276,3 +276,6 @@ roscoe/media/
 .env
 .envs/*
 !.envs/.local/
+
+_envs
+_envs/*

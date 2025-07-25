@@ -89,11 +89,12 @@ THIRD_PARTY_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
+    "django_github_app",
 ]
 
 LOCAL_APPS = [
     "roscoe.users",
-    # Your stuff: custom apps go here
+    "rosoe.validations",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -356,3 +357,13 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+
+GITHUB_APP = {
+    "APP_ID": env.int("GITHUB_APP_ID"),
+    "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),
+    "NAME": env.str("GITHUB_NAME"),
+    "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY"),
+    "WEBHOOK_SECRET": env.str("GITHUB_WEBHOOK_SECRET"),
+    "WEBHOOK_TYPE": "sync",  # Use "async" for ASGI projects or "sync" for WSGI projects
+}

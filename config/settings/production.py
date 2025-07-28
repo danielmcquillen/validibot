@@ -203,7 +203,6 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
-        # Your Django apps
         "roscoe.users": {
             "level": "INFO",
             "handlers": ["console"],

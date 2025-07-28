@@ -24,7 +24,6 @@ django-cors-headers==4.7.0  # https://github.com/adamchainz/django-cors-headers
 # DRF-spectacular for api documentation
 drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 
-
 # DMcQ: For GitHub App integration
 # django-github-app==0.8.0
 django-github-app @ git+https://github.com/danielmcquillen/django-github-app.git@main

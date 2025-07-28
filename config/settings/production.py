@@ -8,11 +8,7 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 
 from .base import *  # noqa: F403
-from .base import DATABASES
-from .base import INSTALLED_APPS
-from .base import REDIS_URL
-from .base import SPECTACULAR_SETTINGS
-from .base import env
+from .base import DATABASES, INSTALLED_APPS, REDIS_URL, SPECTACULAR_SETTINGS, env
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -194,10 +190,10 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
-        "django_github_app": {
-            "level": "DEBUG",
-            "handlers": ["console"],
-        },
+        #"django_github_app": {
+        #    "level": "DEBUG",
+        #    "handlers": ["console"],
+        #},
         "django.security.DisallowedHost": {
             "level": "ERROR",
             "handlers": ["console"],

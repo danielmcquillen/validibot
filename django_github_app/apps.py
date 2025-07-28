@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from django.apps import AppConfig
 
 from ._typing import override
-
-import logging
 
 logger = logging.getLogger("django_github_app")
 
@@ -19,7 +19,6 @@ class GitHubAppConfig(AppConfig):
         from . import checks  # noqa: F401
         from .conf import app_settings
 
-        logger.info("GitHub App is ready with settings: %s", app_settings)
         if app_settings.WEBHOOK_TYPE == "async":
             from .events import ahandlers  # noqa: F401
         elif app_settings.WEBHOOK_TYPE == "sync":

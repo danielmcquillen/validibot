@@ -1,17 +1,14 @@
 from __future__ import annotations
+
 import logging
 import time
-from abc import ABC
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import Coroutine
-from typing import Any
-from typing import Generic
-from typing import TypeVar
+from typing import Any, Generic, TypeVar
 
 import gidgethub
 from django.core.exceptions import BadRequest
-from django.http import HttpRequest
-from django.http import JsonResponse
+from django.http import HttpRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
@@ -19,10 +16,8 @@ from gidgethub.sansio import Event
 
 from ._typing import override
 from .conf import app_settings
-from .github import AsyncGitHubAPI
-from .github import SyncGitHubAPI
-from .models import EventLog
-from .models import Installation
+from .github import AsyncGitHubAPI, SyncGitHubAPI
+from .models import EventLog, Installation
 from .routing import GitHubRouter
 
 GitHubAPIType = TypeVar("GitHubAPIType", AsyncGitHubAPI, SyncGitHubAPI)
@@ -36,7 +31,6 @@ class BaseWebhookView(View, ABC, Generic[GitHubAPIType]):
     github_api_class: type[GitHubAPIType]
 
     def get_event(self, request: HttpRequest) -> Event:
-        logger.info("BaseWebhookView: received webhook request: %s", request.body)
         try:
             event = Event.from_http(
                 request.headers,
@@ -76,7 +70,6 @@ class AsyncWebhookView(BaseWebhookView[AsyncGitHubAPI]):
 
     @override
     async def post(self, request: HttpRequest) -> JsonResponse:
-        
         logger.info("AsyncWebhookView received webhook request: %s", request.body)
         event = self.get_event(request)
 
@@ -84,8 +77,9 @@ class AsyncWebhookView(BaseWebhookView[AsyncGitHubAPI]):
             await EventLog.objects.acleanup_events()
 
         found_callbacks = self.router.fetch(event)
-
+        logger.info(f"Found callbacks: {found_callbacks}")
         event_log = None
+        logger.info(f"app_settings.LOG_ALL_EVENTS: {app_settings.LOG_ALL_EVENTS}")
         if app_settings.LOG_ALL_EVENTS or found_callbacks:
             event_log = await EventLog.objects.acreate_from_event(event)
 

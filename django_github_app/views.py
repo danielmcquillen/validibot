@@ -77,7 +77,9 @@ class AsyncWebhookView(BaseWebhookView[AsyncGitHubAPI]):
             await EventLog.objects.acleanup_events()
 
         found_callbacks = self.router.fetch(event)
-        logger.info(f"Found callbacks: {found_callbacks}")
+        logger.info(f"Found {len(found_callbacks)} callbacks:")
+        for callback in found_callbacks:
+            logger.info(f" - callback: {callback}")
         event_log = None
         logger.info(f"app_settings.LOG_ALL_EVENTS: {app_settings.LOG_ALL_EVENTS}")
         if app_settings.LOG_ALL_EVENTS or found_callbacks:

@@ -27,4 +27,4 @@ drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 
 # DMcQ: For GitHub App integration
 # django-github-app==0.8.0
-django-github-app @ git+https://github.com/danielmcquillen/django-github-app.git
+django-github-app @ git+https://github.com/danielmcquillen/django-github-app.git@main

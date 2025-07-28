@@ -32,10 +32,6 @@ urlpatterns = [
     path("gh/", SyncWebhookView.as_view()),
 ]
 
-# If async, use this for static files
-#if settings.DEBUG:
-    # Static file serving when using Gunicorn + Uvicorn for local web socket development
-#    urlpatterns += staticfiles_urlpatterns()
 
 # API URLS
 urlpatterns += [

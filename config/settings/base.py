@@ -358,7 +358,6 @@ SPECTACULAR_SETTINGS = {
 # Your stuff...
 # ------------------------------------------------------------------------------
 
-
 GITHUB_APP = {
     "APP_ID": env.int("GITHUB_APP_ID"),
     "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),

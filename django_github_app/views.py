@@ -114,6 +114,7 @@ class SyncWebhookView(BaseWebhookView[SyncGitHubAPI]):
 
         if found_callbacks:
             installation = Installation.objects.get_from_event(event)
+            logger.info(f"Using installation: {installation}")
             with self.get_github_api(installation) as gh:
                 time.sleep(1)
                 self.router.dispatch(event, gh)

@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import datetime
+import logging
 from enum import Enum
 from typing import Any
 
 from asgiref.sync import sync_to_async
-from django.db import models
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
-from gidgethub import abc
-from gidgethub import sansio
-from gidgethub.apps import get_installation_access_token
-from gidgethub.apps import get_jwt
+from gidgethub import abc, sansio
+from gidgethub.apps import get_installation_access_token, get_jwt
 
 from ._sync import async_to_sync_method
 from ._typing import override
 from .conf import app_settings
-from .github import AsyncGitHubAPI
-from .github import GitHubAPIEndpoint
-from .github import GitHubAPIUrl
+from .github import AsyncGitHubAPI, GitHubAPIEndpoint, GitHubAPIUrl
+
+logger = logging.getLogger("django_github_app")
 
 
 class EventLogManager(models.Manager["EventLog"]):
@@ -65,6 +63,7 @@ class EventLog(models.Model):
 
 class InstallationManager(models.Manager["Installation"]):
     async def acreate_from_event(self, event: sansio.Event):
+        logger.info("Creating installation from event: %s", event.data)
         app_id = event.data["installation"]["app_id"]
 
         if app_id == int(app_settings.APP_ID):

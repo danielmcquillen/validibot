@@ -2,23 +2,18 @@ from __future__ import annotations
 
 import re
 from asyncio import iscoroutinefunction
-from collections.abc import Awaitable
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Any
-from typing import Protocol
-from typing import TypeVar
-from typing import cast
+from typing import Any, Protocol, TypeVar, cast
+from venv import logger
 
 from django.utils.functional import classproperty
 from gidgethub import sansio
 from gidgethub.routing import Router as GidgetHubRouter
 
 from ._typing import override
-from .github import AsyncGitHubAPI
-from .github import SyncGitHubAPI
-from .mentions import Mention
-from .mentions import MentionScope
+from .github import AsyncGitHubAPI, SyncGitHubAPI
+from .mentions import Mention, MentionScope
 
 AsyncCallback = Callable[..., Awaitable[None]]
 SyncCallback = Callable[..., None]
@@ -117,6 +112,7 @@ class GitHubRouter(GidgetHubRouter):
     async def adispatch(self, event: sansio.Event, *args: Any, **kwargs: Any) -> None:
         found_callbacks = self.fetch(event)
         for callback in found_callbacks:
+            logger.info(f"Dispatching callback: {callback}")
             await callback(event, *args, **kwargs)
 
     @override

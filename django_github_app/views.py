@@ -106,7 +106,9 @@ class SyncWebhookView(BaseWebhookView[SyncGitHubAPI]):
 
         found_callbacks = self.router.fetch(event)
 
+        logger.info(f"Found callbacks: {found_callbacks}")
         event_log = None
+        logger.info(f"app_settings.LOG_ALL_EVENTS: {app_settings.LOG_ALL_EVENTS}")
         if app_settings.LOG_ALL_EVENTS or found_callbacks:
             event_log = EventLog.objects.create_from_event(event)
 

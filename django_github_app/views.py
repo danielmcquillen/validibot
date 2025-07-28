@@ -87,6 +87,7 @@ class AsyncWebhookView(BaseWebhookView[AsyncGitHubAPI]):
 
         if found_callbacks:
             installation = await Installation.objects.aget_from_event(event)
+            logger.info(f"Using installation: {installation}")
             async with self.get_github_api(installation) as gh:
                 await gh.sleep(1)
                 await self.router.adispatch(event, gh)
@@ -107,8 +108,10 @@ class SyncWebhookView(BaseWebhookView[SyncGitHubAPI]):
             EventLog.objects.cleanup_events()
 
         found_callbacks = self.router.fetch(event)
+        logger.info(f"Found {len(found_callbacks)} callbacks:")
+        for callback in found_callbacks:
+            logger.info(f" - callback: {callback}")
 
-        logger.info(f"Found callbacks: {found_callbacks}")
         event_log = None
         logger.info(f"app_settings.LOG_ALL_EVENTS: {app_settings.LOG_ALL_EVENTS}")
         if app_settings.LOG_ALL_EVENTS or found_callbacks:
@@ -120,5 +123,7 @@ class SyncWebhookView(BaseWebhookView[SyncGitHubAPI]):
             with self.get_github_api(installation) as gh:
                 time.sleep(1)
                 self.router.dispatch(event, gh)
+        else:
+            logger.info("No callbacks found for this event.")
 
         return self.get_response(event_log)

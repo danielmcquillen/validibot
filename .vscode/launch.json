@@ -8,7 +8,6 @@
       "args": [
         "runserver",
         "8000",
-        "--insecure"
       ],
       "django": true,
       "autoStartBrowser": false,

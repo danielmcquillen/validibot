@@ -22,10 +22,11 @@ from .routing import GitHubRouter
 
 GitHubAPIType = TypeVar("GitHubAPIType", AsyncGitHubAPI, SyncGitHubAPI)
 
-logger = logging.getLogger("django_github_app")
+logger = logging.getLogger(__name__)
 
 _router = GitHubRouter(*GitHubRouter.routers)
-
+logger.info("GitHubRouter initialized in django_github_app.views: %s", _router)
+logger.info(" - Available routers: %s", GitHubRouter.routers)
 
 class BaseWebhookView(View, ABC, Generic[GitHubAPIType]):
     github_api_class: type[GitHubAPIType]

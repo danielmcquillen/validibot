@@ -1,7 +1,5 @@
 from .base import *  # noqa: F403
-from .base import INSTALLED_APPS
-from .base import MIDDLEWARE
-from .base import env
+from .base import INSTALLED_APPS, MIDDLEWARE, env
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -13,7 +11,7 @@ SECRET_KEY = env(
     default="vYFSWUQZszpWqRqe0s8sdP60HQGXX0t8erh3EZMFOLIxeMCZnDn9zOGnTJGW4n5B",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
+ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "833e5e346f7e.ngrok-free.app"]  # noqa: S104
 
 # CACHES
 # ------------------------------------------------------------------------------

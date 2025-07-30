@@ -3,15 +3,14 @@ from django.conf.urls.static import static
 from django.contrib import admin
 
 # Use if async
-# from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-from django.urls import include
-from django.urls import path
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+from django.urls import include, path
 from django.views import defaults as default_views
 from django.views.generic import TemplateView
-from django_github_app.views import SyncWebhookView
-from drf_spectacular.views import SpectacularAPIView
-from drf_spectacular.views import SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
+
+from django_github_app.views import AsyncWebhookView
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
@@ -29,7 +28,7 @@ urlpatterns = [
     path("validations/", include("roscoe.validations.urls", namespace="validations")),
     # Media files
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
-    path("gh/", SyncWebhookView.as_view()),
+    path("gh/", AsyncWebhookView.as_view()),
 ]
 
 
@@ -48,6 +47,9 @@ urlpatterns += [
 ]
 
 if settings.DEBUG:
+     # Static file serving when using Gunicorn + Uvicorn for local web socket development
+    urlpatterns += staticfiles_urlpatterns()
+    
     # This allows the error pages to be debugged during development, just visit
     # these url in browser to see how these error pages look like.
     urlpatterns += [

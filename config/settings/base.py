@@ -1,10 +1,13 @@
 # ruff: noqa: ERA001, E501
 """Base settings to build other settings files upon."""
 
+import logging
 import ssl
 from pathlib import Path
 
 import environ
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # roscoe/
@@ -62,7 +65,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # https://docs.djangoproject.com/en/dev/ref/settings/#root-urlconf
 ROOT_URLCONF = "config.urls"
 # https://docs.djangoproject.com/en/dev/ref/settings/#wsgi-application
-WSGI_APPLICATION = "config.wsgi.application"
+# WSGI_APPLICATION = "config.wsgi.application"
+# https://docs.djangoproject.com/en/dev/ref/settings/#asgi-application
+ASGI_APPLICATION = "config.asgi.application"
 
 # APPS
 # ------------------------------------------------------------------------------
@@ -362,7 +367,9 @@ GITHUB_APP = {
     "APP_ID": env.int("GITHUB_APP_ID"),
     "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),
     "NAME": env.str("GITHUB_NAME"),
-    "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY"),
+    "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY").replace("\\n", "\n"),
     "WEBHOOK_SECRET": env.str("GITHUB_WEBHOOK_SECRET"),
-    "WEBHOOK_TYPE": "sync",  # Use "async" for ASGI projects or "sync" for WSGI projects
+    "WEBHOOK_TYPE": "async",  # Use "async" for ASGI projects or "sync" for WSGI projects
 }
+
+logger.info("Using GITHUB_APP APP_ID: %s", GITHUB_APP["APP_ID"])

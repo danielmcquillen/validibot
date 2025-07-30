@@ -3,3 +3,6 @@ __version_info__ = tuple(
     int(num) if num.isdigit() else num
     for num in __version__.replace("-", ".", 1).split(".")
 )
+
+# Import validators early to ensure they're registered before django-github-app views
+from .validations import validators  # noqa: F401

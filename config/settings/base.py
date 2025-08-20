@@ -100,6 +100,8 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "roscoe.users",
     "roscoe.validations",
+    "roscoe.projects",
+    "roscoe.events",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

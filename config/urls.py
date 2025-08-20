@@ -13,20 +13,22 @@ from rest_framework.authtoken.views import obtain_auth_token
 from django_github_app.views import AsyncWebhookView
 
 urlpatterns = [
-    path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
+    path(
+        "",
+        TemplateView.as_view(template_name="pages/home.html"),
+        name="home",
+    ),
     path(
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),
         name="about",
     ),
-    # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
-    # User management
     path("users/", include("roscoe.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
-    # Your stuff: custom urls includes go here
+    path("projects/", include("roscoe.projects.urls", namespace="projects")),
+    path("tracking/", include("roscoe.tracking.urls", namespace="tracking")),
     path("validations/", include("roscoe.validations.urls", namespace="validations")),
-    # Media files
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
     path("gh/", AsyncWebhookView.as_view()),
 ]
@@ -47,9 +49,9 @@ urlpatterns += [
 ]
 
 if settings.DEBUG:
-     # Static file serving when using Gunicorn + Uvicorn for local web socket development
+    # Static file serving when using Gunicorn + Uvicorn for local web socket development
     urlpatterns += staticfiles_urlpatterns()
-    
+
     # This allows the error pages to be debugged during development, just visit
     # these url in browser to see how these error pages look like.
     urlpatterns += [

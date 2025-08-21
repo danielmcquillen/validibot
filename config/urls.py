@@ -10,7 +10,7 @@ from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 
-from django_github_app.views import AsyncWebhookView
+# from django_github_app.views import AsyncWebhookView
 
 urlpatterns = [
     path(
@@ -30,9 +30,12 @@ urlpatterns = [
     path("tracking/", include("roscoe.tracking.urls", namespace="tracking")),
     path("validations/", include("roscoe.validations.urls", namespace="validations")),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
-    path("gh/", AsyncWebhookView.as_view()),
 ]
 
+if getattr(settings, "GITHUB_APP_ENABLED", False):
+    from django_github_app.views import AsyncWebhookView
+
+    urlpatterns.append(path("gh/", AsyncWebhookView.as_view(), name="github-webhook"))
 
 # API URLS
 urlpatterns += [

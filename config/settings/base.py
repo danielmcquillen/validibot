@@ -69,6 +69,8 @@ ROOT_URLCONF = "config.urls"
 # https://docs.djangoproject.com/en/dev/ref/settings/#asgi-application
 ASGI_APPLICATION = "config.asgi.application"
 
+GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
+
 # APPS
 # ------------------------------------------------------------------------------
 DJANGO_APPS = [
@@ -94,14 +96,19 @@ THIRD_PARTY_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
-    "django_github_app",
 ]
+if GITHUB_APP_ENABLED:
+    THIRD_PARTY_APPS.append("django_github_app")
 
 LOCAL_APPS = [
+    "roscoe.core",
     "roscoe.users",
     "roscoe.validations",
     "roscoe.projects",
     "roscoe.events",
+    "roscoe.tracking",
+    "roscoe.documents",
+    "roscoe.integrations",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -365,13 +372,14 @@ SPECTACULAR_SETTINGS = {
 # Your stuff...
 # ------------------------------------------------------------------------------
 
-GITHUB_APP = {
-    "APP_ID": env.int("GITHUB_APP_ID"),
-    "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),
-    "NAME": env.str("GITHUB_NAME"),
-    "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY").replace("\\n", "\n"),
-    "WEBHOOK_SECRET": env.str("GITHUB_WEBHOOK_SECRET"),
-    "WEBHOOK_TYPE": "async",  # Use "async" for ASGI projects or "sync" for WSGI projects
-}
+if GITHUB_APP_ENABLED:
+    GITHUB_APP = {
+        "APP_ID": env.int("GITHUB_APP_ID"),
+        "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),
+        "NAME": env.str("GITHUB_NAME"),
+        "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY").replace("\\n", "\n"),
+        "WEBHOOK_SECRET": env.str("GITHUB_WEBHOOK_SECRET"),
+        "WEBHOOK_TYPE": "async",  # Use "async" for ASGI projects or "sync" for WSGI projects
+    }
 
-logger.info("Using GITHUB_APP APP_ID: %s", GITHUB_APP["APP_ID"])
+    logger.info("Using GITHUB_APP APP_ID: %s", GITHUB_APP["APP_ID"])

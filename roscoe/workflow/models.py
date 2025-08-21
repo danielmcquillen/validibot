@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import uuid
 
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
@@ -14,11 +17,14 @@ class Workflow(TimeStampedModel):
     """
 
     class Meta:
-        unique_together = [
-            (
-                "org",
-                "slug",
-                "version",
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "org",
+                    "slug",
+                    "version",
+                ],
+                name="uq_workflow_org_slug_version",
             )
         ]
         ordering = [
@@ -65,9 +71,10 @@ class Workflow(TimeStampedModel):
         default=False,
     )
 
-    def clean(self):
-        from django.core.exceptions import ValidationError
+    # Methods
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    def clean(self):
         if not self.name or not self.name.strip():
             raise ValidationError({"name": _("Name is required.")})
 
@@ -76,6 +83,36 @@ class Workflow(TimeStampedModel):
         if not self.slug:
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
+
+    @transaction.atomic
+    def clone_to_new_version(self, user) -> Workflow:
+        """
+        Create an identical workflow with version+1 and copied steps.
+        Locks old version.
+        """
+        latest_version = (
+            Workflow.objects.filter(org=self.org, slug=self.slug)
+            .exclude(pk=self.pk)
+            .aggregate(models.Max("version"))["version__max"]
+            or self.version
+        )
+        new = Workflow.objects.create(
+            org=self.org,
+            user=user,
+            name=self.name,
+            slug=self.slug,
+            version=latest_version + 1,
+            is_locked=False,
+        )
+        steps = []
+        for step in self.steps.all().order_by("order"):
+            step.pk = None
+            step.workflow = new
+            steps.append(step)
+        WorkflowStep.objects.bulk_create(steps)
+        self.is_locked = True
+        self.save(update_fields=["is_locked"])
+        return new
 
 
 class WorkflowStep(TimeStampedModel):
@@ -120,3 +157,11 @@ class WorkflowStep(TimeStampedModel):
 
     # Optional per-step config (e.g., severity thresholds, mapping)
     config = models.JSONField(default=dict, blank=True)
+
+    def clean(self):
+        if (
+            WorkflowStep.objects.filter(workflow=self.workflow, order=self.order)
+            .exclude(pk=self.pk)
+            .exists()
+        ):
+            raise ValidationError({"order": _("Order already used in this workflow.")})

@@ -1,15 +1,27 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from model_utils.models import TimeStampedModel
+from psycopg import Time
 
 from roscoe.users.models import Organization, User
 from roscoe.validations.constants import RulesetType, ValidationType
 
 
-class Ruleset(models.Model):
+class Ruleset(TimeStampedModel):
     """
     Schema or rule bundle (JSON Schema, XSD, YAML rules, etc.)
     Can be global (org=None) or org-private.
     """
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "org",
+                    "type",
+                ]
+            )
+        ]
 
     org = models.ForeignKey(
         Organization,
@@ -44,11 +56,8 @@ class Ruleset(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        indexes = [models.Index(fields=["org", "kind"])]
 
-
-class Validator(models.Model):
+class Validator(TimeStampedModel):
     """
     A pluggable validator 'type' and version.
     Examples:
@@ -57,14 +66,21 @@ class Validator(models.Model):
       kind='energyplus', version='23.1'
     """
 
-    type = models.CharField(
-        max_length=40,
-        choices=ValidationType.choices,
-        null=False,
-        blank=False,
-    )
-
-    name = models.CharField(max_length=120)  # Marketing/display label
+    class Meta:
+        unique_together = [
+            (
+                "slug",
+                "version",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "type",
+                    "slug",
+                ]
+            )
+        ]
 
     slug = models.SlugField(
         null=False,
@@ -74,6 +90,14 @@ class Validator(models.Model):
         ),  # e.g. "json-2020-12", "eplus-23-1"
     )
 
+    name = models.CharField(max_length=120)  # display label
+
+    type = models.CharField(
+        max_length=40,
+        choices=ValidationType.choices,
+        null=False,
+        blank=False,
+    )
     version = models.PositiveIntegerField(
         help_text=_("Version of the validator, e.g. 1, 2, 3")
     )
@@ -87,8 +111,3 @@ class Validator(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = [("slug", "version")]
-        indexes = [models.Index(fields=["kind", "slug"])]

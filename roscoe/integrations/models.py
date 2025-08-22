@@ -1,11 +1,11 @@
+from __future__ import annotations
+
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-
-# Create your models here.
-# roscoe/integrations/models.py
 from django_extensions.db.models import TimeStampedModel
 
 from roscoe.events.constants import EventType
+from roscoe.projects.models import Project
 from roscoe.users.models import Organization
 
 
@@ -13,9 +13,8 @@ class WebhookEndpoint(TimeStampedModel):
     """
     Represents a webhook endpoint for an organization.
 
-    This model is used to store the URL and secret for the webhook,
+    This model is used to store the external URL and secret for the webhook,
     along with the event types that the endpoint is interested in.
-
     """
 
     org = models.ForeignKey(
@@ -49,10 +48,22 @@ class WebhookEndpoint(TimeStampedModel):
 
 class WebhookDelivery(TimeStampedModel):
     """
-    Represents a delivery of a webhook event to an endpoint.
-    This model is used to track the status of webhook deliveries,
-    including the event type, payload, status code, and success flag.
+    Represents one logical delivery of a webhook event to a
+    specific endpoint for a specific event.
     """
+
+    class Meta:
+        unique_together = [
+            (
+                "endpoint",
+                "event",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["endpoint", "created"]),
+            models.Index(fields=["success", "created"]),
+            models.Index(fields=["next_retry_at"]),
+        ]
 
     endpoint = models.ForeignKey(
         WebhookEndpoint,
@@ -60,17 +71,70 @@ class WebhookDelivery(TimeStampedModel):
         related_name="deliveries",
     )
 
-    event_type = models.CharField(max_length=64)
+    event = models.ForeignKey(
+        "OutboundEvent",
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
 
-    payload = models.JSONField()
+    attempt = models.PositiveIntegerField(default=0)
 
     status_code = models.IntegerField(null=True, blank=True)
 
     success = models.BooleanField(default=False)
 
-    attempt = models.IntegerField(default=1)
+    error = models.TextField(blank=True, default="")
 
-    error = models.TextField(
-        blank=True,
-        default="",
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+
+    next_retry_at = models.DateTimeField(
+        null=True, blank=True
+    )  # backoff scheduler hook
+
+
+class OutboundEvent(TimeStampedModel):
+    """
+    Normalized event to fan-out to webhooks.
+    """
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "org",
+                    "event_type",
+                    "created",
+                ]
+            ),
+            models.Index(
+                fields=[
+                    "resource_type",
+                    "resource_id",
+                ]
+            ),
+        ]
+
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="outbound_events",
     )
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    event_type = models.CharField(max_length=64)  # constrained elsewhere via choices
+
+    resource_type = models.CharField(max_length=64)  # e.g. "validation_run"
+
+    resource_id = models.CharField(max_length=64)
+
+    payload = models.JSONField()
+
+    # optional dedupe key if you ever re-emit
+    dedupe_key = models.CharField(max_length=128, blank=True, default="")

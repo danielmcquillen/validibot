@@ -144,12 +144,12 @@ class WorkflowStep(TimeStampedModel):
     )
 
     validator = models.ForeignKey(
-        "validators.Validator",
+        "validations.Validator",
         on_delete=models.PROTECT,
     )
 
     ruleset = models.ForeignKey(
-        "validators.Ruleset",
+        "validations.Ruleset",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -159,9 +159,17 @@ class WorkflowStep(TimeStampedModel):
     config = models.JSONField(default=dict, blank=True)
 
     def clean(self):
+        
+        super().clean()
+        
         if (
             WorkflowStep.objects.filter(workflow=self.workflow, order=self.order)
             .exclude(pk=self.pk)
             .exists()
         ):
             raise ValidationError({"order": _("Order already used in this workflow.")})
+        
+        if self.ruleset and self.ruleset.type != self.validator.type:
+            raise ValidationError(
+                {"ruleset": _("Ruleset type must match validator type.")}
+            )

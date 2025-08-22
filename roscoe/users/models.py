@@ -142,11 +142,16 @@ class Membership(TimeStampedModel):
     """
 
     class Meta:
-        unique_together = [("user", "organization")]  # prevent dup memberships
+        unique_together = [
+            (
+                "user",
+                "org",
+            )
+        ]  # prevent dup memberships
         indexes = [
             models.Index(
                 fields=[
-                    "organization",
+                    "org",
                     "user",
                 ]
             )
@@ -157,7 +162,7 @@ class Membership(TimeStampedModel):
         on_delete=models.CASCADE,
     )
 
-    organization = models.ForeignKey(
+    org = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
     )

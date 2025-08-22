@@ -31,7 +31,7 @@ class BaseEvent(TimeStampedModel):
         help_text=_("The project this event is associated with."),
     )
 
-    organization = models.ForeignKey(
+    org = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
         related_name="tracking_events",

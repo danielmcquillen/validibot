@@ -1,0 +1,28 @@
+// ----------------------------------------
+// _transitions.scss
+// ----------------------------------------
+
+// 1) Name the view-transition region and make it positioned
+#course-content {
+  view‐transition‐name: fade; /* give it the “fade” name */
+  -webkit‐view‐transition‐name: fade; /* Safari prefixed */
+}
+// 2) Keyframes for fade‐out and fade‐in
+@keyframes fade‐out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fade‐in {
+  from {
+    opacity: 0;
+  }
+}
+
+// 3) Hook into the old & new pseudo‐elements
+::view‐transition‐old(fade) {
+  animation: fade‐out 200ms ease both;
+}
+::view‐transition‐new(fade) {
+  animation: fade‐in 200ms ease both 200ms;
+}

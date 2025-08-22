@@ -20,10 +20,10 @@ class EventType(models.TextChoices):
     RUN_TIMED_OUT = "run.timed_out", _("Run Timed Out")
 
     # Step lifecycle
-    STEP_STARTED = "step.started", _("Step Started")
-    STEP_PASSED = "step.passed", _("Step Passed")
-    STEP_FAILED = "step.failed", _("Step Failed")
-    STEP_SKIPPED = "step.skipped", _("Step Skipped")
+    RUN_STEP_STARTED = "step.started", _("Step Started")
+    RUN_STEP_PASSED = "step.passed", _("Step Passed")
+    RUN_STEP_FAILED = "step.failed", _("Step Failed")
+    RUN_STEP_SKIPPED = "step.skipped", _("Step Skipped")
 
     # Ruleset / Validator (optional, if you plan to notify changes)
     RULESET_CREATED = "ruleset.created", _("Ruleset Created")
@@ -46,14 +46,18 @@ RUN_EVENTS = (
     EventType.RUN_TIMED_OUT,
 )
 
-STEP_EVENTS = (
-    EventType.STEP_STARTED,
-    EventType.STEP_PASSED,
-    EventType.STEP_FAILED,
-    EventType.STEP_SKIPPED,
+RUN_STEP_EVENTS = (
+    EventType.RUN_STEP_STARTED,
+    EventType.RUN_STEP_PASSED,
+    EventType.RUN_STEP_FAILED,
+    EventType.RUN_STEP_SKIPPED,
 )
 
 CONFIG_EVENTS = (
+    EventType.WORKFLOW_CREATED,
+    EventType.WORKFLOW_UPDATED,
+    EventType.WORKFLOW_DELETED,
+    EventType.SUBMISSION_CREATED,
     EventType.RULESET_CREATED,
     EventType.RULESET_UPDATED,
     EventType.VALIDATOR_CREATED,

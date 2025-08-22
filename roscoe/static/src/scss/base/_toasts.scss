@@ -1,0 +1,7 @@
+.toast-container {
+  z-index: 1000;
+  top: 60px;
+  .toast-body {
+    min-width: 250px;
+  }
+}

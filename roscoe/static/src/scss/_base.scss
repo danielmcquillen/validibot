@@ -1,0 +1,44 @@
+@use "base/default";
+@use "base/top_nav";
+@use "base/cards";
+@use "base/toasts";
+@use "base/breadcrumbs";
+@use "base/transitions";
+
+@use "./settings" as *;
+.bg-blue-lt {
+  background-color: $blue-lt !important;
+}
+.bg-azure-lt {
+  background-color: $azure-lt !important;
+}
+.bg-indigo-lt {
+  background-color: $indigo-lt !important;
+}
+.bg-purple-lt {
+  background-color: $purple-lt !important;
+}
+.bg-pink-lt {
+  background-color: $pink-lt !important;
+}
+.bg-red-lt {
+  background-color: $red-lt !important;
+}
+.bg-orange-lt {
+  background-color: $orange-lt !important;
+}
+.bg-yellow-lt {
+  background-color: $yellow-lt !important;
+}
+.bg-lime-lt {
+  background-color: $lime-lt !important;
+}
+.bg-green-lt {
+  background-color: $green-lt !important;
+}
+.bg-teal-lt {
+  background-color: $teal-lt !important;
+}
+.bg-cyan-lt {
+  background-color: $cyan-lt !important;
+}

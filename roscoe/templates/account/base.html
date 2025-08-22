@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="info-bar-wrapper">
+    <div class="container-fluid breadcrumb info-bar">
+      <div class="breadcrumb-item">
+        {% if user.is_authenticated %}
+          <a href="{% url 'users:detail' user.username %}">My Profile</a>
+        {% else %}
+          &nbsp;Account
+        {% endif %}
+      </div>
+      <div class="breadcrumb-item page-title">
+        <span class="page-description">
+          {% block head_title %}
+          {% endblock head_title %}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="container account-page">
+    {% block inner %}
+    {% endblock inner %}
+  </div>
+{% endblock content %}

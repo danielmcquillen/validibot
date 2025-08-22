@@ -1,0 +1,15 @@
+.entrance-page {
+  background: linear-gradient(152deg, #eef4f8, #dde5ea) !important;
+  min-height: calc(100vh - 30px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  .card {
+    min-width: 600px;
+  }
+}
+
+#messages {
+  z-index: 10000;
+}

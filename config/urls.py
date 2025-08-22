@@ -24,6 +24,7 @@ urlpatterns = [
         name="about",
     ),
     path(settings.ADMIN_URL, admin.site.urls),
+    path("dashboard/", include("roscoe.dashboard.urls", namespace="dashboard")),
     path("users/", include("roscoe.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
     path("projects/", include("roscoe.projects.urls", namespace="projects")),

@@ -1,0 +1,28 @@
+#site-top-nav {
+  padding-top: 0.1rem !important;
+  padding-bottom: 0.1rem !important;
+  font-size: 0.9rem !important;
+  min-height: 40px !important;
+  transition: transform 0.3s ease;
+  z-index: 1030;
+  border-bottom: 1px dotted #ccc;
+
+  .navbar-brand {
+    font-size: 1rem;
+    padding: 0.2rem 0;
+  }
+
+  .nav-link {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.85rem !important;
+  }
+
+  // Ensure dropdowns appear above everything else
+  .dropdown-menu {
+    z-index: 1031; // Higher than the navbar itself
+  }
+}
+
+.navbar-hidden {
+  transform: translateY(-100%);
+}

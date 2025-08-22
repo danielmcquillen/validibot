@@ -14,7 +14,7 @@ from django_extensions.db.models import TimeStampedModel
 from roscoe.core.constants import RequestType
 from roscoe.projects.models import Project
 from roscoe.users.models import Organization, User
-from roscoe.workflow.models import Workflow
+from roscoe.workflows.models import Workflow
 
 
 def submission_upload_to(instance: Submission, filename: str) -> str:
@@ -75,111 +75,111 @@ class Submission(TimeStampedModel):
             )
         ]
 
-        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-        org = models.ForeignKey(
-            Organization,
-            on_delete=models.CASCADE,
-            related_name="submissions",
-        )
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+    )
 
-        project = models.ForeignKey(
-            Project,
-            on_delete=models.CASCADE,
-            related_name="submissions",
-            null=True,
-            blank=True,
-        )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="submissions",
+        null=True,
+        blank=True,
+    )
 
-        user = models.ForeignKey(
-            User,
-            on_delete=models.SET_NULL,
-            null=True,
-            blank=True,
-            related_name="submissions",
-        )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submissions",
+    )
 
-        input_file = models.FileField(
-            upload_to=submission_upload_to,
-            help_text=_("The file to validate, e.g. IDF, JSON, XML, etc."),
-        )
+    input_file = models.FileField(
+        upload_to=submission_upload_to,
+        help_text=_("The file to validate, e.g. IDF, JSON, XML, etc."),
+    )
 
-        original_filename = models.CharField(
-            max_length=512,
-            blank=True,
-            default="",
-        )
+    original_filename = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+    )
 
-        content_type = models.CharField(
-            max_length=128,
-            blank=True,
-            default="",
-        )
+    content_type = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+    )
 
-        size_bytes = models.BigIntegerField(default=0)
+    size_bytes = models.BigIntegerField(default=0)
 
-        sha256 = models.CharField(
-            max_length=64,
-            blank=True,
-            default="",
-        )
+    sha256 = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
 
-        workflow = models.ForeignKey(
-            Workflow,
-            on_delete=models.PROTECT,
-            related_name="submissions",
-            help_text=_("Workflow *version* to run."),
-        )
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.PROTECT,
+        related_name="submissions",
+        help_text=_("Workflow *version* to run."),
+    )
 
-        # Optional per-run overrides (env vars, thresholds, step toggles, etc.)
-        config = models.JSONField(default=dict, blank=True)
+    # Optional per-run overrides (env vars, thresholds, step toggles, etc.)
+    config = models.JSONField(default=dict, blank=True)
 
-        requested_by = models.CharField(
-            max_length=32,
-            choices=RequestType.choices,
-            blank=True,
-            default="",
-        )
+    requested_by = models.CharField(
+        max_length=32,
+        choices=RequestType.choices,
+        blank=True,
+        default="",
+    )
 
-        # Client-provided idempotency key; unique per org when provided
-        client_ref = models.CharField(max_length=128, blank=True, default="")
+    # Client-provided idempotency key; unique per org when provided
+    client_ref = models.CharField(max_length=128, blank=True, default="")
 
-        latest_run = models.OneToOneField(
-            "validations.ValidationRun",  # keep explicit app label to avoid circular import hiccups
-            on_delete=models.SET_NULL,
-            null=True,
-            blank=True,
-            related_name="+",
-        )
+    latest_run = models.OneToOneField(
+        "validations.ValidationRun",  # keep explicit app label to avoid circular import hiccups
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
 
-        # --- Validation & hygiene ------------------------------------------------
-        def clean(self):
-            errors = {}
-            # Require same-org relationships (DB can't enforce this natively)
-            if self.project_id and self.project.org_id != self.org_id:
-                errors["project"] = _("Project must belong to the same organization.")
-            if self.workflow_id and self.workflow.org_id != self.org_id:
-                errors["workflow"] = _("Workflow must belong to the same organization.")
-            if errors:
-                raise ValidationError(errors)
+    # --- Validation & hygiene ------------------------------------------------
+    def clean(self):
+        errors = {}
+        # Require same-org relationships (DB can't enforce this natively)
+        if self.project_id and self.project.org_id != self.org_id:
+            errors["project"] = _("Project must belong to the same organization.")
+        if self.workflow_id and self.workflow.org_id != self.org_id:
+            errors["workflow"] = _("Workflow must belong to the same organization.")
+        if errors:
+            raise ValidationError(errors)
 
-        def save(self, *args, **kwargs):
-            # capture filename/content_type/size/sha256 if possible on first save
-            if self.input_file and not self.sha256:
-                self.original_filename = self.original_filename or getattr(
-                    self.input_file, "name", ""
-                )
-                try:
-                    self.size_bytes = self.input_file.size
-                except Exception:
-                    pass
-                # Only hash small-ish uploads in request thread; for larger files, do it async
-                try:
-                    hasher = hashlib.sha256()
-                    for chunk in self.input_file.chunks():
-                        hasher.update(chunk)
-                    self.sha256 = hasher.hexdigest()
-                except Exception:
-                    # hashing is best-effort; you can move this to a post-commit task
-                    pass
-            super().save(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        # capture filename/content_type/size/sha256 if possible on first save
+        if self.input_file and not self.sha256:
+            self.original_filename = self.original_filename or getattr(
+                self.input_file, "name", ""
+            )
+            try:
+                self.size_bytes = self.input_file.size
+            except Exception:
+                pass
+            # Only hash small-ish uploads in request thread; for larger files, do it async
+            try:
+                hasher = hashlib.sha256()
+                for chunk in self.input_file.chunks():
+                    hasher.update(chunk)
+                self.sha256 = hasher.hexdigest()
+            except Exception:
+                # hashing is best-effort; you can move this to a post-commit task
+                pass
+        super().save(*args, **kwargs)

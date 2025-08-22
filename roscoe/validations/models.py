@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import uuid
 
-import slugify
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
+from slugify import slugify
 
 from roscoe.documents.models import Submission
 from roscoe.projects.models import Project
@@ -18,7 +19,7 @@ from roscoe.validations.constants import (
     StepStatus,
     ValidationType,
 )
-from roscoe.workflow.models import Workflow, WorkflowStep
+from roscoe.workflows.models import Workflow, WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
@@ -90,11 +91,10 @@ class Validator(TimeStampedModel):
     """
 
     class Meta:
-        unique_together = [
-            (
-                "slug",
-                "version",
-            )
+        constraints = [
+            models.UniqueConstraint(
+                fields=["slug", "version"], name="uq_validator_slug_version"
+            ),
         ]
         indexes = [
             models.Index(
@@ -164,6 +164,15 @@ class ValidationRun(TimeStampedModel):
             models.Index(fields=["org", "project", "workflow", "created"]),
             models.Index(fields=["status", "created"]),
         ]
+        constraints = [
+            # ended_at cannot be before started_at (allow nulls)
+            models.CheckConstraint(
+                name="ck_run_times_valid",
+                check=Q(ended_at__isnull=True)
+                | Q(started_at__isnull=True)
+                | Q(ended_at__gte=models.F("started_at")),
+            )
+        ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
@@ -214,6 +223,12 @@ class ValidationRun(TimeStampedModel):
         default=dict, blank=True
     )  # effective per-run config snapshot
 
+    def clean(self):
+        super().clean()
+        # Optional but helpful: ensure org consistency with submission
+        if self.submission_id and self.org_id and self.submission.org_id != self.org_id:
+            raise ValidationError({"org": _("Run org must match submission org.")})
+
 
 class ValidationStepRun(TimeStampedModel):
     """
@@ -223,6 +238,30 @@ class ValidationStepRun(TimeStampedModel):
     class Meta:
         unique_together = [("run", "step_order")]
         indexes = [models.Index(fields=["run", "status"])]
+        constraints = [
+            # Prefer UniqueConstraint to future-proof
+            models.UniqueConstraint(
+                fields=[
+                    "run",
+                    "step_order",
+                ],
+                name="uq_step_run_run_order",
+            ),
+            # Prevent duplicate execution rows for same step in same run (optional but recommended)
+            models.UniqueConstraint(
+                fields=[
+                    "run",
+                    "step",
+                ],
+                name="uq_step_run_run_step",
+            ),
+            models.CheckConstraint(
+                name="ck_step_run_times_valid",
+                check=Q(ended_at__isnull=True)
+                | Q(started_at__isnull=True)
+                | Q(ended_at__gte=models.F("started_at")),
+            ),
+        ]
 
     run = models.ForeignKey(
         ValidationRun,
@@ -259,14 +298,13 @@ class ValidationStepRun(TimeStampedModel):
     error = models.TextField(blank=True, default="")
 
     def clean(self):
-        
         super().clean()
-        
+
         if self.step and self.run and self.step.workflow_id != self.run.workflow_id:
             raise ValidationError(
                 {"step": _("Step must belong to the run's workflow.")}
             )
-            
+
         if self.step and self.step_order and self.step.order != self.step_order:
             raise ValidationError({"step_order": _("Must equal WorkflowStep.order.")})
 

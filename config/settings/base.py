@@ -109,7 +109,7 @@ LOCAL_APPS = [
     "roscoe.tracking",
     "roscoe.documents",
     "roscoe.integrations",
-    "roscoe.workflow",
+    "roscoe.workflows",
     "roscoe.billing",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps

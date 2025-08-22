@@ -4,6 +4,13 @@ from django.utils.translation import gettext_lazy as _
 
 
 class EventType(models.TextChoices):
+    # CRUD operations
+    SUBMISSION_CREATED = "submission.created", _("Submission Created")
+
+    WORKFLOW_CREATED = "workflow.created", _("Workflow Created")
+    WORKFLOW_UPDATED = "workflow.updated", _("Workflow Updated")
+    WORKFLOW_DELETED = "workflow.deleted", _("Workflow Deleted")
+
     # Run lifecycle
     RUN_CREATED = "run.created", _("Run Created")
     RUN_STARTED = "run.started", _("Run Started")
@@ -23,6 +30,10 @@ class EventType(models.TextChoices):
     RULESET_UPDATED = "ruleset.updated", _("Ruleset Updated")
     VALIDATOR_CREATED = "validator.created", _("Validator Created")
     VALIDATOR_UPDATED = "validator.updated", _("Validator Updated")
+
+    # GitHub-specific events (if using GitHub integration)
+    CHECK_SUITE_REQUESTED = "check_suite.requested", _("GitHub Check Suite Requested")
+    CHECK_SUITE_COMPLETED = "check_suite.completed", _("GitHub Check Suite Completed")
 
 
 # Convenient subsets

@@ -13,31 +13,55 @@
         </button>
         <a class="navbar-brand" href="{% url 'home' %}">Roscoe</a>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav mr-auto">
-                <li class="nav-item active">
-                    <a class="nav-link" href="{% url 'home' %}">Home <span class="visually-hidden">(current)</span></a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'about' %}">About</a>
-                </li>
+
+            <ul class="navbar-nav me-auto">
+                {% block left_nav_items %}
+                    {% if request.user.is_authenticated %}
+                        <li class="nav-item">
+                            <a class="nav-link {% active_link 'dashboard' %}"
+                               href="{% url 'dashboard:my_dashboard' %}">{% translate "Dashboard" %}</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link {% active_link 'about' %}"
+                               href="{% url 'marketing:about' %}">About</a>
+                        </li>
+                    {% endif %}
+                {% endblock left_nav_items %}
+            </ul>
+
+            <ul class="navbar-nav">
+
+                {% block right_nav_items %}
+
+                {% endblock right_nav_items %}
+
                 {% if request.user.is_authenticated %}
-                    <li class="nav-item">
-                        <a class="nav-link"
-                           href="{% url 'users:detail' request.user.username %}">{% translate "My Profile" %}</a>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle"
+                           href="#"
+                           role="button"
+                           data-bs-toggle="dropdown"
+                           aria-expanded="false">
+                            <i class="bi bi-person-circle"></i> {{ request.user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <a class="nav-link"
+                               href="{% url 'users:detail' request.user.username %}">{% translate "My Profile" %}</a>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
+                            </li>
+                        </ul>
                     </li>
                     <li class="nav-item">
-                        {# URL provided by django-allauth/account/urls.py #}
-                        <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
                     </li>
                 {% else %}
                     {% if ACCOUNT_ALLOW_REGISTRATION %}
                         <li class="nav-item">
-                            {# URL provided by django-allauth/account/urls.py #}
                             <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
                         </li>
                     {% endif %}
                     <li class="nav-item">
-                        {# URL provided by django-allauth/account/urls.py #}
                         <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
                     </li>
                 {% endif %}

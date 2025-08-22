@@ -30,6 +30,7 @@ urlpatterns = [
     path("projects/", include("roscoe.projects.urls", namespace="projects")),
     path("tracking/", include("roscoe.tracking.urls", namespace="tracking")),
     path("validations/", include("roscoe.validations.urls", namespace="validations")),
+    path("", include("roscoe.marketing.urls", namespace="marketing")),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
 

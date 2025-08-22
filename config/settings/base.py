@@ -112,6 +112,7 @@ LOCAL_APPS = [
     "roscoe.workflows",
     "roscoe.billing",
     "roscoe.dashboard",
+    "roscoe.marketing",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

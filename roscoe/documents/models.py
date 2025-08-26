@@ -1,6 +1,7 @@
 # roscoe/documents/models.py
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import uuid
 
@@ -13,7 +14,8 @@ from django_extensions.db.models import TimeStampedModel
 
 from roscoe.core.constants import RequestType
 from roscoe.projects.models import Project
-from roscoe.users.models import Organization, User
+from roscoe.users.models import Organization
+from roscoe.users.models import User
 from roscoe.workflows.models import Workflow
 
 
@@ -22,13 +24,17 @@ def submission_upload_to(instance: Submission, filename: str) -> str:
     Generate a unique upload path for submission files based on organization and project.
     """
     if not instance:
-        raise ValueError("Instance must be provided for upload path generation.")
+        err_msg = "Instance must be provided for upload path generation."
+        raise ValueError(err_msg)
     if not isinstance(instance, Submission):
-        raise ValueError("Instance must be a Submission object.")
+        err_msg = "Instance must be a Submission object."
+        raise TypeError(err_msg)
     if not instance.org_id:
-        raise ValueError("Submission must be associated with an organization.")
+        err_msg = "Submission must be associated with an organization."
+        raise ValueError(err_msg)
     if not filename:
-        raise ValueError("Filename must be provided for upload path generation.")
+        err_msg = "Filename must be provided for upload path generation."
+        raise ValueError(err_msg)
 
     org_part = f"org-{instance.org_id}"
     proj_part = f"proj-{instance.project.slug}" if instance.project_id else "proj-none"
@@ -60,7 +66,7 @@ class Submission(TimeStampedModel):
                 fields=[
                     "org",
                     "created",
-                ]
+                ],
             ),
         ]
         # Idempotency per org, only when client_ref is non-empty
@@ -76,6 +82,13 @@ class Submission(TimeStampedModel):
         ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    name = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+        help_text=_("Optional descriptive name."),
+    )
 
     org = models.ForeignKey(
         Organization,
@@ -153,8 +166,9 @@ class Submission(TimeStampedModel):
     )
 
     # --- Validation & hygiene ------------------------------------------------
-    def clean(self):
+    def clean(self, *args, **kwargs):
         errors = {}
+
         # Require same-org relationships (DB can't enforce this natively)
         if self.project_id and self.project.org_id != self.org_id:
             errors["project"] = _("Project must belong to the same organization.")
@@ -163,23 +177,21 @@ class Submission(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
-    def save(self, *args, **kwargs):
         # capture filename/content_type/size/sha256 if possible on first save
         if self.input_file and not self.sha256:
             self.original_filename = self.original_filename or getattr(
-                self.input_file, "name", ""
+                self.input_file,
+                "name",
+                "",
             )
-            try:
+            with contextlib.suppress(OSError, AttributeError):
                 self.size_bytes = self.input_file.size
-            except Exception:
-                pass
-            # Only hash small-ish uploads in request thread; for larger files, do it async
-            try:
+            # Only hash small-ish uploads in request thread; for larger files,
+            # do it async
+            with contextlib.suppress(OSError, AttributeError, ValueError):
                 hasher = hashlib.sha256()
                 for chunk in self.input_file.chunks():
                     hasher.update(chunk)
                 self.sha256 = hasher.hexdigest()
-            except Exception:
-                # hashing is best-effort; you can move this to a post-commit task
-                pass
+
         super().save(*args, **kwargs)

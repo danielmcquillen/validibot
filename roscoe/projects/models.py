@@ -30,6 +30,12 @@ class Project(TimeStampedModel):
         help_text=_("Name of the project, e.g. 'My Project'"),
     )
 
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional longer description of the project."),
+    )
+
     slug = models.SlugField(
         blank=True,
         null=False,

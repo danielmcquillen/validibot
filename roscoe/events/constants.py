@@ -20,10 +20,10 @@ class EventType(models.TextChoices):
     RUN_TIMED_OUT = "run.timed_out", _("Run Timed Out")
 
     # Step lifecycle
-    RUN_STEP_STARTED = "step.started", _("Step Started")
-    RUN_STEP_PASSED = "step.passed", _("Step Passed")
-    RUN_STEP_FAILED = "step.failed", _("Step Failed")
-    RUN_STEP_SKIPPED = "step.skipped", _("Step Skipped")
+    RUN_STEP_STARTED = "runstep.started", _("Run Step Started")
+    RUN_STEP_PASSED = "runstep.passed", _("Run Step Passed")
+    RUN_STEP_FAILED = "runstep.failed", _("Run Step Failed")
+    RUN_STEP_SKIPPED = "runstep.skipped", _("Run Step Skipped")
 
     # Ruleset / Validator (optional, if you plan to notify changes)
     RULESET_CREATED = "ruleset.created", _("Ruleset Created")

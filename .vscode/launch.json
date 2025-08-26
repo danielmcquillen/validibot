@@ -23,7 +23,7 @@
       "console": "integratedTerminal",
       "args": [
         "-A",
-        "config",
+        "config.celery_app",
         "worker",
         "-Q",
         "celery",

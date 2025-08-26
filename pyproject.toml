@@ -119,7 +119,8 @@ ignore = [
   # https://github.com/astral-sh/ruff/issues/7871
   "TRY003", # Use of bare except
   "EM102",
-  "G104",
+  "PT009",  # don't comment about tests using assertEqual etc
+  "RET504", #Unnecessary assignment to `filename` before `return` statement
 ]
 # The fixes in extend-unsafe-fixes will require
 # provide the `--unsafe-fixes` flag when fixing.

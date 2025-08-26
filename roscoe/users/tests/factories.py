@@ -1,17 +1,32 @@
 from collections.abc import Sequence
 from typing import Any
 
+import factory
 from factory import Faker
 from factory import post_generation
 from factory.django import DjangoModelFactory
 
+from roscoe.users.models import Organization
 from roscoe.users.models import User
 
 
+class OrganizationFactory(DjangoModelFactory):
+    class Meta:
+        model = Organization
+
+    name = factory.Sequence(lambda n: f"Test Organization {n}")
+    slug = factory.Sequence(lambda n: f"test-org-{n}")
+
+
 class UserFactory(DjangoModelFactory[User]):
+    class Meta:
+        model = User
+        django_get_or_create = ["username"]
+
     username = Faker("user_name")
     email = Faker("email")
     name = Faker("name")
+    is_active = True
 
     @post_generation
     def password(self, create: bool, extracted: Sequence[Any], **kwargs):  # noqa: FBT001
@@ -29,13 +44,25 @@ class UserFactory(DjangoModelFactory[User]):
         )
         self.set_password(password)
 
+    @post_generation
+    def orgs(self, create: bool, extracted: Sequence[Any], **kwargs):  # noqa: FBT001
+        if not create:
+            # Simple build, do nothing.
+            return
+
+        if extracted:
+            # A list of organizations were passed in, use them
+            for org in extracted:
+                self.orgs.add(org)
+        else:
+            # Create a default organization if none were provided
+
+            org = OrganizationFactory()
+            self.orgs.add(org)
+
     @classmethod
     def _after_postgeneration(cls, instance, create, results=None):
         """Save again the instance if creating and at least one hook ran."""
         if create and results and not cls._meta.skip_postgeneration_save:
             # Some post-generation hooks ran, and may have modified us.
             instance.save()
-
-    class Meta:
-        model = User
-        django_get_or_create = ["username"]

@@ -11,15 +11,15 @@ from slugify import slugify
 
 from roscoe.documents.models import Submission
 from roscoe.projects.models import Project
-from roscoe.users.models import Organization, User
-from roscoe.validations.constants import (
-    JobStatus,
-    RulesetType,
-    Severity,
-    StepStatus,
-    ValidationType,
-)
-from roscoe.workflows.models import Workflow, WorkflowStep
+from roscoe.users.models import Organization
+from roscoe.users.models import User
+from roscoe.validations.constants import JobStatus
+from roscoe.validations.constants import RulesetType
+from roscoe.validations.constants import Severity
+from roscoe.validations.constants import StepStatus
+from roscoe.validations.constants import ValidationType
+from roscoe.workflows.models import Workflow
+from roscoe.workflows.models import WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
@@ -111,6 +111,12 @@ class Validator(TimeStampedModel):
         help_text=_(
             "A unique identifier for the validator, used in URLs."
         ),  # e.g. "json-2020-12", "eplus-23-1"
+    )
+
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional longer description of the validator."),
     )
 
     name = models.CharField(

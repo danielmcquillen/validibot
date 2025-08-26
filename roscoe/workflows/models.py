@@ -3,12 +3,14 @@ from __future__ import annotations
 import uuid
 
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.db import models
+from django.db import transaction
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
-from roscoe.users.models import Organization, User
+from roscoe.users.models import Organization
+from roscoe.users.models import User
 
 
 class Workflow(TimeStampedModel):
@@ -159,16 +161,15 @@ class WorkflowStep(TimeStampedModel):
     config = models.JSONField(default=dict, blank=True)
 
     def clean(self):
-        
         super().clean()
-        
+
         if (
             WorkflowStep.objects.filter(workflow=self.workflow, order=self.order)
             .exclude(pk=self.pk)
             .exists()
         ):
             raise ValidationError({"order": _("Order already used in this workflow.")})
-        
+
         if self.ruleset and self.ruleset.type != self.validator.type:
             raise ValidationError(
                 {"ruleset": _("Ruleset type must match validator type.")}

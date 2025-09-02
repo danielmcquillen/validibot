@@ -1,9 +1,7 @@
 from rest_framework import serializers
 
-from roscoe.validations.models import ValidationRun
 
-
-class ValidationRunSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ValidationRun
-        fields = "__all__"
+class ValidationRunStartSerializer(serializers.Serializer):
+    workflow = serializers.IntegerField(required=True)
+    document = serializers.JSONField(required=True)
+    metadata = serializers.JSONField(required=False, default=dict)

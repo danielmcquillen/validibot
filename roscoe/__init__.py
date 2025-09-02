@@ -5,4 +5,4 @@ __version_info__ = tuple(
 )
 
 # Import validators early to ensure they're registered before django-github-app views
-from .validations import validators  # noqa: F401
+from .validations import github  # noqa: F401

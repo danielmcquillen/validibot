@@ -1,15 +1,18 @@
-from datetime import timedelta
-
 import django_filters
-from django.utils import timezone
+from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
+from rest_framework import status
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from roscoe.validations.constants import JobStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
+from roscoe.validations.serializers import ValidationRunStartSerializer
+from roscoe.validations.services.launcher import ValidationJobLauncher
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -35,30 +38,64 @@ class ValidationRunViewSet(viewsets.ModelViewSet):
     ordering = ["-created", "-id"]
 
     def get_queryset(self):
-        """
-        Gets validation runs for the current user's organization.
-
-        Returns only recents runs by default, unless the client specifies
-        a time filter or explicitly asks for all.
-
-        Returns:
-            _type_: _description_
-        """
-        qs = super().get_queryset()
         current_org = self.request.user.get_current_org()
-        qs = qs.filter(org=current_org)
+        return super().get_queryset().filter(org=current_org)
 
-        params = self.request.query_params
-        has_time_filter = any(
-            key in params
-            for key in (
-                "after",  # matches our custom filter names
-                "before",  # matches our custom filter names
-                "on",  # matches our custom filter names
-                "cursor",  # pagination cursor means they're browsing
-                "page",  # page-based pagination
-            )
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = ValidationRunSerializer(instance).data
+        if instance.status in (
+            JobStatus.SUCCEEDED,
+            JobStatus.FAILED,
+            getattr(JobStatus, "CANCELED", "canceled"),
+            getattr(JobStatus, "TIMED_OUT", "timed_out"),
+        ):
+            return Response(data, status=status.HTTP_200_OK)
+        return Response(
+            data,
+            status=status.HTTP_202_ACCEPTED,
+            headers={
+                "Retry-After": str(
+                    getattr(settings, "VALIDATION_START_ATTEMPT_TIMEOUT", 5),
+                ),
+            },
         )
-        if not has_time_filter and params.get("all") not in ("1", "true", "True"):
-            qs = qs.filter(created__gte=timezone.now() - timedelta(days=30))
-        return qs
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="start",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def start(self, request):
+        serializer = ValidationRunStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        current_org = user.get_current_org()
+        workflow = serializer.validated_data["workflow"]
+        submission = serializer.validated_data.get("submission")
+        document = serializer.validated_data.get("document")
+        metadata = serializer.validated_data.get("metadata", {})
+
+        if workflow.org_id != current_org.id:
+            return Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if submission and submission.org_id != current_org.id:
+            return Response(
+                {"detail": "Submission not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        launcher = ValidationJobLauncher()
+        return launcher.launch(
+            request=request,
+            org=current_org,
+            workflow=workflow,
+            submission=submission,
+            document=document,
+            metadata=metadata,
+            user_id=getattr(user, "id", None),
+        )

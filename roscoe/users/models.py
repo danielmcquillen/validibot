@@ -8,7 +8,27 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
-from roscoe.users.constants import MemberRole
+from roscoe.users.constants import RoleCode
+
+
+class Role(models.Model):
+    """
+    Global catalog of roles (e.g., OWNER, ADMIN, MEMBER, VIEWER).
+    """
+
+    code = models.CharField(
+        max_length=32,
+        choices=RoleCode.choices,
+        default=RoleCode.VIEWER,
+    )
+
+    name = models.CharField(max_length=64)  # display name
+
+    class Meta:
+        ordering = ["code"]
+
+    def __str__(self):
+        return self.code
 
 
 class Organization(TimeStampedModel):
@@ -32,7 +52,7 @@ class Organization(TimeStampedModel):
     is_personal = models.BooleanField(
         default=False,
         help_text=_(
-            "Indicates if this organization is a personal workspace for a user."
+            "Indicates if this organization is a personal workspace for a user.",
         ),
     )
 
@@ -112,12 +132,12 @@ class User(AbstractUser):
             name=f"{self.username}'s Personal Workspace",
             is_personal=True,
         )
-        Membership.objects.create(
+        m = Membership.objects.create(
             user=self,
             organization=personal_org,
-            role=MemberRole.OWNER,
             is_active=True,
         )
+        m.add_role(RoleCode.OWNER)
         self.set_current_org(personal_org)
         return personal_org
 
@@ -204,10 +224,11 @@ class Membership(TimeStampedModel):
         on_delete=models.CASCADE,
     )
 
-    role = models.CharField(
-        max_length=32,
-        choices=MemberRole.choices,
-        default=MemberRole.MEMBER,
+    roles = models.ManyToManyField(
+        Role,
+        through="MembershipRole",
+        related_name="memberships",
+        blank=True,
     )
 
     is_active = models.BooleanField(default=True)
@@ -216,3 +237,57 @@ class Membership(TimeStampedModel):
     def joined_at(self):
         """Get the date when the user joined the organization."""
         return self.created
+
+    def has_role(self, role_code: str) -> bool:
+        return self.roles.filter(code=role_code).exists()
+
+    def add_role(self, role_code: str):
+        if role_code not in RoleCode.values:
+            raise ValueError(f"Invalid role code: {role_code}")
+        role, _ = Role.objects.get_or_create(
+            code=role_code,
+            defaults={
+                "name": role_code.title(),
+            },
+        )
+        MembershipRole.objects.get_or_create(membership=self, role=role)
+
+    def remove_role(self, role_code: str):
+        MembershipRole.objects.filter(membership=self, role__code=role_code).delete()
+
+
+class MembershipRole(models.Model):
+    """
+    Through model allowing multiple roles per membership.
+    """
+
+    membership = models.ForeignKey(
+        Membership,
+        on_delete=models.CASCADE,
+        related_name="membership_roles",
+    )
+
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="membership_roles",
+    )
+
+    class Meta:
+        unique_together = [
+            (
+                "membership",
+                "role",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "membership",
+                    "role",
+                ],
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.membership_id}:{self.role.code}"

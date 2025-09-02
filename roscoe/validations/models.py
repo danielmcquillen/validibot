@@ -34,8 +34,8 @@ class Ruleset(TimeStampedModel):
                 fields=[
                     "org",
                     "type",
-                ]
-            )
+                ],
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -46,7 +46,7 @@ class Ruleset(TimeStampedModel):
                     "version",
                 ],
                 name="uq_ruleset_org_type_name_version",
-            )
+            ),
         ]
 
     org = models.ForeignKey(
@@ -93,7 +93,8 @@ class Validator(TimeStampedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["slug", "version"], name="uq_validator_slug_version"
+                fields=["slug", "version"],
+                name="uq_validator_slug_version",
             ),
         ]
         indexes = [
@@ -101,15 +102,15 @@ class Validator(TimeStampedModel):
                 fields=[
                     "type",
                     "slug",
-                ]
-            )
+                ],
+            ),
         ]
 
     slug = models.SlugField(
         null=False,
         blank=True,
         help_text=_(
-            "A unique identifier for the validator, used in URLs."
+            "A unique identifier for the validator, used in URLs.",
         ),  # e.g. "json-2020-12", "eplus-23-1"
     )
 
@@ -133,7 +134,7 @@ class Validator(TimeStampedModel):
     )
 
     version = models.PositiveIntegerField(
-        help_text=_("Version of the validator, e.g. 1, 2, 3")
+        help_text=_("Version of the validator, e.g. 1, 2, 3"),
     )
 
     is_public = models.BooleanField(default=True)  # false for org-private validators
@@ -177,7 +178,7 @@ class ValidationRun(TimeStampedModel):
                 check=Q(ended_at__isnull=True)
                 | Q(started_at__isnull=True)
                 | Q(ended_at__gte=models.F("started_at")),
-            )
+            ),
         ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -205,14 +206,20 @@ class ValidationRun(TimeStampedModel):
     )
 
     submission = models.ForeignKey(
-        Submission, on_delete=models.CASCADE, related_name="runs"
+        Submission,
+        on_delete=models.CASCADE,
+        related_name="runs",
     )
     workflow = models.ForeignKey(
-        Workflow, on_delete=models.PROTECT, related_name="runs"
+        Workflow,
+        on_delete=models.PROTECT,
+        related_name="runs",
     )
 
     status = models.CharField(
-        max_length=16, choices=JobStatus.choices, default=JobStatus.PENDING
+        max_length=16,
+        choices=JobStatus.choices,
+        default=JobStatus.PENDING,
     )
 
     started_at = models.DateTimeField(null=True, blank=True)
@@ -226,7 +233,8 @@ class ValidationRun(TimeStampedModel):
     error = models.TextField(blank=True, default="")  # terminal error/trace if any
 
     resolved_config = models.JSONField(
-        default=dict, blank=True
+        default=dict,
+        blank=True,
     )  # effective per-run config snapshot
 
     def clean(self):
@@ -253,7 +261,8 @@ class ValidationStepRun(TimeStampedModel):
                 ],
                 name="uq_step_run_run_order",
             ),
-            # Prevent duplicate execution rows for same step in same run (optional but recommended)
+            # Prevent duplicate execution rows for same step in
+            # same run (optional but recommended)
             models.UniqueConstraint(
                 fields=[
                     "run",
@@ -298,7 +307,8 @@ class ValidationStepRun(TimeStampedModel):
     duration_ms = models.BigIntegerField(default=0)
 
     output = models.JSONField(
-        default=dict, blank=True
+        default=dict,
+        blank=True,
     )  # machine output (validator-specific)
 
     error = models.TextField(blank=True, default="")
@@ -308,7 +318,9 @@ class ValidationStepRun(TimeStampedModel):
 
         if self.step and self.run and self.step.workflow_id != self.run.workflow_id:
             raise ValidationError(
-                {"step": _("Step must belong to the run's workflow.")}
+                {
+                    "step": _("Step must belong to the run's workflow."),
+                },
             )
 
         if self.step and self.step_order and self.step.order != self.step_order:
@@ -341,20 +353,28 @@ class ValidationFinding(TimeStampedModel):
     severity = models.CharField(max_length=16, choices=Severity.choices)
 
     code = models.CharField(
-        max_length=64, blank=True, default=""
+        max_length=64,
+        blank=True,
+        default="",
     )  # e.g. "json.schema.required"
 
     message = models.TextField()
 
     path = models.CharField(
-        max_length=512, blank=True, default=""
+        max_length=512,
+        blank=True,
+        default="",
     )  # JSON Pointer/XPath/etc.
 
     meta = models.JSONField(default=dict, blank=True)
 
 
 def artifact_upload_to(instance, filename: str) -> str:
-    return f"artifacts/org-{instance.org_id}/runs/{instance.run_id}/{uuid.uuid4().hex}/{filename}"
+    f = (
+        f"artifacts/org-{instance.org_id}/runs/{instance.run_id}/"
+        f"{uuid.uuid4().hex}/{filename}"
+    )
+    return f
 
 
 class Artifact(TimeStampedModel):

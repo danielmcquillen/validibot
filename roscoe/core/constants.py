@@ -3,6 +3,6 @@ from django.utils.translation import gettext_lazy as _
 
 
 class RequestType(models.TextChoices):
-    API = "api", _("API")
-    UI = "ui", _("UI")
-    GITHUB_APP = "github_app", _("GitHub App")
+    API = "API", _("API")
+    UI = "UI", _("UI")
+    GITHUB_APP = "GITHUB_APP", _("GitHub App")

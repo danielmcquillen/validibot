@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
-from typing import Optional
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -14,12 +12,11 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
+from roscoe.users.constants import RoleCode
 from roscoe.users.models import MembershipRole
 from roscoe.users.models import Organization
+from roscoe.users.models import Role
 from roscoe.users.models import User
-
-if TYPE_CHECKING:
-    from roscoe.users.constants import RoleCode
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -143,6 +140,25 @@ class Workflow(TimeStampedModel):
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
+    def can_execute(self, *, user: User) -> bool:
+        """
+        Check if the given user can execute this workflow.
+        Requires that the user has the EXECUTOR role in the workflow's org.
+        """
+        if not user or not user.is_authenticated:
+            return False
+
+        can_execute = (
+            Workflow.objects.for_user(
+                user,
+                required_role_code=RoleCode.EXECUTE,
+            )
+            .filter(pk=self.pk)
+            .exists()
+        )
+
+        return can_execute
+
     @transaction.atomic
     def clone_to_new_version(self, user) -> Workflow:
         """
@@ -247,7 +263,11 @@ class WorkflowRoleAccess(models.Model):
         related_name="role_access",
     )
 
-    role = models.CharField(max_length=32, choices=MemberRole.choices)
+    role = models.ForeignKey(
+        Role,
+        on_delete=models.CASCADE,
+        related_name="workflow_role_access",
+    )
 
     class Meta:
         unique_together = [("workflow", "role")]

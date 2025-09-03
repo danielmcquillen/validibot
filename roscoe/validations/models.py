@@ -9,14 +9,14 @@ from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 from slugify import slugify
 
-from roscoe.documents.models import Submission
 from roscoe.projects.models import Project
+from roscoe.submissions.models import Submission
 from roscoe.users.models import Organization
 from roscoe.users.models import User
-from roscoe.validations.constants import JobStatus
 from roscoe.validations.constants import RulesetType
 from roscoe.validations.constants import Severity
 from roscoe.validations.constants import StepStatus
+from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.constants import ValidationType
 from roscoe.workflows.models import Workflow
 from roscoe.workflows.models import WorkflowStep
@@ -210,6 +210,7 @@ class ValidationRun(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="runs",
     )
+
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.PROTECT,
@@ -218,8 +219,8 @@ class ValidationRun(TimeStampedModel):
 
     status = models.CharField(
         max_length=16,
-        choices=JobStatus.choices,
-        default=JobStatus.PENDING,
+        choices=ValidationRunStatus.choices,
+        default=ValidationRunStatus.PENDING,
     )
 
     started_at = models.DateTimeField(null=True, blank=True)

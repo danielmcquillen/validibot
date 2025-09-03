@@ -1,13 +1,13 @@
 import factory
 from factory.django import DjangoModelFactory
 
-from roscoe.documents.tests.factories import SubmissionFactory
 from roscoe.projects.tests.factories import ProjectFactory
+from roscoe.submissions.tests.factories import SubmissionFactory
 from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.validations.constants import JobStatus
 from roscoe.validations.constants import RulesetType
 from roscoe.validations.constants import Severity
 from roscoe.validations.constants import StepStatus
+from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.constants import ValidationType
 from roscoe.validations.models import Artifact
 from roscoe.validations.models import Ruleset
@@ -53,7 +53,7 @@ class ValidationRunFactory(DjangoModelFactory):
     workflow = factory.SubFactory(WorkflowFactory)
     org = factory.SubFactory(OrganizationFactory)
     project = factory.SubFactory(ProjectFactory)
-    status = JobStatus.PENDING
+    status = ValidationRunStatus.PENDING
 
 
 class ValidationStepRunFactory(DjangoModelFactory):

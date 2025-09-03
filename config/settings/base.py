@@ -108,7 +108,7 @@ LOCAL_APPS = [
     "roscoe.projects",
     "roscoe.events",
     "roscoe.tracking",
-    "roscoe.documents",
+    "roscoe.submissions",
     "roscoe.integrations",
     "roscoe.workflows",
     "roscoe.billing",
@@ -397,3 +397,8 @@ if GITHUB_APP_ENABLED:
 VALIDATION_START_ATTEMPTS = 4  # 4 attempts
 VALIDATION_START_ATTEMPT_TIMEOUT = 5  # 5 seconds per attempt
 JOB_STATUS_RETRY_AFTER = VALIDATION_START_ATTEMPT_TIMEOUT
+
+
+# Submission settings
+SUBMISSION_INLINE_MAX_BYTES = 10_000_000  # 10MB
+SUBMISSION_FILE_MAX_BYTES = 1_000_000_000  # 1GB

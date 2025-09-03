@@ -6,11 +6,11 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from roscoe.documents.tests.factories import SubmissionFactory
 from roscoe.projects.tests.factories import ProjectFactory
+from roscoe.submissions.tests.factories import SubmissionFactory
 from roscoe.users.tests.factories import OrganizationFactory
 from roscoe.users.tests.factories import UserFactory
-from roscoe.validations.constants import JobStatus
+from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.tests.factories import ValidationRunFactory
 from roscoe.workflows.tests.factories import WorkflowFactory
@@ -69,7 +69,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.SUCCEEDED,
+            status=ValidationRunStatus.SUCCEEDED,
         )
         old_run.created = timezone.now() - timedelta(days=40)
         old_run.save()
@@ -80,7 +80,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
         recent_run.created = timezone.now() - timedelta(days=10)
         recent_run.save()
@@ -102,7 +102,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.SUCCEEDED,
+            status=ValidationRunStatus.SUCCEEDED,
         )
         old_run.created = timezone.now() - timedelta(days=40)
         old_run.save()
@@ -113,7 +113,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         url = reverse("api:validationrun-list")
@@ -132,7 +132,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         completed_run = ValidationRunFactory(
@@ -140,15 +140,15 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.SUCCEEDED,
+            status=ValidationRunStatus.SUCCEEDED,
         )
 
         url = reverse("api:validationrun-list")
-        response = self.client.get(url, {"status": JobStatus.PENDING})
+        response = self.client.get(url, {"status": ValidationRunStatus.PENDING})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["status"], JobStatus.PENDING)
+        self.assertEqual(response.data["results"][0]["status"], ValidationRunStatus.PENDING)
 
     def test_filter_by_workflow(self):
         """Test filtering runs by workflow."""
@@ -163,7 +163,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         run2 = ValidationRunFactory(
@@ -171,7 +171,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=other_workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         url = reverse("api:validationrun-list")
@@ -191,7 +191,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.SUCCEEDED,
+            status=ValidationRunStatus.SUCCEEDED,
         )
         old_run.created = timezone.now() - timedelta(days=5)
         old_run.save()
@@ -201,7 +201,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         # Filter for runs after 3 days ago
@@ -221,7 +221,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         # Create project and workflow for other org
@@ -237,7 +237,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=other_workflow,
             org=self.other_org,
             project=other_project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         # Test first user sees only their org's runs
@@ -266,7 +266,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
@@ -274,7 +274,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(run.id))
-        self.assertEqual(response.data["status"], JobStatus.PENDING)
+        self.assertEqual(response.data["status"], ValidationRunStatus.PENDING)
 
     def test_create_validation_run(self):
         """Test creating a new validation run."""
@@ -285,7 +285,7 @@ class ValidationRunViewSetTestCase(TestCase):
             "workflow": self.workflow.id,
             "org": self.org.id,
             "project": self.project.id,
-            "status": JobStatus.PENDING,
+            "status": ValidationRunStatus.PENDING,
         }
 
         url = reverse("api:validationrun-list")
@@ -297,7 +297,7 @@ class ValidationRunViewSetTestCase(TestCase):
         created_run = ValidationRun.objects.first()
         self.assertEqual(created_run.submission, self.submission)
         self.assertEqual(created_run.workflow, self.workflow)
-        self.assertEqual(created_run.status, JobStatus.PENDING)
+        self.assertEqual(created_run.status, ValidationRunStatus.PENDING)
 
     def test_update_validation_run(self):
         """Test updating a validation run."""
@@ -308,17 +308,17 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
-        data = {"status": JobStatus.SUCCEEDED}
+        data = {"status": ValidationRunStatus.SUCCEEDED}
         url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
         response = self.client.patch(url, data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         run.refresh_from_db()
-        self.assertEqual(run.status, JobStatus.SUCCEEDED)
+        self.assertEqual(run.status, ValidationRunStatus.SUCCEEDED)
 
     def test_delete_validation_run(self):
         """Test deleting a validation run."""
@@ -329,7 +329,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
@@ -348,7 +348,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.SUCCEEDED,
+            status=ValidationRunStatus.SUCCEEDED,
         )
         old_run.created = timezone.now() - timedelta(hours=1)
         old_run.save()
@@ -358,7 +358,7 @@ class ValidationRunViewSetTestCase(TestCase):
             workflow=self.workflow,
             org=self.org,
             project=self.project,
-            status=JobStatus.PENDING,
+            status=ValidationRunStatus.PENDING,
         )
 
         url = reverse("api:validationrun-list")

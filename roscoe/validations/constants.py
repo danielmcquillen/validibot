@@ -2,7 +2,7 @@ from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
 
-class JobStatus(TextChoices):
+class ValidationRunStatus(TextChoices):
     PENDING = "PENDING", _("Pending")
     RUNNING = "RUNNING", _("Running")
     SUCCEEDED = "SUCCEEDED", _("Succeeded")

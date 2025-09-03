@@ -7,12 +7,12 @@ from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from validations.services.validation_run import ValidationJobLauncher
 
-from roscoe.validations.constants import JobStatus
+from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
 from roscoe.validations.serializers import ValidationRunStartSerializer
-from roscoe.validations.services.launcher import ValidationJobLauncher
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -20,7 +20,7 @@ class ValidationRunFilter(django_filters.FilterSet):
         model = ValidationRun
         fields = []  # We define filters explicitly above
 
-    status = django_filters.ChoiceFilter(choices=JobStatus.choices)
+    status = django_filters.ChoiceFilter(choices=ValidationRunStatus.choices)
     workflow = django_filters.NumberFilter()
     submission = django_filters.NumberFilter()
     after = django_filters.DateFilter(field_name="created", lookup_expr="gte")
@@ -45,10 +45,10 @@ class ValidationRunViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         data = ValidationRunSerializer(instance).data
         if instance.status in (
-            JobStatus.SUCCEEDED,
-            JobStatus.FAILED,
-            getattr(JobStatus, "CANCELED", "canceled"),
-            getattr(JobStatus, "TIMED_OUT", "timed_out"),
+            ValidationRunStatus.SUCCEEDED,
+            ValidationRunStatus.FAILED,
+            getattr(ValidationRunStatus, "CANCELED", "canceled"),
+            getattr(ValidationRunStatus, "TIMED_OUT", "timed_out"),
         ):
             return Response(data, status=status.HTTP_200_OK)
         return Response(

@@ -1,8 +1,8 @@
 import factory
 from factory.django import DjangoModelFactory
 
-from roscoe.documents.models import Submission
 from roscoe.projects.tests.factories import ProjectFactory
+from roscoe.submissions.models import Submission
 from roscoe.users.tests.factories import OrganizationFactory
 from roscoe.users.tests.factories import UserFactory
 

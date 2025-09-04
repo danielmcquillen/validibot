@@ -5,14 +5,11 @@ from rest_framework import filters
 from rest_framework import permissions
 from rest_framework import status
 from rest_framework import viewsets
-from rest_framework.decorators import action
 from rest_framework.response import Response
-from validations.services.validation_run import ValidationJobLauncher
 
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
-from roscoe.validations.serializers import ValidationRunStartSerializer
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -59,43 +56,4 @@ class ValidationRunViewSet(viewsets.ModelViewSet):
                     getattr(settings, "VALIDATION_START_ATTEMPT_TIMEOUT", 5),
                 ),
             },
-        )
-
-    @action(
-        detail=False,
-        methods=["post"],
-        url_path="start",
-        permission_classes=[permissions.IsAuthenticated],
-    )
-    def start(self, request):
-        serializer = ValidationRunStartSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        user = request.user
-        current_org = user.get_current_org()
-        workflow = serializer.validated_data["workflow"]
-        submission = serializer.validated_data.get("submission")
-        document = serializer.validated_data.get("document")
-        metadata = serializer.validated_data.get("metadata", {})
-
-        if workflow.org_id != current_org.id:
-            return Response(
-                {"detail": "Workflow not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        if submission and submission.org_id != current_org.id:
-            return Response(
-                {"detail": "Submission not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        launcher = ValidationJobLauncher()
-        return launcher.launch(
-            request=request,
-            org=current_org,
-            workflow=workflow,
-            submission=submission,
-            document=document,
-            metadata=metadata,
-            user_id=getattr(user, "id", None),
         )

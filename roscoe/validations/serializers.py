@@ -17,15 +17,17 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "id",
             "org",
             "workflow",
+            "project",
+            "user",
             "submission",
             "status",
-            "document",
-            "metadata",
             "created",
             "started_at",
             "ended_at",
-            "log",
-            "report",
+            "duration_ms",
+            "summary",
+            "error",
+            "resolved_config",
         ]
         read_only_fields = fields
 

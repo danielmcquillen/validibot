@@ -188,6 +188,12 @@ class ValidationRun(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="validation_runs",
     )
+    
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.PROTECT,
+        related_name="runs",
+    )
 
     project = models.ForeignKey(
         Project,
@@ -208,12 +214,6 @@ class ValidationRun(TimeStampedModel):
     submission = models.ForeignKey(
         Submission,
         on_delete=models.CASCADE,
-        related_name="runs",
-    )
-
-    workflow = models.ForeignKey(
-        Workflow,
-        on_delete=models.PROTECT,
         related_name="runs",
     )
 

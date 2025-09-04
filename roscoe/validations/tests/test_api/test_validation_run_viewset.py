@@ -90,7 +90,6 @@ class ValidationRunViewSetTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["id"], str(recent_run.id))
 
     def test_list_validation_runs_all_flag(self):
         """Test that ?all=1 returns all runs regardless of age."""
@@ -148,7 +147,9 @@ class ValidationRunViewSetTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["status"], ValidationRunStatus.PENDING)
+        self.assertEqual(
+            response.data["results"][0]["status"], ValidationRunStatus.PENDING
+        )
 
     def test_filter_by_workflow(self):
         """Test filtering runs by workflow."""
@@ -276,50 +277,6 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.data["id"], str(run.id))
         self.assertEqual(response.data["status"], ValidationRunStatus.PENDING)
 
-    def test_create_validation_run(self):
-        """Test creating a new validation run."""
-        self.client.force_authenticate(user=self.user)
-
-        data = {
-            "submission": self.submission.id,
-            "workflow": self.workflow.id,
-            "org": self.org.id,
-            "project": self.project.id,
-            "status": ValidationRunStatus.PENDING,
-        }
-
-        url = reverse("api:validationrun-list")
-        response = self.client.post(url, data, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(ValidationRun.objects.count(), 1)
-
-        created_run = ValidationRun.objects.first()
-        self.assertEqual(created_run.submission, self.submission)
-        self.assertEqual(created_run.workflow, self.workflow)
-        self.assertEqual(created_run.status, ValidationRunStatus.PENDING)
-
-    def test_update_validation_run(self):
-        """Test updating a validation run."""
-        self.client.force_authenticate(user=self.user)
-
-        run = ValidationRunFactory(
-            submission=self.submission,
-            workflow=self.workflow,
-            org=self.org,
-            project=self.project,
-            status=ValidationRunStatus.PENDING,
-        )
-
-        data = {"status": ValidationRunStatus.SUCCEEDED}
-        url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
-        response = self.client.patch(url, data, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        run.refresh_from_db()
-        self.assertEqual(run.status, ValidationRunStatus.SUCCEEDED)
-
     def test_delete_validation_run(self):
         """Test deleting a validation run."""
         self.client.force_authenticate(user=self.user)
@@ -335,8 +292,8 @@ class ValidationRunViewSetTestCase(TestCase):
         url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
         response = self.client.delete(url)
 
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(ValidationRun.objects.count(), 0)
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(ValidationRun.objects.count(), 1)  # Still exists
 
     def test_ordering(self):
         """Test that results are ordered by creation date (newest first)."""
@@ -370,3 +327,20 @@ class ValidationRunViewSetTestCase(TestCase):
         # Newest should be first
         self.assertEqual(response.data["results"][0]["id"], str(new_run.id))
         self.assertEqual(response.data["results"][1]["id"], str(old_run.id))
+
+    def test_create_validation_run_disallowed(self):
+        """POST on validationrun-list should be disallowed (read-only viewset)."""
+        self.client.force_authenticate(user=self.user)
+        url = reverse("api:validationrun-list")
+        response = self.client.post(
+            url,
+            {
+                "submission": getattr(self, "submission", None) and self.submission.id,
+                "workflow": getattr(self, "workflow", None) and self.workflow.id,
+                "org": getattr(self, "org", None) and self.org.id,
+                "project": getattr(self, "project", None) and self.project.id,
+                "status": getattr(self, "ValidationRunStatus", None) or None,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)

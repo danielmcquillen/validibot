@@ -7,10 +7,10 @@ from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from validations.services.validation_run import ValidationRunService
 
 from roscoe.submissions.models import Submission
 from roscoe.validations.serializers import ValidationRunStartSerializer
+from roscoe.validations.services.validation_run import ValidationRunService
 from roscoe.workflows.models import Workflow
 from roscoe.workflows.serializers import WorkflowSerializer
 

@@ -13,6 +13,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
+        ("users", "0001_initial"),
         ('submissions', '0001_initial'),
     ]
 

@@ -11,6 +11,8 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from roscoe.submissions.ingest import prepare_inline_text
+from roscoe.submissions.ingest import prepare_uploaded_file
 from roscoe.submissions.models import Submission
 from roscoe.users.models import User
 from roscoe.validations.serializers import ValidationRunStartSerializer
@@ -129,7 +131,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         ct_norm = (content_type_header or "").split(";")[0].strip().lower()
         file_type = SUPPORTED_CONTENT_TYPES.get(ct_norm)
         if not file_type:
-            err_msg = _("Unsupported Content-Type '%s'") % full_ct
+            err_msg = _("Unsupported Content-Type '%s'. ") % full_ct
             err_msg += _("Supported : %s") % ", ".join(SUPPORTED_CONTENT_TYPES.keys())
             return Response(
                 {
@@ -152,23 +154,31 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             # last resort
             text_content = raw.decode("utf-8", errors="replace")
 
+        safe_filename, ingest = prepare_inline_text(
+            text=text_content,
+            filename=filename,
+            content_type=ct_norm,  # use normalized CT
+            deny_magic_on_text=True,
+        )
+
         submission = Submission(
             org=workflow.org,
             workflow=workflow,
             user=user,
             project=None,
-            name=filename or "",
+            name=safe_filename,
+            checksum_sha256=ingest.sha256,
             metadata={},
         )
         submission.set_content(
             inline_text=text_content,
-            filename=filename,
-            file_type=SUPPORTED_CONTENT_TYPES[content_type_header],
+            filename=safe_filename,
+            file_type=file_type,
         )
-        submission.full_clean()
-        submission.save()
 
         with transaction.atomic():
+            submission.full_clean()
+            submission.save()
             return self._launch_validation_run(
                 request=request,
                 workflow=workflow,
@@ -202,26 +212,55 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
         metadata = vd.get("metadata") or {}
 
-        submission = Submission(
-            org=workflow.org,
-            workflow=workflow,
-            user=getattr(user, "pk", None) and user,
-            project=None,
-            name=vd.get("filename", "") or "",
-            metadata=metadata,
-        )
-
         if vd.get("file") is not None:
-            submission.set_content(
-                uploaded_file=vd["file"],
-                filename=vd.get("filename") or getattr(vd["file"], "name", "") or "",
-                file_type=vd.get("file_type"),
+            file_obj = vd["file"]
+            ct = vd["content_type"]  # already normalized by serializer
+            max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
+            ingest = prepare_uploaded_file(
+                uploaded_file=file_obj,
+                filename=vd.get("filename") or getattr(file_obj, "name", "") or "",
+                content_type=ct,
+                max_bytes=max_file,
             )
+            safe_filename = ingest.filename
+
+            submission = Submission(
+                org=workflow.org,
+                workflow=workflow,
+                user=user if getattr(user, "is_authenticated", False) else None,
+                project=None,
+                name=safe_filename,
+                metadata={},
+                checksum_sha256=ingest.sha256,
+            )
+            submission.set_content(
+                uploaded_file=file_obj,
+                filename=safe_filename,
+                file_type=vd["file_type"],
+            )
+
         elif vd.get("normalized_content") is not None:
+            ct = vd["content_type"]
+            safe_filename, ingest = prepare_inline_text(
+                text=vd["normalized_content"],
+                filename=vd.get("filename") or "",
+                content_type=ct,
+                deny_magic_on_text=True,
+            )
+            metadata = {**metadata, "sha256": ingest.sha256}
+
+            submission = Submission(
+                org=workflow.org,
+                workflow=workflow,
+                user=user if getattr(user, "is_authenticated", False) else None,
+                project=None,
+                name=safe_filename,
+                metadata=metadata,
+            )
             submission.set_content(
                 inline_text=vd["normalized_content"],
-                filename=vd.get("filename") or "",
-                file_type=vd.get("file_type"),
+                filename=safe_filename,
+                file_type=vd["file_type"],
             )
         else:
             return Response(
@@ -229,10 +268,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        submission.full_clean()
-        submission.save()
-
         with transaction.atomic():
+            submission.full_clean()
+            submission.save()
             return self._launch_validation_run(
                 request=request,
                 workflow=workflow,

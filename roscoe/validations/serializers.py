@@ -7,7 +7,6 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
-from roscoe.submissions.constants import SubmissionFileType
 from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 
@@ -123,10 +122,10 @@ class ValidationRunStartSerializer(serializers.Serializer):
     def validate(self, attrs):
         file_obj = attrs.get("file")
         content = attrs.get("content")
-        self._check_content(content)
-
         content_type = attrs.get("content_type")
         content_encoding = attrs.get("content_encoding")
+
+        self._check_content(content, content_encoding)
 
         # Exactly one of file OR content
         if (file_obj is None and content is None) or (
@@ -186,22 +185,29 @@ class ValidationRunStartSerializer(serializers.Serializer):
         attrs["normalized_content"] = content
         return attrs
 
-    def _check_content(self, attrs, content: str | None):
+    def _check_content(self, content: str | None, content_encoding: str | None) -> bool:
         """
         Basic sanity checks on textual content field.
         """
         # cap on input JSON field length to avoid massive strings
-        max_inline_b = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
-        if attrs.get("content_encoding") == "base64":
-            if len(content) > int(4 / 3 * max_inline_b):
+        if content is None:
+            return
+        if content_encoding == "base64":
+            # Base64 inflates size by ~33%, so limit pre-decode size
+            max_b64_b = getattr(settings, "SUBMISSION_BASE64_MAX_BYTES", 13_000_000)
+            if len(content.encode("utf-8", errors="ignore")) > max_b64_b:
                 raise serializers.ValidationError(
                     {
                         "content": _("Base64 content exceeds size limit."),
                     },
                 )
-        elif len(content.encode("utf-8", errors="ignore")) > max_inline_b:
-            raise serializers.ValidationError(
-                {
-                    "content": _("Inline content exceeds size limit."),
-                },
-            )
+        else:
+            max_inline_b = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
+            # Base64 payload size will be enforced before decode in validate()
+            if len(content.encode("utf-8", errors="ignore")) > max_inline_b:
+                raise serializers.ValidationError(
+                    {
+                        "content": _("Inline content exceeds size limit."),
+                    },
+                )
+        return True

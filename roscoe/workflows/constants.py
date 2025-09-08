@@ -24,6 +24,6 @@ class TriggerType(models.TextChoices):
 SUPPORTED_CONTENT_TYPES = {
     "application/json": SubmissionFileType.JSON,
     "application/xml": SubmissionFileType.XML,
-    "text/plain": SubmissionFileType.PLAIN,
-    "text/x-idf": SubmissionFileType.ENERGYPLUS,
+    "text/plain": SubmissionFileType.TEXT,
+    "text/x-idf": SubmissionFileType.ENERGYPLUS_IDF,
 }

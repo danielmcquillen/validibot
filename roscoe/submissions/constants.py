@@ -3,9 +3,9 @@ from django.utils.translation import gettext_lazy as _
 
 
 class SubmissionFileType(models.TextChoices):
-    JSON = "JSON", _("JSON")
-    XML = "XML", _("XML")
-    TEXT = "TEXT", _("Plain Text")
-    YAML = "YAML", _("YAML")
-    ENERGYPLUS_IDF = "ENERGYPLUS_IDF", _("EnergyPlus IDF File")
+    JSON = "application/json", _("JSON")
+    XML = "application/xml", _("XML")
+    TEXT = "text/plain", _("Plain Text")
+    ENERGYPLUS_IDF = "text/x-idf", _("EnergyPlus IDF File")
     UNKNOWN = "UNKNOWN", _("Unknown")
+    # YAML = "application/yaml", _("YAML")

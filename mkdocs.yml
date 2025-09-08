@@ -1,0 +1,47 @@
+### Site metadata ###
+
+site_name: SimpleValidations Documentation
+site_description: SimpleValidations, a simple, effective, easy-to-grok, validation service.
+# If publishing to GitHub Pages for a project site, include the repo name:
+#   https://<user>.github.io/<repo>/
+site_url: https://danielmcquillen.github.io/roscoe/
+
+# Where your docs live (relative to this file)
+docs_dir: docs
+use_directory_urls: true
+
+# Optional repo links in the header
+repo_url: https://github.com/danielmcquillen/roscoe
+repo_name: kinesinelms/roscoe
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.footer
+
+plugins:
+  - search
+  - print-site:
+      add_to_navigation: false
+
+extra_css:
+  - styles/extra.css
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Overview: overview.md
+  - How-to:
+      - Use a Workflow: how-to/use-workflow.md
+  - Data model:
+      - Overview: data-model/index.md

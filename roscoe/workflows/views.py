@@ -1,18 +1,28 @@
 import base64
+import logging
 
-from django.core.files.base import ContentFile
+from django.conf import settings
+from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import permissions
 from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from roscoe.submissions.models import Submission
+from roscoe.users.models import User
 from roscoe.validations.serializers import ValidationRunStartSerializer
 from roscoe.validations.services.validation_run import ValidationRunService
+from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
 from roscoe.workflows.models import Workflow
+from roscoe.workflows.request_utils import extract_request_basics
+from roscoe.workflows.request_utils import is_raw_body_mode
 from roscoe.workflows.serializers import WorkflowSerializer
+
+logger = logging.getLogger(__name__)
+
 
 # API Views
 # ------------------------------------------------------------------------------
@@ -28,9 +38,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         return Workflow.objects.for_user(self.request.user)
 
     def get_serializer_class(self):
-        # Use a dedicated serializer for start/validate actions
         if getattr(self, "action", None) in [
-            "start_validation",  # may add others later
+            "start_validation",
         ]:
             return ValidationRunStartSerializer
         return super().get_serializer_class()
@@ -39,90 +48,212 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         self,
         request,
         workflow: Workflow,
-    ):
+    ) -> Response:
+        """
+        Helper to start a validation run for a given workflow.
+
+        Args:
+            request (Request):
+            workflow (Workflow):
+
+        Returns:
+            Response
+        """
         user = request.user
 
-        # Require that the user can access AND has the EXECUTOR role in the
-        # workflow's org
         if not workflow.can_execute(user=user):
             return Response(
                 {"detail": _("Workflow not found.")},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Validate incoming payload with ValidationRunStartSerializer
+        content_type_header, body_bytes = extract_request_basics(request)
+
+        if is_raw_body_mode(request, content_type_header, body_bytes):
+            return self._handle_raw_body_mode(
+                request=request,
+                workflow=workflow,
+                user=user,
+                content_type_header=content_type_header,
+                body_bytes=body_bytes,
+            )
+
+        return self._handle_envelope_or_multipart_mode(
+            request=request,
+            workflow=workflow,
+            user=user,
+        )
+
+    # ---------------------- Raw Body Mode ----------------------
+
+    def _handle_raw_body_mode(
+        self,
+        request: Request,
+        workflow: Workflow,
+        user: User,
+        content_type_header: str,
+        body_bytes: bytes,
+    ) -> Response:
+        """
+        Process Mode 1 (raw body) submission.
+        """
+        encoding = request.headers.get("Content-Encoding")
+        # keep full header for charset extraction
+        full_ct = request.headers.get("Content-Type", "")
+        filename = request.headers.get("X-Filename") or ""
+        raw = body_bytes
+        max_inline = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
+        if len(raw) > max_inline:
+            return Response(
+                {
+                    "detail": _("Payload too large."),  # noqa:F823
+                },
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        if encoding:
+            if encoding.lower() != "base64":
+                return Response(
+                    {"detail": _("Unsupported Content-Encoding (only base64).")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                raw = base64.b64decode(raw, validate=True)
+            except Exception:
+                return Response(
+                    {"detail": _("Invalid base64 payload.")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # normalize content-type (no params) and map to file_type
+        ct_norm = (content_type_header or "").split(";")[0].strip().lower()
+        file_type = SUPPORTED_CONTENT_TYPES.get(ct_norm)
+        if not file_type:
+            err_msg = _("Unsupported Content-Type '%s'") % full_ct
+            err_msg += _("Supported : %s") % ", ".join(SUPPORTED_CONTENT_TYPES.keys())
+            return Response(
+                {
+                    "detail": err_msg,
+                },
+                status=400,
+            )
+
+        # try charset from full header first
+        charset = "utf-8"
+        if ";" in full_ct:
+            for part in full_ct.split(";")[1:]:
+                k, _, v = part.partition("=")
+                if k.strip().lower() == "charset" and v.strip():
+                    charset = v.strip()
+                    break
+        try:
+            text_content = raw.decode(charset)
+        except UnicodeDecodeError:
+            # last resort
+            text_content = raw.decode("utf-8", errors="replace")
+
+        submission = Submission(
+            org=workflow.org,
+            workflow=workflow,
+            user=user,
+            project=None,
+            name=filename or "",
+            metadata={},
+        )
+        submission.set_content(
+            inline_text=text_content,
+            filename=filename,
+            file_type=SUPPORTED_CONTENT_TYPES[content_type_header],
+        )
+        submission.full_clean()
+        submission.save()
+
+        with transaction.atomic():
+            return self._launch_validation_run(
+                request=request,
+                workflow=workflow,
+                submission=submission,
+                metadata={},
+                user_id=getattr(user, "id", None),
+            )
+
+    # ---------------------- Envelope / Multipart Modes ----------------------
+
+    def _handle_envelope_or_multipart_mode(
+        self,
+        request: Request,
+        workflow: Workflow,
+        user: User,
+    ) -> Response:
+        """
+        Process Mode 2 (JSON envelope) or Mode 3 (multipart).
+        """
         payload = request.data.copy()
         payload["workflow"] = workflow.pk
-        serializer = self.get_serializer(
-            data=payload,
-        )  # uses ValidationRunStartSerializer
+        serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
-        vd = serializer.validated_data
 
-        # Normalize metadata
+        vd = serializer.validated_data
+        file_obj = vd.get("file", None)
+        if file_obj is not None:
+            max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
+            if getattr(file_obj, "size", 0) > max_file:
+                return Response({"detail": _("File too large.")}, status=413)
+
         metadata = vd.get("metadata") or {}
 
-        # Build the Submission
         submission = Submission(
             org=workflow.org,
             workflow=workflow,
             user=getattr(user, "pk", None) and user,
-            project=None,  # or project from context if applicable
+            project=None,
             name=vd.get("filename", "") or "",
             metadata=metadata,
         )
 
-        # Choose exactly one content path
-        filename = vd.get("filename") or ""
-        file_type_hint = vd.get("file_type")
-        inline_text = vd.get("document")
-        uploaded_file = vd.get("file")
-        content_b64 = vd.get("content_b64")
-        upload_id = vd.get("upload_id")
-
-        if uploaded_file is not None:
+        if vd.get("file") is not None:
             submission.set_content(
-                uploaded_file=uploaded_file,
-                filename=filename,
-                file_type=file_type_hint,
+                uploaded_file=vd["file"],
+                filename=vd.get("filename") or getattr(vd["file"], "name", "") or "",
+                file_type=vd.get("file_type"),
             )
-        elif inline_text is not None:
+        elif vd.get("normalized_content") is not None:
             submission.set_content(
-                inline_text=inline_text,
-                filename=filename,
-                file_type=file_type_hint,
-            )
-        elif content_b64 is not None:
-            raw = base64.b64decode(content_b64)
-            # Use ContentFile to hand bytes to set_content as if it were an upload
-            cf = ContentFile(raw, name=filename or "upload")
-            submission.set_content(
-                uploaded_file=cf,
-                filename=filename,
-                file_type=file_type_hint,
-            )
-        elif upload_id is not None:
-            # Optional: resolve a pre-uploaded file by reference
-            file_like = self._resolve_upload(upload_id)
-            if not file_like:
-                return Response(
-                    {"detail": _("upload_id not found or expired.")},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
-            submission.set_content(
-                uploaded_file=file_like, filename=filename, file_type=file_type_hint
+                inline_text=vd["normalized_content"],
+                filename=vd.get("filename") or "",
+                file_type=vd.get("file_type"),
             )
         else:
-            # Shouldn't happen due to serializer, but just in case
             return Response(
                 {"detail": _("No content provided.")},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate + persist Submission
         submission.full_clean()
         submission.save()
 
+        with transaction.atomic():
+            return self._launch_validation_run(
+                request=request,
+                workflow=workflow,
+                submission=submission,
+                metadata=metadata,
+                user_id=getattr(user, "id", None),
+            )
+
+    # ---------------------- Launch Helper ----------------------
+
+    def _launch_validation_run(
+        self,
+        request: Request,
+        workflow: Workflow,
+        submission: Submission,
+        metadata: dict,
+        user_id: int | None = None,
+    ) -> Response:
+        """
+        Thin wrapper over ValidationRunService.launch to centralize call site.
+        """
         service = ValidationRunService()
         return service.launch(
             request=request,
@@ -130,30 +261,15 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             workflow=workflow,
             submission=submission,
             metadata=metadata,
-            user_id=getattr(user, "id", None),
+            user_id=user_id,
         )
 
-    # A user can start a validation run for a workflow
-    # using either of these two endpoints:
-    # /workflows/{id}/start/ or /workflows/{id}/validate/
-    # Both endpoints do the same thing: start the validation run.
-
-    @action(detail=True, methods=["post"], url_path="start")
-    def start_validation(self, request, pk=None):
+    # Public action remains unchanged
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="start",
+    )
+    def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
         return self._start_validation_run_for_workflow(request, workflow)
-
-    def _resolve_upload(self, upload_id: str):
-        """
-        OPTIONAL: implement if you support by-reference uploads.
-        For example, look up an Upload model and return a File-like object.
-        Raise an exception or return None if not found/expired.
-        """
-        # TODO: implement
-        return None  # lets the caller return 422 cleanly
-
-
-# Template Views
-# ------------------------------------------------------------------------------
-
-# TODO ...

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class ValidationRunTaskPayload:
-    document: dict[str, Any] | None = None
+    content: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     user_id: int | None = None
 
@@ -64,7 +64,7 @@ class ValidationRunService:
         """
         Creates a validation run for a given workflow and a user request.
         The user should have provided us with a 'submission' as part of their request.
-        The submission is the document (json, xml, whatever) that the workflow will
+        The submission is the content (json, xml, whatever) that the workflow will
         validate.
 
         We want to try to finish the validation run synchronously if possible,

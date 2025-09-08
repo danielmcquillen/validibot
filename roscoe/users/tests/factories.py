@@ -6,7 +6,11 @@ from factory import Faker
 from factory import post_generation
 from factory.django import DjangoModelFactory
 
+from roscoe.users.constants import RoleCode
+from roscoe.users.models import Membership
+from roscoe.users.models import MembershipRole
 from roscoe.users.models import Organization
+from roscoe.users.models import Role
 from roscoe.users.models import User
 
 
@@ -66,3 +70,47 @@ class UserFactory(DjangoModelFactory[User]):
         if create and results and not cls._meta.skip_postgeneration_save:
             # Some post-generation hooks ran, and may have modified us.
             instance.save()
+
+
+class RoleFactory(DjangoModelFactory):
+    class Meta:
+        model = Role
+
+    code = RoleCode.EXECUTOR
+    name = "Executor"
+
+
+class MembershipFactory(DjangoModelFactory):
+    class Meta:
+        model = Membership
+
+    user = factory.SubFactory(UserFactory)
+    org = factory.SubFactory(OrganizationFactory)
+    is_active = True
+
+
+class MembershipRoleFactory(DjangoModelFactory):
+    class Meta:
+        model = MembershipRole
+
+    membership = factory.SubFactory(MembershipFactory)
+    role = factory.SubFactory(RoleFactory)
+
+
+def grant_role(user: User, org: Organization, role_code: RoleCode) -> None:
+    """
+    Ensure user has an active membership in org with the given role.
+    """
+    role, _ = Role.objects.get_or_create(
+        code=role_code,
+        defaults={"name": getattr(role_code, "label", None) or str(role_code).title()},
+    )
+    membership, _ = Membership.objects.get_or_create(
+        user=user,
+        org=org,
+        defaults={"is_active": True},
+    )
+    if not membership.is_active:
+        membership.is_active = True
+        membership.save(update_fields=["is_active"])
+    MembershipRole.objects.get_or_create(membership=membership, role=role)

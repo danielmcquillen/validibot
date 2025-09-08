@@ -9,5 +9,5 @@ class RoleCode(models.TextChoices):
 
     OWNER = "OWNER", _("Owner")
     AUTHOR = "AUTHOR", _("Author")
-    EXECUTE = "EXECUTE", _("Execute")
+    EXECUTOR = "EXECUTOR", _("Executor")
     VIEWER = "VIEWER", _("Viewer")

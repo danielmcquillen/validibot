@@ -6,7 +6,9 @@ This site describes the core concepts, data model, and API for working with vali
 
 ## Contents
 
-- [Data Model](data-model/index.md)
+- [Overview](overview.md)
+- [Using a Workflow via the API](how-to/use-workflow.md)
+- [Data Model Overview](data-model/index.md)
 - Submissions → [Submissions](data-model/submissions.md)
 - Runs → [Runs](data-model/runs.md)
 - Steps → [Steps](data-model/steps.md)

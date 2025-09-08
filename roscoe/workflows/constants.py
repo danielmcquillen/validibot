@@ -1,6 +1,8 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from roscoe.submissions.constants import SubmissionFileType
+
 
 class AccessScope(models.TextChoices):
     ORG_ALL = "ORG_ALL", _("All members of the workflow's organization")
@@ -17,3 +19,11 @@ class TriggerType(models.TextChoices):
     API = "API", _("API")
     SCHEDULE = "SCHEDULE", _("Schedule")
     GITHUB_APP = "GITHUB_APP", _("GitHub App")
+
+
+SUPPORTED_CONTENT_TYPES = {
+    "application/json": SubmissionFileType.JSON,
+    "application/xml": SubmissionFileType.XML,
+    "text/plain": SubmissionFileType.PLAIN,
+    "text/x-idf": SubmissionFileType.ENERGYPLUS,
+}

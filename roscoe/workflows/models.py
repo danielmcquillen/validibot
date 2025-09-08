@@ -13,7 +13,7 @@ from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
 from roscoe.users.constants import RoleCode
-from roscoe.users.models import MembershipRole
+from roscoe.users.models import Membership
 from roscoe.users.models import Organization
 from roscoe.users.models import Role
 from roscoe.users.models import User
@@ -22,7 +22,8 @@ from roscoe.users.models import User
 class WorkflowQuerySet(models.QuerySet):
     """
     A custom queryset for Workflow model to add user-specific filtering methods.
-    This lets us easily get workflows a user has access to based on their organization
+    This lets us easily get workflows a user has access to based on their membership
+    to organizations.
     """
 
     def for_user(
@@ -36,27 +37,20 @@ class WorkflowQuerySet(models.QuerySet):
         organization.
         """
 
-        if not user:
-            err_msg = "User must be provided"
-            raise ValueError(err_msg)
+        if not getattr(user, "is_authenticated", False):
+            return self.none()
 
-        # Workflows in any org the user belongs to
-        user_org_ids = user.orgs.values_list("id", flat=True)
-        qs = self.filter(org_id__in=user_org_ids)
-
-        # Fast path: if no role required, return all workflows in user's orgs
-        if not required_role_code:
-            return qs
-
-        # Exact-role requirement: user must hold required_role_code in that org
-        has_required_role = MembershipRole.objects.filter(
-            membership__user=user,
-            membership__organization_id=OuterRef("org_id"),
-            membership__is_active=True,
-            role__code=required_role_code,
+        subq = Membership.objects.filter(
+            org=OuterRef("org_id"),
+            user=user,
+            is_active=True,
         )
+        if required_role_code:
+            subq = subq.filter(roles__code=required_role_code)
 
-        return qs.filter(Exists(has_required_role))
+        return (
+            self.annotate(_has_access=Exists(subq)).filter(_has_access=True).distinct()
+        )
 
 
 class WorkflowManager(models.Manager):
@@ -71,6 +65,8 @@ class Workflow(TimeStampedModel):
     """
     Reusable, versioned definition of a sequence of validation steps.
     """
+
+    objects = WorkflowManager()
 
     class Meta:
         constraints = [
@@ -121,7 +117,7 @@ class Workflow(TimeStampedModel):
         help_text=_("A unique identifier for the workflow, used in URLs."),
     )
 
-    version = models.PositiveIntegerField()
+    version = models.PositiveIntegerField(default=1)
 
     is_locked = models.BooleanField(
         default=False,
@@ -151,7 +147,7 @@ class Workflow(TimeStampedModel):
         can_execute = (
             Workflow.objects.for_user(
                 user,
-                required_role_code=RoleCode.EXECUTE,
+                required_role_code=RoleCode.EXECUTOR,
             )
             .filter(pk=self.pk)
             .exists()

@@ -79,15 +79,15 @@ class Submission(TimeStampedModel):
             ),
         ]
         constraints = [
-            # At least one of document or input_file
+            # At least one of content or input_file
             models.CheckConstraint(
                 name="submission_content_present",
-                check=Q(document__gt="") | Q(input_file__isnull=False),
+                check=Q(content__gt="") | Q(input_file__isnull=False),
             ),
             # Not both
             models.CheckConstraint(
                 name="submission_content_not_both",
-                check=~(Q(document__gt="") & Q(input_file__isnull=False)),
+                check=~(Q(content__gt="") & Q(input_file__isnull=False)),
             ),
         ]
         ordering = ["-created"]
@@ -131,7 +131,7 @@ class Submission(TimeStampedModel):
     # ~---------------------------------------------------------------
 
     # inline text for small JSON/XML/IDF
-    document = models.TextField(
+    content = models.TextField(
         blank=True,
         default="",
     )
@@ -264,11 +264,11 @@ class Submission(TimeStampedModel):
             self.original_filename = filename or self.original_filename or "inline.txt"
             self.checksum_sha256 = self._compute_checksum(data)
             if len(data) <= inline_max_bytes:
-                self.document = inline_text
+                self.content = inline_text
                 self.input_file = None
             else:
                 # spill to file storage
-                self.document = ""
+                self.content = ""
                 self.input_file.save(
                     self.original_filename,
                     ContentFile(data),
@@ -297,8 +297,8 @@ class Submission(TimeStampedModel):
         Returns:
             str: The content as a string.
         """
-        if self.document:
-            return self.document
+        if self.content:
+            return self.content
         if self.input_file:
             try:
                 with self.input_file.open("rb"):
@@ -328,11 +328,11 @@ class Submission(TimeStampedModel):
         if self.user and self.user.orgs.filter(id=self.org_id).exists() is False:
             errors["user"] = _("User must belong to the same organization.")
 
-        # Content presence: require exactly one of (document, input_file)
-        has_doc = bool(self.document)
+        # Content presence: require exactly one of (content, input_file)
+        has_doc = bool(self.content)
         has_file = bool(self.input_file)
         if not (has_doc ^ has_file):
-            errors["document"] = _("Provide exactly one of document or input_file.")
+            errors["content"] = _("Provide exactly one of content or input_file.")
 
         if errors:
             raise ValidationError(errors)
@@ -358,7 +358,7 @@ class Submission(TimeStampedModel):
             self.file_type = detect_file_type(
                 filename=self.original_filename
                 or getattr(self.input_file, "name", None),
-                text=self.document or None,
+                text=self.content or None,
             )
 
         super().save(*args, **kwargs)

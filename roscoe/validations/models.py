@@ -188,7 +188,7 @@ class ValidationRun(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="validation_runs",
     )
-    
+
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.PROTECT,
@@ -251,7 +251,6 @@ class ValidationStepRun(TimeStampedModel):
     """
 
     class Meta:
-        unique_together = [("run", "step_order")]
         indexes = [models.Index(fields=["run", "status"])]
         constraints = [
             # Prefer UniqueConstraint to future-proof

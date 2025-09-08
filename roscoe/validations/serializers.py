@@ -3,118 +3,205 @@ import binascii
 import json
 from typing import Any
 
+from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from roscoe.submissions.constants import SubmissionFileType
-from roscoe.validations.models import ValidationRun
-
-
-class ValidationRunSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ValidationRun
-        fields = [
-            "id",
-            "org",
-            "workflow",
-            "project",
-            "user",
-            "submission",
-            "status",
-            "created",
-            "started_at",
-            "ended_at",
-            "duration_ms",
-            "summary",
-            "error",
-            "resolved_config",
-        ]
-        read_only_fields = fields
+from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 
 class ValidationRunStartSerializer(serializers.Serializer):
     """
-    Normalizes all supported input shapes to a consistent payload
-    your view can use to create a Submission:
-      - file (multipart)
-      - document (inline text)
-      - document_json (typed JSON -> turned into document)
-      - content_b64 (base64 -> a bytes file)
-      - upload_id (by-reference; the view resolves this)
+    Serializer for starting a ValidationRun via API (Modes 2 & 3 only).
+
+    This serializer is NOT used for raw-body (Mode 1). The view decides which
+    mode applies and only instantiates this class for:
+      Mode 2: JSON envelope (application/json body containing a JSON object)
+      Mode 3: Multipart form-data (file uploads)
+
+    Supported modes (summary):
+
+    1) RAW-BODY MODE (header driven; bypasses this serializer)
+       Body: raw document bytes.
+       Headers:
+         Content-Type: application/json | application/xml | text/plain | text/x-idf
+         (optional) Content-Encoding: base64
+         (optional) X-Filename: name.ext
+       Entire request.body is the content.
+
+    2) JSON ENVELOPE MODE (field driven)
+       Content-Type: application/json
+       Body JSON:
+       {
+         "content": "<string or base64 if content_encoding=base64>",
+         "content_type": "application/xml",
+         "content_encoding": "base64",   (optional)
+         "filename": "building.idf",     (optional)
+         "metadata": { ... }             (optional)
+       }
+
+    3) MULTIPART MODE (file upload)
+       Content-Type: multipart/form-data
+       Parts:
+         file: <binary file>
+         metadata: <JSON string> (optional)
+         filename: (optional override)
+         content_type: (optional override; fallback to uploaded file mime)
+
+    Output (validated_data):
+      - Exactly ONE of:
+          * file (uploaded file object)  OR
+          * normalized_content (text str)
+      - filename (optional)
+      - file_type (SubmissionFileType enum value)
+      - metadata (dict)
     """
 
-    # Injected by view from URL
-    workflow = serializers.IntegerField(required=True)
+    # Optional org for sanity checking (not required; view can enforce match)
+    org = serializers.IntegerField(required=False)
 
-    # Exactly one of these must be provided:
-    file = serializers.FileField(required=False, allow_empty_file=False)  # multipart
-    document = serializers.CharField(required=False)  # inline text (XML/JSON/IDF)
-    document_json = serializers.JSONField(
-        required=False
-    )  # typed JSON -> normalized to document
-    content_b64 = serializers.CharField(required=False)  # base64-encoded file content
-    upload_id = serializers.CharField(required=False)  # by-reference upload key
-
-    # Optional hints
-    filename = serializers.CharField(required=False, allow_blank=True)
-    file_type = serializers.ChoiceField(
-        choices=SubmissionFileType.choices, required=False
+    # Envelope textual content
+    content = serializers.CharField(required=False)  # plain or base64 text
+    content_type = serializers.CharField(required=False)
+    content_encoding = serializers.ChoiceField(
+        choices=["base64"],
+        required=False,
+        allow_null=True,
+        help_text="Only 'base64' if provided.",
     )
 
-    # Metadata: allow both JSON-native and "stringified JSON" (common in multipart)
+    filename = serializers.CharField(required=False, allow_blank=True)
     metadata = serializers.JSONField(required=False, default=dict)
+
+    # Multipart binary file
+    file = serializers.FileField(required=False)
 
     def to_internal_value(self, data: Any):
         """
-        Make multipart 'metadata' (string) behave like a JSON object if needed.
+        Allow metadata to arrive as a JSON string (multipart) and coerce.
         """
         iv = super().to_internal_value(data)
-        md = iv.get("metadata")
-        if isinstance(md, str):
-            md = md.strip()
-            if md:
+        meta = iv.get("metadata")
+        if isinstance(meta, str):
+            meta = meta.strip()
+            if meta:
                 try:
-                    iv["metadata"] = json.loads(md)
+                    iv["metadata"] = json.loads(meta)
                 except json.JSONDecodeError as e:
                     raise serializers.ValidationError(
-                        {"metadata": f"Invalid JSON: {e}"}
+                        {
+                            "metadata": f"Invalid JSON: {e}",
+                        },
                     ) from e
             else:
                 iv["metadata"] = {}
         return iv
 
-    def validate(self, attrs):
-        file = attrs.get("file")
-        doc_text = attrs.get("document")
-        doc_json = attrs.get("document_json")
-        content_b64 = attrs.get("content_b64")
-        upload_id = attrs.get("upload_id")
-
-        provided = [
-            v
-            for v in (file, doc_text, doc_json, content_b64, upload_id)
-            if v is not None
-        ]
-        if len(provided) != 1:
-            err_msg = _(
-                "Provide exactly one of file, document, document_json, "
-                "content_b64, or upload_id.",
+    def _map_content_type(self, ct: str):
+        if not ct:
+            raise serializers.ValidationError(
+                {
+                    "content_type": _("content_type is required."),
+                },
             )
-            raise serializers.ValidationError(err_msg)
+        lowered = ct.split(";")[0].strip().lower()
+        if lowered not in SUPPORTED_CONTENT_TYPES:
+            raise serializers.ValidationError(
+                {
+                    "content_type": _(
+                        "Unsupported content_type '%(ct)s'. Supported: %(supported)s"
+                    )
+                    % {
+                        "ct": ct,
+                        "supported": ", ".join(SUPPORTED_CONTENT_TYPES),
+                    },
+                },
+            )
+        return lowered, SUPPORTED_CONTENT_TYPES[lowered]
 
-        # document_json -> normalize to document
-        if doc_json is not None:
-            attrs["document"] = json.dumps(doc_json, separators=(",", ":"))
-            attrs["file_type"] = attrs.get("file_type") or SubmissionFileType.JSON
+    def validate(self, attrs):
+        file_obj = attrs.get("file")
+        content = attrs.get("content")
+        self._check_content(content)
 
-        # base64 -> validate now; decoding of bytes is done in the view
-        if content_b64 is not None:
+        content_type = attrs.get("content_type")
+        content_encoding = attrs.get("content_encoding")
+
+        # Exactly one of file OR content
+        if (file_obj is None and content is None) or (
+            file_obj is not None and content is not None
+        ):
+            raise serializers.ValidationError(
+                _(
+                    "Provide exactly one of 'file' (multipart) "
+                    "or 'content' (JSON envelope).",
+                ),
+            )
+
+        # File path
+        if file_obj is not None:
+            # tries to read file_obj.content_type (Django's UploadedFile usually
+            # sets this from the multipart part's header)
+            guessed_ct = content_type or getattr(file_obj, "content_type", None)
+            if not guessed_ct:
+                raise serializers.ValidationError(
+                    {
+                        "content_type": _(
+                            "content_type required (or detectable from file).",
+                        ),
+                    },
+                )
+            lowered, file_type = self._map_content_type(guessed_ct)
+            attrs["content_type"] = lowered
+            attrs["file_type"] = file_type
+            return attrs
+
+        # Textual path
+        if content_type is None:
+            raise serializers.ValidationError(
+                {
+                    "content_type": _("content_type is required with content."),
+                },
+            )
+        lowered, file_type = self._map_content_type(content_type)
+        attrs["content_type"] = lowered
+        attrs["file_type"] = file_type
+
+        # Base64 decode if requested
+        if content_encoding == "base64":
             try:
-                # quick validation; we don't keep decoded bytes here to avoid
-                # large memory in serializer
-                base64.b64decode(content_b64, validate=True)
+                decoded = base64.b64decode(content, validate=True)
             except (binascii.Error, ValueError) as e:
-                err_msg = _("Invalid base64 content.")
-                raise serializers.ValidationError(err_msg) from e
-
+                raise serializers.ValidationError(
+                    {
+                        "content": _("Invalid base64 content."),
+                    },
+                ) from e
+            try:
+                content = decoded.decode("utf-8")
+            except UnicodeDecodeError:
+                # Fallback...best effort
+                content = decoded.decode("latin-1")
+        attrs["normalized_content"] = content
         return attrs
+
+    def _check_content(self, attrs, content: str | None):
+        """
+        Basic sanity checks on textual content field.
+        """
+        # cap on input JSON field length to avoid massive strings
+        max_inline_b = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
+        if attrs.get("content_encoding") == "base64":
+            if len(content) > int(4 / 3 * max_inline_b):
+                raise serializers.ValidationError(
+                    {
+                        "content": _("Base64 content exceeds size limit."),
+                    },
+                )
+        elif len(content.encode("utf-8", errors="ignore")) > max_inline_b:
+            raise serializers.ValidationError(
+                {
+                    "content": _("Inline content exceeds size limit."),
+                },
+            )

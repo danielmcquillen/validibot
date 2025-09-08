@@ -7,7 +7,25 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from roscoe.validations.models import ValidationRun
 from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
+
+
+class ValidationRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ValidationRun
+        fields = [
+            "id",
+            "workflow",
+            "submission",
+            "status",
+            "created",
+            "started",
+            "completed",
+            "log",
+            "report",
+        ]
+        read_only_fields = fields
 
 
 class ValidationRunStartSerializer(serializers.Serializer):

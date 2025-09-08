@@ -30,6 +30,6 @@ class TestUserViewSet:
 
         assert response.data == {
             "username": user.username,
-            "url": f"http://testserver/api/users/{user.username}/",
+            "url": f"http://testserver/api/v1/users/{user.username}/",
             "name": user.name,
         }

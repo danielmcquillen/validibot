@@ -59,6 +59,7 @@ class ValidationRunService:
         org: Organization,
         workflow: Workflow,
         submission: Submission,
+        user_id: int,
         metadata: dict | None = None,
     ) -> Response:
         """
@@ -78,6 +79,7 @@ class ValidationRunService:
             org:            The organization under which the validation run is created.
             workflow:       The workflow to be executed.
             submission:     The submission associated with the validation run.
+            user_id:        The ID of the user initiating the run.
             metadata:       Optional metadata to be associated with the run.
 
         Returns:

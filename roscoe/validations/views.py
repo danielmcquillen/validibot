@@ -40,13 +40,17 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
     http_method_names = ["get", "head", "options"]
 
     def get_queryset(self):
-        # Scope to current org only
-        org = getattr(self.request.user, "get_current_org", lambda: None)()
-        qs = (
-            super().get_queryset().filter(org=org)
-            if org
-            else ValidationRun.objects.none()
-        )
+        if self.request and self.request.user:
+            user = self.request.user
+            # Only active memberships (avoid showing runs from inactive/disabled org links)
+            org_ids = user.memberships.filter(is_active=True).values_list(
+                "org_id",
+                flat=True,
+            )
+            qs = super().get_queryset().filter(org__in=org_ids)
+
+        else:
+            qs = ValidationRun.objects.none()
 
         # Default recent-only (last 30 days) unless:
         # - ?all=1 provided, or

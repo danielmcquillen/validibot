@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import logging
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -82,12 +83,12 @@ class Submission(TimeStampedModel):
             # At least one of content or input_file
             models.CheckConstraint(
                 name="submission_content_present",
-                check=Q(content__gt="") | Q(input_file__isnull=False),
+                check=Q(content__gt="") | Q(input_file__gt=""),
             ),
             # Not both
             models.CheckConstraint(
                 name="submission_content_not_both",
-                check=~(Q(content__gt="") & Q(input_file__isnull=False)),
+                check=~(Q(content__gt="") & Q(input_file__gt="")),
             ),
         ]
         ordering = ["-created"]
@@ -149,7 +150,7 @@ class Submission(TimeStampedModel):
     # Information about that user content ...
 
     file_type = models.CharField(
-        max_length=16,
+        max_length=64,
         choices=SubmissionFileType.choices,
     )
 
@@ -219,75 +220,78 @@ class Submission(TimeStampedModel):
         """
 
         inline_max_bytes = inline_max_bytes or int(
-            getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 256 * 1024),
+            getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 256 * 1024)
         )
 
-        # Error check
-        if inline_text is not None and uploaded_file is not None:
-            err_msg = "Cannot provide both inline_text and uploaded_file."
-            raise ValueError(err_msg)
-        if inline_text is None and uploaded_file is None:
-            err_msg = "Must provide either inline_text or uploaded_file."
-            raise ValueError(err_msg)
-        if uploaded_file is not None and not hasattr(uploaded_file, "read"):
-            err_msg = "uploaded_file must be a file-like object."
-            raise TypeError(err_msg)
+        # Exactly one input
+        if (inline_text is not None) and (uploaded_file is not None):
+            raise ValueError(_("Cannot provide both inline_text and uploaded_file."))
+        if (inline_text is None) and (uploaded_file is None):
+            raise ValueError(_("Must provide either inline_text or uploaded_file."))
 
-        # Handle user content. If it's a file, we always store in FileField.
-        # Otherwise, if it's text and small enough, store inline.
-        # If text but too large, spill to FileField.
-        if uploaded_file is not None:
-            # Always rewind before using the stream
-            with contextlib.suppress(Exception):
-                uploaded_file.seek(0)
-
-            # Compute checksum first
-            try:
-                checksum = self._compute_checksum_filelike(uploaded_file)
-                with contextlib.suppress(Exception):
-                    uploaded_file.seek(0)  # rewind for storage read
-            except Exception:
-                logger.info(
-                    "Failed to compute checksum for uploaded file",
-                    exc_info=True,
-                )
-                checksum = ""
-            final_name = filename or getattr(uploaded_file, "name", "") or "upload"
-            self.input_file.save(final_name, uploaded_file, save=False)
-            self.original_filename = final_name
-            self.size_bytes = getattr(uploaded_file, "size", 0)
-            self.checksum_sha256 = checksum or self.checksum_sha256
-        elif inline_text is not None:
+        # INLINE PATH
+        if inline_text is not None:
+            if not inline_text.strip():
+                raise ValueError(_("inline_text cannot be empty."))
             data = inline_text.encode("utf-8")
             self.size_bytes = len(data)
-            # Provide a sane default filename for inline content (used if we spill)
             self.original_filename = filename or self.original_filename or "inline.txt"
-            self.checksum_sha256 = self._compute_checksum(data)
-            if len(data) <= inline_max_bytes:
+            self.checksum_sha256 = self._compute_checksum(data)  # cheap, keep it
+            if self.size_bytes <= inline_max_bytes:
+                # store inline, delete any prior file
                 self.content = inline_text
+                if self.input_file:
+                    with contextlib.suppress(Exception):
+                        self.input_file.delete(save=False)
                 self.input_file = None
             else:
                 # spill to file storage
                 self.content = ""
+                if self.input_file:
+                    with contextlib.suppress(Exception):
+                        self.input_file.delete(save=False)
+                final_name = Path(self.original_filename).name
                 self.input_file.save(
-                    self.original_filename,
+                    final_name,
                     ContentFile(data),
                     save=False,
                 )
-        else:
-            err_msg = "No content provided."
-            raise ValueError(err_msg)
+                self.original_filename = final_name
 
+        # UPLOAD PATH
+        if uploaded_file is not None:
+            final_name = filename or getattr(uploaded_file, "name", "") or "upload"
+            final_name = Path(final_name).name
+            # enforce XOR and delete any prior file to avoid orphans
+            self.content = ""
+            if self.input_file:
+                with contextlib.suppress(Exception):
+                    self.input_file.delete(save=False)
+
+            # ensure at start then save in one pass
+            with contextlib.suppress(Exception):
+                uploaded_file.seek(0)
+            self.input_file.save(final_name, uploaded_file, save=False)
+
+            self.original_filename = final_name
+            self.size_bytes = getattr(uploaded_file, "size", 0)
+            if not self.size_bytes:
+                # after save(), storage knows the size
+                with contextlib.suppress(Exception):
+                    self.size_bytes = self.input_file.size or 0
+
+            # leave checksum blank; save() will backfill it efficiently
+            self.checksum_sha256 = ""
+
+        # File type detection (respect explicit valid value)
         if not file_type or file_type not in SubmissionFileType.values:
             file_type = detect_file_type(
                 filename=self.original_filename or filename,
-                text=inline_text,
+                text=inline_text if inline_text is not None else None,
             )
-
         self.file_type = file_type
 
-        # Do not self.save() here; caller will save after setting other fields
-        return True
+        return True  # caller still does self.save()
 
     def get_content(self) -> str:
         """
@@ -301,10 +305,10 @@ class Submission(TimeStampedModel):
             return self.content
         if self.input_file:
             try:
-                with self.input_file.open("rb"):
+                with self.input_file.open("rb") as fh:
                     with contextlib.suppress(Exception):
-                        self.input_file.seek(0)
-                    data = self.input_file.read()
+                        fh.seek(0)
+                    data = fh.read()
             except Exception:
                 return ""
             return (

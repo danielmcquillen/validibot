@@ -16,14 +16,15 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         model = ValidationRun
         fields = [
             "id",
+            "org",
             "workflow",
+            "project",
             "submission",
             "status",
-            "created",
-            "started",
-            "completed",
-            "log",
-            "report",
+            "started_at",
+            "ended_at",
+            "duration_ms",
+            "summary",
         ]
         read_only_fields = fields
 

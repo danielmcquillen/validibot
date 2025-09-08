@@ -134,7 +134,7 @@ class User(AbstractUser):
         )
         m = Membership.objects.create(
             user=self,
-            organization=personal_org,
+            org=personal_org,
             is_active=True,
         )
         m.add_role(RoleCode.OWNER)
@@ -217,6 +217,7 @@ class Membership(TimeStampedModel):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
+        related_name="memberships",
     )
 
     org = models.ForeignKey(

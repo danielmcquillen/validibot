@@ -8,13 +8,14 @@ from typing import Any
 
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
-from django.http import HttpRequest as Request
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from rest_framework import status
 from rest_framework.response import Response
 
 from roscoe.validations.constants import ValidationRunStatus
+from roscoe.validations.engines.registry import get as get_validator_class
 from roscoe.validations.models import ValidationRun
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from roscoe.submissions.models import Submission
     from roscoe.users.models import Organization
+    from roscoe.validations.engines.base import BaseValidatorEngine
+    from roscoe.validations.engines.base import ValidationResult
+    from roscoe.validations.models import Ruleset
+    from roscoe.validations.models import Validator
     from roscoe.workflows.models import Workflow
     from roscoe.workflows.models import WorkflowStep
 
@@ -53,9 +58,9 @@ class ValidationRunService:
 
     # ---------- Launch (views call this) ----------
 
-    def launch(
+    def launch(  # noqa: PLR0913
         self,
-        request: Request,
+        request,
         org: Organization,
         workflow: Workflow,
         submission: Submission,
@@ -141,7 +146,7 @@ class ValidationRunService:
             ValidationRunStatus.TIMED_OUT,
         ]
 
-        for _ in range(attempts):
+        for _index in range(attempts):
             with contextlib.suppress(CeleryTimeout):
                 async_result.get(timeout=per_attempt, propagate=False)
             validation_run.refresh_from_db()
@@ -231,9 +236,12 @@ class ValidationRunService:
         workflow: Workflow = validation_run.workflow
         try:
             step_summaries = []
-            steps = workflow.steps.all().order_by("order")
-            for wf_step in steps:
-                self.execute_step(wf_step, validation_run)  # implement logic inside
+            workflow_steps = workflow.steps.all().order_by("order")
+            for wf_step in workflow_steps:
+                self.execute_workflow_step(
+                    step=wf_step,
+                    validation_run=validation_run,
+                )  # implement logic inside
                 step_summaries.append(
                     {
                         "step_id": wf_step.id,
@@ -264,12 +272,107 @@ class ValidationRunService:
             validation_run.result = result
         validation_run.save()
         return ValidationRunTaskResult(
-            run_id=validation_run.id, status=validation_run.status, result=result
+            run_id=validation_run.id,
+            status=validation_run.status,
+            result=result,
         )
 
-    def execute_step(
+    def execute_workflow_step(
         self,
         step: WorkflowStep,
         validation_run: ValidationRun,
-    ):
-        pass
+    ) -> bool:
+        """
+        Execute a single workflow step against the run's submission.
+
+        This simple implementation:
+          - Resolves the step's Validator and optional Ruleset.
+          - Resolves the Submission from the ValidationRun.
+          - Calls the validator runner, which routes to the correct engine via registry.
+          - Logs the result; does not (yet) persist per-step outputs.
+
+        Any exception raised here will be caught by the caller (execute()), which will
+        mark the ValidationRun as FAILED.
+
+        NOTE: For this minimal implementation, we just log the outcome of each step.
+        The calling execute() method already handles overall run status and summary.
+
+        Args:
+            step (WorkflowStep): The workflow step to execute.
+            validation_run (ValidationRun): The validation run context.
+
+        Raises:
+            ValueError: If the step has no validator configured.
+
+        Returns:
+            Just a boolean True for now; could be extended to return more info.
+
+        """
+        # 1) Resolve engine inputs from the step
+        validator = getattr(step, "validator", None)
+        if validator is None:
+            raise ValueError(_("WorkflowStep has no validator configured."))
+        # It may be that no ruleset is configured, in which case the validator
+        # implementation should use its default or built-in rules.
+        ruleset = getattr(step, "ruleset", None)
+
+        # 2) Materialize submission content as text
+        submission: Submission = validation_run.submission
+
+        # 3) Run the validator (registry resolves the concrete class by type/variant)
+        result = self.run_validator_engine(
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
+        )
+
+        # 4) For this minimal implementation, just log the outcome.
+        # The outer execute() method already handles overall run status and summary.
+        issue_count = len(getattr(result, "issues", []) or [])
+        logger.info(
+            "Validation step executed: workflow_step_id=%s validator=%s issues=%s passed=%s",  # noqa: E501
+            getattr(step, "id", None),
+            getattr(validator, "validation_type", None),
+            issue_count,
+            getattr(result, "passed", False),
+        )
+        # If you want to persist per-step outputs later, this is where you'd create
+        # a ValidationRunStep row and store result.to_dict(), timings,
+
+        return True
+
+    def run_validator_engine(
+        *,
+        validator: Validator,
+        submission: Submission,
+        ruleset: Ruleset | None = None,
+    ) -> ValidationResult:
+        """
+        Execute the appropriate validator engine code for the given
+        Validator model, the Submission from the user, and optional Ruleset.
+
+        Args:
+            validator (Validator): The Validator model instance to use.
+            submission (Submission): The Submission containing the content to validate.
+            ruleset (Ruleset, optional): An optional Ruleset to apply during validation.
+
+        Returns:
+            ValidationResult: The result of the validation, including issues found.
+
+        """
+        vtype = validator.validation_type
+        if not vtype:
+            raise ValueError(_("Validator model missing 'type' or 'validation_type'."))
+
+        config: dict[str, Any] = validator.config or {}
+        validator_cls = get_validator_class(vtype)
+
+        # To keep validator engine classes clean, we pass everything it
+        # needs either via the config dict or the ContentSource.
+        # We don't pass in any model instances.
+        validator_engine: BaseValidatorEngine = validator_cls(config=config)
+        return validator_engine.validate(
+            validator=validator,
+            source=submission,
+            ruleset=ruleset,
+        )

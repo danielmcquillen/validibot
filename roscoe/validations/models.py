@@ -33,7 +33,7 @@ class Ruleset(TimeStampedModel):
             models.Index(
                 fields=[
                     "org",
-                    "type",
+                    "ruleset_type",
                 ],
             ),
         ]
@@ -41,11 +41,11 @@ class Ruleset(TimeStampedModel):
             models.UniqueConstraint(
                 fields=[
                     "org",
-                    "type",
+                    "ruleset_type",
                     "name",
                     "version",
                 ],
-                name="uq_ruleset_org_type_name_version",
+                name="uq_ruleset_org_ruleset_type_name_version",
             ),
         ]
 
@@ -68,17 +68,41 @@ class Ruleset(TimeStampedModel):
 
     name = models.CharField(max_length=200)
 
-    type = models.CharField(
+    ruleset_type = models.CharField(
         max_length=40,
         choices=RulesetType.choices,
         help_text=_("Type of validation ruleset, e.g. 'json_schema', 'xml_schema'"),
     )
 
-    version = models.CharField(max_length=40, blank=True, default="")
+    version = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+    )
 
     file = models.FileField(upload_to="rulesets/")  # or TextField for inline content
 
     metadata = models.JSONField(default=dict, blank=True)
+
+    def clean(self):
+        super().clean()
+        # Enforce valid engine per ruleset_type when provided via metadata["engine"]
+        engine = (self.metadata or {}).get("engine")
+        if not engine:
+            return
+        engine = str(engine).lower()
+        allowed = {
+            RulesetType.XML_SCHEMA: {"xsd", "dtd", "relaxng"},
+            RulesetType.JSON_SCHEMA: {"default"},
+        }.get(self.ruleset_type, {"default"})
+        if engine not in allowed:
+            raise ValidationError(
+                {
+                    "metadata": _(
+                        f"Engine '{engine}' is not valid for {self.ruleset_type}."
+                    ),
+                },
+            )
 
 
 class Validator(TimeStampedModel):
@@ -100,7 +124,7 @@ class Validator(TimeStampedModel):
         indexes = [
             models.Index(
                 fields=[
-                    "type",
+                    "validation_type",
                     "slug",
                 ],
             ),
@@ -126,18 +150,19 @@ class Validator(TimeStampedModel):
         blank=False,
     )  # display label
 
-    type = models.CharField(
+    validation_type = models.CharField(
         max_length=40,
         choices=ValidationType.choices,
         null=False,
         blank=False,
     )
 
-    version = models.PositiveIntegerField(
-        help_text=_("Version of the validator, e.g. 1, 2, 3"),
+    version = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text=_("Version label for this validator (e.g. '2020-12', '1.0')."),
     )
-
-    is_public = models.BooleanField(default=True)  # false for org-private validators
 
     default_ruleset = models.ForeignKey(
         Ruleset,
@@ -148,7 +173,7 @@ class Validator(TimeStampedModel):
     )
 
     def __str__(self):
-        return f"{self.type} {self.slug} v{self.version}"
+        return f"{self.validation_type} {self.slug} v{self.version}"
 
     def save(self, *args, **kwargs):
         if not self.slug:

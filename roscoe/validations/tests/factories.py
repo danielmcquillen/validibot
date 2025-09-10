@@ -23,13 +23,10 @@ class RulesetFactory(DjangoModelFactory):
     class Meta:
         model = Ruleset
 
-    name = factory.Sequence(lambda n: f"Test Ruleset {n}")
-    slug = factory.Sequence(lambda n: f"test-ruleset-{n}")
-    version = 1
-    type = RulesetType.JSON_SCHEMA
     org = factory.SubFactory(OrganizationFactory)
-    description = factory.Faker("text", max_nb_chars=200)
-    content = factory.LazyFunction(lambda: {"type": "object", "properties": {}})
+    name = factory.Sequence(lambda n: f"Test Ruleset {n}")
+    ruleset_type = RulesetType.JSON_SCHEMA
+    version = "1"
 
 
 class ValidatorFactory(DjangoModelFactory):
@@ -39,7 +36,7 @@ class ValidatorFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Validator {n}")
     slug = factory.Sequence(lambda n: f"test-validator-{n}")
     version = 1
-    type = ValidationType.JSON_SCHEMA
+    validation_type = ValidationType.JSON_SCHEMA
     default_ruleset = factory.SubFactory(RulesetFactory)
     description = factory.Faker("text", max_nb_chars=200)
     timeout_seconds = 300

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Product",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sku", "name", "price", "rating", "tags", "dimensions"],
+  "properties": {
+    "sku": { "type": "string", "pattern": "^[A-Z0-9]{8}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "price": { "type": "number", "minimum": 0 },
+    "rating": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "in_stock": { "type": "boolean" }
+  }
+}

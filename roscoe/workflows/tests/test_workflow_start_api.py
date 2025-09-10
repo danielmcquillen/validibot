@@ -2,7 +2,6 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from celery.exceptions import TimeoutError as CeleryTimeout
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
@@ -14,16 +13,13 @@ from roscoe.users.constants import RoleCode
 from roscoe.users.tests.factories import OrganizationFactory
 from roscoe.users.tests.factories import UserFactory
 from roscoe.users.tests.factories import grant_role
-from roscoe.validations import tasks as validation_tasks
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
-from roscoe.validations.tests.factories import ValidationRunFactory  # type: ignore
+from roscoe.validations.tests.factories import ValidationRunFactory
 from roscoe.workflows.models import Workflow
 
 try:
-    from roscoe.workflows.tests.factories import (
-        WorkflowFactory,  # type: ignore[attr-defined]
-    )
+    from roscoe.workflows.tests.factories import WorkflowFactory
 except Exception:  # noqa: BLE001
     WorkflowFactory = None
 
@@ -56,7 +52,7 @@ def start_url(workflow) -> str:
 
 # Try to use your factory; fall back to direct create if it's not available
 try:
-    from roscoe.validations.tests.factories import ValidationRunFactory  # type: ignore
+    from roscoe.validations.tests.factories import ValidationRunFactory
 except Exception:  # noqa: BLE001
     ValidationRunFactory = None
 
@@ -136,7 +132,7 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.workflow_id == workflow.id
         assert run.submission_id is not None
-        
+
     def test_start_with_raw_body_xml_returns_201(
         self,
         api_client: APIClient,

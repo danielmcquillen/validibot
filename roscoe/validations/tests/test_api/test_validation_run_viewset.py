@@ -8,8 +8,7 @@ from rest_framework.test import APIClient
 
 from roscoe.projects.tests.factories import ProjectFactory
 from roscoe.submissions.tests.factories import SubmissionFactory
-from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.users.tests.factories import UserFactory
+from roscoe.users.tests.factories import OrganizationFactory, UserFactory
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.tests.factories import ValidationRunFactory
@@ -49,7 +48,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
     def test_authentication_required(self):
         """Test that authentication is required for all endpoints."""
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url)
         # Update expectation based on your actual API behavior
         # If it's returning 403, that means authentication might not be required
@@ -85,7 +84,7 @@ class ValidationRunViewSetTestCase(TestCase):
         recent_run.created = timezone.now() - timedelta(days=10)
         recent_run.save()
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -115,7 +114,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"all": "1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -142,7 +141,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.SUCCEEDED,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"status": ValidationRunStatus.PENDING})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -175,7 +174,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"workflow": self.workflow.id})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -207,7 +206,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Filter for runs after 3 days ago
         after_date = (timezone.now() - timedelta(days=3)).date().isoformat()
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"after": after_date})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -243,7 +242,7 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Test first user sees only their org's runs
         self.client.force_authenticate(user=self.user)
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"all": "1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -270,7 +269,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
+        url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -289,7 +288,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-detail", kwargs={"pk": run.pk})
+        url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -318,7 +317,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"all": "1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -331,7 +330,7 @@ class ValidationRunViewSetTestCase(TestCase):
     def test_create_validation_run_disallowed(self):
         """POST on validationrun-list should be disallowed (read-only viewset)."""
         self.client.force_authenticate(user=self.user)
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.post(
             url,
             {

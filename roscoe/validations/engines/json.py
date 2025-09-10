@@ -40,21 +40,18 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
     """
 
     def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:
-        raw = None
-        if ruleset and getattr(ruleset, "config", None):
-            raw = ruleset.config.get("schema", None)
-        if raw is None and getattr(validator, "config", None):
-            raw = validator.config.get("schema", None)
-        if raw is None:
-            raw = self.config.get("schema", None)
+        raw_schema = None
 
-        if raw is None:
+        # Right now we expect the schema to be stored in
+        # ruleset.metadata under the 'schema' key
+        try:
+            raw_schema = ruleset.metadata.get("schema", None)
+        except Exception:
             raise ValueError(_("Missing 'schema' in ruleset/validator config."))
-
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, str):
-            return json.loads(raw)
+        if isinstance(raw_schema, dict):
+            return raw_schema
+        if isinstance(raw_schema, str):
+            return json.loads(raw_schema)
         raise TypeError(_("Unsupported schema type; expected dict or JSON string."))
 
     def validate(

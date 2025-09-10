@@ -141,7 +141,7 @@ class ValidationRunService:
 
         location = request.build_absolute_uri(
             reverse(
-                "api:validationrun-detail",
+                "api:validation-runs-detail",
                 kwargs={"pk": validation_run.id},
             ),
         )
@@ -237,10 +237,12 @@ class ValidationRunService:
                         if validation_result.passed
                         else StepStatus.FAILED
                     ),
-                    error=validation_result.issues,
+                    issues=validation_result.issues or [],
                 )
                 step_summaries.append(step_summary)
                 if not validation_result.passed:
+                    overall_failed = True
+                    # For now we stop on first failure
                     break
         except Exception as exc:
             logger.exception("Validation run execution failed: %s")

@@ -256,7 +256,9 @@ class ValidationRun(TimeStampedModel):
 
     summary = models.JSONField(default=dict, blank=True)  # counts, pass/fail, etc.
 
-    error = models.TextField(blank=True, default="")  # terminal error/trace if any
+    error = models.TextField(
+        blank=True, default="", null=True
+    )  # terminal error/trace if any
 
     resolved_config = models.JSONField(
         default=dict,

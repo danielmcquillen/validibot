@@ -7,8 +7,7 @@ from rest_framework.test import APIClient
 
 from roscoe.projects.tests.factories import ProjectFactory
 from roscoe.submissions.tests.factories import SubmissionFactory
-from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.users.tests.factories import UserFactory
+from roscoe.users.tests.factories import OrganizationFactory, UserFactory
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.tests.factories import ValidationRunFactory
 from roscoe.workflows.tests.factories import WorkflowFactory
@@ -44,7 +43,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"status": "invalid_status"})
 
         # django-filter with ChoiceFilter returns 400 for invalid choices
@@ -62,7 +61,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         # Use a valid status that doesn't match our created run
         response = self.client.get(url, {"status": ValidationRunStatus.SUCCEEDED})
 
@@ -80,7 +79,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"workflow": 99999})
 
         self.assertEqual(response.status_code, 200)
@@ -96,7 +95,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         today = timezone.now().date()
 
         # Test ISO date format
@@ -129,7 +128,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.SUCCEEDED,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(
             url, {"status": ValidationRunStatus.PENDING, "workflow": self.workflow.id}
         )
@@ -148,7 +147,7 @@ class ValidationRunFilterTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        url = reverse("api:validationrun-list")
+        url = reverse("api:validation-runs-list")
         response = self.client.get(url, {"after": "not-a-date"})
 
         # Should return 400 for invalid date format

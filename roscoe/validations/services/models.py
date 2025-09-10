@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from roscoe.validations.constants import StepStatus, ValidationRunStatus
 
@@ -8,7 +8,7 @@ class ValidationStepSummary:
     step_id: int
     name: str
     status: StepStatus
-    issues: list[dict]
+    issues: list[dict] = field(default_factory=list)
     error: str | None = None
 
     @property

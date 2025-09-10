@@ -10,9 +10,7 @@ from rest_framework.test import APIClient
 
 import roscoe.workflows.views as views_mod
 from roscoe.users.constants import RoleCode
-from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.users.tests.factories import UserFactory
-from roscoe.users.tests.factories import grant_role
+from roscoe.users.tests.factories import OrganizationFactory, UserFactory, grant_role
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.tests.factories import ValidationRunFactory
@@ -40,9 +38,9 @@ def user(db):
 
 
 @pytest.fixture
-def workflow(db, org):
+def workflow(db, org, user):
     if WorkflowFactory:
-        return WorkflowFactory(org=org)
+        return WorkflowFactory(org=org, user=user)
     return Workflow.objects.create(org=org, name="WF 1")
 
 

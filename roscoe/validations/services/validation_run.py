@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from typing import Any
+from dataclasses import asdict
+from typing import TYPE_CHECKING, Any
 
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
@@ -14,36 +13,23 @@ from django.utils.translation import gettext as _
 from rest_framework import status
 from rest_framework.response import Response
 
-from roscoe.validations.constants import ValidationRunStatus
+from roscoe.validations.constants import StepStatus, ValidationRunStatus
 from roscoe.validations.engines.registry import get as get_validator_class
-from roscoe.validations.models import ValidationRun
+from roscoe.validations.models import ValidationRun, WorkflowStep
+from roscoe.validations.services.models import (
+    ValidationRunSummary,
+    ValidationRunTaskResult,
+    ValidationStepSummary,
+)
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from roscoe.submissions.models import Submission
     from roscoe.users.models import Organization
-    from roscoe.validations.engines.base import BaseValidatorEngine
-    from roscoe.validations.engines.base import ValidationResult
-    from roscoe.validations.models import Ruleset
-    from roscoe.validations.models import Validator
-    from roscoe.workflows.models import Workflow
-    from roscoe.workflows.models import WorkflowStep
-
-
-@dataclass
-class ValidationRunTaskPayload:
-    content: dict[str, Any] | None = None
-    metadata: dict[str, Any] | None = None
-    user_id: int | None = None
-
-
-@dataclass
-class ValidationRunTaskResult:
-    run_id: int
-    status: ValidationRunStatus
-    result: dict | None = None
-    error: str | None = None
+    from roscoe.validations.engines.base import BaseValidatorEngine, ValidationResult
+    from roscoe.validations.models import Ruleset, Validator
+    from roscoe.workflows.models import Workflow, WorkflowStep
 
 
 class ValidationRunService:
@@ -130,8 +116,8 @@ class ValidationRunService:
         async_result = execute_validation_run.apply_async(
             kwargs={
                 "validation_run_id": validation_run.id,
-                "metadata": metadata or {},
                 "user_id": request.user.id,
+                "metadata": metadata or {},
             },
             countdown=2,  # slight delay to ensure DB transaction commits first
         )
@@ -234,21 +220,30 @@ class ValidationRunService:
         # Try to run each step in the workflow
         # We don't need an execution plan we can just run the steps in order.
         workflow: Workflow = validation_run.workflow
+        overall_failed = False
+        step_summaries = []
         try:
-            step_summaries = []
             workflow_steps = workflow.steps.all().order_by("order")
             for wf_step in workflow_steps:
-                self.execute_workflow_step(
+                validation_result: ValidationResult = self.execute_workflow_step(
                     step=wf_step,
                     validation_run=validation_run,
-                )  # implement logic inside
-                step_summaries.append(
-                    {
-                        "step_id": wf_step.id,
-                        "name": getattr(wf_step, "name", str(wf_step)),
-                    },
                 )
-        except Exception as exc:  # noqa: BLE001
+                step_summary: ValidationStepSummary = ValidationStepSummary(
+                    step_id=wf_step.id,
+                    name=wf_step.name,
+                    status=(
+                        StepStatus.FAILED
+                        if validation_result.passed
+                        else StepStatus.FAILED
+                    ),
+                    error=validation_result.issues,
+                )
+                step_summaries.append(step_summary)
+                if not validation_result.passed:
+                    break
+        except Exception as exc:
+            logger.exception("Validation run execution failed: %s")
             validation_run.status = ValidationRunStatus.FAILED
             if hasattr(validation_run, "ended_at"):
                 validation_run.ended_at = timezone.now()
@@ -256,32 +251,48 @@ class ValidationRunService:
                 validation_run.error = str(exc)
             validation_run.save()
             return ValidationRunTaskResult(
-                run_id=validation_run.id, status=validation_run.status, error=str(exc)
+                run_id=validation_run.id,
+                status=validation_run.status,
+                error=str(exc),
             )
 
-        result = {
-            "summary": f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}.",
-            "steps": step_summaries,
-        }
-        validation_run.status = ValidationRunStatus.SUCCEEDED
-        if hasattr(validation_run, "ended_at"):
-            validation_run.ended_at = timezone.now()
-        if hasattr(validation_run, "summary"):
-            validation_run.summary = result.get("summary", "")
-        if hasattr(validation_run, "result"):
-            validation_run.result = result
+        validation_run_summary = ValidationRunSummary(
+            overview=f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}.",  # noqa: E501
+            step_summaries=step_summaries,
+        )
+
+        # Update the ValidationRun instance...
+        if overall_failed:
+            validation_run.status = ValidationRunStatus.FAILED
+            validation_run.error = _("One or more validation steps failed.")
+        else:
+            validation_run.status = ValidationRunStatus.SUCCEEDED
+            validation_run.error = None
+        validation_run.save(update_fields=["status"])
+        validation_run.ended_at = timezone.now()
+        # This will be redundant in the future because we will store information
+        # at the step level later, but for now we are only logging step information
+        # so we store the entire summary on the run here.
+        validation_run.summary = asdict(validation_run_summary)
         validation_run.save()
-        return ValidationRunTaskResult(
+
+        # Build a dataclass for upstream caller
+        # If Celery is calling, it doesn't really do anything with this result,
+        # as the actual result sent to the API caller will be loaded from the DB.
+        validation_run_task_result = ValidationRunTaskResult(
             run_id=validation_run.id,
             status=validation_run.status,
-            result=result,
+            summary=validation_run_summary,
+            error=validation_run.error,
         )
+
+        return validation_run_task_result
 
     def execute_workflow_step(
         self,
         step: WorkflowStep,
         validation_run: ValidationRun,
-    ) -> bool:
+    ) -> ValidationResult:
         """
         Execute a single workflow step against the run's submission.
 
@@ -320,29 +331,36 @@ class ValidationRunService:
         submission: Submission = validation_run.submission
 
         # 3) Run the validator (registry resolves the concrete class by type/variant)
-        result = self.run_validator_engine(
+        validation_result: ValidationResult = self.run_validator_engine(
             validator=validator,
             submission=submission,
             ruleset=ruleset,
         )
 
+        # TODO:
+        #  Later when we support multiple steps per run, we will persist
+        #  a ValidationStepRun record here with the result, timings, etc.
+        #  For now, we just log the outcome.
+
         # 4) For this minimal implementation, just log the outcome.
         # The outer execute() method already handles overall run status and summary.
-        issue_count = len(getattr(result, "issues", []) or [])
+        issue_count = len(getattr(validation_result, "issues", []) or [])
+        passed = getattr(validation_result, "passed", False)
+
         logger.info(
             "Validation step executed: workflow_step_id=%s validator=%s issues=%s passed=%s",  # noqa: E501
             getattr(step, "id", None),
             getattr(validator, "validation_type", None),
             issue_count,
-            getattr(result, "passed", False),
+            passed,
         )
         # If you want to persist per-step outputs later, this is where you'd create
         # a ValidationRunStep row and store result.to_dict(), timings,
 
-        return True
+        return validation_result
 
     def run_validator_engine(
-        *,
+        self,
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset | None = None,
@@ -364,15 +382,24 @@ class ValidationRunService:
         if not vtype:
             raise ValueError(_("Validator model missing 'type' or 'validation_type'."))
 
-        config: dict[str, Any] = validator.config or {}
-        validator_cls = get_validator_class(vtype)
+        # TODO: Later we might want to store a default config in a Validator and pass
+        # to the engine. For now we just pass an empty dict.
+        config: dict[str, Any] = {}
+
+        try:
+            validator_cls = get_validator_class(vtype)
+        except Exception as exc:
+            err_msg = f"Failed to load validator engine for type '{vtype}': {exc}"
+            raise ValueError(err_msg) from exc
 
         # To keep validator engine classes clean, we pass everything it
         # needs either via the config dict or the ContentSource.
         # We don't pass in any model instances.
         validator_engine: BaseValidatorEngine = validator_cls(config=config)
-        return validator_engine.validate(
+        validation_result = validator_engine.validate(
             validator=validator,
-            source=submission,
+            submission=submission,
             ruleset=ruleset,
         )
+
+        return validation_result

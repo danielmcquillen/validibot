@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-from abc import ABC
-from abc import abstractmethod
-from dataclasses import asdict
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from typing import Any
+from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Any
 
-from roscoe.validations.constants import Severity
-from roscoe.validations.constants import ValidationType
+from roscoe.validations.constants import Severity, ValidationType
 
 if TYPE_CHECKING:
-    from roscoe.validations.models import Ruleset
-    from roscoe.validations.models import Submission
-    from roscoe.validations.models import Validator
+    from roscoe.validations.models import Ruleset, Submission, Validator
 
 
 @dataclass
@@ -36,7 +30,7 @@ class ValidationIssue:
 @dataclass
 class ValidationResult:
     """
-    Aggregated result of a validator run.
+    Aggregated result of a single validation step.
     passed: True when no ERROR issues were produced.
     issues: list of issues discovered (may include INFO/WARNING).
     stats: optional extra info (counts, timings, metadata).

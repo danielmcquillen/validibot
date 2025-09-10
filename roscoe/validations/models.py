@@ -11,15 +11,15 @@ from slugify import slugify
 
 from roscoe.projects.models import Project
 from roscoe.submissions.models import Submission
-from roscoe.users.models import Organization
-from roscoe.users.models import User
-from roscoe.validations.constants import RulesetType
-from roscoe.validations.constants import Severity
-from roscoe.validations.constants import StepStatus
-from roscoe.validations.constants import ValidationRunStatus
-from roscoe.validations.constants import ValidationType
-from roscoe.workflows.models import Workflow
-from roscoe.workflows.models import WorkflowStep
+from roscoe.users.models import Organization, User
+from roscoe.validations.constants import (
+    RulesetType,
+    Severity,
+    StepStatus,
+    ValidationRunStatus,
+    ValidationType,
+)
+from roscoe.workflows.models import Workflow, WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
@@ -276,12 +276,12 @@ class ValidationStepRun(TimeStampedModel):
     """
 
     class Meta:
-        indexes = [models.Index(fields=["run", "status"])]
+        indexes = [models.Index(fields=["validation_run", "status"])]
         constraints = [
             # Prefer UniqueConstraint to future-proof
             models.UniqueConstraint(
                 fields=[
-                    "run",
+                    "validation_run",
                     "step_order",
                 ],
                 name="uq_step_run_run_order",
@@ -290,8 +290,8 @@ class ValidationStepRun(TimeStampedModel):
             # same run (optional but recommended)
             models.UniqueConstraint(
                 fields=[
-                    "run",
-                    "step",
+                    "validation_run",
+                    "workflow_step",
                 ],
                 name="uq_step_run_run_step",
             ),
@@ -303,13 +303,13 @@ class ValidationStepRun(TimeStampedModel):
             ),
         ]
 
-    run = models.ForeignKey(
+    validation_run = models.ForeignKey(
         ValidationRun,
         on_delete=models.CASCADE,
         related_name="step_runs",
     )
 
-    step = models.ForeignKey(
+    workflow_step = models.ForeignKey(
         WorkflowStep,
         on_delete=models.PROTECT,
         related_name="+",
@@ -359,8 +359,8 @@ class ValidationFinding(TimeStampedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["run", "severity"]),
-            models.Index(fields=["run", "code"]),
+            models.Index(fields=["step_run", "severity"]),
+            models.Index(fields=["step_run", "code"]),
         ]
 
     run = models.ForeignKey(
@@ -408,7 +408,7 @@ class Artifact(TimeStampedModel):
     """
 
     class Meta:
-        indexes = [models.Index(fields=["run", "created"])]
+        indexes = [models.Index(fields=["validation_run", "created"])]
 
     org = models.ForeignKey(
         Organization,
@@ -416,7 +416,7 @@ class Artifact(TimeStampedModel):
         related_name="artifacts",
     )
 
-    run = models.ForeignKey(
+    validation_run = models.ForeignKey(
         ValidationRun,
         on_delete=models.CASCADE,
         related_name="artifacts",

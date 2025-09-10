@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.utils.translation import gettext as _
 from lxml import etree
 
-from roscoe.validations.constants import Severity
-from roscoe.validations.constants import ValidationType
-from roscoe.validations.engines.base import BaseValidatorEngine
-from roscoe.validations.engines.base import ValidationIssue
-from roscoe.validations.engines.base import ValidationResult
+from roscoe.validations.constants import Severity, ValidationType
+from roscoe.validations.engines.base import (
+    BaseValidatorEngine,
+    ValidationIssue,
+    ValidationResult,
+)
 from roscoe.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
-    from roscoe.validations.models import Ruleset
-    from roscoe.validations.models import Submission
-    from roscoe.validations.models import Validator
+    from roscoe.validations.models import Ruleset, Submission, Validator
 
 
 @register_engine(ValidationType.XML_SCHEMA)

@@ -1,3 +1,5 @@
+from importlib import metadata
+
 import factory
 from factory.django import DjangoModelFactory
 
@@ -27,19 +29,28 @@ class RulesetFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Ruleset {n}")
     ruleset_type = RulesetType.JSON_SCHEMA
     version = "1"
+    # Give an empty schema by default to avoid validation errors
+    metadata = factory.Dict(
+        {
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {},
+            },
+        },
+    )
 
 
 class ValidatorFactory(DjangoModelFactory):
     class Meta:
         model = Validator
 
-    name = factory.Sequence(lambda n: f"Test Validator {n}")
     slug = factory.Sequence(lambda n: f"test-validator-{n}")
-    version = 1
-    validation_type = ValidationType.JSON_SCHEMA
-    default_ruleset = factory.SubFactory(RulesetFactory)
     description = factory.Faker("text", max_nb_chars=200)
-    timeout_seconds = 300
+    name = factory.Sequence(lambda n: f"Test Validator {n}")
+    validation_type = ValidationType.JSON_SCHEMA
+    version = "1"
+    default_ruleset = factory.SubFactory(RulesetFactory)
 
 
 class ValidationRunFactory(DjangoModelFactory):

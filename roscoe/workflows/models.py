@@ -117,7 +117,11 @@ class Workflow(TimeStampedModel):
         help_text=_("A unique identifier for the workflow, used in URLs."),
     )
 
-    version = models.PositiveIntegerField(default=1)
+    version = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+    )
 
     is_locked = models.BooleanField(
         default=False,

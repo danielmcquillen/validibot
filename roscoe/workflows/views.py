@@ -4,23 +4,19 @@ import logging
 from django.conf import settings
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
-from rest_framework import permissions
-from rest_framework import status
-from rest_framework import viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from roscoe.submissions.ingest import prepare_inline_text
-from roscoe.submissions.ingest import prepare_uploaded_file
+from roscoe.submissions.ingest import prepare_inline_text, prepare_uploaded_file
 from roscoe.submissions.models import Submission
 from roscoe.users.models import User
 from roscoe.validations.serializers import ValidationRunStartSerializer
 from roscoe.validations.services.validation_run import ValidationRunService
 from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
 from roscoe.workflows.models import Workflow
-from roscoe.workflows.request_utils import extract_request_basics
-from roscoe.workflows.request_utils import is_raw_body_mode
+from roscoe.workflows.request_utils import extract_request_basics, is_raw_body_mode
 from roscoe.workflows.serializers import WorkflowSerializer
 
 logger = logging.getLogger(__name__)
@@ -307,6 +303,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         detail=True,
         methods=["post"],
         url_path="start",
+        url_name="start",
     )
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()

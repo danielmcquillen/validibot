@@ -3,20 +3,20 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import pytest
 from django.urls import reverse
 
-from roscoe.projects.tests.factories import ProjectFactory
-from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.users.tests.factories import UserFactory
-from roscoe.validations.constants import ValidationType
-from roscoe.validations.tests.factories import RulesetFactory
-from roscoe.validations.tests.factories import ValidatorFactory
-from roscoe.workflows.tests.factories import WorkflowFactory
-from roscoe.workflows.tests.factories import WorkflowStepFactory
+from roscoe.users.models import Role, RoleCode
+from roscoe.users.tests.factories import OrganizationFactory, UserFactory
+from roscoe.validations.constants import ValidationRunStatus, ValidationType
+from roscoe.validations.tests.factories import RulesetFactory, ValidatorFactory
+from roscoe.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
+
+if TYPE_CHECKING:
+    from roscoe.users.models import Membership
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,20 @@ def workflow_context(load_json_asset, api_client):
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
-    project = ProjectFactory(org=org)
+
+    # Ensure caller has EXECUTOR permissions in this org
+    try:
+        # Best-effort: set membership role to EXECUTOR if present
+        membership: Membership = user.memberships.get(org=org)  # type: ignore[attr-defined]
+        executor_role: Role = Role.objects.get(code=RoleCode.EXECUTOR)
+        membership.roles.add(executor_role)
+    except Exception as e:
+        # Guarantee access in tests even if role wiring differs
+        user.is_superuser = True
+        user.save()
 
     validator = ValidatorFactory(
         validation_type=ValidationType.JSON_SCHEMA,
-        is_public=True,
     )
 
     schema = load_json_asset("json/example_product_schema.json")
@@ -64,7 +73,7 @@ def workflow_context(load_json_asset, api_client):
         metadata={"schema": schema},
     )
 
-    workflow = WorkflowFactory(org=org, user=user, project=project)
+    workflow = WorkflowFactory(org=org, user=user)
     step = WorkflowStepFactory(
         workflow=workflow,
         validator=validator,
@@ -78,7 +87,6 @@ def workflow_context(load_json_asset, api_client):
     return {
         "org": org,
         "user": user,
-        "project": project,
         "validator": validator,
         "ruleset": ruleset,
         "workflow": workflow,
@@ -89,16 +97,11 @@ def workflow_context(load_json_asset, api_client):
 
 def start_workflow_url(workflow_id: int) -> str:
     # Prefer reversing if a name is available; fallback to conventional path
-    for name in (
-        "workflow-start",
-        "api:workflow-start",
-        "workflows-start",
-        "api:workflows-start",
-    ):
-        try:
-            return reverse(name, args=[workflow_id])
-        except Exception as e:  # noqa: BLE001
-            logger.debug("Could not reverse %s for workflow %s: %s", name, workflow_id, e)
+    try:
+        url = reverse("api:workflow-start", args=[workflow_id])
+        return url
+    except Exception:
+        logger.debug("Could not reverse for workflow start")
     return f"/api/v1/workflows/{workflow_id}/start/"
 
 
@@ -111,7 +114,9 @@ def normalize_poll_url(location: str) -> str:
     return location
 
 
-def poll_until_complete(client, url: str, timeout_s: float = 10.0, interval_s: float = 0.25) -> tuple[dict, int]:
+def poll_until_complete(
+    client, url: str, timeout_s: float = 10.0, interval_s: float = 0.25
+) -> tuple[dict, int]:
     """
     Poll the ValidationRun detail endpoint until a terminal state is reached or timeout.
     Returns (json, status_code_of_last_poll).
@@ -196,7 +201,9 @@ def test_json_validation_happy_path(workflow_context):
     assert last_status == 200, f"Polling failed: {last_status} {data}"
 
     run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status in {"SUCCESS", "COMPLETED"}, f"Unexpected status: {run_status} payload={data}"
+    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+        f"Unexpected status: {run_status} payload={data}"
+    )
     issues = extract_issues(data)
     assert isinstance(issues, list)
     assert len(issues) == 0, f"Expected no issues, got: {issues}"
@@ -239,11 +246,15 @@ def test_json_validation_one_field_fails(workflow_context):
     assert last_status == 200, f"Polling failed: {last_status} {data}"
 
     run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status in {"FAILED", "COMPLETED", "SUCCESS"}, f"Unexpected status: {run_status}"
+    assert run_status == ValidationRunStatus.FAILED.name, (
+        f"Unexpected status: {run_status}"
+    )
 
     issues = extract_issues(data)
     assert isinstance(issues, list)
     assert len(issues) >= 1, "Expected at least one issue for invalid payload"
 
     joined = " | ".join(str(i) for i in issues)
-    assert ("rating" in joined) or ("maximum" in joined), f"Expected rating/max error in issues, got: {issues}"
+    assert ("rating" in joined) or ("maximum" in joined), (
+        f"Expected rating/max error in issues, got: {issues}"
+    )

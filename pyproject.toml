@@ -123,6 +123,7 @@ ignore = [
   "RET504", #Unnecessary assignment to `filename` before `return` statement
   "ERA001", # We want to put code in comments
   "C901",   # 'Function is too complex' ... I want to have some functions that have more than 6 args.
+  "G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require
 # provide the `--unsafe-fixes` flag when fixing.

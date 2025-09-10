@@ -33,3 +33,6 @@ drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 
 # Adding for filters in API and regular views
 django-filter==25.1
+
+# For handling XML
+lxml==6.0.1

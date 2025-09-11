@@ -19,7 +19,7 @@ class ValidationStepSummary:
 @dataclass
 class ValidationRunSummary:
     overview: str
-    step_summaries: list[ValidationStepSummary]
+    steps: list[ValidationStepSummary]
 
 
 @dataclass

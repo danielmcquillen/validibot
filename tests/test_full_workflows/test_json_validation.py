@@ -142,24 +142,16 @@ def poll_until_complete(
 
 
 def extract_issues(data: dict) -> list[dict]:
-    """
-    Try to extract a list of issues from the run payload using common shapes.
-    """
-    issues = data.get("issues")
-    if isinstance(issues, list):
-        return issues
-
-    result = data.get("result")
-    if isinstance(result, dict) and isinstance(result.get("issues"), list):
-        return result["issues"]
-
-    steps = data.get("steps") or data.get("step_runs") or []
+    steps = data.get("steps")
     collected: list[dict] = []
-    if isinstance(steps, list):
-        for s in steps:
-            sis = s.get("issues") or (s.get("result") or {}).get("issues")
-            if isinstance(sis, list):
-                collected.extend(sis)
+    for step in steps:
+        issues = step.get("issues") or []
+        if isinstance(issues, list):
+            for issue in issues:
+                if isinstance(issue, dict):
+                    collected.append(issue)
+                else:
+                    collected.append({"message": str(issue)})
     return collected
 
 

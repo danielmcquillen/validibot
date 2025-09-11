@@ -38,6 +38,7 @@ class ValidationResult:
 
     passed: bool
     issues: list[ValidationIssue]
+    workflow_step_name: str | None = None  # slug
     stats: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:

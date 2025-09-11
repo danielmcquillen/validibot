@@ -1,30 +1,73 @@
+from __future__ import annotations
+
 import base64
 import binascii
 import json
 from typing import Any
+from uuid import UUID
 
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from rest_framework.relations import PrimaryKeyRelatedField, SlugRelatedField
 
 from roscoe.validations.models import ValidationRun
 from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 
 class ValidationRunSerializer(serializers.ModelSerializer):
+    """
+    Provides a read-only view into the status of a ValidationRun.
+    This is the serializer used by the API to return information
+    to the user about an existing, in-progress or completed run.
+    """
+
+    workflow = SlugRelatedField(
+        read_only=True,
+        slug_field="slug",
+    )
+
+    org = SlugRelatedField(
+        read_only=True,
+        slug_field="slug",
+    )
+
+    submission = PrimaryKeyRelatedField(
+        read_only=True,
+    )
+
+    # Map steps to summary["steps"], defaulting to []
+    steps = serializers.SerializerMethodField()
+
+    def get_steps(self, obj: ValidationRun) -> list[dict]:
+        summary = getattr(obj, "summary", None)
+        if not summary:
+            return []
+        if isinstance(summary, str):
+            try:
+                summary = json.loads(summary)
+            except Exception:
+                return []
+        if isinstance(summary, dict):
+            steps = summary.get("steps")
+            return steps if isinstance(steps, list) else []
+        return []
+
     class Meta:
         model = ValidationRun
         fields = [
             "id",
+            "status",
             "org",
             "workflow",
-            "project",
+            # "project", # Not implemented yet...
             "submission",
-            "status",
             "started_at",
             "ended_at",
             "duration_ms",
-            "summary",
+            # "summary", # We use "steps" field to dig into summary and get steps.
+            "steps",
+            "error",
         ]
         read_only_fields = fields
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import asdict
+from pdb import run
+from turtle import up
 from typing import TYPE_CHECKING, Any
 
 from celery.exceptions import TimeoutError as CeleryTimeout
@@ -16,6 +18,7 @@ from rest_framework.response import Response
 from roscoe.validations.constants import StepStatus, ValidationRunStatus
 from roscoe.validations.engines.registry import get as get_validator_class
 from roscoe.validations.models import ValidationRun, WorkflowStep
+from roscoe.validations.serializers import ValidationRunSerializer
 from roscoe.validations.services.models import (
     ValidationRunSummary,
     ValidationRunTaskResult,
@@ -146,29 +149,25 @@ class ValidationRunService:
             ),
         )
 
+        data = ValidationRunSerializer(validation_run).data
         if validation_run.status in terminal_statuses:
-            from roscoe.validations.serializers import (  # noqa:PLC0415
-                ValidationRunSerializer,
-            )
-
-            data = ValidationRunSerializer(validation_run).data
+            # Finished (either success or failure)
             response = Response(
                 data,
                 status=status.HTTP_201_CREATED,
                 headers={"Location": location},
             )
-            return response
-
-        body = {
-            "id": validation_run.id,
-            "status": validation_run.status,
-            "task_id": async_result.id,
-            "detail": "Processing",
-            "url": location,
-            "poll": location,
-        }
-        headers = {"Location": location, "Retry-After": str(per_attempt)}
-        response = Response(body, status=status.HTTP_202_ACCEPTED, headers=headers)
+        else:
+            # Still running or pending
+            # Add the URL to poll for status
+            data["url"]: location
+            data["poll"]: location
+            headers = {"Location": location, "Retry-After": str(per_attempt)}
+            response = Response(
+                data,
+                status=status.HTTP_202_ACCEPTED,
+                headers=headers,
+            )
 
         return response
 
@@ -190,7 +189,7 @@ class ValidationRunService:
             metadata (dict, optional): Additional metadata for the run.
 
         Returns:
-            ValidationRunTaskResult: The result of the validation run execution.
+            ValidationRunSummary: The result of the validation run execution.
         """
         validation_run: ValidationRun = ValidationRun.objects.select_related(
             "workflow",
@@ -203,7 +202,7 @@ class ValidationRunService:
             ValidationRunStatus.PENDING,
             ValidationRunStatus.RUNNING,
         ):
-            result = ValidationRunTaskResult(
+            result = ValidationRunSummary(
                 run_id=validation_run.id,
                 status=validation_run.status,
                 error="Validation run is not in a state that allows execution.",
@@ -252,15 +251,15 @@ class ValidationRunService:
             if hasattr(validation_run, "error"):
                 validation_run.error = str(exc)
             validation_run.save()
-            return ValidationRunTaskResult(
+            return ValidationRunSummary(
                 run_id=validation_run.id,
                 status=validation_run.status,
                 error=str(exc),
             )
 
-        validation_run_summary = ValidationRunSummary(
+        validation_run_summary: ValidationRunSummary = ValidationRunSummary(
             overview=f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}.",  # noqa: E501
-            step_summaries=step_summaries,
+            steps=step_summaries,
         )
 
         # Update the ValidationRun instance...
@@ -270,25 +269,33 @@ class ValidationRunService:
         else:
             validation_run.status = ValidationRunStatus.SUCCEEDED
             validation_run.error = None
-        validation_run.save(update_fields=["status"])
         validation_run.ended_at = timezone.now()
         # This will be redundant in the future because we will store information
         # at the step level later, but for now we are only logging step information
         # so we store the entire summary on the run here.
         validation_run.summary = asdict(validation_run_summary)
-        validation_run.save()
+        validation_run.save(
+            update_fields=[
+                "status",
+                "error",
+                "ended_at",
+                "summary",
+            ]
+        )
 
-        # Build a dataclass for upstream caller
-        # If Celery is calling, it doesn't really do anything with this result,
-        # as the actual result sent to the API caller will be loaded from the DB.
-        validation_run_task_result = ValidationRunTaskResult(
+        # Create a ValidationRunTaskResult to return
+        # to whoever called this execute() method.
+        # Note that the real data we're concerned about is stored in the
+        # ValidationRun DB record; this result is just a convenience.
+        # The user of an API will get the data from the DB record.
+        result = ValidationRunTaskResult(
             run_id=validation_run.id,
             status=validation_run.status,
             summary=validation_run_summary,
             error=validation_run.error,
         )
 
-        return validation_run_task_result
+        return result
 
     def execute_workflow_step(
         self,
@@ -338,6 +345,7 @@ class ValidationRunService:
             submission=submission,
             ruleset=ruleset,
         )
+        validation_result.workflow_step_name = step.name
 
         # TODO:
         #  Later when we support multiple steps per run, we will persist

@@ -17,7 +17,6 @@ def create_default_validators():
             "description": _("Validate JSON payload against a predefined schema."),
             "validation_type": ValidationType.JSON_SCHEMA,
             "version": "1.0",
-            "is_active": True,
         },
         {
             "name": _("XML Validation"),
@@ -25,7 +24,6 @@ def create_default_validators():
             "description": _("Validate XML payload against a predefined schema."),
             "validation_type": ValidationType.XML_SCHEMA,
             "version": "1.0",
-            "is_active": True,
         },
     ]
 

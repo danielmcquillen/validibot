@@ -44,10 +44,8 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                 if isinstance(cfg, dict) and "schema_type" in cfg:
                     schema_type = (cfg["schema_type"] or "").strip().upper()
                     break
-        if schema_type not in [
-            XMLSchemaType.XSD,
-            XMLSchemaType.RELAXNG,
-        ]:
+        # Expect the upper-case string of the enum's value (e.g., "XSD" or "RELAXNG")
+        if schema_type not in {XMLSchemaType.XSD.value, XMLSchemaType.RELAXNG.value}:
             err_msg = _(
                 "Invalid or missing XML schema_type '%(schema_type)s'; must be 'XSD' or 'RELAXNG'."
             ) % {"schema_type": schema_type or "<missing>"}

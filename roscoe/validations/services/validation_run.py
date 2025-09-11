@@ -3,8 +3,6 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import asdict
-from pdb import run
-from turtle import up
 from typing import TYPE_CHECKING, Any
 
 from celery.exceptions import TimeoutError as CeleryTimeout
@@ -17,7 +15,7 @@ from rest_framework.response import Response
 
 from roscoe.validations.constants import StepStatus, ValidationRunStatus
 from roscoe.validations.engines.registry import get as get_validator_class
-from roscoe.validations.models import ValidationRun, WorkflowStep
+from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
 from roscoe.validations.services.models import (
     ValidationRunSummary,

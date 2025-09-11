@@ -88,23 +88,24 @@ class Ruleset(TimeStampedModel):
     def clean(self):
         super().clean()
 
+        # Validate XML schema_type when this ruleset is for XML
         if self.ruleset_type == RulesetType.XML_SCHEMA:
-            # Enforce valid engine per ruleset_type when provided via metadata["engine"]
-            schema_type = (self.metadata or {}).get("schema_type")
+            meta = self.metadata or {}
+            schema_type = meta.get("schema_type")
             if not schema_type:
-                self.metadata["schema_type"] = XMLSchemaType.XSD.name
+                # Default to XSD if not specified
+                meta["schema_type"] = XMLSchemaType.XSD.value
+                self.metadata = meta
                 return
-            schema_type = str(schema_type).upper()
-            if schema_type not in [
-                XMLSchemaType.RELAXNG,
-                XMLSchemaType.XSD,
-                XMLSchemaType.DTD,
-            ]:
+            schema_type = str(schema_type).strip().upper()
+            # Compare against TextChoices values (strings)
+            if schema_type not in set(XMLSchemaType.values):
                 raise ValidationError(
                     {
                         "metadata": _(
-                            f"Schema type '{schema_type}' is not valid for {self.ruleset_type}."
-                        ),
+                            "Schema type '%(st)s' is not valid for %(rt)s."
+                        )
+                        % {"st": schema_type, "rt": self.ruleset_type},
                     },
                 )
 

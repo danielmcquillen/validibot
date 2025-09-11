@@ -77,7 +77,7 @@ class ValidationStepRunFactory(DjangoModelFactory):
     workflow_step = factory.SubFactory(WorkflowStepFactory)
     step_order = factory.Sequence(lambda n: n * 10)
     status = StepStatus.PENDING
-    summary = factory.Faker("sentence")
+    output = factory.Dict({})
 
 
 class ValidationFindingFactory(DjangoModelFactory):
@@ -85,7 +85,10 @@ class ValidationFindingFactory(DjangoModelFactory):
         model = ValidationFinding
 
     step_run = factory.SubFactory(ValidationStepRunFactory)
+    # Ensure run FK matches the step_run's validation_run
+    run = factory.LazyAttribute(lambda o: o.step_run.validation_run)
     severity = Severity.ERROR
+    code = ""
     message = factory.Faker("sentence")
     path = factory.Faker("file_path", depth=3)
     meta = factory.Dict({})
@@ -95,8 +98,9 @@ class ArtifactFactory(DjangoModelFactory):
     class Meta:
         model = Artifact
 
-    step_run = factory.SubFactory(ValidationStepRunFactory)
+    validation_run = factory.SubFactory(ValidationRunFactory)
     org = factory.SubFactory(OrganizationFactory)
-    name = factory.Sequence(lambda n: f"artifact-{n}.txt")
-    description = factory.Faker("sentence")
-    # Note: file field is optional for testing
+    label = factory.Sequence(lambda n: f"artifact-{n}.txt")
+    content_type = "text/plain"
+    size_bytes = 0
+    # file is optional; tests can attach a ContentFile if needed

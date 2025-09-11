@@ -237,10 +237,13 @@ class WorkflowStep(TimeStampedModel):
         ):
             raise ValidationError({"order": _("Order already used in this workflow.")})
 
-        if self.ruleset and self.ruleset.ruleset_type != self.validator.validator_type:
+        # Ensure the ruleset chosen matches the validator's type
+        if self.ruleset and self.validator and (
+            self.ruleset.ruleset_type != self.validator.validation_type
+        ):
             raise ValidationError(
                 {
-                    "ruleset": _("Ruleset ruleset_type must match validator type."),
+                    "ruleset": _("Ruleset type must match validator type."),
                 },
             )
 

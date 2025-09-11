@@ -160,8 +160,8 @@ class ValidationRunService:
         else:
             # Still running or pending
             # Add the URL to poll for status
-            data["url"]: location
-            data["poll"]: location
+            data["url"] = location
+            data["poll"] = location
             headers = {"Location": location, "Retry-After": str(per_attempt)}
             response = Response(
                 data,
@@ -232,7 +232,7 @@ class ValidationRunService:
                     step_id=wf_step.id,
                     name=wf_step.name,
                     status=(
-                        StepStatus.FAILED
+                        StepStatus.PASSED
                         if validation_result.passed
                         else StepStatus.FAILED
                     ),
@@ -244,7 +244,7 @@ class ValidationRunService:
                     # For now we stop on first failure
                     break
         except Exception as exc:
-            logger.exception("Validation run execution failed: %s")
+            logger.exception("Validation run execution failed: %s", exc)
             validation_run.status = ValidationRunStatus.FAILED
             if hasattr(validation_run, "ended_at"):
                 validation_run.ended_at = timezone.now()

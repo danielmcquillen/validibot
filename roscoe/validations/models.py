@@ -87,27 +87,26 @@ class Ruleset(TimeStampedModel):
 
     def clean(self):
         super().clean()
-        # Enforce valid engine per ruleset_type when provided via metadata["engine"]
-        engine = (self.metadata or {}).get("engine")
-        if not engine:
-            return
-        engine = str(engine).lower()
-        allowed = {
-            RulesetType.XML_SCHEMA: {
+
+        if self.ruleset_type == RulesetType.XML_SCHEMA:
+            # Enforce valid engine per ruleset_type when provided via metadata["engine"]
+            schema_type = (self.metadata or {}).get("schema_type")
+            if not schema_type:
+                self.metadata["schema_type"] = XMLSchemaType.XSD.name
+                return
+            schema_type = str(schema_type).upper()
+            if schema_type not in [
                 XMLSchemaType.RELAXNG,
                 XMLSchemaType.XSD,
                 XMLSchemaType.DTD,
-            },
-            RulesetType.JSON_SCHEMA: {"default"},
-        }.get(self.ruleset_type, {"default"})
-        if engine not in allowed:
-            raise ValidationError(
-                {
-                    "metadata": _(
-                        f"Engine '{engine}' is not valid for {self.ruleset_type}."
-                    ),
-                },
-            )
+            ]:
+                raise ValidationError(
+                    {
+                        "metadata": _(
+                            f"Schema type '{schema_type}' is not valid for {self.ruleset_type}."
+                        ),
+                    },
+                )
 
 
 class Validator(TimeStampedModel):
@@ -348,14 +347,22 @@ class ValidationStepRun(TimeStampedModel):
     def clean(self):
         super().clean()
 
-        if self.step and self.run and self.step.workflow_id != self.run.workflow_id:
+        if (
+            self.workflow_step
+            and self.validation_run
+            and self.workflow_step.workflow_id != self.validation_run.workflow_id
+        ):
             raise ValidationError(
                 {
-                    "step": _("Step must belong to the run's workflow."),
+                    "workflow_step": _("Step must belong to the run's workflow."),
                 },
             )
 
-        if self.step and self.step_order and self.step.order != self.step_order:
+        if (
+            self.workflow_step
+            and self.step_order
+            and self.workflow_step.order != self.step_order
+        ):
             raise ValidationError({"step_order": _("Must equal WorkflowStep.order.")})
 
 

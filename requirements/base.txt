@@ -34,5 +34,7 @@ drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 # Adding for filters in API and regular views
 django-filter==25.1
 
-# For handling XML
+# For validating XML
 lxml==6.0.1
+# For validating JSON
+jsonschema==4.25.1

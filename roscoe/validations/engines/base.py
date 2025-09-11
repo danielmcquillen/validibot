@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any
 from roscoe.validations.constants import Severity, ValidationType
 
 if TYPE_CHECKING:
-    from roscoe.validations.models import Ruleset, Submission, Validator
+    from roscoe.submissions.models import Submission
+    from roscoe.validations.models import Ruleset, Validator
 
 
 @dataclass

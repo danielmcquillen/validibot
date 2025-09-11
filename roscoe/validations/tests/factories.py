@@ -6,19 +6,22 @@ from factory.django import DjangoModelFactory
 from roscoe.projects.tests.factories import ProjectFactory
 from roscoe.submissions.tests.factories import SubmissionFactory
 from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.validations.constants import RulesetType
-from roscoe.validations.constants import Severity
-from roscoe.validations.constants import StepStatus
-from roscoe.validations.constants import ValidationRunStatus
-from roscoe.validations.constants import ValidationType
-from roscoe.validations.models import Artifact
-from roscoe.validations.models import Ruleset
-from roscoe.validations.models import ValidationFinding
-from roscoe.validations.models import ValidationRun
-from roscoe.validations.models import ValidationStepRun
-from roscoe.validations.models import Validator
-from roscoe.workflows.tests.factories import WorkflowFactory
-from roscoe.workflows.tests.factories import WorkflowStepFactory
+from roscoe.validations.constants import (
+    RulesetType,
+    Severity,
+    StepStatus,
+    ValidationRunStatus,
+    ValidationType,
+)
+from roscoe.validations.models import (
+    Artifact,
+    Ruleset,
+    ValidationFinding,
+    ValidationRun,
+    ValidationStepRun,
+    Validator,
+)
+from roscoe.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
 
 
 class RulesetFactory(DjangoModelFactory):
@@ -29,6 +32,8 @@ class RulesetFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Ruleset {n}")
     ruleset_type = RulesetType.JSON_SCHEMA
     version = "1"
+
+    # We don't need to define schema_type.
     # Give an empty schema by default to avoid validation errors
     metadata = factory.Dict(
         {
@@ -68,8 +73,8 @@ class ValidationStepRunFactory(DjangoModelFactory):
     class Meta:
         model = ValidationStepRun
 
-    run = factory.SubFactory(ValidationRunFactory)
-    step = factory.SubFactory(WorkflowStepFactory)
+    validation_run = factory.SubFactory(ValidationRunFactory)
+    workflow_step = factory.SubFactory(WorkflowStepFactory)
     step_order = factory.Sequence(lambda n: n * 10)
     status = StepStatus.PENDING
     summary = factory.Faker("sentence")
@@ -82,8 +87,8 @@ class ValidationFindingFactory(DjangoModelFactory):
     step_run = factory.SubFactory(ValidationStepRunFactory)
     severity = Severity.ERROR
     message = factory.Faker("sentence")
-    line_number = factory.Faker("random_int", min=1, max=1000)
-    column_number = factory.Faker("random_int", min=1, max=100)
+    path = factory.Faker("file_path", depth=3)
+    meta = factory.Dict({})
 
 
 class ArtifactFactory(DjangoModelFactory):

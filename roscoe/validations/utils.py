@@ -1,4 +1,6 @@
-from validations.constants import ValidationType
+from django.utils.translation import gettext_lazy as _
+
+from roscoe.validations.constants import ValidationType
 
 
 def create_default_validators():
@@ -10,17 +12,19 @@ def create_default_validators():
 
     default_validators = [
         {
-            "name": "JSON Schema Validation",
+            "name": _("JSON Schema Validation"),
             "slug": "json-schema-validation",
-            "description": "Validate JSON payload against a predefined schema.",
+            "description": _("Validate JSON payload against a predefined schema."),
             "validation_type": ValidationType.JSON_SCHEMA,
+            "version": "1.0",
             "is_active": True,
         },
         {
-            "name": "XSL Validation",
-            "slug": "xsl-validation",
-            "description": "Validate XML payload against a predefined schema.",
+            "name": _("XML Validation"),
+            "slug": "xml-validation",
+            "description": _("Validate XML payload against a predefined schema."),
             "validation_type": ValidationType.XML_SCHEMA,
+            "version": "1.0",
             "is_active": True,
         },
     ]

@@ -3,20 +3,14 @@ from __future__ import annotations
 import uuid
 
 from django.core.exceptions import ValidationError
-from django.db import models
-from django.db import transaction
-from django.db.models import Exists
-from django.db.models import OuterRef
-from django.db.models import Q
+from django.db import models, transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
 from roscoe.users.constants import RoleCode
-from roscoe.users.models import Membership
-from roscoe.users.models import Organization
-from roscoe.users.models import Role
-from roscoe.users.models import User
+from roscoe.users.models import Membership, Organization, Role, User
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -243,10 +237,10 @@ class WorkflowStep(TimeStampedModel):
         ):
             raise ValidationError({"order": _("Order already used in this workflow.")})
 
-        if self.ruleset and self.ruleset.type != self.validator.type:
+        if self.ruleset and self.ruleset.ruleset_type != self.validator.validator_type:
             raise ValidationError(
                 {
-                    "ruleset": _("Ruleset type must match validator type."),
+                    "ruleset": _("Ruleset ruleset_type must match validator type."),
                 },
             )
 

@@ -210,7 +210,7 @@ def test_xml_xsd_happy_path(workflow_context):
 def test_xml_xsd_one_field_fails(workflow_context):
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(client, workflow, valid_product_xml())
+    data = _run_and_poll(client, workflow, invalid_product_xml())
     run_status = (data.get("status") or data.get("state") or "").upper()
     assert run_status == ValidationRunStatus.FAILED.name, (
         f"Unexpected status: {run_status}"

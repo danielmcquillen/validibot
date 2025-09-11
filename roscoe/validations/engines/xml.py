@@ -100,30 +100,30 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             from lxml import etree  # type: ignore
         except Exception as e:  # pragma: no cover
             return ValidationResult(
-                False,
-                [
+                passed=False,
+                issues=[
                     ValidationIssue(
                         "",
                         _("lxml not installed or unusable: ") + str(e),
                         Severity.ERROR,
                     )
                 ],
-                {"exception": type(e).__name__},
+                stats={"exception": type(e).__name__},
             )
 
         schema_type = self._resolve_schema_type(ruleset)
         raw = self._get_schema_raw(validator=validator, ruleset=ruleset)
         if not raw:
             return ValidationResult(
-                False,
-                [
+                passed=False,
+                issues=[
                     ValidationIssue(
                         "",
                         _("Missing 'schema' in ruleset/validator config."),
                         Severity.ERROR,
                     )
                 ],
-                {"schema_type": schema_type},
+                stats={"schema_type": schema_type},
             )
 
         # Parse input
@@ -175,15 +175,17 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             schema = self._load_schema(schema_type=schema_type, raw=raw)
         except Exception as e:
             return ValidationResult(
-                False,
-                [ValidationIssue("", str(e), Severity.ERROR)],
-                {"schema_type": schema_type, "exception": type(e).__name__},
+                passed=False,
+                issues=[ValidationIssue("", str(e), Severity.ERROR)],
+                stats={"schema_type": schema_type, "exception": type(e).__name__},
             )
 
         ok = schema.validate(doc)
         if ok:
             return ValidationResult(
-                True, [], {"error_count": 0, "schema_type": schema_type}
+                passed=True,
+                issues=[],
+                stats={"error_count": 0, "schema_type": schema_type},
             )
 
         issues: list[ValidationIssue] = []

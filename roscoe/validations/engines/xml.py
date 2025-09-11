@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from xml.etree.ElementTree import XML
 
 from django.utils.translation import gettext as _
-from lxml import etree
 
-from roscoe.validations.constants import Severity, ValidationType
+from roscoe.validations.constants import Severity, ValidationType, XMLSchemaType
 from roscoe.validations.engines.base import (
     BaseValidatorEngine,
     ValidationIssue,
@@ -14,13 +14,16 @@ from roscoe.validations.engines.base import (
 from roscoe.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
-    from roscoe.validations.models import Ruleset, Submission, Validator
+    from roscoe.submissions.models import Submission
+    from roscoe.validations.models import Ruleset, Validator
 
 
 @register_engine(ValidationType.XML_SCHEMA)
-class XmlSchemaValidator(BaseValidatorEngine):
+class XmlSchemaValidatorEngine(BaseValidatorEngine):
     """
-    XML Schema (XSD) validator.
+    XML validator that supports XSD (default) and Relax NG.
+    Select engine via ruleset.metadata['engine'] or ruleset.config['engine'] ∈ {'XSD','RELAXNG'}.
+    Provide the schema under ruleset.metadata['schema'] or ruleset.config['schema'].
 
     Expects a 'schema' entry in config:
       - str: the XSD schema as a string
@@ -31,94 +34,168 @@ class XmlSchemaValidator(BaseValidatorEngine):
       }
     """
 
-    def _load_schema(self) -> Any:
-        """
-        Parse the XSD schema string and return an lxml.etree.XMLSchema object.
-        """
-        raw = self.config.get("schema")
-        if raw is None:
-            raise ValueError(_("Missing 'schema' in validator config."))
-        if isinstance(raw, str):
-            try:
-                schema_root = etree.XML(raw.encode("utf-8"))
-                return etree.XMLSchema(schema_root)
-            except Exception as e:
-                raise ValueError(f"Invalid XSD schema: {e}") from e
-        raise TypeError(_("Unsupported schema type; expected string."))
+    def _resolve_schema_type(self, ruleset) -> str:
+        schema_type = None
+        if ruleset is not None:
+            for cfg in (
+                getattr(ruleset, "config", None),
+                getattr(ruleset, "metadata", None),
+            ):
+                if isinstance(cfg, dict) and "schema_type" in cfg:
+                    schema_type = (cfg["schema_type"] or "").strip().upper()
+                    break
+        if schema_type not in [
+            XMLSchemaType.XSD,
+            XMLSchemaType.RELAXNG,
+        ]:
+            err_msg = _(
+                "Invalid or missing XML schema_type '%(schema_type)s'; must be 'XSD' or 'RELAXNG'."
+            ) % {"schema_type": schema_type or "<missing>"}
+            raise ValueError(err_msg)
+        return schema_type
 
-    def validate_text(
+    def _load_schema(self, schema_type: str, raw: str) -> Any:
+        """
+        Parse the XML schema string and return an lxml schema object.
+        """
+        try:
+            from lxml import etree  # type: ignore
+        except Exception as e:  # pragma: no cover
+            raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
+
+        if schema_type == XMLSchemaType.XSD.name:
+            return etree.XMLSchema(etree.XML(raw.encode("utf-8")))
+        if schema_type == XMLSchemaType.RELAXNG.name:
+            return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
+        raise ValueError(_("Unsupported XML engine: ") + schema_type)
+
+    def _get_schema_raw(self, *, validator, ruleset) -> str | None:
+        raw = None
+        if ruleset is not None:
+            for cfg in (
+                getattr(ruleset, "config", None),
+                getattr(ruleset, "metadata", None),
+            ):
+                if isinstance(cfg, dict) and "schema" in cfg:
+                    raw = cfg["schema"]
+                    break
+        if raw is None and isinstance(getattr(validator, "config", None), dict):
+            raw = validator.config.get("schema")
+        if isinstance(raw, str):
+            return raw
+        return None
+
+    def validate(
         self,
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset,
     ) -> ValidationResult:
         """
-        Validate the provided XML text against the configured XSD schema.
+        Validate the provided XML against the configured schema (XSD or Relax NG).
         Returns a ValidationResult with ERROR issues for any schema violations.
         """
+        # lxml optional (import lazily)
+        try:
+            from lxml import etree  # type: ignore
+        except Exception as e:  # pragma: no cover
+            return ValidationResult(
+                False,
+                [
+                    ValidationIssue(
+                        "",
+                        _("lxml not installed or unusable: ") + str(e),
+                        Severity.ERROR,
+                    )
+                ],
+                {"exception": type(e).__name__},
+            )
+
+        schema_type = self._resolve_schema_type(ruleset)
+        raw = self._get_schema_raw(validator=validator, ruleset=ruleset)
+        if not raw:
+            return ValidationResult(
+                False,
+                [
+                    ValidationIssue(
+                        "",
+                        _("Missing 'schema' in ruleset/validator config."),
+                        Severity.ERROR,
+                    )
+                ],
+                {"schema_type": schema_type},
+            )
+
+        # Parse input
+        # Prefer Submission.get_content() if available
+        try:
+            content = submission.get_content() if submission else None
+        except Exception as e:
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        "",
+                        _("Could not read submission content: ") + str(e),
+                        Severity.ERROR,
+                    )
+                ],
+                stats={"schema_type": schema_type, "exception": type(e).__name__},
+            )
+        if not content:
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        "",
+                        _("Empty submission content."),
+                        Severity.ERROR,
+                    )
+                ],
+                stats={"schema_type": schema_type},
+            )
+
         # Parse XML payload
-
-        content = submission.get_content()
-
         try:
             parser = etree.XMLParser(recover=False)
-            doc = etree.fromstring(content.encode("utf-8"), parser=parser)
-        except Exception as e:  # noqa: BLE001
+            doc = etree.fromstring((content or "").encode("utf-8"), parser=parser)
+        except Exception as e:
             return ValidationResult(
                 passed=False,
                 issues=[
                     ValidationIssue(
-                        path="",
-                        message=f"Invalid XML payload: {e}",
-                        severity=Severity.ERROR,
-                    ),
+                        "", _("Invalid XML payload: ") + str(e), Severity.ERROR
+                    )
                 ],
-                stats={"exception": type(e).__name__},
+                stats={"schema_type": schema_type, "exception": type(e).__name__},
             )
 
-        # Load/compile schema
+        # Compile schema and validate
         try:
-            schema = self._load_schema()
-        except Exception as e:  # noqa: BLE001
+            schema = self._load_schema(schema_type=schema_type, raw=raw)
+        except Exception as e:
             return ValidationResult(
-                passed=False,
-                issues=[
-                    ValidationIssue(
-                        path="",
-                        message=str(e),
-                        severity=Severity.ERROR,
-                    ),
-                ],
-                stats={"exception": type(e).__name__},
+                False,
+                [ValidationIssue("", str(e), Severity.ERROR)],
+                {"schema_type": schema_type, "exception": type(e).__name__},
             )
 
-        # Validate and collect issues
-        is_valid = schema.validate(doc)
-        if is_valid:
-            return ValidationResult(passed=True, issues=[], stats={"error_count": 0})
+        ok = schema.validate(doc)
+        if ok:
+            return ValidationResult(
+                True, [], {"error_count": 0, "schema_type": schema_type}
+            )
 
-        # Extract details from the schema's error log
         issues: list[ValidationIssue] = []
-        for err in schema.error_log:
-            # lxml error logs include message, line, column; path may be
-            # available in some cases
+        for err in getattr(schema, "error_log", []) or []:
             path = (
                 getattr(err, "path", "")
-                or f"$ (line {getattr(err, 'line', '?')}, column {getattr(err, 'column', '?')})"  # noqa: E501
+                or f"$ (line {getattr(err, 'line', '?')}, column {getattr(err, 'column', '?')})"
             )
-            issues.append(
-                ValidationIssue(
-                    path=path,
-                    message=str(err.message),
-                    severity=Severity.ERROR,
-                ),
-            )
+            issues.append(ValidationIssue(path, str(err.message), Severity.ERROR))
 
         return ValidationResult(
             passed=False,
             issues=issues,
-            stats={
-                "error_count": len(issues),
-                "first_error": issues[0].message if issues else None,
-            },
+            stats={"error_count": len(issues), "schema_type": schema_type},
         )

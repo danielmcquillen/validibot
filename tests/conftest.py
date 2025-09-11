@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -14,12 +13,44 @@ BASE_DIR = Path(__file__).resolve().parent
 def load_json_asset():
     """
     Load a JSON asset relative to tests/assets.
-    Usage: load_json_asset("json/example_product_schema.json")
+    Usage: load_json_asset("example_product_schema.json")
     """
+
     def _loader(rel_path: str):
-        path = BASE_DIR / "assets" / rel_path
+        path = BASE_DIR / "assets" / "json" / rel_path
         with path.open("r", encoding="utf-8") as f:
             return json.load(f)
+
+    return _loader
+
+
+@pytest.fixture
+def load_xsd_asset():
+    """
+    Load an XSD asset relative to tests/assets.
+    Usage: load_xsd_asset("example_product_schema.xsd")
+    """
+
+    def _loader(rel_path: str):
+        path = BASE_DIR / "assets" / "xsd" / rel_path
+        with path.open("r", encoding="utf-8") as f:
+            return f.read()
+
+    return _loader
+
+
+@pytest.fixture
+def load_rng_asset():
+    """
+    Load an RNG asset relative to tests/assets.
+    Usage: load_rng_asset("example_product_schema.rng")
+    """
+
+    def _loader(rel_path: str) -> str:
+        path = BASE_DIR / "assets" / "rng" / rel_path
+        with path.open("r", encoding="utf-8") as f:
+            return f.read()
+
     return _loader
 
 

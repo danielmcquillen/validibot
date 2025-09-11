@@ -251,10 +251,10 @@ class ValidationRunService:
             if hasattr(validation_run, "error"):
                 validation_run.error = str(exc)
             validation_run.save()
-            return ValidationRunSummary(
+            return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
-                error=str(exc),
+                error="Validation run execution failed.",
             )
 
         validation_run_summary: ValidationRunSummary = ValidationRunSummary(

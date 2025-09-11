@@ -18,6 +18,7 @@ from roscoe.validations.constants import (
     StepStatus,
     ValidationRunStatus,
     ValidationType,
+    XMLSchemaType,
 )
 from roscoe.workflows.models import Workflow, WorkflowStep
 
@@ -92,7 +93,11 @@ class Ruleset(TimeStampedModel):
             return
         engine = str(engine).lower()
         allowed = {
-            RulesetType.XML_SCHEMA: {"xsd", "dtd", "relaxng"},
+            RulesetType.XML_SCHEMA: {
+                XMLSchemaType.RELAXNG,
+                XMLSchemaType.XSD,
+                XMLSchemaType.DTD,
+            },
             RulesetType.JSON_SCHEMA: {"default"},
         }.get(self.ruleset_type, {"default"})
         if engine not in allowed:

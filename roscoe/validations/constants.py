@@ -37,3 +37,9 @@ class Severity(TextChoices):
     INFO = "INFO", _("Info")
     WARNING = "WARNING", _("Warning")
     ERROR = "ERROR", _("Error")
+
+
+class XMLSchemaType(TextChoices):
+    DTD = "DTD", _("Document Type Definition (DTD)")
+    XSD = "XSD", _("XML Schema Definition (XSD)")
+    RELAXNG = "RELAXNG", _("Relax NG (RNG)")

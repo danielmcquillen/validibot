@@ -65,7 +65,7 @@ def workflow_context(load_json_asset, api_client):
         validation_type=ValidationType.JSON_SCHEMA,
     )
 
-    schema = load_json_asset("json/example_product_schema.json")
+    schema = load_json_asset("example_product_schema.json")
     ruleset = RulesetFactory(
         org=org,
         user=user,

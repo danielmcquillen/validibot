@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
-from django.core.files.base import File
+from django.core.files.base import ContentFile, File
 from django.db import models
 from django.db.models import Q
 from django.utils.timezone import now
@@ -19,8 +18,7 @@ from django_extensions.db.models import TimeStampedModel
 
 from roscoe.projects.models import Project
 from roscoe.submissions.constants import SubmissionFileType
-from roscoe.users.models import Organization
-from roscoe.users.models import User
+from roscoe.users.models import Organization, User
 from roscoe.workflows.models import Workflow
 
 if TYPE_CHECKING:
@@ -83,12 +81,18 @@ class Submission(TimeStampedModel):
             # At least one of content or input_file
             models.CheckConstraint(
                 name="submission_content_present",
-                check=Q(content__gt="") | Q(input_file__gt=""),
+                condition=(
+                    Q(content__gt="") |
+                    (Q(input_file__isnull=False) & ~Q(input_file=""))
+                ),
             ),
             # Not both
             models.CheckConstraint(
                 name="submission_content_not_both",
-                check=~(Q(content__gt="") & Q(input_file__gt="")),
+                condition=~(
+                    Q(content__gt="") &
+                    (Q(input_file__isnull=False) & ~Q(input_file=""))
+                ),
             ),
         ]
         ordering = ["-created"]

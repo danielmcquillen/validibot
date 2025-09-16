@@ -102,9 +102,7 @@ class Ruleset(TimeStampedModel):
             if schema_type not in set(XMLSchemaType.values):
                 raise ValidationError(
                     {
-                        "metadata": _(
-                            "Schema type '%(st)s' is not valid for %(rt)s."
-                        )
+                        "metadata": _("Schema type '%(st)s' is not valid for %(rt)s.")
                         % {"st": schema_type, "rt": self.ruleset_type},
                     },
                 )
@@ -205,7 +203,7 @@ class ValidationRun(TimeStampedModel):
             # ended_at cannot be before started_at (allow nulls)
             models.CheckConstraint(
                 name="ck_run_times_valid",
-                check=Q(ended_at__isnull=True)
+                condition=Q(ended_at__isnull=True)
                 | Q(started_at__isnull=True)
                 | Q(ended_at__gte=models.F("started_at")),
             ),
@@ -304,7 +302,7 @@ class ValidationStepRun(TimeStampedModel):
             ),
             models.CheckConstraint(
                 name="ck_step_run_times_valid",
-                check=Q(ended_at__isnull=True)
+                condition=Q(ended_at__isnull=True)
                 | Q(started_at__isnull=True)
                 | Q(ended_at__gte=models.F("started_at")),
             ),

@@ -2,21 +2,34 @@ import base64
 import logging
 
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
+from django.http import HttpResponse, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.urls import reverse, reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from rest_framework import permissions, status, viewsets
+from django.views.generic import DetailView, ListView, UpdateView
+from django.views.generic.edit import CreateView, DeleteView
+from rest_framework import permissions
+from rest_framework import status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from roscoe.submissions.ingest import prepare_inline_text, prepare_uploaded_file
+from roscoe.submissions.ingest import prepare_inline_text
+from roscoe.submissions.ingest import prepare_uploaded_file
 from roscoe.submissions.models import Submission
 from roscoe.users.models import User
+from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunStartSerializer
 from roscoe.validations.services.validation_run import ValidationRunService
 from roscoe.workflows.constants import SUPPORTED_CONTENT_TYPES
+from roscoe.workflows.forms import WorkflowForm
 from roscoe.workflows.models import Workflow
-from roscoe.workflows.request_utils import extract_request_basics, is_raw_body_mode
+from roscoe.workflows.request_utils import extract_request_basics
+from roscoe.workflows.request_utils import is_raw_body_mode
 from roscoe.workflows.serializers import WorkflowSerializer
 
 logger = logging.getLogger(__name__)
@@ -308,3 +321,172 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
         return self._start_validation_run_for_workflow(request, workflow)
+
+
+# UI Views
+# ------------------------------------------------------------------------------
+
+
+class WorkflowAccessMixin(LoginRequiredMixin):
+    """Reusable helpers for workflow UI views."""
+
+    def get_workflow_queryset(self):
+        user = self.request.user
+        return (
+            Workflow.objects.for_user(user)
+            .select_related("org", "user")
+            .prefetch_related("runs")
+            .order_by("name", "-version")
+        )
+
+    def get_queryset(self):
+        return self.get_workflow_queryset()
+
+
+class WorkflowListView(WorkflowAccessMixin, ListView):
+    template_name = "workflows/workflow_list.html"
+    context_object_name = "workflows"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        search = self.request.GET.get("q", "").strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "search_query": self.request.GET.get("q", ""),
+                "create_url": reverse("workflows:workflow_create"),
+            },
+        )
+        return context
+
+
+class WorkflowDetailView(WorkflowAccessMixin, DetailView):
+    template_name = "workflows/workflow_detail.html"
+    context_object_name = "workflow"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = context["workflow"]
+        recent_runs = workflow.runs.all().order_by("-created")[:5]
+        context.update(
+            {
+                "breadcrumbs": [
+                    (reverse("workflows:workflow_list"), "Workflows"),
+                    ("", workflow.name),
+                ],
+                "related_validations_url": reverse(
+                    "workflows:workflow_validation_list",
+                    kwargs={"pk": workflow.pk},
+                ),
+                "recent_runs": recent_runs,
+            },
+        )
+        return context
+
+
+class WorkflowFormViewMixin(WorkflowAccessMixin):
+    form_class = WorkflowForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+
+class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
+    template_name = "workflows/workflow_form.html"
+
+    def form_valid(self, form):
+        user = self.request.user
+        org = user.get_current_org()
+        if org is None:
+            form.add_error(None, _("You need an organization before creating workflows."))
+            return self.form_invalid(form)
+        form.instance.org = org
+        form.instance.user = user
+        messages.success(self.request, _("Workflow created."))
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse("workflows:workflow_detail", args=[self.object.pk])
+
+
+class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
+    template_name = "workflows/workflow_form.html"
+
+    def form_valid(self, form):
+        messages.success(self.request, _("Workflow updated."))
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse("workflows:workflow_detail", args=[self.object.pk])
+
+
+class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
+    template_name = "workflows/partials/workflow_confirm_delete.html"
+    success_url = reverse_lazy("workflows:workflow_list")
+
+    def post(self, request, *args, **kwargs):
+        # Support HTMX POST fallback
+        return self.delete(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+        self.object.delete()
+        messages.success(request, _("Workflow deleted."))
+        if request.headers.get("HX-Request"):
+            target = request.headers.get("HX-Target", "")
+            response = HttpResponse("")
+            response["HX-Trigger"] = "workflowDeleted"
+            if target.startswith("workflow-card-wrapper-"):
+                return response
+            response["HX-Redirect"] = success_url
+            return response
+        if request.method == "DELETE":
+            return HttpResponse(status=204)
+        return HttpResponseRedirect(success_url)
+
+
+class WorkflowValidationListView(WorkflowAccessMixin, ListView):
+    template_name = "validations/workflow_validation_list.html"
+    context_object_name = "validations"
+
+    def get_workflow(self):
+        if not hasattr(self, "_workflow"):
+            self._workflow = get_object_or_404(
+                self.get_workflow_queryset(),
+                pk=self.kwargs.get("pk"),
+            )
+        return self._workflow
+
+    def get_queryset(self):
+        workflow = self.get_workflow()
+        return (
+            ValidationRun.objects.filter(workflow=workflow)
+            .select_related("workflow", "submission", "org")
+            .order_by("-created")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        context.update(
+            {
+                "workflow": workflow,
+                "breadcrumbs": [
+                    (reverse("workflows:workflow_list"), "Workflows"),
+                    (
+                        reverse("workflows:workflow_detail", args=[workflow.pk]),
+                        workflow.name,
+                    ),
+                    ("", _("Validations")),
+                ],
+            },
+        )
+        return context

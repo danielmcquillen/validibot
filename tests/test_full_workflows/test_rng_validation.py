@@ -82,27 +82,6 @@ def extract_issues(data: dict) -> list[dict]:
 # Example XML payloads and schemas
 
 
-def valid_product_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<product>
-  <sku>ABCD1234</sku>
-  <name>Widget Mini</name>
-  <rating>95</rating>
-</product>
-""".strip()
-
-
-def invalid_product_xml() -> str:
-    # rating too high (150)
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<product>
-  <sku>ABCD1234</sku>
-  <name>Widget Mini</name>
-  <rating>150</rating>
-</product>
-""".strip()
-
-
 @pytest.fixture
 def workflow_context(load_rng_asset, api_client):
     """
@@ -194,10 +173,11 @@ def _run_and_poll(
     return data
 
 
-def test_xml_rng_happy_path(workflow_context):
+def test_xml_rng_happy_path(load_xml_asset, workflow_context):
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(client, workflow, valid_product_xml())
+    valid_product_xml = load_xml_asset("valid_product.xml")
+    data = _run_and_poll(client, workflow, content=valid_product_xml)
     run_status = (data.get("status") or data.get("state") or "").upper()
     assert run_status == ValidationRunStatus.SUCCEEDED.name, (
         f"Unexpected status: {run_status} payload={data}"
@@ -207,10 +187,11 @@ def test_xml_rng_happy_path(workflow_context):
     assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
 
-def test_xml_rng_one_field_fails(workflow_context):
+def test_xml_rng_one_field_fails(load_xml_asset, workflow_context):
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(client, workflow, invalid_product_xml())
+    invalid_product_xml = load_xml_asset("invalid_product.xml")
+    data = _run_and_poll(client, workflow, content=invalid_product_xml)
     run_status = (data.get("status") or data.get("state") or "").upper()
     assert run_status == ValidationRunStatus.FAILED.name, (
         f"Unexpected status: {run_status}"

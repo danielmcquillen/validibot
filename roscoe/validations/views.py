@@ -1,7 +1,14 @@
 from datetime import timedelta
 
 import django_filters
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import HttpResponse, HttpResponseRedirect
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.views.generic import DetailView, ListView
+from django.views.generic.edit import DeleteView
+from django.utils.http import urlencode
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
@@ -10,6 +17,7 @@ from rest_framework import viewsets
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
+from roscoe.workflows.models import Workflow
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -62,3 +70,120 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(created__gte=cutoff)
 
         return qs
+
+
+# UI Views
+# ------------------------------------------------------------------------------
+
+
+class ValidationRunAccessMixin(LoginRequiredMixin):
+    """Shared queryset helpers for validation run UI views."""
+
+    allowed_sorts = {
+        "created": "created",
+        "-created": "-created",
+        "status": "status",
+        "-status": "-status",
+        "workflow": "workflow__name",
+        "-workflow": "-workflow__name",
+    }
+
+    def get_base_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ValidationRun.objects.none()
+        org_ids = user.memberships.filter(is_active=True).values_list("org_id", flat=True)
+        return (
+            ValidationRun.objects.filter(org_id__in=org_ids)
+            .select_related("workflow", "submission", "org")
+            .order_by("-created")
+        )
+
+    def get_ordering(self):
+        sort = self.request.GET.get("sort", "-created")
+        return self.allowed_sorts.get(sort, "-created")
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+
+class ValidationRunListView(ValidationRunAccessMixin, ListView):
+    template_name = "validations/validation_list.html"
+    context_object_name = "validations"
+    paginate_by = 25
+
+    def get_queryset(self):
+        qs = self.get_base_queryset()
+        status_filter = self.request.GET.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        workflow_filter = self.request.GET.get("workflow")
+        if workflow_filter:
+            qs = qs.filter(workflow_id=workflow_filter)
+        ordering = self.get_ordering()
+        return qs.order_by(ordering)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "current_sort": self.request.GET.get("sort", "-created"),
+                "status_filter": self.request.GET.get("status", ""),
+                "status_choices": ValidationRunStatus.choices,
+                "workflow_options": Workflow.objects.for_user(self.request.user),
+                "query_string": self._get_base_query_string(),
+            },
+        )
+        return context
+
+    def _get_base_query_string(self):
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        return urlencode(params)
+
+
+class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
+    template_name = "validations/validation_detail.html"
+    context_object_name = "validation"
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validation = context["validation"]
+        breadcrumbs = [
+            (reverse("validations:validation_list"), "Validations"),
+            ("", f"Run #{validation.pk}"),
+        ]
+        context.update(
+            {
+                "breadcrumbs": breadcrumbs,
+            },
+        )
+        return context
+
+
+class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
+    template_name = "validations/partials/validation_confirm_delete.html"
+    success_url = reverse_lazy("validations:validation_list")
+
+    def post(self, request, *args, **kwargs):
+        return self.delete(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        success_url = self.get_success_url()
+        self.object.delete()
+        messages.success(request, "Validation run removed.")
+        if request.headers.get("HX-Request"):
+            target = request.headers.get("HX-Target", "")
+            response = HttpResponse("")
+            response["HX-Trigger"] = "validationDeleted"
+            if target.startswith("validation-row-"):
+                return response
+            response["HX-Redirect"] = success_url
+            return response
+        if request.method == "DELETE":
+            return HttpResponse(status=204)
+        return HttpResponseRedirect(success_url)

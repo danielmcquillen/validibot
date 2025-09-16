@@ -79,30 +79,6 @@ def extract_issues(data: dict) -> list[dict]:
     return collected
 
 
-# Example XML payloads and schemas
-
-
-def valid_product_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<product>
-  <sku>ABCD1234</sku>
-  <name>Widget Mini</name>
-  <rating>95</rating>
-</product>
-""".strip()
-
-
-def invalid_product_xml() -> str:
-    # rating too high (150)
-    return """<?xml version="1.0" encoding="UTF-8"?>
-<product>
-  <sku>ABCD1234</sku>
-  <name>Widget Mini</name>
-  <rating>150</rating>
-</product>
-""".strip()
-
-
 @pytest.fixture
 def workflow_context(load_xsd_asset, api_client):
     """
@@ -117,7 +93,7 @@ def workflow_context(load_xsd_asset, api_client):
         membership: Membership = user.memberships.get(org=org)  # type: ignore[attr-defined]
         executor_role: Role = Role.objects.get(code=RoleCode.EXECUTOR)
         membership.roles.add(executor_role)
-    except Exception as e:
+    except Exception:
         # Guarantee access in tests even if role wiring differs
         user.is_superuser = True
         user.save()
@@ -194,10 +170,15 @@ def _run_and_poll(
     return data
 
 
-def test_xml_xsd_happy_path(workflow_context):
+def test_xml_xsd_happy_path(load_xml_asset, workflow_context):
+    valid_product_xml = load_xml_asset("valid_product.xml")
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(client, workflow, valid_product_xml())
+    data = _run_and_poll(
+        client=client,
+        workflow=workflow,
+        content=valid_product_xml,
+    )
     run_status = (data.get("status") or data.get("state") or "").upper()
     assert run_status == ValidationRunStatus.SUCCEEDED.name, (
         f"Unexpected status: {run_status} payload={data}"
@@ -207,10 +188,15 @@ def test_xml_xsd_happy_path(workflow_context):
     assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
 
-def test_xml_xsd_one_field_fails(workflow_context):
+def test_xml_xsd_one_field_fails(load_xml_asset, workflow_context):
+    invalid_product_xml = load_xml_asset("invalid_product.xml")
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(client, workflow, invalid_product_xml())
+    data = _run_and_poll(
+        client=client,
+        workflow=workflow,
+        content=invalid_product_xml,
+    )
     run_status = (data.get("status") or data.get("state") or "").upper()
     assert run_status == ValidationRunStatus.FAILED.name, (
         f"Unexpected status: {run_status}"

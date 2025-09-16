@@ -1,0 +1,49 @@
+{% extends "app_base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Delete Validation" %} · Roscoe{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="bg-body-tertiary border-bottom">
+    <ol class="breadcrumb m-0 py-2 px-3">
+      <li class="breadcrumb-item"><a href="{% url 'validations:validation_list' %}">{% trans "Validations" %}</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{% trans "Delete" %}</li>
+    </ol>
+  </nav>
+{% endblock breadcrumbs %}
+
+{% block content %}
+  <div class="container-fluid py-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-danger">
+          <div class="card-header text-bg-danger">
+            <h1 class="h5 mb-0">{% trans "Confirm deletion" %}</h1>
+          </div>
+          <div class="card-body">
+            <p class="mb-4">
+              {% blocktrans with run=object.pk %}
+                Are you sure you want to delete validation run #{{ run }}? This action cannot be undone.
+              {% endblocktrans %}
+            </p>
+            <form method="post">
+              {% csrf_token %}
+              <div class="d-flex justify-content-end gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'validations:validation_detail' object.pk %}">
+                  {% trans "Cancel" %}
+                </a>
+                <button type="submit" class="btn btn-danger">
+                  {% trans "Delete" %}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}

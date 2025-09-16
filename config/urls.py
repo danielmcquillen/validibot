@@ -4,33 +4,36 @@ from django.contrib import admin
 
 # Use if async
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-from django.urls import include, path
+from django.urls import include
+from django.urls import path
 from django.views import defaults as default_views
 from django.views.generic import TemplateView
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from drf_spectacular.views import SpectacularAPIView
+from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 
 # from django_github_app.views import AsyncWebhookView
 
 urlpatterns = [
-    path(
-        "",
-        TemplateView.as_view(template_name="pages/home.html"),
-        name="home",
-    ),
+    # Marketing and misc pages...
+    path("", include("roscoe.marketing.urls", namespace="marketing")),
     path(
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),
         name="about",
     ),
+    # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),
-    path("dashboard/", include("roscoe.dashboard.urls", namespace="dashboard")),
-    path("users/", include("roscoe.users.urls", namespace="users")),
+    # App URLs...
+    path("app/dashboard/", include("roscoe.dashboard.urls", namespace="dashboard")),
+    path("app/users/", include("roscoe.users.urls", namespace="users")),
     path("accounts/", include("allauth.urls")),
-    path("projects/", include("roscoe.projects.urls", namespace="projects")),
-    path("tracking/", include("roscoe.tracking.urls", namespace="tracking")),
-    path("validations/", include("roscoe.validations.urls", namespace="validations")),
-    path("", include("roscoe.marketing.urls", namespace="marketing")),
+    path("app/projects/", include("roscoe.projects.urls", namespace="projects")),
+    path("app/workflows/", include("roscoe.workflows.urls", namespace="workflows")),
+    path("app/tracking/", include("roscoe.tracking.urls", namespace="tracking")),
+    path(
+        "app/validations/", include("roscoe.validations.urls", namespace="validations")
+    ),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
 

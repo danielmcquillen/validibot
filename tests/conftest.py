@@ -10,6 +10,21 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 @pytest.fixture
+def load_xml_asset():
+    """
+    Load a valid XML asset relative to tests/assets.
+    Usage: load_valid_xml_asset("example_product.xml")
+    """
+
+    def _loader(rel_path: str) -> str:
+        path = BASE_DIR / "assets" / "xml" / rel_path
+        with path.open("r", encoding="utf-8") as f:
+            return f.read()
+
+    return _loader
+
+
+@pytest.fixture
 def load_json_asset():
     """
     Load a JSON asset relative to tests/assets.

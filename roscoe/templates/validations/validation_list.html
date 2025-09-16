@@ -1,0 +1,222 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Validations" %} · Roscoe
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="bg-body-tertiary border-bottom">
+    <ol class="breadcrumb m-0 py-2 px-3">
+      <li class="breadcrumb-item active" aria-current="page">
+        {% trans "Validations" %}
+      </li>
+    </ol>
+  </nav>
+{% endblock breadcrumbs %}
+
+{% block content %}
+  <div class="container-fluid py-4" id="validation-list">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+      <div>
+        <h1 class="h3 mb-1">
+          {% trans "Validation Runs" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Track and review validations executed across your accounts." %}
+        </p>
+      </div>
+    </div>
+
+    <form method="get" class="row gy-2 gx-3 align-items-end mb-4">
+      <div class="col-sm-6 col-md-4 col-lg-3">
+        <label class="form-label" for="status-filter">
+          {% trans "Status" %}
+        </label>
+        <select class="form-select" id="status-filter" name="status">
+          <option value="">
+            {% trans "All statuses" %}
+          </option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}"
+                    {% if value == status_filter %}
+                      selected
+                    {% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-4 col-lg-3">
+        <label class="form-label" for="workflow-filter">
+          {% trans "Workflow" %}
+        </label>
+        <select class="form-select" id="workflow-filter" name="workflow">
+          <option value="">
+            {% trans "All workflows" %}
+          </option>
+          {% for wf in workflow_options %}
+            <option value="{{ wf.pk }}"
+                    {% if wf.pk|stringformat:'s' == request.GET.workflow %}
+                      selected
+                    {% endif %}>
+              {{ wf.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-4 col-lg-3">
+        <label class="form-label" for="sort-by">
+          {% trans "Sort" %}
+        </label>
+        <select class="form-select" id="sort-by" name="sort">
+          <option value="-created"
+                  {% if current_sort == '-created' %}
+                    selected
+                  {% endif %}>
+            {% trans "Newest first" %}
+          </option>
+          <option value="created" {% if current_sort == 'created' %}selected{% endif %}>
+            {% trans "Oldest first" %}
+          </option>
+          <option value="workflow"
+                  {% if current_sort == 'workflow' %}
+                    selected
+                  {% endif %}>
+            {% trans "Workflow A→Z" %}
+          </option>
+          <option value="-workflow"
+                  {% if current_sort == '-workflow' %}
+                    selected
+                  {% endif %}>
+            {% trans "Workflow Z→A" %}
+          </option>
+          <option value="status" {% if current_sort == 'status' %}selected{% endif %}>
+            {% trans "Status A→Z" %}
+          </option>
+          <option value="-status" {% if current_sort == '-status' %}selected{% endif %}>
+            {% trans "Status Z→A" %}
+          </option>
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-4 col-lg-2">
+        <button type="submit" class="btn btn-primary w-100">
+          {% trans "Apply" %}
+        </button>
+      </div>
+      {% if request.GET %}
+        <div class="col-12 col-md-auto">
+          <a class="btn btn-link text-decoration-none"
+             href="{% url 'validations:validation_list' %}">{% trans "Reset filters" %}</a>
+        </div>
+      {% endif %}
+    </form>
+
+    <div class="table-responsive shadow-sm rounded">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">
+              {% trans "ID" %}
+            </th>
+            <th scope="col">
+              {% trans "Workflow" %}
+            </th>
+            <th scope="col">
+              {% trans "Submission" %}
+            </th>
+            <th scope="col">
+              {% trans "Status" %}
+            </th>
+            <th scope="col" class="text-nowrap">
+              {% trans "Started" %}
+            </th>
+            <th scope="col" class="text-end">
+              {% trans "Actions" %}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for validation in validations %}
+            <tr id="validation-row-{{ validation.pk }}">
+              <td class="fw-semibold">
+                #{{ validation.pk }}
+              </td>
+              <td>
+                <a href="{% url 'workflows:workflow_detail' validation.workflow_id %}">{{ validation.workflow.name }}</a>
+              </td>
+              <td>
+                {% if validation.submission %}
+                  {{ validation.submission.name|default:validation.submission.pk }}
+                {% else %}
+                  <span class="text-muted">{% trans "N/A" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge text-bg-secondary">{{ validation.get_status_display }}</span>
+              </td>
+              <td>
+                {{ validation.created|date:"M j, Y g:i a" }}
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <a class="btn btn-outline-primary"
+                     href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
+                  <button type="button"
+                          class="btn btn-outline-danger"
+                          hx-delete="{% url 'validations:validation_delete' validation.pk %}"
+                          hx-target="#validation-row-{{ validation.pk }}"
+                          hx-swap="outerHTML"
+                          hx-confirm="{% trans "Delete this validation run?" %}">
+                    {% trans "Delete" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" class="text-center py-5 text-muted">
+                {% trans "No validation runs match your filters yet." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      <nav aria-label="{% trans "Pagination" %}" class="mt-4">
+        <ul class="pagination">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">&laquo;</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled">
+              <span class="page-link">&laquo;</span>
+            </li>
+          {% endif %}
+          <li class="page-item active">
+            <span class="page-link">{{ page_obj.number }}</span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link"
+                 href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">&raquo;</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled">
+              <span class="page-link">&raquo;</span>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+    {% endif %}
+  </div>
+{% endblock content %}

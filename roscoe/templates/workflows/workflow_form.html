@@ -1,0 +1,82 @@
+{% extends "app_base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% if object %}
+    {% trans "Edit Workflow" %} · {{ object.name }} · Roscoe
+  {% else %}
+    {% trans "New Workflow" %} · Roscoe
+  {% endif %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block breadcrumbs %}
+  <nav aria-label="breadcrumb" class="bg-body-tertiary border-bottom">
+    <ol class="breadcrumb m-0 py-2 px-3">
+      <li class="breadcrumb-item"><a href="{% url 'workflows:workflow_list' %}">{% trans "Workflows" %}</a></li>
+      <li class="breadcrumb-item active" aria-current="page">
+        {% if object %}
+          {% trans "Edit" %}
+        {% else %}
+          {% trans "New" %}
+        {% endif %}
+      </li>
+    </ol>
+  </nav>
+{% endblock breadcrumbs %}
+
+{% block content %}
+  <div class="container-fluid py-4">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-8 col-xl-6">
+        <div class="card shadow-sm">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">
+              {% if object %}
+                {% trans "Update Workflow" %}
+              {% else %}
+                {% trans "Create Workflow" %}
+              {% endif %}
+            </span>
+          </div>
+          <div class="card-body">
+            <form method="post" novalidate>
+              {% csrf_token %}
+              {{ form.non_field_errors }}
+              <div class="mb-3">
+                <label class="form-label" for="id_name">{% trans "Name" %}</label>
+                {{ form.name }}
+                {{ form.name.errors }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="id_version">
+                  {% trans "Version (optional)" %}
+                </label>
+                {{ form.version }}
+                {{ form.version.errors }}
+                {% if form.fields.version.help_text %}
+                  <div class="form-text">{{ form.fields.version.help_text }}</div>
+                {% endif %}
+              </div>
+              <div class="d-flex justify-content-end gap-2">
+                <a class="btn btn-outline-secondary" href="{% url 'workflows:workflow_list' %}">
+                  {% trans "Cancel" %}
+                </a>
+                <button type="submit" class="btn btn-primary">
+                  {% if object %}
+                    {% trans "Save changes" %}
+                  {% else %}
+                    {% trans "Create workflow" %}
+                  {% endif %}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}

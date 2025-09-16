@@ -5,6 +5,11 @@ from roscoe.validations import views
 app_name = "validations"
 
 urlpatterns = [
-    # Add your URL patterns here
-    # Example: path('', views.index, name='index'),
+    path("", views.ValidationRunListView.as_view(), name="validation_list"),
+    path("<int:pk>/", views.ValidationRunDetailView.as_view(), name="validation_detail"),
+    path(
+        "<int:pk>/delete/",
+        views.ValidationRunDeleteView.as_view(),
+        name="validation_delete",
+    ),
 ]

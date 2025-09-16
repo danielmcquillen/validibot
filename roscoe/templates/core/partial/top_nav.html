@@ -11,15 +11,15 @@
                 aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <a class="navbar-brand" href="{% url 'home' %}">Roscoe</a>
+        <a class="navbar-brand" href="{% url 'marketing:home' %}">Roscoe</a>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
 
             <ul class="navbar-nav me-auto">
                 {% block left_nav_items %}
                     {% if request.user.is_authenticated %}
                         <li class="nav-item">
-                            <a class="nav-link {% active_link 'dashboard' %}"
-                               href="{% url 'dashboard:my_dashboard' %}">{% translate "Dashboard" %}</a>
+                            <a class="nav-link {% active_link 'app' %}"
+                               href="{% url 'dashboard:my_dashboard' %}">{% translate "App" %}</a>
                         </li>
                     {% else %}
                         <li class="nav-item">

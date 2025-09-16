@@ -1,0 +1,36 @@
+{% load i18n core_tags %}
+
+<nav id="app-left-navbar"
+     class="flex-shrink-0 border-end bg-body-tertiary">
+    <div class="d-flex flex-column min-vh-100 p-3 gap-2">
+        <div class="d-flex align-items-center mb-3 mb-md-4">
+            <span class="fs-6 fw-semibold text-uppercase text-muted">{% trans "Workspace" %}</span>
+        </div>
+        <ul class="nav nav-pills flex-column gap-1" role="menu">
+            <li class="nav-item" role="none">
+                <a href="{% url 'dashboard:my_dashboard' %}"
+                   class="nav-link d-flex align-items-center gap-2 {% active_link 'dashboard' %}"
+                   role="menuitem">
+                    <i class="bi-speedometer2"></i>
+                    <span>{% trans "Dashboard" %}</span>
+                </a>
+            </li>
+            <li class="nav-item" role="none">
+                <a href="{% url 'workflows:workflow_list' %}"
+                   class="nav-link d-flex align-items-center gap-2 {% active_link 'workflows' %}"
+                   role="menuitem">
+                    <i class="bi-diagram-3"></i>
+                    <span>{% trans "Workflows" %}</span>
+                </a>
+            </li>
+            <li class="nav-item" role="none">
+                <a href="{% url 'validations:validation_list' %}"
+                   class="nav-link d-flex align-items-center gap-2 {% active_link 'validations' %}"
+                   role="menuitem">
+                    <i class="bi-shield-check"></i>
+                    <span>{% trans "Validations" %}</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>

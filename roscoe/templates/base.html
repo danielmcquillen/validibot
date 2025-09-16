@@ -21,50 +21,83 @@
     {% endblock javascript %}
 
     {% block css %}
-      <link href="{% static 'css/project.css' %}" rel="stylesheet" />
+      {% include 'core/partial/core_css_includes.html' %}
     {% endblock css %}
 
   </head>
 
-  <body class="{% block bodyclass %}{% endblock bodyclass %}">
+  <body {% if csrf_token %}
+          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        {% endif %}
+        class="{% block bodyclass %}
+                 d-flex flex-column min-vh-100 flex-grow-1
+               {% endblock bodyclass %}">
+
+    {# Messages section #}
+    {% block messages %}
+      <section id="messages">
+        {% if messages %}
+          {% include 'core/partial/toasts.html' %}
+        {% endif %}
+      </section>
+    {% endblock messages %}
 
     {% block body %}
 
-      <div class="mb-1">
-        {% include "core/partial/top_nav.html" %}
-      </div>
+      {# Top navigation bar #}
+      {% block top_nav %}
+        <div class="mb-1">
+          {% include "core/partial/top_nav.html" %}
+        </div>
+      {% endblock top_nav %}
 
-      <div class="container-fluid p-0">
+      {# Breadcrumbs #}
+      {% block breadcrumbs %}
+        <div id="breadcrumbs-wrapper"
+             class="
+                    {% block breadcrumbs_styles %}
+                    {% endblock breadcrumbs_styles %}">
 
-        {% block messages %}
-          <section id="messages">
-            {% if messages %}
-              {% include 'core/partial/toasts.html' %}
-            {% endif %}
-          </section>
-        {% endblock messages %}
+          {% include "core/partial/breadcrumbs.html" %}
+        </div>
+      {% endblock breadcrumbs %}
 
-        {% block main %}
-          {% block content %}
+      {% block main %}
 
-          {% endblock content %}
-        {% endblock main %}
+        <div class="container-fluid flex-grow-1 d-flex flex-row  w-100 h-100 p-0">
 
-      </div>
+          {# Left sidebar #}
+          {% block left_sidebar %}
+
+          {% endblock left_sidebar %}
+
+          <div class="d-flex flex-column w-100 h-100 p-0">
+            {% block content %}
+
+            {% endblock content %}
+          </div>
+
+          {% block right_sidebar %}
+
+          {% endblock right_sidebar %}
+        </div>
+      {% endblock main %}
+
     {% endblock body %}
 
+    {# modal block #}
     {% block modal %}
     {% endblock modal %}
 
     {% block inline_javascript %}
       {% comment %}
-    Script tags with only code, no src (defer by default). To run
-    with a "defer" so that you run inline code:
-    <script>
-      window.addEventListener('DOMContentLoaded', () => {
-        /* Run whatever you want */
-      });
-    </script>
+          Script tags with only code, no src (defer by default). To run
+          with a "defer" so that you run inline code:
+          <script>
+            window.addEventListener('DOMContentLoaded', () => {
+              /* Run whatever you want */
+            });
+          </script>
       {% endcomment %}
     {% endblock inline_javascript %}
 

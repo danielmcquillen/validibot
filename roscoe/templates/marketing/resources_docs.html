@@ -1,0 +1,25 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block breadcrumbs %}
+  {# no breadcrumbs for this page #}
+{% endblock breadcrumbs %}
+
+{% block content %}
+  <section class="container py-5">
+    <h1 class="display-5 fw-semibold mb-4">
+      {% trans "Documentation" %}
+    </h1>
+    <p class="lead text-muted">
+      {% trans "Our full documentation experience is on the way." %}
+    </p>
+    <p>
+      {% trans "For now, this page is a placeholder while we build an interactive docs experience within Roscoe." %}
+    </p>
+    <p>
+      {% trans "Looking for something specific? Drop us a line and we'll send you early access materials." %}
+    </p>
+    <a class="btn btn-outline-primary" href="{% url 'marketing:contact' %}">{% trans "Reach out" %}</a>
+  </section>
+{% endblock content %}

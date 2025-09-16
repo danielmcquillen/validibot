@@ -1,0 +1,117 @@
+{% load static core_tags %}
+
+{% comment %}
+This footer appears on all 'marketing' pages of the site available to all users, logged in or not.
+{% endcomment %}
+
+<footer id="marketing-footer">
+    <div class="container">
+        <div class="row">
+
+            <div class="col-12 col-lg-4 mt-4 mb-4">
+
+                <a class="navbar-brand" href="{% url 'marketing:home' %}">{% site_name %}</a>
+
+                <div class="kn-background">
+                    A simple description of this site goes here.
+                    <br />
+                    <a href="{% url 'marketing:about' %}" class="read-more">Read more about this site.</a>
+
+                </div>
+                <div class="kn-copyright">
+                    © All rights reserved except where noted.
+                </div>
+
+            </div>
+
+            <div class="col-12 col-lg-4 mt-4 mb-4">
+                <div class="kn-site-map">
+                    <h1>
+                        SITEMAP
+                    </h1>
+                    <nav>
+
+                        <h2>
+                            PRODUCT
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:features' %}">Features</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:pricing' %}">Pricing</a>
+                            </li>
+                            {% if request.user.is_authenticated %}
+                                <li>
+                                    <a href="{% url 'dashboard:my_dashboard' %}">My Dashboard</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+
+                        <h2>
+                            LEARN
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:resources_docs' %}">Docs</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:resources_blog' %}">Blog</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:resources_changelog' %}">Changelog</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:faq' %}">FAQ</a>
+                            </li>
+                        </ul>
+
+                        <h2>
+                            SUPPORT
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:contact' %}">Contact Us</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:help_center' %}">Help Center</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:status' %}">Status</a>
+                            </li>
+                        </ul>
+
+                        <h2>
+                            LEGAL
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:terms' %}">Terms of Service</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:privacy' %}">Privacy Policy</a>
+                            </li>
+                        </ul>
+                    </nav>
+
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-4 mt-4 newsletter-column">
+                <div class="about-newsletter-signup">
+                    <h1>
+                        NEWSLETTER
+                    </h1>
+                    <p>
+                        Don't miss out! Sign up for our email newsletter to
+                        get the latest news and updates.
+                    </p>
+                    {% comment %}
+                        Newsletter sign up form can go here.
+                    {% endcomment %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</footer>

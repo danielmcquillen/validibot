@@ -1,0 +1,50 @@
+{% extends "marketing_base.html" %}
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="text-center mb-5">
+      <h1 class="display-5 fw-semibold">{% trans "Resources" %}</h1>
+      <p class="lead text-muted">{% trans "Explore tutorials, guides, and stories from teams building with Roscoe." %}</p>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h2 class="h5 fw-semibold">{% trans "Docs" %}</h2>
+            <p class="text-muted flex-grow-1">{% trans "Reference guides and examples to help you integrate Roscoe into your workflow." %}</p>
+            <a class="stretched-link" href="{% url 'marketing:resources_docs' %}">{% trans "View docs" %}</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h2 class="h5 fw-semibold">{% trans "Blog" %}</h2>
+            <p class="text-muted flex-grow-1">{% trans "Best practices, release notes, and interviews with teams who trust Roscoe." %}</p>
+            <a class="stretched-link" href="{% url 'marketing:resources_blog' %}">{% trans "Read the blog" %}</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h2 class="h5 fw-semibold">{% trans "YouTube" %}</h2>
+            <p class="text-muted flex-grow-1">{% trans "Watch walkthroughs and product tours to see Roscoe in action." %}</p>
+            <a class="stretched-link" href="{% url 'marketing:resources_youtube' %}">{% trans "Visit channel" %}</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h2 class="h5 fw-semibold">{% trans "Changelog" %}</h2>
+            <p class="text-muted flex-grow-1">{% trans "See what shipped recently and how it makes your team faster." %}</p>
+            <a class="stretched-link" href="{% url 'marketing:resources_changelog' %}">{% trans "View updates" %}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

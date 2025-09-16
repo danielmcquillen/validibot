@@ -5,12 +5,17 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
+from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import DetailView, ListView, UpdateView
-from django.views.generic.edit import CreateView, DeleteView
+from django.views.generic import DetailView
+from django.views.generic import ListView
+from django.views.generic import UpdateView
+from django.views.generic.edit import CreateView
+from django.views.generic.edit import DeleteView
 from rest_framework import permissions
 from rest_framework import status
 from rest_framework import viewsets
@@ -18,6 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from roscoe.core.mixins import BreadcrumbMixin
 from roscoe.submissions.ingest import prepare_inline_text
 from roscoe.submissions.ingest import prepare_uploaded_file
 from roscoe.submissions.models import Submission
@@ -327,7 +333,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 # ------------------------------------------------------------------------------
 
 
-class WorkflowAccessMixin(LoginRequiredMixin):
+class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """Reusable helpers for workflow UI views."""
 
     def get_workflow_queryset(self):
@@ -346,6 +352,9 @@ class WorkflowAccessMixin(LoginRequiredMixin):
 class WorkflowListView(WorkflowAccessMixin, ListView):
     template_name = "workflows/workflow_list.html"
     context_object_name = "workflows"
+    breadcrumbs = [
+        {"name": _("Workflows"), "url": ""},
+    ]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -369,16 +378,21 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
     template_name = "workflows/workflow_detail.html"
     context_object_name = "workflow"
 
+    def get_breadcrumbs(self):
+        workflow = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {"name": _("Workflows"), "url": reverse("workflows:workflow_list")},
+        )
+        breadcrumbs.append({"name": workflow.name, "url": ""})
+        return breadcrumbs
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = context["workflow"]
         recent_runs = workflow.runs.all().order_by("-created")[:5]
         context.update(
             {
-                "breadcrumbs": [
-                    (reverse("workflows:workflow_list"), "Workflows"),
-                    ("", workflow.name),
-                ],
                 "related_validations_url": reverse(
                     "workflows:workflow_validation_list",
                     kwargs={"pk": workflow.pk},
@@ -400,12 +414,18 @@ class WorkflowFormViewMixin(WorkflowAccessMixin):
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
     template_name = "workflows/workflow_form.html"
+    breadcrumbs = [
+        {"name": _("Workflows"), "url": reverse_lazy("workflows:workflow_list")},
+        {"name": _("New Workflow"), "url": ""},
+    ]
 
     def form_valid(self, form):
         user = self.request.user
         org = user.get_current_org()
         if org is None:
-            form.add_error(None, _("You need an organization before creating workflows."))
+            form.add_error(
+                None, _("You need an organization before creating workflows.")
+            )
             return self.form_invalid(form)
         form.instance.org = org
         form.instance.user = user
@@ -419,6 +439,21 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
 class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
     template_name = "workflows/workflow_form.html"
 
+    def get_breadcrumbs(self):
+        workflow = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {"name": _("Workflows"), "url": reverse("workflows:workflow_list")},
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse("workflows:workflow_detail", args=[workflow.pk]),
+            },
+        )
+        breadcrumbs.append({"name": _("Edit"), "url": ""})
+        return breadcrumbs
+
     def form_valid(self, form):
         messages.success(self.request, _("Workflow updated."))
         return super().form_valid(form)
@@ -430,6 +465,21 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
 class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
     template_name = "workflows/partials/workflow_confirm_delete.html"
     success_url = reverse_lazy("workflows:workflow_list")
+
+    def get_breadcrumbs(self):
+        workflow = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {"name": _("Workflows"), "url": reverse("workflows:workflow_list")},
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse("workflows:workflow_detail", args=[workflow.pk]),
+            },
+        )
+        breadcrumbs.append({"name": _("Delete"), "url": ""})
+        return breadcrumbs
 
     def post(self, request, *args, **kwargs):
         # Support HTMX POST fallback
@@ -476,17 +526,20 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
-        context.update(
+        context.update({"workflow": workflow})
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {"name": _("Workflows"), "url": reverse("workflows:workflow_list")},
+        )
+        breadcrumbs.append(
             {
-                "workflow": workflow,
-                "breadcrumbs": [
-                    (reverse("workflows:workflow_list"), "Workflows"),
-                    (
-                        reverse("workflows:workflow_detail", args=[workflow.pk]),
-                        workflow.name,
-                    ),
-                    ("", _("Validations")),
-                ],
+                "name": workflow.name,
+                "url": reverse("workflows:workflow_detail", args=[workflow.pk]),
             },
         )
-        return context
+        breadcrumbs.append({"name": _("Validations"), "url": ""})
+        return breadcrumbs

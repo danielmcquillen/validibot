@@ -11,6 +11,10 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 
 {% endcomment %}
 
+{% block top_nav %}
+    {# comment  do not show top nav when viewing app #}
+{% endblock top_nav %}
+
 {% block breadcrumbs_styles %}
 
 {% endblock breadcrumbs_styles %}

@@ -1,0 +1,126 @@
+/* Footer */
+
+#marketing-footer {
+  border-top: 1px solid #aaa;
+  background-color: #f1f1f1;
+
+  footer {
+    .kn-logo {
+      margin-top: 0.8rem;
+      height: 60px;
+    }
+
+    .kn-background {
+      margin-top: 1rem;
+      color: #333;
+      font-size: 16px;
+      font-weight: 300;
+    }
+
+    .kn-copyright {
+      margin-top: 20px;
+      color: #333;
+      font-size: 14px;
+      font-weight: 300;
+      line-height: 1.625;
+    }
+
+    p {
+      font-style: normal;
+      font-weight: 300;
+      font-size: 16px;
+      color: #333;
+    }
+
+    h1 {
+      text-transform: uppercase;
+      margin: 10px 0 10px;
+      padding: 0 0 5px;
+      font-size: 1em;
+      color: #000;
+      text-align: left;
+      border-bottom: 1px dotted #777;
+    }
+
+    .kn-site-map {
+      color: #000;
+    }
+
+    .kn-site-map nav {
+      ul {
+        list-style-image: none;
+        margin-left: 0;
+        padding-left: 10px;
+      }
+
+      h2 {
+        text-transform: uppercase;
+        margin-top: 20px;
+        font-size: 1em;
+        color: #000;
+        text-align: left;
+      }
+    }
+
+    .kn-site-map li {
+      font-weight: 400 !important;
+      list-style: none;
+      margin: 0;
+    }
+
+    .kn-site-map li a {
+      font: inherit;
+      text-decoration: none;
+      transition: all 0.1s linear 0s;
+    }
+
+    .kn-site-map a:link {
+      color: #333;
+    }
+
+    .kn-site-map a:hover,
+    .kn-site-map a:active {
+      color: #000;
+    }
+
+    .kn-site-map a:visited {
+      color: #333;
+    }
+
+    .kn-newsletter-form label {
+      font-style: normal;
+    }
+
+    .kn-newsletter-form input {
+      font-style: normal;
+    }
+
+    .kn-nav-note {
+      margin-top: 30px;
+      max-width: 250px;
+    }
+
+    .nih-logo {
+      max-width: 250px;
+    }
+
+    .kn-logo-footer {
+      max-width: 260px;
+    }
+
+    .read-more {
+      color: #000;
+      text-decoration: none;
+    }
+
+    .newsletter-column {
+      margin-bottom: 6em;
+
+      a {
+        color: #000 !important;
+        text-decoration: none;
+        border-bottom: 1px dotted #777;
+      }
+    }
+  }
+}

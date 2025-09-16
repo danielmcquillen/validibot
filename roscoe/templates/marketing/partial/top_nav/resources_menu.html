@@ -1,0 +1,74 @@
+{% load i18n core_tags %}
+
+<li class="nav-item dropdown resources-dropdown">
+    <a class="nav-link dropdown-toggle {% active_link_any 'resources' 'faq' 'contact' 'support/help-center' 'support/status' %}"
+       id="resourcesMegaMenu"
+       role="button"
+       data-bs-toggle="dropdown"
+       data-bs-auto-close="outside"
+       aria-expanded="false">
+        {% translate "Resources" %}
+    </a>
+    <div class="dropdown-menu shadow-lg p-0 border-0 resources-megamenu"
+         aria-labelledby="resourcesMegaMenu">
+        <div class="row g-0">
+            <div class="col-12 col-lg-8 p-4">
+                <div class="nav-columns">
+                    <div>
+                        <p class="section-heading mb-2">
+                            {% translate "Learn" %}
+                        </p>
+                        <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:resources_docs' %}">{% translate "Docs" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:resources_blog' %}">{% translate "Blog" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:resources_changelog' %}">{% translate "Changelog" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:faq' %}">{% translate "FAQ" %}</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="section-heading mb-2">
+                            {% translate "Support" %}
+                        </p>
+                        <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:help_center' %}">{% translate "Help Center" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:status' %}">{% translate "Status" %}</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-4 border-top border-lg-start p-4 bg-body-tertiary">
+                <div class="feature-card">
+                    <div class="feature-image">
+                    </div>
+                    <p class="feature-label">
+                        {% translate "From the blog" %}
+                    </p>
+                    <h3 class="feature-title">
+                        {% translate "5 steps to launch collaborative validations" %}
+                    </h3>
+                    <p class="feature-description">
+                        {% translate "Discover how teams streamline reviews and keep every stakeholder aligned." %}
+                    </p>
+                    <a class="btn btn-outline-primary align-self-start"
+                       href="{% url 'marketing:resources_blog' %}">{% translate "Read story" %}</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</li>

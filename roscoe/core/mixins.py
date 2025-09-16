@@ -1,7 +1,4 @@
 import copy
-from typing import Dict
-
-from django.urls import reverse_lazy
 
 
 class BreadcrumbMixin:
@@ -10,17 +7,16 @@ class BreadcrumbMixin:
     Override `get_breadcrumbs()` to return a list of breadcrumb items.
     Each breadcrumb is a dict with keys:
       - 'name': The text to display.
-      - 'url': (Optional) The URL for that breadcrumb. For the current page, you may leave it empty.
+      - 'url': (Optional) The URL for that breadcrumb. For the current page, 
+          you may leave it empty.
     """
 
     # Define common breadcrumbs for all views.
-    default_breadcrumbs = [
-        {"name": "Home", "url": reverse_lazy("marketing:home")},
-    ]
+    default_breadcrumbs = []
     # Views can override or extend this attribute.
     breadcrumbs = []
 
-    def get_breadcrumbs(self) -> Dict:
+    def get_breadcrumbs(self) -> dict[str, str] | list[dict[str, str]]:
         """
         Returns a list of breadcrumb dictionaries.
         By default, it returns the `breadcrumbs` attribute.

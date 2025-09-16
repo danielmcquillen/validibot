@@ -1,0 +1,15 @@
+{% extends "marketing_base.html" %}
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <h1 class="display-5 fw-semibold mb-4">{% trans "Terms of Service" %}</h1>
+    <p class="text-muted">{% trans "These example terms outline how you can use Roscoe while we finish the official policy." %}</p>
+    <h2 class="h5 fw-semibold mt-4">{% trans "Use of service" %}</h2>
+    <p>{% trans "Roscoe is provided on a subscription basis. Keep your account secure and respect your teammates." %}</p>
+    <h2 class="h5 fw-semibold mt-4">{% trans "Data ownership" %}</h2>
+    <p>{% trans "You own your data. We process it only to run validations you initiate." %}</p>
+    <h2 class="h5 fw-semibold mt-4">{% trans "Contact" %}</h2>
+    <p>{% trans "Questions about these terms? Reach out to legal@roscoe.app." %}</p>
+  </section>
+{% endblock content %}

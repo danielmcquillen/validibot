@@ -11887,7 +11887,7 @@ h4 {
   color: #fff;
 }
 
-#site-top-nav {
+#site-top-nav-wrapper {
   padding-top: 0.1rem !important;
   padding-bottom: 0.1rem !important;
   font-size: 0.9rem !important;
@@ -11896,20 +11896,215 @@ h4 {
   z-index: 1030;
   border-bottom: 1px dotted #ccc;
 }
-#site-top-nav .navbar-brand {
+#site-top-nav-wrapper .navbar-brand {
   font-size: 1rem;
   padding: 0.2rem 0;
 }
-#site-top-nav .nav-link {
+#site-top-nav-wrapper .nav-link {
   padding: 0.25rem 0.5rem !important;
   font-size: 0.85rem !important;
 }
-#site-top-nav .dropdown-menu {
+#site-top-nav-wrapper .dropdown-menu {
   z-index: 1031;
 }
 
 .navbar-hidden {
   transform: translateY(-100%);
+}
+
+.resources-dropdown {
+  position: static;
+}
+.resources-dropdown .dropdown-menu {
+  width: min(760px, 90vw);
+  margin-top: 0.1rem;
+  border-radius: 1rem;
+  box-shadow: 0 1.5rem 3rem rgba(30, 41, 59, 0.15);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 0;
+  overflow: hidden;
+}
+.resources-dropdown .resources-megamenu .nav-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 2rem;
+}
+.resources-dropdown .resources-megamenu .section-heading {
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.6);
+}
+.resources-dropdown .resources-megamenu .list-unstyled {
+  margin: 0;
+  padding: 0;
+}
+.resources-dropdown .resources-megamenu .list-unstyled .dropdown-item {
+  padding: 0.35rem 0;
+  color: #0f172a;
+}
+.resources-dropdown .resources-megamenu .list-unstyled .dropdown-item:hover, .resources-dropdown .resources-megamenu .list-unstyled .dropdown-item:focus {
+  color: #6366f1;
+  background: transparent;
+}
+.resources-dropdown .resources-megamenu .feature-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1));
+  padding: 1.5rem;
+  border: 1px solid rgba(79, 70, 229, 0.15);
+}
+.resources-dropdown .resources-megamenu .feature-card .feature-image {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(168, 85, 247, 0.35));
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+  position: relative;
+  overflow: hidden;
+  padding-top: 65%;
+}
+.resources-dropdown .resources-megamenu .feature-card .feature-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=Roscoe+Blog") center/cover;
+  mix-blend-mode: screen;
+}
+.resources-dropdown .resources-megamenu .feature-card .feature-label {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(15, 23, 42, 0.6);
+  margin-bottom: 0.5rem;
+}
+.resources-dropdown .resources-megamenu .feature-card .feature-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 0.75rem;
+}
+.resources-dropdown .resources-megamenu .feature-card .feature-description {
+  color: rgba(15, 23, 42, 0.7);
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+@media (max-width: 767.98px) {
+  .resources-dropdown .dropdown-menu {
+    width: 100vw;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .resources-dropdown .resources-megamenu .nav-columns {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .resources-dropdown .resources-megamenu .feature-card {
+    padding: 1.25rem;
+  }
+}
+
+/* Footer */
+#marketing-footer {
+  border-top: 1px solid #aaa;
+  background-color: #f1f1f1;
+}
+#marketing-footer footer .kn-logo {
+  margin-top: 0.8rem;
+  height: 60px;
+}
+#marketing-footer footer .kn-background {
+  margin-top: 1rem;
+  color: #333;
+  font-size: 16px;
+  font-weight: 300;
+}
+#marketing-footer footer .kn-copyright {
+  margin-top: 20px;
+  color: #333;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.625;
+}
+#marketing-footer footer p {
+  font-style: normal;
+  font-weight: 300;
+  font-size: 16px;
+  color: #333;
+}
+#marketing-footer footer h1 {
+  text-transform: uppercase;
+  margin: 10px 0 10px;
+  padding: 0 0 5px;
+  font-size: 1em;
+  color: #000;
+  text-align: left;
+  border-bottom: 1px dotted #777;
+}
+#marketing-footer footer .kn-site-map {
+  color: #000;
+}
+#marketing-footer footer .kn-site-map nav ul {
+  list-style-image: none;
+  margin-left: 0;
+  padding-left: 10px;
+}
+#marketing-footer footer .kn-site-map nav h2 {
+  text-transform: uppercase;
+  margin-top: 20px;
+  font-size: 1em;
+  color: #000;
+  text-align: left;
+}
+#marketing-footer footer .kn-site-map li {
+  font-weight: 400 !important;
+  list-style: none;
+  margin: 0;
+}
+#marketing-footer footer .kn-site-map li a {
+  font: inherit;
+  text-decoration: none;
+  transition: all 0.1s linear 0s;
+}
+#marketing-footer footer .kn-site-map a:link {
+  color: #333;
+}
+#marketing-footer footer .kn-site-map a:hover,
+#marketing-footer footer .kn-site-map a:active {
+  color: #000;
+}
+#marketing-footer footer .kn-site-map a:visited {
+  color: #333;
+}
+#marketing-footer footer .kn-newsletter-form label {
+  font-style: normal;
+}
+#marketing-footer footer .kn-newsletter-form input {
+  font-style: normal;
+}
+#marketing-footer footer .kn-nav-note {
+  margin-top: 30px;
+  max-width: 250px;
+}
+#marketing-footer footer .nih-logo {
+  max-width: 250px;
+}
+#marketing-footer footer .kn-logo-footer {
+  max-width: 260px;
+}
+#marketing-footer footer .read-more {
+  color: #000;
+  text-decoration: none;
+}
+#marketing-footer footer .newsletter-column {
+  margin-bottom: 6em;
+}
+#marketing-footer footer .newsletter-column a {
+  color: #000 !important;
+  text-decoration: none;
+  border-bottom: 1px dotted #777;
 }
 
 .course-card .card-body {
@@ -11925,7 +12120,8 @@ h4 {
 }
 
 #breadcrumbs {
-  border-bottom: 1px dotted #ccc;
+  border-bottom: 1px dotted #dbe0e9;
+  background-color: #f1f1f1;
 }
 
 .breadcrumb {
@@ -12023,6 +12219,23 @@ h4 {
 
 .bg-cyan-lt {
   background-color: #e8f6f8 !important;
+}
+
+#left-nav {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 100vh;
+  width: 280px;
+}
+#left-nav .left-nav-title {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  min-height: 35px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 1rem;
+  margin-bottom: 1rem;
 }
 
 .entrance-page {

@@ -2,6 +2,10 @@
 
 {% load static i18n core_tags %}
 
+{% block mainclass %}
+    container
+{% endblock mainclass %}
+
 {% comment %}
 app_base.html is meant to be used for all application-style pages, where
 the user is doing actual work. It has a left sidebar, a right sidebar,
@@ -15,6 +19,18 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 
 {% endblock breadcrumbs_styles %}
 
+{% block left_nav_items %}
+    <li class="nav-item">
+        <a class="nav-link {% active_link 'features' %}"
+           href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
+    </li>
+    {{ block.super }}
+    <li class="nav-item">
+        <a class="nav-link {% active_link 'pricing' %}"
+           href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
+    </li>
+{% endblock left_nav_items %}
+
 {% block left_sidebar %}
     {# No left sidebar for marketing pages #}
 {% endblock left_sidebar %}
@@ -22,3 +38,18 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% block content %}
 
 {% endblock content %}
+
+{% block right_nav_items %}
+    {% if not request.user.is_authenticated %}
+        <li class="nav-item ms-md-3">
+            <a class="btn btn-primary" href="{% url 'account_signup' %}">
+                {% trans "Start Free Trial" %}
+            </a>
+        </li>
+    {% endif %}
+    {{ block.super }}
+{% endblock right_nav_items %}
+
+{% block footer %}
+    {% include 'core/partial/marketing_footer.html' %}
+{% endblock footer %}

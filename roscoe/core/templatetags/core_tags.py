@@ -34,6 +34,20 @@ def active_link(context, nav_item_name):
 
 
 @register.simple_tag(takes_context=True)
+def active_link_any(context, *nav_item_names):
+    request = context.get("request", None)
+    if not request:
+        return ""
+    for name in nav_item_names:
+        if not name:
+            continue
+        prefix = f"/{name.strip('/')}/"
+        if request.path.startswith(prefix):
+            return "active"
+    return ""
+
+
+@register.simple_tag(takes_context=True)
 def active_builder_link(context, nav_item_name):
     request = context.get("request", None)
     if request:

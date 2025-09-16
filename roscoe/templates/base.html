@@ -46,25 +46,15 @@
 
       {# Top navigation bar #}
       {% block top_nav %}
-        <div class="mb-1">
-          {% include "core/partial/top_nav.html" %}
-        </div>
+        {% include "core/partial/top_nav.html" %}
       {% endblock top_nav %}
-
-      {# Breadcrumbs #}
-      {% block breadcrumbs %}
-        <div id="breadcrumbs-wrapper"
-             class="
-                    {% block breadcrumbs_styles %}
-                    {% endblock breadcrumbs_styles %}">
-
-          {% include "core/partial/breadcrumbs.html" %}
-        </div>
-      {% endblock breadcrumbs %}
 
       {% block main %}
 
-        <div class="container-fluid flex-grow-1 d-flex flex-row  w-100 h-100 p-0">
+        <div class="{% block mainclass %}
+                      container-fluid
+                    {% endblock mainclass %}
+                    flex-grow-1 d-flex flex-row  w-100 h-100 p-0">
 
           {# Left sidebar #}
           {% block left_sidebar %}
@@ -72,6 +62,18 @@
           {% endblock left_sidebar %}
 
           <div class="d-flex flex-column w-100 h-100 p-0">
+
+            {# Breadcrumbs #}
+            {% block breadcrumbs %}
+              <div id="breadcrumbs-wrapper"
+                   class="
+                          {% block breadcrumbs_styles %}
+                          {% endblock breadcrumbs_styles %}">
+
+                {% include "core/partial/breadcrumbs.html" %}
+              </div>
+            {% endblock breadcrumbs %}
+
             {% block content %}
 
             {% endblock content %}
@@ -84,6 +86,10 @@
       {% endblock main %}
 
     {% endblock body %}
+
+    {% block footer %}
+
+    {% endblock footer %}
 
     {# modal block #}
     {% block modal %}

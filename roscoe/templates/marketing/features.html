@@ -1,0 +1,42 @@
+{% extends "marketing_base.html" %}
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="text-center mb-5">
+      <h1 class="display-5 fw-semibold">{% trans "Everything you need to ship confident validations" %}</h1>
+      <p class="lead text-muted">{% trans "Roscoe keeps validation teams in sync with reusable workflows and instant insight into every run." %}</p>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h2 class="h5 fw-semibold">{% trans "Composable workflows" %}</h2>
+            <p class="text-muted">{% trans "Build, version, and reuse validation pipelines without writing boilerplate scripts." %}</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h2 class="h5 fw-semibold">{% trans "Collaborative reviews" %}</h2>
+            <p class="text-muted">{% trans "Share real-time results, add notes, and track status so everyone stays aligned." %}</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h2 class="h5 fw-semibold">{% trans "Insightful reporting" %}</h2>
+            <p class="text-muted">{% trans "Surface pass/fail trends, identify bottlenecks, and continuously improve your data quality." %}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-5">
+      <a class="btn btn-primary btn-lg" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
+    </div>
+  </section>
+{% endblock content %}

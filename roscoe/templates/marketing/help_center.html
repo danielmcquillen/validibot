@@ -1,0 +1,39 @@
+{% extends "marketing_base.html" %}
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="row g-5 align-items-start">
+      <div class="col-lg-7">
+        <h1 class="display-5 fw-semibold mb-3">{% trans "Help Center" %}</h1>
+        <p class="lead text-muted">{% trans "Answers to the most common Roscoe questions." %}</p>
+        <div class="list-group">
+          <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+             href="{% url 'marketing:faq' %}">
+            <span>{% trans "Browse FAQ" %}</span>
+            <i class="bi bi-arrow-right"></i>
+          </a>
+          <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+             href="{% url 'marketing:resources_docs' %}">
+            <span>{% trans "Read the documentation" %}</span>
+            <i class="bi bi-arrow-right"></i>
+          </a>
+          <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+             href="{% url 'marketing:resources_blog' %}">
+            <span>{% trans "Product tips" %}</span>
+            <i class="bi bi-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h2 class="h5 fw-semibold mb-3">{% trans "Need a hand?" %}</h2>
+            <p class="text-muted">{% trans "Our customer team is here Monday through Friday, 9am–6pm PT." %}</p>
+            <a class="btn btn-primary" href="mailto:support@roscoe.app">support@roscoe.app</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

@@ -1,71 +1,81 @@
 {% load i18n core_tags %}
 
-<nav class="navbar navbar-expand-md navbar-light bg-light">
-    <div class="container-fluid">
-        <button class="navbar-toggler navbar-toggler-right"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#navbarSupportedContent"
-                aria-controls="navbarSupportedContent"
-                aria-expanded="false"
-                aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <a class="navbar-brand" href="{% url 'marketing:home' %}">Roscoe</a>
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+<div id="site-top-nav-wrapper">
+    <div class="container">
+        <nav id="site-top-nav"
+             class="navbar navbar-expand-md navbar-light bg-light">
+            <div class="container-fluid p-0">
+                <button class="navbar-toggler navbar-toggler-right"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#navbarSupportedContent"
+                        aria-controls="navbarSupportedContent"
+                        aria-expanded="false"
+                        aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <a class="navbar-brand" href="{% url 'marketing:home' %}">SimpleValidations</a>
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
 
-            <ul class="navbar-nav me-auto">
-                {% block left_nav_items %}
-                    {% if request.user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link {% active_link 'app' %}"
-                               href="{% url 'dashboard:my_dashboard' %}">{% translate "App" %}</a>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link {% active_link 'about' %}"
-                               href="{% url 'marketing:about' %}">About</a>
-                        </li>
-                    {% endif %}
-                {% endblock left_nav_items %}
-            </ul>
+                    <ul class="navbar-nav me-auto">
+                        {% block left_nav_items %}
 
-            <ul class="navbar-nav">
-
-                {% block right_nav_items %}
-
-                {% endblock right_nav_items %}
-
-                {% if request.user.is_authenticated %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle"
-                           href="#"
-                           role="button"
-                           data-bs-toggle="dropdown"
-                           aria-expanded="false">
-                            <i class="bi bi-person-circle"></i> {{ request.user.username }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <a class="nav-link"
-                               href="{% url 'users:detail' request.user.username %}">{% translate "My Profile" %}</a>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
+                            {% include 'marketing/partial/top_nav/features_menu.html' %}
+                            {% include 'marketing/partial/top_nav/resources_menu.html' %}
+                            <li class="nav-item ms-md-3">
+                                <a class="nav-link {% active_link 'app' %}"
+                                   href="{% url 'marketing:resources_docs' %}">{% translate "Docs" %}</a>
                             </li>
-                        </ul>
-                    </li>
-                    <li class="nav-item">
-                    </li>
-                {% else %}
-                    {% if ACCOUNT_ALLOW_REGISTRATION %}
-                        <li class="nav-item">
-                            <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
-                        </li>
-                    {% endif %}
-                    <li class="nav-item">
-                        <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
-                    </li>
-                {% endif %}
-            </ul>
-        </div>
+                            <li class="nav-item ms-md-3">
+                                <a class="nav-link {% active_link 'app' %}"
+                                   href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
+                            </li>
+                        {% endblock left_nav_items %}
+                    </ul>
+
+                    <ul class="navbar-nav">
+
+                        {% block right_nav_items %}
+                            {% if request.user.is_authenticated %}
+                                <li class="nav-item ms-md-3">
+                                    <a class="nav-link {% active_link 'app' %}"
+                                       href="{% url 'dashboard:my_dashboard' %}">{% translate "App" %}</a>
+                                </li>
+                            {% endif %}
+                        {% endblock right_nav_items %}
+
+                        {% if request.user.is_authenticated %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle"
+                                   href="#"
+                                   role="button"
+                                   data-bs-toggle="dropdown"
+                                   aria-expanded="false">
+                                    <i class="bi bi-person-circle"></i> {{ request.user.username }}
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <a class="nav-link"
+                                       href="{% url 'users:detail' request.user.username %}">{% translate "My Profile" %}</a>
+                                    <li class="nav-item">
+                                        <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                            </li>
+                        {% else %}
+                            {% if ACCOUNT_ALLOW_REGISTRATION %}
+                                <li class="nav-item">
+                                    <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
+                                </li>
+                            {% endif %}
+                            <li class="nav-item">
+                                <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </nav>
     </div>
-</nav>
+</div>

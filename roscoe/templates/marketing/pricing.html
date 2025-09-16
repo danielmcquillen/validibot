@@ -1,0 +1,110 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block breadcrumbs %}
+  {# no breadcrumbs for this page #}
+{% endblock breadcrumbs %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="text-center mb-5">
+      <h1 class="display-5 fw-semibold">
+        {% trans "Choose a plan that scales with you" %}
+      </h1>
+      <p class="lead text-muted">
+        {% trans "Simple, transparent pricing for teams of every size." %}
+      </p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm border-primary">
+          <div class="card-header text-bg-primary text-center">
+            <h2 class="h5 mb-0">
+              {% trans "Starter" %}
+            </h2>
+          </div>
+          <div class="card-body text-center">
+            <p class="display-6 fw-bold mb-0">
+              $0
+            </p>
+            <p class="text-muted">
+              {% trans "Per month" %}
+            </p>
+            <ul class="list-unstyled text-start">
+              <li>
+                {% trans "Up to 3 active workflows" %}
+              </li>
+              <li>
+                {% trans "Community support" %}
+              </li>
+              <li>
+                {% trans "Unlimited validation history" %}
+              </li>
+            </ul>
+            <a class="btn btn-outline-primary" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header text-bg-light text-center">
+            <h2 class="h5 mb-0">
+              {% trans "Growth" %}
+            </h2>
+          </div>
+          <div class="card-body text-center">
+            <p class="display-6 fw-bold mb-0">
+              $79
+            </p>
+            <p class="text-muted">
+              {% trans "Per month" %}
+            </p>
+            <ul class="list-unstyled text-start">
+              <li>
+                {% trans "Unlimited workflows" %}
+              </li>
+              <li>
+                {% trans "Advanced analytics" %}
+              </li>
+              <li>
+                {% trans "Priority email support" %}
+              </li>
+            </ul>
+            <a class="btn btn-outline-primary" href="{% url 'account_signup' %}">{% trans "Start trial" %}</a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header text-bg-light text-center">
+            <h2 class="h5 mb-0">
+              {% trans "Enterprise" %}
+            </h2>
+          </div>
+          <div class="card-body text-center">
+            <p class="display-6 fw-bold mb-0">
+              {% trans "Let's talk" %}
+            </p>
+            <p class="text-muted">
+              {% trans "Custom billing" %}
+            </p>
+            <ul class="list-unstyled text-start">
+              <li>
+                {% trans "Dedicated onboarding" %}
+              </li>
+              <li>
+                {% trans "SAML SSO and SCIM" %}
+              </li>
+              <li>
+                {% trans "24/7 support" %}
+              </li>
+            </ul>
+            <a class="btn btn-primary" href="{% url 'marketing:contact' %}">{% trans "Contact sales" %}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

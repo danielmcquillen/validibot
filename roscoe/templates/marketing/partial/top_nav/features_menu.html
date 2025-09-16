@@ -1,0 +1,29 @@
+{% load i18n core_tags %}
+
+<li class="nav-item dropdown features-dropdown">
+    <a class="nav-link dropdown-toggle {% active_link_any 'features' 'faq' 'contact' 'support/help-center' 'support/status' %}"
+       href="#"
+       id="featuresMegaMenu"
+       role="button"
+       data-bs-toggle="dropdown"
+       data-bs-auto-close="outside"
+       aria-expanded="false">
+        {% translate "Features" %}
+    </a>
+
+    <ul class="dropdown-menu">
+        <li>
+            <a class="dropdown-item" href="#">{% translate "Schema Validation" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="#">{% translate "Simulation Validation" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="#">{% translate "Certificates" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="#">{% translate "Blockchain" %}</a>
+        </li>
+
+    </ul>
+</li>

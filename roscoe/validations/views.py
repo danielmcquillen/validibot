@@ -6,6 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse, HttpResponseRedirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView
 from django.views.generic.edit import DeleteView
 from django.utils.http import urlencode
@@ -18,6 +19,7 @@ from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
 from roscoe.workflows.models import Workflow
+from roscoe.core.mixins import BreadcrumbMixin
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -76,7 +78,7 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
 # ------------------------------------------------------------------------------
 
 
-class ValidationRunAccessMixin(LoginRequiredMixin):
+class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """Shared queryset helpers for validation run UI views."""
 
     allowed_sorts = {
@@ -111,6 +113,9 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
     template_name = "validations/validation_list.html"
     context_object_name = "validations"
     paginate_by = 25
+    breadcrumbs = [
+        {"name": _("Validations"), "url": ""},
+    ]
 
     def get_queryset(self):
         qs = self.get_base_queryset()
@@ -149,24 +154,49 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
     def get_queryset(self):
         return self.get_base_queryset()
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        validation = context["validation"]
-        breadcrumbs = [
-            (reverse("validations:validation_list"), "Validations"),
-            ("", f"Run #{validation.pk}"),
-        ]
-        context.update(
+    def get_breadcrumbs(self):
+        validation = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
             {
-                "breadcrumbs": breadcrumbs,
+                "name": _("Validations"),
+                "url": reverse("validations:validation_list"),
             },
         )
+        breadcrumbs.append(
+            {
+                "name": _("Run #%(pk)s") % {"pk": validation.pk},
+                "url": "",
+            },
+        )
+        return breadcrumbs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
         return context
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
     template_name = "validations/partials/validation_confirm_delete.html"
     success_url = reverse_lazy("validations:validation_list")
+
+    def get_breadcrumbs(self):
+        validation = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Validations"),
+                "url": reverse("validations:validation_list"),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("Run #%(pk)s") % {"pk": validation.pk},
+                "url": reverse("validations:validation_detail", args=[validation.pk]),
+            },
+        )
+        breadcrumbs.append({"name": _("Delete"), "url": ""})
+        return breadcrumbs
 
     def post(self, request, *args, **kwargs):
         return self.delete(request, *args, **kwargs)

@@ -1,0 +1,32 @@
+{% extends "marketing_base.html" %}
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-4 mb-4">
+      <div>
+        <h1 class="display-5 fw-semibold mb-2">{% trans "Changelog" %}</h1>
+        <p class="lead text-muted mb-0">{% trans "Follow the latest improvements across the Roscoe platform." %}</p>
+      </div>
+      <a class="btn btn-outline-primary" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-item border-start ps-4 mb-4">
+        <p class="text-muted small mb-1">{% trans "September 12, 2023" %}</p>
+        <h2 class="h5 fw-semibold">{% trans "Workflow cloning gets smarter" %}</h2>
+        <p class="text-muted">{% trans "Automatically carry over validator settings when spinning up a new workflow version." %}</p>
+      </div>
+      <div class="timeline-item border-start ps-4 mb-4">
+        <p class="text-muted small mb-1">{% trans "August 28, 2023" %}</p>
+        <h2 class="h5 fw-semibold">{% trans "Validation history export" %}</h2>
+        <p class="text-muted">{% trans "Download CSV summaries of every run to share with auditors in seconds." %}</p>
+      </div>
+      <div class="timeline-item border-start ps-4">
+        <p class="text-muted small mb-1">{% trans "August 10, 2023" %}</p>
+        <h2 class="h5 fw-semibold">{% trans "HTMX-powered delete actions" %}</h2>
+        <p class="text-muted">{% trans "Remove workflows without breaking focus thanks to inline confirmations." %}</p>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

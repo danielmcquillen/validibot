@@ -353,7 +353,9 @@ SOCIALACCOUNT_FORMS = {"signup": "roscoe.users.forms.UserSocialSignupForm"}
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
+# DMcQ: Using our our custom AgentAwareNegotiation so every API view gets the agent profile.
 REST_FRAMEWORK = {
+    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "roscoe.core.api.negotiation.AgentAwareNegotiation",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",

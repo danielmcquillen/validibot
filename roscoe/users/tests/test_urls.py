@@ -7,16 +7,16 @@ from roscoe.users.models import User
 def test_detail(user: User):
     assert (
         reverse("users:detail", kwargs={"username": user.username})
-        == f"/users/{user.username}/"
+        == f"/app/users/{user.username}/"
     )
-    assert resolve(f"/users/{user.username}/").view_name == "users:detail"
+    assert resolve(f"/app/users/{user.username}/").view_name == "users:detail"
 
 
 def test_update():
-    assert reverse("users:update") == "/users/~update/"
-    assert resolve("/users/~update/").view_name == "users:update"
+    assert reverse("users:update") == "/app/users/~update/"
+    assert resolve("/app/users/~update/").view_name == "users:update"
 
 
 def test_redirect():
-    assert reverse("users:redirect") == "/users/~redirect/"
-    assert resolve("/users/~redirect/").view_name == "users:redirect"
+    assert reverse("users:redirect") == "/app/users/~redirect/"
+    assert resolve("/app/users/~redirect/").view_name == "users:redirect"

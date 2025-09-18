@@ -4,7 +4,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django_extensions.db.models import TimeStampedModel
 
-from roscoe.events.constants import EventType
+from roscoe.events.constants import AppEventType
 from roscoe.projects.models import Project
 from roscoe.users.models import Organization
 
@@ -32,7 +32,7 @@ class WebhookEndpoint(TimeStampedModel):
     event_types = ArrayField(
         base_field=models.CharField(
             max_length=32,
-            choices=EventType.choices,
+            choices=AppEventType.choices,
         ),
         default=list,
         blank=True,
@@ -104,7 +104,7 @@ class OutboundEvent(TimeStampedModel):
                     "org",
                     "event_type",
                     "created",
-                ]
+                ],
             ),
             models.Index(
                 fields=[

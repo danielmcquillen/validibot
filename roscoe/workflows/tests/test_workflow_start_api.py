@@ -9,8 +9,14 @@ from rest_framework.response import Response
 from rest_framework.test import APIClient
 
 import roscoe.workflows.views as views_mod
+from roscoe.events.constants import AppEventType
+from roscoe.projects.tests.factories import ProjectFactory
+from roscoe.tracking.constants import TrackingEventType
+from roscoe.tracking.models import TrackingEvent
 from roscoe.users.constants import RoleCode
-from roscoe.users.tests.factories import OrganizationFactory, UserFactory, grant_role
+from roscoe.users.tests.factories import OrganizationFactory
+from roscoe.users.tests.factories import UserFactory
+from roscoe.users.tests.factories import grant_role
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.tests.factories import ValidationRunFactory
@@ -130,6 +136,41 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.workflow_id == workflow.id
         assert run.submission_id is not None
+
+    def test_start_logs_tracking_event_with_user(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ) -> None:
+        project = ProjectFactory(org=org)
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": "<root><v>1</v></root>",
+            "content_type": "application/xml",
+            "filename": "sample.xml",
+            "metadata": {"source": "test-suite"},
+        }
+
+        resp = api_client.post(
+            f"{start_url(workflow)}?project={project.pk}",
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        event: TrackingEvent = TrackingEvent.objects.get()
+        assert event.event_type == TrackingEventType.APP_EVENT
+        assert event.app_event_type == AppEventType.VALIDATION_RUN_STARTED.value
+        assert event.project_id == None # Not supported yet
+        assert event.org_id == org.id
+        assert event.user_id == user.id
+        assert event.extra_data.get("workflow_pk") == workflow.pk
+        assert event.extra_data.get("validation_run_status") is not None
 
     def test_start_with_raw_body_xml_returns_201(
         self,

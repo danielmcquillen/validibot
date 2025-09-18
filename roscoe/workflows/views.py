@@ -24,9 +24,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from roscoe.core.mixins import BreadcrumbMixin
+from roscoe.projects.models import Project
 from roscoe.submissions.ingest import prepare_inline_text
 from roscoe.submissions.ingest import prepare_uploaded_file
 from roscoe.submissions.models import Submission
+from roscoe.tracking.services import TrackingEventService
 from roscoe.users.models import User
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunStartSerializer
@@ -78,6 +80,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         """
         user = request.user
 
+        # TODO: When we support projects, we need to resolve the project here.
+        # project = self._resolve_project(workflow=workflow, request=request)
+        project = None  # We don't support projects yet
+
         if not workflow.can_execute(user=user):
             return Response(
                 {"detail": _("Workflow not found.")},
@@ -93,12 +99,14 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 user=user,
                 content_type_header=content_type_header,
                 body_bytes=body_bytes,
+                project=project,
             )
 
         return self._handle_envelope_or_multipart_mode(
             request=request,
             workflow=workflow,
             user=user,
+            project=project,
         )
 
     # ---------------------- Raw Body Mode ----------------------
@@ -110,6 +118,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         user: User,
         content_type_header: str,
         body_bytes: bytes,
+        project: Project | None,
     ) -> Response:
         """
         Process Mode 1 (raw body) submission.
@@ -180,7 +189,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             org=workflow.org,
             workflow=workflow,
             user=user,
-            project=None,
+            project=project,
             name=safe_filename,
             checksum_sha256=ingest.sha256,
             metadata={},
@@ -209,6 +218,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         request: Request,
         workflow: Workflow,
         user: User,
+        project: Project | None,
     ) -> Response:
         """
         Process Mode 2 (JSON envelope) or Mode 3 (multipart).
@@ -243,7 +253,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 org=workflow.org,
                 workflow=workflow,
                 user=user if getattr(user, "is_authenticated", False) else None,
-                project=None,
+                project=project,
                 name=safe_filename,
                 metadata={},
                 checksum_sha256=ingest.sha256,
@@ -268,7 +278,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 org=workflow.org,
                 workflow=workflow,
                 user=user if getattr(user, "is_authenticated", False) else None,
-                project=None,
+                project=project,
                 name=safe_filename,
                 metadata=metadata,
             )
@@ -308,7 +318,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         Thin wrapper over ValidationRunService.launch to centralize call site.
         """
         service = ValidationRunService()
-        return service.launch(
+        response = service.launch(
             request=request,
             org=workflow.org,
             workflow=workflow,
@@ -316,6 +326,40 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             metadata=metadata,
             user_id=user_id,
         )
+
+        response_data = getattr(response, "data", None)
+        run_id = None
+        run_status = None
+        if isinstance(response_data, dict):
+            run_id = response_data.get("id")
+            run_status = response_data.get("status")
+
+        extra_payload: dict[str, object] = {}
+        if run_status is not None:
+            extra_payload["validation_run_status"] = run_status
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None:
+            extra_payload["response_status_code"] = status_code
+        if metadata:
+            extra_payload["metadata_keys"] = sorted(metadata.keys())
+
+        tracking_service = TrackingEventService()
+        actor = (
+            request.user
+            if getattr(request, "user", None)
+            and getattr(request.user, "is_authenticated", False)
+            else None
+        )
+        tracking_service.log_validation_run_started(
+            workflow=workflow,
+            project=submission.project,
+            user=actor,
+            submission_id=submission.pk,
+            validation_run_id=run_id,
+            extra_data=extra_payload or None,
+        )
+
+        return response
 
     # Public action remains unchanged
     @action(

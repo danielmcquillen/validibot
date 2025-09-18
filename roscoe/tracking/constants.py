@@ -12,3 +12,4 @@ class TrackingEventType(TextChoices):
     FORM_SUBMIT = "FORM_SUBMIT", _("Form Submit")
     FILE_DOWNLOAD = "FILE_DOWNLOAD", "File Download"
     CUSTOM_EVENT = "CUSTOM_EVENT", "Custom Event"
+    APP_EVENT = "APP_EVENT", _("Application Event")

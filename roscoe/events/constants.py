@@ -3,7 +3,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
-class EventType(models.TextChoices):
+class AppEventType(models.TextChoices):
     # CRUD operations
     SUBMISSION_CREATED = "submission.created", _("Submission Created")
 
@@ -12,18 +12,18 @@ class EventType(models.TextChoices):
     WORKFLOW_DELETED = "workflow.deleted", _("Workflow Deleted")
 
     # Run lifecycle
-    RUN_CREATED = "run.created", _("Run Created")
-    RUN_STARTED = "run.started", _("Run Started")
-    RUN_SUCCEEDED = "run.succeeded", _("Run Succeeded")
-    RUN_FAILED = "run.failed", _("Run Failed")
-    RUN_CANCELED = "run.canceled", _("Run Canceled")
-    RUN_TIMED_OUT = "run.timed_out", _("Run Timed Out")
+    VALIDATION_RUN_CREATED = "validation_run.created", _("Run Created")
+    VALIDATION_RUN_STARTED = "validation_run.started", _("Run Started")
+    VALIDATION_RUN_SUCCEEDED = "validation_run.succeeded", _("Run Succeeded")
+    VALIDATION_RUN_FAILED = "validation_run.failed", _("Run Failed")
+    VALIDATION_RUN_CANCELED = "validation_run.canceled", _("Run Canceled")
+    VALIDATION_RUN_TIMED_OUT = "validation_run.timed_out", _("Run Timed Out")
 
     # Step lifecycle
-    RUN_STEP_STARTED = "runstep.started", _("Run Step Started")
-    RUN_STEP_PASSED = "runstep.passed", _("Run Step Passed")
-    RUN_STEP_FAILED = "runstep.failed", _("Run Step Failed")
-    RUN_STEP_SKIPPED = "runstep.skipped", _("Run Step Skipped")
+    VALIDATION_RUN_STEP_STARTED = "validation_run_step.started", _("Run Step Started")
+    VALIDATION_RUN_STEP_PASSED = "validation_run_step.passed", _("Run Step Passed")
+    VALIDATION_RUN_STEP_FAILED = "validation_run_step.failed", _("Run Step Failed")
+    VALIDATION_RUN_STEP_SKIPPED = "validation_run_step.skipped", _("Run Step Skipped")
 
     # Ruleset / Validator (optional, if you plan to notify changes)
     RULESET_CREATED = "ruleset.created", _("Ruleset Created")
@@ -38,30 +38,32 @@ class EventType(models.TextChoices):
 
 # Convenient subsets
 RUN_EVENTS = (
-    EventType.RUN_CREATED,
-    EventType.RUN_STARTED,
-    EventType.RUN_SUCCEEDED,
-    EventType.RUN_FAILED,
-    EventType.RUN_CANCELED,
-    EventType.RUN_TIMED_OUT,
+    AppEventType.VALIDATION_RUN_CREATED,
+    AppEventType.VALIDATION_RUN_STARTED,
+    AppEventType.VALIDATION_RUN_SUCCEEDED,
+    AppEventType.VALIDATION_RUN_FAILED,
+    AppEventType.VALIDATION_RUN_CANCELED,
+    AppEventType.VALIDATION_RUN_TIMED_OUT,
 )
 
 RUN_STEP_EVENTS = (
-    EventType.RUN_STEP_STARTED,
-    EventType.RUN_STEP_PASSED,
-    EventType.RUN_STEP_FAILED,
-    EventType.RUN_STEP_SKIPPED,
+    AppEventType.VALIDATION_RUN_STEP_STARTED,
+    AppEventType.VALIDATION_RUN_STEP_PASSED,
+    AppEventType.VALIDATION_RUN_STEP_FAILED,
+    AppEventType.VALIDATION_RUN_STEP_SKIPPED,
 )
 
 CONFIG_EVENTS = (
-    EventType.WORKFLOW_CREATED,
-    EventType.WORKFLOW_UPDATED,
-    EventType.WORKFLOW_DELETED,
-    EventType.SUBMISSION_CREATED,
-    EventType.RULESET_CREATED,
-    EventType.RULESET_UPDATED,
-    EventType.VALIDATOR_CREATED,
-    EventType.VALIDATOR_UPDATED,
+    AppEventType.WORKFLOW_CREATED,
+    AppEventType.WORKFLOW_UPDATED,
+    AppEventType.WORKFLOW_DELETED,
+    AppEventType.SUBMISSION_CREATED,
+    AppEventType.RULESET_CREATED,
+    AppEventType.RULESET_UPDATED,
+    AppEventType.VALIDATOR_CREATED,
+    AppEventType.VALIDATOR_UPDATED,
 )
 
-ALL_EVENTS = tuple(e.value for e in EventType)  # list[str] for quick membership tests
+ALL_EVENTS = tuple(
+    e.value for e in AppEventType
+)  # list[str] for quick membership tests

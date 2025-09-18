@@ -67,12 +67,6 @@ class DocsPageView(ResourceDetailPageView):
     page_title = "Docs"
 
 
-class BlogPageView(ResourceDetailPageView):
-    template_name = "marketing/resources_blog.html"
-    http_method_names = ["get"]
-    page_title = "Blog"
-
-
 class YoutubePageView(ResourceDetailPageView):
     template_name = "marketing/resources_youtube.html"
     http_method_names = ["get"]

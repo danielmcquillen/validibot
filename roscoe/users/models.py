@@ -85,6 +85,38 @@ class User(AbstractUser):
     # First and last name do not cover name patterns around the globe
     name = CharField(_("Name of User"), blank=True, max_length=255)
 
+    avatar = models.ImageField(
+        upload_to="avatars/",
+        blank=True,
+        null=True,
+        help_text=_("Square image works best across the app."),
+    )
+    job_title = models.CharField(
+        _("Job title"),
+        max_length=128,
+        blank=True,
+        null=True,
+    )
+    company = models.CharField(
+        _("Company"),
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    location = models.CharField(
+        _("Location"),
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+    timezone = models.CharField(
+        _("Timezone"),
+        max_length=64,
+        blank=True,
+        null=True,
+    )
+    bio = models.TextField(_("Bio"), blank=True, null=True)
+
     first_name = None  # type: ignore[assignment]
 
     last_name = None  # type: ignore[assignment]

@@ -2,8 +2,7 @@
 
 <div id="site-top-nav-wrapper">
     <div class="container">
-        <nav id="site-top-nav"
-             class="navbar navbar-expand-md navbar-light bg-light">
+        <nav id="site-top-nav" class="navbar navbar-expand-md navbar-light">
             <div class="container-fluid p-0">
                 <button class="navbar-toggler navbar-toggler-right"
                         type="button"
@@ -54,8 +53,7 @@
                                     <i class="bi bi-person-circle"></i> {{ request.user.username }}
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    <a class="nav-link"
-                                       href="{% url 'users:detail' request.user.username %}">{% translate "My Profile" %}</a>
+                                    <a class="nav-link" href="{% url 'users:update' %}">{% translate "My Profile" %}</a>
                                     <li class="nav-item">
                                         <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
                                     </li>

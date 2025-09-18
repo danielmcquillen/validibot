@@ -166,7 +166,7 @@ class TestWorkflowStartAPI:
         event: TrackingEvent = TrackingEvent.objects.get()
         assert event.event_type == TrackingEventType.APP_EVENT
         assert event.app_event_type == AppEventType.VALIDATION_RUN_STARTED.value
-        assert event.project_id == None # Not supported yet
+        assert event.project_id is None  # Not supported yet
         assert event.org_id == org.id
         assert event.user_id == user.id
         assert event.extra_data.get("workflow_pk") == workflow.pk

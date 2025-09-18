@@ -5,8 +5,11 @@
 @use "base/toasts";
 @use "base/breadcrumbs";
 @use "base/transitions";
+@use "base/user";
+@use "base/blog";
 
 @use "./settings" as *;
+
 .bg-blue-lt {
   background-color: $blue-lt !important;
 }

@@ -1,3 +1,4 @@
+from django.urls import include
 from django.urls import path
 
 from . import views
@@ -9,6 +10,7 @@ urlpatterns = [
         views.HomePageView.as_view(),
         name="home",
     ),
+    path("blog/", include("roscoe.blog.urls", namespace="blog")),
     path(
         "about/",
         views.AboutPageView.as_view(),
@@ -33,11 +35,6 @@ urlpatterns = [
         "resources/docs/",
         views.DocsPageView.as_view(),
         name="resources_docs",
-    ),
-    path(
-        "resources/blog/",
-        views.BlogPageView.as_view(),
-        name="resources_blog",
     ),
     path(
         "resources/youtube/",

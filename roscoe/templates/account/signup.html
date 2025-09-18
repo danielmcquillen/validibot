@@ -9,36 +9,39 @@
 {% endblock title %}
 {% block content %}
   {% site_name as current_site_name %}
-  <div id="signup" class="container-fluid entrance-page">
-    <div class="card">
-      <div class="card-header">{% trans "Sign Up" %}</div>
-      <div class="card-body contents">
-        <p>
-          {% blocktrans trimmed %}
-            Create an account to access our learning content.
-          {% endblocktrans %}
-        </p>
-        <p style="color:#777;">
-          {% blocktrans trimmed %}
-            ( Already have an account? You can
-            <a href="{{ login_url }}">sign in here</a>. )
-          {% endblocktrans %}
-        </p>
-        <form class="signup"
-              id="signup_form"
-              method="post"
-              action="{% url 'account_signup' %}">
-          {% csrf_token %}
-          {{ form|crispy }}
-          {% if redirect_field_value %}
-            <input type="hidden"
-                   name="{{ redirect_field_name }}"
-                   value="{{ redirect_field_value }}" />
-          {% endif %}
-          <button id="sign_up_btn" class="btn btn-primary" type="submit">{% trans "Sign Up" %} »</button>
-        </form>
+  <div id="signup" class="container-fluid entrance-page p-4">
+
+    <div class="entrance-card-wrapper">
+      <div class="card d-flex h-100">
+        <div class="card-body d-flex h-100">
+
+          <div class="row d-flex h-100 w-100 align-items-stretch">
+            <div class="col-12 d col-md-6">
+
+              <h3 class="card-body-header">
+                {% trans "Sign Up" %}
+              </h3>
+
+              <p>
+                {% blocktrans trimmed %}
+                  Create an account to access our learning content.
+                {% endblocktrans %}
+              </p>
+
+              <p style="color:#777;">
+                {% blocktrans trimmed %}
+                  ( Already have an account? You can
+                  <a href="{{ login_url }}">sign in here</a>. )
+                {% endblocktrans %}
+              </p>
+              {% include 'account/partial/sign_up_form.html' %}
+            </div>
+            <div class="col-12 col-md-6 d-none">
+
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
 {% endblock content %}

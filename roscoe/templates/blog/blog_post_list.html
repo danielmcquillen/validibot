@@ -1,0 +1,94 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n tz %}
+
+{% block content %}
+    <section class="blog-hero py-5 py-lg-5 mb-4">
+        <div class="container">
+            <div class="row justify-content-center text-center text-md-start">
+                <div class="col-12 col-lg-9 col-xl-7">
+                    <h1 class="display-5 fw-semibold mb-3">
+                        {{ page_title }}
+                    </h1>
+                    <p class="lead text-muted mb-0">
+                        {{ page_subtitle }}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="container pb-5 pb-lg-5">
+        {% if blog_posts %}
+            <div class="row g-4 g-lg-5">
+                {% for blog_post in blog_posts %}
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <article class="blog-card h-100 d-flex flex-column">
+                            <a class="blog-card__image ratio ratio-16x9"
+                               href="{% url 'marketing:blog:blog_post_detail' blog_post.slug %}">
+                                {% if blog_post.featured_image %}
+                                    <img src="{{ blog_post.featured_image.url }}"
+                                         alt="{{ blog_post.featured_image_alt|default:blog_post.title }}"
+                                         class="img-fluid object-fit-cover" />
+                                {% else %}
+                                    <div class="blog-card__placeholder d-flex align-items-center justify-content-center">
+                                        <span class="fw-semibold">{% trans "SimpleValidations" %}</span>
+                                    </div>
+                                {% endif %}
+                            </a>
+                            <div class="blog-card__body d-flex flex-column flex-grow-1">
+                                <div class="blog-card__meta d-flex align-items-center gap-2 mb-2">
+                                    <span class="text-muted small">
+                                        {% if blog_post.author and blog_post.author.name %}
+                                            {{ blog_post.author.name }}
+                                        {% elif blog_post.author %}
+                                            {{ blog_post.author.username }}
+                                        {% else %}
+                                            {% trans "SimpleValidations Team" %}
+                                        {% endif %}
+                                    </span>
+                                    <span class="text-muted small">&middot;</span>
+                                    <time class="text-muted small"
+                                          datetime="{{ blog_post.published_on|localtime|date:'c' }}">
+                                        {{ blog_post.published_on|localtime|date:"DATE_FORMAT" }}
+                                    </time>
+                                    {% if blog_post.status == 0 and has_drafts %}
+                                        <span class="badge text-bg-warning-subtle text-warning-emphasis ms-auto">
+                                            {% trans "Draft" %}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                                <h2 class="h4 fw-semibold mb-2">
+                                    <a class="text-decoration-none"
+                                       href="{% url 'marketing:blog:blog_post_detail' blog_post.slug %}">
+                                        {{ blog_post.title }}
+                                    </a>
+                                </h2>
+                                <p class="text-muted mb-3">
+                                    {{ blog_post.content|striptags|truncatechars:160 }}
+                                </p>
+                                <div class="mt-auto">
+                                    <span class="blog-card__read-more fw-semibold">
+                                        {% trans "Read more" %} &rarr;
+                                    </span>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="d-flex flex-column align-items-center justify-content-center text-center py-5">
+                <div class="empty-state-icon mb-3">
+                    <i class="bi bi-journal-text"></i>
+                </div>
+                <h2 class="h4 fw-semibold mb-2">
+                    {% trans "No posts yet" %}
+                </h2>
+                <p class="text-muted mb-0">
+                    {% trans "Once the team publishes a story, you'll see it here." %}
+                </p>
+            </div>
+        {% endif %}
+    </section>
+{% endblock content %}

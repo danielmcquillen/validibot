@@ -11,16 +11,16 @@ from slugify import slugify
 
 from roscoe.projects.models import Project
 from roscoe.submissions.models import Submission
-from roscoe.users.models import Organization, User
-from roscoe.validations.constants import (
-    RulesetType,
-    Severity,
-    StepStatus,
-    ValidationRunStatus,
-    ValidationType,
-    XMLSchemaType,
-)
-from roscoe.workflows.models import Workflow, WorkflowStep
+from roscoe.users.models import Organization
+from roscoe.users.models import User
+from roscoe.validations.constants import RulesetType
+from roscoe.validations.constants import Severity
+from roscoe.validations.constants import StepStatus
+from roscoe.validations.constants import ValidationRunStatus
+from roscoe.validations.constants import ValidationType
+from roscoe.validations.constants import XMLSchemaType
+from roscoe.workflows.models import Workflow
+from roscoe.workflows.models import WorkflowStep
 
 
 class Ruleset(TimeStampedModel):

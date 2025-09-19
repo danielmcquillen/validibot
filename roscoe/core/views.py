@@ -26,7 +26,7 @@ def submit_support_message(request: HttpRequest) -> HttpResponse:
         success_context = {
             "headline": _("Message received"),
             "body": _(
-                "Thanks for reaching out. A member of the team will respond soon."
+                "Thanks for reaching out. A member of the team will respond soon.",
             ),
         }
         if is_htmx(request):
@@ -65,7 +65,7 @@ def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:
     body = _(
         "Subject: %(subject)s\n"
         "Message:\n%(message)s\n\n"
-        "Submitted by: %(user)s (id=%(user_id)s)"
+        "Submitted by: %(user)s (id=%(user_id)s)",
     ) % {
         "subject": form.cleaned_data["subject"],
         "message": form.cleaned_data["message"],

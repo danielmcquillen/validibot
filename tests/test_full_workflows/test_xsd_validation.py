@@ -7,16 +7,19 @@ from urllib.parse import urlparse
 
 import pytest
 from django.urls import reverse
+from rest_framework.status import HTTP_200_OK
 
-from roscoe.users.models import Role, RoleCode
-from roscoe.users.tests.factories import OrganizationFactory, UserFactory
-from roscoe.validations.constants import (
-    ValidationRunStatus,
-    ValidationType,
-    XMLSchemaType,
-)
-from roscoe.validations.tests.factories import RulesetFactory, ValidatorFactory
-from roscoe.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
+from roscoe.users.models import Role
+from roscoe.users.models import RoleCode
+from roscoe.users.tests.factories import OrganizationFactory
+from roscoe.users.tests.factories import UserFactory
+from roscoe.validations.constants import ValidationRunStatus
+from roscoe.validations.constants import ValidationType
+from roscoe.validations.constants import XMLSchemaType
+from roscoe.validations.tests.factories import RulesetFactory
+from roscoe.validations.tests.factories import ValidatorFactory
+from roscoe.workflows.tests.factories import WorkflowFactory
+from roscoe.workflows.tests.factories import WorkflowStepFactory
 
 if TYPE_CHECKING:
     from roscoe.users.models import Membership
@@ -43,7 +46,10 @@ def normalize_poll_url(location: str) -> str:
 
 
 def poll_until_complete(
-    client, url: str, timeout_s: float = 10.0, interval_s: float = 0.25
+    client,
+    url: str,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.25,
 ) -> tuple[dict, int]:
     deadline = time.time() + timeout_s
     last = None
@@ -52,7 +58,7 @@ def poll_until_complete(
     while time.time() < deadline:
         resp = client.get(url)
         last_status = resp.status_code
-        if resp.status_code == 200:
+        if resp.status_code == HTTP_200_OK:
             try:
                 data = resp.json()
             except Exception:
@@ -166,7 +172,7 @@ def _run_and_poll(
                 poll_url = f"/api/v1/validation-runs/{run_id}/"
 
     data, last_status = poll_until_complete(client, poll_url)
-    assert last_status == 200, f"Polling failed: {last_status} {data}"
+    assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
     return data
 
 

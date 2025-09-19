@@ -48,7 +48,8 @@ class TrackingEventService:
             extra_data: Optional structured metadata to store alongside the event.
 
         Returns:
-            TrackingEvent instance when recorded, otherwise ``None`` if skipped or failed.
+            TrackingEvent instance when recorded, otherwise ``None`` if skipped
+            or failed.
         """
         tracking_event = None
         try:
@@ -60,7 +61,7 @@ class TrackingEventService:
                 user=user,
                 extra_data=extra_data,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "Unexpected error while logging tracking event",
                 extra={
@@ -83,11 +84,17 @@ class TrackingEventService:
         user: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
     ) -> TrackingEvent | None:
+        if not event_type:
+            raise ValueError(_("Event type is required to log a tracking event"))
+
         if not user:
             raise ValueError(_("User is required to log a tracking event"))
 
         resolved_type = self._resolve_event_type(event_type)
-        resolved_app_event_type = self._resolve_app_event_type(resolved_type, app_event_type)
+        resolved_app_event_type = self._resolve_app_event_type(
+            resolved_type,
+            app_event_type,
+        )
 
         prepared_extra = self._prepare_extra_data(extra_data)
         actor = user if getattr(user, "is_authenticated", False) else None
@@ -124,7 +131,7 @@ class TrackingEventService:
                 validation_run_id=validation_run_id,
                 extra_data=extra_data,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception(
                 "Unexpected error while logging validation run started event",
                 extra={

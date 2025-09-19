@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile, File
+from django.core.files.base import ContentFile
+from django.core.files.base import File
 from django.db import models
 from django.db.models import Q
 from django.utils.timezone import now
@@ -18,7 +19,8 @@ from django_extensions.db.models import TimeStampedModel
 
 from roscoe.projects.models import Project
 from roscoe.submissions.constants import SubmissionFileType
-from roscoe.users.models import Organization, User
+from roscoe.users.models import Organization
+from roscoe.users.models import User
 from roscoe.workflows.models import Workflow
 
 if TYPE_CHECKING:
@@ -82,16 +84,16 @@ class Submission(TimeStampedModel):
             models.CheckConstraint(
                 name="submission_content_present",
                 condition=(
-                    Q(content__gt="") |
-                    (Q(input_file__isnull=False) & ~Q(input_file=""))
+                    Q(content__gt="")
+                    | (Q(input_file__isnull=False) & ~Q(input_file=""))
                 ),
             ),
             # Not both
             models.CheckConstraint(
                 name="submission_content_not_both",
                 condition=~(
-                    Q(content__gt="") &
-                    (Q(input_file__isnull=False) & ~Q(input_file=""))
+                    Q(content__gt="")
+                    & (Q(input_file__isnull=False) & ~Q(input_file=""))
                 ),
             ),
         ]
@@ -224,7 +226,7 @@ class Submission(TimeStampedModel):
         """
 
         inline_max_bytes = inline_max_bytes or int(
-            getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 256 * 1024)
+            getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 256 * 1024),
         )
 
         # Exactly one input
@@ -355,7 +357,7 @@ class Submission(TimeStampedModel):
                     self.checksum_sha256 = self._compute_checksum_filelike(
                         self.input_file,
                     )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception(
                     "Failed to compute checksum for submission",
                     extra={"id": self.id},

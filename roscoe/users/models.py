@@ -180,6 +180,7 @@ class User(AbstractUser):
     def set_current_org(
         self,
         orgs: Organization,
+        *,
         save: bool = True,
     ):
         """
@@ -188,7 +189,7 @@ class User(AbstractUser):
         Args:
             organization: Organization instance to scope the user to.
             save: Persist immediately (default True).
-            
+
         Raises:
             ValueError: If the user is not a member of the organization.
         """
@@ -203,7 +204,10 @@ class User(AbstractUser):
             id=orgs.id,
             membership__is_active=True,
         ).exists():
-            msg = "User must be an active member of the organization to set it as current."
+            msg = (
+                "User must be an active member of the organization "
+                "to set it as current."
+            )
             raise ValueError(msg)
 
         self.current_org = orgs

@@ -7,16 +7,21 @@ from urllib.parse import urlparse
 
 import pytest
 from django.urls import reverse
+from rest_framework.status import HTTP_200_OK
+from rest_framework.status import HTTP_201_CREATED
+from rest_framework.status import HTTP_202_ACCEPTED
 
-from roscoe.users.models import Role, RoleCode
-from roscoe.users.tests.factories import OrganizationFactory, UserFactory
-from roscoe.validations.constants import (
-    ValidationRunStatus,
-    ValidationType,
-    XMLSchemaType,
-)
-from roscoe.validations.tests.factories import RulesetFactory, ValidatorFactory
-from roscoe.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
+from roscoe.users.models import Role
+from roscoe.users.models import RoleCode
+from roscoe.users.tests.factories import OrganizationFactory
+from roscoe.users.tests.factories import UserFactory
+from roscoe.validations.constants import ValidationRunStatus
+from roscoe.validations.constants import ValidationType
+from roscoe.validations.constants import XMLSchemaType
+from roscoe.validations.tests.factories import RulesetFactory
+from roscoe.validations.tests.factories import ValidatorFactory
+from roscoe.workflows.tests.factories import WorkflowFactory
+from roscoe.workflows.tests.factories import WorkflowStepFactory
 
 if TYPE_CHECKING:
     from roscoe.users.models import Membership
@@ -43,7 +48,10 @@ def normalize_poll_url(location: str) -> str:
 
 
 def poll_until_complete(
-    client, url: str, timeout_s: float = 10.0, interval_s: float = 0.25
+    client,
+    url: str,
+    timeout_s: float = 10.0,
+    interval_s: float = 0.25,
 ) -> tuple[dict, int]:
     deadline = time.time() + timeout_s
     last = None
@@ -52,7 +60,7 @@ def poll_until_complete(
     while time.time() < deadline:
         resp = client.get(url)
         last_status = resp.status_code
-        if resp.status_code == 200:
+        if resp.status_code == HTTP_200_OK:
             try:
                 data = resp.json()
             except Exception:
@@ -96,7 +104,7 @@ def workflow_context(load_rng_asset, api_client):
         membership: Membership = user.memberships.get(org=org)  # type: ignore[attr-defined]
         executor_role: Role = Role.objects.get(code=RoleCode.EXECUTOR)
         membership.roles.add(executor_role)
-    except Exception as e:
+    except Exception:
         # Guarantee access in tests even if role wiring differs
         user.is_superuser = True
         user.save()
@@ -147,7 +155,9 @@ def _run_and_poll(
 ) -> dict:
     start_url = start_workflow_url(workflow.pk)
     resp = client.post(start_url, data=content, content_type=content_type)
-    assert resp.status_code in (200, 201, 202), resp.content
+    assert resp.status_code in (HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED), (
+        resp.content
+    )
 
     loc = resp.headers.get("Location") or resp.headers.get("location") or ""
     poll_url = normalize_poll_url(loc)
@@ -169,7 +179,7 @@ def _run_and_poll(
                 poll_url = f"/api/v1/validation-runs/{run_id}/"
 
     data, last_status = poll_until_complete(client, poll_url)
-    assert last_status == 200, f"Polling failed: {last_status} {data}"
+    assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
     return data
 
 

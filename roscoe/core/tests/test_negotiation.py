@@ -7,7 +7,7 @@ from roscoe.core.api.negotiation import AgentAwareNegotiation
 
 
 @pytest.mark.parametrize(
-    "request_kwargs, expected_profile",
+    ("request_kwargs", "expected_profile"),
     [
         ({"HTTP_ACCEPT": "application/vnd.simplevalidations.agent+json"}, "agent"),
         ({"HTTP_ACCEPT": "application/json", "HTTP_X_AGENT_PROFILE": "a2a"}, "a2a"),

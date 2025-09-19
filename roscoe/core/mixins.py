@@ -7,7 +7,7 @@ class BreadcrumbMixin:
     Override `get_breadcrumbs()` to return a list of breadcrumb items.
     Each breadcrumb is a dict with keys:
       - 'name': The text to display.
-      - 'url': (Optional) The URL for that breadcrumb. For the current page, 
+      - 'url': (Optional) The URL for that breadcrumb. For the current page,
           you may leave it empty.
     """
 

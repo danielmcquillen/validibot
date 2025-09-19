@@ -57,7 +57,7 @@ class WebhookDelivery(TimeStampedModel):
             (
                 "endpoint",
                 "event",
-            )
+            ),
         ]
         indexes = [
             models.Index(fields=["endpoint", "created"]),
@@ -88,7 +88,8 @@ class WebhookDelivery(TimeStampedModel):
     last_attempt_at = models.DateTimeField(null=True, blank=True)
 
     next_retry_at = models.DateTimeField(
-        null=True, blank=True
+        null=True,
+        blank=True,
     )  # backoff scheduler hook
 
 
@@ -110,7 +111,7 @@ class OutboundEvent(TimeStampedModel):
                 fields=[
                     "resource_type",
                     "resource_id",
-                ]
+                ],
             ),
         ]
 

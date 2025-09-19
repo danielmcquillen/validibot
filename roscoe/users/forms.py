@@ -39,15 +39,15 @@ class UserProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["email"].disabled = True
         self.fields["email"].help_text = _(
-            "Manage your sign-in email from the Email tab."
+            "Manage your sign-in email from the Email tab.",
         )
         self.fields["avatar"].required = False
         self.fields["avatar"].widget.attrs.update({"accept": "image/*"})
         self.fields["username"].help_text = _(
-            "This appears in shared links and invitations."
+            "This appears in shared links and invitations.",
         )
         self.fields["bio"].help_text = _(
-            "Optional short bio that appears in team areas."
+            "Optional short bio that appears in team areas.",
         )
         for name, field in self.fields.items():
             widget = field.widget
@@ -71,7 +71,7 @@ class UserProfileForm(forms.ModelForm):
             cleaned_data["remove_avatar"] = False
         return cleaned_data
 
-    def save(self, commit=True):
+    def save(self, *, commit=True):
         user = super().save(commit=False)
         if self.cleaned_data.get("remove_avatar") and user.avatar:
             user.avatar.delete(save=False)

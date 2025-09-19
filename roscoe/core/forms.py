@@ -7,27 +7,28 @@ from roscoe.core.models import SupportMessage
 
 
 class SupportMessageForm(forms.ModelForm):
-    subject = forms.CharField(
-        label=_("Subject"),
-        max_length=SupportMessage._meta.get_field("subject").max_length,
-        strip=True,
-        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
-    )
-    message = forms.CharField(
-        label=_("Message"),
-        widget=forms.Textarea(
-            attrs={
-                "class": "form-control",
-                "rows": 5,
-                "placeholder": _("How can we help?"),
-            },
-        ),
-        strip=False,
-    )
-
     class Meta:
         model = SupportMessage
         fields = ["subject", "message"]
+        labels = {
+            "subject": _("Subject"),
+            "message": _("Message"),
+        }
+        widgets = {
+            "subject": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "autocomplete": "off",
+                },
+            ),
+            "message": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 5,
+                    "placeholder": _("How can we help?"),
+                },
+            ),
+        }
 
     def _clean_text_value(self, value: str) -> str:
         cleaned = normalize_newlines(strip_tags(value or "").strip())

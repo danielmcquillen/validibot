@@ -35,7 +35,12 @@ class UserDetailView(BreadcrumbMixin, LoginRequiredMixin, DetailView):
 user_detail_view = UserDetailView.as_view()
 
 
-class UserUpdateView(BreadcrumbMixin, LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+class UserUpdateView(
+    BreadcrumbMixin,
+    LoginRequiredMixin,
+    SuccessMessageMixin,
+    UpdateView,
+):
     model = User
     form_class = UserProfileForm
     template_name = "users/profile.html"
@@ -43,7 +48,11 @@ class UserUpdateView(BreadcrumbMixin, LoginRequiredMixin, SuccessMessageMixin, U
     extra_context = {"active_settings_tab": "profile"}
 
     def get_success_url(self) -> str:
-        return reverse_lazy("users:update")
+        assert self.request.user.is_authenticated
+        return reverse_lazy(
+            "users:detail",
+            kwargs={"username": self.request.user.username},
+        )
 
     def get_breadcrumbs(self):
         return [
@@ -51,7 +60,7 @@ class UserUpdateView(BreadcrumbMixin, LoginRequiredMixin, SuccessMessageMixin, U
             {"name": _("Profile"), "url": ""},
         ]
 
-    def get_object(self, queryset: QuerySet | None=None) -> User:
+    def get_object(self, queryset: QuerySet | None = None) -> User:
         assert self.request.user.is_authenticated  # type guard
         return self.request.user
 
@@ -63,7 +72,11 @@ class UserRedirectView(LoginRequiredMixin, RedirectView):
     permanent = False
 
     def get_redirect_url(self) -> str:
-        return reverse("users:update")
+        assert self.request.user.is_authenticated
+        return reverse(
+            "users:detail",
+            kwargs={"username": self.request.user.username},
+        )
 
 
 user_redirect_view = UserRedirectView.as_view()

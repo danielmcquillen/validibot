@@ -1,9 +1,8 @@
 # roscoe/filesafety.py
 import hashlib
-import os
 import re
 import unicodedata
-from typing import Optional
+from pathlib import Path
 
 SAFE_EXT_FOR_TYPE = {
     # keep this aligned with SUPPORTED_CONTENT_TYPES & SubmissionFileType
@@ -25,6 +24,10 @@ SUSPICIOUS_MAGIC_PREFIXES = (
 # allow common filename chars; collapse whitespace; drop control chars
 _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._\-()+=,@ ]+")
 
+# ASCII control characters fall below 32; DEL (127) should be disallowed as well.
+_ASCII_MIN_PRINTABLE = 32
+_ASCII_MAX_EXCLUSIVE = 127
+
 
 def sanitize_filename(candidate: str, *, fallback: str = "document") -> str:
     """
@@ -32,11 +35,15 @@ def sanitize_filename(candidate: str, *, fallback: str = "document") -> str:
     """
     candidate = candidate or fallback
     # basename & normalize unicode
-    name = os.path.basename(candidate)
+    name = Path(candidate).name
     name = unicodedata.normalize("NFKC", name)
 
     # strip control chars
-    name = "".join(ch for ch in name if 32 <= ord(ch) < 127 or ch in "\t")
+    name = "".join(
+        ch
+        for ch in name
+        if _ASCII_MIN_PRINTABLE <= ord(ch) < _ASCII_MAX_EXCLUSIVE or ch in "\t"
+    )
     name = _FILENAME_SAFE.sub("_", name)
     name = re.sub(r"\s+", " ", name).strip()
 
@@ -56,13 +63,14 @@ def force_extension(
     name: str,
     *,
     content_type: str,
-    default_ext: Optional[str] = None,
+    default_ext: str | None = None,
 ) -> str:
     want_ext = SAFE_EXT_FOR_TYPE.get(content_type, default_ext or ".txt")
-    root, ext = os.path.splitext(name)
+    path = Path(name)
+    ext = path.suffix
     # if ext mismatches, replace it
     if ext.lower() != want_ext.lower():
-        name = f"{root}{want_ext}"
+        name = f"{path.stem}{want_ext}"
     return name
 
 

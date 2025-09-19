@@ -21,7 +21,7 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
         {
             "name": _("Blog"),
             "url": reverse_lazy("marketing:blog:blog_list"),
-        }
+        },
     ]
 
     def get_queryset(self):
@@ -38,7 +38,8 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
                 "section": "blog",
                 "page_title": _("Blog"),
                 "page_subtitle": _(
-                    "Insights, guides, and product updates from the SimpleValidations team."
+                    "Insights, guides, and product updates from the "
+                    "SimpleValidations team.",
                 ),
                 "has_drafts": context["blog_posts"].filter(status=0).exists()
                 if self.request.user.is_staff or self.request.user.is_superuser

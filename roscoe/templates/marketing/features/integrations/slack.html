@@ -1,0 +1,19 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h1 class="display-5 fw-semibold mb-4">{% trans "Slack Integration" %}</h1>
+        <p class="lead text-muted">
+          {% trans "Bring validation alerts and approvals to the conversations your team already has." %}
+        </p>
+        <p>
+          {% trans "Send targeted notifications, capture acknowledgements, and keep validation history searchable inside Slack." %}
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

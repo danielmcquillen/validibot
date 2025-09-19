@@ -1,0 +1,19 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h1 class="display-5 fw-semibold mb-4">{% trans "Certificates" %}</h1>
+        <p class="lead text-muted">
+          {% trans "Share trusted validation artifacts with stakeholders instantly." %}
+        </p>
+        <p>
+          {% trans "Generate exportable certificates that summarize checks, owners, and timestamps—ideal for vendor reviews and compliance workflows." %}
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

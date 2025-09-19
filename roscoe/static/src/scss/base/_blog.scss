@@ -6,6 +6,10 @@
   }
 }
 
+.blog-list-cards {
+  margin-bottom: 20rem;
+}
+
 .blog-card {
   background: #ffffff;
   border-radius: 1.25rem;
@@ -62,6 +66,7 @@
   &__content {
     font-size: 1.05rem;
     line-height: 1.75;
+    min-height: 30rem;
 
     h2,
     h3,

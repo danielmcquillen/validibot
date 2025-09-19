@@ -27,6 +27,7 @@ urlpatterns = [
     # App URLs...
     path("app/dashboard/", include("roscoe.dashboard.urls", namespace="dashboard")),
     path("app/users/", include("roscoe.users.urls", namespace="users")),
+    path("app/core/", include("roscoe.core.urls", namespace="core")),
     path("accounts/", include("allauth.urls")),
     path("app/projects/", include("roscoe.projects.urls", namespace="projects")),
     path("app/workflows/", include("roscoe.workflows.urls", namespace="workflows")),

@@ -5,7 +5,7 @@
 
 <form class="login"
       method="post"
-      action="{% url 'account_login' %}?next=/dashboard/">
+      action="{% url 'account_login' %}?next=/app/dashboard/">
     {% csrf_token %}
     {{ form|crispy }}
     {% if redirect_field_value %}

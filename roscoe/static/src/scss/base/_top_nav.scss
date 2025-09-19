@@ -28,7 +28,110 @@
   transform: translateY(-100%);
 }
 
-.resources-dropdown {
+.megamenu {
+  border: 1px solid rgba(0, 0, 0, 0.175) !important; // to match bootstrap dropdown border
+
+  .nav-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+  }
+
+  .section-heading {
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(15, 23, 42, 0.6);
+  }
+
+  .list-unstyled {
+    margin: 0;
+    padding: 0;
+
+    .dropdown-item {
+      padding: 0.35rem 0;
+      color: #0f172a;
+
+      &:hover,
+      &:focus {
+        color: #6366f1;
+        background: transparent;
+      }
+    }
+  }
+
+  .feature-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-radius: 1rem;
+    background: linear-gradient(
+      135deg,
+      rgba(99, 102, 241, 0.15),
+      rgba(168, 85, 247, 0.1)
+    );
+    padding: 1.5rem;
+    border: 1px solid rgba(79, 70, 229, 0.15);
+
+    .feature-image {
+      background: linear-gradient(
+        135deg,
+        rgba(99, 102, 241, 0.35),
+        rgba(168, 85, 247, 0.35)
+      );
+      border-radius: 0.75rem;
+      margin-bottom: 1rem;
+      position: relative;
+      overflow: hidden;
+      padding-top: 65%;
+
+      &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=Roscoe+Blog")
+          center/cover;
+        mix-blend-mode: screen;
+      }
+    }
+
+    .feature-label {
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: rgba(15, 23, 42, 0.6);
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-description {
+      color: rgba(15, 23, 42, 0.7);
+      font-size: 0.9rem;
+      margin-bottom: 1.25rem;
+    }
+  }
+}
+@media (max-width: 767.98px) {
+  .megamenu {
+    .nav-columns {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    .feature-card {
+      padding: 1.25rem;
+    }
+  }
+}
+
+.resources-dropdown, .features-dropdown {
   position: static; // allow megamenu to span full width
 
   .dropdown-menu {
@@ -41,114 +144,12 @@
     overflow: hidden;
   }
 
-  .resources-megamenu {
-    border: 1px solid rgba(0, 0, 0, 0.175) !important; // to match bootstrap dropdown border
-
-    .nav-columns {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 2rem;
-    }
-
-    .section-heading {
-      letter-spacing: 0.08em;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: rgba(15, 23, 42, 0.6);
-    }
-
-    .list-unstyled {
-      margin: 0;
-      padding: 0;
-
-      .dropdown-item {
-        padding: 0.35rem 0;
-        color: #0f172a;
-
-        &:hover,
-        &:focus {
-          color: #6366f1;
-          background: transparent;
-        }
-      }
-    }
-
-    .feature-card {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      border-radius: 1rem;
-      background: linear-gradient(
-        135deg,
-        rgba(99, 102, 241, 0.15),
-        rgba(168, 85, 247, 0.1)
-      );
-      padding: 1.5rem;
-      border: 1px solid rgba(79, 70, 229, 0.15);
-
-      .feature-image {
-        background: linear-gradient(
-          135deg,
-          rgba(99, 102, 241, 0.35),
-          rgba(168, 85, 247, 0.35)
-        );
-        border-radius: 0.75rem;
-        margin-bottom: 1rem;
-        position: relative;
-        overflow: hidden;
-        padding-top: 65%;
-
-        &::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=Roscoe+Blog")
-            center/cover;
-          mix-blend-mode: screen;
-        }
-      }
-
-      .feature-label {
-        text-transform: uppercase;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        color: rgba(15, 23, 42, 0.6);
-        margin-bottom: 0.5rem;
-      }
-
-      .feature-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #0f172a;
-        margin-bottom: 0.75rem;
-      }
-
-      .feature-description {
-        color: rgba(15, 23, 42, 0.7);
-        font-size: 0.9rem;
-        margin-bottom: 1.25rem;
-      }
-    }
-  }
-
   @media (max-width: 767.98px) {
     .dropdown-menu {
       width: 100vw;
       border-radius: 0;
       border-left: 0;
       border-right: 0;
-    }
-
-    .resources-megamenu {
-      .nav-columns {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-      }
-
-      .feature-card {
-        padding: 1.25rem;
-      }
     }
   }
 }

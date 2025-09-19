@@ -69,7 +69,7 @@ class TestUserUpdateView:
         view.form_valid(form)
 
         messages_sent = [m.message for m in messages.get_messages(request)]
-        assert messages_sent == [_("Information successfully updated")]
+        assert messages_sent == [_("Profile updated successfully")]
 
 
 class TestUserRedirectView:

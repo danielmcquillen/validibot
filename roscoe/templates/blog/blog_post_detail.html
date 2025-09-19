@@ -4,10 +4,11 @@
 
 {% block content %}
   <article class="blog-article">
+
     <section class="blog-hero py-5 py-lg-5">
       <div class="container">
-        <div class="row justify-content-center">
-          <div class="col-12 col-xl-8">
+        <div class="row">
+          <div class="col-12 col-lg-8 col-xl-6">
             <div class="d-flex flex-column gap-3">
               <div class="d-flex align-items-center gap-3 flex-wrap">
                 {% if blog_post.status == 0 and request.user.is_staff %}
@@ -15,9 +16,6 @@
                     {% trans "Draft" %}
                   </span>
                 {% endif %}
-                <span class="text-muted small text-uppercase fw-semibold">
-                  {% trans "Blog" %}
-                </span>
               </div>
               <h1 class="display-5 fw-semibold mb-0">
                 {{ blog_post.title }}
@@ -45,8 +43,8 @@
     </section>
 
     <section class="container pb-5 pb-lg-5">
-      <div class="row justify-content-center">
-        <div class="col-12 col-xl-8">
+      <div class="row">
+        <div class="col-12 col-lg-8 col-xl-6">
           {% if blog_post.featured_image %}
             <figure class="blog-article__figure mb-5">
               <img src="{{ blog_post.featured_image.url }}"
@@ -67,7 +65,7 @@
           <div class="mt-5">
             <a class="btn btn-outline-primary"
                href="{% url 'marketing:blog:blog_list' %}">
-              &larr; {% trans "Back to blog" %}
+              ⇐ {% trans "Back to blog list" %}
             </a>
           </div>
         </div>
@@ -76,8 +74,8 @@
 
     {% if related_posts %}
       <section class="container pb-5">
-        <div class="row justify-content-center">
-          <div class="col-12 col-xl-8">
+        <div class="row">
+          <div class="col-12 col-lg-8 col-xl-6">
             <h2 class="h4 fw-semibold mb-4">
               {% trans "Keep reading" %}
             </h2>

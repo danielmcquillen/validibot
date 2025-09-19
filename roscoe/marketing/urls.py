@@ -22,9 +22,59 @@ urlpatterns = [
         name="features",
     ),
     path(
+        "features/overview/",
+        views.FeatureOverviewPageView.as_view(),
+        name="features_overview",
+    ),
+    path(
+        "features/schema-validation/",
+        views.FeatureSchemaValidationPageView.as_view(),
+        name="features_schema_validation",
+    ),
+    path(
+        "features/simulation-validation/",
+        views.FeatureSimulationValidationPageView.as_view(),
+        name="features_simulation_validation",
+    ),
+    path(
+        "features/certificates/",
+        views.FeatureCertificatesPageView.as_view(),
+        name="features_certificates",
+    ),
+    path(
+        "features/blockchain/",
+        views.FeatureBlockchainPageView.as_view(),
+        name="features_blockchain",
+    ),
+    path(
+        "features/integrations/github/",
+        views.FeatureGithubIntegrationPageView.as_view(),
+        name="features_integration_github",
+    ),
+    path(
+        "features/integrations/slack/",
+        views.FeatureSlackIntegrationPageView.as_view(),
+        name="features_integration_slack",
+    ),
+    path(
         "pricing/",
         views.PricingPageView.as_view(),
         name="pricing",
+    ),
+    path(
+        "pricing/starter/",
+        views.PricingStarterPageView.as_view(),
+        name="pricing_starter",
+    ),
+    path(
+        "pricing/growth/",
+        views.PricingGrowthPageView.as_view(),
+        name="pricing_growth",
+    ),
+    path(
+        "pricing/enterprise/",
+        views.PricingEnterprisePageView.as_view(),
+        name="pricing_enterprise",
     ),
     path(
         "resources/",

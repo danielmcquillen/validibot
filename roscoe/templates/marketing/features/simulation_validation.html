@@ -1,0 +1,19 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h1 class="display-5 fw-semibold mb-4">{% trans "Simulation Validation" %}</h1>
+        <p class="lead text-muted">
+          {% trans "Model critical workflows with sandboxed data to see outcomes before shipping." %}
+        </p>
+        <p>
+          {% trans "Spin up realistic scenarios, run validations against sample datasets, and surface potential regressions without touching production." %}
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

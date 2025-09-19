@@ -4,6 +4,7 @@ from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import TemplateView
 
+from roscoe.core.forms import SupportMessageForm
 from roscoe.core.mixins import BreadcrumbMixin
 
 
@@ -28,12 +29,96 @@ class FeaturesPageView(BreadcrumbMixin, TemplateView):
     ]
 
 
+class FeatureDetailPageView(BreadcrumbMixin, TemplateView):
+    template_name: str = ""
+    http_method_names = ["get"]
+    page_title: str = ""
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Features"),
+                "url": reverse_lazy("marketing:features"),
+            }
+        )
+        breadcrumbs.append({"name": _(self.page_title), "url": ""})
+        return breadcrumbs
+
+
+class FeatureOverviewPageView(FeatureDetailPageView):
+    template_name = "marketing/features/overview.html"
+    page_title = "Overview"
+
+
+class FeatureSchemaValidationPageView(FeatureDetailPageView):
+    template_name = "marketing/features/schema_validation.html"
+    page_title = "Schema Validation"
+
+
+class FeatureSimulationValidationPageView(FeatureDetailPageView):
+    template_name = "marketing/features/simulation_validation.html"
+    page_title = "Simulation Validation"
+
+
+class FeatureCertificatesPageView(FeatureDetailPageView):
+    template_name = "marketing/features/certificates.html"
+    page_title = "Certificates"
+
+
+class FeatureBlockchainPageView(FeatureDetailPageView):
+    template_name = "marketing/features/blockchain.html"
+    page_title = "Blockchain"
+
+
+class FeatureGithubIntegrationPageView(FeatureDetailPageView):
+    template_name = "marketing/features/integrations/github.html"
+    page_title = "GitHub Integration"
+
+
+class FeatureSlackIntegrationPageView(FeatureDetailPageView):
+    template_name = "marketing/features/integrations/slack.html"
+    page_title = "Slack Integration"
+
+
 class PricingPageView(BreadcrumbMixin, TemplateView):
     template_name = "marketing/pricing.html"
     http_method_names = ["get"]
     breadcrumbs = [
         {"name": _("Pricing"), "url": ""},
     ]
+
+
+class PricingDetailPageView(BreadcrumbMixin, TemplateView):
+    template_name: str = ""
+    http_method_names = ["get"]
+    page_title: str = ""
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Pricing"),
+                "url": reverse_lazy("marketing:pricing"),
+            }
+        )
+        breadcrumbs.append({"name": _(self.page_title), "url": ""})
+        return breadcrumbs
+
+
+class PricingStarterPageView(PricingDetailPageView):
+    template_name = "marketing/pricing/starter.html"
+    page_title = "Starter"
+
+
+class PricingGrowthPageView(PricingDetailPageView):
+    template_name = "marketing/pricing/growth.html"
+    page_title = "Growth"
+
+
+class PricingEnterprisePageView(PricingDetailPageView):
+    template_name = "marketing/pricing/enterprise.html"
+    page_title = "Enterprise"
 
 
 class ResourcesPageView(BreadcrumbMixin, TemplateView):
@@ -101,6 +186,12 @@ class ContactPageView(SupportDetailPageView):
     template_name = "marketing/contact.html"
     http_method_names = ["get"]
     page_title = "Contact Us"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.user.is_authenticated:
+            context.setdefault("support_message_form", SupportMessageForm())
+        return context
 
 
 class HelpCenterPageView(SupportDetailPageView):

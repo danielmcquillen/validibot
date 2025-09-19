@@ -2,7 +2,6 @@
 
 <li class="nav-item dropdown features-dropdown">
     <a class="nav-link dropdown-toggle {% active_link_any 'features' 'faq' 'contact' 'support/help-center' 'support/status' %}"
-       href="#"
        id="featuresMegaMenu"
        role="button"
        data-bs-toggle="dropdown"
@@ -11,19 +10,66 @@
         {% translate "Features" %}
     </a>
 
-    <ul class="dropdown-menu">
-        <li>
-            <a class="dropdown-item" href="#">{% translate "Schema Validation" %}</a>
-        </li>
-        <li>
-            <a class="dropdown-item" href="#">{% translate "Simulation Validation" %}</a>
-        </li>
-        <li>
-            <a class="dropdown-item" href="#">{% translate "Certificates" %}</a>
-        </li>
-        <li>
-            <a class="dropdown-item" href="#">{% translate "Blockchain" %}</a>
-        </li>
+    <div class="dropdown-menu shadow-lg p-0 border-0 megamenu"
+         aria-labelledby="featuresMegaMenu">
+        <div class="row g-0">
+            <div class="col-12 col-lg-8 p-4">
+                <div class="nav-columns">
+                    <div>
+                        <p class="section-heading mb-2">
+                            {% translate "Features" %}
+                        </p>
+                        <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_overview' %}">{% translate "SimpleValidations Overview" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_schema_validation' %}">{% translate "Schema Validation" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_simulation_validation' %}">{% translate "Simulation Validation" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_certificates' %}">{% translate "Certificates" %}</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_blockchain' %}">{% translate "Blockchain" %}</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="section-heading mb-2">
+                            {% translate "Integrations" %}
+                        </p>
+                        <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_integration_github' %}">GitHub</a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:features_integration_slack' %}">Slack</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-4 border-top border-lg-start p-4 bg-body-tertiary">
+                <div class="feature-card">
+                    <div class="feature-image">
+                    </div>
+                    <p class="feature-label">
+                        {% translate "From the blog" %}
+                    </p>
+                    <h3 class="feature-title">
+                        {% translate "5 steps to launch collaborative validations" %}
+                    </h3>
+                    <p class="feature-description">
+                        {% translate "Discover how teams streamline reviews and keep every stakeholder aligned." %}
+                    </p>
+                    <a class="btn btn-outline-primary align-self-start"
+                       href="{% url 'marketing:blog:blog_list' %}">{% translate "Read story" %}</a>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    </ul>
 </li>

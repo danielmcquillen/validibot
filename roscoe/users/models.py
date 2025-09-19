@@ -95,27 +95,31 @@ class User(AbstractUser):
         _("Job title"),
         max_length=128,
         blank=True,
-        null=True,
+        default="",
     )
     company = models.CharField(
         _("Company"),
         max_length=255,
         blank=True,
-        null=True,
+        default="",
     )
     location = models.CharField(
         _("Location"),
         max_length=255,
         blank=True,
-        null=True,
+        default="",
     )
     timezone = models.CharField(
         _("Timezone"),
         max_length=64,
         blank=True,
-        null=True,
+        default="",
     )
-    bio = models.TextField(_("Bio"), blank=True, null=True)
+    bio = models.TextField(
+        _("Bio"),
+        blank=True,
+        default="",
+    )
 
     first_name = None  # type: ignore[assignment]
 
@@ -138,7 +142,7 @@ class User(AbstractUser):
         on_delete=models.SET_NULL,
         related_name="current_users",
         help_text=_(
-            "Organization the user is currently working in (can be changed by user)."
+            "Organization the user is currently working in (can be changed by user).",
         ),
     )
 
@@ -184,6 +188,7 @@ class User(AbstractUser):
         Args:
             organization: Organization instance to scope the user to.
             save: Persist immediately (default True).
+            
         Raises:
             ValueError: If the user is not a member of the organization.
         """

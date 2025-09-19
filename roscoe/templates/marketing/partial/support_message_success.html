@@ -1,0 +1,11 @@
+{% load i18n %}
+
+<div id="support-message-card" class="card shadow-sm border-success">
+  <div class="card-body text-center">
+    <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-success bg-opacity-10 text-success mb-3" style="width: 3rem; height: 3rem;">
+      <i class="bi bi-check-lg fs-4"></i>
+    </div>
+    <h2 class="h5 fw-semibold mb-2">{{ headline|default:_("Message received") }}</h2>
+    <p class="text-muted mb-0">{{ body|default:_("Thanks for reaching out. We'll be in touch shortly.") }}</p>
+  </div>
+</div>

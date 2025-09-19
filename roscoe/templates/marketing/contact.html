@@ -1,26 +1,29 @@
 {% extends "marketing_base.html" %}
+
 {% load i18n %}
 
 {% block content %}
   <section class="container py-5">
     <div class="row g-4 align-items-start">
       <div class="col-lg-6">
-        <h1 class="display-5 fw-semibold mb-4">{% trans "Let's talk" %}</h1>
-        <p class="text-muted">{% trans "We love hearing from folks who care about great data quality." %}</p>
+        <h1 class="display-5 fw-semibold mb-4">
+          {% trans "Let's talk" %}
+        </h1>
+        <p class="text-muted">
+          {% trans "We love hearing from folks who care about great data quality." %}
+          <br/>
+          {% trans " Email today and we'll get back to you right away." %}
+        </p>
         <ul class="list-unstyled">
-          <li class="mb-2"><i class="bi-envelope me-2"></i>support@roscoe.app</li>
-          <li class="mb-2"><i class="bi-telephone me-2"></i>+1 (555) 010-9000</li>
-          <li class="mb-2"><i class="bi-geo-alt me-2"></i>123 Data Way, Suite 42, Portland, OR</li>
+          <li class="mb-2">
+            <i class="bi-envelope me-2"></i>support@simplevalidations.com
+          </li>
         </ul>
       </div>
       <div class="col-lg-6">
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <h2 class="h5 fw-semibold mb-3">{% trans "Send us a message" %}</h2>
-            <p class="text-muted small">{% trans "A contact form will live here soon. Send us an email while we finish it up." %}</p>
-            <a class="btn btn-outline-primary" href="mailto:support@roscoe.app">{% trans "Email support" %}</a>
-          </div>
-        </div>
+        {% if request.user.is_authenticated %}
+          {% include "marketing/partial/support_message_form.html" with form=support_message_form %}
+        {% endif %}
       </div>
     </div>
   </section>

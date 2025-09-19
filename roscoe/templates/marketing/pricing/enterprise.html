@@ -1,0 +1,34 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container pricing-detail-page">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h1 class="display-5 fw-semibold mb-3">{% trans "Enterprise plan" %}</h1>
+        <p class="lead text-muted mb-4">
+          {% trans "Tailored automation, governance, and support for mission-critical validation teams." %}
+        </p>
+        <div class="card shadow-sm">
+          <div class="card-body p-4">
+            <h2 class="h5 fw-semibold mb-3">{% trans "What's included" %}</h2>
+            <ul class="mb-4">
+              <li>{% trans "Dedicated onboarding specialist and quarterly success reviews" %}</li>
+              <li>{% trans "Enterprise-grade security with SAML SSO, SCIM, and audit exports" %}</li>
+              <li>{% trans "24/7 emergency support with guaranteed response times" %}</li>
+              <li>{% trans "Custom workflows, integrations, and data residency options" %}</li>
+            </ul>
+            <p class="text-muted mb-0">
+              {% trans "We'll design a package around your compliance, scale, and governance requirements." %}
+            </p>
+          </div>
+        </div>
+        <div class="d-flex flex-column flex-md-row gap-3 mt-4">
+          <a class="btn btn-primary" href="{% url 'marketing:contact' %}">{% trans "Talk with our team" %}</a>
+          <a class="btn btn-outline-secondary" href="{% url 'marketing:pricing' %}">{% trans "Back to pricing" %}</a>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

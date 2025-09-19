@@ -89,7 +89,7 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=Roscoe+Blog")
+        background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=SimpleValidations+Blog")
           center/cover;
         mix-blend-mode: screen;
       }
@@ -131,6 +131,7 @@
   }
 }
 
+
 .resources-dropdown, .features-dropdown {
   position: static; // allow megamenu to span full width
 
@@ -151,5 +152,34 @@
       border-left: 0;
       border-right: 0;
     }
+  }
+}
+
+@media (max-width: 991.98px) {
+  .resources-dropdown, .features-dropdown {
+    position: relative;
+
+    .dropdown-menu {
+      width: min(320px, 90vw);
+      margin-top: 0.25rem;
+      margin-left: 0;
+      margin-right: 0;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.75rem 1.5rem rgba(30, 41, 59, 0.12);
+    }
+  }
+
+  .megamenu {
+    .nav-columns {
+      display: block;
+    }
+
+    .section-heading {
+      margin-top: 0.5rem;
+    }
+  }
+
+  .megamenu-highlight {
+    display: none !important;
   }
 }

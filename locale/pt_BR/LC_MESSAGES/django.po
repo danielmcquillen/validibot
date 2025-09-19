@@ -1,4 +1,4 @@
-# Translations for the Roscoe project
+# Translations for the SimpleValidations project
 # Copyright (C) 2025 Daniel McQuillen
 # Daniel McQuillen <daniel@mcquilleninteractive.com>, 2025.
 #

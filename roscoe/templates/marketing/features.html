@@ -1,42 +1,165 @@
 {% extends "marketing_base.html" %}
+
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
+  <section class="container py-5 features-page">
     <div class="text-center mb-5">
-      <h1 class="display-5 fw-semibold">{% trans "Everything you need to ship confident validations" %}</h1>
-      <p class="lead text-muted">{% trans "Roscoe keeps validation teams in sync with reusable workflows and instant insight into every run." %}</p>
+      <h1 class="display-5 fw-semibold">
+        {% trans "Everything you need to ship confident validations" %}
+      </h1>
+      <p class="lead text-muted">
+        {% trans "SimpleValidations keeps validation teams in sync with reusable workflows and instant insight into every run." %}
+      </p>
     </div>
 
-    <div class="row g-4">
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="h5 fw-semibold">{% trans "Composable workflows" %}</h2>
-            <p class="text-muted">{% trans "Build, version, and reuse validation pipelines without writing boilerplate scripts." %}</p>
+    <div class="features-content">
+      <div class="row g-4">
+        <div class="col-md-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <h2 class="h5 fw-semibold">
+                {% trans "Composable workflows" %}
+              </h2>
+              <p class="text-muted">
+                {% trans "Build, version, and reuse validation pipelines without writing boilerplate scripts." %}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <h2 class="h5 fw-semibold">
+                {% trans "Collaborative reviews" %}
+              </h2>
+              <p class="text-muted">
+                {% trans "Share real-time results, add notes, and track status so everyone stays aligned." %}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <h2 class="h5 fw-semibold">
+                {% trans "Insightful reporting" %}
+              </h2>
+              <p class="text-muted">
+                {% trans "Surface pass/fail trends, identify bottlenecks, and continuously improve your data quality." %}
+              </p>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="h5 fw-semibold">{% trans "Collaborative reviews" %}</h2>
-            <p class="text-muted">{% trans "Share real-time results, add notes, and track status so everyone stays aligned." %}</p>
+      <div class="mt-5">
+        <h2 class="h4 fw-semibold mb-3 text-center text-md-start">
+          {% trans "Explore the platform" %}
+        </h2>
+        <div class="row g-4">
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_overview' %}">
+              <div class="feature-link-visual feature-link-visual--overview"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Platform overview" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Tour dashboards, workflows, and collaboration in one place." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_schema_validation' %}">
+              <div class="feature-link-visual feature-link-visual--schema"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Schema validation" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Catch breaking changes before they impact consumers." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_simulation_validation' %}">
+              <div class="feature-link-visual feature-link-visual--simulation"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Simulation validation" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Experiment safely with sandboxed data and realistic scenarios." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_certificates' %}">
+              <div class="feature-link-visual feature-link-visual--certificates"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Certificates" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Deliver polished validation summaries to stakeholders instantly." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_blockchain' %}">
+              <div class="feature-link-visual feature-link-visual--blockchain"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Blockchain audit" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Record evidence on an immutable ledger for complete trust." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_integration_github' %}">
+              <div class="feature-link-visual feature-link-visual--github"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "GitHub integration" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Automate checks straight from pull requests and releases." %}
+                </p>
+              </div>
+            </a>
+          </div>
+          <div class="col-sm-6 col-lg-4">
+            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
+               href="{% url 'marketing:features_integration_slack' %}">
+              <div class="feature-link-visual feature-link-visual--slack"></div>
+              <div class="card-body">
+                <h3 class="h5 fw-semibold mb-2">
+                  {% trans "Slack integration" %}
+                </h3>
+                <p class="text-muted mb-0">
+                  {% trans "Broadcast alerts and approvals to the channels teams trust." %}
+                </p>
+              </div>
+            </a>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="h5 fw-semibold">{% trans "Insightful reporting" %}</h2>
-            <p class="text-muted">{% trans "Surface pass/fail trends, identify bottlenecks, and continuously improve your data quality." %}</p>
-          </div>
-        </div>
+      <div class="text-center mt-5">
+        <a class="btn btn-primary btn-lg" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
       </div>
-    </div>
-
-    <div class="text-center mt-5">
-      <a class="btn btn-primary btn-lg" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
     </div>
   </section>
 {% endblock content %}

@@ -1,11 +1,11 @@
-site_name: Roscoe Developer Docs
-site_description: Internal documentation for Roscoe contributors.
-site_url: https://danielmcquillen.github.io/roscoe/dev/
+site_name: SimpleValidations Developer Docs
+site_description: Internal documentation for SimpleValidations contributors.
+site_url: https://danielmcquillen.github.io/simplevalidations/dev/
 
 docs_dir: docs/dev_docs
 use_directory_urls: true
 
-repo_url: https://github.com/danielmcquillen/roscoe
+repo_url: https://github.com/danielmcquillen/simplevalidations
 repo_name: danielmcquillen/roscoe
 
 theme:

@@ -11960,7 +11960,7 @@ h4 {
   content: "";
   position: absolute;
   inset: 0;
-  background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=Roscoe+Blog") center/cover;
+  background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=SimpleValidations+Blog") center/cover;
   mix-blend-mode: screen;
 }
 .megamenu .feature-card .feature-label {
@@ -12013,6 +12013,28 @@ h4 {
   }
 }
 
+@media (max-width: 991.98px) {
+  .resources-dropdown, .features-dropdown {
+    position: relative;
+  }
+  .resources-dropdown .dropdown-menu, .features-dropdown .dropdown-menu {
+    width: min(320px, 90vw);
+    margin-top: 0.25rem;
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0.75rem;
+    box-shadow: 0 0.75rem 1.5rem rgba(30, 41, 59, 0.12);
+  }
+  .megamenu .nav-columns {
+    display: block;
+  }
+  .megamenu .section-heading {
+    margin-top: 0.5rem;
+  }
+  .megamenu-highlight {
+    display: none !important;
+  }
+}
 /* Footer */
 #marketing-footer {
   border-top: 1px solid #aaa;
@@ -12056,7 +12078,7 @@ h4 {
   font-size: 1em;
   color: #000;
   text-align: left;
-  border-bottom: 1px dotted #777;
+  border-bottom: 1px dotted #aaa;
 }
 #marketing-footer .site-map {
   color: #000;
@@ -12099,7 +12121,7 @@ h4 {
 #marketing-footer .site-map .newsletter-column a {
   color: #000 !important;
   text-decoration: none;
-  border-bottom: 1px dotted #777;
+  border-bottom: 1px dotted #aaa;
 }
 
 .course-card .card-body {
@@ -12399,6 +12421,64 @@ h4 {
 
 #messages {
   z-index: 10000;
+}
+
+.features-page {
+  padding-bottom: 20rem;
+}
+.features-page .features-content {
+  min-height: 25rem;
+}
+
+.feature-link-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.feature-link-card:hover, .feature-link-card:focus {
+  transform: translateY(-4px);
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.12);
+}
+
+.feature-link-visual {
+  position: relative;
+  border-radius: 0.85rem;
+  padding-top: 56%;
+  margin: 1.25rem 1.25rem 0;
+  overflow: hidden;
+}
+.feature-link-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--feature-link-gradient, linear-gradient(135deg, #a855f7, #6366f1));
+}
+
+.feature-link-visual--overview {
+  --feature-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.feature-link-visual--schema {
+  --feature-link-gradient: linear-gradient(135deg, #f97316, #fb7185);
+}
+
+.feature-link-visual--simulation {
+  --feature-link-gradient: linear-gradient(135deg, #22c55e, #14b8a6);
+}
+
+.feature-link-visual--certificates {
+  --feature-link-gradient: linear-gradient(135deg, #facc15, #f472b6);
+}
+
+.feature-link-visual--blockchain {
+  --feature-link-gradient: linear-gradient(135deg, #8b5cf6, #3730a3);
+}
+
+.feature-link-visual--github {
+  --feature-link-gradient: linear-gradient(135deg, #111827, #4b5563);
+}
+
+.feature-link-visual--slack {
+  --feature-link-gradient: linear-gradient(135deg, #ec4899, #3b82f6);
 }
 
 .pricing-page {

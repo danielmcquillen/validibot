@@ -28,6 +28,67 @@
   z-index: 10000;
 }
 
+.features-page {
+  padding-bottom: 20rem;
+  .features-content {
+    min-height: 25rem;
+  }
+}
+
+.feature-link-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover,
+  &:focus {
+    transform: translateY(-4px);
+    box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.12);
+  }
+}
+
+.feature-link-visual {
+  position: relative;
+  border-radius: 0.85rem;
+  padding-top: 56%;
+  margin: 1.25rem 1.25rem 0;
+  overflow: hidden;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--feature-link-gradient, linear-gradient(135deg, #a855f7, #6366f1));
+  }
+}
+
+.feature-link-visual--overview {
+  --feature-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.feature-link-visual--schema {
+  --feature-link-gradient: linear-gradient(135deg, #f97316, #fb7185);
+}
+
+.feature-link-visual--simulation {
+  --feature-link-gradient: linear-gradient(135deg, #22c55e, #14b8a6);
+}
+
+.feature-link-visual--certificates {
+  --feature-link-gradient: linear-gradient(135deg, #facc15, #f472b6);
+}
+
+.feature-link-visual--blockchain {
+  --feature-link-gradient: linear-gradient(135deg, #8b5cf6, #3730a3);
+}
+
+.feature-link-visual--github {
+  --feature-link-gradient: linear-gradient(135deg, #111827, #4b5563);
+}
+
+.feature-link-visual--slack {
+  --feature-link-gradient: linear-gradient(135deg, #ec4899, #3b82f6);
+}
+
 .pricing-page {
   padding-bottom: 20rem;
   .pricing-content {

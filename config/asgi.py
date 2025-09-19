@@ -1,5 +1,5 @@
 """
-ASGI config for Roscoe project.
+ASGI config for SimpleValidations project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 

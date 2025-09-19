@@ -1,4 +1,4 @@
-# Roscoe
+# SimpleValidations
 
 Simulation file validator
 

@@ -3,67 +3,112 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
-    <div class="text-center mb-5">
+  <section class="container resources-page">
+    <div class="text-center mt-5">
       <h1 class="display-5 fw-semibold">
         {% trans "Resources" %}
       </h1>
       <p class="lead text-muted">
-        {% trans "Explore tutorials, guides, and stories from teams building with SimpleValidations." %}
+        {% trans "Guides, product updates, and community stories to help you get more from SimpleValidations." %}
       </p>
     </div>
 
-    <div class="row g-4">
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body d-flex flex-column">
-            <h2 class="h5 fw-semibold">
-              {% trans "Docs" %}
-            </h2>
-            <p class="text-muted flex-grow-1">
-              {% trans "Reference guides and examples to help you integrate SimpleValidations into your workflow." %}
-            </p>
-            <a href="{% url 'marketing:resources_docs' %}">{% trans "View docs" %}</a>
-          </div>
+    <div class="resources-content">
+      <div class="row g-4 justify-content-center">
+        <div class="col-md-4">
+          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+             href="{% url 'marketing:resources_docs' %}">
+            <div class="card-body">
+              <div class="resource-card-icon resource-card-icon--docs">
+              </div>
+              <h2 class="h5 fw-semibold mb-2">
+                {% trans "Documentation" %}
+              </h2>
+              <p class="text-muted mb-0">
+                {% trans "Set up integrations and explore every API with step-by-step guides." %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+              <span class="fw-semibold text-primary">{% trans "View docs" %}</span>
+              <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+            </div>
+          </a>
         </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body d-flex flex-column">
-            <h2 class="h5 fw-semibold">
-              {% trans "Blog" %}
-            </h2>
-            <p class="text-muted flex-grow-1">
-              {% trans "Best practices, release notes, and interviews with teams who trust SimpleValidations." %}
-            </p>
-            <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Read the blog" %}</a>
-          </div>
+        <div class="col-md-4">
+          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+             href="{% url 'marketing:blog:blog_list' %}">
+            <div class="card-body">
+              <div class="resource-card-icon resource-card-icon--blog">
+              </div>
+              <h2 class="h5 fw-semibold mb-2">
+                {% trans "Blog" %}
+              </h2>
+              <p class="text-muted mb-0">
+                {% trans "Learn best practices and hear how teams use SimpleValidations in production." %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+              <span class="fw-semibold text-primary">{% trans "Read stories" %}</span>
+              <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+            </div>
+          </a>
         </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body d-flex flex-column">
-            <h2 class="h5 fw-semibold">
-              {% trans "YouTube" %}
-            </h2>
-            <p class="text-muted flex-grow-1">
-              {% trans "Watch walkthroughs and product tours to see SimpleValidations in action." %}
-            </p>
-            <a href="{% url 'marketing:resources_youtube' %}">{% trans "Visit channel" %}</a>
-          </div>
+        <div class="col-md-4">
+          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+             href="{% url 'marketing:resources_youtube' %}">
+            <div class="card-body">
+              <div class="resource-card-icon resource-card-icon--youtube">
+              </div>
+              <h2 class="h5 fw-semibold mb-2">
+                {% trans "Video library" %}
+              </h2>
+              <p class="text-muted mb-0">
+                {% trans "Watch walkthroughs, release deep dives, and recorded workshops." %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+              <span class="fw-semibold text-primary">{% trans "Visit channel" %}</span>
+              <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+            </div>
+          </a>
         </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-body d-flex flex-column">
-            <h2 class="h5 fw-semibold">
-              {% trans "Changelog" %}
-            </h2>
-            <p class="text-muted flex-grow-1">
-              {% trans "See what shipped recently and how it makes your team faster." %}
-            </p>
-            <a href="{% url 'marketing:resources_changelog' %}">{% trans "View updates" %}</a>
-          </div>
+        <div class="col-md-4">
+          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+             href="{% url 'marketing:resources_changelog' %}">
+            <div class="card-body">
+              <div class="resource-card-icon resource-card-icon--changelog">
+              </div>
+              <h2 class="h5 fw-semibold mb-2">
+                {% trans "Changelog" %}
+              </h2>
+              <p class="text-muted mb-0">
+                {% trans "Track the latest releases, improvements, and bug fixes." %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+              <span class="fw-semibold text-primary">{% trans "See updates" %}</span>
+              <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+            </div>
+          </a>
+        </div>
+        <div class="col-md-4">
+          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+             href="{% url 'marketing:faq' %}">
+            <div class="card-body">
+              <div class="resource-card-icon resource-card-icon--faq">
+              </div>
+              <h2 class="h5 fw-semibold mb-2">
+                {% trans "FAQ" %}
+              </h2>
+              <p class="text-muted mb-0">
+                {% trans "Browse quick answers to the most common product questions." %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+              <span class="fw-semibold text-primary">{% trans "Find answers" %}</span>
+              <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+            </div>
+          </a>
         </div>
       </div>
     </div>

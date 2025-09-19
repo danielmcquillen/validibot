@@ -102,6 +102,11 @@ urlpatterns = [
         name="faq",
     ),
     path(
+        "support/",
+        views.SupportHomePageView.as_view(),
+        name="support",
+    ),
+    path(
         "contact/",
         views.ContactPageView.as_view(),
         name="contact",

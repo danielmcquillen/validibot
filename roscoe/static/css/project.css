@@ -12177,7 +12177,7 @@ h4 {
   min-height: 75vh;
 }
 .account-settings-page .account-settings-card {
-  border-radius: 1.5rem;
+  border-radius: 0.45rem;
   background: #ffffff;
 }
 .account-settings-page .settings-nav .nav-link {
@@ -12246,43 +12246,63 @@ h4 {
 }
 
 .blog-card {
+  border: 0;
+  border-radius: 0.45rem;
   background: #ffffff;
-  border-radius: 1.25rem;
-  overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.08);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-.blog-card:hover {
+.blog-card:hover, .blog-card:focus {
   transform: translateY(-4px);
-  box-shadow: 0 2rem 3.5rem rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
 }
-.blog-card__image {
+.blog-card__media {
+  margin: 1.25rem 1.25rem 0;
+  aspect-ratio: 16/9;
+  border-radius: 0.45rem;
+  overflow: hidden;
   display: block;
-  background: rgba(6, 111, 209, 0.06);
+  background: linear-gradient(135deg, rgba(6, 111, 209, 0.35), rgba(174, 62, 201, 0.35));
 }
-.blog-card__image img {
+.blog-card__media img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
-.blog-card__placeholder {
+.blog-card__media-placeholder {
   width: 100%;
   height: 100%;
-  font-size: 1rem;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #066fd1;
+  color: rgba(255, 255, 255, 0.9);
 }
-.blog-card__body {
-  padding: 1.75rem;
-  background: #ffffff;
+.blog-card .card-body {
+  padding: 1.5rem 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 .blog-card__meta {
+  font-size: 0.85rem;
   color: rgba(15, 23, 42, 0.6);
+}
+.blog-card__meta span,
+.blog-card__meta time {
+  color: inherit;
+}
+.blog-card .card-footer {
+  padding: 0 1.5rem 1.5rem;
 }
 .blog-card__read-more {
   color: #066fd1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .blog-article__figure {
@@ -12441,7 +12461,7 @@ h4 {
 
 .feature-link-visual {
   position: relative;
-  border-radius: 0.85rem;
+  border-radius: 0.45rem;
   padding-top: 56%;
   margin: 1.25rem 1.25rem 0;
   overflow: hidden;
@@ -12479,6 +12499,89 @@ h4 {
 
 .feature-link-visual--slack {
   --feature-link-gradient: linear-gradient(135deg, #ec4899, #3b82f6);
+}
+
+.support-page {
+  padding-bottom: 10rem;
+}
+
+.support-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.support-card:hover, .support-card:focus {
+  transform: translateY(-4px);
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
+}
+
+.support-card-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 0.45rem;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  margin-bottom: 1.5rem;
+}
+
+.support-card-icon--contact {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+}
+
+.support-card-icon--help {
+  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+}
+
+.support-card-icon--status {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.resources-page {
+  padding-bottom: 12rem;
+}
+
+.resource-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.resource-card:hover, .resource-card:focus {
+  transform: translateY(-4px);
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
+}
+
+.resource-card-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 0.45rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  margin-bottom: 1.5rem;
+}
+
+.resource-card-icon--docs {
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.resource-card-icon--blog {
+  background: linear-gradient(135deg, #ec4899, #f97316);
+}
+
+.resource-card-icon--youtube {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+}
+
+.resource-card-icon--changelog {
+  background: linear-gradient(135deg, #22c55e, #0ea5e9);
+}
+
+.resource-card-icon--faq {
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.resources-page {
+  padding-bottom: 20rem;
+}
+.resources-page .resources-content {
+  min-height: 20rem;
 }
 
 .pricing-page {

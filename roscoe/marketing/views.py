@@ -40,7 +40,7 @@ class FeatureDetailPageView(BreadcrumbMixin, TemplateView):
             {
                 "name": _("Features"),
                 "url": reverse_lazy("marketing:features"),
-            }
+            },
         )
         breadcrumbs.append({"name": _(self.page_title), "url": ""})
         return breadcrumbs
@@ -100,7 +100,7 @@ class PricingDetailPageView(BreadcrumbMixin, TemplateView):
             {
                 "name": _("Pricing"),
                 "url": reverse_lazy("marketing:pricing"),
-            }
+            },
         )
         breadcrumbs.append({"name": _(self.page_title), "url": ""})
         return breadcrumbs
@@ -164,12 +164,10 @@ class ChangelogPageView(ResourceDetailPageView):
     page_title = "Changelog"
 
 
-class FAQPageView(BreadcrumbMixin, TemplateView):
+class FAQPageView(ResourceDetailPageView):
     template_name = "marketing/faq.html"
     http_method_names = ["get"]
-    breadcrumbs = [
-        {"name": _("FAQ"), "url": ""},
-    ]
+    page_title = "FAQ"
 
 
 class SupportDetailPageView(BreadcrumbMixin, TemplateView):
@@ -177,9 +175,22 @@ class SupportDetailPageView(BreadcrumbMixin, TemplateView):
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
-        breadcrumbs.append({"name": _("Support"), "url": ""})
+        breadcrumbs.append(
+            {
+                "name": _("Support"),
+                "url": reverse_lazy("marketing:support"),
+            },
+        )
         breadcrumbs.append({"name": _(self.page_title), "url": ""})
         return breadcrumbs
+
+
+class SupportHomePageView(BreadcrumbMixin, TemplateView):
+    template_name = "marketing/support.html"
+    http_method_names = ["get"]
+    breadcrumbs = [
+        {"name": _("Support"), "url": ""},
+    ]
 
 
 class ContactPageView(SupportDetailPageView):

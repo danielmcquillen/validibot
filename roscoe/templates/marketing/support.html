@@ -1,0 +1,79 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5 support-page">
+    <div class="text-center mb-5">
+      <h1 class="display-5 fw-semibold">
+        {% trans "How can we help?" %}
+      </h1>
+      <p class="lead text-muted">
+        {% trans "Find the right channel for product questions, documentation, and service updates." %}
+      </p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+      <div class="col-md-4">
+        <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
+           href="{% url 'marketing:contact' %}">
+          <div class="card-body">
+            <div class="support-card-icon support-card-icon--contact"></div>
+            <h2 class="h5 fw-semibold mb-2">
+              {% trans "Talk with us" %}
+            </h2>
+            <p class="text-muted mb-0">
+              {% trans "Send a message to the team and we will respond within one business day." %}
+            </p>
+          </div>
+          <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+            <span class="fw-semibold text-primary">
+              {% trans "Contact support" %}
+            </span>
+            <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+          </div>
+        </a>
+      </div>
+      <div class="col-md-4">
+        <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
+           href="{% url 'marketing:help_center' %}">
+          <div class="card-body">
+            <div class="support-card-icon support-card-icon--help"></div>
+            <h2 class="h5 fw-semibold mb-2">
+              {% trans "Browse the help center" %}
+            </h2>
+            <p class="text-muted mb-0">
+              {% trans "Read guides and tutorials covering onboarding, best practices, and troubleshooting." %}
+            </p>
+          </div>
+          <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+            <span class="fw-semibold text-primary">
+              {% trans "View articles" %}
+            </span>
+            <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+          </div>
+        </a>
+      </div>
+      <div class="col-md-4">
+        <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
+           href="{% url 'marketing:status' %}">
+          <div class="card-body">
+            <div class="support-card-icon support-card-icon--status"></div>
+            <h2 class="h5 fw-semibold mb-2">
+              {% trans "Check system status" %}
+            </h2>
+            <p class="text-muted mb-0">
+              {% trans "Monitor live uptime metrics, incident history, and planned maintenance." %}
+            </p>
+          </div>
+          <div class="card-footer bg-transparent border-top-0 d-flex align-items-center gap-2">
+            <span class="fw-semibold text-primary">
+              {% trans "View status page" %}
+            </span>
+            <i class="bi bi-arrow-right-short text-primary fs-4"></i>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

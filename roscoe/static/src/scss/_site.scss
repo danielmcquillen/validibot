@@ -48,7 +48,7 @@
 
 .feature-link-visual {
   position: relative;
-  border-radius: 0.85rem;
+  border-radius: 0.45rem;
   padding-top: 56%;
   margin: 1.25rem 1.25rem 0;
   overflow: hidden;
@@ -57,7 +57,10 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: var(--feature-link-gradient, linear-gradient(135deg, #a855f7, #6366f1));
+    background: var(
+      --feature-link-gradient,
+      linear-gradient(135deg, #a855f7, #6366f1)
+    );
   }
 }
 
@@ -87,6 +90,93 @@
 
 .feature-link-visual--slack {
   --feature-link-gradient: linear-gradient(135deg, #ec4899, #3b82f6);
+}
+
+.support-page {
+  padding-bottom: 10rem;
+}
+
+.support-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover,
+  &:focus {
+    transform: translateY(-4px);
+    box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
+  }
+}
+
+.support-card-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.45rem;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  margin-bottom: 1.5rem;
+}
+
+.support-card-icon--contact {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+}
+
+.support-card-icon--help {
+  background: linear-gradient(135deg, #0ea5e9, #22d3ee);
+}
+
+.support-card-icon--status {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+}
+
+.resources-page {
+  padding-bottom: 12rem;
+}
+
+.resource-card {
+  border: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover,
+  &:focus {
+    transform: translateY(-4px);
+    box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
+  }
+}
+
+.resource-card-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.45rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  margin-bottom: 1.5rem;
+}
+
+.resource-card-icon--docs {
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.resource-card-icon--blog {
+  background: linear-gradient(135deg, #ec4899, #f97316);
+}
+
+.resource-card-icon--youtube {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+}
+
+.resource-card-icon--changelog {
+  background: linear-gradient(135deg, #22c55e, #0ea5e9);
+}
+
+.resource-card-icon--faq {
+  background: linear-gradient(135deg, #6366f1, #22d3ee);
+}
+
+.resources-page {
+  padding-bottom: 20rem;
+  .resources-content {
+    min-height: 20rem;
+  }
 }
 
 .pricing-page {

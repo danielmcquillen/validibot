@@ -84,51 +84,49 @@
         <div class="row g-4 g-lg-5">
           {% for related in related_posts %}
             <div class="col-12 col-md-6 col-xl-4">
-              <article class="blog-card h-100 d-flex flex-column">
-                <a class="blog-card__image ratio ratio-16x9"
+              <article class="h-100">
+                <a class="card feature-link-card blog-card h-100 text-decoration-none text-reset"
                    href="{% url 'marketing:blog:blog_post_detail' related.slug %}">
-                  {% if related.featured_image %}
-                    <img src="{{ related.featured_image.url }}"
-                         alt="{{ related.featured_image_alt|default:related.title }}"
-                         class="img-fluid object-fit-cover" />
-                  {% else %}
-                    <div class="blog-card__placeholder d-flex align-items-center justify-content-center">
-                      <span class="fw-semibold">{% trans "SimpleValidations" %}</span>
+                  <div class="blog-card__media">
+                    {% if related.featured_image %}
+                      <img src="{{ related.featured_image.url }}"
+                           alt="{{ related.featured_image_alt|default:related.title }}" />
+                    {% else %}
+                      <span class="blog-card__media-placeholder">
+                        {% trans "SimpleValidations" %}
+                      </span>
+                    {% endif %}
+                  </div>
+                  <div class="card-body">
+                    <div class="blog-card__meta d-flex align-items-center gap-2 flex-wrap">
+                      <span>
+                        {% if related.author and related.author.name %}
+                          {{ related.author.name }}
+                        {% elif related.author %}
+                          {{ related.author.username }}
+                        {% else %}
+                          {% trans "SimpleValidations Team" %}
+                        {% endif %}
+                      </span>
+                      <span>&middot;</span>
+                      <time datetime="{{ related.published_on|localtime|date:'c' }}">
+                        {{ related.published_on|localtime|date:"DATE_FORMAT" }}
+                      </time>
                     </div>
-                  {% endif %}
-                </a>
-                <div class="blog-card__body d-flex flex-column flex-grow-1">
-                  <div class="blog-card__meta d-flex align-items-center gap-2 mb-2">
-                    <span class="text-muted small">
-                      {% if related.author and related.author.name %}
-                        {{ related.author.name }}
-                      {% elif related.author %}
-                        {{ related.author.username }}
-                      {% else %}
-                        {% trans "SimpleValidations Team" %}
-                      {% endif %}
-                    </span>
-                    <span class="text-muted small">&middot;</span>
-                    <time class="text-muted small"
-                          datetime="{{ related.published_on|localtime|date:'c' }}">
-                      {{ related.published_on|localtime|date:"DATE_FORMAT" }}
-                    </time>
-                  </div>
-                  <h3 class="h5 fw-semibold mb-2">
-                    <a class="text-decoration-none"
-                       href="{% url 'marketing:blog:blog_post_detail' related.slug %}">
+                    <h3 class="h5 fw-semibold mb-1">
                       {{ related.title }}
-                    </a>
-                  </h3>
-                  <p class="text-muted mb-3">
-                    {{ related.content|striptags|truncatechars:140 }}
-                  </p>
-                  <div class="mt-auto">
+                    </h3>
+                    <p class="text-muted mb-0 flex-grow-1">
+                      {{ related.content|striptags|truncatechars:140 }}
+                    </p>
+                  </div>
+                  <div class="card-footer bg-transparent border-0 pt-0">
                     <span class="blog-card__read-more fw-semibold">
-                      {% trans "Read more" %} &rarr;
+                      {% trans "Read more" %}
+                      <i class="bi bi-arrow-right-short"></i>
                     </span>
                   </div>
-                </div>
+                </a>
               </article>
             </div>
           {% endfor %}

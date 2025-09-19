@@ -20,6 +20,9 @@
                         </p>
                         <ul class="list-unstyled">
                             <li>
+                                <a class="dropdown-item" href="{% url 'marketing:resources' %}">{% translate "Overview" %}</a>
+                            </li>
+                            <li>
                                 <a class="dropdown-item" href="{% url 'marketing:resources_docs' %}">{% translate "Docs" %}</a>
                             </li>
                             <li>
@@ -39,6 +42,9 @@
                             {% translate "Support" %}
                         </p>
                         <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item" href="{% url 'marketing:support' %}">{% translate "Support home" %}</a>
+                            </li>
                             <li>
                                 <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
                             </li>

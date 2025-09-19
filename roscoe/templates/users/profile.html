@@ -6,6 +6,10 @@
   {% trans "Account Settings" %}
 {% endblock title %}
 
+{% block mainclass %}
+  container
+{% endblock mainclass %}
+
 {% block bodyclass %}
   {{ block.super }} account-settings-page
 {% endblock bodyclass %}
@@ -18,7 +22,9 @@
           <div class="account-settings-card card shadow-sm border-0">
             <div class="card-body p-4 p-lg-5">
               <div class="text-center mb-4">
-                <h1 class="h3 mb-1">{% trans "Your Profile" %}</h1>
+                <h1 class="h3 mb-1">
+                  {% trans "Your Profile" %}
+                </h1>
                 <p class="text-muted mb-0">
                   {% trans "Update how you appear to teammates and across the product." %}
                 </p>
@@ -26,12 +32,17 @@
 
               {% include "users/partial/settings_nav.html" %}
 
-              <form method="post" enctype="multipart/form-data" class="account-settings-form" novalidate>
+              <form method="post"
+                    enctype="multipart/form-data"
+                    class="account-settings-form"
+                    novalidate>
                 {% csrf_token %}
                 {% if form.non_field_errors %}
                   <div class="alert alert-danger" role="alert">
                     {% for error in form.non_field_errors %}
-                      <div>{{ error }}</div>
+                      <div>
+                        {{ error }}
+                      </div>
                     {% endfor %}
                   </div>
                 {% endif %}
@@ -42,7 +53,7 @@
                       {% if form.instance.avatar %}
                         <img src="{{ form.instance.avatar.url }}"
                              alt="{% trans "Current avatar" %}"
-                             class="img-fluid rounded-circle shadow-sm settings-avatar__image">
+                             class="img-fluid rounded-circle shadow-sm settings-avatar__image" />
                       {% else %}
                         <div class="settings-avatar__placeholder d-inline-flex align-items-center justify-content-center rounded-circle">
                           <span class="fs-2 fw-semibold text-primary">
@@ -57,7 +68,9 @@
                       </label>
                       {{ form.avatar }}
                       {% for error in form.avatar.errors %}
-                        <div class="invalid-feedback d-block">{{ error }}</div>
+                        <div class="invalid-feedback d-block">
+                          {{ error }}
+                        </div>
                       {% endfor %}
                       <p class="form-text text-muted">
                         {% trans "Use a square image at least 240px for best results." %}
@@ -69,7 +82,9 @@
                             {% trans "Remove current avatar" %}
                           </label>
                           {% for error in form.remove_avatar.errors %}
-                            <div class="invalid-feedback d-block">{{ error }}</div>
+                            <div class="invalid-feedback d-block">
+                              {{ error }}
+                            </div>
                           {% endfor %}
                         </div>
                       {% endif %}
@@ -84,7 +99,9 @@
                         </label>
                         {{ form.name }}
                         {% for error in form.name.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                       </div>
                       <div class="col-12 col-md-6">
@@ -93,19 +110,26 @@
                         </label>
                         {{ form.username }}
                         {% for error in form.username.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                         {% if form.username.help_text %}
-                          <p class="form-text text-muted">{{ form.username.help_text }}</p>
+                          <p class="form-text text-muted">
+                            {{ form.username.help_text }}
+                          </p>
                         {% endif %}
                       </div>
                       <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.job_title.id_for_label }}">
+                        <label class="form-label fw-semibold"
+                               for="{{ form.job_title.id_for_label }}">
                           {% trans "Job title" %}
                         </label>
                         {{ form.job_title }}
                         {% for error in form.job_title.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                       </div>
                       <div class="col-12 col-md-6">
@@ -114,7 +138,9 @@
                         </label>
                         {{ form.company }}
                         {% for error in form.company.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                       </div>
                       <div class="col-12 col-md-6">
@@ -123,7 +149,9 @@
                         </label>
                         {{ form.location }}
                         {% for error in form.location.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                       </div>
                       <div class="col-12 col-md-6">
@@ -132,10 +160,14 @@
                         </label>
                         {{ form.timezone }}
                         {% for error in form.timezone.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                         {% if form.timezone.help_text %}
-                          <p class="form-text text-muted">{{ form.timezone.help_text }}</p>
+                          <p class="form-text text-muted">
+                            {{ form.timezone.help_text }}
+                          </p>
                         {% endif %}
                       </div>
                       <div class="col-12">
@@ -144,10 +176,14 @@
                         </label>
                         {{ form.bio }}
                         {% for error in form.bio.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                         {% if form.bio.help_text %}
-                          <p class="form-text text-muted">{{ form.bio.help_text }}</p>
+                          <p class="form-text text-muted">
+                            {{ form.bio.help_text }}
+                          </p>
                         {% endif %}
                       </div>
                       <div class="col-12">
@@ -156,10 +192,14 @@
                         </label>
                         {{ form.email }}
                         {% for error in form.email.errors %}
-                          <div class="invalid-feedback d-block">{{ error }}</div>
+                          <div class="invalid-feedback d-block">
+                            {{ error }}
+                          </div>
                         {% endfor %}
                         {% if form.email.help_text %}
-                          <p class="form-text text-muted">{{ form.email.help_text }}</p>
+                          <p class="form-text text-muted">
+                            {{ form.email.help_text }}
+                          </p>
                         {% endif %}
                       </div>
                     </div>

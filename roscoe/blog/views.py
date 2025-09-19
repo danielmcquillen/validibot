@@ -15,13 +15,13 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
     context_object_name = "blog_posts"
     breadcrumbs = [
         {
-            "name": _("Blog"),
-            "url": reverse_lazy("marketing:blog:blog_list"),
+            "name": _("Resources"),
+            "url": reverse_lazy("marketing:resources"),
         },
         {
-            "name": _("Recent Posts"),
-            "url": "",
-        },
+            "name": _("Blog"),
+            "url": reverse_lazy("marketing:blog:blog_list"),
+        }
     ]
 
     def get_queryset(self):
@@ -62,6 +62,12 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Resources"),
+                "url": reverse_lazy("marketing:resources"),
+            },
+        )
         breadcrumbs.append(
             {
                 "name": _("Blog"),

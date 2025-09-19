@@ -6,6 +6,10 @@
   {{ object.name|default:object.username }}
 {% endblock title %}
 
+{% block mainclass %}
+  container
+{% endblock mainclass %}
+
 {% block bodyclass %}
   {{ block.super }} account-settings-page
 {% endblock bodyclass %}
@@ -22,21 +26,29 @@
                   {% if object.avatar %}
                     <img src="{{ object.avatar.url }}"
                          alt="{{ object.username }}"
-                         class="img-fluid rounded-circle settings-avatar__image">
+                         class="img-fluid rounded-circle settings-avatar__image" />
                   {% else %}
                     <span class="fs-1 fw-semibold text-primary">
                       {{ object.name|default:object.username|first|upper }}
                     </span>
                   {% endif %}
                 </div>
-                <h1 class="h3 mb-1">{{ object.name|default:object.username }}</h1>
+                <h1 class="h3 mb-1">
+                  {{ object.name|default:object.username }}
+                </h1>
                 {% if object.job_title or object.company %}
                   <p class="text-muted mb-0">
-                    {{ object.job_title }}{% if object.job_title and object.company %} · {% endif %}{{ object.company }}
+                    {{ object.job_title }}
+                    {% if object.job_title and object.company %}
+                      ·
+                    {% endif %}
+                    {{ object.company }}
                   </p>
                 {% endif %}
                 {% if object.location %}
-                  <p class="text-muted mb-0">{{ object.location }}</p>
+                  <p class="text-muted mb-0">
+                    {{ object.location }}
+                  </p>
                 {% endif %}
               </div>
 
@@ -45,19 +57,33 @@
                   <h2 class="h6 text-uppercase text-muted fw-semibold mb-2">
                     {% trans "About" %}
                   </h2>
-                  <p class="mb-0">{{ object.bio }}</p>
+                  <p class="mb-0">
+                    {{ object.bio }}
+                  </p>
                 </div>
               {% endif %}
 
               <div class="border rounded-3 p-3 bg-light-subtle">
                 <dl class="row mb-0 small text-muted">
-                  <dt class="col-4">{% trans "Username" %}</dt>
-                  <dd class="col-8 text-body">{{ object.username }}</dd>
-                  <dt class="col-4">{% trans "Email" %}</dt>
-                  <dd class="col-8 text-body">{{ object.email }}</dd>
+                  <dt class="col-4">
+                    {% trans "Username" %}
+                  </dt>
+                  <dd class="col-8 text-body">
+                    {{ object.username }}
+                  </dd>
+                  <dt class="col-4">
+                    {% trans "Email" %}
+                  </dt>
+                  <dd class="col-8 text-body">
+                    {{ object.email }}
+                  </dd>
                   {% if object.timezone %}
-                    <dt class="col-4">{% trans "Timezone" %}</dt>
-                    <dd class="col-8 text-body">{{ object.timezone }}</dd>
+                    <dt class="col-4">
+                      {% trans "Timezone" %}
+                    </dt>
+                    <dd class="col-8 text-body">
+                      {{ object.timezone }}
+                    </dd>
                   {% endif %}
                 </dl>
               </div>

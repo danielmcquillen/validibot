@@ -3,23 +3,26 @@ from datetime import timedelta
 import django_filters
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponse, HttpResponseRedirect
-from django.urls import reverse, reverse_lazy
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+from django.urls import reverse_lazy
 from django.utils import timezone
-from django.utils.translation import gettext_lazy as _
-from django.views.generic import DetailView, ListView
-from django.views.generic.edit import DeleteView
 from django.utils.http import urlencode
+from django.utils.translation import gettext_lazy as _
+from django.views.generic import DetailView
+from django.views.generic import ListView
+from django.views.generic.edit import DeleteView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
 from rest_framework import viewsets
 
+from roscoe.core.mixins import BreadcrumbMixin
 from roscoe.validations.constants import ValidationRunStatus
 from roscoe.validations.models import ValidationRun
 from roscoe.validations.serializers import ValidationRunSerializer
 from roscoe.workflows.models import Workflow
-from roscoe.core.mixins import BreadcrumbMixin
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -112,7 +115,9 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
 class ValidationRunListView(ValidationRunAccessMixin, ListView):
     template_name = "validations/validation_list.html"
     context_object_name = "validations"
-    paginate_by = 25
+    paginate_by = 20
+    page_size_options = (10, 50, 100)
+    page_size_session_key = "validation_list_per_page"
     breadcrumbs = [
         {"name": _("Validations"), "url": ""},
     ]
@@ -128,6 +133,28 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
         ordering = self.get_ordering()
         return qs.order_by(ordering)
 
+    def get_paginate_by(self, queryset):
+        per_page = self.request.GET.get("per_page")
+        if per_page:
+            try:
+                per_page = int(per_page)
+            except (TypeError, ValueError):
+                per_page = None
+            else:
+                if per_page in self.page_size_options:
+                    self.request.session[self.page_size_session_key] = per_page
+                else:
+                    per_page = None
+
+        if per_page is None:
+            per_page = self.request.session.get(self.page_size_session_key)
+
+        if per_page not in self.page_size_options:
+            per_page = self.paginate_by
+
+        self.page_size = per_page
+        return per_page
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(
@@ -137,6 +164,8 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
                 "status_choices": ValidationRunStatus.choices,
                 "workflow_options": Workflow.objects.for_user(self.request.user),
                 "query_string": self._get_base_query_string(),
+                "page_size_options": self.page_size_options,
+                "current_page_size": getattr(self, "page_size", self.paginate_by),
             },
         )
         return context
@@ -144,7 +173,7 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
     def _get_base_query_string(self):
         params = self.request.GET.copy()
         params.pop("page", None)
-        return urlencode(params)
+        return params.urlencode()
 
 
 class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):

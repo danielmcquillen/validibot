@@ -260,7 +260,8 @@ class ValidationRun(TimeStampedModel):
     summary = models.JSONField(default=dict, blank=True)  # counts, pass/fail, etc.
 
     error = models.TextField(
-        blank=True, default="", null=True
+        blank=True,
+        default="",
     )  # terminal error/trace if any
 
     resolved_config = models.JSONField(
@@ -273,6 +274,16 @@ class ValidationRun(TimeStampedModel):
         # Optional but helpful: ensure org consistency with submission
         if self.submission_id and self.org_id and self.submission.org_id != self.org_id:
             raise ValidationError({"org": _("Run org must match submission org.")})
+
+    @property
+    def status_pill_class(self) -> str:
+        return {
+            ValidationRunStatus.PENDING: "bg-secondary",
+            ValidationRunStatus.RUNNING: "bg-primary",
+            ValidationRunStatus.SUCCEEDED: "bg-success",
+            ValidationRunStatus.FAILED: "bg-danger",
+            ValidationRunStatus.CANCELED: "bg-warning text-dark",
+        }.get(self.status, "bg-secondary")
 
 
 class ValidationStepRun(TimeStampedModel):

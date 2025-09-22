@@ -118,7 +118,7 @@
                       </div>
                       <small class="text-muted">{{ run.created|date:"M j, Y g:i a" }}</small>
                     </div>
-                    <span class="badge rounded-pill text-bg-secondary">{{ run.get_status_display }}</span>
+                    <span class="badge rounded-pill text-bg-secondary {{ run.status_pill_class }}">{{ run.get_status_display }}</span>
                   </a>
                 {% endfor %}
               </div>

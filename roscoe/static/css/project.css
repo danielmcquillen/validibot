@@ -12136,8 +12136,12 @@ h4 {
   min-width: 250px;
 }
 
-#breadcrumbs {
-  margin-bottom: 5px;
+.app-breadcrumbs {
+  border-bottom: 1px dotted #bbb;
+  min-height: 40px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 .breadcrumb {
@@ -12403,16 +12407,47 @@ h4 {
   flex-direction: column;
   flex-shrink: 0;
   min-height: 100vh;
-  width: 280px;
+  width: 200px;
+  background-color: #eee;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
 }
 #left-nav .left-nav-title {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  min-height: 35px;
+  border-bottom: 1px solid #ccc;
+  min-height: 40px;
   display: flex;
   flex-direction: row;
   align-items: center;
   padding-left: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+#left-nav .nav-item:last-child {
+  border-bottom: 1px dotted #ccc;
+}
+#left-nav .nav-item .nav-link {
+  display: flex;
+  padding: 0.5rem 1.5rem 0.5rem 1rem;
+  transition: background 0.3s;
+  text-decoration: none;
+  align-items: center;
+  border-top: 1px dotted #ccc;
+  border-radius: 0;
+}
+#left-nav .nav-item .nav-link:hover {
+  background-color: #fff;
+}
+#left-nav .nav-item .nav-link.active {
+  background-color: #6f42c1;
+  color: white;
+}
+#left-nav .nav-item .nav-link.active i {
+  color: white;
+}
+#left-nav .nav-item .nav-link i {
+  padding-right: 0.75rem;
+}
+
+.app-content {
+  padding-left: 1rem;
 }
 
 .entrance-page {

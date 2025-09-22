@@ -1,24 +1,30 @@
 {% extends "app_base.html" %}
+
 {% load i18n humanize %}
 
-{% block title %}{% trans "Validation Run" %} #{{ validation.pk }} · SimpleValidations{% endblock title %}
+{% block title %}
+  {% trans "Validation Run" %} #{{ validation.pk }} · SimpleValidations
+{% endblock title %}
 
 {% block left_sidebar %}
   {% include "core/partial/app/left_nav.html" %}
 {% endblock left_sidebar %}
 
-{% block content %}
+{% block app_content %}
   <div class="container-fluid py-4" id="validation-detail">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
       <div>
-        <h1 class="h3 mb-1">{% trans "Validation Run" %} #{{ validation.pk }}</h1>
+        <h1 class="h3 mb-1">
+          {% trans "Validation Run" %} #{{ validation.pk }}
+        </h1>
         <div class="text-muted small d-flex flex-wrap gap-3">
           <span><i class="bi-diagram-3 me-1"></i>{{ validation.workflow.name }}</span>
           <span><i class="bi-clock-history me-1"></i>{{ validation.created|naturaltime }}</span>
         </div>
       </div>
       <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-secondary" href="{% url 'workflows:workflow_detail' validation.workflow_id %}">
+        <a class="btn btn-outline-secondary"
+           href="{% url 'workflows:workflow_detail' validation.workflow_id %}">
           <i class="bi-journal-text me-1"></i>
           {% trans "View Workflow" %}
         </a>
@@ -41,16 +47,30 @@
           </div>
           <div class="card-body">
             <dl class="row mb-0">
-              <dt class="col-sm-4">{% trans "Status" %}</dt>
-              <dd class="col-sm-8"><span class="badge text-bg-secondary">{{ validation.get_status_display }}</span></dd>
+              <dt class="col-sm-4">
+                {% trans "Status" %}
+              </dt>
+              <dd class="col-sm-8">
+                <span class="badge text-bg-secondary">{{ validation.get_status_display }}</span>
+              </dd>
 
-              <dt class="col-sm-4">{% trans "Started" %}</dt>
-              <dd class="col-sm-8">{{ validation.started_at|date:"M j, Y g:i a"|default:_("Not captured") }}</dd>
+              <dt class="col-sm-4">
+                {% trans "Started" %}
+              </dt>
+              <dd class="col-sm-8">
+                {{ validation.started_at|date:"M j, Y g:i a"|default:_("Not captured") }}
+              </dd>
 
-              <dt class="col-sm-4">{% trans "Completed" %}</dt>
-              <dd class="col-sm-8">{{ validation.ended_at|date:"M j, Y g:i a"|default:_("Not captured") }}</dd>
+              <dt class="col-sm-4">
+                {% trans "Completed" %}
+              </dt>
+              <dd class="col-sm-8">
+                {{ validation.ended_at|date:"M j, Y g:i a"|default:_("Not captured") }}
+              </dd>
 
-              <dt class="col-sm-4">{% trans "Duration" %}</dt>
+              <dt class="col-sm-4">
+                {% trans "Duration" %}
+              </dt>
               <dd class="col-sm-8">
                 {% if validation.duration_ms %}
                   {{ validation.duration_ms|floatformat:0 }} ms
@@ -59,11 +79,19 @@
                 {% endif %}
               </dd>
 
-              <dt class="col-sm-4">{% trans "Submission" %}</dt>
-              <dd class="col-sm-8">{{ validation.submission.name|default:validation.submission.pk }}</dd>
+              <dt class="col-sm-4">
+                {% trans "Submission" %}
+              </dt>
+              <dd class="col-sm-8">
+                {{ validation.submission.name|default:validation.submission.pk }}
+              </dd>
 
-              <dt class="col-sm-4">{% trans "Organization" %}</dt>
-              <dd class="col-sm-8">{{ validation.org.name }}</dd>
+              <dt class="col-sm-4">
+                {% trans "Organization" %}
+              </dt>
+              <dd class="col-sm-8">
+                {{ validation.org.name }}
+              </dd>
             </dl>
           </div>
         </div>
@@ -77,11 +105,13 @@
             {% if validation.summary %}
               <pre class="bg-body-tertiary rounded p-3 mb-0">{{ validation.summary|pprint }}</pre>
             {% else %}
-              <p class="text-muted mb-0">{% trans "Summary data will appear once the validation completes." %}</p>
+              <p class="text-muted mb-0">
+                {% trans "Summary data will appear once the validation completes." %}
+              </p>
             {% endif %}
           </div>
         </div>
       </div>
     </div>
   </div>
-{% endblock content %}
+{% endblock app_content %}

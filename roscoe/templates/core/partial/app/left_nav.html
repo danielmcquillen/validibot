@@ -1,10 +1,10 @@
 {% load i18n core_tags %}
 
-<div id="left-nav" class="text-bg-dark">
+<div id="left-nav" class="text-bg-white">
 
     <div class="left-nav-title">
         <a href="{% url 'marketing:home' %}"
-           class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+           class="d-flex align-items-center mb-3 mb-md-0 me-md-auto  text-decoration-none">
             SimpleValidations
         </a>
     </div>
@@ -12,7 +12,7 @@
     <ul class="nav nav-pills flex-column mb-auto" role="menu">
         <li class="nav-item" role="none">
             <a href="{% url 'dashboard:my_dashboard' %}"
-               class="nav-link text-white {% active_link 'dashboard' %}"
+               class="nav-link {% active_link 'dashboard' %}"
                role="menuitem">
                 <i class="bi bi-speedometer2"></i>
                 <span>{% trans "Dashboard" %}</span>
@@ -20,7 +20,7 @@
         </li>
         <li class="nav-item" role="none">
             <a href="{% url 'workflows:workflow_list' %}"
-               class="nav-link text-white  {% active_link 'workflows' %}"
+               class="nav-link   {% active_link 'workflows' %}"
                role="menuitem">
                 <i class="bi bi-diagram-3"></i>
                 <span>{% trans "Workflows" %}</span>
@@ -28,7 +28,7 @@
         </li>
         <li class="nav-item" role="none">
             <a href="{% url 'validations:validation_list' %}"
-               class="nav-link text-white  {% active_link 'validations' %}"
+               class="nav-link   {% active_link 'validations' %}"
                role="menuitem">
                 <i class="bi bi-shield-check"></i>
                 <span>{% trans "Validations" %}</span>

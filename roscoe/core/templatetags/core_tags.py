@@ -28,7 +28,7 @@ def site_name(context) -> Optional[str]:
 def active_link(context, nav_item_name):
     request = context.get("request", None)
     if request:
-        attribute = "active" if request.path.startswith(f"/{nav_item_name}/") else ""
+        attribute = "active" if request.path.startswith(f"/app/{nav_item_name}/") else ""
         return attribute
     return ""
 

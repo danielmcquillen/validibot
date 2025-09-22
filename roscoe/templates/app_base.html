@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "core/base.html" %}
 
 {% load static i18n core_tags %}
 
@@ -16,7 +16,7 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock top_nav %}
 
 {% block breadcrumbs_styles %}
-
+    app-breadcrumbs
 {% endblock breadcrumbs_styles %}
 
 {% block left_sidebar %}
@@ -24,5 +24,10 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock left_sidebar %}
 
 {% block content %}
+    <div class="app-content">
+        {% block app_content %}
+
+        {% endblock app_content %}
+    </div>
 
 {% endblock content %}

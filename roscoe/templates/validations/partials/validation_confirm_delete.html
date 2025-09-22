@@ -1,19 +1,24 @@
 {% extends "app_base.html" %}
+
 {% load i18n %}
 
-{% block title %}{% trans "Delete Validation" %} · SimpleValidations{% endblock title %}
+{% block title %}
+  {% trans "Delete Validation" %} · SimpleValidations
+{% endblock title %}
 
 {% block left_sidebar %}
   {% include "core/partial/app/left_nav.html" %}
 {% endblock left_sidebar %}
 
-{% block content %}
+{% block app_content %}
   <div class="container-fluid py-5">
     <div class="row justify-content-center">
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-danger">
           <div class="card-header text-bg-danger">
-            <h1 class="h5 mb-0">{% trans "Confirm deletion" %}</h1>
+            <h1 class="h5 mb-0">
+              {% trans "Confirm deletion" %}
+            </h1>
           </div>
           <div class="card-body">
             <p class="mb-4">
@@ -24,7 +29,8 @@
             <form method="post">
               {% csrf_token %}
               <div class="d-flex justify-content-end gap-2">
-                <a class="btn btn-outline-secondary" href="{% url 'validations:validation_detail' object.pk %}">
+                <a class="btn btn-outline-secondary"
+                   href="{% url 'validations:validation_detail' object.pk %}">
                   {% trans "Cancel" %}
                 </a>
                 <button type="submit" class="btn btn-danger">
@@ -37,4 +43,4 @@
       </div>
     </div>
   </div>
-{% endblock content %}
+{% endblock app_content %}

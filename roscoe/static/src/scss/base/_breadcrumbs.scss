@@ -1,7 +1,15 @@
 #breadcrumbs {
-  margin-bottom: 5px;
+  // margin-bottom: 5px;
   // background-color: #f1f1f1;
   // border-bottom: 1px dotted #dbe0e9;
+}
+
+.app-breadcrumbs {
+  border-bottom: 1px dotted #bbb;
+  min-height: 40px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 .breadcrumb {

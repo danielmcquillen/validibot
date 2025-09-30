@@ -11928,6 +11928,10 @@ h4 {
   font-weight: 600;
   color: rgba(15, 23, 42, 0.6);
 }
+.megamenu .section-heading a {
+  text-decoration: none;
+  color: #000;
+}
 .megamenu .list-unstyled {
   margin: 0;
   padding: 0;
@@ -11993,10 +11997,12 @@ h4 {
     padding: 1.25rem;
   }
 }
-.resources-dropdown, .features-dropdown {
+.resources-dropdown,
+.features-dropdown {
   position: static;
 }
-.resources-dropdown .dropdown-menu, .features-dropdown .dropdown-menu {
+.resources-dropdown .dropdown-menu,
+.features-dropdown .dropdown-menu {
   width: min(760px, 90vw);
   margin-top: -0.25rem;
   border-radius: 1rem;
@@ -12006,7 +12012,8 @@ h4 {
   overflow: hidden;
 }
 @media (max-width: 767.98px) {
-  .resources-dropdown .dropdown-menu, .features-dropdown .dropdown-menu {
+  .resources-dropdown .dropdown-menu,
+  .features-dropdown .dropdown-menu {
     width: 100vw;
     border-radius: 0;
     border-left: 0;
@@ -12015,10 +12022,12 @@ h4 {
 }
 
 @media (max-width: 991.98px) {
-  .resources-dropdown, .features-dropdown {
+  .resources-dropdown,
+  .features-dropdown {
     position: relative;
   }
-  .resources-dropdown .dropdown-menu, .features-dropdown .dropdown-menu {
+  .resources-dropdown .dropdown-menu,
+  .features-dropdown .dropdown-menu {
     width: min(320px, 90vw);
     margin-top: 0.25rem;
     margin-left: 0;
@@ -12601,7 +12610,7 @@ h4 {
   background: linear-gradient(135deg, #ec4899, #f97316);
 }
 
-.resource-card-icon--youtube {
+.resource-card-icon--videos {
   background: linear-gradient(135deg, #ef4444, #f97316);
 }
 
@@ -12764,15 +12773,19 @@ h4 {
     transform: translateY(-20px);
   }
 }
-.features-section {
-  padding: 5rem 0;
+.overview-section {
+  padding: 4rem 0;
+  background: #f8f9fa;
+  position: relative;
+  box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.06), inset 0 -4px 8px rgba(0, 0, 0, 0.06);
 }
 @media (max-width: 768px) {
-  .features-section {
+  .overview-section {
     padding: 3rem 0;
   }
 }
-.features-section .section-title {
+
+.section-title {
   font-size: 2.5rem;
   font-weight: 700;
   text-align: center;
@@ -12780,9 +12793,32 @@ h4 {
   color: #066fd1;
 }
 @media (max-width: 768px) {
-  .features-section .section-title {
+  .section-title {
     font-size: 2rem;
     margin-bottom: 2rem;
+  }
+}
+
+.overview-section {
+  padding: 4rem 0;
+  background: #f9f9f9;
+  background: url("/static/marketing/images/notebook.png");
+  min-height: 30rem;
+  border-top: 1px solid #789aba;
+  border-bottom: 1px solid #789aba;
+}
+@media (max-width: 768px) {
+  .overview-section {
+    padding: 3rem 0;
+  }
+}
+
+.features-section {
+  padding: 5rem 0;
+}
+@media (max-width: 768px) {
+  .features-section {
+    padding: 3rem 0;
   }
 }
 
@@ -12835,6 +12871,53 @@ h4 {
   min-height: 10rem;
 }
 
+.robot-quote-section {
+  display: grid;
+  grid-template-columns: auto auto; /* speech bubble, then robot */
+  align-items: center;
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+.robot-quote-section .robot-head {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  align-self: top;
+  position: relative;
+  z-index: 2; /* bring robot on top of bubble */
+  margin-left: -25px; /* adjust this to overlap halfway */
+  margin-top: -30px;
+}
+.robot-quote-section .robot-head img {
+  width: 100px; /* or whatever size fits best */
+  height: auto;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+}
+.robot-quote-section .speech-bubble {
+  grid-column: 1;
+  grid-row: 1;
+  background: rgb(254, 250, 242);
+  border: 1px dotted #333;
+  border-radius: 12px;
+  padding: 1.2rem;
+  font-family: monospace;
+  position: relative;
+  z-index: 1; /* ensures bubble stays above robot if needed */
+  min-height: 9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.robot-quote-section .speech-bubble .bubble-text {
+  font-family: "Share Tech Mono", sans-serif;
+  font-size: 1.1rem;
+  color: #066fd1;
+  font-weight: 500;
+  margin: 0;
+  padding-right: 1rem;
+  color: #333;
+}
+
 .robot-character {
   position: relative;
   display: inline-block;
@@ -12850,42 +12933,6 @@ h4 {
     width: 60px;
     height: 60px;
   }
-}
-
-.speech-bubble {
-  position: relative;
-  background: white;
-  border-radius: 20px;
-  padding: 1.5rem;
-  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.05);
-  border: 1px dotted #333;
-  max-width: 300px;
-}
-@media (max-width: 768px) {
-  .speech-bubble {
-    margin-left: 1rem;
-    max-width: 250px;
-    padding: 1rem;
-  }
-}
-.speech-bubble::before {
-  content: "";
-  position: absolute;
-  left: -20px;
-  top: 30px;
-  width: 0;
-  height: 0;
-  border: 10px solid transparent;
-  border-right-color: white;
-  border-left: 0;
-  margin-top: -10px;
-}
-.speech-bubble .bubble-text {
-  font-family: "Share Tech Mono", sans-serif;
-  font-size: 1.1rem;
-  color: #066fd1;
-  font-weight: 600;
-  margin: 0;
 }
 
 .cta-section {

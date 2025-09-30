@@ -12,14 +12,14 @@
     <div class="container">
       <div class="row align-items-center min-vh-100">
         <div class="col-lg-6 col-md-12 hero-content px-4 px-lg-5">
-          <div class="fade-in-up">
+          <div class="">
             <h1 class="hero-title">
               Meet Your Data
               <br />
               Validation Assistant
             </h1>
             <p class="hero-subtitle">
-              Automated data validation for your technical documents and data.
+              Automated data validation for your data files and technical documents.
               Ensure data quality with AI-powered precision and robot-like reliability.
             </p>
             <div class="hero-cta d-flex flex-wrap">
@@ -43,13 +43,42 @@
     </div>
   </section>
 
+  <!-- Overview Diagram Section -->
+  <div class="container-fluid">
+    <section class="overview-section">
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <h2 class="section-title mb-1">
+              How It Works
+            </h2>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-12 col-md-6">
+            <div class="lead text-center">
+              1. Create your custom validations in minutes.
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="lead text-center">
+              2. Give your users access via API,
+              <br />
+              webhooks, or our intuitive dashboard.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <div class="container">
     <!-- Features Section with Robot Characters -->
     <section class="features-section">
       <div class="container">
         <div class="row">
           <div class="col-12">
-            <h2 class="section-title fade-in-up">
+            <h2 class="section-title ">
               Why Choose SimpleValidations?
             </h2>
           </div>
@@ -58,21 +87,19 @@
         <div class="row">
           <!-- Feature 1: Intelligent Validation -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up">
-              <div class="d-flex align-items-start mb-4">
-                <div class="robot-character me-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid" />
-                  </div>
+            <div class="feature-card ">
+
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
                 </div>
                 <div class="speech-bubble">
                   <p class="bubble-text">
                     "I analyze your data patterns and catch errors before they cause problems!"
                   </p>
                 </div>
-
               </div>
 
               <h3 class="feature-title">
@@ -87,21 +114,21 @@
 
           <!-- Feature 2: Real-time Processing -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up delay-1">
-              <div class="d-flex align-items-start mb-4">
-                <div class="speech-bubble bubble-right">
+            <div class="feature-card  delay-1">
+
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
+                </div>
+                <div class="speech-bubble">
                   <p class="bubble-text">
-                    "I work 24/7 at lightning speed to validate your data instantly!"
+                    I work 24/7 at lightning speed to validate your data instantly!
                   </p>
                 </div>
-                <div class="robot-character ms-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid flip-x" />
-                  </div>
-                </div>
               </div>
+
               <h3 class="feature-title">
                 Real-time Validation
               </h3>
@@ -114,21 +141,21 @@
 
           <!-- Feature 3: Easy Integration -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up delay-2">
-              <div class="d-flex align-items-start mb-4">
-                <div class="robot-character me-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid" />
-                  </div>
+            <div class="feature-card  delay-2">
+
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
                 </div>
                 <div class="speech-bubble">
                   <p class="bubble-text">
-                    "I integrate seamlessly with all your favorite tools and workflows!"
+                    I integrate seamlessly with all your favorite tools and workflows!
                   </p>
                 </div>
               </div>
+
               <h3 class="feature-title">
                 Seamless Integration
               </h3>
@@ -141,21 +168,21 @@
 
           <!-- Feature 4: Schema Validation -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up delay-3">
-              <div class="d-flex align-items-start mb-4">
-                <div class="speech-bubble bubble-right">
+            <div class="feature-card  delay-3">
+
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
+                </div>
+                <div class="speech-bubble">
                   <p class="bubble-text">
-                    "I validate documents against your custom schemas with precision!"
+                    I validate documents against your custom schemas with precision!
                   </p>
                 </div>
-                <div class="robot-character ms-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid flip-x" />
-                  </div>
-                </div>
               </div>
+
               <h3 class="feature-title">
                 Schema Validation
               </h3>
@@ -168,21 +195,21 @@
 
           <!-- Feature 5: Custom Rules -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up delay-4">
-              <div class="d-flex align-items-start mb-4">
-                <div class="robot-character me-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid" />
-                  </div>
+            <div class="feature-card  delay-4">
+
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
                 </div>
                 <div class="speech-bubble">
                   <p class="bubble-text">
-                    "I adapt to your unique validation needs with custom rules!"
+                    I adapt to your unique validation needs with custom rules!
                   </p>
                 </div>
               </div>
+
               <h3 class="feature-title">
                 Schema Adaptation
               </h3>
@@ -195,21 +222,20 @@
 
           <!-- Feature 6: Reporting & Analytics -->
           <div class="col-lg-4 col-md-6 mb-4">
-            <div class="feature-card fade-in-up delay-5">
-              <div class="d-flex align-items-start mb-4">
+            <div class="feature-card  delay-5">
+              <div class="robot-quote-section">
+                <div class="robot-head">
+                  <img src="{% static 'marketing/images/robot_head.png' %}"
+                       alt="Robot Head"
+                       class="img-fluid flip-x" />
+                </div>
                 <div class="speech-bubble">
                   <p class="bubble-text">
-                    "I validate documents against your custom schemas with precision!"
+                    I validate documents against your custom schemas with precision!
                   </p>
                 </div>
-                <div class="robot-character ms-3">
-                  <div class="robot-head">
-                    <img src="{% static 'marketing/images/robot_head.png' %}"
-                         alt="Robot Head"
-                         class="img-fluid flip-x" />
-                  </div>
-                </div>
               </div>
+
               <h3 class="feature-title">
                 Smart Analytics
               </h3>

@@ -1,5 +1,4 @@
-from django.urls import include
-from django.urls import path
+from django.urls import include, path
 
 from . import views
 
@@ -87,9 +86,9 @@ urlpatterns = [
         name="resources_docs",
     ),
     path(
-        "resources/youtube/",
-        views.YoutubePageView.as_view(),
-        name="resources_youtube",
+        "resources/videos/",
+        views.VideosPageView.as_view(),
+        name="resources_videos",
     ),
     path(
         "resources/changelog/",

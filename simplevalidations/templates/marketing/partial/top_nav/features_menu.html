@@ -17,36 +17,43 @@
                 <div class="nav-columns">
                     <div>
                         <p class="section-heading mb-2">
-                            {% translate "Features" %}
+                            <a href="{% url 'marketing:features' %}">{% translate "Features" %}</a>
                         </p>
                         <ul class="list-unstyled">
                             <li>
                                 <a class="dropdown-item" href="{% url 'marketing:features_overview' %}">{% translate "SimpleValidations Overview" %}</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_schema_validation' %}">{% translate "Schema Validation" %}</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_schema_validation' %}">{% translate "Schema Validation" %}</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_simulation_validation' %}">{% translate "Simulation Validation" %}</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_simulation_validation' %}">{% translate "Simulation Validation" %}</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_certificates' %}">{% translate "Certificates" %}</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_certificates' %}">{% translate "Certificates" %}</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_blockchain' %}">{% translate "Blockchain" %}</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_blockchain' %}">{% translate "Blockchain" %}</a>
                             </li>
                         </ul>
                     </div>
                     <div>
                         <p class="section-heading mb-2">
+                            
                             {% translate "Integrations" %}
                         </p>
                         <ul class="list-unstyled">
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_integration_github' %}">GitHub</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_integration_github' %}">GitHub</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_integration_slack' %}">Slack</a>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_integration_slack' %}">Slack</a>
                             </li>
                         </ul>
                     </div>

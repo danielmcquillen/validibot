@@ -137,26 +137,58 @@
   }
 }
 
-// Features Section
+// Overview Section
 // ========================================
-.features-section {
-  padding: 5rem 0;
+.overview-section {
+  padding: 4rem 0;
+  background: #f8f9fa;
+  position: relative;
+  
+  // Subtle inner shadow
+  box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.06),
+              inset 0 -4px 8px rgba(0, 0, 0, 0.06);
+  
+  @media (max-width: 768px) {
+    padding: 3rem 0;
+  }
+}
+
+.section-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 3rem;
+  color: settings.$blue;
+
+  @media (max-width: 768px) {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+  }
+}
+
+// Overview Section
+// ========================================
+
+.overview-section {
+  padding: 4rem 0;
+  background: #f9f9f9;
+  // load notebook image from static assets. Tiled.
+  background: url("/static/marketing/images/notebook.png");
+  min-height: 30rem;
+  border-top: 1px solid #789aba;
+  border-bottom: 1px solid #789aba;
 
   @media (max-width: 768px) {
     padding: 3rem 0;
   }
+}
 
-  .section-title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    text-align: center;
-    margin-bottom: 3rem;
-    color: settings.$blue;
-
-    @media (max-width: 768px) {
-      font-size: 2rem;
-      margin-bottom: 2rem;
-    }
+// Features Section
+// ========================================
+.features-section {
+  padding: 5rem 0;
+  @media (max-width: 768px) {
+    padding: 3rem 0;
   }
 }
 
@@ -221,6 +253,58 @@
 
 // Robot Character Elements
 // ========================================
+
+.robot-quote-section {
+  display: grid;
+  grid-template-columns: auto auto; /* speech bubble, then robot */
+  align-items: center;
+  position: relative;
+  margin-bottom: 1.5rem;
+
+  .robot-head {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+    align-self: top;
+    position: relative;
+    z-index: 2; /* bring robot on top of bubble */
+    margin-left: -25px; /* adjust this to overlap halfway */
+    margin-top: -30px;
+  }
+
+  .robot-head img {
+    width: 100px; /* or whatever size fits best */
+    height: auto;
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+  }
+
+  .speech-bubble {
+    grid-column: 1;
+    grid-row: 1;
+    background: rgb(254, 250, 242);
+    border: 1px dotted #333;
+    border-radius: 12px;
+    padding: 1.2rem;
+    font-family: monospace;
+    position: relative;
+    z-index: 1; /* ensures bubble stays above robot if needed */
+    min-height: 9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .bubble-text {
+      font-family: "Share Tech Mono", sans-serif;
+      font-size: 1.1rem;
+      color: settings.$blue;
+      font-weight: 500;
+      margin: 0;
+      padding-right: 1rem;
+      color: #333;
+    }
+  }
+}
+
 .robot-character {
   position: relative;
   display: inline-block;
@@ -234,43 +318,6 @@
   @media (max-width: 768px) {
     width: 60px;
     height: 60px;
-  }
-}
-
-.speech-bubble {
-  position: relative;
-  background: white;
-  border-radius: 20px;
-  padding: 1.5rem;
-  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.05);
-  border: 1px dotted #333;
-  max-width: 300px;
-
-  @media (max-width: 768px) {
-    margin-left: 1rem;
-    max-width: 250px;
-    padding: 1rem;
-  }
-
-  &::before {
-    content: "";
-    position: absolute;
-    left: -20px;
-    top: 30px;
-    width: 0;
-    height: 0;
-    border: 10px solid transparent;
-    border-right-color: white;
-    border-left: 0;
-    margin-top: -10px;
-  }
-
-  .bubble-text {
-    font-family: "Share Tech Mono", sans-serif;
-    font-size: 1.1rem;
-    color: settings.$blue;
-    font-weight: 600;
-    margin: 0;
   }
 }
 

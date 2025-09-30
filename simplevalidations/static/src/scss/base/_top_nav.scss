@@ -42,6 +42,10 @@
     font-size: 0.75rem;
     font-weight: 600;
     color: rgba(15, 23, 42, 0.6);
+    a {
+      text-decoration: none;
+      color: #000;
+    }
   }
 
   .list-unstyled {
@@ -131,8 +135,8 @@
   }
 }
 
-
-.resources-dropdown, .features-dropdown {
+.resources-dropdown,
+.features-dropdown {
   position: static; // allow megamenu to span full width
 
   .dropdown-menu {
@@ -156,7 +160,8 @@
 }
 
 @media (max-width: 991.98px) {
-  .resources-dropdown, .features-dropdown {
+  .resources-dropdown,
+  .features-dropdown {
     position: relative;
 
     .dropdown-menu {

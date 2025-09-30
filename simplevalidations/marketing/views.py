@@ -152,10 +152,10 @@ class DocsPageView(ResourceDetailPageView):
     page_title = "Docs"
 
 
-class YoutubePageView(ResourceDetailPageView):
-    template_name = "marketing/resources_youtube.html"
+class VideosPageView(ResourceDetailPageView):
+    template_name = "marketing/resources_videos.html"
     http_method_names = ["get"]
-    page_title = "YouTube"
+    page_title = "Videos"
 
 
 class ChangelogPageView(ResourceDetailPageView):

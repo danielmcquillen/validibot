@@ -125,7 +125,7 @@ ignore = [
   "C901",   # 'Function is too complex' ... I want to have some functions that have more than 6 args.
   "PLR0913", # Function has too many arguments (14/10)
   "BLE001", #We want blind exceptions
-  "G400", # We want to use f-strings in logging
+  #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require
 # provide the `--unsafe-fixes` flag when fixing.

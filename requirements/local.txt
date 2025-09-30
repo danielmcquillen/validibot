@@ -7,23 +7,23 @@ watchfiles==1.1.0  # https://github.com/samuelcolvin/watchfiles
 
 # Testing
 # ------------------------------------------------------------------------------
-mypy==1.18.1 # https://github.com/python/mypy
+mypy==1.18.2 # https://github.com/python/mypy
 django-stubs[compatible-mypy]==5.2.5  # https://github.com/typeddjango/django-stubs
 pytest==8.4.2  # https://github.com/pytest-dev/pytest
-pytest-sugar==1.0.0  # https://github.com/Teemu/pytest-sugar
-djangorestframework-stubs==3.16.2  # https://github.com/typeddjango/djangorestframework-stubs
+pytest-sugar==1.1.1  # https://github.com/Teemu/pytest-sugar
+djangorestframework-stubs==3.16.4  # https://github.com/typeddjango/djangorestframework-stubs
 
 # Documentation
 # ------------------------------------------------------------------------------
 mkdocs==1.6.1
-mkdocs-material==9.6.20
+mkdocs-material==9.6.21
  mkdocs-print-site-plugin==2.8
 
 
 # Code quality
 # ------------------------------------------------------------------------------
-ruff==0.13.0  # https://github.com/astral-sh/ruff
-coverage==7.10.6  # https://github.com/nedbat/coveragepy
+ruff==0.13.2  # https://github.com/astral-sh/ruff
+coverage==7.10.7  # https://github.com/nedbat/coveragepy
 djlint==1.36.4  # https://github.com/Riverside-Healthcare/djLint
 pre-commit==4.3.0  # https://github.com/pre-commit/pre-commit
 

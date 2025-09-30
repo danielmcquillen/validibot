@@ -1,9 +1,10 @@
 from django.conf import settings
-from rest_framework.routers import DefaultRouter, SimpleRouter
+from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
-from roscoe.users.api.views import UserViewSet
-from roscoe.validations.views import ValidationRunViewSet
-from roscoe.workflows.views import WorkflowViewSet
+from simplevalidations.users.api.views import UserViewSet
+from simplevalidations.validations.views import ValidationRunViewSet
+from simplevalidations.workflows.views import WorkflowViewSet
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 

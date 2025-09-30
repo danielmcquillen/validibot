@@ -1,6 +1,6 @@
 site_name: SimpleValidations User Guide
 site_description: Product tutorials and walkthroughs for SimpleValidations users.
-site_url: https://docs.roscoe.app/
+site_url: https://docs.simplevalidations.app/
 
 docs_dir: docs/user_docs
 use_directory_urls: true

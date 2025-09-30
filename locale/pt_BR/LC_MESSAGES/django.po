@@ -11,56 +11,56 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-#: roscoe/templates/account/account_inactive.html:5
-#: roscoe/templates/account/account_inactive.html:8
+#: simplevalidations/templates/account/account_inactive.html:5
+#: simplevalidations/templates/account/account_inactive.html:8
 msgid "Account Inactive"
 msgstr "Conta Inativa"
 
-#: roscoe/templates/account/account_inactive.html:10
+#: simplevalidations/templates/account/account_inactive.html:10
 msgid "This account is inactive."
 msgstr "Esta conta está inativa."
 
-#: roscoe/templates/account/email.html:7
+#: simplevalidations/templates/account/email.html:7
 msgid "Account"
 msgstr "Conta"
 
-#: roscoe/templates/account/email.html:10
+#: simplevalidations/templates/account/email.html:10
 msgid "E-mail Addresses"
 msgstr "Endereços de E-mail"
 
-#: roscoe/templates/account/email.html:13
+#: simplevalidations/templates/account/email.html:13
 msgid "The following e-mail addresses are associated with your account:"
 msgstr "Os seguintes endereços de e-mail estão associados à sua conta:"
 
-#: roscoe/templates/account/email.html:27
+#: simplevalidations/templates/account/email.html:27
 msgid "Verified"
 msgstr "Verificado"
 
-#: roscoe/templates/account/email.html:29
+#: simplevalidations/templates/account/email.html:29
 msgid "Unverified"
 msgstr "Não verificado"
 
-#: roscoe/templates/account/email.html:31
+#: simplevalidations/templates/account/email.html:31
 msgid "Primary"
 msgstr "Primário"
 
-#: roscoe/templates/account/email.html:37
+#: simplevalidations/templates/account/email.html:37
 msgid "Make Primary"
 msgstr "Tornar Primário"
 
-#: roscoe/templates/account/email.html:38
+#: simplevalidations/templates/account/email.html:38
 msgid "Re-send Verification"
 msgstr "Reenviar verificação"
 
-#: roscoe/templates/account/email.html:39
+#: simplevalidations/templates/account/email.html:39
 msgid "Remove"
 msgstr "Remover"
 
-#: roscoe/templates/account/email.html:46
+#: simplevalidations/templates/account/email.html:46
 msgid "Warning:"
 msgstr "Aviso:"
 
-#: roscoe/templates/account/email.html:46
+#: simplevalidations/templates/account/email.html:46
 msgid ""
 "You currently do not have any e-mail address set up. You should really add "
 "an e-mail address so you can receive notifications, reset your password, etc."
@@ -69,24 +69,24 @@ msgstr ""
 "realmente deve adicionar um endereço de e-mail para receber notificações, "
 "redefinir sua senha etc."
 
-#: roscoe/templates/account/email.html:51
+#: simplevalidations/templates/account/email.html:51
 msgid "Add E-mail Address"
 msgstr "Adicionar Endereço de E-mail"
 
-#: roscoe/templates/account/email.html:56
+#: simplevalidations/templates/account/email.html:56
 msgid "Add E-mail"
 msgstr "Adicionar E-mail"
 
-#: roscoe/templates/account/email.html:66
+#: simplevalidations/templates/account/email.html:66
 msgid "Do you really want to remove the selected e-mail address?"
 msgstr "Você realmente deseja remover o endereço de e-mail selecionado?"
 
-#: roscoe/templates/account/email_confirm.html:6
-#: roscoe/templates/account/email_confirm.html:10
+#: simplevalidations/templates/account/email_confirm.html:6
+#: simplevalidations/templates/account/email_confirm.html:10
 msgid "Confirm E-mail Address"
 msgstr "Confirme o endereço de e-mail"
 
-#: roscoe/templates/account/email_confirm.html:16
+#: simplevalidations/templates/account/email_confirm.html:16
 #, python-format
 msgid ""
 "Please confirm that <a href=\"mailto:%(email)s\">%(email)s</a> is an e-mail "
@@ -95,11 +95,11 @@ msgstr ""
 "Confirme se <a href=\"mailto:%(email)s\">%(email)s</a> é um endereço de "
 "e-mail do usuário %(user_display)s."
 
-#: roscoe/templates/account/email_confirm.html:20
+#: simplevalidations/templates/account/email_confirm.html:20
 msgid "Confirm"
 msgstr "Confirmar"
 
-#: roscoe/templates/account/email_confirm.html:27
+#: simplevalidations/templates/account/email_confirm.html:27
 #, python-format
 msgid ""
 "This e-mail confirmation link expired or is invalid. Please <a href="
@@ -107,29 +107,29 @@ msgid ""
 msgstr "Este link de confirmação de e-mail expirou ou é inválido. "
 "Por favor, <a href=\"%(email_url)s\">emita um novo pedido de confirmação por e-mail</a>."
 
-#: roscoe/templates/account/login.html:7
-#: roscoe/templates/account/login.html:11
-#: roscoe/templates/account/login.html:56
-#: roscoe/templates/base.html:72
+#: simplevalidations/templates/account/login.html:7
+#: simplevalidations/templates/account/login.html:11
+#: simplevalidations/templates/account/login.html:56
+#: simplevalidations/templates/base.html:72
 msgid "Sign In"
 msgstr "Entrar"
 
-#: roscoe/templates/account/login.html:17
+#: simplevalidations/templates/account/login.html:17
 msgid "Please sign in with one of your existing third party accounts:"
 msgstr "Faça login com uma de suas contas de terceiros existentes:"
 
-#: roscoe/templates/account/login.html:19
+#: simplevalidations/templates/account/login.html:19
 #, python-format
 msgid ""
 "Or, <a href=\"%(signup_url)s\">sign up</a> for a %(site_name)s account and "
 "sign in below:"
 msgstr "Ou, <a href=\"%(signup_url)s\">cadastre-se</a> para uma conta em %(site_name)s e entre abaixo:"
 
-#: roscoe/templates/account/login.html:32
+#: simplevalidations/templates/account/login.html:32
 msgid "or"
 msgstr "ou"
 
-#: roscoe/templates/account/login.html:41
+#: simplevalidations/templates/account/login.html:41
 #, python-format
 msgid ""
 "If you have not created an account yet, then please <a href=\"%(signup_url)s"
@@ -137,63 +137,63 @@ msgid ""
 msgstr "Se você ainda não criou uma conta, <a href=\"%(signup_url)s"
 "\">registre-se primeiro</a>."
 
-#: roscoe/templates/account/login.html:55
+#: simplevalidations/templates/account/login.html:55
 msgid "Forgot Password?"
 msgstr "Esqueceu sua senha?"
 
-#: roscoe/templates/account/logout.html:5
-#: roscoe/templates/account/logout.html:8
-#: roscoe/templates/account/logout.html:17
-#: roscoe/templates/base.html:61
+#: simplevalidations/templates/account/logout.html:5
+#: simplevalidations/templates/account/logout.html:8
+#: simplevalidations/templates/account/logout.html:17
+#: simplevalidations/templates/base.html:61
 msgid "Sign Out"
 msgstr "Sair"
 
-#: roscoe/templates/account/logout.html:10
+#: simplevalidations/templates/account/logout.html:10
 msgid "Are you sure you want to sign out?"
 msgstr "Você tem certeza que deseja sair?"
 
-#: roscoe/templates/account/password_change.html:6
-#: roscoe/templates/account/password_change.html:9
-#: roscoe/templates/account/password_change.html:14
-#: roscoe/templates/account/password_reset_from_key.html:5
-#: roscoe/templates/account/password_reset_from_key.html:8
-#: roscoe/templates/account/password_reset_from_key_done.html:4
-#: roscoe/templates/account/password_reset_from_key_done.html:7
+#: simplevalidations/templates/account/password_change.html:6
+#: simplevalidations/templates/account/password_change.html:9
+#: simplevalidations/templates/account/password_change.html:14
+#: simplevalidations/templates/account/password_reset_from_key.html:5
+#: simplevalidations/templates/account/password_reset_from_key.html:8
+#: simplevalidations/templates/account/password_reset_from_key_done.html:4
+#: simplevalidations/templates/account/password_reset_from_key_done.html:7
 msgid "Change Password"
 msgstr "Alterar Senha"
 
-#: roscoe/templates/account/password_reset.html:7
-#: roscoe/templates/account/password_reset.html:11
-#: roscoe/templates/account/password_reset_done.html:6
-#: roscoe/templates/account/password_reset_done.html:9
+#: simplevalidations/templates/account/password_reset.html:7
+#: simplevalidations/templates/account/password_reset.html:11
+#: simplevalidations/templates/account/password_reset_done.html:6
+#: simplevalidations/templates/account/password_reset_done.html:9
 msgid "Password Reset"
 msgstr "Redefinição de senha"
 
-#: roscoe/templates/account/password_reset.html:16
+#: simplevalidations/templates/account/password_reset.html:16
 msgid ""
 "Forgotten your password? Enter your e-mail address below, and we'll send you "
 "an e-mail allowing you to reset it."
 msgstr "Esqueceu sua senha? Digite seu endereço de e-mail abaixo e enviaremos um e-mail permitindo que você o redefina."
 
-#: roscoe/templates/account/password_reset.html:21
+#: simplevalidations/templates/account/password_reset.html:21
 msgid "Reset My Password"
 msgstr "Redefinir minha senha"
 
-#: roscoe/templates/account/password_reset.html:24
+#: simplevalidations/templates/account/password_reset.html:24
 msgid "Please contact us if you have any trouble resetting your password."
 msgstr "Entre em contato conosco se tiver algum problema para redefinir sua senha."
 
-#: roscoe/templates/account/password_reset_done.html:15
+#: simplevalidations/templates/account/password_reset_done.html:15
 msgid ""
 "We have sent you an e-mail. Please contact us if you do not receive it "
 "within a few minutes."
 msgstr "Enviamos um e-mail para você. Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: roscoe/templates/account/password_reset_from_key.html:8
+#: simplevalidations/templates/account/password_reset_from_key.html:8
 msgid "Bad Token"
 msgstr "Token Inválido"
 
-#: roscoe/templates/account/password_reset_from_key.html:12
+#: simplevalidations/templates/account/password_reset_from_key.html:12
 #, python-format
 msgid ""
 "The password reset link was invalid, possibly because it has already been "
@@ -202,61 +202,61 @@ msgid ""
 msgstr "O link de redefinição de senha era inválido, possivelmente porque já foi usado. "
 "<a href=\"%(passwd_reset_url)s\">Solicite uma nova redefinição de senha</a>."
 
-#: roscoe/templates/account/password_reset_from_key.html:18
+#: simplevalidations/templates/account/password_reset_from_key.html:18
 msgid "change password"
 msgstr "alterar senha"
 
-#: roscoe/templates/account/password_reset_from_key.html:21
-#: roscoe/templates/account/password_reset_from_key_done.html:8
+#: simplevalidations/templates/account/password_reset_from_key.html:21
+#: simplevalidations/templates/account/password_reset_from_key_done.html:8
 msgid "Your password is now changed."
 msgstr "Sua senha agora foi alterada."
 
-#: roscoe/templates/account/password_set.html:6
-#: roscoe/templates/account/password_set.html:9
-#: roscoe/templates/account/password_set.html:14
+#: simplevalidations/templates/account/password_set.html:6
+#: simplevalidations/templates/account/password_set.html:9
+#: simplevalidations/templates/account/password_set.html:14
 msgid "Set Password"
 msgstr "Definir Senha"
 
-#: roscoe/templates/account/signup.html:6
+#: simplevalidations/templates/account/signup.html:6
 msgid "Signup"
 msgstr "Cadastro"
 
-#: roscoe/templates/account/signup.html:9
-#: roscoe/templates/account/signup.html:19
-#: roscoe/templates/base.html:67
+#: simplevalidations/templates/account/signup.html:9
+#: simplevalidations/templates/account/signup.html:19
+#: simplevalidations/templates/base.html:67
 msgid "Sign Up"
 msgstr "Cadastro"
 
-#: roscoe/templates/account/signup.html:11
+#: simplevalidations/templates/account/signup.html:11
 #, python-format
 msgid ""
 "Already have an account? Then please <a href=\"%(login_url)s\">sign in</a>."
 msgstr "já tem uma conta? Então, por favor, faça <a href=\"%(login_url)s\">login</a>."
 
-#: roscoe/templates/account/signup_closed.html:5
-#: roscoe/templates/account/signup_closed.html:8
+#: simplevalidations/templates/account/signup_closed.html:5
+#: simplevalidations/templates/account/signup_closed.html:8
 msgid "Sign Up Closed"
 msgstr "Inscrições encerradas"
 
-#: roscoe/templates/account/signup_closed.html:10
+#: simplevalidations/templates/account/signup_closed.html:10
 msgid "We are sorry, but the sign up is currently closed."
 msgstr "Lamentamos, mas as inscrições estão encerradas no momento."
 
-#: roscoe/templates/account/verification_sent.html:5
-#: roscoe/templates/account/verification_sent.html:8
-#: roscoe/templates/account/verified_email_required.html:5
-#: roscoe/templates/account/verified_email_required.html:8
+#: simplevalidations/templates/account/verification_sent.html:5
+#: simplevalidations/templates/account/verification_sent.html:8
+#: simplevalidations/templates/account/verified_email_required.html:5
+#: simplevalidations/templates/account/verified_email_required.html:8
 msgid "Verify Your E-mail Address"
 msgstr "Verifique seu endereço de e-mail"
 
-#: roscoe/templates/account/verification_sent.html:10
+#: simplevalidations/templates/account/verification_sent.html:10
 msgid ""
 "We have sent an e-mail to you for verification. Follow the link provided to "
 "finalize the signup process. Please contact us if you do not receive it "
 "within a few minutes."
 msgstr "Enviamos um e-mail para você para verificação. Siga o link fornecido para finalizar o processo de inscrição. Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: roscoe/templates/account/verified_email_required.html:12
+#: simplevalidations/templates/account/verified_email_required.html:12
 msgid ""
 "This part of the site requires us to verify that\n"
 "you are who you claim to be. For this purpose, we require that you\n"
@@ -265,7 +265,7 @@ msgstr "Esta parte do site exige que verifiquemos se você é quem afirma ser.\n
 "Para esse fim, exigimos que você verifique a propriedade\n"
 "do seu endereço de e-mail."
 
-#: roscoe/templates/account/verified_email_required.html:16
+#: simplevalidations/templates/account/verified_email_required.html:16
 msgid ""
 "We have sent an e-mail to you for\n"
 "verification. Please click on the link inside this e-mail. Please\n"
@@ -274,42 +274,42 @@ msgstr "Enviamos um e-mail para você para verificação.\n"
 "Por favor, clique no link dentro deste e-mail.\n"
 "Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: roscoe/templates/account/verified_email_required.html:20
+#: simplevalidations/templates/account/verified_email_required.html:20
 #, python-format
 msgid ""
 "<strong>Note:</strong> you can still <a href=\"%(email_url)s\">change your e-"
 "mail address</a>."
 msgstr "<strong>Nota</strong>: você ainda pode <a href=\"%(email_url)s\">alterar seu endereço de e-mail</a>."
 
-#: roscoe/templates/base.html:57
+#: simplevalidations/templates/base.html:57
 msgid "My Profile"
 msgstr "Meu perfil"
 
-#: roscoe/users/admin.py:17
+#: simplevalidations/users/admin.py:17
 msgid "Personal info"
 msgstr "Informação pessoal"
 
-#: roscoe/users/admin.py:19
+#: simplevalidations/users/admin.py:19
 msgid "Permissions"
 msgstr "Permissões"
 
-#: roscoe/users/admin.py:30
+#: simplevalidations/users/admin.py:30
 msgid "Important dates"
 msgstr "Datas importantes"
 
-#: roscoe/users/apps.py:7
+#: simplevalidations/users/apps.py:7
 msgid "Users"
 msgstr "Usuários"
 
-#: roscoe/users/forms.py:24
-#: roscoe/users/tests/test_forms.py:36
+#: simplevalidations/users/forms.py:24
+#: simplevalidations/users/tests/test_forms.py:36
 msgid "This username has already been taken."
 msgstr "Este nome de usuário já foi usado."
 
-#: roscoe/users/models.py:15
+#: simplevalidations/users/models.py:15
 msgid "Name of User"
 msgstr "Nome do Usuário"
 
-#: roscoe/users/views.py:23
+#: simplevalidations/users/views.py:23
 msgid "Information successfully updated"
 msgstr "Informação atualizada com sucesso"

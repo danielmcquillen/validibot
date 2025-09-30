@@ -16,7 +16,7 @@ from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
     # Marketing and misc pages...
-    path("", include("roscoe.marketing.urls", namespace="marketing")),
+    path("", include("simplevalidations.marketing.urls", namespace="marketing")),
     path(
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),
@@ -25,15 +25,15 @@ urlpatterns = [
     # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),
     # App URLs...
-    path("app/dashboard/", include("roscoe.dashboard.urls", namespace="dashboard")),
-    path("app/users/", include("roscoe.users.urls", namespace="users")),
-    path("app/core/", include("roscoe.core.urls", namespace="core")),
+    path("app/dashboard/", include("simplevalidations.dashboard.urls", namespace="dashboard")),
+    path("app/users/", include("simplevalidations.users.urls", namespace="users")),
+    path("app/core/", include("simplevalidations.core.urls", namespace="core")),
     path("accounts/", include("allauth.urls")),
-    path("app/projects/", include("roscoe.projects.urls", namespace="projects")),
-    path("app/workflows/", include("roscoe.workflows.urls", namespace="workflows")),
-    path("app/tracking/", include("roscoe.tracking.urls", namespace="tracking")),
+    path("app/projects/", include("simplevalidations.projects.urls", namespace="projects")),
+    path("app/workflows/", include("simplevalidations.workflows.urls", namespace="workflows")),
+    path("app/tracking/", include("simplevalidations.tracking.urls", namespace="tracking")),
     path(
-        "app/validations/", include("roscoe.validations.urls", namespace="validations")
+        "app/validations/", include("simplevalidations.validations.urls", namespace="validations")
     ),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]

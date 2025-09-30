@@ -1,14 +1,14 @@
 {
-  "name": "roscoe-static",
+  "name": "simplevalidations-static",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "build": "npm run build:css && npm run build:js",
-    "build:css": "sass --style=compressed --quiet-deps --load-path=node_modules --load-path=roscoe/static/src/scss --migrator migrate-imports roscoe/static/src/scss/project.scss roscoe/static/css/project.css",
-    "build:js": "esbuild roscoe/static/src/ts/project.ts --bundle --minify --sourcemap --outdir=roscoe/static/js",
+    "build:css": "sass --style=compressed --quiet-deps --load-path=node_modules --load-path=simplevalidations/static/src/scss --migrator migrate-imports simplevalidations/static/src/scss/project.scss simplevalidations/static/css/project.css",
+    "build:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --minify --sourcemap --outdir=simplevalidations/static/js",
     "watch": "npm run watch:css & npm run watch:js",
-    "watch:css": "sass --watch --quiet-deps --load-path=node_modules roscoe/static/src/scss/project.scss:roscoe/static/css/project.css",
-    "watch:js": "esbuild roscoe/static/src/ts/project.ts --bundle --sourcemap --outdir=roscoe/static/js --watch"
+    "watch:css": "sass --watch --quiet-deps --load-path=node_modules simplevalidations/static/src/scss/project.scss:simplevalidations/static/css/project.css",
+    "watch:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --sourcemap --outdir=simplevalidations/static/js --watch"
   },
   "devDependencies": {
     "esbuild": "^0.25.3",

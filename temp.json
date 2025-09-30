@@ -29,7 +29,7 @@
     "repositories_url": "https://api.github.com/installation/repositories",
     "html_url": "https://github.com/settings/installations/77485040",
     "app_id": 1661935,
-    "app_slug": "roscoevalidator",
+    "app_slug": "simplevalidationsvalidator",
     "target_id": 119496,
     "target_type": "User",
     "permissions": {

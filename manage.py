@@ -20,9 +20,9 @@ def main():
         ) from exc
 
     # This allows easy placement of apps within the interior
-    # roscoe directory.
+    # simplevalidations directory.
     current_path = Path(__file__).parent.resolve()
-    sys.path.append(str(current_path / "roscoe"))
+    sys.path.append(str(current_path / "simplevalidations"))
 
     execute_from_command_line(sys.argv)
 

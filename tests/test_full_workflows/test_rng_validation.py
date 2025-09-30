@@ -11,20 +11,20 @@ from rest_framework.status import HTTP_200_OK
 from rest_framework.status import HTTP_201_CREATED
 from rest_framework.status import HTTP_202_ACCEPTED
 
-from roscoe.users.models import Role
-from roscoe.users.models import RoleCode
-from roscoe.users.tests.factories import OrganizationFactory
-from roscoe.users.tests.factories import UserFactory
-from roscoe.validations.constants import ValidationRunStatus
-from roscoe.validations.constants import ValidationType
-from roscoe.validations.constants import XMLSchemaType
-from roscoe.validations.tests.factories import RulesetFactory
-from roscoe.validations.tests.factories import ValidatorFactory
-from roscoe.workflows.tests.factories import WorkflowFactory
-from roscoe.workflows.tests.factories import WorkflowStepFactory
+from simplevalidations.users.models import Role
+from simplevalidations.users.models import RoleCode
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 if TYPE_CHECKING:
-    from roscoe.users.models import Membership
+    from simplevalidations.users.models import Membership
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.django_db

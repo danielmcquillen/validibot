@@ -21,9 +21,9 @@ from pathlib import Path
 from django.core.wsgi import get_wsgi_application
 
 # This allows easy placement of apps within the interior
-# roscoe directory.
+# simplevalidations directory.
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
-sys.path.append(str(BASE_DIR / "roscoe"))
+sys.path.append(str(BASE_DIR / "simplevalidations"))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.production")
 
 # This application object is used by any WSGI server configured to use this

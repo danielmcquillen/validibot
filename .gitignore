@@ -274,7 +274,7 @@ dump.rdb
 
 ### Project template
 mailpit
-roscoe/media/
+simplevalidations/media/
 
 .pytest_cache/
 .env

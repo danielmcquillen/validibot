@@ -10,8 +10,8 @@ import environ
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
-# roscoe/
-APPS_DIR = BASE_DIR / "roscoe"
+# simplevalidations/
+APPS_DIR = BASE_DIR / "simplevalidations"
 env = environ.Env()
 
 READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)
@@ -53,7 +53,7 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres:///roscoe",
+        default="postgres:///simplevalidations",
     ),
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
@@ -102,19 +102,19 @@ if GITHUB_APP_ENABLED:
     THIRD_PARTY_APPS.append("django_github_app")
 
 LOCAL_APPS = [
-    "roscoe.core",
-    "roscoe.users",
-    "roscoe.validations",
-    "roscoe.projects",
-    "roscoe.events",
-    "roscoe.tracking",
-    "roscoe.submissions",
-    "roscoe.integrations",
-    "roscoe.workflows",
-    "roscoe.billing",
-    "roscoe.dashboard",
-    "roscoe.marketing",
-    "roscoe.blog",
+    "simplevalidations.core",
+    "simplevalidations.users",
+    "simplevalidations.validations",
+    "simplevalidations.projects",
+    "simplevalidations.events",
+    "simplevalidations.tracking",
+    "simplevalidations.submissions",
+    "simplevalidations.integrations",
+    "simplevalidations.workflows",
+    "simplevalidations.billing",
+    "simplevalidations.dashboard",
+    "simplevalidations.marketing",
+    "simplevalidations.blog",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -122,7 +122,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # MIGRATIONS
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#migration-modules
-MIGRATION_MODULES = {"sites": "roscoe.contrib.sites.migrations"}
+MIGRATION_MODULES = {"sites": "simplevalidations.contrib.sites.migrations"}
 
 # AUTHENTICATION
 # ------------------------------------------------------------------------------
@@ -218,7 +218,7 @@ TEMPLATES = [
                 "django.template.context_processors.static",
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
-                "roscoe.users.context_processors.allauth_settings",
+                "simplevalidations.users.context_processors.allauth_settings",
             ],
         },
     },
@@ -343,27 +343,27 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_ADAPTER = "roscoe.users.adapters.AccountAdapter"
+ACCOUNT_ADAPTER = "simplevalidations.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
-ACCOUNT_FORMS = {"signup": "roscoe.users.forms.UserSignupForm"}
+ACCOUNT_FORMS = {"signup": "simplevalidations.users.forms.UserSignupForm"}
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_ADAPTER = "roscoe.users.adapters.SocialAccountAdapter"
+SOCIALACCOUNT_ADAPTER = "simplevalidations.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_FORMS = {"signup": "roscoe.users.forms.UserSocialSignupForm"}
+SOCIALACCOUNT_FORMS = {"signup": "simplevalidations.users.forms.UserSocialSignupForm"}
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 # DMcQ: Using our our custom AgentAwareNegotiation so every API view gets the agent profile.
 REST_FRAMEWORK = {
-    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "roscoe.core.api.negotiation.AgentAwareNegotiation",
+    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "simplevalidations.core.api.negotiation.AgentAwareNegotiation",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "roscoe.core.api.pagination.DefaultCursorPagination",
+    "DEFAULT_PAGINATION_CLASS": "simplevalidations.core.api.pagination.DefaultCursorPagination",
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",

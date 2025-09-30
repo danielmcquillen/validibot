@@ -19,7 +19,7 @@ from .base import env
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["roscoevalidator.com"])
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["simplevalidationsvalidator.com"])
 
 # DATABASES
 # ------------------------------------------------------------------------------
@@ -199,12 +199,12 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
-        "roscoe.users": {
+        "simplevalidations.users": {
             "level": "INFO",
             "handlers": ["console"],
             "propagate": False,
         },
-        "roscoe.validations": {
+        "simplevalidations.validations": {
             "level": "INFO",
             "handlers": ["console"],
             "propagate": False,
@@ -238,7 +238,7 @@ sentry_sdk.init(
 # -------------------------------------------------------------------------------
 # Tools that generate code samples can use SERVERS to point to the correct domain
 SPECTACULAR_SETTINGS["SERVERS"] = [
-    {"url": "https://roscoevalidator.com", "description": "Production server"},
+    {"url": "https://simplevalidationsvalidator.com", "description": "Production server"},
 ]
 # Your stuff...
 # ------------------------------------------------------------------------------

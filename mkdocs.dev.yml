@@ -6,7 +6,7 @@ docs_dir: docs/dev_docs
 use_directory_urls: true
 
 repo_url: https://github.com/danielmcquillen/simplevalidations
-repo_name: danielmcquillen/roscoe
+repo_name: danielmcquillen/simplevalidations
 
 theme:
   name: material

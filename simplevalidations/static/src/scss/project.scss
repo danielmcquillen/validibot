@@ -1,0 +1,28 @@
+@use "settings";
+
+// BASE BOOTSTRAP STYLES
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+@use "bootstrap/scss/bootstrap.scss" with (
+  $primary: settings.$blue,
+  $secondary: settings.$azure,
+  $success: settings.$green,
+  $info: settings.$azure,
+  $warning: settings.$yellow,
+  $danger: settings.$red
+);
+
+// simplevalidations STYLES
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+@use "base";
+
+@use "app";
+
+@use "site";
+
+@use "marketing";
+
+@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css");
+
+// Fonts
+@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap");

@@ -35,5 +35,3 @@ django-filter==25.1
 lxml==6.0.2
 # For validating JSON
 jsonschema==4.25.1
-
-#

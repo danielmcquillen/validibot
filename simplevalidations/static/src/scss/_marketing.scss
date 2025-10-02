@@ -66,7 +66,7 @@
   }
 
   .hero-title {
-    font-size: 3.5rem;
+    font-size: 3.3rem;
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 1.5rem;
@@ -76,6 +76,11 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    .hero-title-contrast {
+      background: settings.$green;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
 
     @media (max-width: 768px) {
       font-size: 2.5rem;
@@ -165,6 +170,7 @@
   text-align: center;
   margin-bottom: 3rem;
   color: settings.$blue;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 
   @media (max-width: 768px) {
     font-size: 2rem;
@@ -330,12 +336,10 @@
 // Call-to-Action Section
 // ========================================
 .cta-section {
-  background: linear-gradient(135deg, settings.$blue, settings.$purple);
+  background: linear-gradient(135deg, settings.$blue, settings.$green);
   color: white;
   padding: 4rem 0;
   text-align: center;
-  position: relative;
-  overflow: hidden;
 
   @media (max-width: 768px) {
     padding: 3rem 0;
@@ -421,6 +425,7 @@
 // ========================================
 .btn-robot {
   background: settings.$blue;
+  box-shadow: 0 3px 5px rgba(44, 152, 206, 0.3);
   border: none;
   border-radius: 50px;
   padding: 0.75rem 2rem;
@@ -430,27 +435,11 @@
   position: relative;
   overflow: hidden;
 
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.2),
-      transparent
-    );
-    transition: left 0.5s;
-  }
-
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(settings.$green, 0.3);
-    color: white;
-
+    background: rgb(50, 174, 236);
+    box-shadow: 0 10px 20px rgba(61, 173, 228, 0.3);
+    color: #000;
     &::before {
       left: 100%;
     }
@@ -467,10 +456,9 @@
   transition: all 0.3s ease;
 
   &:hover {
-    background: settings.$blue;
-    color: white;
     transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(settings.$blue, 0.3);
+    background: rgb(50, 174, 236);
+    box-shadow: 0 10px 20px rgba(61, 173, 228, 0.3);
   }
 }
 

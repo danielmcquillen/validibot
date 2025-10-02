@@ -24,10 +24,9 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock left_sidebar %}
 
 {% block content %}
-    <div class="app-content">
+    <div id="app-content">
         {% block app_content %}
 
         {% endblock app_content %}
     </div>
-
 {% endblock content %}

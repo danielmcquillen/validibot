@@ -18,7 +18,7 @@ class Command(BaseCommand):
         super().__init__(stdout=stdout, stderr=stderr, no_color=no_color)
 
     def handle(self, *args, **options):
-        self.stdout.write("Setting up PureLMS.")
+        self.stdout.write("Setting up SimpleValidations.")
         self.stdout.write("  ")
         self._setup_local_superuser()
         self.stdout.write("DONE setting up PureLMS")

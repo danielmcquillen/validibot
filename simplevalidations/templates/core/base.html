@@ -54,14 +54,14 @@
         <div class="{% block mainclass %}
                       container-fluid
                     {% endblock mainclass %}
-                    flex-grow-1 d-flex flex-row  w-100 h-100 p-0">
+                    flex-grow-1 d-flex flex-row w-100 h-100 p-0">
 
           {# Left sidebar #}
           {% block left_sidebar %}
 
           {% endblock left_sidebar %}
 
-          <div class="d-flex flex-column w-100 h-100 p-0">
+          <div id="main-content" class="d-flex flex-column w-100 h-100 p-0">
 
             {# Breadcrumbs #}
             {% block breadcrumbs %}

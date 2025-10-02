@@ -114,7 +114,10 @@ class Workflow(TimeStampedModel):
     slug = models.SlugField(
         null=False,
         blank=True,
-        help_text=_("A unique identifier for the workflow, used in URLs."),
+        help_text=_(
+            "A unique identifier for the workflow, used in URLs. "
+            "(Leave blank to auto-generate from name.)"
+        ),
     )
 
     version = models.CharField(
@@ -244,8 +247,10 @@ class WorkflowStep(TimeStampedModel):
             raise ValidationError({"order": _("Order already used in this workflow.")})
 
         # Ensure the ruleset chosen matches the validator's type
-        if self.ruleset and self.validator and (
-            self.ruleset.ruleset_type != self.validator.validation_type
+        if (
+            self.ruleset
+            and self.validator
+            and (self.ruleset.ruleset_type != self.validator.validation_type)
         ):
             raise ValidationError(
                 {

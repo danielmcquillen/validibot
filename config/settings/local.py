@@ -70,3 +70,9 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+
+SUPERUSER_USERNAME = env("SUPERUSER_USERNAME", default="admin")
+SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default="someadminpwchangeforrealz")
+SUPERUSER_EMAIL = env("SUPERUSER_EMAIL", default="")
+SUPERUSER_NAME = env("SUPERUSER_NAME", default="Admin User")

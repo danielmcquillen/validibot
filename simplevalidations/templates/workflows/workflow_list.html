@@ -11,117 +11,115 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div class="container-fluid py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-      <div>
-        <h1 class="h3 mb-1">
-          {% trans "Workflows" %}
-        </h1>
-        <p class="text-muted mb-0">
-          {% trans "Create, organize, and manage the workflows available to your organization." %}
-        </p>
-      </div>
-      <div>
-        <a class="btn btn-primary" href="{{ create_url }}">
-          <i class="bi-plus-lg me-1"></i>
-          {% trans "New Workflow" %}
-        </a>
-      </div>
+
+  <div class="app-content-header-bar row">
+    <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
+      <h1 class="app-page-title">
+        {% trans "Workflows" %}
+      </h1>
     </div>
-
-    <form method="get" class="row g-2 align-items-center mb-4">
-      <div class="col-sm-8 col-md-6 col-lg-4">
-        <label class="visually-hidden" for="workflow-search">
-          {% trans "Search workflows" %}
-        </label>
-        <div class="input-group">
-          <span class="input-group-text"><i class="bi-search"></i></span>
-          <input id="workflow-search"
-                 type="search"
-                 name="q"
-                 value="{{ search_query }}"
-                 class="form-control"
-                 placeholder="{% trans "Search workflows" %}" />
+    <div class="app-content-header-search d-flex flex-row align-items-center align-items-lg-start col-12 col-lg-6 mb-2 mb-lg-0">
+      <form method="get" class="row w-100">
+        <div class="col">
+          <label class="visually-hidden" for="workflow-search">
+            {% trans "Search workflows" %}
+          </label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi-search"></i></span>
+            <input id="workflow-search"
+                   type="search"
+                   name="q"
+                   value="{{ search_query }}"
+                   class="form-control 0"
+                   placeholder="{% trans "Search workflows" %}" />
+          </div>
         </div>
-      </div>
-      <div class="col-auto">
-        <button type="submit" class="btn btn-outline-secondary">
-          {% trans "Search" %}
-        </button>
-      </div>
-      {% if search_query %}
-        <div class="col-auto">
-          <a class="btn btn-link text-decoration-none"
-             href="{% url 'workflows:workflow_list' %}">
-            {% trans "Clear" %}
-          </a>
+        <div class="col-auto ">
+          <button type="submit" class="btn btn-outline-secondary">
+            {% trans "Search" %}
+          </button>
         </div>
-      {% endif %}
-    </form>
+        {% if search_query %}
+          <div class="col">
+            <a class="btn btn-link text-decoration-none"
+               href="{% url 'workflows:workflow_list' %}">
+              {% trans "Clear" %}
+            </a>
+          </div>
+        {% endif %}
+      </form>
+    </div>
+    <div class="app-content-header-actions col-12 col-lg-3 d-flex flex-row justify-content-start justify-content-lg-end mb-2 mb-lg-0">
+      <a class="btn btn-primary" href="{{ create_url }}">
+        <i class="bi-plus-lg me-1"></i>
+        {% trans "New Workflow" %}
+      </a>
+    </div>
+  </div>
 
-    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4"
-         id="workflow-grid">
-      {% for workflow in workflows %}
-        <div class="col" id="workflow-card-wrapper-{{ workflow.pk }}">
-          <div class="card shadow-sm h-100" id="workflow-card-{{ workflow.pk }}">
-            <div class="card-body d-flex flex-column">
-              <div class="d-flex justify-content-between align-items-start mb-2">
-                <h2 class="h5 mb-0">
-                  {{ workflow.name }}
-                </h2>
-                <span class="badge text-bg-light">
-                  {% if workflow.version %}
-                    {{ workflow.version }}
-                  {% else %}
-                    {% trans "Unversioned" %}
-                  {% endif %}
-                </span>
-              </div>
-              <p class="text-muted small mb-2">
-                <i class="bi-diagram-3 me-1"></i>
-                {{ workflow.slug }}
-              </p>
-              <p class="text-muted small mb-4">
-                {% trans "Updated" %}
-                {{ workflow.modified|date:"M j, Y" }}
-              </p>
-              <div class="mt-auto d-flex flex-wrap gap-2">
-                <a class="btn btn-sm btn-outline-primary flex-grow-1"
-                   href="{% url 'workflows:workflow_detail' workflow.pk %}">
-                  {% trans "View" %}
-                </a>
-                <a class="btn btn-sm btn-outline-secondary"
-                   href="{% url 'workflows:workflow_update' workflow.pk %}">
-                  {% trans "Edit" %}
-                </a>
-                <button type="button"
-                        class="btn btn-sm btn-outline-danger"
-                        hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
-                        hx-target="#workflow-card-wrapper-{{ workflow.pk }}"
-                        hx-swap="outerHTML"
-                        hx-confirm="{% trans "Delete this workflow?" %}">
-                  {% trans "Delete" %}
-                </button>
-              </div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4"
+       id="workflow-grid">
+    {% for workflow in workflows %}
+      <div class="col" id="workflow-card-wrapper-{{ workflow.pk }}">
+        <div class="card shadow-sm h-100" id="workflow-card-{{ workflow.pk }}">
+          <div class="card-body d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <h2 class="h5 mb-0">
+                {{ workflow.name }}
+              </h2>
+              <span class="badge text-bg-light">
+                {% if workflow.version %}
+                  {{ workflow.version }}
+                {% else %}
+                  {% trans "Unversioned" %}
+                {% endif %}
+              </span>
+            </div>
+            <p class="text-muted small mb-2">
+              <i class="bi-diagram-3 me-1"></i>
+              {{ workflow.slug }}
+            </p>
+            <p class="text-muted small mb-4">
+              {% trans "Updated" %}
+              {{ workflow.modified|date:"M j, Y" }}
+            </p>
+            <div class="mt-auto d-flex flex-wrap gap-2">
+              <a class="btn btn-sm btn-outline-primary flex-grow-1"
+                 href="{% url 'workflows:workflow_detail' workflow.pk %}">
+                {% trans "View" %}
+              </a>
+              <a class="btn btn-sm btn-outline-secondary"
+                 href="{% url 'workflows:workflow_update' workflow.pk %}">
+                {% trans "Edit" %}
+              </a>
+              <button type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
+                      hx-target="#workflow-card-wrapper-{{ workflow.pk }}"
+                      hx-swap="outerHTML"
+                      hx-confirm="{% trans "Delete this workflow?" %}">
+                {% trans "Delete" %}
+              </button>
             </div>
           </div>
         </div>
-      {% empty %}
-        <div class="col-12">
-          <div class="text-center py-5 border rounded bg-body-tertiary">
-            <h2 class="h5">
-              {% trans "No workflows yet" %}
-            </h2>
-            <p class="text-muted">
-              {% trans "Get started by creating your first workflow." %}
-            </p>
-            <a class="btn btn-primary" href="{{ create_url }}">
-              <i class="bi-plus-lg me-1"></i>
-              {% trans "Create a workflow" %}
-            </a>
-          </div>
+      </div>
+    {% empty %}
+      <div class="col-12">
+        <div class="text-center py-5 border rounded bg-body-tertiary">
+          <h2 class="h5">
+            {% trans "No workflows yet" %}
+          </h2>
+          <p class="text-muted">
+            {% trans "Get started by creating your first workflow." %}
+          </p>
+          <a class="btn btn-primary" href="{{ create_url }}">
+            <i class="bi-plus-lg me-1"></i>
+            {% trans "Create a workflow" %}
+          </a>
         </div>
-      {% endfor %}
-    </div>
+      </div>
+    {% endfor %}
   </div>
+</div>
 {% endblock app_content %}

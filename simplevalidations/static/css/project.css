@@ -12456,10 +12456,49 @@ h4 {
   padding-right: 0.75rem;
 }
 
-.app-content {
-  padding-left: 1rem;
+#main-content {
+  min-height: 100vh;
+  flex-grow: 1;
+  height: 100%;
+  width: 100%;
 }
 
+#app-content {
+  padding-left: 1rem;
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  height: 100%;
+  width: 100%;
+}
+
+.app-content-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  padding: 2rem;
+}
+
+.app-content-header-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  padding: 5px;
+  margin: 0 0 1rem;
+}
+.app-content-header-bar .app-content-header {
+  padding: 0;
+}
+.app-content-header-bar .app-content-header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
 .entrance-page {
   background: linear-gradient(152deg, #eef4f8, #dde5ea) !important;
   height: 100%;

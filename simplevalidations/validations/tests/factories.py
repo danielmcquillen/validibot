@@ -1,9 +1,6 @@
-from importlib import metadata
-
 import factory
 from factory.django import DjangoModelFactory
 
-from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.constants import RulesetType
@@ -17,7 +14,6 @@ from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
-from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -60,9 +56,10 @@ class ValidationRunFactory(DjangoModelFactory):
         model = ValidationRun
 
     submission = factory.SubFactory(SubmissionFactory)
-    workflow = factory.SubFactory(WorkflowFactory)
-    org = factory.SubFactory(OrganizationFactory)
-    project = factory.SubFactory(ProjectFactory)
+    workflow = factory.LazyAttribute(lambda o: o.submission.workflow)
+    org = factory.LazyAttribute(lambda o: o.submission.org)
+    project = factory.LazyAttribute(lambda o: o.submission.project)
+    user = factory.LazyAttribute(lambda o: o.submission.user)
     status = ValidationRunStatus.PENDING
 
 
@@ -81,9 +78,11 @@ class ValidationFindingFactory(DjangoModelFactory):
     class Meta:
         model = ValidationFinding
 
-    step_run = factory.SubFactory(ValidationStepRunFactory)
+    validation_step_run = factory.SubFactory(ValidationStepRunFactory)
     # Ensure run FK matches the step_run's validation_run
-    run = factory.LazyAttribute(lambda o: o.step_run.validation_run)
+    validation_run = factory.LazyAttribute(
+        lambda o: o.validation_step_run.validation_run,
+    )
     severity = Severity.ERROR
     code = ""
     message = factory.Faker("sentence")

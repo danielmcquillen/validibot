@@ -87,9 +87,6 @@ class TrackingEventService:
         if not event_type:
             raise ValueError(_("Event type is required to log a tracking event"))
 
-        if not user:
-            raise ValueError(_("User is required to log a tracking event"))
-
         resolved_type = self._resolve_event_type(event_type)
         resolved_app_event_type = self._resolve_app_event_type(
             resolved_type,
@@ -98,6 +95,16 @@ class TrackingEventService:
 
         prepared_extra = self._prepare_extra_data(extra_data)
         actor = user if getattr(user, "is_authenticated", False) else None
+
+        if user is None:
+            logger.debug(
+                "Tracking event recorded without a user",
+                extra={
+                    "event_type": event_type,
+                    "org_id": getattr(org, "pk", None),
+                    "project_id": getattr(project, "pk", None),
+                },
+            )
 
         tracking_event = TrackingEvent.objects.create(
             project=project,

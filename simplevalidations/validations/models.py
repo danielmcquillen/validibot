@@ -220,7 +220,7 @@ class ValidationRun(TimeStampedModel):
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.PROTECT,
-        related_name="runs",
+        related_name="validation_runs",
     )
 
     project = models.ForeignKey(
@@ -383,17 +383,17 @@ class ValidationFinding(TimeStampedModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["step_run", "severity"]),
-            models.Index(fields=["step_run", "code"]),
+            models.Index(fields=["validation_step_run", "severity"]),
+            models.Index(fields=["validation_step_run", "code"]),
         ]
 
-    run = models.ForeignKey(
+    validation_run = models.ForeignKey(
         ValidationRun,
         on_delete=models.CASCADE,
         related_name="findings",
     )
 
-    step_run = models.ForeignKey(
+    validation_step_run = models.ForeignKey(
         ValidationStepRun,
         on_delete=models.CASCADE,
         related_name="findings",

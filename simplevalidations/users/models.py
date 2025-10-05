@@ -222,7 +222,7 @@ class User(AbstractUser):
         """
         if not self.current_org:
             return None
-        return Membership.objects.filter(user=self, orgs=self.current_org).first()
+        return Membership.objects.filter(user=self, org=self.current_org).first()
 
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.

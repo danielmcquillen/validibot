@@ -1,3 +1,21 @@
+
+# ==== Project metadata ====
+
+[project]
+name = "simplevalidations"
+version = "0.1.0"
+description = "A simple data validation service"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Daniel McQuillen" }]
+
+# IMPORTANT NOTE: 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Currently we manage dependencies in requirements/*.txt files.
+# When running locally, install dependencies with:
+#     uv pip install -r requirements/base.txt -r requirements/local.txt
+
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -117,14 +135,14 @@ ignore = [
   # of types for comparison.
   # Deactivated because it can make the code slow:
   # https://github.com/astral-sh/ruff/issues/7871
-  "TRY003", # Use of bare except
+  "TRY003",  # Use of bare except
   "EM102",
-  "PT009",  # don't comment about tests using assertEqual etc
-  "RET504", #Unnecessary assignment to `filename` before `return` statement
-  "ERA001", # We want to put code in comments
-  "C901",   # 'Function is too complex' ... I want to have some functions that have more than 6 args.
+  "PT009",   # don't comment about tests using assertEqual etc
+  "RET504",  #Unnecessary assignment to `filename` before `return` statement
+  "ERA001",  # We want to put code in comments
+  "C901",    # 'Function is too complex' ... I want to have some functions that have more than 6 args.
   "PLR0913", # Function has too many arguments (14/10)
-  "BLE001", #We want blind exceptions
+  "BLE001",  #We want blind exceptions
   #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require

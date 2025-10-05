@@ -434,7 +434,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = context["workflow"]
-        recent_runs = workflow.runs.all().order_by("-created")[:5]
+        recent_runs = workflow.validation_runs.all().order_by("-created")[:5]
         context.update(
             {
                 "related_validations_url": reverse(

@@ -6,10 +6,25 @@ This site describes the core concepts, data model, and API for working with vali
 
 ## Contents
 
-- [Overview](overview.md)
-- [Using a Workflow via the API](how-to/use-workflow.md)
-- [Data Model Overview](data-model/index.md)
-- Submissions → [Submissions](data-model/submissions.md)
-- Runs → [Runs](data-model/runs.md)
-- Steps → [Steps](data-model/steps.md)
-- Findings → [Findings](data-model/findings.md)
+### Overview
+
+- [Platform Overview](overview/overview.md) - What SimpleValidations is and why it exists
+- [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
+- [Quick Reference](overview.md) - Summary of core concepts and basic usage
+- [Working Agreements](overview/overview.md#working-agreements-for-developers) - How we keep the project understandable
+
+### How-To Guides
+
+- [Using a Workflow via the API](how-to/use-workflow.md) - Step-by-step API integration guide
+
+### Data Model
+
+- [Data Model Overview](data-model/index.md) - Core entities and relationships
+- [Submissions](data-model/submissions.md) - Content submission and storage
+- [Runs](data-model/runs.md) - Validation execution and tracking
+- [Steps](data-model/steps.md) - Individual validation operations
+- [Findings](data-model/findings.md) - Validation results and issues
+
+### User Documentation
+
+- [Getting Started](../user_docs/getting-started.md) - First-time user guide

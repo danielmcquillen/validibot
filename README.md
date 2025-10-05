@@ -1,13 +1,13 @@
 # SimpleValidations
 
-Simulation file validator
+A simple data validation engine.
 
 [![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 ## Settings
 
-Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
+A thorough description of how settings work for this Django-based project are located [here](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
 
 ## Basic Commands
 
@@ -96,6 +96,50 @@ Sentry is an error logging aggregator service. You can sign up for a free accoun
 The system is set up with reasonable defaults, including 404 logging and integration with the WSGI application.
 
 You must set the DSN url in production.
+
+## Documentation
+
+This project includes two types of documentation served via MkDocs:
+
+### Developer Documentation
+
+Internal documentation for contributors and developers working on SimpleValidations.
+
+To serve the developer docs locally:
+
+```bash
+mkdocs serve -a localhost:8001
+# or explicitly:
+mkdocs serve -f mkdocs.dev.yml -a localhost:8001
+```
+
+The developer docs will be available at http://127.0.0.1:8001
+
+### User Documentation
+
+Product tutorials and walkthroughs for SimpleValidations end users.
+
+To serve the user docs locally:
+
+```bash
+mkdocs serve -f mkdocs.user.yml -a localhost:8001
+```
+
+The user docs will be available at http://127.0.0.1:8001
+
+### Building Documentation
+
+To build static documentation sites:
+
+```bash
+# Build developer docs
+mkdocs build
+
+# Build user docs
+mkdocs build -f mkdocs.user.yml
+```
+
+The built sites will be created in the `site/` directory.
 
 ## Deployment
 

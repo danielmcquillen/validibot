@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
+from decimal import InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
 from django.db.models import Exists
 from django.db.models import OuterRef
-from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
@@ -168,18 +169,21 @@ class Workflow(TimeStampedModel):
         Create an identical workflow with version+1 and copied steps.
         Locks old version.
         """
-        latest_version = (
+        sibling_versions = list(
             Workflow.objects.filter(org=self.org, slug=self.slug)
             .exclude(pk=self.pk)
-            .aggregate(models.Max("version"))["version__max"]
-            or self.version
+            .values_list("version", flat=True)
         )
+        sibling_versions.append(self.version)
+
+        next_version = self._determine_next_version_label(sibling_versions)
+
         new = Workflow.objects.create(
             org=self.org,
             user=user,
             name=self.name,
             slug=self.slug,
-            version=latest_version + 1,
+            version=next_version,
             is_locked=False,
         )
         steps = []
@@ -191,6 +195,31 @@ class Workflow(TimeStampedModel):
         self.is_locked = True
         self.save(update_fields=["is_locked"])
         return new
+
+    def _determine_next_version_label(self, versions) -> str:
+        """Return a simple, unique version label for the cloned workflow."""
+
+        numeric_versions: list[Decimal] = []
+        for raw in versions:
+            if raw is None:
+                continue
+            candidate = str(raw).strip()
+            if not candidate:
+                continue
+            try:
+                numeric_versions.append(Decimal(candidate))
+            except InvalidOperation:
+                continue
+
+        if numeric_versions:
+            highest = max(numeric_versions)
+            new_version = highest + Decimal(1)
+            if new_version == new_version.to_integral():
+                return str(int(new_version))
+            return format(new_version.normalize(), "f")
+
+        # Fall back to a simple incremental label.
+        return "1"
 
 
 class WorkflowStep(TimeStampedModel):

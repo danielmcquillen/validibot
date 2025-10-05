@@ -29,8 +29,16 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Overview: overview.md
+  - Overview:
+      - Quick Reference: overview.md
+      - Platform Overview: overview/overview.md
+      - User Roles & Permissions: overview/user_roles.md
+      - How It Works: overview/how_it_works.md
   - How-to:
       - Use a Workflow: how-to/use-workflow.md
-  - Data model:
+  - Data Model:
       - Overview: data-model/index.md
+      - Submissions: data-model/submissions.md
+      - Runs: data-model/runs.md
+      - Steps: data-model/steps.md
+      - Findings: data-model/findings.md

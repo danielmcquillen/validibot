@@ -82,8 +82,8 @@ class ValidationRunService:
 
         """
         # local import to avoid cycles
-        from simplevalidations.validations.tasks import (
-            execute_validation_run,  # noqa:PLC0415
+        from simplevalidations.validations.tasks import (  # noqa:PLC0415
+            execute_validation_run,
         )
 
         if not request:
@@ -271,7 +271,7 @@ class ValidationRunService:
             validation_run.error = _("One or more validation steps failed.")
         else:
             validation_run.status = ValidationRunStatus.SUCCEEDED
-            validation_run.error = None
+            validation_run.error = ""
         validation_run.ended_at = timezone.now()
         # This will be redundant in the future because we will store information
         # at the step level later, but for now we are only logging step information

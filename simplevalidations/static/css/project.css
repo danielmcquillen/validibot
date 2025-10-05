@@ -12799,7 +12799,6 @@ h4 {
   max-width: 100%;
   height: auto;
   filter: drop-shadow(0 20px 40px rgba(6, 111, 209, 0.2));
-  animation: float 6s ease-in-out infinite;
 }
 @media (max-width: 991px) {
   .robot-main {

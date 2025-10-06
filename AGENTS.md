@@ -46,3 +46,32 @@ uv export --no-dev --output-file requirements/base.txt
 uv export --no-dev --extra prod --output-file requirements/production.txt
 uv export --extra dev --output-file requirements/local.txt
 ```
+
+## Be consistent when defining constants
+
+We try to be consistent about putting constants in the relevant app's constants.py module as either a TextChoices or an Enum class, and then using those constants in
+code rather than doing comparisons to individual strings.
+
+Don't do something like this at the top of a module that holds forms:
+
+```
+from django.utils.translation import gettext_lazy as _
+
+AI_TEMPLATES = (
+    ("ai_critic", _("AI Critic")),
+    ("policy_check", _("Policy Check")),
+)
+
+```
+
+Instead, define a TextChoices class, or just an Enum if the constants aren't for a model or form. Use the relevant app's constants.py module:
+
+```
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class AITemplates(models.TextChoices):
+AI_CRITIC = "AI_CRITIC", _("AI Critic")
+AI*POLICY_CHECK = "AI_POLICY_CHECK", _("AI Policy Check")
+
+```

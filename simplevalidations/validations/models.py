@@ -11,16 +11,16 @@ from slugify import slugify
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.models import Organization
-from simplevalidations.users.models import User
-from simplevalidations.validations.constants import RulesetType
-from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.constants import StepStatus
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.users.models import Organization, User
+from simplevalidations.validations.constants import (
+    RulesetType,
+    Severity,
+    StepStatus,
+    ValidationRunStatus,
+    ValidationType,
+    XMLSchemaType,
+)
+from simplevalidations.workflows.models import Workflow, WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
@@ -132,6 +132,7 @@ class Validator(TimeStampedModel):
                 ],
             ),
         ]
+        ordering = ["order", "name"]
 
     slug = models.SlugField(
         null=False,
@@ -174,6 +175,21 @@ class Validator(TimeStampedModel):
         on_delete=models.SET_NULL,
         related_name="+",
     )
+
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text=_("Relative ordering for display purposes."),
+    )
+
+    @property
+    def display_icon(self) -> str:
+        bi_icon_class = {
+            ValidationType.JSON_SCHEMA: "bi-filetype-json",
+            ValidationType.XML_SCHEMA: "bi-filetype-xml",
+            ValidationType.ENERGYPLUS: "bi-lightning-charge-fill",
+            ValidationType.AI_ASSIST: "bi-robot",
+        }.get(self.validation_type, "bi-puzzle")  # default icon
+        return bi_icon_class
 
     def __str__(self):
         return f"{self.validation_type} {self.slug} v{self.version}"

@@ -31,6 +31,7 @@ class ValidationType(TextChoices):
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     CUSTOM_RULES = "CUSTOM_RULES", _("Custom Rules")
+    AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
 class Severity(TextChoices):

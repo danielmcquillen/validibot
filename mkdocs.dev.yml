@@ -36,6 +36,7 @@ nav:
       - How It Works: overview/how_it_works.md
   - How-to:
       - Use a Workflow: how-to/use-workflow.md
+      - Author Workflow Steps: how-to/author-workflow-steps.md
   - Data Model:
       - Overview: data-model/index.md
       - Submissions: data-model/submissions.md

@@ -1,8 +1,10 @@
 import factory
 from factory.django import DjangoModelFactory
 
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
 
@@ -12,12 +14,19 @@ class WorkflowFactory(DjangoModelFactory):
         model = Workflow
 
     org = factory.SubFactory(OrganizationFactory)
+    user = factory.SubFactory(UserFactory)
     name = factory.Sequence(lambda n: f"Test Workflow {n}")
     uuid = factory.Faker("uuid4")
     slug = factory.Sequence(lambda n: f"test-workflow-{n}")
     # project = factory.SubFactory("simplevalidations.projects.tests.factories.ProjectFactory")
     version = "1"
     is_locked = False
+
+    @factory.post_generation
+    def link_user(self, create, extracted, **kwargs):  # noqa: FBT001
+        if not create:
+            return
+        grant_role(self.user, self.org, RoleCode.OWNER)
 
 
 class WorkflowStepFactory(DjangoModelFactory):

@@ -152,6 +152,20 @@ For each workflow step, the `ValidationRunService.execute_workflow_step()` metho
    - `issues`: List of ValidationIssue objects with details
    - `stats`: Optional performance and diagnostic information
 
+##### What happens inside `execute_workflow_step()`
+
+The high‑level summary above hides a few practical details that are worth knowing when you add or debug workflow steps:
+
+1. **Step metadata is pulled from the database** – the `WorkflowStep` instance supplies the linked `Validator`, optional `Ruleset`, and the JSON `config` column. For AI steps the config contains keys such as `template`, `selectors`, `policy_rules`, `mode`, and `cost_cap_cents`.
+2. **Submission content is materialised once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data. Engines call `submission.get_content()` which returns inline text or reads the stored file.
+3. **Validator config is merged before dispatch** – we pass the per-step config directly to the engine (`engine.validate(..., config=step_config)`), allowing engines to interpret selectors, thresholds, or policy definitions without reaching back into the ORM. Engines that do not use runtime configuration can safely ignore unknown keys.
+4. **Execution is wrapped by the service layer** – any exception raised by the engine bubbles up to `execute_workflow_step()`. The caller (`execute()`) catches the error, marks the run as `FAILED`, and records the traceback so the run stops in a predictable manner.
+5. **Lightweight telemetry is recorded** – we count the number of issues returned, tag the log entry with the step id and validator type, and attach any `stats` payload to the validation summary. This keeps runs observable without persisting per-step rows yet.
+
+This design keeps the step executor intentionally thin: the step definition owns the configuration, the engine owns domain logic, and the service coordinates orchestration and error handling. When we later persist per-step timings or metering information, the hooks already exist in this execution flow.
+
+> **Authoring walkthrough:** see [How to Author Workflow Steps](../how-to/author-workflow-steps.md) for the complete UI flow.
+
 #### 3.3 Engine Implementation
 
 Each validation engine implements the `BaseValidatorEngine` interface:

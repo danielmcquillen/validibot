@@ -1,0 +1,54 @@
+{% load i18n crispy_forms_tags %}
+<div class="modal-header">
+  <div>
+    <h5 class="modal-title">
+      {% if step %}
+        {% trans "Edit validation step" %}
+      {% else %}
+        {% trans "Configure validation" %}
+      {% endif %}
+    </h5>
+    <p class="text-muted small mb-0">
+      {{ validator.name }} · {{ validator.get_validation_type_display }}
+    </p>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+</div>
+<div class="modal-body">
+  <form
+    method="post"
+    hx-post="{% if step %}{% url 'workflows:workflow_step_wizard_existing' workflow.pk step.pk %}{% else %}{% url 'workflows:workflow_step_wizard' workflow.pk %}{% endif %}"
+    hx-target="#workflow-step-modal-content"
+    hx-swap="innerHTML"
+    hx-encoding="multipart/form-data"
+    class="d-flex flex-column gap-3"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="stage" value="configure" />
+    <input type="hidden" name="validator_id" value="{{ validator.pk }}" />
+    {{ form|crispy }}
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        {% if validator.description %}
+          <span class="text-muted small">{{ validator.description }}</span>
+        {% endif %}
+      </div>
+      <div class="d-flex gap-2">
+        {% if not step %}
+          <button type="button"
+                  class="btn btn-outline-secondary"
+                  hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                  hx-target="#workflow-step-modal-content"
+                  hx-swap="innerHTML">
+            {% trans "Back" %}
+          </button>
+        {% else %}
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">
+          {% if step %}{% trans "Save changes" %}{% else %}{% trans "Add step" %}{% endif %}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>

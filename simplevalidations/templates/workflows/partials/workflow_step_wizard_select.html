@@ -1,0 +1,178 @@
+{% load i18n %}
+
+<div class="modal-header">
+  <div>
+    <h5 class="modal-title">
+      {% trans "Add validation step" %}
+    </h5>
+    <p class="text-muted small mb-0">
+      {% trans "Choose the type of validation to run in this step." %}
+    </p>
+  </div>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="{% trans 'Close' %}">
+  </button>
+</div>
+<div class="modal-body">
+  {% if limit_reached %}
+    <div class="alert alert-warning" role="alert">
+      {% blocktrans with max=max_step_count %}
+        This workflow already has {{ max }} steps. Remove a step before adding another.
+      {% endblocktrans %}
+    </div>
+  {% else %}
+    <form method="post"
+          hx-post="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+          hx-target="#workflow-step-modal-content"
+          hx-swap="innerHTML"
+          class="d-flex flex-column gap-3">
+      {% csrf_token %}
+      <input type="hidden" name="stage" value="select" />
+      {% if form.errors %}
+        <div class="alert alert-danger" role="alert">
+          {% for error in form.non_field_errors %}
+            <div>
+              {{ error }}
+            </div>
+          {% endfor %}
+          {% for field in form %}
+            {% for error in field.errors %}
+              <div>
+                {{ error }}
+              </div>
+            {% endfor %}
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 align-items-stretch">
+        {% for validator in validators %}
+          <div class="col">
+            <input class="btn-check validator-option"
+                   type="radio"
+                   name="validator"
+                   id="validator-{{ validator.pk }}"
+                   value="{{ validator.pk }}"
+                   {% if selected_validator and selected_validator|stringformat:'s' == validator.pk|stringformat:'s' %}
+                     checked
+                   {% endif %}
+                   autocomplete="off"
+                   required>
+            <label class="validator-card h-100 {% if selected_validator and selected_validator|stringformat:'s' == validator.pk|stringformat:'s' %}is-selected{% endif %}"
+                   for="validator-{{ validator.pk }}">
+              <div class="validator-card__icon mb-3">
+                <i class="bi {{ validator.display_icon }}"></i>
+              </div>
+              <div class="validator-card__title mb-1">
+                {{ validator.name }}
+              </div>
+              <div class="validator-card__subtitle text-uppercase">
+                {{ validator.get_validation_type_display }}
+              </div>
+              {% if validator.description %}
+                <p class="validator-card__description small mb-0 mt-2">
+                  {{ validator.description }}
+                </p>
+              {% endif %}
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="d-flex justify-content-end gap-2 pt-1">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                data-bs-dismiss="modal">
+          {% trans "Cancel" %}
+        </button>
+        <button type="submit" class="btn btn-primary">
+          {% trans "Continue" %}
+        </button>
+      </div>
+    </form>
+    <script>
+      (function() {
+        let isInitialized = false;
+
+        // Run on initial load
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initValidatorSelection);
+        } else {
+          initValidatorSelection();
+        }
+
+        // Also run when HTMX swaps content
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+          if (event.detail.target.id === 'workflow-step-modal-content') {
+            // Reset initialization flag
+            isInitialized = false;
+            // Small delay to ensure DOM is ready
+            setTimeout(initValidatorSelection, 10);
+          }
+        });
+
+        function initValidatorSelection() {
+          if (isInitialized) {
+            console.log('Already initialized, skipping');
+            return;
+          }
+
+          const container = document.getElementById('workflow-step-modal-content');
+          if (!container) {
+            console.log('Container not found');
+            return;
+          }
+
+          const inputs = container.querySelectorAll('.validator-option');
+          console.log('Found inputs:', inputs.length);
+
+          if (inputs.length === 0) {
+            console.log('No inputs found, skipping initialization');
+            return;
+          }
+
+          isInitialized = true;
+
+          function toggleSelection(selectedInput) {
+            console.log('toggleSelection called for input:', selectedInput?.id);
+
+            // Remove is-selected from all cards
+            container.querySelectorAll('.validator-card').forEach((card) => {
+              card.classList.remove('is-selected');
+            });
+
+            // Add is-selected to the label for the selected input
+            if (selectedInput && selectedInput.id) {
+              const label = container.querySelector(`label[for="${selectedInput.id}"]`);
+              console.log('Input ID:', selectedInput.id, 'Label found:', !!label);
+              if (label) {
+                label.classList.add('is-selected');
+                console.log('Label classes after add:', label.className);
+              } else {
+                console.error('Label not found for input:', selectedInput.id);
+              }
+            }
+          }
+
+          inputs.forEach((input) => {
+            console.log('Processing input:', input.id, 'checked:', input.checked);
+
+            // Set initial state
+            if (input.checked) {
+              console.log('Initial checked input:', input.id);
+              toggleSelection(input);
+            }
+
+            // Add change listener to the input (native radio behavior handles the actual selection)
+            input.addEventListener('change', function(event) {
+              console.log('Input changed:', event.currentTarget.id, 'checked:', event.currentTarget.checked);
+              if (event.currentTarget.checked) {
+                toggleSelection(event.currentTarget);
+              }
+            });
+          });
+        }
+      })();
+    </script>
+  {% endif %}
+</div>

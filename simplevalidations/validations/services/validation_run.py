@@ -306,10 +306,10 @@ class ValidationRunService:
         validation_run: ValidationRun,
     ) -> ValidationResult:
         """
-        Execute a single workflow step against the run's submission.
+        Execute a single workflow step against the ValidationRun's submission.
 
         This simple implementation:
-          - Resolves the step's Validator and optional Ruleset.
+          - Resolves the workflow step's Validator and optional Ruleset.
           - Resolves the Submission from the ValidationRun.
           - Calls the validator runner, which routes to the correct engine via registry.
           - Logs the result; does not (yet) persist per-step outputs.
@@ -343,10 +343,12 @@ class ValidationRunService:
         submission: Submission = validation_run.submission
 
         # 3) Run the validator (registry resolves the concrete class by type/variant)
+        step_config = getattr(step, "config", {}) or {}
         validation_result: ValidationResult = self.run_validator_engine(
             validator=validator,
             submission=submission,
             ruleset=ruleset,
+            config=step_config,
         )
         validation_result.workflow_step_name = step.name
 
@@ -377,6 +379,7 @@ class ValidationRunService:
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset | None = None,
+        config: dict[str, Any] | None = None,
     ) -> ValidationResult:
         """
         Execute the appropriate validator engine code for the given
@@ -397,7 +400,7 @@ class ValidationRunService:
 
         # TODO: Later we might want to store a default config in a Validator and pass
         # to the engine. For now we just pass an empty dict.
-        config: dict[str, Any] = {}
+        config = config or {}
 
         try:
             validator_cls = get_validator_class(vtype)

@@ -1,38 +1,186 @@
 {% load i18n core_tags %}
 
-<div id="left-nav" class="text-bg-white">
-
+{% with dashboard_active=active_link 'dashboard' workflows_active=active_link 'workflows' validations_active=active_link 'validations' %}
+<nav id="left-nav" class="text-bg-white border-end">
     <div class="left-nav-title">
         <a href="{% url 'marketing:home' %}"
-           class="d-flex align-items-center mb-3 mb-md-0 me-md-auto  text-decoration-none">
+           class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-decoration-none">
             SimpleValidations
         </a>
     </div>
 
-    <ul class="nav nav-pills flex-column mb-auto" role="menu">
-        <li class="nav-item" role="none">
-            <a href="{% url 'dashboard:my_dashboard' %}"
-               class="nav-link {% active_link 'dashboard' %}"
-               role="menuitem">
-                <i class="bi bi-speedometer2"></i>
-                <span>{% trans "Dashboard" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% url 'workflows:workflow_list' %}"
-               class="nav-link   {% active_link 'workflows' %}"
-               role="menuitem">
-                <i class="bi bi-diagram-3"></i>
-                <span>{% trans "Workflows" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% url 'validations:validation_list' %}"
-               class="nav-link   {% active_link 'validations' %}"
-               role="menuitem">
-                <i class="bi bi-shield-check"></i>
-                <span>{% trans "Validation Runs" %}</span>
-            </a>
-        </li>
-    </ul>
-</div>
+    <div class="left-nav-body">
+        <div class="left-nav-icon-stack d-none d-lg-flex flex-column align-items-center" role="menubar">
+            <div class="btn-group dropend" role="none">
+                <button type="button"
+                        class="btn left-nav-icon-btn {{ dashboard_active }}"
+                        data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside"
+                        aria-haspopup="true"
+                        aria-expanded="{% if dashboard_active %}true{% else %}false{% endif %}"
+                        aria-label="{% trans 'Dashboard' %}">
+                    <i class="bi bi-speedometer2"></i>
+                </button>
+                <ul class="dropdown-menu shadow left-nav-dropdown" role="menu">
+                    <li class="dropdown-header" role="presentation">{% trans "Dashboard" %}</li>
+                    <li role="none">
+                        <a class="dropdown-item d-flex align-items-center gap-2 {{ dashboard_active }}"
+                           href="{% url 'dashboard:my_dashboard' %}"
+                           role="menuitem">
+                            <i class="bi bi-speedometer2"></i>
+                            <span>{% trans "My Dashboard" %}</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="btn-group dropend" role="none">
+                <button type="button"
+                        class="btn left-nav-icon-btn {{ workflows_active }}"
+                        data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside"
+                        aria-haspopup="true"
+                        aria-expanded="{% if workflows_active %}true{% else %}false{% endif %}"
+                        aria-label="{% trans 'Workflows' %}">
+                    <i class="bi bi-diagram-3"></i>
+                </button>
+                <ul class="dropdown-menu shadow left-nav-dropdown" role="menu">
+                    <li class="dropdown-header" role="presentation">{% trans "Workflows" %}</li>
+                    <li role="none">
+                        <a class="dropdown-item d-flex align-items-center gap-2 {% active_link 'workflows' %}"
+                           href="{% url 'workflows:workflow_list' %}"
+                           role="menuitem">
+                            <i class="bi bi-diagram-3"></i>
+                            <span>{% trans "All Workflows" %}</span>
+                        </a>
+                    </li>
+                    <li role="none">
+                        <a class="dropdown-item d-flex align-items-center gap-2 {% active_link 'workflows/new' %}"
+                           href="{% url 'workflows:workflow_create' %}"
+                           role="menuitem">
+                            <i class="bi bi-plus-circle"></i>
+                            <span>{% trans "Create Workflow" %}</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="btn-group dropend" role="none">
+                <button type="button"
+                        class="btn left-nav-icon-btn {{ validations_active }}"
+                        data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside"
+                        aria-haspopup="true"
+                        aria-expanded="{% if validations_active %}true{% else %}false{% endif %}"
+                        aria-label="{% trans 'Validation Runs' %}">
+                    <i class="bi bi-shield-check"></i>
+                </button>
+                <ul class="dropdown-menu shadow left-nav-dropdown" role="menu">
+                    <li class="dropdown-header" role="presentation">{% trans "Validation Runs" %}</li>
+                    <li role="none">
+                        <a class="dropdown-item d-flex align-items-center gap-2 {% active_link 'validations' %}"
+                           href="{% url 'validations:validation_list' %}"
+                           role="menuitem">
+                            <i class="bi bi-shield-check"></i>
+                            <span>{% trans "Run History" %}</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="accordion left-nav-accordion d-lg-none" id="leftNavAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="leftNavDashboardHeading">
+                    <button class="accordion-button {% if not dashboard_active %}collapsed{% endif %}" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#leftNavDashboard"
+                            aria-expanded="{% if dashboard_active %}true{% else %}false{% endif %}"
+                            aria-controls="leftNavDashboard">
+                        <i class="bi bi-speedometer2"></i>
+                        <span class="ms-2">{% trans "Dashboard" %}</span>
+                    </button>
+                </h2>
+                <div id="leftNavDashboard" class="accordion-collapse collapse {% if dashboard_active %}show{% endif %}"
+                     aria-labelledby="leftNavDashboardHeading"
+                     data-bs-parent="#leftNavAccordion">
+                    <div class="accordion-body p-0">
+                        <ul class="list-unstyled mb-0">
+                            <li>
+                                <a class="accordion-nav-link {{ dashboard_active }}"
+                                   href="{% url 'dashboard:my_dashboard' %}">
+                                    <i class="bi bi-speedometer2"></i>
+                                    <span>{% trans "My Dashboard" %}</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="leftNavWorkflowsHeading">
+                    <button class="accordion-button {% if not workflows_active %}collapsed{% endif %}" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#leftNavWorkflows"
+                            aria-expanded="{% if workflows_active %}true{% else %}false{% endif %}"
+                            aria-controls="leftNavWorkflows">
+                        <i class="bi bi-diagram-3"></i>
+                        <span class="ms-2">{% trans "Workflows" %}</span>
+                    </button>
+                </h2>
+                <div id="leftNavWorkflows" class="accordion-collapse collapse {% if workflows_active %}show{% endif %}"
+                     aria-labelledby="leftNavWorkflowsHeading"
+                     data-bs-parent="#leftNavAccordion">
+                    <div class="accordion-body p-0">
+                        <ul class="list-unstyled mb-0">
+                            <li>
+                                <a class="accordion-nav-link {% active_link 'workflows' %}"
+                                   href="{% url 'workflows:workflow_list' %}">
+                                    <i class="bi bi-diagram-3"></i>
+                                    <span>{% trans "All Workflows" %}</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="accordion-nav-link {% active_link 'workflows/new' %}"
+                                   href="{% url 'workflows:workflow_create' %}">
+                                    <i class="bi bi-plus-circle"></i>
+                                    <span>{% trans "Create Workflow" %}</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="leftNavValidationsHeading">
+                    <button class="accordion-button {% if not validations_active %}collapsed{% endif %}" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#leftNavValidations"
+                            aria-expanded="{% if validations_active %}true{% else %}false{% endif %}"
+                            aria-controls="leftNavValidations">
+                        <i class="bi bi-shield-check"></i>
+                        <span class="ms-2">{% trans "Validation Runs" %}</span>
+                    </button>
+                </h2>
+                <div id="leftNavValidations" class="accordion-collapse collapse {% if validations_active %}show{% endif %}"
+                     aria-labelledby="leftNavValidationsHeading"
+                     data-bs-parent="#leftNavAccordion">
+                    <div class="accordion-body p-0">
+                        <ul class="list-unstyled mb-0">
+                            <li>
+                                <a class="accordion-nav-link {% active_link 'validations' %}"
+                                   href="{% url 'validations:validation_list' %}">
+                                    <i class="bi bi-shield-check"></i>
+                                    <span>{% trans "Run History" %}</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+{% endwith %}

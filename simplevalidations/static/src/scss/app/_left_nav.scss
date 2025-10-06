@@ -3,52 +3,147 @@
   flex-direction: column;
   flex-shrink: 0;
   min-height: 100vh;
-  width: 200px;
-  background-color: #eee;
+  width: 100%;
+  background-color: var(--bs-body-bg);
+  box-shadow: 2px 0 16px rgba(15, 23, 42, 0.08);
 
-  // Subtle drop shadow to the right
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
-
-  .left-nav-title {
-    border-bottom: 1px solid #ccc;
-    min-height: 40px;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    padding-left: 1rem;
-    margin-bottom: 1.5rem;
+  @media (min-width: 992px) {
+    width: 88px;
   }
 
-  .nav-item {
-    // add a border bottom to the last item
-    &:last-child {
-      border-bottom: 1px dotted #ccc;
+  .left-nav-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    font-weight: 600;
+    font-size: 1rem;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  .left-nav-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    padding: 0 0 1rem;
+  }
+
+  .left-nav-icon-stack {
+    gap: 0.75rem;
+    padding: 1.5rem 0.75rem;
+
+    .left-nav-icon-btn {
+      width: 3rem;
+      height: 3rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: none;
+      color: var(--bs-secondary-color);
+      background: transparent;
+      font-size: 1.3rem;
+      transition: all 0.2s ease;
+
+      &:hover,
+      &.active {
+        color: var(--bs-primary);
+        background: var(--bs-primary-bg-subtle);
+        box-shadow: 0 12px 24px rgba(var(--bs-primary-rgb), 0.25);
+      }
     }
 
-    .nav-link {
-      display: flex;
-      padding: 0.5rem 1.5rem 0.5rem 1rem;
-      transition: background 0.3s;
-      text-decoration: none;
-      align-items: center;
-      border-top: 1px dotted #ccc;
-      border-radius: 0;
+    .left-nav-dropdown {
+      min-width: 240px;
+      padding: 0.75rem 0;
+      border: none;
+      border-radius: 1rem;
 
-      &:hover {
-        background-color: #fff;
+      .dropdown-header {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--bs-secondary-color);
+        padding: 0 1rem 0.5rem;
       }
 
-      // Active state - purple background with rounded right edge
-      &.active {
-        background-color: #6f42c1; // Bootstrap purple
-        color: white;
+      .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.75rem;
+        margin: 0 0.5rem;
+        color: var(--bs-body-color);
+
         i {
-          color: white;
+          font-size: 1.1rem;
+        }
+
+        &:hover {
+          background-color: var(--bs-secondary-bg);
+        }
+
+        &.active,
+        &:active {
+          background-color: var(--bs-primary);
+          color: #fff;
         }
       }
+    }
+  }
+
+  .left-nav-accordion {
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    margin-top: 0.5rem;
+
+    .accordion-item {
+      border: none;
+    }
+
+    .accordion-button {
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
 
       i {
-        padding-right: 0.75rem;
+        font-size: 1.1rem;
+      }
+
+      &:not(.collapsed) {
+        color: var(--bs-primary);
+        background: var(--bs-primary-bg-subtle);
+        box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.05);
+      }
+    }
+
+    .accordion-body {
+      padding: 0.5rem 0.75rem 1rem;
+    }
+
+    .accordion-nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.625rem 0.75rem;
+      margin-bottom: 0.25rem;
+      border-radius: 0.75rem;
+      color: var(--bs-body-color);
+      text-decoration: none;
+      transition: background 0.2s ease;
+
+      i {
+        font-size: 1.1rem;
+      }
+
+      &:hover {
+        background: var(--bs-secondary-bg);
+      }
+
+      &.active {
+        background: var(--bs-primary);
+        color: #fff;
       }
     }
   }

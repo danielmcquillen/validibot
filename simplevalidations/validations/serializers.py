@@ -73,14 +73,42 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FlexibleContentField(serializers.CharField):
+    """
+    Accepts either a string payload or JSON-like objects.
+    Dict/list values are passed through for later coercion in ``validate``.
+    """
+
+    def to_internal_value(self, data):
+        if isinstance(data, (dict, list)):
+            return data
+        if isinstance(data, (bytes, bytearray)):
+            try:
+                data = data.decode("utf-8")
+            except UnicodeDecodeError:
+                data = data.decode("latin-1")
+        return super().to_internal_value(data)
+
+
 class ValidationRunStartSerializer(serializers.Serializer):
-    """Parser for Workflow start requests (supports Modes 2 & 3)."""
+    """
+    Normalizes Workflow start requests for JSON-envelope and multipart inputs.
+
+    The view instantiates this serializer for:
+      * Mode 2 (application/json envelope) – we accept strings, dicts, or lists
+        in ``content`` and coerce them to text via ``FlexibleContentField``.
+      * Mode 3 (multipart/form-data uploads) – we expect a ``file`` part plus
+        optional metadata overrides.
+
+    Validated data always contains exactly one of ``normalized_content`` (text)
+    or ``file``; downstream submission creation relies on that contract.
+    """
 
     # Optional org for sanity checking (not required; view can enforce match)
     org = serializers.IntegerField(required=False)
 
     # Envelope textual content
-    content = serializers.CharField(required=False)  # plain or base64 text
+    content = FlexibleContentField(required=False)  # plain or base64 text
     content_type = serializers.CharField(required=False)
     content_encoding = serializers.ChoiceField(
         choices=["base64"],

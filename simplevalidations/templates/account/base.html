@@ -5,7 +5,7 @@
     <div class="container-fluid breadcrumb info-bar">
       <div class="breadcrumb-item">
         {% if user.is_authenticated %}
-          <a href="{% url 'users:update' %}">My Profile</a>
+          <a href="{% url 'users:profile' %}">My Profile</a>
         {% else %}
           &nbsp;Account
         {% endif %}

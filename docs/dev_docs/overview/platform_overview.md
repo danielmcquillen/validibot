@@ -207,6 +207,5 @@ To get started with SimpleValidations:
 1. **Read the detailed workflow documentation**: [How It Works](how_it_works.md)
 2. **Explore the data model**: [Data Model Overview](../data-model/index.md)
 3. **Try the API**: [Using a Workflow via API](../how-to/use-workflow.md)
-4. **Set up your first workflow**: [Getting Started Guide](../../user_docs/getting-started.md)
 
 For ongoing updates and architectural decisions, see the development documentation in this folder.

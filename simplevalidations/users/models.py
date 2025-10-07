@@ -174,6 +174,7 @@ class User(AbstractUser):
             is_active=True,
         )
         m.add_role(RoleCode.OWNER)
+        m.add_role(RoleCode.EXECUTOR)
         self.set_current_org(personal_org)
         return personal_org
 

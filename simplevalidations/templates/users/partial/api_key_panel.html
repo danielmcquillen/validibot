@@ -1,0 +1,124 @@
+{% load i18n %}
+
+<div id="api-key-panel" class="card shadow-sm h-100">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">{% trans "API" %}</span>
+    <span class="badge text-bg-light text-uppercase small">{% trans "Personal" %}</span>
+  </div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      {% trans "Use this key to authenticate API requests with the application API." %}
+    </p>
+    <label class="form-label fw-semibold" for="api-key-value">
+      {% trans "API key" %}
+    </label>
+    <div class="input-group mb-3">
+      <input id="api-key-value"
+             type="text"
+             class="form-control font-monospace"
+             value="{{ api_token.key }}"
+             readonly>
+      <button type="button"
+              class="btn btn-outline-secondary"
+              data-copy-target="#api-key-value"
+              data-copy-timeout="1600"
+              data-copied-label="{% trans "Copied" %}">
+        {% trans "Copy" %}
+      </button>
+    </div>
+    <div class="d-grid d-sm-flex gap-2">
+      <button type="button"
+              class="btn btn-sm btn-outline-danger"
+              hx-post="{% url 'users:api-key-rotate' %}"
+              hx-target="#api-key-panel"
+              hx-swap="outerHTML">
+        <i class="bi bi-arrow-repeat me-1"></i>
+        {% trans "Generate new key" %}
+      </button>
+    </div>
+    <p class="text-muted small mt-3 mb-0">
+      {% trans "Generating a new key immediately invalidates the previous key. Update any clients that use the API." %}
+    </p>
+  </div>
+</div>
+<script>
+  (function() {
+    const FLAG = '__svCopyHandlerBound';
+    if (window[FLAG]) {
+      return;
+    }
+    window[FLAG] = true;
+
+    const copyWithFallback = (value) => {
+      if (typeof document.execCommand !== 'function') {
+        return false;
+      }
+      const temporaryField = document.createElement('textarea');
+      temporaryField.value = value;
+      temporaryField.setAttribute('readonly', '');
+      temporaryField.style.position = 'absolute';
+      temporaryField.style.left = '-9999px';
+      document.body.appendChild(temporaryField);
+      temporaryField.select();
+      let success = false;
+      try {
+        success = document.execCommand('copy');
+      } catch (error) {
+        success = false;
+      }
+      document.body.removeChild(temporaryField);
+      return success;
+    };
+
+    const copyValue = async (value) => {
+      if (!value) {
+        return false;
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(value);
+          return true;
+        } catch (error) {
+          // fall through to fallback
+        }
+      }
+      return copyWithFallback(value);
+    };
+
+    document.addEventListener('click', async (event) => {
+      const trigger = event.target.closest('[data-copy-target]');
+      if (!trigger) {
+        return;
+      }
+      const selector = trigger.getAttribute('data-copy-target');
+      if (!selector) {
+        return;
+      }
+      const field = document.querySelector(selector);
+      if (!field) {
+        return;
+      }
+      const rawValue = field.value !== undefined ? field.value : field.textContent;
+      const value = (rawValue || '').toString();
+      if (!value.trim()) {
+        return;
+      }
+
+      if (!trigger.dataset.defaultLabel) {
+        trigger.dataset.defaultLabel = trigger.innerHTML;
+      }
+
+      const timeout = Number.parseInt(trigger.getAttribute('data-copy-timeout') || '1600', 10);
+      const copiedLabel = trigger.getAttribute('data-copied-label') || 'Copied';
+      const success = await copyValue(value);
+      if (!success) {
+        return;
+      }
+
+      trigger.innerHTML = copiedLabel;
+      window.setTimeout(() => {
+        trigger.innerHTML = trigger.dataset.defaultLabel || '';
+      }, Number.isNaN(timeout) ? 1600 : timeout);
+    });
+  })();
+</script>

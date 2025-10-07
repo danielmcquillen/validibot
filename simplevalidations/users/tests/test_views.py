@@ -11,6 +11,7 @@ from django.http import HttpResponseRedirect
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from rest_framework.authtoken.models import Token
 
 from simplevalidations.users.forms import UserAdminChangeForm
 from simplevalidations.users.models import User
@@ -71,7 +72,6 @@ class TestUserUpdateView:
         messages_sent = [m.message for m in messages.get_messages(request)]
         assert messages_sent == [_("Profile updated successfully")]
 
-
 class TestUserRedirectView:
     def test_get_redirect_url(self, user: User, rf: RequestFactory):
         view = UserRedirectView()
@@ -99,3 +99,54 @@ class TestUserDetailView:
         assert isinstance(response, HttpResponseRedirect)
         assert response.status_code == HTTPStatus.FOUND
         assert response.url == f"{login_url}?next=/fake-url/"
+
+
+class TestUserApiKeyRotateView:
+    def test_rotates_token_with_htmx(self, client, user):
+        client.force_login(user)
+        original_token, _ = Token.objects.get_or_create(user=user)
+
+        response = client.post(
+            reverse("users:api-key-rotate"),
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        assert response.headers.get("HX-Trigger") == "apiKeyRotated"
+        new_token = Token.objects.get(user=user)
+        assert new_token.key != original_token.key
+
+    def test_rotates_token_without_htmx(self, client, user):
+        client.force_login(user)
+        original_token, _ = Token.objects.get_or_create(user=user)
+
+        response = client.post(reverse("users:api-key-rotate"))
+
+        assert response.status_code == HTTPStatus.FOUND
+        assert response.url == reverse("users:api-key")
+        new_token = Token.objects.get(user=user)
+        assert new_token.key != original_token.key
+
+
+class TestUserApiKeyView:
+    def test_api_key_context_contains_token(self, client, user):
+        client.force_login(user)
+        response = client.get(reverse("users:api-key"))
+
+        assert response.status_code == HTTPStatus.OK
+        assert response.context_data["api_token"].user == user
+
+    def test_api_key_panel_contains_copy_script(self, client, user):
+        client.force_login(user)
+
+        response = client.get(reverse("users:api-key"))
+        content = response.content.decode()
+        assert "__svCopyHandlerBound" in content
+        assert 'data-copy-target="#api-key-value"' in content
+
+        hx_response = client.post(
+            reverse("users:api-key-rotate"),
+            HTTP_HX_REQUEST="true",
+        )
+        hx_content = hx_response.content.decode()
+        assert "__svCopyHandlerBound" in hx_content

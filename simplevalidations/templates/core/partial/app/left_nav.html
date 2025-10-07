@@ -1,5 +1,6 @@
 {% load i18n core_tags %}
 
+{% user_settings_nav_state as user_settings_nav %}
 <div id="left-nav" class="text-bg-white">
 
     <div class="left-nav-title">
@@ -32,6 +33,39 @@
                role="menuitem">
                 <i class="bi bi-shield-check"></i>
                 <span>{% trans "Validation Runs" %}</span>
+            </a>
+        </li>
+        <li class="nav-item " role="none">
+            <a href="{% url 'users:profile' %}"
+               class="nav-link
+                      {% if user_settings_nav.profile %}
+                          active
+                      {% endif %}"
+               role="menuitem">
+                <i class="bi bi-person-circle"></i>
+                <span>{% trans "User Profile" %}</span>
+            </a>
+        </li>
+        <li class="nav-item" role="none">
+            <a href="{% url 'users:email' %}"
+               class="nav-link
+                      {% if user_settings_nav.email %}
+                          active
+                      {% endif %}"
+               role="menuitem">
+                <i class="bi bi-envelope"></i>
+                <span>{% trans "User Email" %}</span>
+            </a>
+        </li>
+        <li class="nav-item" role="none">
+            <a href="{% url 'users:api-key' %}"
+               class="nav-link
+                      {% if user_settings_nav.api_key %}
+                          active
+                      {% endif %}"
+               role="menuitem">
+                <i class="bi bi-key"></i>
+                <span>{% trans "User API Key" %}</span>
             </a>
         </li>
     </ul>

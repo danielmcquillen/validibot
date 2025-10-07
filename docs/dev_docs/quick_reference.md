@@ -1,9 +1,4 @@
-# SimpleValidations Overview
-
-> **Note**: For comprehensive documentation, see:
->
-> - [Platform Overview](overview/overview.md) - What SimpleValidations is and why it exists
-> - [How It Works](overview/how_it_works.md) - Detailed technical walkthrough
+# SimpleValidations Quick Reference
 
 SimpleValidations lets you run validations on submitted content through configurable workflows.
 
@@ -38,4 +33,3 @@ SimpleValidations lets you run validations on submitted content through configur
 - **Detailed Architecture**: [How It Works](overview/how_it_works.md)
 - **Data Model**: [Data Model Overview](data-model/index.md)
 - **API Usage**: [Using a Workflow via API](how-to/use-workflow.md)
-- **Getting Started**: [User Guide](../user_docs/getting-started.md)

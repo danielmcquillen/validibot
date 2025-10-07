@@ -13,7 +13,7 @@
 </h1>
 <form class="form-horizontal"
       method="post"
-      action="{% url 'users:update' %}">
+      action="{% url 'users:profile' %}">
   {% csrf_token %}
   {{ form|crispy }}
   <div class="control-group">

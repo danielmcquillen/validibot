@@ -74,51 +74,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
 
 
 class ValidationRunStartSerializer(serializers.Serializer):
-    """
-    Serializer for starting a ValidationRun via API (Modes 2 & 3 only).
-
-    This serializer is NOT used for raw-body (Mode 1). The view decides which
-    mode applies and only instantiates this class for:
-      Mode 2: JSON envelope (application/json body containing a JSON object)
-      Mode 3: Multipart form-data (file uploads)
-
-    Supported modes (summary):
-
-    1) RAW-BODY MODE (header driven; bypasses this serializer)
-       Body: raw document bytes.
-       Headers:
-         Content-Type: application/json | application/xml | text/plain | text/x-idf
-         (optional) Content-Encoding: base64
-         (optional) X-Filename: name.ext
-       Entire request.body is the content.
-
-    2) JSON ENVELOPE MODE (field driven)
-       Content-Type: application/json
-       Body JSON:
-       {
-         "content": "<string or base64 if content_encoding=base64>",
-         "content_type": "application/xml",
-         "content_encoding": "base64",   (optional)
-         "filename": "building.idf",     (optional)
-         "metadata": { ... }             (optional)
-       }
-
-    3) MULTIPART MODE (file upload)
-       Content-Type: multipart/form-data
-       Parts:
-         file: <binary file>
-         metadata: <JSON string> (optional)
-         filename: (optional override)
-         content_type: (optional override; fallback to uploaded file mime)
-
-    Output (validated_data):
-      - Exactly ONE of:
-          * file (uploaded file object)  OR
-          * normalized_content (text str)
-      - filename (optional)
-      - file_type (SubmissionFileType enum value)
-      - metadata (dict)
-    """
+    """Parser for Workflow start requests (supports Modes 2 & 3)."""
 
     # Optional org for sanity checking (not required; view can enforce match)
     org = serializers.IntegerField(required=False)
@@ -188,6 +144,11 @@ class ValidationRunStartSerializer(serializers.Serializer):
         content_type = attrs.get("content_type")
         content_encoding = attrs.get("content_encoding")
 
+        if isinstance(content, (dict, list)):
+            content = json.dumps(content)
+        elif content is not None and not isinstance(content, str):
+            content = str(content)
+
         self._check_content(content, content_encoding)
 
         # Exactly one of file OR content
@@ -246,6 +207,7 @@ class ValidationRunStartSerializer(serializers.Serializer):
                 # Fallback...best effort
                 content = decoded.decode("latin-1")
         attrs["normalized_content"] = content
+        attrs["content"] = content
         return attrs
 
     def _check_content(self, content: str | None, content_encoding: str | None) -> bool:

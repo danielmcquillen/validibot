@@ -1,24 +1,21 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.utils.translation import gettext as _
-from jsonschema import Draft202012Validator
-from jsonschema import FormatChecker
+from jsonschema import Draft202012Validator, FormatChecker
 
-from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.engines.base import BaseValidatorEngine
-from simplevalidations.validations.engines.base import ValidationIssue
-from simplevalidations.validations.engines.base import ValidationResult
+from simplevalidations.validations.constants import Severity, ValidationType
+from simplevalidations.validations.engines.base import (
+    BaseValidatorEngine,
+    ValidationIssue,
+    ValidationResult,
+)
 from simplevalidations.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
-    from simplevalidations.validations.models import Ruleset
-    from simplevalidations.validations.models import Submission
-    from simplevalidations.validations.models import Validator
+    from simplevalidations.validations.models import Ruleset, Submission, Validator
 
 
 @register_engine(ValidationType.JSON_SCHEMA)

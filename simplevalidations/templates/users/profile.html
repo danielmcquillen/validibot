@@ -1,225 +1,64 @@
-{% extends "core/base.html" %}
+{% extends "app_base.html" %}
 
-{% load i18n %}
+{% load i18n crispy_forms_tags %}
 
 {% block title %}
-  {% trans "Account Settings" %}
+  {% trans "Account Settings" %}  · SimpleValidations
 {% endblock title %}
-
-{% block mainclass %}
-  container
-{% endblock mainclass %}
 
 {% block bodyclass %}
   {{ block.super }} account-settings-page
 {% endblock bodyclass %}
 
-{% block content %}
-  <section class="account-settings-wrapper py-5">
-    <div class="container">
-      <div class="row justify-content-center">
-        <div class="col-12 col-xl-10 col-xxl-8">
-          <div class="account-settings-card card shadow-sm border-0">
-            <div class="card-body p-4 p-lg-5">
-              <div class="text-center mb-4">
-                <h1 class="h3 mb-1">
-                  {% trans "Your Profile" %}
-                </h1>
-                <p class="text-muted mb-0">
-                  {% trans "Update how you appear to teammates and across the product." %}
-                </p>
-              </div>
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
 
-              {% include "users/partial/settings_nav.html" %}
+{% block app_content %}
 
-              <form method="post"
-                    enctype="multipart/form-data"
-                    class="account-settings-form"
-                    novalidate>
-                {% csrf_token %}
-                {% if form.non_field_errors %}
-                  <div class="alert alert-danger" role="alert">
-                    {% for error in form.non_field_errors %}
-                      <div>
-                        {{ error }}
-                      </div>
-                    {% endfor %}
-                  </div>
-                {% endif %}
+  <div id="user-profile" class="container-fluid">
 
-                <div class="row g-4 g-lg-5 align-items-start">
-                  <div class="col-12 col-md-4">
-                    <div class="settings-avatar text-center text-md-start">
-                      {% if form.instance.avatar %}
-                        <img src="{{ form.instance.avatar.url }}"
-                             alt="{% trans "Current avatar" %}"
-                             class="img-fluid rounded-circle shadow-sm settings-avatar__image" />
-                      {% else %}
-                        <div class="settings-avatar__placeholder d-inline-flex align-items-center justify-content-center rounded-circle">
-                          <span class="fs-2 fw-semibold text-primary">
-                            {{ user.name|default:user.username|first|upper }}
-                          </span>
-                        </div>
-                      {% endif %}
-                    </div>
-                    <div class="mt-3">
-                      <label class="form-label fw-semibold" for="{{ form.avatar.id_for_label }}">
-                        {% trans "Upload new avatar" %}
-                      </label>
-                      {{ form.avatar }}
-                      {% for error in form.avatar.errors %}
-                        <div class="invalid-feedback d-block">
-                          {{ error }}
-                        </div>
-                      {% endfor %}
-                      <p class="form-text text-muted">
-                        {% trans "Use a square image at least 240px for best results." %}
-                      </p>
-                      {% if form.instance.avatar %}
-                        <div class="form-check mt-2">
-                          {{ form.remove_avatar }}
-                          <label class="form-check-label" for="{{ form.remove_avatar.id_for_label }}">
-                            {% trans "Remove current avatar" %}
-                          </label>
-                          {% for error in form.remove_avatar.errors %}
-                            <div class="invalid-feedback d-block">
-                              {{ error }}
-                            </div>
-                          {% endfor %}
-                        </div>
-                      {% endif %}
-                    </div>
-                  </div>
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 ">
+        <h1 class="app-page-title">
+          {% trans "Your User Profile" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Update how you appear to teammates and across the product." %}
+        </p>
+      </div>
+    </div>
 
-                  <div class="col-12 col-md-8">
-                    <div class="row g-3">
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.name.id_for_label }}">
-                          {% trans "Full name" %}
-                        </label>
-                        {{ form.name }}
-                        {% for error in form.name.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                      </div>
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.username.id_for_label }}">
-                          {% trans "Username" %}
-                        </label>
-                        {{ form.username }}
-                        {% for error in form.username.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                        {% if form.username.help_text %}
-                          <p class="form-text text-muted">
-                            {{ form.username.help_text }}
-                          </p>
-                        {% endif %}
-                      </div>
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold"
-                               for="{{ form.job_title.id_for_label }}">
-                          {% trans "Job title" %}
-                        </label>
-                        {{ form.job_title }}
-                        {% for error in form.job_title.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                      </div>
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.company.id_for_label }}">
-                          {% trans "Company" %}
-                        </label>
-                        {{ form.company }}
-                        {% for error in form.company.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                      </div>
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.location.id_for_label }}">
-                          {% trans "Location" %}
-                        </label>
-                        {{ form.location }}
-                        {% for error in form.location.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                      </div>
-                      <div class="col-12 col-md-6">
-                        <label class="form-label fw-semibold" for="{{ form.timezone.id_for_label }}">
-                          {% trans "Timezone" %}
-                        </label>
-                        {{ form.timezone }}
-                        {% for error in form.timezone.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                        {% if form.timezone.help_text %}
-                          <p class="form-text text-muted">
-                            {{ form.timezone.help_text }}
-                          </p>
-                        {% endif %}
-                      </div>
-                      <div class="col-12">
-                        <label class="form-label fw-semibold" for="{{ form.bio.id_for_label }}">
-                          {% trans "Bio" %}
-                        </label>
-                        {{ form.bio }}
-                        {% for error in form.bio.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                        {% if form.bio.help_text %}
-                          <p class="form-text text-muted">
-                            {{ form.bio.help_text }}
-                          </p>
-                        {% endif %}
-                      </div>
-                      <div class="col-12">
-                        <label class="form-label fw-semibold" for="{{ form.email.id_for_label }}">
-                          {% trans "Email" %}
-                        </label>
-                        {{ form.email }}
-                        {% for error in form.email.errors %}
-                          <div class="invalid-feedback d-block">
-                            {{ error }}
-                          </div>
-                        {% endfor %}
-                        {% if form.email.help_text %}
-                          <p class="form-text text-muted">
-                            {{ form.email.help_text }}
-                          </p>
-                        {% endif %}
-                      </div>
-                    </div>
-                  </div>
+    <form method="post"
+          enctype="multipart/form-data"
+          class="card shadow-sm account-settings-form"
+          novalidate>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-12 col-lg-8">
+            {% csrf_token %}
+            <div class="text-center text-md-start mb-4">
+              {% if form.instance.avatar %}
+                <img src="{{ form.instance.avatar.url }}"
+                     alt="{% trans "Current avatar" %}"
+                     class="img-fluid rounded-circle shadow-sm mb-3 settings-avatar__image" />
+              {% else %}
+                <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-body-secondary mb-3 settings-avatar__placeholder">
+                  <span class="fs-2 fw-semibold text-primary">
+                    {{ user.name|default:user.username|first|upper }}
+                  </span>
                 </div>
-
-                <div class="mt-5 d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-3">
-                  <a class="btn btn-outline-secondary order-2 order-md-1"
-                     href="{{ user.get_absolute_url }}">
-                    {% trans "View public profile" %}
-                  </a>
-                  <button type="submit" class="btn btn-primary btn-lg px-4 order-1 order-md-2">
-                    {% trans "Save changes" %}
-                  </button>
-                </div>
-              </form>
+              {% endif %}
             </div>
+            {{ form|crispy }}
+          </div>
+          <div class="card-footer text-end bg-transparent border-top-0 pt-0">
+            <button type="submit" class="btn btn-primary">
+              {% trans "Save changes" %}
+            </button>
           </div>
         </div>
       </div>
-    </div>
-  </section>
-{% endblock content %}
+    </form>
+  </div>
+{% endblock app_content %}

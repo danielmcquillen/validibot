@@ -1,23 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
-from django.db import models
-from django.db import transaction
-from django.db.models import Exists
-from django.db.models import OuterRef
+from django.db import models, transaction
+from django.db.models import Exists, OuterRef
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership
-from simplevalidations.users.models import Organization
-from simplevalidations.users.models import Role
-from simplevalidations.users.models import User
+from simplevalidations.users.models import Membership, Organization, Role, User
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -33,9 +27,16 @@ class WorkflowQuerySet(models.QuerySet):
         required_role_code: RoleCode | None = None,
     ) -> WorkflowQuerySet:
         """
-        Get workflows accessible to the given user. If required_role is provided,
+        Get workflows accessible to the given user. 
+        
+        If required_role is provided,
         only return workflows where the user has that role in the workflow's
         organization.
+        
+        Otherwise, return all workflows where the user is an active member of the
+        workflow's organization. Note this doesn't mean they can execute the workflow;
+        that requires the EXECUTOR role specifically.
+        
         """
 
         if not getattr(user, "is_authenticated", False):

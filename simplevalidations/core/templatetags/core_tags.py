@@ -48,6 +48,37 @@ def active_link_any(context, *nav_item_names):
 
 
 @register.simple_tag(takes_context=True)
+def user_settings_nav_state(context) -> dict[str, bool]:
+    """Return navigation state booleans for the user settings menu."""
+
+    request = context.get("request")
+    state = {
+        "active": False,
+        "profile": False,
+        "email": False,
+        "api_key": False,
+    }
+    if not request:
+        return state
+
+    match = getattr(request, "resolver_match", None)
+    if not match:
+        return state
+
+    url_name = (getattr(match, "url_name", "") or "").strip()
+    view_name = (getattr(match, "view_name", "") or "").strip()
+
+    def is_match(name: str) -> bool:
+        return url_name == name or view_name == f"users:{name}"
+
+    state["profile"] = is_match("profile")
+    state["email"] = is_match("email")
+    state["api_key"] = is_match("api-key")
+    state["active"] = any(state[key] for key in ("profile", "email", "api_key"))
+    return state
+
+
+@register.simple_tag(takes_context=True)
 def active_builder_link(context, nav_item_name):
     request = context.get("request", None)
     if request:

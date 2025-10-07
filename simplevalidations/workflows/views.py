@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.db import models, transaction
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse, reverse_lazy
 from django.utils.translation import gettext_lazy as _
@@ -104,10 +104,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         project = None  # We don't support projects yet
 
         if not workflow.can_execute(user=user):
-            return Response(
-                {"detail": _("Workflow not found.")},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            # Return 404 to avoid leaking workflow existence when user lacks access.
+            raise Http404
 
         content_type_header, body_bytes = extract_request_basics(request)
 
@@ -245,7 +243,14 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         payload = request.data.copy()
         payload["workflow"] = workflow.pk
         serializer = self.get_serializer(data=payload)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:  # noqa: BLE001
+            logger.info(
+                "ValidationRunStartSerializer invalid: %s",
+                getattr(e, "detail", str(e)),
+            )
+            raise e
 
         vd = serializer.validated_data
         file_obj = vd.get("file", None)
@@ -726,9 +731,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return get_object_or_404(WorkflowStep, workflow=workflow, pk=step_id)
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
-        return list(
-            Validator.objects.all().order_by("validation_type", "name", "pk")
-        )
+        return list(Validator.objects.all().order_by("validation_type", "name", "pk"))
 
     def _build_config_form(
         self,

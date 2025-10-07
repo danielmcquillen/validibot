@@ -1,0 +1,42 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "API Key" %}
+{% endblock title %}
+
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+
+  <div id="user-api-key" class="app-page container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 ">
+        <h1 class="app-page-title">
+          {% trans "Your API Key" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Manage the credentials you use to call the SimpleValidations API." %}
+        </p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        {% include "users/partial/api_key_panel.html" %}
+      </div>
+    </div>
+  </div>
+
+{% endblock app_content %}
+
+{% block inline_javascript %}
+  {{ block.super }}
+{% endblock inline_javascript %}

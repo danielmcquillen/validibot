@@ -12184,9 +12184,6 @@ h4 {
   min-height: calc(100vh - 80px);
 }
 
-.account-settings-page {
-  background: linear-gradient(152deg, #eef4f8, #dde5ea);
-}
 .account-settings-page .account-settings-wrapper {
   min-height: 75vh;
 }
@@ -12248,7 +12245,6 @@ h4 {
   border-radius: 0.75rem;
   border: 1px solid rgba(15, 23, 42, 0.12);
   padding: 0.6rem 0.85rem;
-  width: 100%;
 }
 
 .blog-hero .lead {
@@ -12617,11 +12613,13 @@ h4 {
   flex-grow: 1;
   height: 100%;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 #app-content {
-  padding-left: 1rem;
-  padding-top: 1rem;
+  padding: 1rem 0 0;
   display: flex;
   flex-direction: column;
   flex-grow: 1;

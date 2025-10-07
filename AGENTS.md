@@ -9,7 +9,7 @@
 
 - Developer knowledge base: `docs/dev_docs/` (start with `docs/dev_docs/index.md`).
 - Workflow architecture details: `docs/dev_docs/overview/how_it_works.md`.
-- Working agreements: `docs/dev_docs/overview/overview.md#working-agreements-for-developers`.
+- Working agreements: `docs/dev_docs/overview/platform_overview.md#working-agreements-for-developers`.
 
 ## Collaboration Principles
 

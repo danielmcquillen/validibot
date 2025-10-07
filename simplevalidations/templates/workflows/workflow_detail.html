@@ -11,37 +11,42 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div class="container-fluid">
-    <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-4">
-      <div>
-        <h1 class="h3 mb-1">
-          {{ workflow.name }}
-        </h1>
-        <div class="d-flex flex-wrap gap-3 text-muted small">
-          <span><i class="bi-hash me-1"></i>{{ workflow.slug }}</span>
+  <div id="workflow-detail" class="container-fluid">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
+        <div class="d-flex flex-row">
+          <h1 class="app-page-title">
+            {{ workflow.name }}
+          </h1>
           {% if workflow.version %}
-            <span><i class="bi-tag me-1"></i>{% trans "Version" %} {{ workflow.version }}</span>
+            <div class="text-muted small">
+              <i class="bi-tag me-1"></i>{% trans "Version" %} {{ workflow.version }}
+            </div>
           {% endif %}
-          <span><i class="bi-building me-1"></i>{{ workflow.org.name }}</span>
         </div>
       </div>
-      <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-secondary"
-           href="{% url 'workflows:workflow_update' workflow.pk %}">
-          <i class="bi-pencil-square me-1"></i>
-          {% trans "Edit" %}
-        </a>
-        <a class="btn btn-outline-danger"
-           hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
-           hx-target="body"
-           hx-confirm="{% trans "Delete this workflow?" %}">
-          <i class="bi-trash me-1"></i>
-          {% trans "Delete" %}
-        </a>
-        <a class="btn btn-primary" href="{{ related_validations_url }}">
-          <i class="bi-diagram-3 me-1"></i>
-          {% trans "View Validations" %}
-        </a>
+
+      <div class="col-12 col-lg-9 d-flex flex-column align-items-end">
+
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-secondary"
+             href="{% url 'workflows:workflow_update' workflow.pk %}">
+            <i class="bi-pencil-square me-1"></i>
+            {% trans "Edit" %}
+          </a>
+          <a class="btn btn-outline-danger"
+             hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
+             hx-target="body"
+             hx-confirm="{% trans "Delete this workflow?" %}">
+            <i class="bi-trash me-1"></i>
+            {% trans "Delete" %}
+          </a>
+          <a class="btn btn-primary" href="{{ related_validations_url }}">
+            <i class="bi-diagram-3 me-1"></i>
+            {% trans "View Validations" %}
+          </a>
+        </div>
       </div>
     </div>
 
@@ -127,6 +132,43 @@
                 {{ workflow.user.name|default:workflow.user.username }}
               </dd>
             </dl>
+            <hr class="my-4" />
+            <div class="bg-body-tertiary border rounded-3 p-3">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <span class="badge text-bg-primary">{% trans "API" %}</span>
+                <div>
+                  <div class="fw-semibold mb-0">
+                    {% trans "Start this workflow via API" %}
+                  </div>
+                  <small class="text-muted">{% trans "POST requests launch a validation run for this workflow." %}</small>
+                </div>
+              </div>
+              <ul class="list-unstyled small text-muted mb-3">
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Endpoint" %}:</span>
+                  <code class="text-body-secondary">POST /api/v1/workflows/{{ workflow.pk }}/start/</code>
+                </li>
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Auth" %}:</span>
+                  {% blocktrans with org_name=workflow.org.name %}Bearer token with the Executor role in {{ org_name }}.{% endblocktrans %}
+                </li>
+                <li>
+                  <span class="fw-semibold me-1">{% trans "Content" %}:</span>
+                  {% trans "Send raw content, a JSON envelope, or multipart form-data." %}
+                </li>
+              </ul>
+              <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.simplevalidations.io" }}/api/v1/workflows/{{ workflow.pk }}/start/ \
+  -H "Authorization: Token &lt;token&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "{ \"example\": true }",
+    "content_type": "application/json",
+    "filename": "sample.json"
+  }'</code></pre>
+              <p class="small text-muted mb-0">
+                {% trans "See the developer guide 'Using a Workflow via the API' for additional payload examples." %}
+              </p>
+            </div>
           </div>
         </div>
         <div class="card shadow-sm">
@@ -159,6 +201,7 @@
       </div>
     </div>
   </div>
+</div>
 {% endblock app_content %}
 
 {% block modal %}

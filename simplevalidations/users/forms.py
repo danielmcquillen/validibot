@@ -39,7 +39,7 @@ class UserProfileForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["email"].disabled = True
         self.fields["email"].help_text = _(
-            "Manage your sign-in email from the Email tab.",
+            "Manage your sign-in email from the User Email page.",
         )
         self.fields["avatar"].required = False
         self.fields["avatar"].widget.attrs.update({"accept": "image/*"})

@@ -29,9 +29,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Quick Reference: quick_reference.md
   - Overview:
-      - Quick Reference: overview.md
-      - Platform Overview: overview/overview.md
+      - Platform Overview: overview/platform_overview.md
       - User Roles & Permissions: overview/user_roles.md
       - How It Works: overview/how_it_works.md
   - How-to:
@@ -43,3 +43,4 @@ nav:
       - Runs: data-model/runs.md
       - Steps: data-model/steps.md
       - Findings: data-model/findings.md
+      - Users & Roles: data-model/users_roles.md

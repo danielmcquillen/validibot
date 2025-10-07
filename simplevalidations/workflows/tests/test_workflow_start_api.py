@@ -228,6 +228,36 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.submission is not None
 
+    def test_json_envelope_accepts_object_content(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ) -> None:
+        """Mode 2 should coerce dict/list content into stored text."""
+
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": {"example": True},
+            "content_type": "application/json",
+            "filename": "body.json",
+        }
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        body = resp.json()
+        run = ValidationRun.objects.get(pk=body["id"])
+        assert run.submission is not None
+        assert run.submission.content.strip() == json.dumps(envelope["content"])
+
     def test_start_with_file_upload_returns_201(
         self,
         api_client: APIClient,

@@ -12,11 +12,21 @@ def test_detail(user: User):
     assert resolve(f"/app/users/{user.username}/").view_name == "users:detail"
 
 
-def test_update():
-    assert reverse("users:update") == "/app/users/~update/"
-    assert resolve("/app/users/~update/").view_name == "users:update"
+def test_profile():
+    assert reverse("users:profile") == "/app/users/profile/"
+    assert resolve("/app/users/profile/").view_name == "users:profile"
 
 
 def test_redirect():
     assert reverse("users:redirect") == "/app/users/~redirect/"
     assert resolve("/app/users/~redirect/").view_name == "users:redirect"
+
+
+def test_email_url():
+    assert reverse("users:email") == "/app/users/email/"
+    assert resolve("/app/users/email/").view_name == "users:email"
+
+
+def test_api_key_url():
+    assert reverse("users:api-key") == "/app/users/api-key/"
+    assert resolve("/app/users/api-key/").view_name == "users:api-key"

@@ -6,12 +6,16 @@ This site describes the core concepts, data model, and API for working with vali
 
 ## Contents
 
+## Quick Reference
+
+- [Quick Reference](quick_reference.md) - Summary of core concepts and basic usage
+
 ### Overview
 
-- [Platform Overview](overview/overview.md) - What SimpleValidations is and why it exists
+- [Platform Overview](overview/platform_overview.md) - What SimpleValidations is and why it exists
 - [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
-- [Quick Reference](overview.md) - Summary of core concepts and basic usage
-- [Working Agreements](overview/overview.md#working-agreements-for-developers) - How we keep the project understandable
+- [Working Agreements](overview/platform_overview.md#working-agreements-for-developers) - How we keep the project understandable
+- [Submission Modes](overview/request_modes.md) - How API payload shapes are detected
 
 ### How-To Guides
 
@@ -25,7 +29,4 @@ This site describes the core concepts, data model, and API for working with vali
 - [Runs](data-model/runs.md) - Validation execution and tracking
 - [Steps](data-model/steps.md) - Individual validation operations
 - [Findings](data-model/findings.md) - Validation results and issues
-
-### User Documentation
-
-- [Getting Started](../user_docs/getting-started.md) - First-time user guide
+- [Users & Roles](data-model/users_roles.md) - Organization membership and permissions

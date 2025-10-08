@@ -21,8 +21,10 @@ def _workspace_name_for(user: "User") -> str:
     return f"{source}’s Workspace"
 
 
-def _generate_unique_slug(model, base: str) -> str:
-    base_slug = slugify(base) or f"workspace-{uuid4().hex[:10]}"
+def _generate_unique_slug(model, base: str, *, prefix: str = "") -> str:
+    base_slug = slugify(base) or uuid4().hex[:10]
+    if prefix:
+        base_slug = f"{prefix}{base_slug}"
     slug = base_slug
     counter = 2
     while model.objects.filter(slug=slug).exists():
@@ -43,7 +45,7 @@ def ensure_default_project(organization: "Organization"):
         return default
 
     name = _("Default Project")
-    slug = _generate_unique_slug(Project, name)
+    slug = _generate_unique_slug(Project, name, prefix="default-")
     return Project.all_objects.create(
         org=organization,
         name=name,
@@ -67,7 +69,7 @@ def ensure_personal_workspace(user: "User") -> "Organization":
         return existing
 
     name = _workspace_name_for(user)
-    slug = _generate_unique_slug(Organization, name)
+    slug = _generate_unique_slug(Organization, name, prefix="workspace-")
     personal_org = Organization.objects.create(
         name=name,
         slug=slug,

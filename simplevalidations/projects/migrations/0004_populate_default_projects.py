@@ -6,6 +6,19 @@ from django.db import migrations
 from django.utils.text import slugify
 
 
+def _unique_slug(model, base, prefix=""):
+    from django.utils.text import slugify
+    base_slug = slugify(base) or uuid4().hex[:8]
+    if prefix:
+        base_slug = f"{prefix}{base_slug}"
+    slug = base_slug
+    counter = 2
+    while model.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
 def forwards(apps, schema_editor):
     Project = apps.get_model("projects", "Project")
     Organization = apps.get_model("users", "Organization")
@@ -22,12 +35,7 @@ def forwards(apps, schema_editor):
             continue
 
         name = "Default Project"
-        base_slug = slugify(name) or f"default-{uuid4().hex[:8]}"
-        slug = base_slug
-        counter = 2
-        while Project.objects.filter(org=org, slug=slug).exists():
-            slug = f"{base_slug}-{counter}"
-            counter += 1
+        slug = _unique_slug(Project, name, prefix="default-")
         Project.objects.create(
             org=org,
             name=name,

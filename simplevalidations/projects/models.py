@@ -19,17 +19,13 @@ class ProjectQuerySet(models.QuerySet):
             project.soft_delete()
 
 
-class ProjectManager(models.Manager):
+class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
     def get_queryset(self):
-        return ProjectQuerySet(super().get_queryset()).active()
-
-    def active(self):
-        return self.get_queryset()
+        return super().get_queryset().filter(is_active=True)
 
 
-class ProjectAllManager(models.Manager):
-    def get_queryset(self):
-        return ProjectQuerySet(super().get_queryset())
+class ProjectAllManager(models.Manager.from_queryset(ProjectQuerySet)):
+    pass
 
 
 class Project(TimeStampedModel):

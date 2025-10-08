@@ -63,7 +63,7 @@
                           </a>
                           <button type="button"
                                   class="btn btn-sm btn-outline-danger"
-                                  hx-delete="{% url 'projects:project-delete' project.pk %}"
+                                  hx-post="{% url 'projects:project-delete' project.pk %}"
                                   hx-target="#project-row-{{ project.pk }}"
                                   hx-swap="outerHTML"
                                   hx-confirm="{% trans 'Delete this project?' %}">

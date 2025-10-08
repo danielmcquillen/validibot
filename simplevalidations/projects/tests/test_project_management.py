@@ -8,8 +8,11 @@ from django.utils import timezone
 
 from simplevalidations.projects.models import Project
 from simplevalidations.projects.tests.factories import ProjectFactory
+from simplevalidations.submissions.models import Submission
 from simplevalidations.submissions.tests.factories import SubmissionFactory
+from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.tracking.tests.factories import TrackingEventFactory
+from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.integrations.models import OutboundEvent
 from simplevalidations.users.constants import RoleCode
@@ -29,6 +32,9 @@ def admin_user(db):
 def client_admin(client, admin_user):
     user, org = admin_user
     client.force_login(user)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
     return client, user, org
 
 
@@ -38,6 +44,9 @@ def test_project_list_requires_admin(client):
     user = UserFactory(orgs=[org])
     grant_role(user, org, RoleCode.EXECUTOR)
     client.force_login(user)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
 
     response = client.get(reverse("projects:project-list"))
     assert response.status_code == 403
@@ -81,7 +90,8 @@ def test_project_delete(client_admin):
     response = client.post(reverse("projects:project-delete", args=[project.pk]))
     assert response.status_code == 302
     assert not Project.objects.filter(pk=project.pk).exists()
-    archived = Project.all_objects.get(pk=project.pk)
+    archived = Project.all_objects.filter(pk=project.pk).first()
+    assert archived is not None
     assert archived.is_active is False
     assert archived.deleted_at is not None
 
@@ -93,8 +103,8 @@ def test_default_project_cannot_be_deleted(client_admin):
 
     response = client.post(reverse("projects:project-delete", args=[default.pk]))
     assert response.status_code == 302
-    default.refresh_from_db()
-    assert default.is_active is True
+    refreshed = Project.all_objects.get(pk=default.pk)
+    assert refreshed.is_active is True
 
 
 @pytest.mark.django_db
@@ -115,13 +125,14 @@ def test_soft_delete_detaches_related_records(client_admin):
 
     client.post(reverse("projects:project-delete", args=[project.pk]))
 
-    submission.refresh_from_db()
-    run.refresh_from_db()
-    assert submission.project is None
-    assert run.project is None
+    submission_refreshed = Submission.objects.get(pk=submission.pk)
+    run_refreshed = ValidationRun.objects.get(pk=run.pk)
+    assert submission_refreshed.project is None
+    assert run_refreshed.project is None
     assert not Project.objects.filter(pk=project.pk).exists()
-    assert Project.all_objects.get(pk=project.pk).is_active is False
-    assert not TrackingEventFactory._meta.model.objects.filter(project=project).exists()
+    archived = Project.all_objects.filter(pk=project.pk).first()
+    assert archived is not None and archived.is_active is False
+    assert not TrackingEvent.objects.filter(project=project).exists()
     assert OutboundEvent.objects.filter(project=project).count() == 0
 
 

@@ -5,7 +5,8 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import CreateView, DeleteView, ListView, UpdateView
+from django.views import View
+from django.views.generic import CreateView, ListView, UpdateView
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
@@ -97,54 +98,43 @@ class ProjectUpdateView(
         ]
 
 
-class ProjectDeleteView(
-    OrganizationAdminRequiredMixin,
-    BreadcrumbMixin,
-    SuccessMessageMixin,
-    DeleteView,
-):
+class ProjectDeleteView(OrganizationAdminRequiredMixin, View):
     organization_context_attr = "organization"
     organization_lookup_kwarg = None
-    model = Project
-    template_name = "projects/project_confirm_delete.html"
-    success_message = _("Project deleted.")
-
-    def get_queryset(self):
-        return Project.objects.filter(org=self.organization)
 
     def get_organization(self):
-        if hasattr(self, "_permission_project"):
-            return self._permission_project.org
-        project = get_object_or_404(Project.objects.select_related("org"), pk=self.kwargs["pk"])
-        self._permission_project = project
+        if hasattr(self, "_project"):
+            return self._project.org
+        project = get_object_or_404(Project.all_objects.select_related("org"), pk=self.kwargs["pk"])
+        self._project = project
         return project.org
 
-    def get_object(self, queryset=None):
-        if hasattr(self, "_permission_project"):
-            return self._permission_project
-        return super().get_object(queryset)
+    def _handle(self, request, *args, **kwargs):
+        project = getattr(self, "_project", None)
+        if project is None:
+            project = get_object_or_404(
+                Project.all_objects.select_related("org"),
+                pk=self.kwargs["pk"],
+                org=self.organization,
+            )
+            self._project = project
 
-    def get_success_url(self):
-        return reverse_with_org("projects:project-list", request=self.request)
-
-    def delete(self, request, *args, **kwargs):
-        self.object = self.get_object()
-        try:
-            self.object.soft_delete()
-        except ValueError:
+        if not project.can_delete():
             messages.error(request, _("Default projects cannot be deleted."))
-            return HttpResponseRedirect(self.get_success_url())
+            return HttpResponseRedirect(reverse_with_org("projects:project-list", request=request))
+
+        project.soft_delete()
 
         if request.headers.get("HX-Request"):
             response = HttpResponse("", status=200)
             response["HX-Trigger"] = "projectDeleted"
             return response
 
-        messages.success(request, self.success_message)
-        return HttpResponseRedirect(self.get_success_url())
+        messages.success(request, _("Project deleted."))
+        return HttpResponseRedirect(reverse_with_org("projects:project-list", request=request))
 
-    def get_breadcrumbs(self):
-        return [
-            {"name": _("Projects"), "url": reverse_with_org("projects:project-list", request=self.request)},
-            {"name": self.object.name, "url": ""},
-        ]
+    def post(self, request, *args, **kwargs):
+        return self._handle(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        return self._handle(request, *args, **kwargs)

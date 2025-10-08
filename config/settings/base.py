@@ -219,6 +219,7 @@ TEMPLATES = [
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
                 "simplevalidations.users.context_processors.allauth_settings",
+                "simplevalidations.users.context_processors.organization_context",
             ],
         },
     },

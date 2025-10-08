@@ -35,6 +35,10 @@ class AppEventType(models.TextChoices):
     CHECK_SUITE_REQUESTED = "check_suite.requested", _("GitHub Check Suite Requested")
     CHECK_SUITE_COMPLETED = "check_suite.completed", _("GitHub Check Suite Completed")
 
+    # User lifecycle
+    USER_LOGGED_IN = "user.logged_in", _("User Logged In")
+    USER_LOGGED_OUT = "user.logged_out", _("User Logged Out")
+
 
 # Convenient subsets
 RUN_EVENTS = (

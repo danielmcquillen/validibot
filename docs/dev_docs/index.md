@@ -16,11 +16,13 @@ This site describes the core concepts, data model, and API for working with vali
 - [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
 - [Working Agreements](overview/platform_overview.md#working-agreements-for-developers) - How we keep the project understandable
 - [Submission Modes](overview/request_modes.md) - How API payload shapes are detected
+- [Dashboard](dashboard.md) - Architecture and extension points for the dashboard module
 
 ### How-To Guides
 
 - [Using a Workflow via the API](how-to/use-workflow.md) - Step-by-step API integration guide
 - [Author Workflow Steps](how-to/author-workflow-steps.md) - Configure validation templates via the UI wizard
+- [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
 
 ### Data Model
 
@@ -30,3 +32,4 @@ This site describes the core concepts, data model, and API for working with vali
 - [Steps](data-model/steps.md) - Individual validation operations
 - [Findings](data-model/findings.md) - Validation results and issues
 - [Users & Roles](data-model/users_roles.md) - Organization membership and permissions
+- [Deletions](data-model/deletions.md) - How deletions are managed

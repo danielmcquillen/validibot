@@ -12,6 +12,8 @@ from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 
+from simplevalidations.core import views as core_views
+
 # from django_github_app.views import AsyncWebhookView
 
 urlpatterns = [
@@ -25,15 +27,29 @@ urlpatterns = [
     # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),
     # App URLs...
-    path("app/dashboard/", include("simplevalidations.dashboard.urls", namespace="dashboard")),
+    path("app/", core_views.app_home_redirect, name="app-home"),
+    path(
+        "app/dashboard/",
+        include("simplevalidations.dashboard.urls", namespace="dashboard"),
+    ),
     path("app/users/", include("simplevalidations.users.urls", namespace="users")),
     path("app/core/", include("simplevalidations.core.urls", namespace="core")),
     path("accounts/", include("allauth.urls")),
-    path("app/projects/", include("simplevalidations.projects.urls", namespace="projects")),
-    path("app/workflows/", include("simplevalidations.workflows.urls", namespace="workflows")),
-    path("app/tracking/", include("simplevalidations.tracking.urls", namespace="tracking")),
     path(
-        "app/validations/", include("simplevalidations.validations.urls", namespace="validations")
+        "app/projects/",
+        include("simplevalidations.projects.urls", namespace="projects"),
+    ),
+    path(
+        "app/workflows/",
+        include("simplevalidations.workflows.urls", namespace="workflows"),
+    ),
+    path(
+        "app/tracking/",
+        include("simplevalidations.tracking.urls", namespace="tracking"),
+    ),
+    path(
+        "app/validations/",
+        include("simplevalidations.validations.urls", namespace="validations"),
     ),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]

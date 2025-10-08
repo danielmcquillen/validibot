@@ -1,20 +1,50 @@
 // Import all javascript libraries and functions.
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
 import * as bootstrap from 'bootstrap';
+import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 
 declare global {
     interface Window {
         bootstrap: typeof bootstrap;
         htmx: typeof htmx;
+        Chart: typeof Chart;
     }
 }
 window.bootstrap = bootstrap;
-window.htmx;
+window.htmx = htmx;
+Chart.register(...registerables);
+window.Chart = Chart;
 import 'htmx.org';
 
+function initializeCharts(root: ParentNode | Document = document): void {
+    const chartCanvases = root.querySelectorAll<HTMLCanvasElement>('canvas[data-chart-config-id]');
+    chartCanvases.forEach((canvas) => {
+        const configId = canvas.dataset.chartConfigId;
+        if (!configId) {
+            return;
+        }
+
+        const existing = Chart.getChart(canvas);
+        if (existing) {
+            existing.destroy();
+        }
+
+        const scriptElement = document.getElementById(configId) as HTMLScriptElement | null;
+        if (!scriptElement) {
+            return;
+        }
+
+        try {
+            const config = JSON.parse(scriptElement.textContent || '{}');
+            new Chart(canvas, config);
+            canvas.dataset.chartInitialized = '1';
+        } catch (err) {
+            console.error('Error initialising dashboard chart', err);
+        }
+    });
+}
 
 window.addEventListener('DOMContentLoaded', (event) => {
 
@@ -36,6 +66,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
         }
     });
 
+    initializeCharts(document);
 });
 
 function simplevalidationsInitBootstrap() {
@@ -129,4 +160,8 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
         const toast = new bootstrap.Toast(toastEl);
         toast.show();
     });
+});
+
+document.body.addEventListener('htmx:afterSwap', (evt: any) => {
+    initializeCharts(evt.detail.target ?? document);
 });

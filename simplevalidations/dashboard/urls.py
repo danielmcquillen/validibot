@@ -9,4 +9,9 @@ urlpatterns = [
         views.MyDashboardView.as_view(),
         name="my_dashboard",
     ),
+    path(
+        "widgets/<slug:slug>/",
+        views.WidgetDetailView.as_view(),
+        name="widget-detail",
+    ),
 ]

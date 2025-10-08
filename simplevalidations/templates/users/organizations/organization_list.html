@@ -1,0 +1,90 @@
+{% extends "app_base.html" %}
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Organizations" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="organization-list">
+    <div class="app-content-header-bar row align-items-center mb-3">
+      <div class="col-12 col-lg-6">
+        <h1 class="app-page-title mb-2 mb-lg-0">
+          {% trans "Organizations" %}
+        </h1>
+        <p class="text-muted small mb-0">
+          {% trans "Manage the workspaces you administer." %}
+        </p>
+      </div>
+      <div class="col-12 col-lg-6 d-flex justify-content-lg-end">
+        <a class="btn btn-primary" href="{{ create_url }}">
+          <i class="bi bi-plus-lg me-1"></i>
+          {% trans "New organization" %}
+        </a>
+      </div>
+    </div>
+
+    {% if admin_rows %}
+      <div class="card shadow-sm">
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">{% trans "Name" %}</th>
+                  <th scope="col" class="d-none d-md-table-cell">{% trans "Slug" %}</th>
+                  <th scope="col" class="d-none d-lg-table-cell">{% trans "Members" %}</th>
+                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in admin_rows %}
+                  {% with membership=row.membership member_count=row.member_count %}
+                  <tr>
+                    <td class="fw-semibold">{{ membership.org.name }}</td>
+                    <td class="d-none d-md-table-cell text-muted">{{ membership.org.slug }}</td>
+                    <td class="d-none d-lg-table-cell">{{ member_count }}</td>
+                    <td class="text-end">
+                      <div class="btn-group" role="group">
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="{% url 'users:organization-detail' membership.org.pk %}">
+                          {% trans "Manage" %}
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary"
+                           href="{% url 'users:organization-update' membership.org.pk %}">
+                          {% trans "Edit" %}
+                        </a>
+                        {% if not membership.org.is_personal %}
+                          <a class="btn btn-sm btn-outline-danger"
+                             href="{% url 'users:organization-delete' membership.org.pk %}">
+                            {% trans "Delete" %}
+                          </a>
+                        {% else %}
+                          <span class="btn btn-sm btn-outline-secondary disabled">
+                            {% trans "Protected" %}
+                          </span>
+                        {% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                  {% endwith %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="alert alert-info" role="alert">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-info-circle"></i>
+          <span>{% trans "You are not an administrator for any organizations yet." %}</span>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock app_content %}

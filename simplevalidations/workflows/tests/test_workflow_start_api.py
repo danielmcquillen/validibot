@@ -11,8 +11,9 @@ from rest_framework.test import APIClient
 import simplevalidations.workflows.views as views_mod
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.projects.tests.factories import ProjectFactory
-from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.tracking.models import TrackingEvent
+from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -84,6 +85,19 @@ def mock_validation_service_success(monkeypatch):
             workflow=kwargs["workflow"],
             submission=kwargs["submission"],
             status=ValidationRunStatus.SUCCEEDED,
+        )
+        tracking_service = TrackingEventService()
+        request = kwargs.get("request")
+        actor = getattr(request, "user", None)
+        tracking_service.log_validation_run_created(
+            run=run,
+            user=actor,
+            submission_id=run.submission_id,
+        )
+        tracking_service.log_validation_run_started(
+            run=run,
+            user=actor,
+            extra_data={"status": ValidationRunStatus.RUNNING},
         )
         data = {
             "id": run.id,
@@ -163,14 +177,22 @@ class TestWorkflowStartAPI:
         )
 
         assert resp.status_code == status.HTTP_201_CREATED, resp.data
-        event: TrackingEvent = TrackingEvent.objects.get()
-        assert event.event_type == TrackingEventType.APP_EVENT
-        assert event.app_event_type == AppEventType.VALIDATION_RUN_STARTED.value
-        assert event.project_id is None  # Not supported yet
-        assert event.org_id == org.id
-        assert event.user_id == user.id
-        assert event.extra_data.get("workflow_pk") == workflow.pk
-        assert event.extra_data.get("validation_run_status") is not None
+
+        created_event = TrackingEvent.objects.filter(
+            app_event_type=AppEventType.VALIDATION_RUN_CREATED,
+        ).first()
+        started_event = TrackingEvent.objects.filter(
+            app_event_type=AppEventType.VALIDATION_RUN_STARTED,
+        ).first()
+
+        assert created_event is not None
+        assert created_event.project_id is None
+        assert created_event.org_id == org.id
+        assert created_event.user_id == user.id
+        assert created_event.extra_data.get("workflow_pk") == workflow.pk
+
+        assert started_event is not None
+        assert started_event.extra_data.get("status") == ValidationRunStatus.RUNNING
 
     def test_start_with_raw_body_xml_returns_201(
         self,
@@ -257,6 +279,62 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.submission is not None
         assert run.submission.content.strip() == json.dumps(envelope["content"])
+
+    def test_json_envelope_infers_content_type_for_json_payload(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ) -> None:
+        """If content_type is omitted, JSON payloads fall back to inference."""
+
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": {"hello": "world"},
+            "filename": "data.json",
+        }
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        run = ValidationRun.objects.get(pk=resp.data["id"])
+        assert run.submission is not None
+        assert run.submission.file_type == SubmissionFileType.JSON
+
+    def test_json_envelope_infers_content_type_for_xml_payload(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+    ) -> None:
+        """Filename and content sniffing should infer XML when not provided."""
+
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": "<root><value>1</value></root>",
+            "filename": "sample.xml",
+        }
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+        run = ValidationRun.objects.get(pk=resp.data["id"])
+        assert run.submission is not None
+        assert run.submission.file_type == SubmissionFileType.XML
 
     def test_start_with_file_upload_returns_201(
         self,

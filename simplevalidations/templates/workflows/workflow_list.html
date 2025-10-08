@@ -1,6 +1,6 @@
 {% extends "app_base.html" %}
 
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% block title %}
   {% trans "Workflows" %} · SimpleValidations
@@ -43,15 +43,15 @@
           </div>
           {% if search_query %}
             <div class="col">
-              <a class="btn btn-link text-decoration-none"
-                 href="{% url 'workflows:workflow_list' %}">
+        <a class="btn btn-link text-decoration-none"
+           href="{% org_url 'workflows:workflow_list' %}">
                 {% trans "Clear" %}
               </a>
             </div>
           {% endif %}
         </form>
       </div>
-      <div class="app-content-header-actions col-12 col-lg-3 d-flex flex-row justify-content-start justify-content-lg-end mb-2 mb-lg-0">
+      <div class="app-content-header-actions col-12 col-lg-3 d-flex flex-row justify-content-start justify-content-lg-end mb-2 mb-lg-0 p-0">
         <a class="btn btn-primary" href="{{ create_url }}">
           <i class="bi-plus-lg me-1"></i>
           {% trans "New Workflow" %}
@@ -87,16 +87,16 @@
               </p>
               <div class="mt-auto d-flex flex-wrap gap-2">
                 <a class="btn btn-sm btn-outline-primary flex-grow-1"
-                   href="{% url 'workflows:workflow_detail' workflow.pk %}">
+                   href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
                   {% trans "View" %}
                 </a>
                 <a class="btn btn-sm btn-outline-secondary"
-                   href="{% url 'workflows:workflow_update' workflow.pk %}">
+                   href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}">
                   {% trans "Edit" %}
                 </a>
                 <button type="button"
                         class="btn btn-sm btn-outline-danger"
-                        hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
+                        hx-delete="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
                         hx-target="#workflow-card-wrapper-{{ workflow.pk }}"
                         hx-swap="outerHTML"
                         hx-confirm="{% trans "Delete this workflow?" %}">

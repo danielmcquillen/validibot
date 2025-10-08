@@ -13,3 +13,9 @@ class ProjectFactory(DjangoModelFactory):
     slug = factory.Sequence(lambda n: f"test-project-{n}")
     org = factory.SubFactory(OrganizationFactory)
     description = factory.Faker("text", max_nb_chars=200)
+    is_default = False
+    is_active = True
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        return Project.all_objects.create(*args, **kwargs)

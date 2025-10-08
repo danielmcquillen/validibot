@@ -190,7 +190,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 - **Validation Engines**: Pluggable architecture supporting JSON Schema, XML Schema, and custom validators
 - **Authentication**: Django's built-in auth with organization-based access control
 - **Storage**: Configurable file storage (local, S3, etc.) for submissions and artifacts
-- **Frontend**: Modern Django templates with Bootstrap 5 and Alpine.js
+- **Frontend**: Modern Django templates with Bootstrap 5 and HTMx.
 - **API**: RESTful API with OpenAPI documentation
 
 ## Working Agreements for Developers

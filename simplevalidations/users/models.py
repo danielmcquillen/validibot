@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import CharField
 from django.urls import reverse
@@ -9,6 +12,76 @@ from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
 from simplevalidations.users.constants import RoleCode
+
+
+def _workspace_name_for(user: "User") -> str:
+    source = (user.name or "").strip() or (user.username or "Workspace")
+    if source.endswith("s"):
+        return f"{source}’ Workspace"
+    return f"{source}’s Workspace"
+
+
+def _generate_unique_slug(model, base: str) -> str:
+    base_slug = slugify(base) or f"workspace-{uuid4().hex[:10]}"
+    slug = base_slug
+    counter = 2
+    while model.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
+def ensure_default_project(organization: "Organization"):
+    from simplevalidations.projects.models import Project
+
+    default = Project.all_objects.filter(org=organization, is_default=True).first()
+    if default:
+        if not default.is_active:
+            default.is_active = True
+            default.deleted_at = None
+            default.save(update_fields=["is_active", "deleted_at"])
+        return default
+
+    name = _("Default Project")
+    slug = _generate_unique_slug(Project, name)
+    return Project.all_objects.create(
+        org=organization,
+        name=name,
+        description="",
+        slug=slug,
+        is_default=True,
+        is_active=True,
+    )
+
+
+def ensure_personal_workspace(user: "User") -> "Organization":
+    existing = (
+        user.orgs.filter(is_personal=True, membership__is_active=True)
+        .distinct()
+        .first()
+    )
+    if existing:
+        ensure_default_project(existing)
+        if not user.current_org_id:
+            user.set_current_org(existing)
+        return existing
+
+    name = _workspace_name_for(user)
+    slug = _generate_unique_slug(Organization, name)
+    personal_org = Organization.objects.create(
+        name=name,
+        slug=slug,
+        is_personal=True,
+    )
+    membership = Membership.objects.create(
+        user=user,
+        org=personal_org,
+        is_active=True,
+    )
+    membership.set_roles({RoleCode.ADMIN, RoleCode.OWNER, RoleCode.EXECUTOR})
+    ensure_default_project(personal_org)
+    user.set_current_org(personal_org)
+    return personal_org
 
 
 class Role(models.Model):
@@ -73,6 +146,11 @@ class Organization(TimeStampedModel):
 
         """
         return reverse("organizations:detail", kwargs={"pk": self.pk})
+
+    def delete(self, *args, **kwargs):  # noqa: D401 - guard deletion of personal orgs
+        if self.is_personal:
+            raise ValidationError("Personal organizations cannot be deleted.")
+        super().delete(*args, **kwargs)
 
 
 class User(AbstractUser):
@@ -152,31 +230,14 @@ class User(AbstractUser):
         If one isn't defined, set it to the user's personal org if it exists.
         If no personal org exists, create one and set it.
         """
-        if self.current_org:
+        if self.current_org and Membership.objects.filter(
+            user=self,
+            org=self.current_org,
+            is_active=True,
+        ).exists():
             return self.current_org
 
-        personal_org = self.orgs.filter(
-            is_personal=True,
-            membership__is_active=True,
-        ).first()
-        if personal_org:
-            self.set_current_org(personal_org)
-            return personal_org
-
-        # No personal org exists, create one
-        personal_org = Organization.objects.create(
-            name=f"{self.username}'s Personal Workspace",
-            is_personal=True,
-        )
-        m = Membership.objects.create(
-            user=self,
-            org=personal_org,
-            is_active=True,
-        )
-        m.add_role(RoleCode.OWNER)
-        m.add_role(RoleCode.EXECUTOR)
-        self.set_current_org(personal_org)
-        return personal_org
+        return ensure_personal_workspace(self)
 
     def set_current_org(
         self,
@@ -284,6 +345,20 @@ class Membership(TimeStampedModel):
     def has_role(self, role_code: str) -> bool:
         return self.roles.filter(code=role_code).exists()
 
+    @property
+    def role_codes(self) -> set[str]:
+        return set(self.roles.values_list("code", flat=True))
+
+    @property
+    def is_admin(self) -> bool:
+        from simplevalidations.users.constants import RoleCode
+
+        return self.has_role(RoleCode.ADMIN)
+
+    @property
+    def role_labels(self) -> list[str]:
+        return list(self.roles.values_list("name", flat=True))
+
     def add_role(self, role_code: str):
         if role_code not in RoleCode.values:
             raise ValueError(f"Invalid role code: {role_code}")
@@ -294,6 +369,22 @@ class Membership(TimeStampedModel):
             },
         )
         MembershipRole.objects.get_or_create(membership=self, role=role)
+
+    def set_roles(self, role_codes: list[str] | set[str]):
+        valid_codes = {code for code in role_codes if code in RoleCode.values}
+        roles = list(Role.objects.filter(code__in=valid_codes))
+        if len(valid_codes) != len(roles):
+            missing = valid_codes - set(role.code for role in roles)
+            for code in missing:
+                role, _ = Role.objects.get_or_create(
+                    code=code,
+                    defaults={"name": getattr(RoleCode, code).label if hasattr(RoleCode, code) else code.title()},
+                )
+                roles.append(role)
+
+        self.membership_roles.all().delete()
+        for role in roles:
+            MembershipRole.objects.get_or_create(membership=self, role=role)
 
     def remove_role(self, role_code: str):
         MembershipRole.objects.filter(membership=self, role__code=role_code).delete()

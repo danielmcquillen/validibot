@@ -34,9 +34,11 @@ nav:
       - Platform Overview: overview/platform_overview.md
       - User Roles & Permissions: overview/user_roles.md
       - How It Works: overview/how_it_works.md
+      - Dashboard: dashboard.md
   - How-to:
       - Use a Workflow: how-to/use-workflow.md
       - Author Workflow Steps: how-to/author-workflow-steps.md
+      - Manage Organizations & Projects: organization_management.md
   - Data Model:
       - Overview: data-model/index.md
       - Submissions: data-model/submissions.md

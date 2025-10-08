@@ -13,7 +13,13 @@ from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.relations import SlugRelatedField
 
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
+
+
+CONTENT_TYPE_BY_FILE_TYPE = {
+    file_type: content_type for content_type, file_type in SUPPORTED_CONTENT_TYPES.items()
+}
 
 
 class ValidationRunSerializer(serializers.ModelSerializer):
@@ -168,20 +174,22 @@ class ValidationRunStartSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         file_obj = attrs.get("file")
-        content = attrs.get("content")
+        raw_content = attrs.get("content")
         content_type = attrs.get("content_type")
         content_encoding = attrs.get("content_encoding")
+        filename = attrs.get("filename")
 
-        if isinstance(content, (dict, list)):
-            content = json.dumps(content)
-        elif content is not None and not isinstance(content, str):
-            content = str(content)
+        normalized_content = raw_content
+        if isinstance(normalized_content, (dict, list)):
+            normalized_content = json.dumps(normalized_content)
+        elif normalized_content is not None and not isinstance(normalized_content, str):
+            normalized_content = str(normalized_content)
 
-        self._check_content(content, content_encoding)
+        self._check_content(normalized_content, content_encoding)
 
         # Exactly one of file OR content
-        if (file_obj is None and content is None) or (
-            file_obj is not None and content is not None
+        if (file_obj is None and normalized_content is None) or (
+            file_obj is not None and normalized_content is not None
         ):
             raise serializers.ValidationError(
                 _(
@@ -209,20 +217,36 @@ class ValidationRunStartSerializer(serializers.Serializer):
             return attrs
 
         # Textual path
-        if content_type is None:
-            raise serializers.ValidationError(
-                {
-                    "content_type": _("content_type is required with content."),
-                },
+        lowered = file_type = None
+        if content_type:
+            lowered, file_type = self._map_content_type(content_type)
+        else:
+            lowered, file_type = self._infer_content_type(
+                raw_content=raw_content,
+                normalized_content=normalized_content,
+                filename=filename,
+                content_encoding=content_encoding,
             )
-        lowered, file_type = self._map_content_type(content_type)
+            if lowered is None or file_type is None:
+                raise serializers.ValidationError(
+                    {
+                        "content_type": _("content_type is required with content."),
+                    },
+                )
+
         attrs["content_type"] = lowered
         attrs["file_type"] = file_type
 
         # Base64 decode if requested
         if content_encoding == "base64":
+            if normalized_content is None:
+                raise serializers.ValidationError(
+                    {
+                        "content": _("Invalid base64 content."),
+                    },
+                )
             try:
-                decoded = base64.b64decode(content, validate=True)
+                decoded = base64.b64decode(normalized_content, validate=True)
             except (binascii.Error, ValueError) as e:
                 raise serializers.ValidationError(
                     {
@@ -230,13 +254,88 @@ class ValidationRunStartSerializer(serializers.Serializer):
                     },
                 ) from e
             try:
-                content = decoded.decode("utf-8")
+                normalized_content = decoded.decode("utf-8")
             except UnicodeDecodeError:
                 # Fallback...best effort
-                content = decoded.decode("latin-1")
-        attrs["normalized_content"] = content
-        attrs["content"] = content
+                normalized_content = decoded.decode("latin-1")
+
+        attrs["normalized_content"] = normalized_content
+        attrs["content"] = normalized_content
         return attrs
+
+    def _infer_content_type(
+        self,
+        *,
+        raw_content: Any,
+        normalized_content: str | None,
+        filename: str | None,
+        content_encoding: str | None,
+    ) -> tuple[str | None, SubmissionFileType | None]:
+        """
+        Attempt to derive a supported content type when the client did not
+        supply one explicitly.
+        """
+        guess = self._guess_file_type(
+            raw_content=raw_content,
+            normalized_content=normalized_content,
+            filename=filename,
+            content_encoding=content_encoding,
+        )
+        if guess and guess in CONTENT_TYPE_BY_FILE_TYPE:
+            ct = CONTENT_TYPE_BY_FILE_TYPE[guess]
+            return ct, guess
+
+        request = self.context.get("request") if hasattr(self, "context") else None
+        if request:
+            for header_name in ("X-Content-Type", "X-Submission-Content-Type", "Content-Type"):
+                header_ct = request.headers.get(header_name)
+                if not header_ct:
+                    continue
+                try:
+                    return self._map_content_type(header_ct)
+                except serializers.ValidationError:
+                    continue
+
+        return None, None
+
+    def _guess_file_type(
+        self,
+        *,
+        raw_content: Any,
+        normalized_content: str | None,
+        filename: str | None,
+        content_encoding: str | None,
+    ) -> SubmissionFileType | None:
+        """
+        Lightweight heuristics so envelopes can omit content_type when obvious.
+        """
+        name = (filename or "").lower()
+        if name.endswith(".json"):
+            return SubmissionFileType.JSON
+        if name.endswith(".xml"):
+            return SubmissionFileType.XML
+        if name.endswith(".idf") or "energyplus" in name:
+            return SubmissionFileType.ENERGYPLUS_IDF
+
+        if isinstance(raw_content, (dict, list)):
+            return SubmissionFileType.JSON
+
+        if content_encoding == "base64":
+            return None  # cannot inspect encoded payload safely
+
+        sample = None
+        if isinstance(raw_content, str):
+            sample = raw_content.lstrip()
+        elif isinstance(normalized_content, str):
+            sample = normalized_content.lstrip()
+
+        if not sample:
+            return None
+        if sample.startswith(("{", "[")):
+            return SubmissionFileType.JSON
+        if sample.startswith("<"):
+            return SubmissionFileType.XML
+        return None
 
     def _check_content(self, content: str | None, content_encoding: str | None) -> bool:
         """

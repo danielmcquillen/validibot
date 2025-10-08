@@ -5,8 +5,6 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
-from django.urls import reverse
-from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.http import urlencode
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +17,7 @@ from rest_framework import permissions
 from rest_framework import viewsets
 
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.serializers import ValidationRunSerializer
@@ -189,7 +188,7 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": _("Validations"),
-                "url": reverse("validations:validation_list"),
+                "url": reverse_with_org("validations:validation_list", request=self.request),
             },
         )
         breadcrumbs.append(
@@ -207,7 +206,9 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
     template_name = "validations/partials/validation_confirm_delete.html"
-    success_url = reverse_lazy("validations:validation_list")
+
+    def get_success_url(self):
+        return reverse_with_org("validations:validation_list", request=self.request)
 
     def get_breadcrumbs(self):
         validation = getattr(self, "object", None) or self.get_object()
@@ -215,13 +216,17 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
         breadcrumbs.append(
             {
                 "name": _("Validations"),
-                "url": reverse("validations:validation_list"),
+                "url": reverse_with_org("validations:validation_list", request=self.request),
             },
         )
         breadcrumbs.append(
             {
                 "name": _("Run #%(pk)s") % {"pk": validation.pk},
-                "url": reverse("validations:validation_detail", args=[validation.pk]),
+                "url": reverse_with_org(
+                    "validations:validation_detail",
+                    request=self.request,
+                    kwargs={"pk": validation.pk},
+                ),
             },
         )
         breadcrumbs.append({"name": _("Delete"), "url": ""})

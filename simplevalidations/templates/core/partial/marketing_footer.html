@@ -47,7 +47,7 @@ This footer appears on all 'marketing' pages of the site available to all users,
                             </li>
                             {% if request.user.is_authenticated %}
                                 <li>
-                                    <a href="{% url 'dashboard:my_dashboard' %}">My Dashboard</a>
+                                    <a href="{% org_url 'dashboard:my_dashboard' %}">My Dashboard</a>
                                 </li>
                             {% endif %}
                         </ul>

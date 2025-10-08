@@ -3,14 +3,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 from typing import Any
-from xml.dom import NotFoundErr
+from datetime import datetime
 
-from django.db import IntegrityError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.tracking.constants import TrackingEventType
 from simplevalidations.tracking.models import TrackingEvent
+from simplevalidations.validations.constants import ValidationRunStatus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from simplevalidations.users.models import Organization
     from simplevalidations.users.models import User
     from simplevalidations.workflows.models import Workflow
+    from simplevalidations.validations.models import ValidationRun
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class TrackingEventService:
         org: Organization | None,
         user: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         """
         Persist a tracking event if the required context is available.
@@ -60,6 +62,7 @@ class TrackingEventService:
                 org=org,
                 user=user,
                 extra_data=extra_data,
+                recorded_at=recorded_at,
             )
         except Exception:
             logger.exception(
@@ -83,6 +86,7 @@ class TrackingEventService:
         org: Organization | None,
         user: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         if not event_type:
             raise ValueError(_("Event type is required to log a tracking event"))
@@ -106,46 +110,162 @@ class TrackingEventService:
                 },
             )
 
-        tracking_event = TrackingEvent.objects.create(
+        create_kwargs: dict[str, Any] = {
+            "project": project,
+            "org": org,
+            "user": actor,
+            "event_type": resolved_type,
+            "app_event_type": resolved_app_event_type,
+            "extra_data": prepared_extra,
+        }
+        if recorded_at:
+            create_kwargs["created"] = recorded_at
+            create_kwargs["modified"] = recorded_at
+
+        tracking_event = TrackingEvent.objects.create(**create_kwargs)
+        return tracking_event
+
+    _RUN_STATUS_EVENT_MAP: dict[str, AppEventType] = {
+        ValidationRunStatus.SUCCEEDED: AppEventType.VALIDATION_RUN_SUCCEEDED,
+        ValidationRunStatus.FAILED: AppEventType.VALIDATION_RUN_FAILED,
+        ValidationRunStatus.CANCELED: AppEventType.VALIDATION_RUN_CANCELED,
+        ValidationRunStatus.TIMED_OUT: AppEventType.VALIDATION_RUN_TIMED_OUT,
+    }
+
+    def log_validation_run_event(
+        self,
+        *,
+        run: "ValidationRun" | None = None,
+        workflow: Workflow | None = None,
+        project: Project | None = None,
+        org: Organization | None = None,
+        actor: User | None = None,
+        event_type: AppEventType,
+        submission_id: Any | None = None,
+        validation_run_id: Any | None = None,
+        extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
+    ) -> TrackingEvent | None:
+        """
+        Generic helper for logging validation run lifecycle events.
+        """
+
+        if run is not None:
+            workflow = workflow or getattr(run, "workflow", None)
+            project = project or getattr(run, "project", None)
+            if project is None and getattr(run, "submission", None):
+                project = getattr(run.submission, "project", None)
+            org = org or getattr(run, "org", None)
+            if actor is None:
+                actor = getattr(run, "user", None)
+            if submission_id is None and getattr(run, "submission", None):
+                submission_id = getattr(run.submission, "pk", None)
+            if validation_run_id is None:
+                validation_run_id = getattr(run, "pk", None)
+
+        event_workflow = workflow or getattr(run, "workflow", None) if run else None
+        event_project = project or getattr(event_workflow, "project", None)
+        event_org = org or getattr(event_workflow, "org", None)
+
+        payload: dict[str, Any] = {}
+        if event_workflow:
+            payload.update(
+                {
+                    "workflow_pk": getattr(event_workflow, "pk", None),
+                    "workflow_uuid": getattr(event_workflow, "uuid", None),
+                    "workflow_slug": getattr(event_workflow, "slug", None),
+                    "workflow_version": getattr(event_workflow, "version", None),
+                },
+            )
+        if submission_id is not None:
+            payload["submission_id"] = submission_id
+        if validation_run_id is not None:
+            payload["validation_run_id"] = validation_run_id
+        if extra_data:
+            payload.update(extra_data)
+
+        cleaned_payload = {k: v for k, v in payload.items() if v is not None}
+
+        return self.log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=event_type,
+            project=event_project,
+            org=event_org,
+            user=actor,
+            extra_data=cleaned_payload or None,
+            recorded_at=recorded_at,
+        )
+
+    def log_validation_run_created(
+        self,
+        *,
+        run: "ValidationRun" | None = None,
+        workflow: Workflow | None = None,
+        project: Project | None = None,
+        org: Organization | None = None,
+        user: User | None = None,
+        submission_id: Any | None = None,
+        validation_run_id: Any | None = None,
+        extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
+    ) -> TrackingEvent | None:
+        return self.log_validation_run_event(
+            run=run,
+            workflow=workflow,
             project=project,
             org=org,
-            user=actor,
-            event_type=resolved_type,
-            app_event_type=resolved_app_event_type,
-            extra_data=prepared_extra,
+            actor=user,
+            event_type=AppEventType.VALIDATION_RUN_CREATED,
+            submission_id=submission_id,
+            validation_run_id=validation_run_id,
+            extra_data=extra_data,
+            recorded_at=recorded_at,
         )
-        return tracking_event
 
     def log_validation_run_started(
         self,
         *,
-        workflow: Workflow,
-        project: Project | None,
-        user: User | None,
+        run: "ValidationRun" | None = None,
+        workflow: Workflow | None = None,
+        project: Project | None = None,
+        user: User | None = None,
         submission_id: Any | None = None,
         validation_run_id: Any | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         """Public method for logging workflow start events."""
 
         tracking_event = None
         try:
-            tracking_event = self._log_validation_run_started(
+            tracking_event = self.log_validation_run_event(
+                run=run,
                 workflow=workflow,
                 project=project,
-                user=user,
+                org=getattr(workflow, "org", None) if workflow else None,
+                actor=user,
                 submission_id=submission_id,
                 validation_run_id=validation_run_id,
                 extra_data=extra_data,
+                recorded_at=recorded_at,
+                event_type=AppEventType.VALIDATION_RUN_STARTED,
             )
         except Exception:
             logger.exception(
                 "Unexpected error while logging validation run started event",
                 extra={
-                    "workflow_id": getattr(workflow, "pk", None),
-                    "workflow_uuid": getattr(workflow, "uuid", None),
-                    "workflow_slug": getattr(workflow, "slug", None),
-                    "workflow_version": getattr(workflow, "version", None),
+                    "workflow_id": getattr(workflow, "pk", None)
+                    if workflow
+                    else getattr(run, "workflow_id", None),
+                    "workflow_uuid": getattr(workflow, "uuid", None)
+                    if workflow
+                    else getattr(getattr(run, "workflow", None), "uuid", None),
+                    "workflow_slug": getattr(workflow, "slug", None)
+                    if workflow
+                    else getattr(getattr(run, "workflow", None), "slug", None),
+                    "workflow_version": getattr(workflow, "version", None)
+                    if workflow
+                    else getattr(getattr(run, "workflow", None), "version", None),
                     "project_id": getattr(project, "pk", None),
                     "user_id": getattr(user, "pk", None),
                     "submission_id": submission_id,
@@ -154,43 +274,38 @@ class TrackingEventService:
             )
         return tracking_event
 
-    def _log_validation_run_started(
+    def log_validation_run_status(
         self,
         *,
-        workflow: Workflow,
-        project: Project | None,
-        user: User | None,
-        submission_id: Any | None = None,
-        validation_run_id: Any | None = None,
+        run: "ValidationRun",
+        status: str,
+        actor: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
-        """Convenience helper for logging workflow start events."""
+        status_value = (
+            status.value
+            if hasattr(status, "value")
+            else str(status) if status is not None else None
+        )
+        if not status_value:
+            return None
+        event_type = self._RUN_STATUS_EVENT_MAP.get(status_value)
+        if not event_type:
+            logger.debug("No tracking event configured for run status '%s'", status_value)
+            return None
 
-        event_project = project or getattr(workflow, "project", None)
-
-        payload: dict[str, Any] = {
-            "workflow_pk": getattr(workflow, "pk", None),
-            "workflow_uuid": getattr(workflow, "uuid", None),
-            "workflow_slug": getattr(workflow, "slug", None),
-            "workflow_version": getattr(workflow, "version", None),
-        }
-        if submission_id is not None:
-            payload["submission_id"] = submission_id
-        if validation_run_id is not None:
-            payload["validation_run_id"] = validation_run_id
+        payload: dict[str, Any] = {"status": status_value}
         if extra_data:
             payload.update(extra_data)
 
-        tracking_event = self.log_tracking_event(
-            event_type=TrackingEventType.APP_EVENT,
-            app_event_type=AppEventType.VALIDATION_RUN_STARTED,
-            project=event_project,
-            org=getattr(workflow, "org", None),
-            user=user,
+        return self.log_validation_run_event(
+            run=run,
+            actor=actor,
+            event_type=event_type,
             extra_data=payload,
+            recorded_at=recorded_at,
         )
-
-        return tracking_event
 
     def _resolve_event_type(self, event_type: str) -> str:
         if event_type in TrackingEventType.values:

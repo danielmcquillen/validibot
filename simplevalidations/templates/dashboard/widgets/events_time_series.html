@@ -1,0 +1,20 @@
+{% extends "dashboard/widgets/base_widget.html" %}
+
+{% block widget_body %}
+  {% with chart_config_id="chart-config-"|add:widget.slug %}
+    {% if has_data %}
+      <div class="chart-wrapper position-relative" style="height: 240px;">
+        <canvas class="w-100" height="200"
+                data-chart-config-id="{{ chart_config_id }}"
+                data-chart-type="line"></canvas>
+      </div>
+      <script type="application/json" id="{{ chart_config_id }}">{{ chart_config_json|safe }}</script>
+    {% else %}
+      <div class="d-flex flex-column justify-content-center align-items-center text-center py-5">
+        <i class="bi bi-activity text-muted display-5 mb-3"></i>
+        <p class="mb-1 fw-semibold">No events in {{ time_range.label|lower }}</p>
+        <p class="text-muted small mb-0">Instrument more actions to populate this widget.</p>
+      </div>
+    {% endif %}
+  {% endwith %}
+{% endblock %}

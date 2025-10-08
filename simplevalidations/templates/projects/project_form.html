@@ -1,0 +1,42 @@
+{% extends "app_base.html" %}
+{% load i18n crispy_forms_tags %}
+
+{% block title %}
+  {% if object %}{% blocktrans with name=object.name %}Edit {{ name }}{% endblocktrans %}{% else %}{% trans "New project" %}{% endif %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "core/partial/app/left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="project-form">
+    <div class="row">
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h1 class="h5 mb-3">
+              {% if object %}
+                {% blocktrans with name=object.name %}Edit {{ name }}{% endblocktrans %}
+              {% else %}
+                {% trans "Create project" %}
+              {% endif %}
+            </h1>
+            <form method="post" novalidate>
+              {% csrf_token %}
+              {{ form|crispy }}
+              <div class="d-flex justify-content-end gap-2 mt-3">
+                <a href="{% url 'projects:project-list' %}" class="btn btn-outline-secondary">
+                  {% trans "Cancel" %}
+                </a>
+                <button type="submit" class="btn btn-primary">
+                  {% trans "Save" %}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

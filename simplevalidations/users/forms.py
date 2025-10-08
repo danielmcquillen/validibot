@@ -1,10 +1,13 @@
 from allauth.account.forms import SignupForm
 from allauth.socialaccount.forms import SignupForm as SocialSignupForm
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Submit
 from django import forms
 from django.contrib.auth import forms as admin_forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.models import Membership, Organization, User
 
 
 class UserProfileForm(forms.ModelForm):
@@ -80,6 +83,107 @@ class UserProfileForm(forms.ModelForm):
             user.save()
             self.save_m2m()
         return user
+
+
+class OrganizationForm(forms.ModelForm):
+    class Meta:
+        model = Organization
+        fields = ["name"]
+        widgets = {
+            "name": forms.TextInput(
+                attrs={
+                    "placeholder": _("Acme Validation Lab"),
+                },
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = "post"
+        self.helper.form_tag = False
+
+
+class OrganizationMemberForm(forms.Form):
+    email = forms.EmailField(label=_("User email"))
+    roles = forms.MultipleChoiceField(
+        label=_("Roles"),
+        required=False,
+        choices=RoleCode.choices,
+        widget=forms.CheckboxSelectMultiple,
+        initial=[RoleCode.VIEWER],
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.organization: Organization | None = kwargs.pop("organization", None)
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = "post"
+        self.helper.form_tag = False
+        if self.organization:
+            self.fields["email"].help_text = _(
+                "Enter the email address of an existing user to add them to %(org)s."
+            ) % {"org": self.organization.name}
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        try:
+            self.user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist as exc:  # pragma: no cover - guard
+            raise forms.ValidationError(
+                _("No user with that email exists in SimpleValidations."),
+            ) from exc
+        return email
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.organization is None:
+            raise forms.ValidationError("Organization context is required.")
+
+        if hasattr(self, "user"):
+            existing = Membership.objects.filter(
+                user=self.user,
+                org=self.organization,
+            ).first()
+            if existing:
+                raise forms.ValidationError(
+                    _("That user is already a member of this organization."),
+                )
+        return cleaned
+
+    def save(self) -> Membership:
+        roles = self.cleaned_data.get("roles") or [RoleCode.VIEWER]
+        membership = Membership.objects.create(
+            user=self.user,
+            org=self.organization,
+            is_active=True,
+        )
+        membership.set_roles(roles)
+        return membership
+
+
+class OrganizationMemberRolesForm(forms.Form):
+    roles = forms.MultipleChoiceField(
+        label=_("Roles"),
+        required=False,
+        choices=RoleCode.choices,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.membership: Membership = kwargs.pop("membership")
+        super().__init__(*args, **kwargs)
+        self.fields["roles"].initial = list(self.membership.role_codes)
+        self.helper = FormHelper()
+        self.helper.form_method = "post"
+        self.helper.form_tag = False
+
+    def save(self) -> Membership:
+        roles = self.cleaned_data.get("roles") or []
+        if not roles:
+            roles = [RoleCode.VIEWER]
+        self.membership.set_roles(roles)
+        return self.membership
 
 
 class UserAdminChangeForm(admin_forms.UserChangeForm):

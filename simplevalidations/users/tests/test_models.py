@@ -10,10 +10,13 @@ def test_user_get_absolute_url(user: User):
 def test_personal_org_assigns_executor_role(db):
     user = User.objects.create(username="solo-user", email="solo@example.com")
 
-    assert user.memberships.count() == 0
-
     org = user.get_current_org()
     membership = Membership.objects.get(user=user, org=org)
 
+    assert org.is_personal is True
     assert membership.has_role(RoleCode.OWNER)
     assert membership.has_role(RoleCode.EXECUTOR)
+    assert membership.has_role(RoleCode.ADMIN)
+    default_project = org.projects.first()
+    assert default_project is not None
+    assert default_project.is_default

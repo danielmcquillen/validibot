@@ -14,6 +14,7 @@ from django.utils.translation import gettext as _
 from rest_framework import status
 from rest_framework.response import Response
 
+from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.validations.constants import StepStatus
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.engines.registry import get as get_validator_class
@@ -102,11 +103,18 @@ class ValidationRunService:
             err_msg = "User does not have permission to execute this workflow"
             raise PermissionError(err_msg)
 
+        run_user = None
+        if getattr(submission, "user_id", None):
+            run_user = submission.user
+        elif getattr(request.user, "is_authenticated", False):
+            run_user = request.user
+
         validation_run = ValidationRun.objects.create(
             org=org,
             workflow=workflow,
             submission=submission,
-            project=None,  # TODO: set project if applicable
+            project=getattr(submission, "project", None),
+            user=run_user,
             status=ValidationRunStatus.PENDING,
         )
         try:
@@ -118,6 +126,17 @@ class ValidationRunService:
                 "Failed to update submission.latest_run for submission",
                 extra={"submission_id": submission.id},
             )
+
+        tracking_service = TrackingEventService()
+        created_extra: dict[str, Any] = {}
+        if metadata:
+            created_extra["metadata_keys"] = sorted(metadata.keys())
+        tracking_service.log_validation_run_created(
+            run=validation_run,
+            user=run_user,
+            submission_id=submission.pk,
+            extra_data=created_extra or None,
+        )
 
         async_result = execute_validation_run.apply_async(
             kwargs={
@@ -212,18 +231,27 @@ class ValidationRunService:
             )
             return result
 
+        tracking_service = TrackingEventService()
+        actor = self._resolve_run_actor(validation_run, user_id)
+
         # Mark running
         validation_run.status = ValidationRunStatus.RUNNING
         if not validation_run.started_at:
             validation_run.started_at = timezone.now()
 
         validation_run.save(update_fields=["status", "started_at"])
+        tracking_service.log_validation_run_started(
+            run=validation_run,
+            user=actor,
+            extra_data={"status": ValidationRunStatus.RUNNING},
+        )
 
         # Try to run each step in the workflow
         # We don't need an execution plan we can just run the steps in order.
         workflow: Workflow = validation_run.workflow
         overall_failed = False
         step_summaries = []
+        failing_step_id = None
         try:
             workflow_steps = workflow.steps.all().order_by("order")
             for wf_step in workflow_steps:
@@ -244,6 +272,7 @@ class ValidationRunService:
                 step_summaries.append(step_summary)
                 if not validation_result.passed:
                     overall_failed = True
+                    failing_step_id = wf_step.id
                     # For now we stop on first failure
                     break
         except Exception as exc:
@@ -254,6 +283,12 @@ class ValidationRunService:
             if hasattr(validation_run, "error"):
                 validation_run.error = str(exc)
             validation_run.save()
+            tracking_service.log_validation_run_status(
+                run=validation_run,
+                status=ValidationRunStatus.FAILED,
+                actor=actor,
+                extra_data={"exception": str(exc)},
+            )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
@@ -296,6 +331,16 @@ class ValidationRunService:
             status=validation_run.status,
             summary=validation_run_summary,
             error=validation_run.error,
+        )
+        completion_extra: dict[str, Any] = {
+            "step_count": len(step_summaries),
+            "failing_step_id": failing_step_id,
+        }
+        tracking_service.log_validation_run_status(
+            run=validation_run,
+            status=validation_run.status,
+            actor=actor,
+            extra_data={k: v for k, v in completion_extra.items() if v is not None},
         )
 
         return result
@@ -419,3 +464,23 @@ class ValidationRunService:
         )
 
         return validation_result
+
+    def _resolve_run_actor(
+        self,
+        validation_run: ValidationRun,
+        user_id: int | None,
+    ):
+        if getattr(validation_run, "user_id", None):
+            return validation_run.user
+        submission_user = getattr(getattr(validation_run, "submission", None), "user", None)
+        if submission_user and getattr(submission_user, "is_authenticated", False):
+            return submission_user
+        if user_id:
+            from django.contrib.auth import get_user_model  # noqa: PLC0415
+
+            UserModel = get_user_model()
+            try:
+                return UserModel.objects.get(pk=user_id)
+            except UserModel.DoesNotExist:
+                return None
+        return None

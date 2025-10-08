@@ -1,4 +1,5 @@
 {% extends "app_base.html" %}
+
 {% load i18n %}
 
 {% block title %}
@@ -10,17 +11,17 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div class="container-fluid" id="project-list">
-    <div class="app-content-header-bar row align-items-center mb-3">
-      <div class="col-12 col-lg-8">
-        <h1 class="app-page-title mb-2">
+  <div id="project-list" class="container-fluid">
+    <div class="app-content-header-bar row ">
+      <div class="app-content-header col-12 col-lg-6 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title me-3">
           {% trans "Projects" %}
         </h1>
         <p class="text-muted small mb-0">
-          {% blocktrans with name=organization.name %}Projects within {{ name }}{% endblocktrans %}
+          {% blocktrans with name=organization.name %}Projects within <strong>"{{ name }}"</strong>{% endblocktrans %}
         </p>
       </div>
-      <div class="col-12 col-lg-4 d-flex justify-content-lg-end">
+      <div class="col-12 col-lg-6 d-flex justify-content-end p-0">
         <a class="btn btn-primary" href="{{ create_url }}">
           <i class="bi bi-plus-lg me-1"></i>
           {% trans "New project" %}
@@ -35,14 +36,23 @@
             <table class="table align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">{% trans "Name" %}</th>
-                  <th scope="col" class="d-none d-md-table-cell">{% trans "Description" %}</th>
-                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                  <th scope="col">
+                    {% trans "Name" %}
+                  </th>
+                  <th scope="col" class="d-none d-md-table-cell">
+                    {% trans "Description" %}
+                  </th>
+                  <th scope="col" class="text-end">
+                    {% trans "Actions" %}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {% for project in projects %}
-                  <tr id="project-row-{{ project.pk }}" class="{% if project.is_default %}table-active{% endif %}">
+                  <tr id="project-row-{{ project.pk }}"
+                      class="{% if project.is_default %}
+                               table-active
+                             {% endif %}">
                     <td class="fw-semibold">
                       {{ project.name }}
                       {% if project.is_default %}

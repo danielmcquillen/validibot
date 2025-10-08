@@ -1,8 +1,4 @@
-// Import all javascript libraries and functions.
-// This 'project.ts' file is meant for javascript, typescript and css/scss
-// that is used across the entire project.
-
-// ( app.ts holds code specific to the main app interface )
+// Import all javascript libraries and functions and css styles.
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import * as bootstrap from 'bootstrap';

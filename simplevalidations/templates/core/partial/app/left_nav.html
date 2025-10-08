@@ -3,137 +3,147 @@
 {% user_settings_nav_state as user_settings_nav %}
 <div id="left-nav" class="text-bg-white d-flex flex-column h-100">
 
-    <div class="left-nav-title">
-        <a href="{% url 'marketing:home' %}"
-           class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-decoration-none">
-            SimpleValidations
-        </a>
-    </div>
+  <div class="left-nav-title">
+    <a href="{% url 'marketing:home' %}"
+       class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-decoration-none">
+      SimpleValidations
+    </a>
+  </div>
 
-    {% if org_memberships %}
-      <div class="dropdown left-nav-organization mb-4">
-        <button class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-between"
-                type="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false">
-          <span class="d-flex align-items-center gap-2">
-            <span class="left-nav-org-avatar text-uppercase fw-semibold">
-              {% if active_org %}{{ active_org.name|first|upper }}{% else %}?{% endif %}
-            </span>
-            <span class="left-nav-org-name text-truncate">
-              {% if active_org %}
-                {{ active_org.name }}
-              {% else %}
-                {% trans "Select organization" %}
-              {% endif %}
-            </span>
-          </span>
-          <i class="bi bi-caret-down-fill small"></i>
-        </button>
-        <div class="dropdown-menu w-100 p-2 shadow-sm">
-          <h6 class="dropdown-header text-uppercase small text-muted">{% trans "Switch organization" %}</h6>
-          {% for membership in org_memberships %}
-            <form method="post"
-                  action="{% url 'users:organization-switch' membership.org_id %}"
-                  class="mb-1">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-              <button type="submit"
-                      class="dropdown-item d-flex align-items-center justify-content-between {% if membership.org_id == active_org.id %}active{% endif %}"
-                      {% if membership.org_id == active_org.id %}disabled{% endif %}>
-                <span>{{ membership.org.name }}</span>
-                {% if membership.is_admin %}
-                  <span class="badge text-bg-light text-uppercase ms-2">{% trans "Admin" %}</span>
-                {% endif %}
-              </button>
-            </form>
-          {% empty %}
-            <div class="text-muted small px-2 py-1">{% trans "No organizations available" %}</div>
-          {% endfor %}
+  {% if org_memberships %}
+    <div class="dropdown left-nav-organization mb-4">
+      <button class="btn btn-outline-secondary w-100 d-flex align-items-center justify-content-between"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false">
+        <div class="d-flex align-items-center gap-2">
+          <div class="d-block left-nav-org-avatar text-uppercase fw-semibold  text-truncate">
+            {% if active_org %}
+              {{ active_org.name|first|upper }}
+            {% else %}
+              ?
+            {% endif %}
+          </div>
+          <div class="d-block  left-nav-org-name text-truncate">
+            {% if active_org %}
+              {{ active_org.name }}
+            {% else %}
+              {% trans "Select organization" %}
+            {% endif %}
+          </div>
         </div>
+        <i class="bi bi-caret-down-fill small"></i>
+      </button>
+      <div class="dropdown-menu w-100 p-2 shadow-sm">
+        <h6 class="dropdown-header text-uppercase small text-muted">
+          {% trans "Switch organization" %}
+        </h6>
+        {% for membership in org_memberships %}
+          <form method="post"
+                action="{% url 'users:organization-switch' membership.org_id %}"
+                class="mb-1">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="submit"
+                    class="dropdown-item d-flex align-items-center justify-content-between
+                           {% if membership.org_id == active_org.id %}
+                             active
+                           {% endif %}"
+                    {% if membership.org_id == active_org.id %}
+                      disabled
+                    {% endif %}>
+              <span>{{ membership.org.name }}</span>
+              {% if membership.is_admin %}
+                <span class="badge text-bg-light text-uppercase ms-2">{% trans "Admin" %}</span>
+              {% endif %}
+            </button>
+          </form>
+        {% empty %}
+          <div class="text-muted small px-2 py-1">
+            {% trans "No organizations available" %}
+          </div>
+        {% endfor %}
       </div>
-    {% endif %}
+    </div>
+  {% endif %}
 
-    <ul class="nav nav-pills flex-column mb-auto" role="menu">
-        <li class="nav-item" role="none">
-            <a href="{% org_url 'dashboard:my_dashboard' %}"
-               class="nav-link {% active_link 'dashboard' %}"
-               role="menuitem">
-                <i class="bi bi-speedometer2"></i>
-                <span>{% trans "Dashboard" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% org_url 'workflows:workflow_list' %}"
-               class="nav-link   {% active_link 'workflows' %}"
-               role="menuitem">
-                <i class="bi bi-diagram-3"></i>
-                <span>{% trans "Workflows" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% org_url 'validations:validation_list' %}"
-               class="nav-link   {% active_link 'validations' %}"
-               role="menuitem">
-                <i class="bi bi-shield-check"></i>
-                <span>{% trans "Validation Runs" %}</span>
-            </a>
-        </li>
-        <li class="nav-item " role="none">
-            <a href="{% org_url 'users:profile' %}"
-               class="nav-link
-                      {% if user_settings_nav.profile %}
-                          active
-                      {% endif %}"
-               role="menuitem">
-                <i class="bi bi-person-circle"></i>
-                <span>{% trans "User Profile" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% org_url 'users:email' %}"
-               class="nav-link
-                      {% if user_settings_nav.email %}
-                          active
-                      {% endif %}"
-               role="menuitem">
-                <i class="bi bi-envelope"></i>
-                <span>{% trans "User Email" %}</span>
-            </a>
-        </li>
-        <li class="nav-item" role="none">
-            <a href="{% org_url 'users:api-key' %}"
-               class="nav-link
-                      {% if user_settings_nav.api_key %}
-                          active
-                      {% endif %}"
-               role="menuitem">
-                <i class="bi bi-key"></i>
-                <span>{% trans "User API Key" %}</span>
-            </a>
-        </li>
-    </ul>
+  <ul class="nav nav-pills flex-column mb-auto" role="menu">
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'dashboard:my_dashboard' %}"
+         class="nav-link {% active_link 'dashboard' %}"
+         role="menuitem">
+        <i class="bi bi-speedometer2"></i>
+        <span>{% trans "Dashboard" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'workflows:workflow_list' %}"
+         class="nav-link   {% active_link 'workflows' %}"
+         role="menuitem">
+        <i class="bi bi-diagram-3"></i>
+        <span>{% trans "Workflows" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'validations:validation_list' %}"
+         class="nav-link   {% active_link 'validations' %}"
+         role="menuitem">
+        <i class="bi bi-shield-check"></i>
+        <span>{% trans "Validation Runs" %}</span>
+      </a>
+    </li>
+    <li class="nav-item " role="none">
+      <a href="{% org_url 'users:profile' %}"
+         class="nav-link
+                {% if user_settings_nav.profile %}
+                  active
+                {% endif %}"
+         role="menuitem">
+        <i class="bi bi-person-circle"></i>
+        <span>{% trans "User Profile" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'users:email' %}"
+         class="nav-link
+                {% if user_settings_nav.email %}
+                  active
+                {% endif %}"
+         role="menuitem">
+        <i class="bi bi-envelope"></i>
+        <span>{% trans "User Email" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'users:api-key' %}"
+         class="nav-link
+                {% if user_settings_nav.api_key %}
+                  active
+                {% endif %}"
+         role="menuitem">
+        <i class="bi bi-key"></i>
+        <span>{% trans "User API Key" %}</span>
+      </a>
+    </li>
 
     {% if is_org_admin %}
-      <div class="left-nav-footer mt-4 pt-3 border-top">
-        <ul class="nav nav-pills flex-column" role="menu">
-          <li class="nav-item" role="none">
-            <a href="{% org_url 'users:organization-list' %}"
-               class="nav-link {% active_link 'users/organizations' %}"
-               role="menuitem">
-                <i class="bi bi-people"></i>
-                <span>{% trans "Manage organizations" %}</span>
-            </a>
-          </li>
-          <li class="nav-item" role="none">
-            <a href="{% org_url 'projects:project-list' %}"
-               class="nav-link {% active_link 'projects' %}"
-               role="menuitem">
-                <i class="bi bi-kanban"></i>
-                <span>{% trans "Manage projects" %}</span>
-            </a>
-          </li>
-        </ul>
-      </div>
+      <li class="nav-item" role="none">
+        <a href="{% org_url 'projects:project-list' %}"
+           class="nav-link {% active_link 'projects' %}"
+           role="menuitem">
+          <i class="bi bi-kanban"></i>
+          <span>{% trans "Manage projects" %}</span>
+        </a>
+      </li>
+      <li class="nav-item" role="none">
+        <a href="{% org_url 'users:organization-list' %}"
+           class="nav-link {% active_link 'users/organizations' %}"
+           role="menuitem">
+          <i class="bi bi-people"></i>
+          <span>{% trans "Manage orgs" %}</span>
+        </a>
+      </li>
     {% endif %}
+  </ul>
+
 </div>

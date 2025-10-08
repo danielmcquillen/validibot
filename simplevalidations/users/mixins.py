@@ -42,9 +42,14 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
                 return obj.org
         pk = self.kwargs.get(self.organization_lookup_kwarg)
         if pk is None:
-            return getattr(self.request, "active_org", None) or getattr(
-                self.request.user,
-                "current_org",
-                None,
-            )
+            session_org_id = self.request.session.get("active_org_id")
+            if session_org_id:
+                try:
+                    return Organization.objects.get(pk=session_org_id)
+                except Organization.DoesNotExist:  # pragma: no cover
+                    pass
+            active = getattr(self.request, "active_org", None)
+            if active:
+                return active
+            return getattr(self.request.user, "current_org", None)
         return get_object_or_404(Organization, pk=pk)

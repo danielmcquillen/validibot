@@ -10,6 +10,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 
+from simplevalidations.projects.models import Project
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, Organization, Role, User
 
@@ -91,6 +92,14 @@ class Workflow(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="workflows",
     )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflows",
+        help_text=_("Default project to associate with runs triggered from this workflow."),
+    )
 
     user = models.ForeignKey(
         User,
@@ -138,6 +147,14 @@ class Workflow(TimeStampedModel):
     def clean(self):
         if not self.name or not self.name.strip():
             raise ValidationError({"name": _("Name is required.")})
+        if (
+            self.project_id
+            and self.org_id
+            and self.project.org_id != self.org_id
+        ):
+            raise ValidationError(
+                {"project": _("Project must belong to the workflow's organization.")},
+            )
 
     def save(self, *args, **kwargs):
         self.full_clean()

@@ -58,13 +58,18 @@ def test_project_create(client_admin):
 
     response = client.post(
         reverse("projects:project-create"),
-        data={"name": "Analytics", "description": "Dashboards"},
+        data={
+            "name": "Analytics",
+            "description": "Dashboards",
+            "color": "#00AA88",
+        },
         follow=True,
     )
 
     assert response.status_code == 200
     project = Project.objects.get(name="Analytics")
     assert project.org == org
+    assert project.color == "#00AA88"
 
 
 @pytest.mark.django_db
@@ -74,12 +79,17 @@ def test_project_update(client_admin):
 
     response = client.post(
         reverse("projects:project-update", args=[project.pk]),
-        data={"name": "Updated Project", "description": "Updated"},
+        data={
+            "name": "Updated Project",
+            "description": "Updated",
+            "color": "#1185FF",
+        },
         follow=True,
     )
     assert response.status_code == 200
     project.refresh_from_db()
     assert project.name == "Updated Project"
+    assert project.color == "#1185FF"
 
 
 @pytest.mark.django_db

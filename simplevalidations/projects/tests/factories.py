@@ -15,6 +15,7 @@ class ProjectFactory(DjangoModelFactory):
     description = factory.Faker("text", max_nb_chars=200)
     is_default = False
     is_active = True
+    color = "#6C757D"
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):

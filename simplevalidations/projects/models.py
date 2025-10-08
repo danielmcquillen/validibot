@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import secrets
+
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -28,6 +31,13 @@ class ProjectAllManager(models.Manager.from_queryset(ProjectQuerySet)):
     pass
 
 
+def generate_random_color() -> str:
+    """
+    Return a random hex colour in the format #RRGGBB.
+    """
+    return f"#{secrets.token_hex(3).upper()}"
+
+
 class Project(TimeStampedModel):
     """
     Optional namespace under an org. Helps teams separate keys/usage.
@@ -50,6 +60,9 @@ class Project(TimeStampedModel):
 
     objects = ProjectManager()
     all_objects = ProjectAllManager()
+
+    DEFAULT_BADGE_COLOR = "#6C757D"
+    HEX_COLOR_MESSAGE = _("Use a hex color code like #1F883D.")
 
     org = models.ForeignKey(
         Organization,
@@ -88,10 +101,25 @@ class Project(TimeStampedModel):
     )
 
     deleted_at = models.DateTimeField(null=True, blank=True)
+    color = models.CharField(
+        max_length=7,
+        default=generate_random_color,
+        validators=[
+            RegexValidator(
+                regex=r"^#[0-9A-Fa-f]{6}$",
+                message=HEX_COLOR_MESSAGE,
+            ),
+        ],
+        help_text=_("Hex color used when displaying project badges (e.g. #1F883D)."),
+    )
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)
+        if not self.color:
+            self.color = generate_random_color()
+        if self.color:
+            self.color = self.color.upper()
         super().save(*args, **kwargs)
 
     def can_delete(self) -> bool:
@@ -106,12 +134,14 @@ class Project(TimeStampedModel):
         from simplevalidations.validations.models import ValidationRun
         from simplevalidations.tracking.models import TrackingEvent
         from simplevalidations.integrations.models import OutboundEvent
+        from simplevalidations.workflows.models import Workflow
 
         now = timezone.now()
         Submission.objects.filter(project=self).update(project=None)
         ValidationRun.objects.filter(project=self).update(project=None)
         TrackingEvent.objects.filter(project=self).update(project=None)
         OutboundEvent.objects.filter(project=self).update(project=None)
+        Workflow.objects.filter(project=self).update(project=None)
 
         self.is_active = False
         self.deleted_at = now
@@ -119,3 +149,45 @@ class Project(TimeStampedModel):
 
     def __str__(self):
         return f"{self.org.name} - {self.name}"
+
+    def _parsed_rgb(self) -> tuple[int, int, int] | None:
+        color = (self.color or "").strip()
+        if not color or len(color) != 7 or not color.startswith("#"):
+            return None
+        hex_value = color[1:]
+        try:
+            r = int(hex_value[0:2], 16)
+            g = int(hex_value[2:4], 16)
+            b = int(hex_value[4:6], 16)
+        except ValueError:
+            return None
+        return r, g, b
+
+    @property
+    def badge_text_color(self) -> str:
+        """
+        Return a contrasting text color for badges that use the project color.
+        """
+        components = self._parsed_rgb()
+        if not components:
+            return "#1F2328"
+        r, g, b = components
+        # Calculate relative luminance using standard coefficients.
+        luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return "#1F2328" if luminance > 150 else "#FFFFFF"
+
+    @property
+    def badge_border_color(self) -> str:
+        """
+        Return a lighter border color for badges to mimic GitHub-style tags.
+        """
+        components = self._parsed_rgb()
+        if not components:
+            return self.DEFAULT_BADGE_COLOR
+        r, g, b = components
+        lighten = (
+            min(255, int(r + (255 - r) * 0.25)),
+            min(255, int(g + (255 - g) * 0.25)),
+            min(255, int(b + (255 - b) * 0.25)),
+        )
+        return "#{:02X}{:02X}{:02X}".format(*lighten)

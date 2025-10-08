@@ -12,6 +12,18 @@ logger = logging.getLogger(__name__)
 register = template.Library()
 
 
+@register.filter
+def contrast_color(hex_color: str) -> str:
+    """Given a hex color string, return either black or white depending on contrast."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return "#000000"  # Default to black if invalid
+
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    brightness = (r * 299 + g * 587 + b * 114) / 1000
+    return "#000000" if brightness > 128 else "#FFFFFF"
+
+
 @register.simple_tag(takes_context=True)
 def site_name(context) -> Optional[str]:
     request = context.get("request", None)
@@ -97,4 +109,6 @@ def get_item(mapping, key):
 def org_url(context, view_name, *args, **kwargs):
     request = context.get("request")
     resolved_kwargs = dict(kwargs or {})
-    return reverse_with_org(view_name, request=request, args=args, kwargs=resolved_kwargs)
+    return reverse_with_org(
+        view_name, request=request, args=args, kwargs=resolved_kwargs
+    )

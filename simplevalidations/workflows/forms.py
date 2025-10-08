@@ -14,6 +14,7 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
 
+from simplevalidations.projects.models import Project
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -133,7 +134,7 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 class WorkflowForm(forms.ModelForm):
     class Meta:
         model = Workflow
-        fields = ["name", "slug", "version"]
+        fields = ["name", "slug", "project", "version"]
         help_texts = {"version": _("Optional label to help you track iterations.")}
 
     def __init__(self, *args, user=None, **kwargs):
@@ -144,14 +145,43 @@ class WorkflowForm(forms.ModelForm):
         self.helper.layout = Layout(
             Field("name", placeholder=_("Name your workflow"), autofocus=True),
             Field("slug", placeholder=""),
+            Field("project"),
             Field("version", placeholder="e.g. 1.0"),
         )
+        self._configure_project_field()
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
         if not name:
             raise ValidationError(_("Name is required."))
         return name
+
+    def _configure_project_field(self):
+        project_field = self.fields.get("project")
+        if project_field is None:
+            return
+
+        project_field.required = True
+        project_field.empty_label = _("Select a project")
+        project_field.queryset = Project.objects.none()
+
+        if not self.user or not getattr(self.user, "is_authenticated", False):
+            return
+
+        org = self.user.get_current_org()
+        if not org:
+            return
+
+        projects = Project.objects.filter(org=org).order_by("name")
+        project_field.queryset = projects
+
+        if self.instance and self.instance.pk and self.instance.project_id:
+            return
+
+        if not self.initial.get("project"):
+            default_project = projects.filter(is_default=True).first()
+            if default_project:
+                project_field.initial = default_project.pk
 
 
 class WorkflowStepTypeForm(forms.Form):

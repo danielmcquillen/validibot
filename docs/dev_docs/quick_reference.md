@@ -6,7 +6,7 @@ SimpleValidations lets you run validations on submitted content through configur
 
 ### Core Concepts
 
-- **Workflow**: an ordered set of validation steps owned by an organization.
+- **Workflow**: an ordered set of validation steps owned by an organization and scoped to one of its projects.
 - **Submission**: content to validate (either inline text or an uploaded file).
 - **WorkflowStep**: one step in a workflow. Each step will have one type of validation defined.
 - **ValidationRun**: one execution of a submission through a workflow.
@@ -15,7 +15,7 @@ SimpleValidations lets you run validations on submitted content through configur
 
 ### Basic Usage Flow
 
-1. Create a Workflow in the UI and enable its steps.
+1. Create a Workflow in the UI, choose its default project, and enable its steps.
 2. Start a run by POSTing content to the workflow's start endpoint.
 3. The system creates a Submission, enqueues a Validation Run, and returns:
    - 201 Created with the completed run (if it finished quickly), or

@@ -1,6 +1,6 @@
 {% extends "app_base.html" %}
 
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% block title %}
   {% trans "Projects" %} · SimpleValidations
@@ -39,6 +39,9 @@
                   <th scope="col">
                     {% trans "Name" %}
                   </th>
+                  <th scope="col" class="text-center">
+                    {% trans "Color" %}
+                  </th>
                   <th scope="col" class="d-none d-md-table-cell">
                     {% trans "Description" %}
                   </th>
@@ -58,6 +61,14 @@
                       {% if project.is_default %}
                         <span class="badge text-bg-light ms-2">{% trans "Default" %}</span>
                       {% endif %}
+                    </td>
+                    <td class="text-center">
+                      <span class="project-color-swatch"
+                            style="background-color: {{ project.color }};"
+                            aria-hidden="true"></span>
+                      <span class="text-muted small ms-2 project-color-code">
+                        {{ project.color }}
+                      </span>
                     </td>
                     <td class="d-none d-md-table-cell text-muted">
                       {{ project.description|default:_("No description") }}

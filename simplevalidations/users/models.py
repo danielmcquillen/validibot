@@ -53,6 +53,7 @@ def ensure_default_project(organization: "Organization"):
         slug=slug,
         is_default=True,
         is_active=True,
+        color=Project.DEFAULT_BADGE_COLOR,
     )
 
 

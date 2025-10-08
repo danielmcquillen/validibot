@@ -39,6 +39,9 @@ management links.
   restricted to admins of the active organization.
 - Projects are soft-deleted; default projects (created automatically for every
   organization) cannot be removed. HTMX actions keep the list responsive.
+- The project form includes a GitHub-style color picker with a quick randomize
+  action; the chosen color is used for workflow badges so teams can spot context
+  quickly.
 - Deleting a project detaches submissions, validation runs, and tracking events
   from the project so historical data remains intact.
 

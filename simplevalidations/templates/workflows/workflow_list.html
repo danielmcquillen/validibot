@@ -43,8 +43,8 @@
           </div>
           {% if search_query %}
             <div class="col">
-        <a class="btn btn-link text-decoration-none"
-           href="{% org_url 'workflows:workflow_list' %}">
+              <a class="btn btn-link text-decoration-none"
+                 href="{% org_url 'workflows:workflow_list' %}">
                 {% trans "Clear" %}
               </a>
             </div>
@@ -77,10 +77,21 @@
                   {% endif %}
                 </span>
               </div>
-              <p class="text-muted small mb-2">
-                <i class="bi-diagram-3 me-1"></i>
-                {{ workflow.slug }}
-              </p>
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <div class="text-muted small me-auto">
+                  <i class="bi-diagram-3 me-1"></i>
+                  {{ workflow.slug }}
+                </div>
+                {% if workflow.project %}
+                  <div class="badge rounded-pill border border-1 workflow-project-badge"
+                       style="background-color: {{ workflow.project.color }};
+                              color: {{ workflow.project.badge_text_color }};
+                              border-color: {{ workflow.project.badge_border_color }}"
+                       title="{{ workflow.project.name }}">
+                    {{ workflow.project.name }}
+                  </div>
+                {% endif %}
+              </div>
               <p class="text-muted small mb-4">
                 {% trans "Updated" %}
                 {{ workflow.modified|date:"M j, Y" }}

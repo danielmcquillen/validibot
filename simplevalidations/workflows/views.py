@@ -391,7 +391,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         user = self.request.user
         return (
             Workflow.objects.for_user(user)
-            .select_related("org", "user")
+            .select_related("org", "user", "project")
             .prefetch_related("validation_runs")
             .order_by("name", "-version")
         )
@@ -407,7 +407,7 @@ class WorkflowObjectMixin(WorkflowAccessMixin):
         if not hasattr(self, "_workflow"):
             queryset = (
                 self.get_workflow_queryset()
-                .select_related("org", "user")
+                .select_related("org", "user", "project")
                 .prefetch_related("steps")
             )
             workflow_id = self.kwargs.get(self.workflow_url_kwarg)

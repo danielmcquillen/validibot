@@ -1,6 +1,7 @@
 import factory
 from factory.django import DjangoModelFactory
 
+from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -18,7 +19,7 @@ class WorkflowFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Workflow {n}")
     uuid = factory.Faker("uuid4")
     slug = factory.Sequence(lambda n: f"test-workflow-{n}")
-    # project = factory.SubFactory("simplevalidations.projects.tests.factories.ProjectFactory")
+    project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
     version = "1"
     is_locked = False
 

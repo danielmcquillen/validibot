@@ -15,7 +15,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType

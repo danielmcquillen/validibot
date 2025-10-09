@@ -4,7 +4,7 @@ from datetime import datetime
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import TextField
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 
 User = get_user_model()
 

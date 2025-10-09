@@ -7,7 +7,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 
 from simplevalidations.users.models import Organization
 
@@ -130,10 +130,10 @@ class Project(TimeStampedModel):
             raise ValueError("Default projects cannot be deleted.")
         if not self.is_active:
             return
-        from simplevalidations.submissions.models import Submission
-        from simplevalidations.validations.models import ValidationRun
-        from simplevalidations.tracking.models import TrackingEvent
         from simplevalidations.integrations.models import OutboundEvent
+        from simplevalidations.submissions.models import Submission
+        from simplevalidations.tracking.models import TrackingEvent
+        from simplevalidations.validations.models import ValidationRun
         from simplevalidations.workflows.models import Workflow
 
         now = timezone.now()

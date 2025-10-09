@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 
-from simplevalidations.marketing.constants import ProspectEmailStatus, ProspectOrigins
+from simplevalidations.marketing.constants import ProspectEmailStatus
+from simplevalidations.marketing.constants import ProspectOrigins
 
 
 class Prospect(TimeStampedModel):

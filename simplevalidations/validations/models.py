@@ -6,21 +6,21 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.models import Organization, User
-from simplevalidations.validations.constants import (
-    RulesetType,
-    Severity,
-    StepStatus,
-    ValidationRunStatus,
-    ValidationType,
-    XMLSchemaType,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import User
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 
 class Ruleset(TimeStampedModel):

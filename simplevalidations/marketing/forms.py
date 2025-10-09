@@ -12,7 +12,6 @@ class BetaWaitlistForm(forms.Form):
     ALLOWED_ORIGINS = {ORIGIN_HERO, ORIGIN_FOOTER}
 
     email = forms.EmailField(
-        label=_("Work email"),
         widget=forms.EmailInput(
             attrs={
                 "class": "form-control",
@@ -43,7 +42,9 @@ class BetaWaitlistForm(forms.Form):
         try:
             local_part, domain = email.rsplit("@", 1)
         except ValueError as exc:  # pragma: no cover - handled by EmailField
-            raise forms.ValidationError(_("Please provide a valid work email.")) from exc
+            raise forms.ValidationError(
+                _("Please provide a valid work email.")
+            ) from exc
 
         if len(local_part) < 2:
             raise forms.ValidationError(_("Please provide a valid work email."))

@@ -66,6 +66,7 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:
         "referer": referer,
         "user_agent": user_agent,
         "ip_address": ip_address,
+        "email_status": Prospect.EmailStatus.PENDING,
     }
 
     prospect, created = Prospect.objects.get_or_create(
@@ -88,28 +89,39 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:
         gettext("You're on the SimpleValidations beta list!"),
     )
 
-    welcome_txt = gettext("""
-Hey there — this is Daniel from SimpleValidations. Thanks for joining the SimpleValidations beta list! 
-I’m working hard to gett the beta release ready. I’ll email you as soon as invites open.
+    default_plain = gettext(
+        """
+Hey there — this is Daniel from SimpleValidations. Thanks for joining the SimpleValidations beta list!
+I’m working hard to get the beta release ready. I’ll email you as soon as invites open.
 — Daniel
 
 {{{ pm:unsubscribe }}}
-""")
+""",
+    ).strip()
 
-    welcome_html = gettext("""
+    default_html = gettext(
+        """
 <p>Hey there — this is Daniel from SimpleValidations. Thanks for joining the SimpleValidations beta list! 🎉</p>
 <p>I’m working hard to get the beta release ready. I’ll email you as soon as invites open.</p>
 <p>— Daniel</p>
 <br/>
 {{{ pm:unsubscribe }}}
-""")
+""",
+    ).strip()
+
+    welcome_txt = metadata.get("message", default_plain)
+    welcome_html = metadata.get("message_html", default_html)
 
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
     try:
-        sent = send_mail(subject, welcome_txt, from_email, html_message=welcome_html)
-    except (
-        Exception
-    ) as exc:  # pragma: no cover - send_mail errors are rare but critical
+        sent = send_mail(
+            subject,
+            welcome_txt,
+            from_email,
+            [payload.email],
+            html_message=welcome_html,
+        )
+    except Exception as exc:  # pragma: no cover - send_mail errors are rare but critical
         logger.exception("Error sending waitlist welcome email.")
         raise WaitlistSignupError("Unable to send the welcome email.") from exc
 
@@ -120,8 +132,14 @@ I’m working hard to gett the beta release ready. I’ll email you as soon as i
         )
         raise WaitlistSignupError("Postmark did not accept the welcome email.")
 
+    fields_to_update: list[str] = []
+    if prospect.email_status != Prospect.EmailStatus.PENDING:
+        prospect.email_status = Prospect.EmailStatus.PENDING
+        fields_to_update.append("email_status")
     if not prospect.welcome_sent_at:
         prospect.welcome_sent_at = timezone.now()
-        prospect.save(update_fields=["welcome_sent_at"])
+        fields_to_update.append("welcome_sent_at")
+    if fields_to_update:
+        prospect.save(update_fields=fields_to_update)
 
     logger.info("Stored prospect %s and sent welcome email.", payload.email)

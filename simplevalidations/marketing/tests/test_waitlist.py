@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from django.core import mail
 from django.urls import reverse
@@ -25,6 +27,7 @@ def test_waitlist_signup_success_htmx_saves_prospect_and_sends_email(client):
     prospect = Prospect.objects.get(email="person@company.com")
     assert prospect.origin == Prospect.Origins.HERO
     assert prospect.source == "marketing_homepage"
+    assert prospect.email_status == Prospect.EmailStatus.PENDING
     assert prospect.welcome_sent_at is not None
 
     assert len(mail.outbox) == 1
@@ -53,6 +56,7 @@ def test_waitlist_footer_flow_returns_tersed_message(client):
     prospect = Prospect.objects.get(email="footer@company.com")
     assert prospect.origin == Prospect.Origins.FOOTER
     assert prospect.source == "marketing_footer"
+    assert prospect.email_status == Prospect.EmailStatus.PENDING
 
     assert len(mail.outbox) == 1
 
@@ -90,3 +94,51 @@ def test_waitlist_honeypot_blocks_bot_submission(client):
     assert response.status_code == 400
     assert "hidden field blank" in response.content.decode()
     assert Prospect.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_postmark_delivery_webhook_marks_prospect_verified(client):
+    mail.outbox.clear()
+
+    client.post(
+        reverse("marketing:beta_waitlist"),
+        data={"email": "person@company.com", "company": ""},
+        HTTP_HX_REQUEST="true",
+    )
+
+    response = client.post(
+        reverse("marketing:postmark_delivery_webhook"),
+        data=json.dumps({"RecordType": "Delivery", "Recipient": "person@company.com"}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    prospect = Prospect.objects.get(email="person@company.com")
+    assert prospect.email_status == Prospect.EmailStatus.VERIFIED
+
+
+@pytest.mark.django_db
+def test_postmark_bounce_webhook_marks_prospect_invalid(client):
+    mail.outbox.clear()
+
+    client.post(
+        reverse("marketing:beta_waitlist"),
+        data={"email": "person@company.com", "company": ""},
+        HTTP_HX_REQUEST="true",
+    )
+
+    response = client.post(
+        reverse("marketing:postmark_bounce_webhook"),
+        data=json.dumps(
+            {
+                "RecordType": "Bounce",
+                "Type": "HardBounce",
+                "Email": "person@company.com",
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 200
+    prospect = Prospect.objects.get(email="person@company.com")
+    assert prospect.email_status == Prospect.EmailStatus.INVALID

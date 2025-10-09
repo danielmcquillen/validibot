@@ -23,6 +23,15 @@ class Migration(migrations.Migration):
                         verbose_name="Signup origin",
                     ),
                 ),
+                (
+                    "email_status",
+                    models.CharField(
+                        choices=[("pending", "Pending"), ("verified", "Verified"), ("invalid", "Invalid")],
+                        default="pending",
+                        max_length=20,
+                        verbose_name="Email status",
+                    ),
+                ),
                 ("source", models.CharField(blank=True, max_length=100, verbose_name="Source")),
                 ("referer", models.URLField(blank=True, max_length=500, verbose_name="HTTP referer")),
                 ("user_agent", models.TextField(blank=True, verbose_name="User agent")),

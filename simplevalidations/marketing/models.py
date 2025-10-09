@@ -10,12 +10,23 @@ class Prospect(TimeStampedModel):
         HERO = "hero", _("Homepage Hero")
         FOOTER = "footer", _("Footer")
 
+    class EmailStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        VERIFIED = "verified", _("Verified")
+        INVALID = "invalid", _("Invalid")
+
     email = models.EmailField(_("Email"), unique=True)
     origin = models.CharField(
         _("Signup origin"),
         max_length=20,
         choices=Origins.choices,
         default=Origins.HERO,
+    )
+    email_status = models.CharField(
+        _("Email status"),
+        max_length=20,
+        choices=EmailStatus.choices,
+        default=EmailStatus.PENDING,
     )
     source = models.CharField(_("Source"), max_length=100, blank=True)
     referer = models.URLField(_("HTTP referer"), max_length=500, blank=True)

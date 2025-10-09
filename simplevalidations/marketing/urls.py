@@ -14,6 +14,16 @@ urlpatterns = [
         views.submit_beta_waitlist,
         name="beta_waitlist",
     ),
+    path(
+        "webhooks/postmark/delivery/",
+        views.postmark_delivery_webhook,
+        name="postmark_delivery_webhook",
+    ),
+    path(
+        "webhooks/postmark/bounce/",
+        views.postmark_bounce_webhook,
+        name="postmark_bounce_webhook",
+    ),
     path("blog/", include("simplevalidations.blog.urls", namespace="blog")),
     path(
         "about/",

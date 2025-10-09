@@ -22,6 +22,12 @@ origin (hero vs footer), source, referer, user agent, IP address, and the timest
 when the welcome email was sent. The model is viewable in the Django admin for quick
 follow-up or exports.
 
+- `email_status` starts as `pending` after we send the welcome message, flips to
+  `verified` when Postmark confirms delivery, and moves to `invalid` if Postmark
+  reports a hard bounce. The webhook handlers live in
+  `simplevalidations.marketing.views.postmark_delivery_webhook` and
+  `...postmark_bounce_webhook`.
+
 ## Postmark Setup
 
 Transactional email relies on the existing Anymail/Postmark configuration. Make sure

@@ -332,21 +332,35 @@ class PrivacyPageView(BreadcrumbMixin, TemplateView):
 
 
 @csrf_exempt
-def postmark_delivery_webhook(request):
-    payload = json.loads(request.body)
+@require_http_methods(["POST"])
+def postmark_delivery_webhook(request: HttpRequest) -> HttpResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return HttpResponse(status=400)
+
     if payload.get("RecordType") == "Delivery":
-        message_id = payload.get("MessageID")
-        Prospect.objects.filter(
-            postmark_message_id=message_id,
-            email_status="pending",
-        ).update(email_status="verified")
+        email = payload.get("Recipient") or payload.get("Email")
+        if email:
+            Prospect.objects.filter(
+                email=email,
+                email_status=Prospect.EmailStatus.PENDING,
+            ).update(email_status=Prospect.EmailStatus.VERIFIED)
     return HttpResponse(status=200)
 
 
 @csrf_exempt
-def postmark_bounce_webhook(request):
-    payload = json.loads(request.body)
+@require_http_methods(["POST"])
+def postmark_bounce_webhook(request: HttpRequest) -> HttpResponse:
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return HttpResponse(status=400)
+
     if payload.get("RecordType") == "Bounce" and payload.get("Type") == "HardBounce":
-        email = payload.get("Email")
-        Prospect.objects.filter(email=email).update(email_status="invalid")
+        email = payload.get("Email") or payload.get("Recipient")
+        if email:
+            Prospect.objects.filter(email=email).update(
+                email_status=Prospect.EmailStatus.INVALID,
+            )
     return HttpResponse(status=200)

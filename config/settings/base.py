@@ -386,6 +386,12 @@ SPECTACULAR_SETTINGS = {
 # Your stuff...
 # ------------------------------------------------------------------------------
 
+POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default=None)
+POSTMARK_WEBHOOK_ALLOWED_IPS = env.list(
+    "POSTMARK_WEBHOOK_ALLOWED_IPS",
+    default=["3.134.147.250", "50.31.156.6", "50.31.156.77", "18.217.206.57"],
+)
+
 if GITHUB_APP_ENABLED:
     GITHUB_APP = {
         "APP_ID": env.int("GITHUB_APP_ID"),

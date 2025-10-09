@@ -12,6 +12,8 @@ from django.views.generic import TemplateView
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import is_htmx
+from simplevalidations.marketing.constants import ProspectEmailStatus
+from simplevalidations.marketing.email.utils import is_allowed_postmark_source
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
 from simplevalidations.marketing.services import (
@@ -334,6 +336,9 @@ class PrivacyPageView(BreadcrumbMixin, TemplateView):
 @csrf_exempt
 @require_http_methods(["POST"])
 def postmark_delivery_webhook(request: HttpRequest) -> HttpResponse:
+    if not is_allowed_postmark_source(request):
+        return HttpResponse(status=403)
+
     try:
         payload = json.loads(request.body or "{}")
     except json.JSONDecodeError:
@@ -344,14 +349,17 @@ def postmark_delivery_webhook(request: HttpRequest) -> HttpResponse:
         if email:
             Prospect.objects.filter(
                 email=email,
-                email_status=Prospect.EmailStatus.PENDING,
-            ).update(email_status=Prospect.EmailStatus.VERIFIED)
+                email_status=ProspectEmailStatus.PENDING,
+            ).update(email_status=ProspectEmailStatus.VERIFIED)
     return HttpResponse(status=200)
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def postmark_bounce_webhook(request: HttpRequest) -> HttpResponse:
+    if not is_allowed_postmark_source(request):
+        return HttpResponse(status=403)
+
     try:
         payload = json.loads(request.body or "{}")
     except json.JSONDecodeError:
@@ -361,6 +369,6 @@ def postmark_bounce_webhook(request: HttpRequest) -> HttpResponse:
         email = payload.get("Email") or payload.get("Recipient")
         if email:
             Prospect.objects.filter(email=email).update(
-                email_status=Prospect.EmailStatus.INVALID,
+                email_status=ProspectEmailStatus.INVALID,
             )
     return HttpResponse(status=200)

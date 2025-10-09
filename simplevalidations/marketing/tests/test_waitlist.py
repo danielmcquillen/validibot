@@ -6,6 +6,7 @@ import pytest
 from django.core import mail
 from django.urls import reverse
 
+from simplevalidations.marketing.constants import ProspectEmailStatus, ProspectOrigins
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
 
@@ -25,9 +26,9 @@ def test_waitlist_signup_success_htmx_saves_prospect_and_sends_email(client):
     assert "beta is ready" in body
 
     prospect = Prospect.objects.get(email="person@company.com")
-    assert prospect.origin == Prospect.Origins.HERO
+    assert prospect.origin == ProspectOrigins.HERO
     assert prospect.source == "marketing_homepage"
-    assert prospect.email_status == Prospect.EmailStatus.PENDING
+    assert prospect.email_status == ProspectEmailStatus.PENDING
     assert prospect.welcome_sent_at is not None
 
     assert len(mail.outbox) == 1
@@ -54,9 +55,9 @@ def test_waitlist_footer_flow_returns_tersed_message(client):
     assert "Thanks! We&#x27;ll be in touch soon." in response.content.decode()
 
     prospect = Prospect.objects.get(email="footer@company.com")
-    assert prospect.origin == Prospect.Origins.FOOTER
+    assert prospect.origin == ProspectOrigins.FOOTER
     assert prospect.source == "marketing_footer"
-    assert prospect.email_status == Prospect.EmailStatus.PENDING
+    assert prospect.email_status == ProspectEmailStatus.PENDING
 
     assert len(mail.outbox) == 1
 
@@ -110,11 +111,12 @@ def test_postmark_delivery_webhook_marks_prospect_verified(client):
         reverse("marketing:postmark_delivery_webhook"),
         data=json.dumps({"RecordType": "Delivery", "Recipient": "person@company.com"}),
         content_type="application/json",
+        HTTP_X_FORWARDED_FOR="3.134.147.250",
     )
 
     assert response.status_code == 200
     prospect = Prospect.objects.get(email="person@company.com")
-    assert prospect.email_status == Prospect.EmailStatus.VERIFIED
+    assert prospect.email_status == ProspectEmailStatus.VERIFIED
 
 
 @pytest.mark.django_db
@@ -137,8 +139,31 @@ def test_postmark_bounce_webhook_marks_prospect_invalid(client):
             }
         ),
         content_type="application/json",
+        HTTP_X_FORWARDED_FOR="3.134.147.250",
     )
 
     assert response.status_code == 200
     prospect = Prospect.objects.get(email="person@company.com")
-    assert prospect.email_status == Prospect.EmailStatus.INVALID
+    assert prospect.email_status == ProspectEmailStatus.INVALID
+
+
+@pytest.mark.django_db
+def test_postmark_webhook_rejects_unknown_ip(client):
+    mail.outbox.clear()
+
+    client.post(
+        reverse("marketing:beta_waitlist"),
+        data={"email": "person@company.com", "company": ""},
+        HTTP_HX_REQUEST="true",
+    )
+
+    response = client.post(
+        reverse("marketing:postmark_delivery_webhook"),
+        data=json.dumps({"RecordType": "Delivery", "Recipient": "person@company.com"}),
+        content_type="application/json",
+        HTTP_X_FORWARDED_FOR="1.1.1.1",
+    )
+
+    assert response.status_code == 403
+    prospect = Prospect.objects.get(email="person@company.com")
+    assert prospect.email_status == ProspectEmailStatus.PENDING

@@ -98,9 +98,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         """
         user = request.user
 
-        # TODO: When we support projects, we need to resolve the project here.
-        # project = self._resolve_project(workflow=workflow, request=request)
-        project = None  # We don't support projects yet
+        project = self._resolve_project(workflow=workflow, request=request)
 
         if not workflow.can_execute(user=user):
             # Return 404 to avoid leaking workflow existence when user lacks access.
@@ -367,6 +365,15 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             extra_payload["metadata_keys"] = sorted(metadata.keys())
 
         return response
+
+    def _resolve_project(self, workflow: Workflow, request: Request) -> Project | None:
+        project_id = request.query_params.get("project") or request.GET.get("project")
+        if project_id:
+            try:
+                return Project.objects.get(pk=project_id, org=workflow.org)
+            except Project.DoesNotExist as exc:  # pragma: no cover
+                raise Http404 from exc
+        return workflow.project
 
     # Public action remains unchanged
     @action(

@@ -44,15 +44,14 @@ def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
         err_msg = "Filename must be provided for upload path generation."
         raise ValueError(err_msg)
 
-    org_part = f"org-{instance.org_id}"
-    proj_part = f"proj-{instance.project.slug}" if instance.project_id else "proj-none"
-    user_part = f"user-{instance.user_id}" if instance.user_id else "user-none"
-    today = now()
-    filename = (
-        f"submissions/{org_part}/{proj_part}/{user_part}/"
-        f"{today:%Y/%m/%d}/{uuid.uuid4().hex}/{filename}"
-    )
-    return filename
+    org_part = f"o{instance.org_id}"
+    proj_slug = instance.project.slug if instance.project_id else "none"
+    proj_part = f"p{proj_slug[:16]}"
+    user_part = f"u{instance.user_id}" if instance.user_id else "uanon"
+    date_part = now().strftime("%Y%m%d")
+    safe_name = Path(filename).name
+    unique = uuid.uuid4().hex[:12]
+    return f"submissions/{org_part}/{proj_part}/{user_part}/{date_part}/{unique}_{safe_name}"
 
 
 class Submission(TimeStampedModel):

@@ -55,13 +55,6 @@ def start_url(workflow) -> str:
     return f"/api/v1/workflows/{workflow.pk}/start/"
 
 
-# Try to use your factory; fall back to direct create if it's not available
-try:
-    from simplevalidations.validations.tests.factories import ValidationRunFactory
-except Exception:  # noqa: BLE001
-    ValidationRunFactory = None
-
-
 @pytest.fixture(autouse=True)
 def mock_validation_service_success(monkeypatch):
     """
@@ -71,12 +64,12 @@ def mock_validation_service_success(monkeypatch):
     """
 
     def make_run(*, org, workflow, submission, status):
-        if ValidationRunFactory:
-            return ValidationRunFactory(
-                org=org, workflow=workflow, submission=submission, status=status
-            )
         return ValidationRun.objects.create(
-            org=org, workflow=workflow, submission=submission, status=status
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=getattr(submission, "project", None),
+            status=status,
         )
 
     def launch_side_effect(*_, **kwargs):
@@ -186,13 +179,44 @@ class TestWorkflowStartAPI:
         ).first()
 
         assert created_event is not None
-        assert created_event.project_id is None
+        assert created_event.project_id == project.id
         assert created_event.org_id == org.id
         assert created_event.user_id == user.id
         assert created_event.extra_data.get("workflow_pk") == workflow.pk
 
         assert started_event is not None
+        assert started_event.project_id == project.id
         assert started_event.extra_data.get("status") == ValidationRunStatus.RUNNING
+
+    def test_start_defaults_to_workflow_project(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ) -> None:
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        raw_doc = {"hello": "world"}
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(raw_doc),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED, resp.data
+
+        body = resp.json()
+        run = ValidationRun.objects.get(pk=body["id"])
+        assert run.project_id == workflow.project_id
+
+        created_event = TrackingEvent.objects.filter(
+            app_event_type=AppEventType.VALIDATION_RUN_CREATED,
+        ).first()
+        assert created_event is not None
+        assert created_event.project_id == workflow.project_id
 
     def test_start_with_raw_body_xml_returns_201(
         self,

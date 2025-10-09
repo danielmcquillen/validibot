@@ -11,6 +11,7 @@ from django.core.validators import URLValidator, validate_ipv46_address
 from django.utils import timezone
 from django.utils.translation import gettext
 
+from simplevalidations.marketing.constants import ProspectEmailStatus, ProspectOrigins
 from simplevalidations.marketing.models import Prospect
 
 logger = logging.getLogger(__name__)
@@ -38,9 +39,9 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:
     """
 
     metadata = payload.metadata or {}
-    origin = metadata.get("origin") or Prospect.Origins.HERO
-    if origin not in Prospect.Origins.values:
-        origin = Prospect.Origins.HERO
+    origin = metadata.get("origin") or ProspectOrigins.HERO
+    if origin not in ProspectOrigins.values:
+        origin = ProspectOrigins.HERO
 
     source = (metadata.get("source") or "")[:100]
     referer = (metadata.get("referer") or "")[:500]
@@ -66,7 +67,7 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:
         "referer": referer,
         "user_agent": user_agent,
         "ip_address": ip_address,
-        "email_status": Prospect.EmailStatus.PENDING,
+        "email_status": ProspectEmailStatus.PENDING,
     }
 
     prospect, created = Prospect.objects.get_or_create(
@@ -121,7 +122,9 @@ I’m working hard to get the beta release ready. I’ll email you as soon as in
             [payload.email],
             html_message=welcome_html,
         )
-    except Exception as exc:  # pragma: no cover - send_mail errors are rare but critical
+    except (
+        Exception
+    ) as exc:  # pragma: no cover - send_mail errors are rare but critical
         logger.exception("Error sending waitlist welcome email.")
         raise WaitlistSignupError("Unable to send the welcome email.") from exc
 
@@ -133,8 +136,8 @@ I’m working hard to get the beta release ready. I’ll email you as soon as in
         raise WaitlistSignupError("Postmark did not accept the welcome email.")
 
     fields_to_update: list[str] = []
-    if prospect.email_status != Prospect.EmailStatus.PENDING:
-        prospect.email_status = Prospect.EmailStatus.PENDING
+    if prospect.email_status != ProspectEmailStatus.PENDING:
+        prospect.email_status = ProspectEmailStatus.PENDING
         fields_to_update.append("email_status")
     if not prospect.welcome_sent_at:
         prospect.welcome_sent_at = timezone.now()

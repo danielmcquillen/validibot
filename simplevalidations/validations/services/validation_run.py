@@ -113,7 +113,8 @@ class ValidationRunService:
             org=org,
             workflow=workflow,
             submission=submission,
-            project=getattr(submission, "project", None),
+            project=getattr(submission, "project", None)
+            or getattr(workflow, "project", None),
             user=run_user,
             status=ValidationRunStatus.PENDING,
         )

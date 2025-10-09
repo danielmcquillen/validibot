@@ -164,7 +164,13 @@ class TrackingEventService:
                 validation_run_id = getattr(run, "pk", None)
 
         event_workflow = workflow or getattr(run, "workflow", None) if run else None
-        event_project = project or getattr(event_workflow, "project", None)
+        event_project = project
+        if event_project is None and run is not None:
+            event_project = getattr(run, "project", None)
+            if event_project is None and getattr(run, "submission", None):
+                event_project = getattr(run.submission, "project", None)
+        if event_project is None and event_workflow is not None:
+            event_project = getattr(event_workflow, "project", None)
         event_org = org or getattr(event_workflow, "org", None)
 
         payload: dict[str, Any] = {}

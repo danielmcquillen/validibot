@@ -27,6 +27,10 @@ follow-up or exports.
   reports a hard bounce. The webhook handlers live in
   `simplevalidations.marketing.views.postmark_delivery_webhook` and
   `...postmark_bounce_webhook`.
+  Incoming webhook requests must originate from an IP in
+  `POSTMARK_WEBHOOK_ALLOWED_IPS` (configurable via env var, defaults to Postmark’s
+  documented ranges). On Heroku, we rely on the first address in
+  `X-Forwarded-For`, which the platform populates with the original client IP.
 
 ## Postmark Setup
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -9,6 +7,10 @@ from simplevalidations.marketing.constants import BLOCKLISTED_EMAIL_DOMAINS
 
 
 class BetaWaitlistForm(forms.Form):
+    ORIGIN_HERO = "hero"
+    ORIGIN_FOOTER = "footer"
+    ALLOWED_ORIGINS = {ORIGIN_HERO, ORIGIN_FOOTER}
+
     email = forms.EmailField(
         label=_("Work email"),
         widget=forms.EmailInput(
@@ -20,6 +22,11 @@ class BetaWaitlistForm(forms.Form):
             },
         ),
         max_length=254,
+    )
+    origin = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+        initial=ORIGIN_HERO,
     )
     company = forms.CharField(
         label=_("Company"),
@@ -49,17 +56,20 @@ class BetaWaitlistForm(forms.Form):
             )
         return email
 
+    def clean_origin(self) -> str:
+        value = (self.data.get("origin") or self.ORIGIN_HERO).strip().lower()
+        if value not in self.ALLOWED_ORIGINS:
+            return self.ORIGIN_HERO
+        return value
+
     def clean_company(self) -> str:
         value = self.cleaned_data.get("company", "")
         if value:
+            self.add_error(
+                None,
+                _(
+                    "Please leave the hidden field blank so we know you're human.",
+                ),
+            )
             raise forms.ValidationError(_("Please leave this field blank."))
         return value
-
-    def as_htmx(self) -> dict[str, Any]:
-        """
-        Convenience helper for templates rendering the form with HTMX.
-
-        Returns a dictionary compatible with Django template unpacking.
-        """
-
-        return {"form": self}

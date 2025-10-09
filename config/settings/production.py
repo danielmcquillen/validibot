@@ -15,7 +15,7 @@ from .base import DATABASES, INSTALLED_APPS, REDIS_URL, SPECTACULAR_SETTINGS, en
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["simplevalidations.com"])
+ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["simplevalidationsg.com"])
 
 # DATABASES
 # ------------------------------------------------------------------------------
@@ -113,7 +113,7 @@ MEDIA_URL = f"https://{aws_s3_domain}/media/"
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
-    default="SimpleValidations <noreply@simplevalidations.com>",
+    default="SimpleValidations <daniel@mcquilleninteractive.com>",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#server-email
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
@@ -135,19 +135,15 @@ ADMIN_URL = env("DJANGO_ADMIN_URL")
 INSTALLED_APPS += ["anymail"]
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
 # https://anymail.readthedocs.io/en/stable/installation/#anymail-settings-reference
-# https://anymail.readthedocs.io/en/stable/esps/sendgrid/
+# https://anymail.readthedocs.io/en/stable/esps/postmark/
 
 
-SENDGRID_API_KEY = env("SENDGRID_API_KEY", default=None)
+POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default=None)
 
-if SENDGRID_API_KEY:
-    EMAIL_BACKEND = "anymail.backends.sendgrid.EmailBackend"
+if POSTMARK_SERVER_TOKEN:
+    EMAIL_BACKEND = "anymail.backends.postmark.EmailBackend"
     ANYMAIL = {
-        "SENDGRID_API_KEY": SENDGRID_API_KEY,
-        "SENDGRID_API_URL": env(
-            "SENDGRID_API_URL",
-            default="https://api.sendgrid.com/v3/",
-        ),
+        "POSTMARK_SERVER_TOKEN": POSTMARK_SERVER_TOKEN,
     }
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

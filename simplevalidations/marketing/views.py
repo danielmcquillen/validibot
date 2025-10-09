@@ -1,16 +1,37 @@
-# Create your views here.
+import json
 
-from django.urls import reverse_lazy
+from django.contrib import messages
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse, reverse_lazy
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 from django.views.generic import TemplateView
 
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.core.utils import is_htmx
+from simplevalidations.marketing.forms import BetaWaitlistForm
+from simplevalidations.marketing.models import Prospect
+from simplevalidations.marketing.services import (
+    WaitlistPayload,
+    WaitlistSignupError,
+    submit_waitlist_signup,
+)
 
 
 class HomePageView(TemplateView):
     template_name = "marketing/home.html"
     http_method_names = ["get"]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.setdefault(
+            "waitlist_form",
+            BetaWaitlistForm(initial={"origin": BetaWaitlistForm.ORIGIN_HERO}),
+        )
+        return context
 
 
 class AboutPageView(BreadcrumbMixin, TemplateView):
@@ -192,17 +213,94 @@ class SupportHomePageView(BreadcrumbMixin, TemplateView):
         {"name": _("Support"), "url": ""},
     ]
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.user.is_authenticated:
+            context.setdefault("support_message_form", SupportMessageForm())
+        return context
+
 
 class ContactPageView(SupportDetailPageView):
     template_name = "marketing/contact.html"
     http_method_names = ["get"]
     page_title = "Contact Us"
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        if self.request.user.is_authenticated:
-            context.setdefault("support_message_form", SupportMessageForm())
-        return context
+
+@require_http_methods(["POST"])
+def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
+    form = BetaWaitlistForm(request.POST)
+    if form.is_valid():
+        origin = form.cleaned_data["origin"]
+        source = (
+            "marketing_footer"
+            if origin == BetaWaitlistForm.ORIGIN_FOOTER
+            else "marketing_homepage"
+        )
+        payload = WaitlistPayload(
+            email=form.cleaned_data["email"],
+            metadata={
+                "source": source,
+                "origin": origin,
+                "user_agent": request.META.get("HTTP_USER_AGENT"),
+                "ip": request.META.get("REMOTE_ADDR"),
+                "referer": request.META.get("HTTP_REFERER"),
+            },
+        )
+        try:
+            submit_waitlist_signup(payload)
+        except WaitlistSignupError:
+            form.add_error(
+                None,
+                _(
+                    "We couldn't add you to the waitlist just now. Please try again in a moment.",
+                ),
+            )
+        else:
+            success_context = {
+                "headline": _("You're on the list!"),
+                "body": _(
+                    "Thanks for your interest. We'll email you as soon as the beta is ready.",
+                ),
+                "footer_message": _("Thanks! We'll be in touch soon."),
+            }
+            template_base = (
+                "marketing/partial/footer_waitlist"
+                if origin == BetaWaitlistForm.ORIGIN_FOOTER
+                else "marketing/partial/waitlist"
+            )
+            if is_htmx(request):
+                return render(
+                    request,
+                    f"{template_base}_success.html",
+                    success_context,
+                    status=201,
+                )
+            messages.success(request, success_context["body"])
+            return redirect(reverse("marketing:home"))
+
+    if is_htmx(request):
+        origin = request.POST.get("origin", BetaWaitlistForm.ORIGIN_HERO)
+        if origin not in BetaWaitlistForm.ALLOWED_ORIGINS:
+            origin = BetaWaitlistForm.ORIGIN_HERO
+        template_base = (
+            "marketing/partial/footer_waitlist"
+            if origin == BetaWaitlistForm.ORIGIN_FOOTER
+            else "marketing/partial/waitlist"
+        )
+        return render(
+            request,
+            f"{template_base}_form.html",
+            {"form": form},
+            status=400,
+        )
+
+    messages.error(
+        request,
+        _(
+            "We couldn't add you to the waitlist. Please correct the highlighted fields and try again.",
+        ),
+    )
+    return redirect(reverse("marketing:home"))
 
 
 class HelpCenterPageView(SupportDetailPageView):
@@ -231,3 +329,24 @@ class PrivacyPageView(BreadcrumbMixin, TemplateView):
     breadcrumbs = [
         {"name": _("Privacy Policy"), "url": ""},
     ]
+
+
+@csrf_exempt
+def postmark_delivery_webhook(request):
+    payload = json.loads(request.body)
+    if payload.get("RecordType") == "Delivery":
+        message_id = payload.get("MessageID")
+        Prospect.objects.filter(
+            postmark_message_id=message_id,
+            email_status="pending",
+        ).update(email_status="verified")
+    return HttpResponse(status=200)
+
+
+@csrf_exempt
+def postmark_bounce_webhook(request):
+    payload = json.loads(request.body)
+    if payload.get("RecordType") == "Bounce" and payload.get("Type") == "HardBounce":
+        email = payload.get("Email")
+        Prospect.objects.filter(email=email).update(email_status="invalid")
+    return HttpResponse(status=200)

@@ -112,3 +112,13 @@ def org_url(context, view_name, *args, **kwargs):
     return reverse_with_org(
         view_name, request=request, args=args, kwargs=resolved_kwargs
     )
+
+
+@register.simple_tag
+def marketing_waitlist_form(origin: str = "hero"):
+    from simplevalidations.marketing.forms import BetaWaitlistForm
+
+    value = origin.strip().lower() if origin else BetaWaitlistForm.ORIGIN_HERO
+    if value not in BetaWaitlistForm.ALLOWED_ORIGINS:
+        value = BetaWaitlistForm.ORIGIN_HERO
+    return BetaWaitlistForm(initial={"origin": value})

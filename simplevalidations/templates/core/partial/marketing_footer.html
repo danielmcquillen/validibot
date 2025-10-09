@@ -102,7 +102,7 @@ This footer appears on all 'marketing' pages of the site available to all users,
             </div>
 
             <div class="col-12 col-lg-4 mt-4 newsletter-column">
-                <div class="about-newsletter-signup">
+                <div class="about-newsletter-signup w-100" style="padding-bottom: 4rem; ">
                     <h1>
                         NEWSLETTER
                     </h1>
@@ -110,9 +110,8 @@ This footer appears on all 'marketing' pages of the site available to all users,
                         Don't miss out! Sign up for our email newsletter to
                         get the latest news and updates.
                     </p>
-                    {% comment %}
-                        Newsletter sign up form can go here.
-                    {% endcomment %}
+                    {% marketing_waitlist_form 'footer' as footer_waitlist_form %}
+                    {% include "marketing/partial/footer_waitlist_form.html" with form=footer_waitlist_form %}
                 </div>
             </div>
 

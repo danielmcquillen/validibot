@@ -24,6 +24,10 @@ This site describes the core concepts, data model, and API for working with vali
 - [Author Workflow Steps](how-to/author-workflow-steps.md) - Configure validation templates via the UI wizard
 - [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
 
+### Marketing
+
+- [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
+
 ### Data Model
 
 - [Data Model Overview](data-model/index.md) - Core entities and relationships

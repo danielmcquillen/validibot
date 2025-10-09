@@ -9,6 +9,11 @@ urlpatterns = [
         views.HomePageView.as_view(),
         name="home",
     ),
+    path(
+        "waitlist/",
+        views.submit_beta_waitlist,
+        name="beta_waitlist",
+    ),
     path("blog/", include("simplevalidations.blog.urls", namespace="blog")),
     path(
         "about/",

@@ -63,3 +63,15 @@ Templates load `{% load marketing_flags %}` and then derive the flag values via
 `{% marketing_feature_enabled "resources" as resources_enabled %}` (swap the string for
 `docs`, `pricing`, or `features`). The tag returns `True` when the corresponding setting
 is enabled; otherwise templates can hide the related nav items and footer links.
+
+## SEO Instrumentation
+
+- Marketing views now inherit `MarketingMetadataMixin`, which sets `page_title`,
+  `meta_description`, `meta_keywords`, a canonical URL, and structured data JSON-LD.
+  Override those attributes or `get_structured_data()` in a view if a page needs
+  custom metadata.
+- `marketing_base.html` emits a canonical `<link>` plus JSON-LD containing the
+  `WebSite`, `Organization`, and current `WebPage` schema objects.
+- `config/urls.py` serves `sitemap.xml` (via `MarketingStaticViewSitemap`) and a
+  dynamic `robots.txt` that announces the sitemap location. Add new marketing routes
+  to `simplevalidations/marketing/sitemaps.py` whenever you introduce public pages.

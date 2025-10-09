@@ -240,28 +240,41 @@ class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
 
 class PricingStarterPageView(PricingDetailPageView):
     template_name = "marketing/pricing/starter.html"
-    page_title = "Starter"
+    page_title = _("Starter Plan")
+    meta_description = _(
+        "Starter brings automated validation and credentialing to lean teams launching their first workflows.",
+    )
 
 
 class PricingGrowthPageView(PricingDetailPageView):
     template_name = "marketing/pricing/growth.html"
-    page_title = "Growth"
+    page_title = _("Growth Plan")
+    meta_description = _(
+        "Growth adds collaboration tooling and advanced automation for teams scaling complex validation programs.",
+    )
 
 
 class PricingEnterprisePageView(PricingDetailPageView):
     template_name = "marketing/pricing/enterprise.html"
-    page_title = "Enterprise"
+    page_title = _("Enterprise Plan")
+    meta_description = _(
+        "Enterprise delivers custom SLAs, integrations, and governance controls for mission-critical validation.",
+    )
 
 
-class ResourcesPageView(BreadcrumbMixin, TemplateView):
+class ResourcesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/resources.html"
     http_method_names = ["get"]
+    page_title = _("Resource Library")
+    meta_description = _(
+        "Browse documentation, videos, and changelog highlights to get the most out of SimpleValidations.",
+    )
     breadcrumbs = [
         {"name": _("Resources"), "url": ""},
     ]
 
 
-class ResourceDetailPageView(BreadcrumbMixin, TemplateView):
+class ResourceDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     """Base class for resource sub-pages to keep breadcrumbs consistent."""
 
     page_title: str = ""
@@ -281,29 +294,44 @@ class ResourceDetailPageView(BreadcrumbMixin, TemplateView):
 class DocsPageView(ResourceDetailPageView):
     template_name = "marketing/resources_docs.html"
     http_method_names = ["get"]
-    page_title = "Docs"
+    page_title = _("Documentation")
+    meta_description = _(
+        "Read the SimpleValidations documentation to understand architecture, APIs, and implementation patterns.",
+    )
 
 
 class VideosPageView(ResourceDetailPageView):
     template_name = "marketing/resources_videos.html"
     http_method_names = ["get"]
-    page_title = "Videos"
+    page_title = _("Video Library")
+    meta_description = _(
+        "Watch product walkthroughs and best-practice videos for SimpleValidations deployments.",
+    )
 
 
 class ChangelogPageView(ResourceDetailPageView):
     template_name = "marketing/resources_changelog.html"
     http_method_names = ["get"]
-    page_title = "Changelog"
+    page_title = _("Changelog")
+    meta_description = _(
+        "See what shipped recently across the SimpleValidations platform.",
+    )
 
 
 class FAQPageView(ResourceDetailPageView):
     template_name = "marketing/faq.html"
     http_method_names = ["get"]
-    page_title = "FAQ"
+    page_title = _("Frequently Asked Questions")
+    meta_description = _(
+        "Find answers to common questions about SimpleValidations setup, automation, and support.",
+    )
 
 
-class SupportDetailPageView(BreadcrumbMixin, TemplateView):
+class SupportDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     page_title: str = ""
+    meta_description: str = _(
+        "Get help from the SimpleValidations team through support guides, contact forms, and system status updates.",
+    )
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
@@ -317,9 +345,13 @@ class SupportDetailPageView(BreadcrumbMixin, TemplateView):
         return breadcrumbs
 
 
-class SupportHomePageView(BreadcrumbMixin, TemplateView):
+class SupportHomePageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/support.html"
     http_method_names = ["get"]
+    page_title = _("Support")
+    meta_description = _(
+        "Access support resources and contact options for the SimpleValidations team.",
+    )
     breadcrumbs = [
         {"name": _("Support"), "url": ""},
     ]
@@ -334,7 +366,10 @@ class SupportHomePageView(BreadcrumbMixin, TemplateView):
 class ContactPageView(SupportDetailPageView):
     template_name = "marketing/contact.html"
     http_method_names = ["get"]
-    page_title = "Contact Us"
+    page_title = _("Contact Us")
+    meta_description = _(
+        "Reach out to SimpleValidations for product questions, partnerships, or support escalations.",
+    )
 
 
 @require_http_methods(["POST"])
@@ -422,26 +457,40 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
 class HelpCenterPageView(SupportDetailPageView):
     template_name = "marketing/help_center.html"
     http_method_names = ["get"]
-    page_title = "Help Center"
+    page_title = _("Help Center")
+    meta_description = _(
+        "Browse help center articles for troubleshooting and workflow guidance.",
+    )
 
 
 class StatusPageView(SupportDetailPageView):
     template_name = "marketing/status.html"
     http_method_names = ["get"]
-    page_title = "Status"
+    page_title = _("System Status")
+    meta_description = _(
+        "Check the latest SimpleValidations platform uptime and incident history.",
+    )
 
 
-class TermsPageView(BreadcrumbMixin, TemplateView):
+class TermsPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/terms.html"
     http_method_names = ["get"]
+    page_title = _("Terms of Service")
+    meta_description = _(
+        "Review the SimpleValidations terms of service covering platform usage and responsibilities.",
+    )
     breadcrumbs = [
         {"name": _("Terms of Service"), "url": ""},
     ]
 
 
-class PrivacyPageView(BreadcrumbMixin, TemplateView):
+class PrivacyPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/privacy.html"
     http_method_names = ["get"]
+    page_title = _("Privacy Policy")
+    meta_description = _(
+        "Understand how SimpleValidations collects, processes, and protects personal data.",
+    )
     breadcrumbs = [
         {"name": _("Privacy Policy"), "url": ""},
     ]
@@ -486,3 +535,15 @@ def postmark_bounce_webhook(request: HttpRequest) -> HttpResponse:
                 email_status=ProspectEmailStatus.INVALID,
             )
     return HttpResponse(status=200)
+
+
+def robots_txt(request: HttpRequest) -> HttpResponse:
+    site = Site.objects.get_current(request)
+    scheme = request.scheme or "https"
+    origin = f"{scheme}://{site.domain}".rstrip("/")
+    lines = [
+        "User-agent: *",
+        "Allow: /",
+        f"Sitemap: {origin}/sitemap.xml",
+    ]
+    return HttpResponse("\n".join(lines) + "\n", content_type="text/plain")

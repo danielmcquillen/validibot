@@ -4,6 +4,7 @@ from django.contrib import admin
 
 # Use if async
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
+from django.contrib.sitemaps.views import sitemap
 from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
@@ -13,12 +14,25 @@ from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 
 from simplevalidations.core import views as core_views
+from simplevalidations.marketing import views as marketing_views
+from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
 
 # from django_github_app.views import AsyncWebhookView
+
+sitemaps = {
+    "marketing": MarketingStaticViewSitemap(),
+}
 
 urlpatterns = [
     # Marketing and misc pages...
     path("", include("simplevalidations.marketing.urls", namespace="marketing")),
+    path("robots.txt", marketing_views.robots_txt, name="robots"),
+    path(
+        "sitemap.xml",
+        sitemap,
+        {"sitemaps": sitemaps},
+        name="sitemap",
+    ),
     path(
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),

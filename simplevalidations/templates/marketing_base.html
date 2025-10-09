@@ -2,6 +2,34 @@
 
 {% load static i18n core_tags %}
 
+{% block title %}
+  {% if page_title %}
+    {{ page_title }} | SimpleValidations
+  {% else %}
+    SimpleValidations
+  {% endif %}
+{% endblock title %}
+
+{% block meta_description %}
+  {{ meta_description|default:"SimpleValidations automates data quality workflows with AI, simulations, and credentialing." }}
+{% endblock meta_description %}
+
+{% block meta_keywords %}
+  {{ meta_keywords|default:"data validation, ai validation, simulation workflows, credential automation" }}
+{% endblock meta_keywords %}
+
+{% block head %}
+  {{ block.super }}
+  {% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}" />
+  {% endif %}
+  {% if structured_data_json %}
+    <script type="application/ld+json">
+      {{ structured_data_json|safe }}
+    </script>
+  {% endif %}
+{% endblock head %}
+
 {% block mainclass %}
     container
 {% endblock mainclass %}

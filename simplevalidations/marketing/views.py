@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import messages
+from django.contrib.sites.models import Site
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
@@ -23,9 +24,86 @@ from simplevalidations.marketing.services import (
 )
 
 
-class HomePageView(TemplateView):
+class MarketingMetadataMixin:
+    page_title: str | None = None
+    meta_description: str = _(
+        "SimpleValidations helps teams automate data quality checks, run complex validations, and certify results with confidence.",
+    )
+    meta_keywords: str = "data validation, AI validation, simulation validation, credential automation"
+
+    def get_page_title(self) -> str | None:
+        return self.page_title
+
+    def get_meta_description(self) -> str:
+        return self.meta_description
+
+    def get_meta_keywords(self) -> str:
+        return self.meta_keywords
+
+    def get_structured_data(self, site_origin: str, canonical_url: str) -> list[dict]:
+        waitlist_url = f"{site_origin}{reverse('marketing:beta_waitlist')}"
+        organization = {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "McQuillen Interactive",
+            "url": site_origin,
+        }
+        website = {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "SimpleValidations",
+            "url": site_origin,
+            "description": self.get_meta_description(),
+            "potentialAction": {
+                "@type": "SubscribeAction",
+                "target": waitlist_url,
+                "name": "Join the SimpleValidations beta waitlist",
+            },
+        }
+        webpage = {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": self.get_page_title() or "SimpleValidations",
+            "url": canonical_url,
+            "description": self.get_meta_description(),
+        }
+        return [organization, website, webpage]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        page_title = self.get_page_title()
+        if page_title is not None:
+            context.setdefault("page_title", page_title)
+        context.setdefault("meta_description", self.get_meta_description())
+        context.setdefault("meta_keywords", self.get_meta_keywords())
+
+        request = getattr(self, "request", None)
+        if request:
+            canonical = request.build_absolute_uri()
+            site_origin = request.build_absolute_uri("/").rstrip("/")
+
+            context.setdefault("canonical_url", canonical)
+            context.setdefault("site_origin", site_origin)
+
+            structured_data = self.get_structured_data(site_origin, canonical)
+            if structured_data:
+                context["structured_data_json"] = json.dumps(
+                    structured_data,
+                    ensure_ascii=False,
+                )
+        return context
+
+
+class HomePageView(MarketingMetadataMixin, TemplateView):
     template_name = "marketing/home.html"
     http_method_names = ["get"]
+    page_title = _("Meet Your Data Validation Assistant")
+    meta_description = _(
+        "SimpleValidations pairs deterministic checks, AI review, and simulations so every document is production-ready before it reaches your customers.",
+    )
+    meta_keywords = (
+        "data validation assistant, data quality automation, simulation validation"
+    )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -36,26 +114,37 @@ class HomePageView(TemplateView):
         return context
 
 
-class AboutPageView(BreadcrumbMixin, TemplateView):
+class AboutPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/about.html"
     http_method_names = ["get"]
+    page_title = _("About SimpleValidations")
+    meta_description = _(
+        "Learn about Daniel McQuillen and the story behind SimpleValidations, inspired by mission-critical validation work at Lawrence Berkeley National Laboratory.",
+    )
     breadcrumbs = [
         {"name": _("About"), "url": ""},
     ]
 
 
-class FeaturesPageView(BreadcrumbMixin, TemplateView):
+class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/features.html"
     http_method_names = ["get"]
+    page_title = _("Feature Tour")
+    meta_description = _(
+        "Explore how SimpleValidations blends schema checks, simulations, and credentialing to keep every submission trustworthy.",
+    )
     breadcrumbs = [
         {"name": _("Features"), "url": ""},
     ]
 
 
-class FeatureDetailPageView(BreadcrumbMixin, TemplateView):
+class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name: str = ""
     http_method_names = ["get"]
     page_title: str = ""
+    meta_description: str = _(
+        "Dive into SimpleValidations capabilities with in-depth feature briefings for technical teams.",
+    )
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
@@ -71,46 +160,71 @@ class FeatureDetailPageView(BreadcrumbMixin, TemplateView):
 
 class FeatureOverviewPageView(FeatureDetailPageView):
     template_name = "marketing/features/overview.html"
-    page_title = "Overview"
+    page_title = _("Platform Overview")
+    meta_description = _(
+        "See how SimpleValidations orchestrates AI, simulations, and human-friendly workflows to deliver trustworthy data pipelines.",
+    )
 
 
 class FeatureSchemaValidationPageView(FeatureDetailPageView):
     template_name = "marketing/features/schema_validation.html"
-    page_title = "Schema Validation"
+    page_title = _("Schema Validation")
+    meta_description = _(
+        "Build rigorous schema validation with reusable checks, contextual errors, and collaborative review loops.",
+    )
 
 
 class FeatureSimulationValidationPageView(FeatureDetailPageView):
     template_name = "marketing/features/simulation_validation.html"
-    page_title = "Simulation Validation"
+    page_title = _("Simulation Validation")
+    meta_description = _(
+        "Blend deterministic rules with simulations or complex domain logic to verify results against real-world scenarios.",
+    )
 
 
 class FeatureCertificatesPageView(FeatureDetailPageView):
     template_name = "marketing/features/certificates.html"
-    page_title = "Certificates"
+    page_title = _("Credential Issuance")
+    meta_description = _(
+        "Issue certificates and compliance artifacts automatically once a submission passes every validation checkpoint.",
+    )
 
 
 class FeatureBlockchainPageView(FeatureDetailPageView):
     template_name = "marketing/features/blockchain.html"
-    page_title = "Blockchain"
+    page_title = _("Blockchain Provenance")
+    meta_description = _(
+        "Track validation provenance on an immutable ledger to give regulators and customers tamper-evident confidence.",
+    )
 
 
 class FeatureIntegrationsPageView(FeatureDetailPageView):
     template_name = "marketing/features/integrations.html"
-    page_title = "Integrations"
+    page_title = _("Integrations")
+    meta_description = _(
+        "Connect SimpleValidations to your stack with webhooks, REST APIs, and export-ready payloads.",
+    )
 
 
-class PricingPageView(BreadcrumbMixin, TemplateView):
+class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/pricing.html"
     http_method_names = ["get"]
+    page_title = _("Pricing")
+    meta_description = _(
+        "Compare SimpleValidations pricing plans for growing teams that need dependable data quality.",
+    )
     breadcrumbs = [
         {"name": _("Pricing"), "url": ""},
     ]
 
 
-class PricingDetailPageView(BreadcrumbMixin, TemplateView):
+class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name: str = ""
     http_method_names = ["get"]
     page_title: str = ""
+    meta_description: str = _(
+        "Select the SimpleValidations plan that aligns with your team's scale, automation goals, and support needs.",
+    )
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()

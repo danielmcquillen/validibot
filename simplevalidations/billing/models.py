@@ -1,6 +1,6 @@
 # Create your models here.
 from django.db import models
-from django_extensions.db.models import TimeStampedModel
+from model_utils.models import TimeStampedModel
 
 from simplevalidations.users.models import Organization
 

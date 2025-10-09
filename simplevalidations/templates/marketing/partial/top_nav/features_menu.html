@@ -44,16 +44,16 @@
                     <div>
                         <p class="section-heading mb-2">
                             
-                            {% translate "Integrations" %}
+                            <a href="{% url 'marketing:features_integrations' %}">{% translate "Integrations" %}</a>
                         </p>
                         <ul class="list-unstyled">
                             <li>
                                 <a class="dropdown-item"
-                                   href="{% url 'marketing:features_integration_github' %}">GitHub</a>
+                                   href="{% url 'marketing:features_integrations' %}#github-integration">GitHub</a>
                             </li>
                             <li>
                                 <a class="dropdown-item"
-                                   href="{% url 'marketing:features_integration_slack' %}">Slack</a>
+                                   href="{% url 'marketing:features_integrations' %}#slack-integration">Slack</a>
                             </li>
                         </ul>
                     </div>

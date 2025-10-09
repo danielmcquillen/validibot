@@ -1,49 +1,5 @@
-{% load i18n %}
+{% load i18n crispy_forms_tags %}
 
 <div id="footer-waitlist">
-  {% if form.non_field_errors %}
-    <p class="text-danger mb-2">
-      {% for error in form.non_field_errors %}
-        {{ error }}{% if not forloop.last %}<br>{% endif %}
-      {% endfor %}
-    </p>
-  {% endif %}
-
-  <form hx-post="{% url 'marketing:beta_waitlist' %}"
-        hx-target="#footer-waitlist"
-        hx-swap="outerHTML"
-        method="post"
-        class="d-flex flex-column flex-sm-row gap-2 align-items-start"
-        novalidate>
-    {% csrf_token %}
-
-    <label class="visually-hidden" for="footer-waitlist-email">
-      {{ form.email.label }}
-    </label>
-    <input type="email"
-           name="{{ form.email.html_name }}"
-           id="footer-waitlist-email"
-           class="form-control form-control-sm{% if form.email.errors %} is-invalid{% endif %}"
-           autocomplete="email"
-           placeholder="{% trans 'Your email' %}"
-           maxlength="{{ form.email.field.max_length }}"
-           required
-           value="{{ form.email.value|default_if_none:''|escape }}">
-    {% if form.email.errors %}
-      <div class="invalid-feedback d-block small">
-        {% for error in form.email.errors %}
-          {{ error }}{% if not forloop.last %}<br>{% endif %}
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    {{ form.company }}
-    <input type="hidden"
-           name="{{ form.origin.html_name }}"
-           value="{{ form.origin.value|default:form.origin.field.initial|default:'footer' }}">
-
-    <button type="submit" class="btn btn-outline-light btn-sm">
-      {% trans "Notify me" %}
-    </button>
-  </form>
+  {% crispy form %}
 </div>

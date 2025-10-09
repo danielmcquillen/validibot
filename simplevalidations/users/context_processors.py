@@ -1,6 +1,5 @@
 from django.conf import settings
 
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import ensure_personal_workspace
 
 

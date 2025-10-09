@@ -1,4 +1,9 @@
-{% load static core_tags %}
+{% load static i18n core_tags marketing_flags %}
+
+{% marketing_feature_enabled "features" as features_enabled %}
+{% marketing_feature_enabled "pricing" as pricing_enabled %}
+{% marketing_feature_enabled "docs" as docs_enabled %}
+{% marketing_feature_enabled "resources" as resources_enabled %}
 
 {% comment %}
 This footer appears on all 'marketing' pages of the site available to all users, logged in or not.
@@ -11,16 +16,14 @@ This footer appears on all 'marketing' pages of the site available to all users,
             <div class="col-12 col-lg-4 mt-4 mb-4">
 
                 <h1 class="mb-3">
-                    SimpleValidations
+                    <a class="navbar-brand" href="{% url 'marketing:home' %}">SimpleValidations</a>
                 </h1>
 
-                <a class="navbar-brand" href="{% url 'marketing:home' %}">SimpleValidations</a>
-
                 <div class="background">
-                    A simple description of this site goes here.
-                    <br />
+                    SimpleValidations is a data validation platform that helps teams ensure data quality with AI-powered precision and robot-like reliability.
+                </div>
+                <div class="mt-2">
                     <a href="{% url 'marketing:about' %}" class="read-more">Read more about this site.</a>
-
                 </div>
                 <div class="copyright">
                     © All rights reserved except where noted.
@@ -35,65 +38,75 @@ This footer appears on all 'marketing' pages of the site available to all users,
                     </h1>
                     <nav>
 
-                        <h2>
-                            PRODUCT
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:features' %}">Features</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:pricing' %}">Pricing</a>
-                            </li>
-                            {% if request.user.is_authenticated %}
-                                <li>
-                                    <a href="{% org_url 'dashboard:my_dashboard' %}">My Dashboard</a>
-                                </li>
-                            {% endif %}
-                        </ul>
+                        {% if features_enabled or pricing_enabled or request.user.is_authenticated %}
+                            <h2>
+                                PRODUCT
+                            </h2>
+                            <ul>
+                                {% if features_enabled %}
+                                    <li>
+                                        <a href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
+                                    </li>
+                                {% endif %}
+                                {% if pricing_enabled %}
+                                    <li>
+                                        <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
+                                    </li>
+                                {% endif %}
+                                {% if request.user.is_authenticated %}
+                                    <li>
+                                        <a href="{% org_url 'dashboard:my_dashboard' %}">{% trans "My Dashboard" %}</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        {% endif %}
 
                         <h2>
                             LEARN
                         </h2>
                         <ul>
                             <li>
-                                <a href="{% url 'marketing:resources_docs' %}">Docs</a>
+                                <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Blog" %}</a>
+                            </li>
+                            {% if docs_enabled %}
+                                <li>
+                                    <a href="{% url 'marketing:resources_docs' %}">{% trans "Docs" %}</a>
+                                </li>
+                            {% endif %}
+                            {% if resources_enabled %}
+                                <li>
+                                    <a href="{% url 'marketing:resources_changelog' %}">{% trans "Changelog" %}</a>
+                                </li>
+                                <li>
+                                    <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+
+                        <h2>
+                            {% trans "SUPPORT" %}
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:contact' %}">{% trans "Contact Us" %}</a>
                             </li>
                             <li>
-                                <a href="{% url 'marketing:blog:blog_list' %}">Blog</a>
+                                <a href="{% url 'marketing:help_center' %}">{% trans "Help Center" %}</a>
                             </li>
                             <li>
-                                <a href="{% url 'marketing:resources_changelog' %}">Changelog</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:faq' %}">FAQ</a>
+                                <a href="{% url 'marketing:status' %}">{% trans "Status" %}</a>
                             </li>
                         </ul>
 
                         <h2>
-                            SUPPORT
+                            {% trans "LEGAL" %}
                         </h2>
                         <ul>
                             <li>
-                                <a href="{% url 'marketing:contact' %}">Contact Us</a>
+                                <a href="{% url 'marketing:terms' %}">{% trans "Terms of Service" %}</a>
                             </li>
                             <li>
-                                <a href="{% url 'marketing:help_center' %}">Help Center</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:status' %}">Status</a>
-                            </li>
-                        </ul>
-
-                        <h2>
-                            LEGAL
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:terms' %}">Terms of Service</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:privacy' %}">Privacy Policy</a>
+                                <a href="{% url 'marketing:privacy' %}">{% trans "Privacy Policy" %}</a>
                             </li>
                         </ul>
                     </nav>
@@ -102,12 +115,12 @@ This footer appears on all 'marketing' pages of the site available to all users,
             </div>
 
             <div class="col-12 col-lg-4 mt-4 newsletter-column">
-                <div class="about-newsletter-signup w-100" style="padding-bottom: 4rem; ">
+                <div class="about-newsletter-signup w-100 pb-5">
                     <h1>
-                        NEWSLETTER
+                        {% trans "NEWSLETTER" %}
                     </h1>
                     <p>
-                        Don't miss out! Sign up to stay in the loop for news on the beta launch.
+                        {% blocktrans %}Don't miss out! Sign up to stay in the loop for news on the beta launch.{% endblocktrans %}
                     </p>
                     {% marketing_waitlist_form 'footer' as footer_waitlist_form %}
                     {% include "marketing/partial/footer_waitlist_form.html" with form=footer_waitlist_form %}

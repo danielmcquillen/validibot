@@ -1,4 +1,9 @@
-{% load i18n core_tags %}
+{% load i18n core_tags marketing_flags %}
+
+{% marketing_feature_enabled "features" as features_enabled %}
+{% marketing_feature_enabled "resources" as resources_enabled %}
+{% marketing_feature_enabled "docs" as docs_enabled %}
+{% marketing_feature_enabled "pricing" as pricing_enabled %}
 
 <div id="site-top-nav-wrapper">
     <div class="container ">
@@ -18,17 +23,28 @@
 
                     <ul class="navbar-nav me-auto">
                         {% block left_nav_items %}
-
-                            {% include 'marketing/partial/top_nav/features_menu.html' %}
-                            {% include 'marketing/partial/top_nav/resources_menu.html' %}
+                            {% if features_enabled %}
+                                {% include 'marketing/partial/top_nav/features_menu.html' %}
+                            {% endif %}
+                            {% if resources_enabled %}
+                                {% include 'marketing/partial/top_nav/resources_menu.html' %}
+                            {% endif %}
                             <li class="nav-item ms-md-3">
-                                <a class="nav-link {% active_link 'app' %}"
-                                   href="{% url 'marketing:resources_docs' %}">{% translate "Docs" %}</a>
+                                <a class="nav-link {% active_link 'about' %}"
+                                   href="{% url 'marketing:about' %}">{% translate "About" %}</a>
                             </li>
-                            <li class="nav-item ms-md-3">
-                                <a class="nav-link {% active_link 'app' %}"
-                                   href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
-                            </li>
+                            {% if docs_enabled %}
+                                <li class="nav-item ms-md-3">
+                                    <a class="nav-link {% active_link 'app' %}"
+                                       href="{% url 'marketing:resources_docs' %}">{% translate "Docs" %}</a>
+                                </li>
+                            {% endif %}
+                            {% if pricing_enabled %}
+                                <li class="nav-item ms-md-3">
+                                    <a class="nav-link {% active_link 'app' %}"
+                                       href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
+                                </li>
+                            {% endif %}
                         {% endblock left_nav_items %}
                     </ul>
 

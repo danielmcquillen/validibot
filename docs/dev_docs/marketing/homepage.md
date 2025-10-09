@@ -9,6 +9,9 @@ emails for beta announcements.
   and renders the card via `marketing/partial/waitlist_form.html`.
 - **Form**: `simplevalidations.marketing.forms.BetaWaitlistForm` validates email
   addresses, enforces a hidden honeypot field, and blocks common disposable domains.
+  The form configures a Crispy helper (Bootstrap 5 pack) so both the hero card and
+  footer signup share the same markup; pass `origin="footer"` to stack the button
+  under the input and to keep the HTMX target pointing at `#footer-waitlist`.
 - **View**: `simplevalidations.marketing.views.submit_beta_waitlist` accepts HTMX
   submissions and returns the form or success partial depending on validation.
 - **Service**: `simplevalidations.marketing.services.submit_waitlist_signup`
@@ -45,3 +48,18 @@ will see an error asking them to try again.
 
 The metadata we send alongside the email includes the visitor's user agent, IP, and
 referer so we can triage or segment follow-ups later.
+
+## Marketing Navigation Toggles
+
+Set the following environment-driven flags in `config/settings/base.py` to control the
+marketing navigation:
+
+- `FEATURES_ENABLED`
+- `RESOURCES_ENABLED`
+- `DOCS_ENABLED`
+- `PRICING_ENABLED`
+
+Templates load `{% load marketing_flags %}` and then derive the flag values via
+`{% marketing_feature_enabled "resources" as resources_enabled %}` (swap the string for
+`docs`, `pricing`, or `features`). The tag returns `True` when the corresponding setting
+is enabled; otherwise templates can hide the related nav items and footer links.

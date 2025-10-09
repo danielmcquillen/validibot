@@ -27,6 +27,7 @@ This site describes the core concepts, data model, and API for working with vali
 ### Marketing
 
 - [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
+- [Feature Pages](marketing/features.md) - Messaging guide for the marketing feature content
 
 ### Data Model
 

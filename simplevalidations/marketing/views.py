@@ -31,7 +31,7 @@ class HomePageView(TemplateView):
         context = super().get_context_data(**kwargs)
         context.setdefault(
             "waitlist_form",
-            BetaWaitlistForm(initial={"origin": BetaWaitlistForm.ORIGIN_HERO}),
+            BetaWaitlistForm(origin=BetaWaitlistForm.ORIGIN_HERO),
         )
         return context
 
@@ -94,14 +94,9 @@ class FeatureBlockchainPageView(FeatureDetailPageView):
     page_title = "Blockchain"
 
 
-class FeatureGithubIntegrationPageView(FeatureDetailPageView):
-    template_name = "marketing/features/integrations/github.html"
-    page_title = "GitHub Integration"
-
-
-class FeatureSlackIntegrationPageView(FeatureDetailPageView):
-    template_name = "marketing/features/integrations/slack.html"
-    page_title = "Slack Integration"
+class FeatureIntegrationsPageView(FeatureDetailPageView):
+    template_name = "marketing/features/integrations.html"
+    page_title = "Integrations"
 
 
 class PricingPageView(BreadcrumbMixin, TemplateView):
@@ -230,7 +225,15 @@ class ContactPageView(SupportDetailPageView):
 
 @require_http_methods(["POST"])
 def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
-    form = BetaWaitlistForm(request.POST)
+    origin = (request.POST.get("origin") or BetaWaitlistForm.ORIGIN_HERO).strip().lower()
+    if origin not in BetaWaitlistForm.ALLOWED_ORIGINS:
+        origin = BetaWaitlistForm.ORIGIN_HERO
+
+    form = BetaWaitlistForm(
+        request.POST,
+        origin=origin,
+        target_id=BetaWaitlistForm.FORM_TARGETS.get(origin),
+    )
     if form.is_valid():
         origin = form.cleaned_data["origin"]
         source = (
@@ -281,9 +284,6 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
             return redirect(reverse("marketing:home"))
 
     if is_htmx(request):
-        origin = request.POST.get("origin", BetaWaitlistForm.ORIGIN_HERO)
-        if origin not in BetaWaitlistForm.ALLOWED_ORIGINS:
-            origin = BetaWaitlistForm.ORIGIN_HERO
         template_base = (
             "marketing/partial/footer_waitlist"
             if origin == BetaWaitlistForm.ORIGIN_FOOTER

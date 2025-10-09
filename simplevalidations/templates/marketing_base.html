@@ -40,7 +40,7 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock content %}
 
 {% block right_nav_items %}
-    {% if not request.user.is_authenticated %}
+    {% if ENABLE_FREE_TRIAL_SIGNUP %}
         <li class="nav-item ms-md-3">
             <a class="btn btn-primary" href="{% url 'account_signup' %}">
                 {% trans "Start Free Trial" %}

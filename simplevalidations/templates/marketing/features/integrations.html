@@ -1,0 +1,44 @@
+{% extends "marketing_base.html" %}
+
+{% load i18n %}
+
+{% block content %}
+  <section class="container py-5">
+    <div class="row">
+      <div class="col-lg-8">
+        <h1 class="display-5 fw-semibold mb-4">{% trans "Integrations" %}</h1>
+        <p class="lead text-muted">
+          {% blocktrans trimmed %}
+            Connect SimpleValidations to the collaboration hubs you already rely on so quality signals stay close to the conversation.
+          {% endblocktrans %}
+        </p>
+      </div>
+    </div>
+    <div class="row  pt-3">
+      <div class="col-lg-8">
+        <h2 class="h4 fw-semibold mt-4" id="github-integration">{% trans "GitHub" %}</h2>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Link repositories to SimpleValidations to trigger checks from pull requests and releases, post pass or fail results back to commits, and keep reviewers aligned without leaving GitHub.
+          {% endblocktrans %}
+        </p>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Validation details remain one click away: contributors can open a run, inspect findings, and re-run checks as part of the same code review workflow they already use.
+          {% endblocktrans %}
+        </p>
+        <h2 class="h4 fw-semibold mt-5" id="slack-integration">{% trans "Slack" %}</h2>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Bring alerts and follow-up actions to the channels your team watches most. Send targeted notifications when validations pass, warn, or fail, and capture acknowledgements without shifting context.
+          {% endblocktrans %}
+        </p>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Each Slack message links back to the underlying run so teammates can review evidence quickly, while approvals and comments remain part of the audit trail in SimpleValidations.
+          {% endblocktrans %}
+        </p>
+      </div>
+    </div>
+  </section>
+{% endblock content %}

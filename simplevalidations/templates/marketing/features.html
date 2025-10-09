@@ -9,11 +9,12 @@
         {% trans "Everything you need to ship confident validations" %}
       </h1>
       <p class="lead text-muted">
-        {% trans "SimpleValidations keeps validation teams in sync with reusable workflows and instant insight into every run." %}
+        {% trans "SimpleValidations keeps validation teams in sync with reusable workflows and instant insight into every validation run." %}
       </p>
     </div>
 
     <div class="features-content">
+      {% comment %}
       <div class="row g-4">
         <div class="col-md-4">
           <div class="card h-100 shadow-sm">
@@ -52,6 +53,8 @@
           </div>
         </div>
       </div>
+      {% endcomment %}
+
       <div class="mt-5">
         <h2 class="h4 fw-semibold mb-3 text-center text-md-start">
           {% trans "Explore the platform" %}
@@ -60,7 +63,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_overview' %}">
-              <div class="feature-link-visual feature-link-visual--overview"></div>
+              <div class="feature-link-visual feature-link-visual--overview">
+              </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Platform overview" %}
@@ -74,7 +78,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_schema_validation' %}">
-              <div class="feature-link-visual feature-link-visual--schema"></div>
+              <div class="feature-link-visual feature-link-visual--schema">
+              </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Schema validation" %}
@@ -88,7 +93,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_simulation_validation' %}">
-              <div class="feature-link-visual feature-link-visual--simulation"></div>
+              <div class="feature-link-visual feature-link-visual--simulation">
+              </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Simulation validation" %}
@@ -102,7 +108,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_certificates' %}">
-              <div class="feature-link-visual feature-link-visual--certificates"></div>
+              <div class="feature-link-visual feature-link-visual--certificates">
+              </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Certificates" %}
@@ -116,7 +123,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_blockchain' %}">
-              <div class="feature-link-visual feature-link-visual--blockchain"></div>
+              <div class="feature-link-visual feature-link-visual--blockchain">
+              </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Blockchain audit" %}
@@ -129,28 +137,15 @@
           </div>
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
-               href="{% url 'marketing:features_integration_github' %}">
-              <div class="feature-link-visual feature-link-visual--github"></div>
-              <div class="card-body">
-                <h3 class="h5 fw-semibold mb-2">
-                  {% trans "GitHub integration" %}
-                </h3>
-                <p class="text-muted mb-0">
-                  {% trans "Automate checks straight from pull requests and releases." %}
-                </p>
+               href="{% url 'marketing:features_integrations' %}">
+              <div class="feature-link-visual feature-link-visual--github">
               </div>
-            </a>
-          </div>
-          <div class="col-sm-6 col-lg-4">
-            <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
-               href="{% url 'marketing:features_integration_slack' %}">
-              <div class="feature-link-visual feature-link-visual--slack"></div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
-                  {% trans "Slack integration" %}
+                  {% trans "Integrations" %}
                 </h3>
                 <p class="text-muted mb-0">
-                  {% trans "Broadcast alerts and approvals to the channels teams trust." %}
+                  {% trans "Connect GitHub reviews and Slack conversations to every validation." %}
                 </p>
               </div>
             </a>
@@ -158,7 +153,10 @@
         </div>
       </div>
       <div class="text-center mt-5">
-        <a class="btn btn-primary btn-lg" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
+
+        {% if ENABLE_FREE_TRIAL_SIGNUP %}
+          <a class="btn btn-primary btn-lg" href="{% url 'account_signup' %}">{% trans "Start free trial" %}</a>
+        {% endif %}
       </div>
     </div>
   </section>

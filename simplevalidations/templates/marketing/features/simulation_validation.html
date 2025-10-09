@@ -4,14 +4,28 @@
 
 {% block content %}
   <section class="container py-5">
-    <div class="row justify-content-center">
+    <div class="row">
       <div class="col-lg-8">
         <h1 class="display-5 fw-semibold mb-4">{% trans "Simulation Validation" %}</h1>
         <p class="lead text-muted">
-          {% trans "Model critical workflows with sandboxed data to see outcomes before shipping." %}
+          {% blocktrans trimmed %}
+            Preview how new rules or data sources behave by running them through controlled scenarios before they touch production workloads.
+          {% endblocktrans %}
         </p>
-        <p>
-          {% trans "Spin up realistic scenarios, run validations against sample datasets, and surface potential regressions without touching production." %}
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Build simulations from historical samples, crafted edge cases, or synthetic datasets so you can explore best- and worst-case outcomes with confidence.
+          {% endblocktrans %}
+        </p>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Every run captures the inputs, results, and reviewer notes, making it easier to collaborate on next steps and decide when a change is ready to promote.
+          {% endblocktrans %}
+        </p>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            When the experiment looks solid, reuse the configuration as a production validation, keeping your release process predictable from test to launch.
+          {% endblocktrans %}
         </p>
       </div>
     </div>

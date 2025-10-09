@@ -61,14 +61,9 @@ urlpatterns = [
         name="features_blockchain",
     ),
     path(
-        "features/integrations/github/",
-        views.FeatureGithubIntegrationPageView.as_view(),
-        name="features_integration_github",
-    ),
-    path(
-        "features/integrations/slack/",
-        views.FeatureSlackIntegrationPageView.as_view(),
-        name="features_integration_slack",
+        "features/integrations/",
+        views.FeatureIntegrationsPageView.as_view(),
+        name="features_integrations",
     ),
     path(
         "pricing/",

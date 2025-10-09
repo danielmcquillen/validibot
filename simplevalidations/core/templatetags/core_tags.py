@@ -121,4 +121,4 @@ def marketing_waitlist_form(origin: str = "hero"):
     value = origin.strip().lower() if origin else BetaWaitlistForm.ORIGIN_HERO
     if value not in BetaWaitlistForm.ALLOWED_ORIGINS:
         value = BetaWaitlistForm.ORIGIN_HERO
-    return BetaWaitlistForm(initial={"origin": value})
+    return BetaWaitlistForm(origin=value)

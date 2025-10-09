@@ -12732,6 +12732,10 @@ h4 {
   font-size: 1.2rem;
   font-weight: 600;
 }
+a {
+  text-decoration: dotted underline;
+}
+
 .entrance-page {
   background: linear-gradient(152deg, #eef4f8, #dde5ea) !important;
   height: 100%;
@@ -13404,7 +13408,9 @@ h4 {
 
 #beta-waitlist-card {
   background-color: none !important;
-  border: 1px dotted #eee;
+  border: 1px dotted #ccc;
+  padding: 1rem;
+  border-radius: 0.5rem;
 }
 
 /*# sourceMappingURL=project.css.map */

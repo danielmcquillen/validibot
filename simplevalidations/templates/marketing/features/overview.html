@@ -4,14 +4,23 @@
 
 {% block content %}
   <section class="container py-5">
-    <div class="row justify-content-center">
+    <div class="row">
       <div class="col-lg-8">
         <h1 class="display-5 fw-semibold mb-4">{% trans "SimpleValidations Overview" %}</h1>
         <p class="lead text-muted">
-          {% trans "Get a snapshot of how SimpleValidations keeps your data quality process organized and auditable." %}
+          {% blocktrans trimmed %}
+            SimpleValidations keeps validation blueprints, automation, and sign-offs together so teams always know the state of their data quality program.
+          {% endblocktrans %}
         </p>
-        <p>
-          {% trans "Our platform delivers a collaborative workspace, automated checks, and real-time insights so your teams can move faster without sacrificing trust." %}
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Describe the rules that matter, invite collaborators to review them, and tie every change to a timeline that captures who approved what and when.
+          {% endblocktrans %}
+        </p>
+        <p class="text-muted">
+          {% blocktrans trimmed %}
+            Whether you manage one dataset or dozens, the workspace adapts to your release rhythm and gives stakeholders a shared source of truth before, during, and after each run.
+          {% endblocktrans %}
         </p>
       </div>
     </div>

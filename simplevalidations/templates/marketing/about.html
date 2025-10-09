@@ -1,10 +1,79 @@
 {% extends "marketing_base.html" %}
-{% load i18n%}
+
+{% load i18n %}
 
 {% block content %}
-    <div class="container">
-        <h1>
+  <div class="container marketing-page">
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <header class="mt-4 mb-4">
+          <h1>
             {% trans "About SimpleValidations" %}
-        </h1>
+          </h1>
+        </header>
+
+        <div class="mb-5">
+          <p>
+            SimpleValidations is the developed by <a href="https://www.mcquilleninteractive.com"
+    rel="noopener"
+    target="_blank">McQuillen Interactive</a>, a Melbourne-based web application studio founded by
+            Daniel McQuillen.
+          </p>
+
+          <p>
+            I have spent the past two decades building practical software for research labs, building scientists, and
+            educators who care about craft as much as they care about data accuracy.
+          </p>
+          <p>
+            The idea for SimpleValidations first took shape while creating a window measurement file validation system
+            for the Windows and Daylighting Group at Lawrence Berkeley National Laboratory. Watching that tool save
+            engineers hours of back-and-forth convinced me that smarter, kinder validation workflows could help any
+            team that wrestles with complex data submissions.
+          </p>
+        </div>
+
+        <section class="mb-5">
+          <h2 class="h4">
+            {% trans "What I'm Building" %}
+          </h2>
+          <p>
+            My goal is to give product teams, analysts, and domain experts a dependable co-pilot that makes data quality
+            checks feel routine instead of punitive. SimpleValidations blends automated rules, AI-assisted review, and
+            clear audit trails so you can trust what you ship without adding another layer of process overhead. SimpleValidations
+            hides complex logic or simulations behind a simple interface so you and your users can validate data and documents
+            with confidence and ease.
+          </p>
+        </section>
+
+        <section class="mb-5">
+          <h2 class="h4">
+            {% trans "Why It Matters" %}
+          </h2>
+          <p>
+            Whether I am helping an energy-efficiency researcher, a nonprofit educator, or a commercial product team,
+            the same themes surface: people want software that respects their time, reflects their domain language, and
+            keeps stakeholders aligned. SimpleValidations carries that ethos forward - crafting an opinionated, humane
+            workflow so teams can trust their data, respond faster, and focus on the work only humans can do.
+          </p>
+        </section>
+
+        <section class="mb-5">
+          <h2 class="h4">
+            {% trans "What's Next" %}
+          </h2>
+          <p>
+            As the beta evolves, I'm continuing to translate lessons from custom client work - like multilingual support,
+            succinct reporting, and integration-ready APIs - into features that benefit every organization on the
+            platform. If that resonates, I would love to hear how SimpleValidations can support you.
+          </p>
+        </section>
+
+        <div class="pb-5">
+          <a class="btn btn-outline-primary" href="{% url 'marketing:contact' %}">
+            {% trans "Start a Conversation" %}
+          </a>
+        </div>
+      </div>
     </div>
+  </div>
 {% endblock content %}

@@ -80,7 +80,7 @@ DJANGO_APPS = [
     "django.contrib.sites",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django.contrib.humanize", # Handy template tags
+    "django.contrib.humanize",  # Handy template tags
     "django.contrib.admin",
     "django.forms",
 ]
@@ -219,6 +219,7 @@ TEMPLATES = [
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
                 "simplevalidations.users.context_processors.allauth_settings",
+                "simplevalidations.core.context_processors.site_feature_settings",
                 "simplevalidations.users.context_processors.organization_context",
             ],
         },
@@ -416,3 +417,14 @@ SUBMISSION_FILE_MAX_BYTES = 1_000_000_000  # 1GB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 SECURE_CONTENT_TYPE_NOSNIFF = True
+
+
+# Site features
+ENABLE_FREE_TRIAL_SIGNUP = env.bool("ENABLE_FREE_TRIAL_SIGNUP", True)
+ENABLE_SYSTEM_STATUS_PAGE = env.bool("ENABLE_SYSTEM_STATUS_PAGE", True)
+
+# Manage content visibility
+FEATURES_ENABLED = env.bool("FEATURES_ENABLED", True)
+RESOURCES_ENABLED = env.bool("RESOURCES_ENABLED", True)
+DOCS_ENABLED = env.bool("DOCS_ENABLED", True)
+PRICING_ENABLED = env.bool("PRICING_ENABLED", True)

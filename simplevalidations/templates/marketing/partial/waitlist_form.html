@@ -1,64 +1,18 @@
-{% load i18n %}
+{% load i18n crispy_forms_tags %}
 
 <div id="beta-waitlist-card" class="mt-5">
   <div class="card-body">
     <h2 class="h5 fw-semibold mb-2">
-      {% trans "Join the Beta Waitlist" %}
+      {% trans "Launching soon! Join the Beta Waitlist" %}
     </h2>
     <p class="text-muted small mb-4">
       {% trans "Stay in the loop for news on the beta launch." %}
     </p>
 
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger" role="alert">
-        {% for error in form.non_field_errors %}
-          <div>
-            {{ error }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+    {% crispy form %}
 
-    <form hx-post="{% url 'marketing:beta_waitlist' %}"
-          hx-target="#beta-waitlist-card"
-          hx-swap="outerHTML"
-          method="post"
-          novalidate>
-      {% csrf_token %}
-
-      <div class="mb-3">
-        <label class="form-label" for="hero-waitlist-email">
-          {{ form.email.label }}
-        </label>
-        <input type="email"
-               name="{{ form.email.html_name }}"
-               id="hero-waitlist-email"
-               class="form-control
-                      {% if form.email.errors %}
-                        is-invalid
-                      {% endif %}"
-               autocomplete="email"
-               placeholder="{{ form.email.field.widget.attrs.placeholder }}"
-               maxlength="{{ form.email.field.max_length }}"
-               required
-               value="{{ form.email.value|default_if_none:''|escape }}" />
-        {% for error in form.email.errors %}
-          <div class="invalid-feedback d-block">
-            {{ error }}
-          </div>
-        {% endfor %}
-      </div>
-
-      {{ form.company }}
-      {{ form.origin }}
-
-      <button type="submit" class="btn btn-outline-primary">
-        {% trans "Notify Me" %}
-      </button>
-
-      <p class="text-muted small mt-3 mb-0">
-        {% trans "You'll get email about the beta release and major updates &mdash; no spam, ever." %}
-      </p>
-    </form>
+    <p class="text-muted small mt-3 mb-0">
+      {% trans "You'll get email updates about the beta release and major news &mdash; no spam, ever." %}
+    </p>
   </div>
 </div>

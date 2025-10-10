@@ -21,7 +21,7 @@ class Command(BaseCommand):
         self.stdout.write("Setting up SimpleValidations.")
         self.stdout.write("  ")
         self._setup_local_superuser()
-        self.stdout.write("DONE setting up PureLMS")
+        self.stdout.write("DONE setting up SimpleValidations")
 
     def _setup_local_superuser(self):
         """

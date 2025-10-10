@@ -2,9 +2,12 @@ import json
 
 from django.contrib import messages
 from django.contrib.sites.models import Site
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
-from django.urls import reverse, reverse_lazy
+from django.http import HttpRequest
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.shortcuts import render
+from django.urls import reverse
+from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -17,11 +20,9 @@ from simplevalidations.marketing.constants import ProspectEmailStatus
 from simplevalidations.marketing.email.utils import is_allowed_postmark_source
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
-from simplevalidations.marketing.services import (
-    WaitlistPayload,
-    WaitlistSignupError,
-    submit_waitlist_signup,
-)
+from simplevalidations.marketing.services import WaitlistPayload
+from simplevalidations.marketing.services import WaitlistSignupError
+from simplevalidations.marketing.services import submit_waitlist_signup
 
 
 class MarketingMetadataMixin:
@@ -29,16 +30,18 @@ class MarketingMetadataMixin:
     meta_description: str = _(
         "SimpleValidations helps teams automate data quality checks, run complex validations, and certify results with confidence.",
     )
-    meta_keywords: str = "data validation, AI validation, simulation validation, credential automation"
+    meta_keywords: str = (
+        "data validation, AI validation, simulation validation, credential automation"
+    )
 
     def get_page_title(self) -> str | None:
         return self.page_title
 
     def get_meta_description(self) -> str:
-        return self.meta_description
+        return str(self.meta_description)
 
     def get_meta_keywords(self) -> str:
-        return self.meta_keywords
+        return str(self.meta_keywords)
 
     def get_structured_data(self, site_origin: str, canonical_url: str) -> list[dict]:
         waitlist_url = f"{site_origin}{reverse('marketing:beta_waitlist')}"
@@ -60,12 +63,17 @@ class MarketingMetadataMixin:
                 "name": "Join the SimpleValidations beta waitlist",
             },
         }
+        description = str(self.get_meta_description())
+        page_name = str(self.get_page_title() or "SimpleValidations")
+        keywords = str(self.get_meta_keywords())
+
         webpage = {
             "@context": "https://schema.org",
             "@type": "WebPage",
-            "name": self.get_page_title() or "SimpleValidations",
+            "name": page_name,
             "url": canonical_url,
-            "description": self.get_meta_description(),
+            "description": description,
+            "keywords": keywords,
         }
         return [organization, website, webpage]
 
@@ -73,9 +81,9 @@ class MarketingMetadataMixin:
         context = super().get_context_data(**kwargs)
         page_title = self.get_page_title()
         if page_title is not None:
-            context.setdefault("page_title", page_title)
-        context.setdefault("meta_description", self.get_meta_description())
-        context.setdefault("meta_keywords", self.get_meta_keywords())
+            context.setdefault("page_title", str(page_title))
+        context.setdefault("meta_description", str(self.get_meta_description()))
+        context.setdefault("meta_keywords", str(self.get_meta_keywords()))
 
         request = getattr(self, "request", None)
         if request:
@@ -374,7 +382,9 @@ class ContactPageView(SupportDetailPageView):
 
 @require_http_methods(["POST"])
 def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
-    origin = (request.POST.get("origin") or BetaWaitlistForm.ORIGIN_HERO).strip().lower()
+    origin = (
+        (request.POST.get("origin") or BetaWaitlistForm.ORIGIN_HERO).strip().lower()
+    )
     if origin not in BetaWaitlistForm.ALLOWED_ORIGINS:
         origin = BetaWaitlistForm.ORIGIN_HERO
 

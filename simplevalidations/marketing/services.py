@@ -31,7 +31,7 @@ class WaitlistPayload:
 
 default_plain_waitlist_msg = gettext(
     """
-Hey there — this is Daniel from SimpleValidations.
+Hey there — this is Daniel from McQuillen Interactive.
 Thanks for joining the SimpleValidations beta list!
 I'm working hard to get the beta release ready. I'll email you as soon as invites open.
 
@@ -43,7 +43,7 @@ I'm working hard to get the beta release ready. I'll email you as soon as invite
 
 default_html_waitlist_msg = gettext(
     """
-<p>Hey there — this is Daniel from SimpleValidations. Thanks for joining the
+<p>Hey there — this is Daniel from McQuillen Interactive. Thanks for joining the
  SimpleValidations beta list! 🎉</p>
 <p>I'm working hard to get the beta release ready. I'll email you as
  soon as invites open.</p>

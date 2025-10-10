@@ -39,7 +39,7 @@ class MarketingWaitlistTests(TestCase):
         response = self.client.post(
             self.url,
             {
-                "email": "new@example.com",
+                "email": "new@acme.test",
                 "origin": BetaWaitlistForm.ORIGIN_HERO,
             },
             **self.hx_headers,
@@ -51,12 +51,12 @@ class MarketingWaitlistTests(TestCase):
 
     @patch("simplevalidations.marketing.views.submit_waitlist_signup")
     def test_duplicate_signup_skips_email_and_returns_message(self, mock_submit):
-        Prospect.objects.create(email="dup@example.com")
+        Prospect.objects.create(email="dup@acme.test")
 
         response = self.client.post(
             self.url,
             {
-                "email": "dup@example.com",
+                "email": "dup@acme.test",
                 "origin": BetaWaitlistForm.ORIGIN_HERO,
             },
             **self.hx_headers,

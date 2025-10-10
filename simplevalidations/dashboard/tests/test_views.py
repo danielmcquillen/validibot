@@ -8,12 +8,11 @@ from django.utils import timezone
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.tracking.tests.factories import TrackingEventFactory
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
-from simplevalidations.validations.tests.factories import (
-    ValidationFindingFactory,
-    ValidationRunFactory,
-    ValidationStepRunFactory,
-)
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.tests.factories import ValidationFindingFactory
+from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.validations.tests.factories import ValidationStepRunFactory
 
 
 class DashboardViewTests(TestCase):

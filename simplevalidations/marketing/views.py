@@ -28,7 +28,8 @@ from simplevalidations.marketing.services import submit_waitlist_signup
 class MarketingMetadataMixin:
     page_title: str | None = None
     meta_description: str = _(
-        "SimpleValidations helps teams automate data quality checks, run complex validations, and certify results with confidence.",
+        "SimpleValidations helps teams automate data quality checks, run complex "
+        "validations, and certify results with confidence.",
     )
     meta_keywords: str = (
         "data validation, AI validation, simulation validation, credential automation"
@@ -107,7 +108,8 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Meet Your Data Validation Assistant")
     meta_description = _(
-        "SimpleValidations pairs deterministic checks, AI review, and simulations so every document is production-ready before it reaches your customers.",
+        "SimpleValidations pairs deterministic checks, AI review, and simulations "
+        "so every document is production-ready before it reaches your customers.",
     )
     meta_keywords = (
         "data validation assistant, data quality automation, simulation validation"
@@ -127,7 +129,9 @@ class AboutPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("About SimpleValidations")
     meta_description = _(
-        "Learn about Daniel McQuillen and the story behind SimpleValidations, inspired by mission-critical validation work at Lawrence Berkeley National Laboratory.",
+        "Learn about Daniel McQuillen and the story behind SimpleValidations, "
+        "inspired by mission-critical validation work at "
+        "Lawrence Berkeley National Laboratory.",
     )
     breadcrumbs = [
         {"name": _("About"), "url": ""},
@@ -139,7 +143,8 @@ class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Feature Tour")
     meta_description = _(
-        "Explore how SimpleValidations blends schema checks, simulations, and credentialing to keep every submission trustworthy.",
+        "Explore how SimpleValidations blends schema checks, simulations, "
+        "and credentialing to keep every submission trustworthy.",
     )
     breadcrumbs = [
         {"name": _("Features"), "url": ""},
@@ -151,7 +156,8 @@ class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
     http_method_names = ["get"]
     page_title: str = ""
     meta_description: str = _(
-        "Dive into SimpleValidations capabilities with in-depth feature briefings for technical teams.",
+        "Dive into SimpleValidations capabilities with "
+        "in-depth feature briefings for technical teams.",
     )
 
     def get_breadcrumbs(self):
@@ -170,7 +176,8 @@ class FeatureOverviewPageView(FeatureDetailPageView):
     template_name = "marketing/features/overview.html"
     page_title = _("Platform Overview")
     meta_description = _(
-        "See how SimpleValidations orchestrates AI, simulations, and human-friendly workflows to deliver trustworthy data pipelines.",
+        "See how SimpleValidations orchestrates AI, simulations, "
+        "and human-friendly workflows to deliver trustworthy data pipelines.",
     )
 
 
@@ -178,7 +185,8 @@ class FeatureSchemaValidationPageView(FeatureDetailPageView):
     template_name = "marketing/features/schema_validation.html"
     page_title = _("Schema Validation")
     meta_description = _(
-        "Build rigorous schema validation with reusable checks, contextual errors, and collaborative review loops.",
+        "Build rigorous schema validation with reusable checks, "
+        "contextual errors, and collaborative review loops.",
     )
 
 
@@ -186,7 +194,8 @@ class FeatureSimulationValidationPageView(FeatureDetailPageView):
     template_name = "marketing/features/simulation_validation.html"
     page_title = _("Simulation Validation")
     meta_description = _(
-        "Blend deterministic rules with simulations or complex domain logic to verify results against real-world scenarios.",
+        "Blend deterministic rules with simulations or complex domain "
+        "logic to verify results against real-world scenarios.",
     )
 
 
@@ -194,7 +203,8 @@ class FeatureCertificatesPageView(FeatureDetailPageView):
     template_name = "marketing/features/certificates.html"
     page_title = _("Credential Issuance")
     meta_description = _(
-        "Issue certificates and compliance artifacts automatically once a submission passes every validation checkpoint.",
+        "Issue certificates and compliance artifacts automatically "
+        "once a submission passes every validation checkpoint.",
     )
 
 
@@ -202,7 +212,8 @@ class FeatureBlockchainPageView(FeatureDetailPageView):
     template_name = "marketing/features/blockchain.html"
     page_title = _("Blockchain Provenance")
     meta_description = _(
-        "Track validation provenance on an immutable ledger to give regulators and customers tamper-evident confidence.",
+        "Track validation provenance on an immutable ledger to give "
+        "regulators and customers tamper-evident confidence.",
     )
 
 
@@ -210,7 +221,8 @@ class FeatureIntegrationsPageView(FeatureDetailPageView):
     template_name = "marketing/features/integrations.html"
     page_title = _("Integrations")
     meta_description = _(
-        "Connect SimpleValidations to your stack with webhooks, REST APIs, and export-ready payloads.",
+        "Connect SimpleValidations to your stack with webhooks, "
+        "REST APIs, and export-ready payloads.",
     )
 
 
@@ -219,7 +231,8 @@ class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Pricing")
     meta_description = _(
-        "Compare SimpleValidations pricing plans for growing teams that need dependable data quality.",
+        "Compare SimpleValidations pricing plans for growing teams "
+        "that need dependable data quality.",
     )
     breadcrumbs = [
         {"name": _("Pricing"), "url": ""},
@@ -231,7 +244,8 @@ class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
     http_method_names = ["get"]
     page_title: str = ""
     meta_description: str = _(
-        "Select the SimpleValidations plan that aligns with your team's scale, automation goals, and support needs.",
+        "Select the SimpleValidations plan that aligns with your "
+        "team's scale, automation goals, and support needs.",
     )
 
     def get_breadcrumbs(self):
@@ -250,7 +264,8 @@ class PricingStarterPageView(PricingDetailPageView):
     template_name = "marketing/pricing/starter.html"
     page_title = _("Starter Plan")
     meta_description = _(
-        "Starter brings automated validation and credentialing to lean teams launching their first workflows.",
+        "Starter brings automated validation and credentialing to "
+        "lean teams launching their first workflows.",
     )
 
 
@@ -258,7 +273,8 @@ class PricingGrowthPageView(PricingDetailPageView):
     template_name = "marketing/pricing/growth.html"
     page_title = _("Growth Plan")
     meta_description = _(
-        "Growth adds collaboration tooling and advanced automation for teams scaling complex validation programs.",
+        "Growth adds collaboration tooling and advanced automation "
+        "for teams scaling complex validation programs.",
     )
 
 
@@ -266,7 +282,8 @@ class PricingEnterprisePageView(PricingDetailPageView):
     template_name = "marketing/pricing/enterprise.html"
     page_title = _("Enterprise Plan")
     meta_description = _(
-        "Enterprise delivers custom SLAs, integrations, and governance controls for mission-critical validation.",
+        "Enterprise delivers custom SLAs, integrations, and governance "
+        "controls for mission-critical validation.",
     )
 
 
@@ -275,7 +292,8 @@ class ResourcesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Resource Library")
     meta_description = _(
-        "Browse documentation, videos, and changelog highlights to get the most out of SimpleValidations.",
+        "Browse documentation, videos, and changelog highlights "
+        "to get the most out of SimpleValidations.",
     )
     breadcrumbs = [
         {"name": _("Resources"), "url": ""},
@@ -304,7 +322,8 @@ class DocsPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Documentation")
     meta_description = _(
-        "Read the SimpleValidations documentation to understand architecture, APIs, and implementation patterns.",
+        "Read the SimpleValidations documentation to understand architecture, "
+        "APIs, and implementation patterns.",
     )
 
 
@@ -313,7 +332,8 @@ class VideosPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Video Library")
     meta_description = _(
-        "Watch product walkthroughs and best-practice videos for SimpleValidations deployments.",
+        "Watch product walkthroughs and best-practice videos for "
+        "SimpleValidations deployments.",
     )
 
 
@@ -331,14 +351,16 @@ class FAQPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Frequently Asked Questions")
     meta_description = _(
-        "Find answers to common questions about SimpleValidations setup, automation, and support.",
+        "Find answers to common questions about SimpleValidations "
+        "setup, automation, and support.",
     )
 
 
 class SupportDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     page_title: str = ""
     meta_description: str = _(
-        "Get help from the SimpleValidations team through support guides, contact forms, and system status updates.",
+        "Get help from the SimpleValidations team through support "
+        "guides, contact forms, and system status updates.",
     )
 
     def get_breadcrumbs(self):
@@ -376,7 +398,8 @@ class ContactPageView(SupportDetailPageView):
     http_method_names = ["get"]
     page_title = _("Contact Us")
     meta_description = _(
-        "Reach out to SimpleValidations for product questions, partnerships, or support escalations.",
+        "Reach out to SimpleValidations for product questions, "
+        "partnerships, or support escalations.",
     )
 
 
@@ -423,20 +446,23 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
             form.add_error(
                 None,
                 _(
-                    "We couldn't add you to the waitlist just now. Please try again in a moment.",
+                    "We couldn't add you to the waitlist just now. "
+                    "Please try again in a moment.",
                 ),
             )
         else:
             success_context = {
                 "headline": _("You're on the list!"),
                 "body": _(
-                    "Thanks for your interest. We'll email you as soon as the beta is ready.",
+                    "Thanks for your interest. "
+                    "We'll email you as soon as the beta is ready.",
                 ),
                 "footer_message": _("Thanks! We'll be in touch soon."),
             }
             if existing_prospect:
                 success_context["body"] = _(
-                    "Looks like you're already on the beta list — we'll keep you posted.",
+                    "Looks like you're already on the beta list — "
+                    "we'll keep you posted.",
                 )
                 success_context["footer_message"] = _(
                     "You're already signed up — thanks for staying tuned!",
@@ -473,7 +499,8 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
     messages.error(
         request,
         _(
-            "We couldn't add you to the waitlist. Please correct the highlighted fields and try again.",
+            "We couldn't add you to the waitlist. "
+            "Please correct the highlighted fields and try again.",
         ),
     )
     return redirect(reverse("marketing:home"))
@@ -502,7 +529,8 @@ class TermsPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Terms of Service")
     meta_description = _(
-        "Review the SimpleValidations terms of service covering platform usage and responsibilities.",
+        "Review the SimpleValidations terms of service "
+        "covering platform usage and responsibilities.",
     )
     breadcrumbs = [
         {"name": _("Terms of Service"), "url": ""},
@@ -514,7 +542,8 @@ class PrivacyPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Privacy Policy")
     meta_description = _(
-        "Understand how SimpleValidations collects, processes, and protects personal data.",
+        "Understand how SimpleValidations collects, "
+        "processes, and protects personal data.",
     )
     breadcrumbs = [
         {"name": _("Privacy Policy"), "url": ""},

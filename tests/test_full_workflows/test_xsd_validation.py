@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import pytest
 from django.urls import reverse
 from rest_framework.status import HTTP_200_OK
 
-from simplevalidations.users.models import Role
 from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -20,9 +19,6 @@ from simplevalidations.validations.tests.factories import RulesetFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
-
-if TYPE_CHECKING:
-    from simplevalidations.users.models import Membership
 
 logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.django_db
@@ -94,15 +90,7 @@ def workflow_context(load_xsd_asset, api_client):
     user = UserFactory(orgs=[org])
 
     # Ensure caller has EXECUTOR permissions in this org
-    try:
-        # Best-effort: set membership role to EXECUTOR if present
-        membership: Membership = user.memberships.get(org=org)  # type: ignore[attr-defined]
-        executor_role: Role = Role.objects.get(code=RoleCode.EXECUTOR)
-        membership.roles.add(executor_role)
-    except Exception:
-        # Guarantee access in tests even if role wiring differs
-        user.is_superuser = True
-        user.save()
+    grant_role(user, org, RoleCode.EXECUTOR)
 
     validator = ValidatorFactory(
         validation_type=ValidationType.XML_SCHEMA,

@@ -11,6 +11,8 @@ from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.marketing.constants import BLOCKLISTED_EMAIL_DOMAINS
 
+EXPECTED_EMAIL_PARTS_LENGTH = 2
+
 
 class BetaWaitlistForm(forms.Form):
     ORIGIN_HERO = "hero"
@@ -58,16 +60,17 @@ class BetaWaitlistForm(forms.Form):
             local_part, domain = email.rsplit("@", 1)
         except ValueError as exc:  # pragma: no cover - handled by EmailField
             raise forms.ValidationError(
-                _("Please provide a valid work email.")
+                _("Please provide a valid work email."),
             ) from exc
 
-        if len(local_part) < 2:
+        if len(local_part) < EXPECTED_EMAIL_PARTS_LENGTH:
             raise forms.ValidationError(_("Please provide a valid work email."))
 
         if domain in BLOCKLISTED_EMAIL_DOMAINS:
             raise forms.ValidationError(
                 _(
-                    "Please use your professional email address rather than a disposable inbox.",
+                    "Please use your professional email address "
+                    "rather than a disposable inbox.",
                 ),
             )
         return email
@@ -91,7 +94,11 @@ class BetaWaitlistForm(forms.Form):
         return value
 
     def __init__(
-        self, *args, origin: str | None = None, target_id: str | None = None, **kwargs
+        self,
+        *args,
+        origin: str | None = None,
+        target_id: str | None = None,
+        **kwargs,
     ):
         initial = dict(kwargs.get("initial", {}) or {})
         data = args[0] if args else None

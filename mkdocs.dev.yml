@@ -46,3 +46,6 @@ nav:
       - Steps: data-model/steps.md
       - Findings: data-model/findings.md
       - Users & Roles: data-model/users_roles.md
+  - Deployment:
+      - Deployment Overview: deployment/overview.md
+      - Heroku: deployment/heroku.md

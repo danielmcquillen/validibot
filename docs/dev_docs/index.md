@@ -29,6 +29,11 @@ This site describes the core concepts, data model, and API for working with vali
 - [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
 - [Feature Pages](marketing/features.md) - Messaging guide for the marketing feature content
 
+### Deployment
+
+- [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
+- [Heroku Deployment](deployment/heroku.md) - Step-by-step commands for the Heroku app
+
 ### Data Model
 
 - [Data Model Overview](data-model/index.md) - Core entities and relationships

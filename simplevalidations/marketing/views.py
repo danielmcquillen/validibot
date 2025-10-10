@@ -395,20 +395,27 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
     )
     if form.is_valid():
         origin = form.cleaned_data["origin"]
+        email = form.cleaned_data["email"]
         source = (
             "marketing_footer"
             if origin == BetaWaitlistForm.ORIGIN_FOOTER
             else "marketing_homepage"
         )
+        metadata: dict[str, str | None] = {
+            "source": source,
+            "origin": origin,
+            "user_agent": request.META.get("HTTP_USER_AGENT"),
+            "ip": request.META.get("REMOTE_ADDR"),
+            "referer": request.META.get("HTTP_REFERER"),
+        }
+
+        existing_prospect = Prospect.objects.filter(email=email).exists()
+        if existing_prospect:
+            metadata["skip_email"] = True
+
         payload = WaitlistPayload(
-            email=form.cleaned_data["email"],
-            metadata={
-                "source": source,
-                "origin": origin,
-                "user_agent": request.META.get("HTTP_USER_AGENT"),
-                "ip": request.META.get("REMOTE_ADDR"),
-                "referer": request.META.get("HTTP_REFERER"),
-            },
+            email=email,
+            metadata=metadata,
         )
         try:
             submit_waitlist_signup(payload)
@@ -427,17 +434,25 @@ def submit_beta_waitlist(request: HttpRequest) -> HttpResponse:
                 ),
                 "footer_message": _("Thanks! We'll be in touch soon."),
             }
+            if existing_prospect:
+                success_context["body"] = _(
+                    "Looks like you're already on the beta list — we'll keep you posted.",
+                )
+                success_context["footer_message"] = _(
+                    "You're already signed up — thanks for staying tuned!",
+                )
             template_base = (
                 "marketing/partial/footer_waitlist"
                 if origin == BetaWaitlistForm.ORIGIN_FOOTER
                 else "marketing/partial/waitlist"
             )
             if is_htmx(request):
+                status_code = 200 if existing_prospect else 201
                 return render(
                     request,
                     f"{template_base}_success.html",
                     success_context,
-                    status=201,
+                    status=status_code,
                 )
             messages.success(request, success_context["body"])
             return redirect(reverse("marketing:home"))

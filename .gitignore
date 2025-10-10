@@ -3,6 +3,9 @@
 # Don't load __pycache__ directories from any subdirectory
 **/__pycache__/
 
+# We don't want uvlock to go to heroku
+uv.lock
+
 
 
 *.py[cod]

@@ -12780,6 +12780,11 @@ a {
   transform: translateY(-4px);
   box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.12);
 }
+.feature-link-card .card-img-top {
+  border: 1px solid #fff;
+  border-radius: 0.5rem !important;
+  margin: 1rem;
+}
 
 .feature-link-visual {
   position: relative;
@@ -12880,33 +12885,49 @@ a {
   box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.1);
 }
 
-.resource-card-icon {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16/9;
+.resource-link-visual {
+  position: relative;
   border-radius: 0.45rem;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  margin-bottom: 1.5rem;
+  padding-top: 56%;
+  margin: 1.25rem 1.25rem 0;
+  overflow: hidden;
+  --resource-link-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+.resource-link-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--resource-link-gradient);
+  z-index: 0;
 }
 
-.resource-card-icon--docs {
-  background: linear-gradient(135deg, #6366f1, #22d3ee);
+.resource-link-visual__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
 }
 
-.resource-card-icon--blog {
-  background: linear-gradient(135deg, #ec4899, #f97316);
+.resource-link-visual--docs {
+  --resource-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
 }
 
-.resource-card-icon--videos {
-  background: linear-gradient(135deg, #ef4444, #f97316);
+.resource-link-visual--blog {
+  --resource-link-gradient: linear-gradient(135deg, #ec4899, #f97316);
 }
 
-.resource-card-icon--changelog {
-  background: linear-gradient(135deg, #22c55e, #0ea5e9);
+.resource-link-visual--videos {
+  --resource-link-gradient: linear-gradient(135deg, #ef4444, #f97316);
 }
 
-.resource-card-icon--faq {
-  background: linear-gradient(135deg, #6366f1, #22d3ee);
+.resource-link-visual--changelog {
+  --resource-link-gradient: linear-gradient(135deg, #22c55e, #0ea5e9);
+}
+
+.resource-link-visual--faq {
+  --resource-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
 }
 
 .resources-page {

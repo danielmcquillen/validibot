@@ -1,6 +1,6 @@
 {% extends "marketing_base.html" %}
 
-{% load i18n %}
+{% load i18n static %}
 
 {% block content %}
   <section class="container resources-page">
@@ -16,11 +16,14 @@
     <div class="resources-content">
       <div class="row g-4 justify-content-center">
         <div class="col-md-4">
-          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+          <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
              href="{% url 'marketing:resources_docs' %}">
+            <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+              <img src="{% static 'marketing/images/robot_scene_documentation.png' %}"
+                   alt="Illustration of the SimpleValidations robot accessing documentation."
+                   class="feature-link-visual__image" />
+            </div>
             <div class="card-body">
-              <div class="resource-card-icon resource-card-icon--docs">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Documentation" %}
               </h2>
@@ -35,11 +38,14 @@
           </a>
         </div>
         <div class="col-md-4">
-          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+          <a class="card feature-link-card h-100 shadow-sm text-decoration-none"
              href="{% url 'marketing:blog:blog_list' %}">
+            <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+              <img src="{% static 'marketing/images/robot_scene_blog.png' %}"
+                   alt="Illustration of the SimpleValidations robot blogging."
+                   class="feature-link-visual__image" />
+            </div>
             <div class="card-body">
-              <div class="resource-card-icon resource-card-icon--blog">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Blog" %}
               </h2>
@@ -54,11 +60,14 @@
           </a>
         </div>
         <div class="col-md-4">
-          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+          <a class="card feature-link-card shadow-sm text-decoration-none"
              href="{% url 'marketing:resources_videos' %}">
+            <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+              <img src="{% static 'marketing/images/robot_scene_videos.png' %}"
+                   alt="Illustration of the SimpleValidations robot doing a video podcast."
+                   class="feature-link-visual__image" />
+            </div>
             <div class="card-body">
-              <div class="resource-card-icon resource-card-icon--videos">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Video library" %}
               </h2>
@@ -73,11 +82,11 @@
           </a>
         </div>
         <div class="col-md-4">
-          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+          <a class="card feature-link-card shadow-sm text-decoration-none"
              href="{% url 'marketing:resources_changelog' %}">
+            <div class="card-img-top">
+            </div>
             <div class="card-body">
-              <div class="resource-card-icon resource-card-icon--changelog">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Changelog" %}
               </h2>
@@ -92,11 +101,11 @@
           </a>
         </div>
         <div class="col-md-4">
-          <a class="card h-100 shadow-sm resource-card text-decoration-none text-reset"
+          <a class="card feature-link-card shadow-sm text-decoration-none"
              href="{% url 'marketing:faq' %}">
+            <div class="card-img-top">
+            </div>
             <div class="card-body">
-              <div class="resource-card-icon resource-card-icon--faq">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "FAQ" %}
               </h2>

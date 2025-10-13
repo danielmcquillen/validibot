@@ -230,8 +230,7 @@ class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "Compare SimpleValidations pricing plans for growing teams "
         "that need dependable data quality.",
     )
-    breadcrumbs = [
-    ]
+    breadcrumbs = []
 
 
 class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -291,7 +290,6 @@ class ResourcesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "to get the most out of SimpleValidations.",
     )
     breadcrumbs = [
-        {"name": _("Resources"), "url": ""},
     ]
 
 
@@ -377,9 +375,7 @@ class SupportHomePageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView)
     meta_description = _(
         "Access support resources and contact options for the SimpleValidations team.",
     )
-    breadcrumbs = [
-        {"name": _("Support"), "url": ""},
-    ]
+    breadcrumbs = []
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

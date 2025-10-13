@@ -1,9 +1,5 @@
-{% load static i18n core_tags marketing_flags %}
+{% load static i18n core_tags  %}
 
-{% marketing_feature_enabled "features" as features_enabled %}
-{% marketing_feature_enabled "pricing" as pricing_enabled %}
-{% marketing_feature_enabled "docs" as docs_enabled %}
-{% marketing_feature_enabled "resources" as resources_enabled %}
 
 {% comment %}
 This footer appears on all 'marketing' pages of the site available to all users, logged in or not.
@@ -43,12 +39,12 @@ This footer appears on all 'marketing' pages of the site available to all users,
                                 PRODUCT
                             </h2>
                             <ul>
-                                {% if features_enabled %}
+                                {% if ENABLE_FEATURES_SECTION %}
                                     <li>
                                         <a href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
                                     </li>
                                 {% endif %}
-                                {% if pricing_enabled %}
+                                {% if ENABLE_PRICING_SECTION %}
                                     <li>
                                         <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
                                     </li>
@@ -61,27 +57,31 @@ This footer appears on all 'marketing' pages of the site available to all users,
                             </ul>
                         {% endif %}
 
-                        <h2>
-                            LEARN
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Blog" %}</a>
-                            </li>
-                            {% if docs_enabled %}
-                                <li>
-                                    <a href="{% url 'marketing:resources_docs' %}">{% trans "Docs" %}</a>
-                                </li>
-                            {% endif %}
-                            {% if resources_enabled %}
-                                <li>
-                                    <a href="{% url 'marketing:resources_changelog' %}">{% trans "Changelog" %}</a>
-                                </li>
-                                <li>
-                                    <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
-                                </li>
-                            {% endif %}
-                        </ul>
+                        {% if ENABLE_BLOG or ENABLE_DOCS_SECTION or ENABLE_RESOURCES_SECTION %}
+                            <h2>
+                                LEARN
+                            </h2>
+                            <ul>
+                                {% if ENABLE_BLOG %}
+                                    <li>
+                                        <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Blog" %}</a>
+                                    </li>
+                                {% endif %}
+                                {% if ENABLE_DOCS_SECTION %}
+                                    <li>
+                                        <a href="{% url 'marketing:resources_docs' %}">{% trans "Docs" %}</a>
+                                    </li>
+                                {% endif %}
+                                {% if ENABLE_RESOURCES_SECTION %}
+                                    <li>
+                                        <a href="{% url 'marketing:resources_changelog' %}">{% trans "Changelog" %}</a>
+                                    </li>
+                                    <li>
+                                        <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        {% endif %}
 
                         <h2>
                             {% trans "SUPPORT" %}

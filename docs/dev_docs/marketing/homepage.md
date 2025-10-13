@@ -54,15 +54,11 @@ referer so we can triage or segment follow-ups later.
 Set the following environment-driven flags in `config/settings/base.py` to control the
 marketing navigation:
 
-- `FEATURES_ENABLED`
-- `RESOURCES_ENABLED`
-- `DOCS_ENABLED`
-- `PRICING_ENABLED`
-
-Templates load `{% load marketing_flags %}` and then derive the flag values via
-`{% marketing_feature_enabled "resources" as resources_enabled %}` (swap the string for
-`docs`, `pricing`, or `features`). The tag returns `True` when the corresponding setting
-is enabled; otherwise templates can hide the related nav items and footer links.
+- `ENABLE_FEATURES_SECTION`
+- `ENABLE_RESOURCES_SECTION`
+- `ENABLE_DOCS_SECTION`
+- `ENABLE_PRICING_SECTION`
+- `ENABLE_BLOG`
 
 ## SEO Instrumentation
 

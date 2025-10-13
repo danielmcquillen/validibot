@@ -528,9 +528,7 @@ class TermsPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "Review the SimpleValidations terms of service "
         "covering platform usage and responsibilities.",
     )
-    breadcrumbs = [
-        {"name": _("Terms of Service"), "url": ""},
-    ]
+    breadcrumbs = []
 
 
 class PrivacyPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -541,9 +539,7 @@ class PrivacyPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "Understand how SimpleValidations collects, "
         "processes, and protects personal data.",
     )
-    breadcrumbs = [
-        {"name": _("Privacy Policy"), "url": ""},
-    ]
+    breadcrumbs = []
 
 
 @csrf_exempt

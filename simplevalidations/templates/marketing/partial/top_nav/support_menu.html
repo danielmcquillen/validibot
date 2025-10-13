@@ -1,0 +1,26 @@
+{% load i18n core_tags %}
+
+<li class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle {% active_link_any 'support' 'contact' 'support/help-center' 'support/status' %}"
+       id="supportMenu"
+       role="button"
+       data-bs-toggle="dropdown"
+       aria-expanded="false">
+        {% translate "Support" %}
+    </a>
+    <ul class="dropdown-menu"
+        aria-labelledby="supportMenu">
+        <li>
+            <a class="dropdown-item" href="{% url 'marketing:support' %}">{% translate "Support home" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'marketing:help_center' %}">{% translate "Help Center" %}</a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="{% url 'marketing:status' %}">{% translate "Status" %}</a>
+        </li>
+    </ul>
+</li>

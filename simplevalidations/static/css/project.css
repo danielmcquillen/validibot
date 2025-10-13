@@ -11998,11 +11998,9 @@ h4 {
     padding: 1.25rem;
   }
 }
-.resources-dropdown,
 .features-dropdown {
   position: static;
 }
-.resources-dropdown .dropdown-menu,
 .features-dropdown .dropdown-menu {
   width: min(760px, 90vw);
   margin-top: -0.25rem;
@@ -12013,7 +12011,6 @@ h4 {
   overflow: hidden;
 }
 @media (max-width: 767.98px) {
-  .resources-dropdown .dropdown-menu,
   .features-dropdown .dropdown-menu {
     width: 100vw;
     border-radius: 0;
@@ -12023,11 +12020,9 @@ h4 {
 }
 
 @media (max-width: 991.98px) {
-  .resources-dropdown,
   .features-dropdown {
     position: relative;
   }
-  .resources-dropdown .dropdown-menu,
   .features-dropdown .dropdown-menu {
     width: min(320px, 90vw);
     margin-top: 0.25rem;

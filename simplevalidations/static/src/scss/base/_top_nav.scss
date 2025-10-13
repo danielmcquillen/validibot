@@ -135,7 +135,6 @@
   }
 }
 
-.resources-dropdown,
 .features-dropdown {
   position: static; // allow megamenu to span full width
 
@@ -160,7 +159,6 @@
 }
 
 @media (max-width: 991.98px) {
-  .resources-dropdown,
   .features-dropdown {
     position: relative;
 

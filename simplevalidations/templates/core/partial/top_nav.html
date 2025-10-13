@@ -73,9 +73,11 @@
                                     <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
                                 </li>
                             {% endif %}
+                            {% if ACCOUNT_ALLOW_LOGIN %}
                             <li class="nav-item">
                                 <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
                             </li>
+                            {% endif %}
                         {% endif %}
                     </ul>
                 </div>

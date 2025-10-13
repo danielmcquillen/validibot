@@ -1,10 +1,10 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.contrib.sitemaps.views import sitemap
 
 # Use if async
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-from django.contrib.sitemaps.views import sitemap
 from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
@@ -48,7 +48,6 @@ urlpatterns = [
     ),
     path("app/users/", include("simplevalidations.users.urls", namespace="users")),
     path("app/core/", include("simplevalidations.core.urls", namespace="core")),
-    path("accounts/", include("allauth.urls")),
     path(
         "app/projects/",
         include("simplevalidations.projects.urls", namespace="projects"),
@@ -67,6 +66,10 @@ urlpatterns = [
     ),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
+
+
+if settings.ACCOUNT_ALLOW_LOGIN:
+    urlpatterns.append(path("accounts/", include("allauth.urls")))
 
 if getattr(settings, "GITHUB_APP_ENABLED", False):
     from django_github_app.views import AsyncWebhookView

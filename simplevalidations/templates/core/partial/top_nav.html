@@ -56,7 +56,7 @@
                     {% endif %}
                 {% endblock right_nav_items %}
 
-                {% if request.user.is_authenticated %}
+                {% if request.user.is_authenticated and ACCOUNT_ALLOW_LOGIN %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle"
                            href="#"

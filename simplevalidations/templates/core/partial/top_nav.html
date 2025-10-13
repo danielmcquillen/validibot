@@ -31,14 +31,15 @@
                         </li>
                     {% endif %}
                     <li class="nav-item ms-md-3">
-                        <a class="nav-link {% active_link 'about' %}"
+                        <a class="nav-link {% active_link_any 'about' %}"
                            href="{% url 'marketing:about' %}">{% translate "About" %}</a>
                     </li>
                     {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
                         {% include 'marketing/partial/top_nav/support_menu.html' %}
                     {% else %}
-                        <li>
-                            <a class="nav-link" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+                        <li class="nav-item ms-md-3">
+                            <a class="nav-link {% active_link_any 'contact' %}"
+                               href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
                         </li>
                     {% endif %}
                 {% endblock left_nav_items %}

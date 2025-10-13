@@ -23,8 +23,8 @@
                             {% endif %}
                             {% if ENABLE_RESOURCES_SECTION %}
                                 {% include 'marketing/partial/top_nav/resources_menu.html' %}
-                                {% include 'marketing/partial/top_nav/support_menu.html' %}
                             {% endif %}
+                            {% include 'marketing/partial/top_nav/support_menu.html' %}
                             {% if ENABLE_PRICING_SECTION %}
                                 <li class="nav-item ms-md-3">
                                     <a class="nav-link {% active_link 'app' %}"
@@ -74,9 +74,9 @@
                                 </li>
                             {% endif %}
                             {% if ACCOUNT_ALLOW_LOGIN %}
-                            <li class="nav-item">
-                                <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
-                            </li>
+                                <li class="nav-item">
+                                    <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
+                                </li>
                             {% endif %}
                         {% endif %}
                     </ul>

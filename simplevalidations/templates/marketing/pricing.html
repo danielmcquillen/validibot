@@ -42,9 +42,10 @@
               </ul>
             </div>
             <div class="d-flex flex-row ">
-              <a class="btn btn-link"
-                 href="{% url 'marketing:pricing_starter' %}">{% trans "View plan details" %}</a>
-              <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
+              <a class="btn btn-link" href="{% url 'marketing:pricing_starter' %}">{% trans "View plan details" %}</a>
+              {% if ACCOUNT_ALLOW_LOGIN %}
+                <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -79,7 +80,9 @@
             </div>
             <div class="d-flex flex-row ">
               <a class="btn btn-link" href="{% url 'marketing:pricing_growth' %}">{% trans "View plan details" %}</a>
-              <a class="btn btn-success  ms-auto" href="{% url 'account_signup' %}">{% trans "Start trial" %}</a>
+              {% if ACCOUNT_ALLOW_LOGIN %}
+                <a class="btn btn-success  ms-auto" href="{% url 'account_signup' %}">{% trans "Start trial" %}</a>
+              {% endif %}
             </div>
           </div>
         </div>

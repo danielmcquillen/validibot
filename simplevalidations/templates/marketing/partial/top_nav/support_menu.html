@@ -16,11 +16,15 @@
         <li>
             <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
         </li>
+        {% if ENABLE_HELP_CENTER %}
         <li>
             <a class="dropdown-item" href="{% url 'marketing:help_center' %}">{% translate "Help Center" %}</a>
         </li>
+        {% endif %}
+        {% if ENABLE_SYSTEM_STATUS %}
         <li>
             <a class="dropdown-item" href="{% url 'marketing:status' %}">{% translate "Status" %}</a>
         </li>
+        {% endif %}
     </ul>
 </li>

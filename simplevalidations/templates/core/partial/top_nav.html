@@ -38,7 +38,7 @@
                         {% include 'marketing/partial/top_nav/support_menu.html' %}
                     {% else %}
                         <li>
-                            <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+                            <a class="nav-link" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
                         </li>
                     {% endif %}
                 {% endblock left_nav_items %}

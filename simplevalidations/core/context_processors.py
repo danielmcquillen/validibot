@@ -19,11 +19,11 @@ def site_feature_settings(request):
         extra_context = {
             "ENABLE_FREE_TRIAL_SIGNUP": enable_free_trial_signup,
             "ENABLE_SYSTEM_STATUS_PAGE": settings.ENABLE_SYSTEM_STATUS_PAGE,
-            "ENABLE_RESOURCES_SECTION": settings.RESOURCES_ENABLED,
-            "ENABLE_DOCS_SECTION": settings.DOCS_ENABLED,
-            "ENABLE_PRICING_SECTION": settings.PRICING_ENABLED,
-            "ENABLE_FEATURES_SECTION": settings.FEATURES_ENABLED,
-            "ENABLE_BLOG": settings.BLOG_ENABLED,
+            "ENABLE_RESOURCES_SECTION": settings.ENABLE_RESOURCES_SECTION,
+            "ENABLE_DOCS_SECTION": settings.ENABLE_DOCS_SECTION,
+            "ENABLE_PRICING_SECTION": settings.ENABLE_PRICING_SECTION,
+            "ENABLE_FEATURES_SECTION": settings.ENABLE_FEATURES_SECTION,
+            "ENABLE_BLOG": settings.ENABLE_BLOG,
         }
     except Exception:
         # In case settings are not properly configured yet

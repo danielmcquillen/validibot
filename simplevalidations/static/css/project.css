@@ -13452,10 +13452,8 @@ h3 {
 
 .about-headshot {
   width: 100%;
-  margin-top: 50px;
   padding-left: 5rem;
-  max-width: 300px;
-  rotate: 20deg;
+  max-width: 400px;
 }
 
 /*# sourceMappingURL=project.css.map */

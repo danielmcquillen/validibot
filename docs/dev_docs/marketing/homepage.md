@@ -71,3 +71,5 @@ marketing navigation:
 - `config/urls.py` serves `sitemap.xml` (via `MarketingStaticViewSitemap`) and a
   dynamic `robots.txt` that announces the sitemap location. Add new marketing routes
   to `simplevalidations/marketing/sitemaps.py` whenever you introduce public pages.
+- Published blog posts surface to crawlers through `BlogPostSitemap`; keep slugs stable
+  once content goes live so Google Search retains the indexed URL.

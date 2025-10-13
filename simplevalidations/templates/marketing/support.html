@@ -1,6 +1,6 @@
 {% extends "marketing_base.html" %}
 
-{% load i18n %}
+{% load i18n static %}
 
 {% block content %}
   <section class="container py-5 support-page">
@@ -17,9 +17,13 @@
       <div class="col-md-4">
         <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
            href="{% url 'marketing:contact' %}">
+          <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+            <img src="{% static 'marketing/images/robot_scene_contact_us.png' %}"
+                 alt="Illustration of the SimpleValidations robot talking on the phone."
+                 class="feature-link-visual__image" />
+          </div>
           <div class="card-body">
-            <div class="support-card-icon support-card-icon--contact">
-            </div>
+
             <h2 class="h5 fw-semibold mb-2">
               {% trans "Contact us" %}
             </h2>
@@ -39,9 +43,12 @@
         <div class="col-md-4">
           <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
              href="{% url 'marketing:help_center' %}">
+            <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+              <img src="{% static 'marketing/images/robot_scene_help.png' %}"
+                   alt="Illustration of the SimpleValidations robot behind a help sign."
+                   class="feature-link-visual__image" />
+            </div>
             <div class="card-body">
-              <div class="support-card-icon support-card-icon--help">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Browse the help center" %}
               </h2>

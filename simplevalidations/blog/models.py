@@ -49,3 +49,11 @@ class BlogPost(TimeStampedModel):
 
     def __str__(self):
         return self.title
+
+    def get_absolute_url(self) -> str:
+        from django.urls import reverse
+
+        return reverse(
+            "marketing:blog:blog_post_detail",
+            kwargs={"slug": self.slug},
+        )

@@ -13,13 +13,16 @@ class MarketingStaticViewSitemap(Sitemap):
         "marketing:features": "monthly",
         "marketing:pricing": "monthly",
         "marketing:resources": "weekly",
+        "marketing:blog:blog_list": "weekly",
         "marketing:faq": "monthly",
         "marketing:status": "daily",
         "marketing:resources_changelog": "weekly",
     }
 
     def items(self):
-        return [
+        # TODO: Once I add features, return a complete list...
+        """
+        sitemap_items = [
             "marketing:home",
             "marketing:about",
             "marketing:features",
@@ -37,6 +40,7 @@ class MarketingStaticViewSitemap(Sitemap):
             "marketing:resources_docs",
             "marketing:resources_videos",
             "marketing:resources_changelog",
+            "marketing:blog:blog_list",
             "marketing:faq",
             "marketing:support",
             "marketing:contact",
@@ -45,6 +49,14 @@ class MarketingStaticViewSitemap(Sitemap):
             "marketing:terms",
             "marketing:privacy",
         ]
+        """
+
+        sitemap_items = [
+            "marketing:home",
+            "marketing:about",
+            "marketing:contact",
+        ]
+        return sitemap_items
 
     def location(self, item):
         return reverse(item)

@@ -13,6 +13,7 @@ from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
 
+from simplevalidations.blog.sitemaps import BlogPostSitemap
 from simplevalidations.core import views as core_views
 from simplevalidations.marketing import views as marketing_views
 from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
@@ -21,6 +22,7 @@ from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
 
 sitemaps = {
     "marketing": MarketingStaticViewSitemap(),
+    "blog": BlogPostSitemap(),
 }
 
 urlpatterns = [

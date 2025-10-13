@@ -1,0 +1,216 @@
+{% load i18n static %}
+
+<!-- Features Section with Robot Characters -->
+<section class="features-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
+                <h2 class="section-title">
+                    {% blocktrans trimmed %}
+                        Why Choose SimpleValidations?
+                    {% endblocktrans %}
+                </h2>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Feature: Intelligent Validation -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card ">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    "I analyze your data patterns and catch errors before they cause problems!"
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            AI-Powered Intelligence
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Our validation robot uses AI to understand your data patterns
+                            and provide intelligent validation rules that evolve with your needs.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Feature: Custom Rules -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-4">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    I can run simulations and complex logic to prove your data holds up!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Simulation-Driven Validation
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Pair deterministic rules with domain simulations or sophisticated business logic so every submission is
+                            vetted against real-world scenarios before you ship.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Feature: Schema Validation -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-3">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    I validate documents against your custom schemas with precision!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Schema Validation
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Define and enforce data schemas with precision. Our robot ensures
+                            every field meets your exact specifications and business rules.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Feature: Real-time Processing -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-1">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    I work 24/7 at lightning speed to validate your data instantly!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Real-time Validation
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Get instant feedback on data quality. Our robot processes validations
+                            in real-time, ensuring your data is always clean and reliable.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Feature: Easy Integration -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-2">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    Give me a passing document and I'll stamp it with the right credential!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Credential-Ready Deliverables
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Issue certificates, compliance letters, or other official credentials the moment a file clears every
+                            validation. SimpleValidations keeps the approval trail airtight, so stakeholders know the document can
+                            be trusted.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Feature: Reporting & Analytics -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-5">
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    I give you insight into your data quality trends and performance!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Smart Analytics
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Get detailed insights into your data quality trends, validation
+                            performance, and areas for improvement with our comprehensive dashboard.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

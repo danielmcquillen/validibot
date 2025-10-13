@@ -1,0 +1,30 @@
+{% load i18n %}
+
+<div class="container-fluid m-0 p-0">
+    <!-- Call-to-Action Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-8 mx-auto text-center">
+                    <h2 class="cta-title">
+                        {% blocktrans %}Ready to Meet Your Validation Robot?{% endblocktrans %}
+                    </h2>
+                    <p class="cta-subtitle">
+                        {% blocktrans %}Contact us today and see how you can get early access to SimpleValidations.{% endblocktrans %}
+                    </p>
+                    <div class="d-flex flex-wrap justify-content-center gap-3">
+                        <a href="{% url 'marketing:contact' %}"
+                           class="btn btn-light btn-lg px-4">
+                            <i class="bi bi-rocket-takeoff me-2"></i>{% blocktrans %}Get Early Access{% endblocktrans %}
+                        </a>
+                    </div>
+                    {% comment %}
+            <p class="mt-3 small opacity-75">
+              <i class="bi bi-shield-check me-1"></i>No credit card required • 14-day free trial • Setup in minutes
+            </p>
+                    {% endcomment %}
+                </div>
+            </div>
+        </div>
+    </section>
+</div>

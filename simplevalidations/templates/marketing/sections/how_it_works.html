@@ -1,0 +1,49 @@
+{% load i18n static %}
+
+<section class="overview-section">
+    <div class="container">
+        <div class="row">
+            <div class="col-12 text-center mb-5">
+                <h2 class="section-title mb-1">
+                    {% blocktrans %}How It Works{% endblocktrans %}
+                </h2>
+                <div class="section-subhead">
+                    {% blocktrans %}SimpleValidations is easy to use. For you and for your users.{% endblocktrans %}
+                </div>
+            </div>
+        </div>
+        <div class="row">
+
+            <div class="col-12 col-md-5 d-flex flex-column justify-content-center align-items-center">
+                <div class="explanation-header">
+                    {% blocktrans %}Step 1. Create your custom
+                    <br />
+                    validations in minutes.{% endblocktrans %}
+                </div>
+                <div>
+                    <img src="{% static 'marketing/images/explanation_1.png' %}"
+                         class="img-fluid explanation-image"
+                         alt="Schematic-looking illustration showing how you create validations in SimpleValidations." />
+                </div>
+            </div>
+
+            <div class="d-none d-md-block col-md-2">
+                &nbsp;
+            </div>
+
+            <div class="col-12 col-md-5 d-flex flex-column justify-content-center align-items-center">
+                <div class="explanation-header">
+                    {% blocktrans %}Step 2. Give your users access via API,
+                    <br />
+                    webhooks, or our intuitive dashboard.{% endblocktrans %}
+                </div>
+                <div>
+                    <img src="{% static 'marketing/images/explanation_2.png' %}"
+                         class="img-fluid explanation-image"
+                         alt="Schematic-looking illustration showing how your users create validations in SimpleValidations and you have a small smile." />
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>

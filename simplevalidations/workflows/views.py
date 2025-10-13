@@ -10,14 +10,23 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
-from django.db import models, transaction
-from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.db import models
+from django.db import transaction
+from django.http import Http404
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from django.views.generic import DetailView, ListView, UpdateView
-from django.views.generic.edit import CreateView, DeleteView
-from rest_framework import permissions, status, viewsets
+from django.views.generic import DetailView
+from django.views.generic import ListView
+from django.views.generic import UpdateView
+from django.views.generic.edit import CreateView
+from django.views.generic.edit import DeleteView
+from rest_framework import permissions
+from rest_framework import status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -25,35 +34,30 @@ from rest_framework.response import Response
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.ingest import (
-    prepare_inline_text,
-    prepare_uploaded_file,
-)
+from simplevalidations.submissions.ingest import prepare_inline_text
+from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import (
-    RulesetType,
-    ValidationType,
-    XMLSchemaType,
-)
-from simplevalidations.validations.models import Ruleset, ValidationRun, Validator
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
-from simplevalidations.workflows.forms import (
-    AiAssistStepConfigForm,
-    EnergyPlusStepConfigForm,
-    JsonSchemaStepConfigForm,
-    WorkflowForm,
-    WorkflowStepTypeForm,
-    XmlSchemaStepConfigForm,
-    get_config_form_class,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowStep
-from simplevalidations.workflows.request_utils import (
-    extract_request_basics,
-    is_raw_body_mode,
-)
+from simplevalidations.workflows.forms import AiAssistStepConfigForm
+from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
+from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
+from simplevalidations.workflows.forms import WorkflowForm
+from simplevalidations.workflows.forms import WorkflowStepTypeForm
+from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
+from simplevalidations.workflows.forms import get_config_form_class
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.workflows.request_utils import extract_request_basics
+from simplevalidations.workflows.request_utils import is_raw_body_mode
 from simplevalidations.workflows.serializers import WorkflowSerializer
 
 logger = logging.getLogger(__name__)
@@ -492,7 +496,9 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": _("Workflows"),
-                "url": reverse_with_org("workflows:workflow_list", request=self.request),
+                "url": reverse_with_org(
+                    "workflows:workflow_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append({"name": workflow.name, "url": ""})
@@ -533,7 +539,9 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
         breadcrumbs.append(
             {
                 "name": _("Workflows"),
-                "url": reverse_with_org("workflows:workflow_list", request=self.request),
+                "url": reverse_with_org(
+                    "workflows:workflow_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append({"name": _("New Workflow"), "url": ""})
@@ -569,7 +577,9 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
         breadcrumbs.append(
             {
                 "name": _("Workflows"),
-                "url": reverse_with_org("workflows:workflow_list", request=self.request),
+                "url": reverse_with_org(
+                    "workflows:workflow_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append(
@@ -609,7 +619,9 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
         breadcrumbs.append(
             {
                 "name": _("Workflows"),
-                "url": reverse_with_org("workflows:workflow_list", request=self.request),
+                "url": reverse_with_org(
+                    "workflows:workflow_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append(
@@ -1091,7 +1103,9 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
         breadcrumbs.append(
             {
                 "name": _("Workflows"),
-                "url": reverse_with_org("workflows:workflow_list", request=self.request),
+                "url": reverse_with_org(
+                    "workflows:workflow_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append(

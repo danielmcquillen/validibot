@@ -19,7 +19,7 @@
               <span class="hero-title-contrast">Data Validation</span> Assistant
             </h1>
             <p class="hero-subtitle">
-              Simple, automated validation for your data files and technical documents.
+              SimpleValidations provides automated validations for data files and technical documents.
               Ensure data quality with AI-powered precision and robot-like reliability.
             </p>
             <div class="hero-cta d-flex flex-wrap">
@@ -52,28 +52,52 @@
   <section class="overview-section">
     <div class="container">
       <div class="row">
-        <div class="col-12">
+        <div class="col-12 text-center mb-5">
           <h2 class="section-title mb-1">
             How It Works
           </h2>
+          <div class="section-subhead">
+            SimpleValidations is easy to use. For you and for your users.
+          </div>
         </div>
       </div>
       <div class="row">
-        <div class="col-12 col-md-6">
-          <div class="lead text-center">
-            1. Create your custom validations in minutes.
+
+        <div class="col-12 col-md-5 d-flex flex-column justify-content-center align-items-center">
+          <div class="explanation-header">
+            Step 1. Create your custom
+            <br />
+            validations in minutes.
+          </div>
+          <div>
+            <img src="{% static 'marketing/images/explanation_1.png' %}"
+                 class="img-fluid explanation-image"
+                 alt="Schematic-looking illustration showing how you create validations in SimpleValidations." />
           </div>
         </div>
-        <div class="col-12 col-md-6">
-          <div class="lead text-center">
-            2. Give your users access via API,
+
+        <div class="d-none d-md-block col-md-2">
+          &nbsp;
+        </div>
+
+        <div class="col-12 col-md-5 d-flex flex-column justify-content-center align-items-center">
+          <div class="explanation-header">
+            Step 2. Give your users access via API,
             <br />
             webhooks, or our intuitive dashboard.
           </div>
+          <div>
+            <img src="{% static 'marketing/images/explanation_2.png' %}"
+                 class="img-fluid explanation-image"
+                 alt="Schematic-looking illustration showing how your users create validations in SimpleValidations and you have a small smile." />
+          </div>
         </div>
+
       </div>
     </div>
   </section>
+  {% comment %}
+  {% endcomment %}
 
   <div class="container">
     <!-- Features Section with Robot Characters -->
@@ -81,7 +105,7 @@
       <div class="container">
         <div class="row">
           <div class="col-12">
-            <h2 class="section-title ">
+            <h2 class="section-title">
               Why Choose SimpleValidations?
             </h2>
           </div>
@@ -206,24 +230,24 @@
                   <img src="{% static 'marketing/images/robot_head_3.png' %}"
                        alt="Robot Head"
                        class="img-fluid flip-x" />
-              </div>
-              <div class="speech-bubble">
-                <p class="bubble-text">
+                </div>
+                <div class="speech-bubble">
+                  <p class="bubble-text">
                     Give me a passing document and I'll stamp it with the right credential!
-                </p>
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <h3 class="feature-title">
+              <h3 class="feature-title">
                 Credential-Ready Deliverables
-            </h3>
-            <p class="feature-description">
+              </h3>
+              <p class="feature-description">
                 Issue certificates, compliance letters, or other official credentials the moment a file clears every
                 validation. SimpleValidations keeps the approval trail airtight, so stakeholders know the document can
                 be trusted.
-            </p>
+              </p>
+            </div>
           </div>
-        </div>
 
 
           <!-- Feature: Reporting & Analytics -->

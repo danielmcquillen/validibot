@@ -20,18 +20,31 @@
 
 {% block head %}
   {{ block.super }}
+  <link href="//fonts.googleapis.com/css?family=Amatic+SC:700"
+        rel="stylesheet"
+        type="text/css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap"
+        rel="stylesheet" />
+
   {% if canonical_url %}
     <link rel="canonical" href="{{ canonical_url }}" />
   {% endif %}
   {% if structured_data_json %}
     <script type="application/ld+json">
-      {{ structured_data_json|safe }}
+      {
+        {
+          structured_data_json | safe
+        }
+      }
     </script>
   {% endif %}
 {% endblock head %}
 
 {% block mainclass %}
-    container
+  container
 {% endblock mainclass %}
 
 {% comment %}
@@ -48,19 +61,19 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock breadcrumbs_styles %}
 
 {% block left_nav_items %}
-    <li class="nav-item">
-        <a class="nav-link {% active_link 'features' %}"
-           href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
-    </li>
-    {{ block.super }}
-    <li class="nav-item">
-        <a class="nav-link {% active_link 'pricing' %}"
-           href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
-    </li>
+  <li class="nav-item">
+    <a class="nav-link {% active_link 'features' %}"
+       href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
+  </li>
+  {{ block.super }}
+  <li class="nav-item">
+    <a class="nav-link {% active_link 'pricing' %}"
+       href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
+  </li>
 {% endblock left_nav_items %}
 
 {% block left_sidebar %}
-    {# No left sidebar for marketing pages #}
+  {# No left sidebar for marketing pages #}
 {% endblock left_sidebar %}
 
 {% block content %}
@@ -68,16 +81,16 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
 {% endblock content %}
 
 {% block right_nav_items %}
-    {% if ENABLE_FREE_TRIAL_SIGNUP %}
-        <li class="nav-item ms-md-3">
-            <a class="btn btn-primary" href="{% url 'account_signup' %}">
-                {% trans "Start Free Trial" %}
-            </a>
-        </li>
-    {% endif %}
-    {{ block.super }}
+  {% if ENABLE_FREE_TRIAL_SIGNUP %}
+    <li class="nav-item ms-md-3">
+      <a class="btn btn-primary" href="{% url 'account_signup' %}">
+        {% trans "Start Free Trial" %}
+      </a>
+    </li>
+  {% endif %}
+  {{ block.super }}
 {% endblock right_nav_items %}
 
 {% block footer %}
-    {% include 'core/partial/marketing_footer.html' %}
+  {% include 'core/partial/marketing_footer.html' %}
 {% endblock footer %}

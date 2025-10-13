@@ -3,6 +3,26 @@
 // Marketing-specific styles for SimpleValidations
 // ========================================
 
+h1,
+h2,
+h3 {
+  font-family: "Space Grotesk", Arial, sans-serif;
+}
+
+// Explanation Illo
+// ========================================
+
+.explanation-header {
+  margin-bottom: 2rem;
+  text-align: center;
+  font-family: "Amatic SC", Arial;
+  font-size: 2rem;
+}
+.explanation-image {
+  width: 100%;
+  height: auto;
+}
+
 // Hero Section
 // ========================================
 .hero-section {
@@ -66,7 +86,7 @@
   }
 
   .hero-title {
-    font-size: 3.3rem;
+    font-size: 3rem;
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 1.5rem;
@@ -94,7 +114,7 @@
   .hero-subtitle {
     font-size: 1.4rem;
     color: #333;
-    font-weight: 500;
+    font-weight: 400;
     margin-bottom: 2rem;
     opacity: 0.9;
 
@@ -176,6 +196,14 @@
     font-size: 2rem;
     margin-bottom: 2rem;
   }
+}
+
+.section-subhead {
+  font-size: 1.4rem;
+  color: #333;
+  font-weight: 500;
+  margin-bottom: 2rem;
+  opacity: 0.9;
 }
 
 // Overview Section

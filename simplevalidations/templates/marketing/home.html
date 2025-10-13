@@ -29,10 +29,12 @@
                   <i class="bi bi-rocket-takeoff me-2"></i>Start Free Trial
                 </a>
               {% endif %}
-              <a href="{% url 'marketing:features' %}"
-                 class="btn btn-robot btn-lg mb-2">
-                <i class="bi bi-gear me-2"></i>Explore Features
-              </a>
+              {% if ENABLE_FEATURES_SECTION %}
+                <a href="{% url 'marketing:features' %}"
+                   class="btn btn-robot btn-lg mb-2">
+                  <i class="bi bi-gear me-2"></i>Explore Features
+                </a>
+              {% endif %}
 
               {% include "marketing/partial/waitlist_form.html" with form=waitlist_form %}
 

@@ -1,5 +1,6 @@
 import json
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.sites.models import Site
 from django.http import HttpRequest
@@ -289,8 +290,7 @@ class ResourcesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "Browse documentation, videos, and changelog highlights "
         "to get the most out of SimpleValidations.",
     )
-    breadcrumbs = [
-    ]
+    breadcrumbs = []
 
 
 class ResourceDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -392,6 +392,11 @@ class ContactPageView(SupportDetailPageView):
         "Reach out to SimpleValidations for product questions, "
         "partnerships, or support escalations.",
     )
+
+    def get_breadcrumbs(self):
+        if not settings.ENABLE_HELP_CENTER and not settings.ENABLE_SYSTEM_STATUS:
+            return []
+        return super().get_breadcrumbs()
 
 
 @require_http_methods(["POST"])

@@ -24,7 +24,6 @@
                     {% if ENABLE_RESOURCES_SECTION %}
                         {% include 'marketing/partial/top_nav/resources_menu.html' %}
                     {% endif %}
-                    {% include 'marketing/partial/top_nav/support_menu.html' %}
                     {% if ENABLE_PRICING_SECTION %}
                         <li class="nav-item ms-md-3">
                             <a class="nav-link {% active_link 'app' %}"
@@ -35,6 +34,13 @@
                         <a class="nav-link {% active_link 'about' %}"
                            href="{% url 'marketing:about' %}">{% translate "About" %}</a>
                     </li>
+                    {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
+                        {% include 'marketing/partial/top_nav/support_menu.html' %}
+                    {% else %}
+                        <li>
+                            <a class="dropdown-item" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+                        </li>
+                    {% endif %}
                 {% endblock left_nav_items %}
             </ul>
 

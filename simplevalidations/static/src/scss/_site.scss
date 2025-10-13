@@ -65,14 +65,7 @@ a {
       --feature-link-gradient,
       linear-gradient(135deg, #a855f7, #6366f1)
     );
-  }
-}
-
-.feature-link-visual--image {
-  background: none;
-
-  &::after {
-    display: none;
+    z-index: 0;
   }
 }
 
@@ -82,6 +75,7 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  z-index: 1;
 }
 
 .feature-link-visual--overview {

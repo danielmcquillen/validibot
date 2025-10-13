@@ -6,7 +6,7 @@
   <section class="container py-5 features-page">
     <div class="text-center mb-5">
       <h1 class="display-5 fw-semibold">
-        {% trans "Everything you need to ship confident validations" %}
+        {% trans "Everything you need <br /> to ship confident validations." %}
       </h1>
       <p class="lead text-muted">
         {% trans "SimpleValidations keeps validation teams in sync with reusable workflows and instant insight into every validation run." %}
@@ -56,22 +56,21 @@
       {% endcomment %}
 
       <div class="mt-5">
-        <h2 class="h4 fw-semibold mb-3 text-center text-md-start">
-          {% trans "Explore the platform" %}
-        </h2>
         <div class="row g-4">
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_overview' %}">
-              <div class="feature-link-visual feature-link-visual--overview feature-link-visual--image">
-                <img src="{% static 'marketing/images/robot_scene_platform_overview.png' %}" alt="" class="feature-link-visual__image" />
+              <div class="feature-link-visual feature-link-visual--overview">
+                <img src="{% static 'marketing/images/robot_scene_platform_overview.png' %}"
+                     alt="Illustration of the SimpleValidations robot explaining data workflows"
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
                   {% trans "Platform overview" %}
                 </h3>
                 <p class="text-muted mb-0">
-                  {% trans "Tour dashboards, workflows, and collaboration in one place." %}
+                  {% trans "A brief summary of how SimpleValidations works and how it can help you." %}
                 </p>
               </div>
             </a>
@@ -79,7 +78,10 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_schema_validation' %}">
-              <div class="feature-link-visual feature-link-visual--schema">
+              <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+                <img src="{% static 'marketing/images/robot_scene_schema_validation.png' %}"
+                     alt="Illustration of the SimpleValidations robot interacting with various documents."
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
@@ -95,6 +97,9 @@
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_simulation_validation' %}">
               <div class="feature-link-visual feature-link-visual--simulation">
+                <img src="{% static 'marketing/images/robot_scene_simulations.png' %}"
+                     alt="Illustration of the SimpleValidations robot running a building energy simulation."
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
@@ -110,6 +115,9 @@
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_certificates' %}">
               <div class="feature-link-visual feature-link-visual--certificates">
+                <img src="{% static 'marketing/images/robot_scene_certificates.png' %}"
+                     alt="Illustration of the SimpleValidations robot holding a certificate"
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
@@ -125,6 +133,9 @@
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_blockchain' %}">
               <div class="feature-link-visual feature-link-visual--blockchain">
+                <img src="{% static 'marketing/images/robot_scene_blockchain.png' %}"
+                     alt="Illustration of the SimpleValidations robot interacting with a blockchain"
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">
@@ -140,6 +151,9 @@
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_integrations' %}">
               <div class="feature-link-visual feature-link-visual--github">
+                <img src="{% static 'marketing/images/robot_scene_integrations.png' %}"
+                     alt="Illustration of the SimpleValidations robot amidst various integration logos"
+                     class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">

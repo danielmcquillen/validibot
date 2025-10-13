@@ -157,4 +157,21 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:  # noqa: PLR0912, 
         if fields_to_update:
             prospect.save(update_fields=fields_to_update)
 
+    # Send an admin email to notify of a new signup
+    if getattr(settings, "MARKETING_NOTIFY_ON_WAITLIST_SIGNUP", False):
+        admin_email = settings.DEFAULT_FROM_EMAIL
+        admin_subject = f"New SimpleValidations waitlist signup: {payload.email}"
+        admin_message = (
+            "A new user has signed up for the SimpleValidations beta waitlist."
+        )
+        try:
+            send_mail(
+                admin_subject,
+                admin_message,
+                from_email,
+                [admin_email],
+            )
+        except Exception:  # pragma: no cover - send_mail errors are rare but critical
+            logger.exception("Error sending waitlist admin notification email.")
+
     logger.info("Stored prospect %s and sent welcome email.", payload.email)

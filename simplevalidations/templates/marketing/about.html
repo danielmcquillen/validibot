@@ -1,6 +1,6 @@
 {% extends "marketing_base.html" %}
 
-{% load i18n %}
+{% load i18n static %}
 
 {% block content %}
   <div class="container marketing-page">
@@ -19,7 +19,6 @@
     target="_blank">McQuillen Interactive</a>, a Melbourne-based web application studio founded by
             Daniel McQuillen.
           </p>
-
           <p>
             I have spent the past two decades building practical software for research labs, building scientists, and
             educators who care about craft as much as they care about data accuracy.
@@ -31,7 +30,15 @@
             team that wrestles with complex data submissions.
           </p>
         </div>
-
+      </div>
+      <div class="col-12 col-lg-4">
+        <img class="about-headshot"
+             src="{% static 'marketing/images/headshot.png' %}"
+             alt="{% trans 'Photo of Daniel McQuillen' %}" />
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-12 col-lg-8">
         <section class="mb-5">
           <h2 class="h4">
             {% trans "What I'm Building" %}
@@ -63,7 +70,7 @@
           </h2>
           <p>
             I'm working with a select group of early users to make sure the system provides value
-            and fits naturally into their workflows. If this all sounds interesting, I would love 
+            and fits naturally into their workflows. If this all sounds interesting, I would love
             to hear how SimpleValidations can support you.
           </p>
         </section>

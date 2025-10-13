@@ -12793,13 +12793,7 @@ a {
   position: absolute;
   inset: 0;
   background: var(--feature-link-gradient, linear-gradient(135deg, #a855f7, #6366f1));
-}
-
-.feature-link-visual--image {
-  background: none;
-}
-.feature-link-visual--image::after {
-  display: none;
+  z-index: 0;
 }
 
 .feature-link-visual__image {
@@ -12808,6 +12802,7 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  z-index: 1;
 }
 
 .feature-link-visual--overview {
@@ -13453,6 +13448,14 @@ h3 {
   border: 1px dotted #ccc;
   padding: 1rem;
   border-radius: 0.5rem;
+}
+
+.about-headshot {
+  width: 100%;
+  margin-top: 50px;
+  padding-left: 5rem;
+  max-width: 300px;
+  rotate: 20deg;
 }
 
 /*# sourceMappingURL=project.css.map */

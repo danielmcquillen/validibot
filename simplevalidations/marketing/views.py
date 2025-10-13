@@ -133,9 +133,7 @@ class AboutPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "inspired by mission-critical validation work at "
         "Lawrence Berkeley National Laboratory.",
     )
-    breadcrumbs = [
-        {"name": _("About"), "url": ""},
-    ]
+    breadcrumbs = []
 
 
 class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -146,9 +144,7 @@ class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "Explore how SimpleValidations blends schema checks, simulations, "
         "and credentialing to keep every submission trustworthy.",
     )
-    breadcrumbs = [
-        {"name": _("Features"), "url": ""},
-    ]
+    breadcrumbs = []
 
 
 class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -235,7 +231,6 @@ class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "that need dependable data quality.",
     )
     breadcrumbs = [
-        {"name": _("Pricing"), "url": ""},
     ]
 
 

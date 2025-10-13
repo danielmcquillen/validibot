@@ -90,12 +90,16 @@ This footer appears on all 'marketing' pages of the site available to all users,
                             <li>
                                 <a href="{% url 'marketing:contact' %}">{% trans "Contact Us" %}</a>
                             </li>
-                            <li>
-                                <a href="{% url 'marketing:help_center' %}">{% trans "Help Center" %}</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:status' %}">{% trans "Status" %}</a>
-                            </li>
+                            {% if ENANBLE_HELP_CENTER %}
+                                <li>
+                                    <a href="{% url 'marketing:help_center' %}">{% trans "Help Center" %}</a>
+                                </li>
+                            {% endif %}
+                            {% if ENANBLE_SYSTEM_STATUS %}
+                                <li>
+                                    <a href="{% url 'marketing:status' %}">{% trans "Status" %}</a>
+                                </li>
+                            {% endif %}
                         </ul>
 
                         <h2>

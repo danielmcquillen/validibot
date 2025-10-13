@@ -24,6 +24,8 @@ def site_feature_settings(request):
             "ENABLE_PRICING_SECTION": settings.ENABLE_PRICING_SECTION,
             "ENABLE_FEATURES_SECTION": settings.ENABLE_FEATURES_SECTION,
             "ENABLE_BLOG": settings.ENABLE_BLOG,
+            "ENANBLE_HELP_CENTER": settings.ENABLE_HELP_CENTER,
+            "ENANBLE_SYSTEM_STATUS": settings.ENABLE_SYSTEM_STATUS,
         }
     except Exception:
         # In case settings are not properly configured yet

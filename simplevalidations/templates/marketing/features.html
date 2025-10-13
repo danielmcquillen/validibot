@@ -1,6 +1,6 @@
 {% extends "marketing_base.html" %}
 
-{% load i18n %}
+{% load i18n static %}
 
 {% block content %}
   <section class="container py-5 features-page">
@@ -63,7 +63,8 @@
           <div class="col-sm-6 col-lg-4">
             <a class="card feature-link-card h-100 shadow-sm text-decoration-none text-reset"
                href="{% url 'marketing:features_overview' %}">
-              <div class="feature-link-visual feature-link-visual--overview">
+              <div class="feature-link-visual feature-link-visual--overview feature-link-visual--image">
+                <img src="{% static 'marketing/images/robot_scene_platform_overview.png' %}" alt="" class="feature-link-visual__image" />
               </div>
               <div class="card-body">
                 <h3 class="h5 fw-semibold mb-2">

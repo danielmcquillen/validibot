@@ -12795,6 +12795,21 @@ a {
   background: var(--feature-link-gradient, linear-gradient(135deg, #a855f7, #6366f1));
 }
 
+.feature-link-visual--image {
+  background: none;
+}
+.feature-link-visual--image::after {
+  display: none;
+}
+
+.feature-link-visual__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .feature-link-visual--overview {
   --feature-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
 }
@@ -12930,8 +12945,8 @@ h3 {
 .explanation-header {
   margin-bottom: 2rem;
   text-align: center;
-  font-family: "Amatic SC", Arial;
-  font-size: 2rem;
+  font-family: "Space Grotesk", Arial, sans-serif;
+  font-size: 1.2rem;
 }
 
 .explanation-image {

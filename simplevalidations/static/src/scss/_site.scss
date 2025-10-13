@@ -68,6 +68,22 @@ a {
   }
 }
 
+.feature-link-visual--image {
+  background: none;
+
+  &::after {
+    display: none;
+  }
+}
+
+.feature-link-visual__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .feature-link-visual--overview {
   --feature-link-gradient: linear-gradient(135deg, #6366f1, #22d3ee);
 }

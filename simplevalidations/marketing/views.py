@@ -18,7 +18,6 @@ from django.views.generic import TemplateView
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import is_htmx
-
 from simplevalidations.marketing.constants import MarketingShareImage
 from simplevalidations.marketing.constants import ProspectEmailStatus
 from simplevalidations.marketing.email.utils import is_allowed_postmark_source
@@ -132,7 +131,9 @@ class MarketingMetadataMixin:
                 if share_image_path.startswith(("http://", "https://")):
                     share_image_url = share_image_path
                 else:
-                    share_image_url = request.build_absolute_uri(static(share_image_path))
+                    share_image_url = request.build_absolute_uri(
+                        static(share_image_path)
+                    )
                 context.setdefault("share_image_url", share_image_url)
                 share_image_alt = self.get_share_image_alt()
                 if share_image_alt:
@@ -144,10 +145,17 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
     template_name = "marketing/home.html"
     http_method_names = ["get"]
     page_title = _("Meet Your Data Validation Assistant")
-    meta_description = _(
-        "SimpleValidations pairs deterministic checks, AI review, and simulations "
-        "so every document is production-ready before it reaches your customers.",
-    )
+
+    if settings.ENABLE_AI_VALIDATIONS:
+        meta_description = _(
+            "SimpleValidations pairs deterministic checks, AI review, and simulations "
+            "so every document is production-ready before it reaches your customers.",
+        )
+    else:
+        meta_description = _(
+            "SimpleValidations pairs deterministic checks and simulations "
+            "so every document is production-ready before it reaches your customers.",
+        )
     meta_keywords = (
         "data validation assistant, data quality automation, simulation validation"
     )

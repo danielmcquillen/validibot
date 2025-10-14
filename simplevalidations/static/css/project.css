@@ -12095,6 +12095,7 @@ h4 {
   margin: 0;
   padding-top: 0.2rem;
   position: relative;
+  transition: transform 0.2s ease;
 }
 #marketing-footer .site-map li::before {
   content: "›";
@@ -12102,11 +12103,19 @@ h4 {
   display: inline-block;
   margin-right: 0.45rem;
   transform: translateY(-0.05rem);
+  transition: transform 0.2s ease;
 }
 #marketing-footer .site-map li a {
   font: inherit;
   text-decoration: none;
   color: #333;
+}
+#marketing-footer .site-map li a:hover, #marketing-footer .site-map li a:focus {
+  color: #000;
+}
+#marketing-footer .site-map li:hover::before, #marketing-footer .site-map li:focus-within::before {
+  transform: translate(0.15rem, -0.05rem);
+  color: #000;
 }
 #marketing-footer .site-map ul {
   list-style-image: none;

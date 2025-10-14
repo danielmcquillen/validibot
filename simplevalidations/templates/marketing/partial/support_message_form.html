@@ -12,39 +12,44 @@
     {% if form.non_field_errors %}
       <div class="alert alert-danger" role="alert">
         {% for error in form.non_field_errors %}
-          <div>{{ error }}</div>
+          <div>
+            {{ error }}
+          </div>
         {% endfor %}
       </div>
     {% endif %}
 
-    <form
-      hx-post="{% url 'core:support_message_create' %}"
-      hx-target="#support-message-card"
-      hx-swap="outerHTML"
-      method="post"
-      novalidate
-    >
+    <form hx-post="{% url 'core:support_message_create' %}"
+          hx-target="#support-message-card"
+          hx-swap="outerHTML"
+          method="post"
+          novalidate>
       {% csrf_token %}
 
       <div class="mb-3">
         <label class="form-label" for="{{ form.subject.id_for_label }}">
           {{ form.subject.label }}
         </label>
-        <input
-          type="text"
-          name="{{ form.subject.html_name }}"
-          id="{{ form.subject.id_for_label }}"
-          class="form-control{% if form.subject.errors %} is-invalid{% endif %}"
-          autocomplete="off"
-          maxlength="{{ form.subject.field.max_length }}"
-          required
-          value="{{ form.subject.value|default_if_none:''|escape }}"
-        >
+        <input type="text"
+               name="{{ form.subject.html_name }}"
+               id="{{ form.subject.id_for_label }}"
+               class="form-control
+                      {% if form.subject.errors %}
+                        is-invalid
+                      {% endif %}"
+               autocomplete="off"
+               maxlength="{{ form.subject.field.max_length }}"
+               required
+               value="{{ form.subject.value|default_if_none:''|escape }}" />
         {% if form.subject.help_text %}
-          <div class="form-text">{{ form.subject.help_text }}</div>
+          <div class="form-text">
+            {{ form.subject.help_text }}
+          </div>
         {% endif %}
         {% for error in form.subject.errors %}
-          <div class="invalid-feedback d-block">{{ error }}</div>
+          <div class="invalid-feedback d-block">
+            {{ error }}
+          </div>
         {% endfor %}
       </div>
 
@@ -52,19 +57,24 @@
         <label class="form-label" for="{{ form.message.id_for_label }}">
           {{ form.message.label }}
         </label>
-        <textarea
-          name="{{ form.message.html_name }}"
-          id="{{ form.message.id_for_label }}"
-          class="form-control{% if form.message.errors %} is-invalid{% endif %}"
-          rows="5"
-          placeholder="{{ form.message.field.widget.attrs.placeholder|default:_("How can we help?") }}"
-          required
-        >{{ form.message.value|default_if_none:''|escape }}</textarea>
+        <textarea name="{{ form.message.html_name }}"
+                  id="{{ form.message.id_for_label }}"
+                  class="form-control
+                         {% if form.message.errors %}
+                           is-invalid
+                         {% endif %}"
+                  rows="5"
+                  placeholder="{{ form.message.field.widget.attrs.placeholder|default:_("How can we help?") }}"
+                  required>{{ form.message.value|default_if_none:''|escape }}</textarea>
         {% if form.message.help_text %}
-          <div class="form-text">{{ form.message.help_text }}</div>
+          <div class="form-text">
+            {{ form.message.help_text }}
+          </div>
         {% endif %}
         {% for error in form.message.errors %}
-          <div class="invalid-feedback d-block">{{ error }}</div>
+          <div class="invalid-feedback d-block">
+            {{ error }}
+          </div>
         {% endfor %}
       </div>
 

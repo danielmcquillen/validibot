@@ -28,7 +28,7 @@
           <p>
             The idea for SimpleValidations first took shape while creating a glazing system validation tool
             for the Windows and Daylighting Group at Lawrence Berkeley National Laboratory. Watching that tool save
-            engineers hours of back-and-forth convinced me that smarter, kinder validation workflows could help any
+            engineers hours of back-and-forth convinced me that smart, simple validation workflows could help any
             team that wrestles with complex data submissions.
           </p>
         </div>
@@ -47,7 +47,11 @@
           </h2>
           <p>
             My goal is to give product teams, analysts, and domain experts a dependable co-pilot that makes data quality
-            checks feel routine instead of punitive. SimpleValidations blends automated rules, AI-assisted review, and
+            checks feel routine instead of punitive. SimpleValidations blends automated rules
+            {% if ENABLE_AI_VALIDATIONS %}
+              , AI-assisted review,
+            {% endif %}
+            and
             clear audit trails so you can trust what you ship without adding another layer of process overhead. SimpleValidations
             hides complex logic or simulations behind a simple interface so you and your users can validate data and documents
             with confidence and ease.

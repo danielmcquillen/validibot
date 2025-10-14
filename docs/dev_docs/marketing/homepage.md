@@ -70,6 +70,9 @@ marketing navigation:
 - Social share previews rely on `MarketingMetadataMixin.share_image_path`; the
   homepage uses `MarketingShareImage.DEFAULT` so Bluesky, Twitter, and Facebook
   pull the same illustration. Update that attribute if you ship new artwork.
+- Blog detail pages follow the same OpenGraph/Twitter conventions and fall back to
+  the feature image for each post (defaulting to `MarketingShareImage.DEFAULT` when
+  no upload exists), so keep `featured_image_alt` populated when drafting content.
 - `marketing_base.html` emits a canonical `<link>` plus JSON-LD containing the
   `WebSite`, `Organization`, and current `WebPage` schema objects.
 - `config/urls.py` serves `sitemap.xml` (via `MarketingStaticViewSitemap`) and a

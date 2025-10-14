@@ -1,6 +1,7 @@
 # Create your views here.
 from typing import Any
 
+from django.templatetags.static import static
 from django.urls import reverse_lazy
 from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
@@ -8,6 +9,7 @@ from django.views import generic
 
 from simplevalidations.blog.models import BlogPost
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.marketing.constants import MarketingShareImage
 
 
 class BlogPostList(BreadcrumbMixin, generic.ListView):
@@ -94,12 +96,45 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
         )
         page_subtitle = strip_tags(summary_source).strip() if summary_source else ""
 
+        request = self.request
+        absolute_url = request.build_absolute_uri(blog_post.get_absolute_url())
+        meta_description = (
+            blog_post.summary.strip()
+            if blog_post.summary
+            else blog_post.get_content_preview()
+        )
+        meta_description = (meta_description or "").strip()
+        if not meta_description:
+            meta_description = blog_post.title
+        meta_description = meta_description[:300]
+
+        share_image_url = None
+        share_image_alt = None
+        if blog_post.has_featured_image():
+            candidate = blog_post.get_featured_image_url()
+            if candidate:
+                share_image_url = request.build_absolute_uri(candidate)
+                share_image_alt = blog_post.get_featured_image_alt()
+        if not share_image_url:
+            default_path = MarketingShareImage.DEFAULT.value
+            share_image_url = request.build_absolute_uri(static(default_path))
+            share_image_alt = _(
+                "SimpleValidations robot showcasing workflow automation.",
+            )
+
         context.update(
             {
                 "section": "blog",
                 "page_title": blog_post.title,
                 "page_subtitle": page_subtitle[:180],
                 "related_posts": self._get_related_posts(blog_post),
+                "canonical_url": absolute_url,
+                "meta_description": meta_description,
+                "full_meta_title": _("{title} | SimpleValidations Blog").format(
+                    title=blog_post.title,
+                ),
+                "share_image_url": share_image_url,
+                "share_image_alt": share_image_alt,
             },
         )
         return context

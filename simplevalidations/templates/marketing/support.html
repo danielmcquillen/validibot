@@ -69,9 +69,12 @@
         <div class="col-md-4">
           <a class="card h-100 shadow-sm support-card text-decoration-none text-reset"
              href="{% url 'marketing:status' %}">
+            <div class="feature-link-visual feature-link-visual--schema feature-link-visual--image">
+              <img src="{% static 'marketing/images/robot_scene_status.png' %}"
+                   alt="Illustration of the SimpleValidations robot checking the health of a server."
+                   class="feature-link-visual__image" />
+            </div>
             <div class="card-body">
-              <div class="support-card-icon support-card-icon--status">
-              </div>
               <h2 class="h5 fw-semibold mb-2">
                 {% trans "Check system status" %}
               </h2>

@@ -3,31 +3,49 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
+
+  <div class="container marketing-page">
+
     <div class="row">
-      <div class="col-lg-8">
-        <h1 class="display-5 fw-semibold mb-4">{% trans "Certificates" %}</h1>
-        <p class="lead text-muted">
-          {% blocktrans trimmed %}
-            Turn automated runs and human sign-offs into concise proof that your data met the standards you promised.
-          {% endblocktrans %}
-        </p>
-        <p class="text-muted">
+      <div class="col-12 col-lg-8">
+
+        <header>
+          <h1>
+            {% trans "Certificates" %}
+          </h1>
+          <div class="lead">
+            {% blocktrans trimmed %}
+              Turn automated runs and human sign-offs into concise proof that your data met the standards you promised.
+            {% endblocktrans %}
+          </div>
+        </header>
+        <p>
           {% blocktrans trimmed %}
             Each certificate summarizes the checks performed, the outcomes, and the people who approved them, so vendors, customers, and auditors know exactly what was verified.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Because certificates link back to the full validation record, stakeholders can dive deeper when needed while trusting that the headline story is grounded in detailed evidence.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Share them on demand or schedule recurring updates, keeping your organization accountable without chasing down spreadsheets and email threads every quarter.
           {% endblocktrans %}
         </p>
+        <div class="mt-5 next-feature-link">
+          <a href="{% url 'marketing:features_blockchain' %}"
+             class="btn btn-outline-secondary">
+
+            {% blocktrans trimmed %}
+              Next: Blockchain feature
+            {% endblocktrans %}
+            »
+          </a>
+        </div>
+
       </div>
     </div>
-  </section>
+  </div>
 {% endblock content %}

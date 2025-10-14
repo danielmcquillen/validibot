@@ -14,38 +14,71 @@
         </div>
 
         <div class="row">
-            <!-- Feature: Intelligent Validation -->
-            <div class="col-lg-4 col-md-6 mb-4">
-                <div class="feature-card ">
+            {% if ENABLE_AI_VALIDATIONS %}
+                <!-- Feature: Intelligent Validation -->
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="feature-card ">
 
-                    <div class="robot-quote-section">
-                        <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
-                                 alt="Robot Head"
-                                 class="img-fluid flip-x" />
+                        <div class="robot-quote-section">
+                            <div class="robot-head">
+                                <img src="{% static 'marketing/images/robot_head.png' %}"
+                                     alt="Robot Head"
+                                     class="img-fluid flip-x" />
+                            </div>
+                            <div class="speech-bubble">
+                                <p class="bubble-text">
+                                    {% blocktrans trimmed %}
+                                        "I analyze your data patterns and catch errors before they cause problems!"
+                                    {% endblocktrans %}
+                                </p>
+                            </div>
                         </div>
-                        <div class="speech-bubble">
-                            <p class="bubble-text">
-                                {% blocktrans trimmed %}
-                                    "I analyze your data patterns and catch errors before they cause problems!"
-                                {% endblocktrans %}
-                            </p>
-                        </div>
+
+                        <h3 class="feature-title">
+                            {% blocktrans trimmed %}
+                                AI-Powered Intelligence
+                            {% endblocktrans %}
+                        </h3>
+                        <p class="feature-description">
+                            {% blocktrans trimmed %}
+                                Our validation robot uses AI to understand your data patterns
+                                and provide intelligent validation rules that evolve with your needs.
+                            {% endblocktrans %}
+                        </p>
                     </div>
-
-                    <h3 class="feature-title">
-                        {% blocktrans trimmed %}
-                            AI-Powered Intelligence
-                        {% endblocktrans %}
-                    </h3>
-                    <p class="feature-description">
-                        {% blocktrans trimmed %}
-                            Our validation robot uses AI to understand your data patterns
-                            and provide intelligent validation rules that evolve with your needs.
-                        {% endblocktrans %}
-                    </p>
                 </div>
-            </div>
+            {% else %}
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="feature-card ">
+
+                        <div class="robot-quote-section">
+                            <div class="robot-head">
+                                <img src="{% static 'marketing/images/robot_head.png' %}"
+                                     alt="Robot Head"
+                                     class="img-fluid flip-x" />
+                            </div>
+                            <div class="speech-bubble">
+                                <p class="bubble-text">
+                                    {% blocktrans trimmed %}
+                                        I turn your validation rules into reusable playbooks your whole team can trust!
+                                    {% endblocktrans %}
+                                </p>
+                            </div>
+                        </div>
+
+                        <h3 class="feature-title">
+                            {% blocktrans trimmed %}
+                                Reusable Workflow Playbooks
+                            {% endblocktrans %}
+                        </h3>
+                        <p class="feature-description">
+                            {% blocktrans trimmed %}
+                                Publish versioned validation workflows that combine schema checks, simulations, and credentialing steps. Approvals stay auditable, so every project knows exactly which rules are live.
+                            {% endblocktrans %}
+                        </p>
+                    </div>
+                </div>
+            {% endif %}
 
             <!-- Feature: Custom Rules -->
             <div class="col-lg-4 col-md-6 mb-4">
@@ -53,7 +86,7 @@
 
                     <div class="robot-quote-section">
                         <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
                                  alt="Robot Head"
                                  class="img-fluid flip-x" />
                         </div>
@@ -86,7 +119,7 @@
 
                     <div class="robot-quote-section">
                         <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
                                  alt="Robot Head"
                                  class="img-fluid flip-x" />
                         </div>
@@ -119,7 +152,7 @@
 
                     <div class="robot-quote-section">
                         <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
                                  alt="Robot Head"
                                  class="img-fluid flip-x" />
                         </div>
@@ -152,7 +185,7 @@
 
                     <div class="robot-quote-section">
                         <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
                                  alt="Robot Head"
                                  class="img-fluid flip-x" />
                         </div>
@@ -185,7 +218,7 @@
                 <div class="feature-card  delay-5">
                     <div class="robot-quote-section">
                         <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head_3.png' %}"
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
                                  alt="Robot Head"
                                  class="img-fluid flip-x" />
                         </div>

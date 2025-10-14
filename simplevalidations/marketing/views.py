@@ -171,7 +171,7 @@ class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
 
 class FeatureOverviewPageView(FeatureDetailPageView):
     template_name = "marketing/features/overview.html"
-    page_title = _("Platform Overview")
+    page_title = _("SimpleValidations Overview")
     meta_description = _(
         "See how SimpleValidations orchestrates AI, simulations, "
         "and human-friendly workflows to deliver trustworthy data pipelines.",

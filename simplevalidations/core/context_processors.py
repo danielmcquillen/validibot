@@ -26,6 +26,7 @@ def site_feature_settings(request):
             "ENABLE_BLOG": settings.ENABLE_BLOG,
             "ENABLE_HELP_CENTER": settings.ENABLE_HELP_CENTER,
             "ENABLE_SYSTEM_STATUS": settings.ENABLE_SYSTEM_STATUS,
+            "ENABLE_AI_VALIDATIONS": settings.ENABLE_AI_VALIDATIONS,
         }
     except Exception:
         # In case settings are not properly configured yet

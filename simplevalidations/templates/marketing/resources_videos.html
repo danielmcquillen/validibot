@@ -3,25 +3,37 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5 text-center">
-    <h1 class="display-5 fw-semibold mb-4">
-      {% trans "SimpleValidations Videos" %}
-    </h1>
-    <p class="lead text-muted">
-      {% trans "Product walkthroughs, live demos, and tips from our customer team." %}
-    </p>
-    <div class="ratio ratio-16x9 shadow-sm rounded overflow-hidden">
-      <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"
-              title="SimpleValidations demo"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen></iframe>
+
+  <div class="container marketing-page">
+
+    <div class="row d-flex flex-row align-items-end">
+      <div class="col-lg-8">
+
+        <header class="mb-0">
+          <h1>
+            {% trans "SimpleValidations Videos" %}
+          </h1>
+          <p class="lead text-muted mb-0">
+            {% trans "Product walkthroughs, live demos, and tips from our customer team." %}
+          </p>
+        </header>
+
+        <div class="alert alert-info mt-5 mb-5">
+          {% trans "Our full video playlist is on the way." %}
+        </div>
+        <p>
+          {% trans "For now, this page is a placeholder while we build an interactive docs experience within SimpleValidations." %}
+        </p>
+        <p>
+          {% trans "Looking for something specific? Drop us a line and we'll send you early access materials." %}
+        </p>
+
+        <div class="mt-5">
+          <a class="btn btn-primary" href="{% url 'marketing:contact' %}">{% trans "Contact Us" %}</a>
+        </div>
+
+      </div>
     </div>
-    <p class="mt-4">
-      {% trans "Subscribe to our channel to catch new releases and office hour sessions." %}
-    </p>
-    <a class="btn btn-outline-primary"
-       href="https://youtube.com"
-       target="_blank"
-       rel="noopener">{% trans "Visit channel" %}</a>
-  </section>
+
+  </div>
 {% endblock content %}

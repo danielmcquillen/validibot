@@ -20,7 +20,11 @@
             </h1>
             <p class="hero-subtitle">
               SimpleValidations provides automated validations for data files.
-              Ensure data quality with AI-powered precision and robot-like reliability.
+              {% if ENABLE_AI_VALIDATIONS %}
+                Ensure data quality with AI-powered precision and robot-like reliability.
+              {% else %}
+                Ensure data quality with robot-like precision and reliability.
+              {% endif %}
             </p>
             <div class="hero-cta d-flex flex-wrap">
               {% if ENABLE_FREE_TRIAL_SIGNUP %}

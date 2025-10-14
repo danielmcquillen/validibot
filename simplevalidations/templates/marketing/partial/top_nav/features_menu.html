@@ -16,12 +16,15 @@
             <div class="col-12 col-lg-8 p-4">
                 <div class="nav-columns">
                     <div>
+                        <p class="section-heading mb-2">
+                            {% translate "Features" %}
+                        </p>
                         <ul class="list-unstyled">
                             <li>
                                 <a class="dropdown-item" href="{% url 'marketing:features' %}">{% translate "Features Home" %}</a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="{% url 'marketing:features_overview' %}">{% translate "Platform Overview" %}</a>
+                                <a class="dropdown-item" href="{% url 'marketing:features_overview' %}">{% translate "SimpleValidations Overview" %}</a>
                             </li>
                             <li>
                                 <a class="dropdown-item"
@@ -43,8 +46,7 @@
                     </div>
                     <div>
                         <p class="section-heading mb-2">
-
-                            <a href="{% url 'marketing:features_integrations' %}">{% translate "Integrations" %}</a>
+                            {% translate "Integrations" %}
                         </p>
                         <ul class="list-unstyled">
                             <li>

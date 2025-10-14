@@ -3,31 +3,51 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
+
+  <div class="container marketing-page">
+
     <div class="row">
-      <div class="col-lg-8">
-        <h1 class="display-5 fw-semibold mb-4">{% trans "Blockchain" %}</h1>
-        <p class="lead text-muted">
-          {% blocktrans trimmed %}
-            Give external stakeholders confidence that critical validation records have not been altered.
-          {% endblocktrans %}
-        </p>
-        <p class="text-muted">
+      <div class="col-12 col-lg-8">
+
+        <header>
+          <h1>
+            {% trans "Blockchain" %}
+          </h1>
+          <div class="lead">
+            {% blocktrans trimmed %}
+              Give external stakeholders confidence that critical validation records have not been altered.
+            {% endblocktrans %}
+          </div>
+        </header>
+
+        <p>
           {% blocktrans trimmed %}
             SimpleValidations stores a cryptographic fingerprint of key runs—what was checked, the outcome, and who signed off—on a blockchain network so you can independently prove when results were produced.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Only the fingerprint leaves your environment; the underlying datasets and findings remain inside your account unless you choose to share them.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Use ledger anchoring selectively for the workflows tied to regulatory reviews or high-stakes partnerships, adding a portable trust signal without disrupting day-to-day automation.
           {% endblocktrans %}
         </p>
+
+        <div class="mt-5 next-feature-link">
+          <a href="{% url 'marketing:features_integrations' %}"
+             class="btn btn-outline-secondary">
+
+            {% blocktrans trimmed %}
+              Next: Integrations feature
+            {% endblocktrans %}
+            »
+          </a>
+        </div>
+
       </div>
     </div>
-  </section>
+  </div>
 {% endblock content %}

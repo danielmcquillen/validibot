@@ -1,41 +1,80 @@
 {% extends "marketing_base.html" %}
+
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
-    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-4">
-      <div>
-        <h1 class="display-5 fw-semibold mb-2">{% trans "System Status" %}</h1>
-        <p class="lead text-muted mb-0">{% trans "Current availability of SimpleValidations services." %}</p>
+
+  <section class="container marketing-page">
+
+    <div class="row d-flex flex-row align-items-end">
+      <div class="col-lg-8">
+
+        <header class="mb-0">
+          <h1>
+            {% trans "System Status" %}
+          </h1>
+          <p class="lead text-muted mb-0">
+            {% trans "Current availability of SimpleValidations services." %}
+          </p>
+        </header>
+
       </div>
-      <a class="btn btn-outline-primary" href="{% url 'marketing:contact' %}">{% trans "Contact support" %}</a>
+      <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+        <a class="btn btn-primary" href="{% url 'marketing:contact' %}">{% trans "Contact support" %}</a>
+      </div>
     </div>
 
     <div class="row g-4 mt-4">
       <div class="col-md-4">
         <div class="card h-100 shadow-sm border-success-subtle">
           <div class="card-body">
-            <h2 class="h6 text-uppercase text-muted">{% trans "App" %}</h2>
-            <p class="h4 text-success fw-semibold mb-1">{% trans "Operational" %}</p>
-            <p class="text-muted small mb-0">{% trans "All workflow and validation services are running normally." %}</p>
+            <h2 class="h6 text-uppercase text-muted">
+              {% trans "App" %}
+            </h2>
+            <p class="h4 text-success fw-semibold mb-1">
+              {% trans "Operational" %}
+            </p>
+            <p class="text-muted small mb-0">
+              {% trans "All workflow and validation services are running normally." %}
+            </p>
           </div>
         </div>
       </div>
       <div class="col-md-4">
         <div class="card h-100 shadow-sm border-success-subtle">
           <div class="card-body">
-            <h2 class="h6 text-uppercase text-muted">{% trans "API" %}</h2>
-            <p class="h4 text-success fw-semibold mb-1">{% trans "Operational" %}</p>
-            <p class="text-muted small mb-0">{% trans "No incidents reported." %}</p>
+            <h2 class="h6 text-uppercase text-muted">
+              {% trans "API" %}
+            </h2>
+            <p class="h4 text-success fw-semibold mb-1">
+              {% trans "Operational" %}
+            </p>
+            <p class="text-muted small mb-0">
+              {% trans "No incidents reported." %}
+            </p>
           </div>
         </div>
       </div>
       <div class="col-md-4">
-        <div class="card h-100 shadow-sm border-warning-subtle">
+        <div class="card h-100 shadow-sm border-success-subtle">
           <div class="card-body">
-            <h2 class="h6 text-uppercase text-muted">{% trans "Notifications" %}</h2>
-            <p class="h4 text-warning fw-semibold mb-1">{% trans "Degraded" %}</p>
-            <p class="text-muted small mb-0">{% trans "Email delivery delays in North America. Fix expected within the hour." %}</p>
+            <h2 class="h6 text-uppercase text-muted">
+              {% trans "Notifications" %}
+            </h2>
+            {% comment %}
+            <p class="h4 text-warning fw-semibold mb-1">
+              {% trans "Degraded" %}
+            </p>
+            <p class="text-muted small mb-0">
+              {% trans "Email delivery delays in North America. Fix expected within the hour." %}
+            </p>
+            {% endcomment %}
+            <p class="h4 text-success fw-semibold mb-1">
+              {% trans "Operational" %}
+            </p>
+            <p class="text-muted small mb-0">
+              {% trans "No incidents reported." %}
+            </p>
           </div>
         </div>
       </div>

@@ -3,31 +3,51 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
+
+  <div class="container marketing-page">
+
     <div class="row">
-      <div class="col-lg-8">
-        <h1 class="display-5 fw-semibold mb-4">{% trans "Schema Validation" %}</h1>
-        <p class="lead text-muted">
-          {% blocktrans trimmed %}
-            Set clear expectations for the structure of the files, tables, and payloads your downstream consumers rely on.
-          {% endblocktrans %}
-        </p>
-        <p class="text-muted">
+      <div class="col-12 col-lg-8">
+
+        <header>
+          <h1>
+            {% trans "Schema Validation" %}
+          </h1>
+          <div class="lead">
+            {% blocktrans trimmed %}
+              Set clear expectations for the structure of the data your downstream consumers rely on.
+            {% endblocktrans %}
+          </div>
+        </header>
+
+        <p>
           {% blocktrans trimmed %}
             SimpleValidations captures required fields, approved value ranges, and relationships so you can detect drift before it disrupts analytics or production systems.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Author rules once, track every revision, and run the same checks in CI, scheduled jobs, or ad-hoc reviews without rewriting scripts.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             When something changes, reviewers see field-level diffs, ownership, and commentary in one place, making it easier to reach a decision and keep teams aligned.
           {% endblocktrans %}
         </p>
+
+        <div class="mt-5 next-feature-link">
+          <a href="{% url 'marketing:features_simulation_validation' %}"
+             class="btn btn-outline-secondary">
+
+            {% blocktrans trimmed %}
+              Next: Simulation validation feature
+            {% endblocktrans %}
+            »
+          </a>
+        </div>
+
       </div>
     </div>
-  </section>
+  </div>
 {% endblock content %}

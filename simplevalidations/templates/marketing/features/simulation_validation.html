@@ -3,31 +3,49 @@
 {% load i18n %}
 
 {% block content %}
-  <section class="container py-5">
+
+  <div class="container marketing-page">
+
     <div class="row">
-      <div class="col-lg-8">
-        <h1 class="display-5 fw-semibold mb-4">{% trans "Simulation Validation" %}</h1>
-        <p class="lead text-muted">
-          {% blocktrans trimmed %}
-            Preview how new rules or data sources behave by running them through controlled scenarios before they touch production workloads.
-          {% endblocktrans %}
-        </p>
-        <p class="text-muted">
+      <div class="col-12 col-lg-8">
+
+        <header>
+          <h1>
+            {% trans "Simulation Validation" %}
+          </h1>
+          <div class="lead">
+            {% blocktrans trimmed %}
+              Preview how new rules or data sources behave by running them through controlled scenarios before they touch production workloads.
+            {% endblocktrans %}
+          </div>
+        </header>
+        <p>
           {% blocktrans trimmed %}
             Build simulations from historical samples, crafted edge cases, or synthetic datasets so you can explore best- and worst-case outcomes with confidence.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             Every run captures the inputs, results, and reviewer notes, making it easier to collaborate on next steps and decide when a change is ready to promote.
           {% endblocktrans %}
         </p>
-        <p class="text-muted">
+        <p>
           {% blocktrans trimmed %}
             When the experiment looks solid, reuse the configuration as a production validation, keeping your release process predictable from test to launch.
           {% endblocktrans %}
         </p>
+
+        <div class="mt-5 next-feature-link">
+          <a href="{% url 'marketing:features_certificates' %}"
+             class="btn btn-outline-secondary">
+
+            {% blocktrans trimmed %}
+              Next: Certificates feature
+            {% endblocktrans %}
+            »
+          </a>
+        </div>
       </div>
     </div>
-  </section>
+  </div>
 {% endblock content %}

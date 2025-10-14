@@ -25,19 +25,19 @@
                         {% include 'marketing/partial/top_nav/resources_menu.html' %}
                     {% endif %}
                     {% if ENABLE_PRICING_SECTION %}
-                        <li class="nav-item ms-md-3">
+                        <li class="nav-item ">
                             <a class="nav-link {% active_link 'app' %}"
                                href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
                         </li>
                     {% endif %}
-                    <li class="nav-item ms-md-3">
+                    <li class="nav-item ">
                         <a class="nav-link {% active_link_any 'about' %}"
                            href="{% url 'marketing:about' %}">{% translate "About" %}</a>
                     </li>
                     {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
                         {% include 'marketing/partial/top_nav/support_menu.html' %}
                     {% else %}
-                        <li class="nav-item ms-md-3">
+                        <li class="nav-item ">
                             <a class="nav-link {% active_link_any 'contact' %}"
                                href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
                         </li>
@@ -49,7 +49,7 @@
 
                 {% block right_nav_items %}
                     {% if request.user.is_authenticated %}
-                        <li class="nav-item ms-md-3">
+                        <li class="nav-item ">
                             <a class="nav-link {% active_link 'app' %}"
                                href="{% org_url 'dashboard:my_dashboard' %}">{% translate "App" %}</a>
                         </li>
@@ -71,8 +71,6 @@
                                 <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
                             </li>
                         </ul>
-                    </li>
-                    <li class="nav-item">
                     </li>
                 {% else %}
                     {% if ACCOUNT_ALLOW_REGISTRATION %}

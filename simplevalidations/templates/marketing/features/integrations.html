@@ -4,7 +4,6 @@
 
 {% block content %}
 
-
   <div class="container marketing-page">
 
     <div class="row">
@@ -16,7 +15,7 @@
           </h1>
           <div class="lead">
             {% blocktrans trimmed %}
-              Connect SimpleValidations to the collaboration hubs you already rely on so quality signals stay close to the conversation.
+              Connect SimpleValidations to the tools you already rely on.
             {% endblocktrans %}
           </div>
         </header>
@@ -26,41 +25,41 @@
         </h2>
         <p>
           {% blocktrans trimmed %}
-            Link repositories to SimpleValidations to trigger checks from pull requests and releases, post pass or fail results back to commits, and keep reviewers aligned without leaving GitHub.
+            Link GitHub repositories to SimpleValidations to trigger checks from pull requests and releases,
+            post pass or fail results back to commits, and keep reviewers aligned without leaving GitHub.
           {% endblocktrans %}
         </p>
+        {% comment %}
         <p>
           {% blocktrans trimmed %}
-            Validation details remain one click away: contributors can open a run, inspect findings, and re-run checks as part of the same code review workflow they already use.
+            Validation details remain one click away: contributors can open a run, inspect findings, and
+            re-run checks as part of the same code review workflow they already use.
           {% endblocktrans %}
-        </p>
-        <h2 class="mt-5" id="slack-integration">
-          {% trans "Slack" %}
-        </h2>
-        <p>
+                                      </p>
+      {% endcomment %}
+      <h2 class="mt-5" id="slack-integration">
+        {% trans "Slack" %}
+      </h2>
+      <p>
+        {% blocktrans trimmed %}
+          Bring alerts and follow-up actions to the channels your team watches most. Send targeted
+          notifications when validations pass, warn, or fail, and capture acknowledgements without shifting context.
+          Each Slack message links back to the underlying validation run so teammates can review evidence quickly.
+        {% endblocktrans %}
+      </p>
+
+      <div class="mt-5 next-feature-link">
+        <a href="{% url 'marketing:features' %}"
+           class="btn btn-outline-secondary">
+
           {% blocktrans trimmed %}
-            Bring alerts and follow-up actions to the channels your team watches most. Send targeted notifications when validations pass, warn, or fail, and capture acknowledgements without shifting context.
+            Features list
           {% endblocktrans %}
-        </p>
-        <p>
-          {% blocktrans trimmed %}
-            Each Slack message links back to the underlying run so teammates can review evidence quickly, while approvals and comments remain part of the audit trail in SimpleValidations.
-          {% endblocktrans %}
-        </p>
+          »
+        </a>
 
-
-        <div class="mt-5 next-feature-link">
-          <a href="{% url 'marketing:features' %}"
-             class="btn btn-outline-secondary">
-
-            {% blocktrans trimmed %}
-              Features list
-            {% endblocktrans %}
-            »
-          </a>
-
-        </div>
       </div>
     </div>
   </div>
+</div>
 {% endblock content %}

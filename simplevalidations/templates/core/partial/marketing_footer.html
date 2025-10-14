@@ -33,7 +33,22 @@ This footer appears on all 'marketing' pages of the site available to all users,
                         SITEMAP
                     </h1>
                     <nav>
-
+                        <h2>
+                            SITE
+                        </h2>
+                        <ul>
+                            <li>
+                                <a href="{% url 'marketing:home' %}">{% trans "Home" %}</a>
+                            </li>
+                            <li>
+                                <a href="{% url 'marketing:about' %}">{% trans "About" %}</a>
+                            </li>
+                            {% if ENABLE_PRICING_SECTION %}
+                                <li>
+                                    <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
+                                </li>
+                            {% endif %}
+                        </ul>
                         {% if features_enabled or pricing_enabled or request.user.is_authenticated %}
                             <h2>
                                 PRODUCT

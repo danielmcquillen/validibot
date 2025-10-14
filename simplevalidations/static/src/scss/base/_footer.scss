@@ -60,6 +60,17 @@
       font-weight: 400 !important;
       list-style: none;
       margin: 0;
+      padding-top: 0.2rem;
+      position: relative;
+
+      &::before {
+        content: "\203A";
+        color: rgba(51, 51, 51, 0.25);
+        display: inline-block;
+        margin-right: 0.45rem;
+        transform: translateY(-0.05rem);
+      }
+
       a {
         font: inherit;
         text-decoration: none;

@@ -207,9 +207,9 @@ class FeatureCertificatesPageView(FeatureDetailPageView):
 
 class FeatureBlockchainPageView(FeatureDetailPageView):
     template_name = "marketing/features/blockchain.html"
-    page_title = _("Blockchain Provenance")
+    page_title = _("Blockchain")
     meta_description = _(
-        "Track validation provenance on an immutable ledger to give "
+        "Track validation on an immutable blockchain to give "
         "regulators and customers tamper-evident confidence.",
     )
 

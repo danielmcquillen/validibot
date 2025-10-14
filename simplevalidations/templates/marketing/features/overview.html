@@ -99,14 +99,14 @@
 
       </div>
       <div class="col-lg-4">
+        {% comment %}
         <figure class="text-center">
-          <img src="{% static 'marketing/images/overview_validation_flow.png' %}"
-               class="img-fluid rounded shadow-sm"
-               alt="{% trans 'Illustration showing how submissions move through workflows, execution, and dashboards.' %}" />
+          <img src="{% static 'marketing/images/overview_validation_flow.png' %}" class="img-fluid rounded shadow-sm" alt="{% trans 'Illustration showing how submissions move through workflows, execution, and dashboards.' %}" />
           <figcaption class="text-muted small mt-2">
             {% trans "Submissions flow through intake, workflow orchestration, the Celery execution layer, and into dashboards for review." %}
           </figcaption>
         </figure>
+        {% endcomment %}
       </div>
     </div>
 
@@ -174,7 +174,8 @@
 
             {% blocktrans trimmed %}
               Next: Schema validation feature.
-            {% endblocktrans %} »
+            {% endblocktrans %}
+            »
           </a>
         </div>
 

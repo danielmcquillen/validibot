@@ -62,34 +62,38 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    border-radius: 1rem;
+    margin-top: 0;
+    padding-top: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    // transition: box-shadow 0.25s ease, background 0.25s ease;
     background: linear-gradient(
       135deg,
       rgba(99, 102, 241, 0.15),
       rgba(168, 85, 247, 0.1)
     );
     padding: 1.5rem;
-    border: 1px solid rgba(79, 70, 229, 0.15);
+    transform: none !important;
+
+    &:hover,
+    &:focus-within {
+      transform: none !important;
+      box-shadow: 0 18px 35px rgba(79, 70, 229, 0.18);
+    }
 
     .feature-image {
-      background: linear-gradient(
-        135deg,
-        rgba(99, 102, 241, 0.35),
-        rgba(168, 85, 247, 0.35)
-      );
+      background: rgba(255, 255, 255, 0.6);
       border-radius: 0.75rem;
       margin-bottom: 1rem;
       position: relative;
       overflow: hidden;
-      padding-top: 65%;
+      padding: 0;
 
-      &::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: url("https://via.placeholder.com/400x240/7367F0/ffffff?text=SimpleValidations+Blog")
-          center/cover;
-        mix-blend-mode: screen;
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: inherit;
       }
     }
 

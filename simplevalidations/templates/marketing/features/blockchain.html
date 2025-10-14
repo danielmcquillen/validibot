@@ -11,28 +11,26 @@
 
         <header>
           <h1>
-            {% trans "Blockchain" %}
+            {% trans "Blockchain Anchoring" %}
           </h1>
           <div class="lead">
             {% blocktrans trimmed %}
-              Give external stakeholders confidence that critical validation records have not been altered.
+              Preserve the integrity of your validation evidence with tamper-evident fingerprints anchored to a public ledger.
             {% endblocktrans %}
           </div>
         </header>
 
-        <p>
+        <div class="alert alert-info mt-4" role="status">
           {% blocktrans trimmed %}
-            SimpleValidations stores a cryptographic fingerprint of key runs—what was checked, the outcome, and who signed off—on a blockchain network so you can independently prove when results were produced.
+            Blockchain anchoring is currently early development.
           {% endblocktrans %}
-        </p>
+        </div>
+
         <p>
           {% blocktrans trimmed %}
-            Only the fingerprint leaves your environment; the underlying datasets and findings remain inside your account unless you choose to share them.
-          {% endblocktrans %}
-        </p>
-        <p>
-          {% blocktrans trimmed %}
-            Use ledger anchoring selectively for the workflows tied to regulatory reviews or high-stakes partnerships, adding a portable trust signal without disrupting day-to-day automation.
+            SimpleValidations can publish the successful completion of a validation workflow to a blockchain network.
+            The ledger entry gives customers, regulators, and collaborators independent proof that the data was indeed
+            validated at a specific point in time, and that the data and the validation results have not been altered since then.
           {% endblocktrans %}
         </p>
 

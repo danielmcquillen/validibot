@@ -15,30 +15,29 @@
           </h1>
           <div class="lead">
             {% blocktrans trimmed %}
-              Preview how new rules or data sources behave by running them through controlled scenarios before they touch production workloads.
+              Validate data sources by running them through
+              controlled scenarios and analyzing the outcomes.
             {% endblocktrans %}
           </div>
         </header>
         <p>
           {% blocktrans trimmed %}
-            Build simulations from historical samples, crafted edge cases, or synthetic datasets so you can explore best- and worst-case outcomes with confidence.
+            SimpleValidations allows you to run simulations in a safe, isolated environment to see how input data
+            will impact simulated systems. The simulations are run in a sandboxed container equipped with the programs
+            and dependencies needed to execute the simulation.
           {% endblocktrans %}
         </p>
+
         <p>
           {% blocktrans trimmed %}
-            Every run captures the inputs, results, and reviewer notes, making it easier to collaborate on next steps and decide when a change is ready to promote.
-          {% endblocktrans %}
-        </p>
-        <p>
-          {% blocktrans trimmed %}
-            When the experiment looks solid, reuse the configuration as a production validation, keeping your release process predictable from test to launch.
+            This feature is under development, but the first simulation types we are focusing on are building
+            energy models (EnergyPlus) and Modelica-based models (OpenModelica).
           {% endblocktrans %}
         </p>
 
         <div class="mt-5 next-feature-link">
           <a href="{% url 'marketing:features_certificates' %}"
              class="btn btn-outline-secondary">
-
             {% blocktrans trimmed %}
               Next: Certificates feature
             {% endblocktrans %}

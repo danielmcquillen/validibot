@@ -246,12 +246,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=payload)
         try:
             serializer.is_valid(raise_exception=True)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.info(
                 "ValidationRunStartSerializer invalid: %s",
                 getattr(e, "detail", str(e)),
             )
-            raise e
+            raise e  # noqa: TRY201
 
         vd = serializer.validated_data
         file_obj = vd.get("file", None)
@@ -497,7 +497,8 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
             {
                 "name": _("Workflows"),
                 "url": reverse_with_org(
-                    "workflows:workflow_list", request=self.request
+                    "workflows:workflow_list",
+                    request=self.request,
                 ),
             },
         )
@@ -540,7 +541,8 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
             {
                 "name": _("Workflows"),
                 "url": reverse_with_org(
-                    "workflows:workflow_list", request=self.request
+                    "workflows:workflow_list",
+                    request=self.request,
                 ),
             },
         )
@@ -552,7 +554,8 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
         org = user.get_current_org()
         if org is None:
             form.add_error(
-                None, _("You need an organization before creating workflows.")
+                None,
+                _("You need an organization before creating workflows."),
             )
             return self.form_invalid(form)
         form.instance.org = org
@@ -578,7 +581,8 @@ class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
             {
                 "name": _("Workflows"),
                 "url": reverse_with_org(
-                    "workflows:workflow_list", request=self.request
+                    "workflows:workflow_list",
+                    request=self.request,
                 ),
             },
         )
@@ -620,7 +624,8 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
             {
                 "name": _("Workflows"),
                 "url": reverse_with_org(
-                    "workflows:workflow_list", request=self.request
+                    "workflows:workflow_list",
+                    request=self.request,
                 ),
             },
         )
@@ -732,7 +737,11 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 validator = form.get_validator()
                 config_form = self._build_config_form(validator, step=None)
                 return self._render_config(
-                    request, workflow, validator, config_form, None
+                    request,
+                    workflow,
+                    validator,
+                    config_form,
+                    None,
                 )
             return self._render_select(request, workflow, form=form)
 
@@ -748,17 +757,21 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         )
         if config_form.is_valid():
             if step is None and workflow.steps.count() >= MAX_STEP_COUNT:
-                message = _(
-                    "You can add up to %(count)s steps per workflow."
-                    % {"count": MAX_STEP_COUNT}
-                )
+                message = _("You can add up to %(count)s steps per workflow.") % {
+                    "count": MAX_STEP_COUNT,
+                }
                 return _hx_trigger_response(message, level="warning", status_code=409)
             self._save_step(workflow, validator, config_form, step=step)
             _resequence_workflow_steps(workflow)
             message = _("Workflow step saved.")
             return _hx_trigger_response(message)
         return self._render_config(
-            request, workflow, validator, config_form, step, status=200
+            request,
+            workflow,
+            validator,
+            config_form,
+            step,
+            status=200,
         )
 
     # Helper methods ---------------------------------------------------------
@@ -825,7 +838,9 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return render(request, self.template_config, context, status=status)
 
     def _resolve_validator(
-        self, request, step: WorkflowStep | None
+        self,
+        request,
+        step: WorkflowStep | None,
     ) -> Validator | None:
         if step is not None:
             return step.validator
@@ -919,7 +934,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
         if source == "text":
             content = ContentFile(
-                text.encode("utf-8"), name=f"schema-{uuid4().hex}.json"
+                text.encode("utf-8"),
+                name=f"schema-{uuid4().hex}.json",
             )
             if ruleset.file:
                 ruleset.file.delete(save=False)
@@ -972,7 +988,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
         if source == "text":
             content = ContentFile(
-                text.encode("utf-8"), name=f"schema-{uuid4().hex}{extension}"
+                text.encode("utf-8"),
+                name=f"schema-{uuid4().hex}{extension}",
             )
             if ruleset.file:
                 ruleset.file.delete(save=False)
@@ -999,7 +1016,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return config, ruleset
 
     def _build_energyplus_config(
-        self, form: EnergyPlusStepConfigForm
+        self,
+        form: EnergyPlusStepConfigForm,
     ) -> dict[str, Any]:
         eui_min = form.cleaned_data.get("eui_min")
         eui_max = form.cleaned_data.get("eui_max")
@@ -1055,7 +1073,9 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
             index = steps.index(step)
         except ValueError:
             return _hx_trigger_response(
-                status_code=400, message=_("Step not found."), level="warning"
+                status_code=400,
+                message=_("Step not found."),
+                level="warning",
             )
         if direction == "up" and index > 0:
             steps[index - 1], steps[index] = steps[index], steps[index - 1]
@@ -1104,7 +1124,8 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
             {
                 "name": _("Workflows"),
                 "url": reverse_with_org(
-                    "workflows:workflow_list", request=self.request
+                    "workflows:workflow_list",
+                    request=self.request,
                 ),
             },
         )

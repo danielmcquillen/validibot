@@ -15,22 +15,22 @@
           </h1>
         </header>
 
+        <div class="alert alert-info mt-5 mb-5">
+          {% trans "Our full FAQ is on the way." %}
+        </div>
+        <p>
+          {% trans "For now, this page is a placeholder while we build the SimpleValidations experience." %}
+        </p>
+
+        {% comment %}
         <div class="accordion" id="faqAccordion">
           <div class="accordion-item">
             <h2 class="accordion-header" id="faqOneHeading">
-              <button class="accordion-button"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#faqOne"
-                      aria-expanded="true"
-                      aria-controls="faqOne">
+              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faqOne" aria-expanded="true" aria-controls="faqOne">
                 {% trans "How long does it take to set up SimpleValidations?" %}
               </button>
             </h2>
-            <div id="faqOne"
-                 class="accordion-collapse collapse show"
-                 aria-labelledby="faqOneHeading"
-                 data-bs-parent="#faqAccordion">
+            <div id="faqOne" class="accordion-collapse collapse show" aria-labelledby="faqOneHeading" data-bs-parent="#faqAccordion">
               <div class="accordion-body">
                 {% trans "Most teams launch their first workflow in under an hour thanks to reusable templates." %}
               </div>
@@ -38,19 +38,11 @@
           </div>
           <div class="accordion-item">
             <h2 class="accordion-header" id="faqTwoHeading">
-              <button class="accordion-button collapsed"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#faqTwo"
-                      aria-expanded="false"
-                      aria-controls="faqTwo">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqTwo" aria-expanded="false" aria-controls="faqTwo">
                 {% trans "Can I invite collaborators outside my organization?" %}
               </button>
             </h2>
-            <div id="faqTwo"
-                 class="accordion-collapse collapse"
-                 aria-labelledby="faqTwoHeading"
-                 data-bs-parent="#faqAccordion">
+            <div id="faqTwo" class="accordion-collapse collapse" aria-labelledby="faqTwoHeading" data-bs-parent="#faqAccordion">
               <div class="accordion-body">
                 {% trans "Absolutely. Granular permissions make it easy to work with partners while protecting sensitive data." %}
               </div>
@@ -58,25 +50,18 @@
           </div>
           <div class="accordion-item">
             <h2 class="accordion-header" id="faqThreeHeading">
-              <button class="accordion-button collapsed"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#faqThree"
-                      aria-expanded="false"
-                      aria-controls="faqThree">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqThree" aria-expanded="false" aria-controls="faqThree">
                 {% trans "Do you offer enterprise support?" %}
               </button>
             </h2>
-            <div id="faqThree"
-                 class="accordion-collapse collapse"
-                 aria-labelledby="faqThreeHeading"
-                 data-bs-parent="#faqAccordion">
+            <div id="faqThree" class="accordion-collapse collapse" aria-labelledby="faqThreeHeading" data-bs-parent="#faqAccordion">
               <div class="accordion-body">
                 {% trans "Yes. Our enterprise plan includes 24/7 support, dedicated onboarding, and custom SLAs." %}
               </div>
             </div>
           </div>
         </div>
+        {% endcomment %}
 
       </div>
     </div>

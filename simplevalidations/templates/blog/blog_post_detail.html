@@ -3,47 +3,43 @@
 {% load i18n tz %}
 
 {% block content %}
-  <article class="blog-article">
 
-    <section class="blog-hero py-5 py-lg-5">
-      <div class="container">
-        <div class="row">
-          <div class="col-12 col-lg-8 col-xl-6">
-            <div class="d-flex flex-column gap-3">
-              <div class="d-flex align-items-center gap-3 flex-wrap">
-                {% if blog_post.status == 0 and request.user.is_staff %}
-                  <span class="badge text-bg-warning-subtle text-warning-emphasis">
-                    {% trans "Draft" %}
-                  </span>
-                {% endif %}
-              </div>
-              <h1 class="display-5 fw-semibold mb-0">
-                {{ blog_post.title }}
-              </h1>
-              <div class="blog-article__meta d-flex flex-column flex-md-row gap-2 align-items-md-center text-muted">
-                <span>
-                  {% trans "By" %}
-                  {% if blog_post.author and blog_post.author.name %}
-                    {{ blog_post.author.name }}
-                  {% elif blog_post.author %}
-                    {{ blog_post.author.username }}
-                  {% else %}
-                    {% trans "SimpleValidations Team" %}
-                  {% endif %}
-                </span>
-                <span class="d-none d-md-inline">&middot;</span>
-                <time datetime="{{ blog_post.published_on|localtime|date:'c' }}">
-                  {{ blog_post.published_on|localtime|date:"DATE_FORMAT" }}
-                </time>
-              </div>
+  <div class="container marketing-page">
+
+    <article class="blog-article">
+
+      <div class="row d-flex flex-row align-items-end">
+        <div class="col-lg-8">
+
+          <header class="mb-0">
+            <h1>
+              {{ blog_post.title }}
+            </h1>
+            <div class="lead text-muted mb-0">
+              {{ page_subtitle }}
             </div>
+          </header>
+
+          <div class="blog-article__meta d-flex flex-column flex-md-row gap-2 align-items-md-center text-muted mt-2">
+            <span>
+              {% trans "By" %}
+              {% if blog_post.author and blog_post.author.name %}
+                {{ blog_post.author.name }}
+              {% elif blog_post.author %}
+                {{ blog_post.author.username }}
+              {% else %}
+                {% trans "SimpleValidations Team" %}
+              {% endif %}
+            </span>
+            <span class="d-none d-md-inline">&middot;</span>
+            <time datetime="{{ blog_post.published_on|localtime|date:'c' }}">
+              {{ blog_post.published_on|localtime|date:"DATE_FORMAT" }}
+            </time>
           </div>
         </div>
       </div>
-    </section>
 
-    <section class="container pb-5 pb-lg-5">
-      <div class="row">
+      <div class="row mt-5">
         <div class="col-12 col-lg-8 col-xl-6">
           {% if blog_post.featured_image %}
             <figure class="blog-article__figure mb-5">
@@ -70,11 +66,9 @@
           </div>
         </div>
       </div>
-    </section>
 
-    {% if related_posts %}
-      <section class="container pb-5">
-        <div class="row">
+      {% if related_posts %}
+        <div class="row mt-5">
           <div class="col-12 col-lg-8 col-xl-6">
             <h2 class="h4 fw-semibold mb-4">
               {% trans "Keep reading" %}
@@ -131,7 +125,7 @@
             </div>
           {% endfor %}
         </div>
-      </section>
-    {% endif %}
-  </article>
+      {% endif %}
+    </article>
+  </div>
 {% endblock content %}

@@ -59,6 +59,7 @@ marketing navigation:
 - `ENABLE_DOCS_SECTION`
 - `ENABLE_PRICING_SECTION`
 - `ENABLE_BLOG`
+- `ENABLE_AI_VALIDATIONS`
 
 ## SEO Instrumentation
 

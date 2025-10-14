@@ -15,7 +15,7 @@
 
         <div class="row">
             {% if ENABLE_AI_VALIDATIONS %}
-                <!-- Feature: Intelligent Validation -->
+                <!-- Feature: AI Validation -->
                 <div class="col-lg-4 col-md-6 mb-4">
                     <div class="feature-card ">
 
@@ -80,39 +80,6 @@
                 </div>
             {% endif %}
 
-            <!-- Feature: Custom Rules -->
-            <div class="col-lg-4 col-md-6 mb-4">
-                <div class="feature-card  delay-4">
-
-                    <div class="robot-quote-section">
-                        <div class="robot-head">
-                            <img src="{% static 'marketing/images/robot_head.png' %}"
-                                 alt="Robot Head"
-                                 class="img-fluid flip-x" />
-                        </div>
-                        <div class="speech-bubble">
-                            <p class="bubble-text">
-                                {% blocktrans trimmed %}
-                                    I can run simulations and complex logic to prove your data holds up!
-                                {% endblocktrans %}
-                            </p>
-                        </div>
-                    </div>
-
-                    <h3 class="feature-title">
-                        {% blocktrans trimmed %}
-                            Simulation-Driven Validation
-                        {% endblocktrans %}
-                    </h3>
-                    <p class="feature-description">
-                        {% blocktrans trimmed %}
-                            Pair deterministic rules with domain simulations or sophisticated business logic so every submission is
-                            vetted against real-world scenarios before you ship.
-                        {% endblocktrans %}
-                    </p>
-                </div>
-            </div>
-
             <!-- Feature: Schema Validation -->
             <div class="col-lg-4 col-md-6 mb-4">
                 <div class="feature-card  delay-3">
@@ -145,6 +112,40 @@
                     </p>
                 </div>
             </div>
+
+            <!-- Feature: Simulation Validations -->
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="feature-card  delay-4">
+
+                    <div class="robot-quote-section">
+                        <div class="robot-head">
+                            <img src="{% static 'marketing/images/robot_head.png' %}"
+                                 alt="Robot Head"
+                                 class="img-fluid flip-x" />
+                        </div>
+                        <div class="speech-bubble">
+                            <p class="bubble-text">
+                                {% blocktrans trimmed %}
+                                    I can run simulations and complex logic to prove your data holds up!
+                                {% endblocktrans %}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 class="feature-title">
+                        {% blocktrans trimmed %}
+                            Simulation-Driven Validation
+                        {% endblocktrans %}
+                    </h3>
+                    <p class="feature-description">
+                        {% blocktrans trimmed %}
+                            Pair deterministic rules with domain simulations or sophisticated business logic so every submission is
+                            vetted against real-world scenarios before you ship.
+                        {% endblocktrans %}
+                    </p>
+                </div>
+            </div>
+
 
             <!-- Feature: Real-time Processing -->
             <div class="col-lg-4 col-md-6 mb-4">

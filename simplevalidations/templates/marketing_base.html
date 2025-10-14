@@ -29,8 +29,30 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap"
         rel="stylesheet" />
 
+  {% if full_meta_title %}
+    <meta property="og:title" content="{{ full_meta_title }}" />
+    <meta name="twitter:title" content="{{ full_meta_title }}" />
+  {% endif %}
+  {% if meta_description %}
+    <meta property="og:description" content="{{ meta_description }}" />
+    <meta name="twitter:description" content="{{ meta_description }}" />
+  {% endif %}
   {% if canonical_url %}
     <link rel="canonical" href="{{ canonical_url }}" />
+    <meta property="og:url" content="{{ canonical_url }}" />
+    <meta name="twitter:url" content="{{ canonical_url }}" />
+  {% endif %}
+  {% if share_image_url %}
+    <meta property="og:image" content="{{ share_image_url }}" />
+    <meta property="og:image:secure_url" content="{{ share_image_url }}" />
+    {% if share_image_alt %}
+      <meta property="og:image:alt" content="{{ share_image_alt }}" />
+    {% endif %}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="{{ share_image_url }}" />
+    {% if share_image_alt %}
+      <meta name="twitter:image:alt" content="{{ share_image_alt }}" />
+    {% endif %}
   {% endif %}
   {% if structured_data_json %}
     <script type="application/ld+json">

@@ -67,6 +67,9 @@ marketing navigation:
   `meta_description`, `meta_keywords`, a canonical URL, and structured data JSON-LD.
   Override those attributes or `get_structured_data()` in a view if a page needs
   custom metadata.
+- Social share previews rely on `MarketingMetadataMixin.share_image_path`; the
+  homepage uses `MarketingShareImage.DEFAULT` so Bluesky, Twitter, and Facebook
+  pull the same illustration. Update that attribute if you ship new artwork.
 - `marketing_base.html` emits a canonical `<link>` plus JSON-LD containing the
   `WebSite`, `Organization`, and current `WebPage` schema objects.
 - `config/urls.py` serves `sitemap.xml` (via `MarketingStaticViewSitemap`) and a

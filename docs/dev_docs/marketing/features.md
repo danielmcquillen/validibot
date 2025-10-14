@@ -44,5 +44,7 @@ and where it is heading, while keeping copy grounded in workflows we already sup
   visitor-facing string, favouring short paragraphs over complex layout blocks.
 - Revisit the copy as we ship roadmap updates so marketing claims stay aligned with the
   product.
+- When you adjust artwork, update the relevant `share_image_path` on each feature view
+  so Open Graph and Twitter cards render the correct illustration.
 - When introducing new integrations or feature pages, add a short summary here so we
   preserve the storytelling arc across the marketing site.

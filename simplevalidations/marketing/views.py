@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.shortcuts import render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
@@ -17,6 +18,8 @@ from django.views.generic import TemplateView
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import is_htmx
+
+from simplevalidations.marketing.constants import MarketingShareImage
 from simplevalidations.marketing.constants import ProspectEmailStatus
 from simplevalidations.marketing.email.utils import is_allowed_postmark_source
 from simplevalidations.marketing.forms import BetaWaitlistForm
@@ -35,6 +38,10 @@ class MarketingMetadataMixin:
     meta_keywords: str = (
         "data validation, AI validation, simulation validation, credential automation"
     )
+    share_image_path: str | MarketingShareImage | None = MarketingShareImage.DEFAULT
+    share_image_alt: str | None = _(
+        "Illustration of the SimpleValidations robot guiding teams through workflow automation.",
+    )
 
     def get_page_title(self) -> str | None:
         return self.page_title
@@ -44,6 +51,19 @@ class MarketingMetadataMixin:
 
     def get_meta_keywords(self) -> str:
         return str(self.meta_keywords)
+
+    def get_share_image_path(self) -> str | None:
+        image_path = self.share_image_path
+        if image_path is None:
+            return None
+        if isinstance(image_path, MarketingShareImage):
+            return image_path.value
+        return str(image_path)
+
+    def get_share_image_alt(self) -> str | None:
+        if self.share_image_alt is None:
+            return None
+        return str(self.share_image_alt)
 
     def get_structured_data(self, site_origin: str, canonical_url: str) -> list[dict]:
         waitlist_url = f"{site_origin}{reverse('marketing:beta_waitlist')}"
@@ -82,8 +102,13 @@ class MarketingMetadataMixin:
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         page_title = self.get_page_title()
+        brand_name = "SimpleValidations"
         if page_title is not None:
-            context.setdefault("page_title", str(page_title))
+            title_value = str(page_title)
+            context.setdefault("page_title", title_value)
+            context.setdefault("full_meta_title", f"{title_value} | {brand_name}")
+        else:
+            context.setdefault("full_meta_title", brand_name)
         context.setdefault("meta_description", str(self.get_meta_description()))
         context.setdefault("meta_keywords", str(self.get_meta_keywords()))
 
@@ -101,6 +126,17 @@ class MarketingMetadataMixin:
                     structured_data,
                     ensure_ascii=False,
                 )
+
+            share_image_path = self.get_share_image_path()
+            if share_image_path:
+                if share_image_path.startswith(("http://", "https://")):
+                    share_image_url = share_image_path
+                else:
+                    share_image_url = request.build_absolute_uri(static(share_image_path))
+                context.setdefault("share_image_url", share_image_url)
+                share_image_alt = self.get_share_image_alt()
+                if share_image_alt:
+                    context.setdefault("share_image_alt", share_image_alt)
         return context
 
 
@@ -114,6 +150,10 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
     )
     meta_keywords = (
         "data validation assistant, data quality automation, simulation validation"
+    )
+    share_image_path = MarketingShareImage.DEFAULT
+    share_image_alt = _(
+        "SimpleValidations robot greeting teams beside the platform homepage interface.",
     )
 
     def get_context_data(self, **kwargs):
@@ -146,6 +186,10 @@ class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
         "and credentialing to keep every submission trustworthy.",
     )
     breadcrumbs = []
+    share_image_path = MarketingShareImage.DEFAULT
+    share_image_alt = _(
+        "SimpleValidations robot showcasing the platform's core feature set.",
+    )
 
 
 class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
@@ -156,6 +200,7 @@ class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
         "Dive into SimpleValidations capabilities with "
         "in-depth feature briefings for technical teams.",
     )
+    share_image_path: str | MarketingShareImage | None = MarketingShareImage.DEFAULT
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
@@ -176,6 +221,10 @@ class FeatureOverviewPageView(FeatureDetailPageView):
         "See how SimpleValidations orchestrates AI, simulations, "
         "and human-friendly workflows to deliver trustworthy data pipelines.",
     )
+    share_image_path = MarketingShareImage.DEFAULT
+    share_image_alt = _(
+        "SimpleValidations robot overview illustration spanning workflow layers.",
+    )
 
 
 class FeatureSchemaValidationPageView(FeatureDetailPageView):
@@ -184,6 +233,10 @@ class FeatureSchemaValidationPageView(FeatureDetailPageView):
     meta_description = _(
         "Build rigorous schema validation with reusable checks, "
         "contextual errors, and collaborative review loops.",
+    )
+    share_image_path = MarketingShareImage.SCHEMA_VALIDATION
+    share_image_alt = _(
+        "Robot analyst reviewing schema validation results on layered dashboards.",
     )
 
 
@@ -194,6 +247,10 @@ class FeatureSimulationValidationPageView(FeatureDetailPageView):
         "Blend deterministic rules with simulations or complex domain "
         "logic to verify results against real-world scenarios.",
     )
+    share_image_path = MarketingShareImage.SIMULATION_VALIDATION
+    share_image_alt = _(
+        "Robot running simulation experiments across validation terminals.",
+    )
 
 
 class FeatureCertificatesPageView(FeatureDetailPageView):
@@ -202,6 +259,10 @@ class FeatureCertificatesPageView(FeatureDetailPageView):
     meta_description = _(
         "Issue certificates and compliance artifacts automatically "
         "once a submission passes every validation checkpoint.",
+    )
+    share_image_path = MarketingShareImage.CERTIFICATES
+    share_image_alt = _(
+        "Robot presenting issued compliance certificates after successful validations.",
     )
 
 
@@ -212,6 +273,10 @@ class FeatureBlockchainPageView(FeatureDetailPageView):
         "Track validation on an immutable blockchain to give "
         "regulators and customers tamper-evident confidence.",
     )
+    share_image_path = MarketingShareImage.BLOCKCHAIN
+    share_image_alt = _(
+        "Robot anchoring validation proofs onto a glowing blockchain ledger.",
+    )
 
 
 class FeatureIntegrationsPageView(FeatureDetailPageView):
@@ -220,6 +285,10 @@ class FeatureIntegrationsPageView(FeatureDetailPageView):
     meta_description = _(
         "Connect SimpleValidations to your stack with webhooks, "
         "REST APIs, and export-ready payloads.",
+    )
+    share_image_path = MarketingShareImage.INTEGRATIONS
+    share_image_alt = _(
+        "Robot coordinating integrations between GitHub, Slack, and validation workflows.",
     )
 
 

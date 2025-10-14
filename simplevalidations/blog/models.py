@@ -16,6 +16,8 @@ STATUS = ((0, "Draft"), (1, "Publish"))
 class BlogPost(TimeStampedModel):
     title = models.CharField(max_length=250, unique=False)
 
+    summary = models.CharField(max_length=500, blank=True, default="")
+
     slug = models.SlugField(max_length=250, unique=True)
 
     featured_image = models.FileField(null=True, blank=True)

@@ -53,7 +53,11 @@ class ValidationRunFilterTestCase(TestCase):
         self.assertIn("status", response.data)
 
     def test_filter_valid_status_no_matches(self):
-        """Test filtering with valid status that has no matches returns empty results."""
+        """
+        Test filtering with valid status that has
+        no matches returns empty results.
+        """
+
         ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
@@ -131,12 +135,16 @@ class ValidationRunFilterTestCase(TestCase):
 
         url = reverse("api:validation-runs-list")
         response = self.client.get(
-            url, {"status": ValidationRunStatus.PENDING, "workflow": self.workflow.id}
+            url,
+            {"status": ValidationRunStatus.PENDING, "workflow": self.workflow.id},
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["status"], ValidationRunStatus.PENDING)
+        self.assertEqual(
+            response.data["results"][0]["status"],
+            ValidationRunStatus.PENDING,
+        )
 
     def test_filter_invalid_date_format(self):
         """Test filtering with invalid date format returns 400."""

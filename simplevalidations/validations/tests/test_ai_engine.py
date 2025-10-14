@@ -44,7 +44,7 @@ def test_ai_engine_policy_violation():
                 "operator": ">=",
                 "value": 18,
                 "message": "Cooling setpoint must be ≥18°C",
-            }
+            },
         ],
         "mode": "BLOCKING",
         "cost_cap_cents": 12,
@@ -85,7 +85,7 @@ def test_ai_engine_generates_heuristic_warnings():
             {
                 "Schedule": [1 for _ in range(24)],
                 "zones": [{"setpoint": 50}, {"load": 2000000}],
-            }
+            },
         ),
         file_type=SubmissionFileType.JSON,
     )
@@ -93,4 +93,6 @@ def test_ai_engine_generates_heuristic_warnings():
     result = engine.validate(validator=validator, submission=submission, ruleset=None)
     messages = " ".join(str(issue.message) for issue in result.issues)
     assert "24/7" in messages or "Temperature" in messages
-    assert any(issue.severity in {Severity.WARNING, Severity.INFO} for issue in result.issues)
+    assert any(
+        issue.severity in {Severity.WARNING, Severity.INFO} for issue in result.issues
+    )

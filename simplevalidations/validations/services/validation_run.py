@@ -49,7 +49,7 @@ class ValidationRunService:
 
     # ---------- Launch (views call this) ----------
 
-    def launch(  # noqa: PLR0913
+    def launch(  # noqa: PLR0912 PLR0915
         self,
         request,
         org: Organization,
@@ -277,7 +277,7 @@ class ValidationRunService:
                     # For now we stop on first failure
                     break
         except Exception as exc:
-            logger.exception("Validation run execution failed: %s", exc)
+            logger.exception("Validation run execution failed")
             validation_run.status = ValidationRunStatus.FAILED
             if hasattr(validation_run, "ended_at"):
                 validation_run.ended_at = timezone.now()
@@ -319,7 +319,7 @@ class ValidationRunService:
                 "error",
                 "ended_at",
                 "summary",
-            ]
+            ],
         )
 
         # Create a ValidationRunTaskResult to return
@@ -473,13 +473,18 @@ class ValidationRunService:
     ):
         if getattr(validation_run, "user_id", None):
             return validation_run.user
-        submission_user = getattr(getattr(validation_run, "submission", None), "user", None)
+        submission_user = getattr(
+            getattr(validation_run, "submission", None),
+            "user",
+            None,
+        )
         if submission_user and getattr(submission_user, "is_authenticated", False):
             return submission_user
         if user_id:
             from django.contrib.auth import get_user_model  # noqa: PLC0415
 
-            UserModel = get_user_model()
+            UserModel = get_user_model()  # noqa: N806
+
             try:
                 return UserModel.objects.get(pk=user_id)
             except UserModel.DoesNotExist:

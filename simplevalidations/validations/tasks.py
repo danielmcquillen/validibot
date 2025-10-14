@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from celery import shared_task
 
-from simplevalidations.validations.services.models import ValidationRunTaskResult
 from simplevalidations.validations.services.validation_run import ValidationRunService
+
+if TYPE_CHECKING:
+    from simplevalidations.validations.services.models import ValidationRunTaskResult
 
 logger = logging.getLogger(__name__)
 

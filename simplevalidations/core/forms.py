@@ -1,3 +1,6 @@
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Field
+from crispy_forms.layout import Layout
 from django import forms
 from django.utils.html import strip_tags
 from django.utils.text import normalize_newlines
@@ -29,6 +32,17 @@ class SupportMessageForm(forms.ModelForm):
                 },
             ),
         }
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper(self)
+        self.helper.form_tag = False  # handled in template
+        self.helper.label_class = "form-label fw-semibold"
+        self.helper.disable_csrf = True
+        self.helper.layout = Layout(
+            Field("subject", wrapper_class="mb-3"),
+            Field("message", wrapper_class="mb-3"),
+        )
 
     def _clean_text_value(self, value: str) -> str:
         cleaned = normalize_newlines(strip_tags(value or "").strip())

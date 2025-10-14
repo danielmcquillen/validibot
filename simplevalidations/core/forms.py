@@ -17,6 +17,10 @@ class SupportMessageForm(forms.ModelForm):
             "subject": _("Subject"),
             "message": _("Message"),
         }
+        error_messages = {
+            "subject": {"required": _("Please add a little more detail.")},
+            "message": {"required": _("Please add a little more detail.")},
+        }
         widgets = {
             "subject": forms.TextInput(
                 attrs={

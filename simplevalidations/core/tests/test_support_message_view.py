@@ -49,6 +49,8 @@ def test_support_message_htmx_invalid_returns_form_with_errors(client):
     )
 
     assert response.status_code == 400
-    content = response.content.decode()
-    assert "Please add a little more detail." in content
-    assert "is-invalid" in content
+    assert response.context is not None
+    form = response.context["form"]
+    assert form.errors["subject"] == ["Please add a little more detail."]
+    assert form.errors["message"] == ["Please add a little more detail."]
+    assert "is-invalid" in response.content.decode()

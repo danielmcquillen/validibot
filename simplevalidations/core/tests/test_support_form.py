@@ -43,4 +43,4 @@ def test_support_message_form_rejects_empty_after_cleaning():
 
     assert not form.is_valid()
     assert form.errors["subject"] == ["Please add a little more detail."]
-    assert form.errors["message"] == ["This field is required."]
+    assert form.errors["message"] == ["Please add a little more detail."]

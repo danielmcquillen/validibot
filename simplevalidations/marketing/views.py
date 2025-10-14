@@ -393,6 +393,12 @@ class ContactPageView(SupportDetailPageView):
         "partnerships, or support escalations.",
     )
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.user.is_authenticated:
+            context.setdefault("support_message_form", SupportMessageForm())
+        return context
+
     def get_breadcrumbs(self):
         if not settings.ENABLE_HELP_CENTER and not settings.ENABLE_SYSTEM_STATUS:
             return []

@@ -27,6 +27,8 @@ def site_feature_settings(request):
             "ENABLE_HELP_CENTER": settings.ENABLE_HELP_CENTER,
             "ENABLE_SYSTEM_STATUS": settings.ENABLE_SYSTEM_STATUS,
             "ENABLE_AI_VALIDATIONS": settings.ENABLE_AI_VALIDATIONS,
+            "ACCOUNT_ALLOW_LOGIN": settings.ACCOUNT_ALLOW_LOGIN,
+            "ACCOUNT_ALLOW_REGISTRATION": settings.ACCOUNT_ALLOW_REGISTRATION,
         }
     except Exception:
         # In case settings are not properly configured yet

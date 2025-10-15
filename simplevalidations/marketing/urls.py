@@ -1,4 +1,6 @@
-from django.urls import include, path
+from django.conf import settings
+from django.urls import include
+from django.urls import path
 
 from . import views
 
@@ -66,26 +68,6 @@ urlpatterns = [
         name="features_integrations",
     ),
     path(
-        "pricing/",
-        views.PricingPageView.as_view(),
-        name="pricing",
-    ),
-    path(
-        "pricing/starter/",
-        views.PricingStarterPageView.as_view(),
-        name="pricing_starter",
-    ),
-    path(
-        "pricing/growth/",
-        views.PricingGrowthPageView.as_view(),
-        name="pricing_growth",
-    ),
-    path(
-        "pricing/enterprise/",
-        views.PricingEnterprisePageView.as_view(),
-        name="pricing_enterprise",
-    ),
-    path(
         "resources/",
         views.ResourcesPageView.as_view(),
         name="resources",
@@ -141,3 +123,28 @@ urlpatterns = [
         name="privacy",
     ),
 ]
+
+
+if settings.ENABLE_PRICING_PAGES:
+    urlpatterns += [
+        path(
+            "pricing/",
+            views.PricingPageView.as_view(),
+            name="pricing",
+        ),
+        path(
+            "pricing/starter/",
+            views.PricingStarterPageView.as_view(),
+            name="pricing_starter",
+        ),
+        path(
+            "pricing/growth/",
+            views.PricingGrowthPageView.as_view(),
+            name="pricing_growth",
+        ),
+        path(
+            "pricing/enterprise/",
+            views.PricingEnterprisePageView.as_view(),
+            name="pricing_enterprise",
+        ),
+    ]

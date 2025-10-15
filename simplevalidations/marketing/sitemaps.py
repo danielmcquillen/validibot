@@ -21,7 +21,7 @@ class MarketingStaticViewSitemap(Sitemap):
 
     def items(self):
         # TODO: Once I add features, return a complete list...
-        """
+
         sitemap_items = [
             "marketing:home",
             "marketing:about",
@@ -32,10 +32,10 @@ class MarketingStaticViewSitemap(Sitemap):
             "marketing:features_certificates",
             "marketing:features_blockchain",
             "marketing:features_integrations",
-            "marketing:pricing",
-            "marketing:pricing_starter",
-            "marketing:pricing_growth",
-            "marketing:pricing_enterprise",
+            # "marketing:pricing",
+            # "marketing:pricing_starter",
+            # "marketing:pricing_growth",
+            # "marketing:pricing_enterprise",
             "marketing:resources",
             "marketing:resources_docs",
             "marketing:resources_videos",
@@ -49,13 +49,7 @@ class MarketingStaticViewSitemap(Sitemap):
             "marketing:terms",
             "marketing:privacy",
         ]
-        """
 
-        sitemap_items = [
-            "marketing:home",
-            "marketing:about",
-            "marketing:contact",
-        ]
         return sitemap_items
 
     def location(self, item):

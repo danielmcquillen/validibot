@@ -29,6 +29,7 @@ def site_feature_settings(request):
             "ENABLE_AI_VALIDATIONS": settings.ENABLE_AI_VALIDATIONS,
             "ACCOUNT_ALLOW_LOGIN": settings.ACCOUNT_ALLOW_LOGIN,
             "ACCOUNT_ALLOW_REGISTRATION": settings.ACCOUNT_ALLOW_REGISTRATION,
+            "ENABLE_APP": settings.ENABLE_APP,
         }
     except Exception:
         # In case settings are not properly configured yet

@@ -1,4 +1,5 @@
 import json
+import logging
 
 from django.conf import settings
 from django.contrib import messages
@@ -26,6 +27,8 @@ from simplevalidations.marketing.models import Prospect
 from simplevalidations.marketing.services import WaitlistPayload
 from simplevalidations.marketing.services import WaitlistSignupError
 from simplevalidations.marketing.services import submit_waitlist_signup
+
+logger = logging.getLogger(__name__)
 
 
 class MarketingMetadataMixin:
@@ -636,6 +639,12 @@ def postmark_delivery_webhook(request: HttpRequest) -> HttpResponse:
 
     if payload.get("RecordType") == "Delivery":
         email = payload.get("Recipient") or payload.get("Email")
+        if email in [
+            "daniel@mcquilleninteractive.com",
+            "daniel@simplevalidations.com",
+        ]:
+            logger.info("Ignoring delivery webhook for test email: %s", email)
+            return HttpResponse(status=200)
         if email:
             Prospect.objects.filter(
                 email=email,

@@ -43,31 +43,39 @@ urlpatterns = [
     # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),
     # App URLs...
-    path("app/", core_views.app_home_redirect, name="app-home"),
-    path(
-        "app/dashboard/",
-        include("simplevalidations.dashboard.urls", namespace="dashboard"),
-    ),
-    path("app/users/", include("simplevalidations.users.urls", namespace="users")),
     path("app/core/", include("simplevalidations.core.urls", namespace="core")),
-    path(
-        "app/projects/",
-        include("simplevalidations.projects.urls", namespace="projects"),
-    ),
-    path(
-        "app/workflows/",
-        include("simplevalidations.workflows.urls", namespace="workflows"),
-    ),
-    path(
-        "app/tracking/",
-        include("simplevalidations.tracking.urls", namespace="tracking"),
-    ),
-    path(
-        "app/validations/",
-        include("simplevalidations.validations.urls", namespace="validations"),
-    ),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
+
+
+if settings.ENABLE_APP:
+    urlpatterns += [
+        path("app/", core_views.app_home_redirect, name="app-home"),
+        path(
+            "app/dashboard/",
+            include("simplevalidations.dashboard.urls", namespace="dashboard"),
+        ),
+        path(
+            "app/users/",
+            include("simplevalidations.users.urls", namespace="users"),
+        ),
+        path(
+            "app/projects/",
+            include("simplevalidations.projects.urls", namespace="projects"),
+        ),
+        path(
+            "app/workflows/",
+            include("simplevalidations.workflows.urls", namespace="workflows"),
+        ),
+        path(
+            "app/tracking/",
+            include("simplevalidations.tracking.urls", namespace="tracking"),
+        ),
+        path(
+            "app/validations/",
+            include("simplevalidations.validations.urls", namespace="validations"),
+        ),
+    ]
 
 
 if settings.ACCOUNT_ALLOW_LOGIN:

@@ -64,7 +64,7 @@ def app_home_redirect(request: HttpRequest) -> HttpResponse:
     """Redirect `/app/` requests to the user's current organization dashboard."""
 
     org = request.user.get_current_org()
-    if not org or not settings.APP_ENABLED:
+    if not org or not settings.ENABLE_APP:
         messages.error(request, _("You do not belong to any organizations yet."))
         return redirect("marketing:home")
 

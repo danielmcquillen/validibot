@@ -18,42 +18,50 @@
 {% endblock mainclass %}
 
 {% block content %}
-  <section class="row align-items-center justify-content-center gy-5">
-    <div class="col-12 col-lg-5">
-      <p class="text-uppercase text-primary fw-semibold mb-2">
-        {% trans "Error 404" %}
-      </p>
-      <h1 class="display-5 fw-bold mb-3">
-        {% blocktrans %}
-          Sorry, there's no page here.
-        {% endblocktrans %}
-      </h1>
-      <p class="lead text-muted mb-4">
-        {% if exception %}
-          Error: {{ exception }}
-        {% else %}
-          {% blocktrans %}
-            We looked everywhere but couldn't find the page you requested. Try returning
-            to the homepage or browse the latest resources instead.
-          {% endblocktrans %}
-        {% endif %}
-      </p>
-      <div class="d-flex flex-column flex-sm-row gap-3">
-        <a class="btn btn-primary btn-lg" href="{% url 'marketing:home' %}">
-          {% trans "Back to homepage" %}
-        </a>
-        <a class="btn btn-outline-primary btn-lg"
-           href="{% url 'marketing:resources' %}">
-          {% trans "Visit resources" %}
-        </a>
-      </div>
+
+  <style>
+    .robot-404 {
+      max-width: 400px;
+      width: 100%;
+      height: auto;
+    }
+
+    @media (min-width: 992px) {
+      .robot-404 {
+        max-width: 500px;
+      }
+    }
+
+    .message-404 {
+      font-family: "Space Grotesk", Arial, sans-serif;
+      margin: 2rem 0 2rem;
+      font-size: 2rem;
+      color: rgb(150, 117, 51)
+    }
+  </style>
+
+  <div class="d-flex flex-column align-items-center text-center">
+
+    <div class="message-404">
+      {% blocktrans %}
+         ERROR 404. No page found.
+      {% endblocktrans %}
     </div>
-    <div class="col-12 col-lg-5">
-      <figure class="text-center">
-        <img src="{% static 'images/robot_scene_404.png' %}"
-             alt="{% trans 'SimpleValidations robot holding a map while searching for a missing page.' %}"
-             class="img-fluid mx-auto rounded-4 shadow-sm w-100" />
-      </figure>
+
+    <figure class="text-center">
+      <img src="{% static 'images/robot_scene_404.png' %}"
+           alt="{% trans 'SimpleValidations robot holding a map while searching for a missing page.' %}"
+           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-404" />
+    </figure>
+
+    <div class="d-flex flex-row mt-4">
+      <a class="btn btn-light " href="{% url 'marketing:home' %}">
+        {% trans "Back to homepage" %}
+      </a>
+      <a class="btn btn-light" href="{% url 'marketing:resources' %}">
+        {% trans "Visit resources" %}
+      </a>
     </div>
-  </section>
+  </div>
+
 {% endblock content %}

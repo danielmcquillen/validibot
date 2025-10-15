@@ -199,6 +199,41 @@ class JsonSchemaEngine(BaseValidatorEngine):
         )
 ```
 
+### Sequence Diagram: Basic Validation Run
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API as WorkflowViewSet.start_validation()
+    participant Service as ValidationRunService
+    participant Celery as execute_validation_run task
+    participant Registry as Engine Registry
+    participant Engine as BaseValidatorEngine
+
+    Client->>API: POST /workflows/{id}/start
+    API->>Service: launch(request, workflow, submission)
+    Service->>Service: ValidationRun.objects.create(...)
+    Service-->>Celery: apply_async(run_id, user_id, metadata)
+    API-->>Client: 201 Created or 202 Accepted
+
+    Celery->>Service: execute(run_id, user_id)
+    Service->>Service: mark run RUNNING\nlog start event
+    Service->>Service: load ordered workflow steps
+
+    loop For each workflow step
+        Service->>Service: resolve validator, ruleset, config
+        Service->>Registry: get(validation_type)
+        Registry-->>Service: engine class
+        Service->>Engine: validate(submission, ruleset, config)
+        Engine-->>Service: ValidationResult (passed, issues, stats)
+        Service->>Service: append step summary\nstop loop on first failure
+    end
+
+    Service->>Service: aggregate summary\nupdate ValidationRun status
+    Service-->>Celery: ValidationRunTaskResult
+    note over Client,Celery: Client polls run detail\nendpoint until status terminal
+```
+
 ### Phase 4: Result Aggregation
 
 After all workflow steps complete:

@@ -16,136 +16,141 @@ This footer appears on all 'marketing' pages of the site available to all users,
                 </h1>
 
                 <div class="background">
-                    SimpleValidations is a data validation platform that helps teams ensure data quality with AI-powered precision and robot-like reliability.
-                </div>
-                <div class="mt-2">
-                    <a href="{% url 'marketing:about' %}" class="read-more">Read more about this site.</a>
-                </div>
-                <div class="copyright">
-                    © All rights reserved except where noted.
+                    {% if ENABLE_AI_VALIDATIONS %}
+                        SimpleValidations is a data validation platform that helps teams ensure data quality with
+                        {% if ENABLE_AI_VALIDATIONS %}
+                            AI-powered precision and
+                        {% endif %}
+                        robot-like reliability.
+                    </div>
+                    <div class="mt-2">
+                        <a href="{% url 'marketing:about' %}" class="read-more">Read more about this site.</a>
+                    </div>
+                    <div class="copyright">
+                        © All rights reserved except where noted.
+                    </div>
+
                 </div>
 
-            </div>
-
-            <div class="col-12 col-lg-4 mt-4 mb-4">
-                <div class="site-map">
-                    <h1>
-                        SITEMAP
-                    </h1>
-                    <nav>
-                        <h2>
-                            SITE
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:home' %}">{% trans "Home" %}</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:about' %}">{% trans "About" %}</a>
-                            </li>
-                            {% if ENABLE_PRICING_SECTION %}
-                                <li>
-                                    <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
-                                </li>
-                            {% endif %}
-                        </ul>
-                        {% if features_enabled or pricing_enabled or request.user.is_authenticated %}
+                <div class="col-12 col-lg-4 mt-4 mb-4">
+                    <div class="site-map">
+                        <h1>
+                            SITEMAP
+                        </h1>
+                        <nav>
                             <h2>
-                                PRODUCT
+                                SITE
                             </h2>
                             <ul>
-                                {% if ENABLE_FEATURES_SECTION %}
-                                    <li>
-                                        <a href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
-                                    </li>
-                                {% endif %}
+                                <li>
+                                    <a href="{% url 'marketing:home' %}">{% trans "Home" %}</a>
+                                </li>
+                                <li>
+                                    <a href="{% url 'marketing:about' %}">{% trans "About" %}</a>
+                                </li>
                                 {% if ENABLE_PRICING_SECTION %}
                                     <li>
                                         <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
                                     </li>
                                 {% endif %}
-                                {% if request.user.is_authenticated and ENABLE_APP %}
-                                    <li>
-                                        <a href="{% org_url 'dashboard:my_dashboard' %}">{% trans "My Dashboard" %}</a>
-                                    </li>
-                                {% endif %}
                             </ul>
-                        {% endif %}
+                            {% if features_enabled or pricing_enabled or request.user.is_authenticated %}
+                                <h2>
+                                    PRODUCT
+                                </h2>
+                                <ul>
+                                    {% if ENABLE_FEATURES_SECTION %}
+                                        <li>
+                                            <a href="{% url 'marketing:features' %}">{% trans "Features" %}</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if ENABLE_PRICING_SECTION %}
+                                        <li>
+                                            <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if request.user.is_authenticated and ENABLE_APP %}
+                                        <li>
+                                            <a href="{% org_url 'dashboard:my_dashboard' %}">{% trans "My Dashboard" %}</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            {% endif %}
 
-                        {% if ENABLE_BLOG or ENABLE_DOCS_SECTION or ENABLE_RESOURCES_SECTION %}
+                            {% if ENABLE_BLOG or ENABLE_DOCS_SECTION or ENABLE_RESOURCES_SECTION %}
+                                <h2>
+                                    LEARN
+                                </h2>
+                                <ul>
+                                    {% if ENABLE_BLOG %}
+                                        <li>
+                                            <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Blog" %}</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if ENABLE_DOCS_SECTION %}
+                                        <li>
+                                            <a href="{% url 'marketing:resources_docs' %}">{% trans "Docs" %}</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if ENABLE_RESOURCES_SECTION %}
+                                        <li>
+                                            <a href="{% url 'marketing:resources_changelog' %}">{% trans "Changelog" %}</a>
+                                        </li>
+                                        <li>
+                                            <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            {% endif %}
+
                             <h2>
-                                LEARN
+                                {% trans "SUPPORT" %}
                             </h2>
                             <ul>
-                                {% if ENABLE_BLOG %}
+                                <li>
+                                    <a href="{% url 'marketing:contact' %}">{% trans "Contact Us" %}</a>
+                                </li>
+                                {% if ENABLE_HELP_CENTER %}
                                     <li>
-                                        <a href="{% url 'marketing:blog:blog_list' %}">{% trans "Blog" %}</a>
+                                        <a href="{% url 'marketing:help_center' %}">{% trans "Help Center" %}</a>
                                     </li>
                                 {% endif %}
-                                {% if ENABLE_DOCS_SECTION %}
+                                {% if ENABLE_SYSTEM_STATUS %}
                                     <li>
-                                        <a href="{% url 'marketing:resources_docs' %}">{% trans "Docs" %}</a>
-                                    </li>
-                                {% endif %}
-                                {% if ENABLE_RESOURCES_SECTION %}
-                                    <li>
-                                        <a href="{% url 'marketing:resources_changelog' %}">{% trans "Changelog" %}</a>
-                                    </li>
-                                    <li>
-                                        <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
+                                        <a href="{% url 'marketing:status' %}">{% trans "Status" %}</a>
                                     </li>
                                 {% endif %}
                             </ul>
-                        {% endif %}
 
-                        <h2>
-                            {% trans "SUPPORT" %}
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:contact' %}">{% trans "Contact Us" %}</a>
-                            </li>
-                            {% if ENABLE_HELP_CENTER %}
+                            <h2>
+                                {% trans "LEGAL" %}
+                            </h2>
+                            <ul>
                                 <li>
-                                    <a href="{% url 'marketing:help_center' %}">{% trans "Help Center" %}</a>
+                                    <a href="{% url 'marketing:terms' %}">{% trans "Terms of Service" %}</a>
                                 </li>
-                            {% endif %}
-                            {% if ENABLE_SYSTEM_STATUS %}
                                 <li>
-                                    <a href="{% url 'marketing:status' %}">{% trans "Status" %}</a>
+                                    <a href="{% url 'marketing:privacy' %}">{% trans "Privacy Policy" %}</a>
                                 </li>
-                            {% endif %}
-                        </ul>
+                            </ul>
+                        </nav>
 
-                        <h2>
-                            {% trans "LEGAL" %}
-                        </h2>
-                        <ul>
-                            <li>
-                                <a href="{% url 'marketing:terms' %}">{% trans "Terms of Service" %}</a>
-                            </li>
-                            <li>
-                                <a href="{% url 'marketing:privacy' %}">{% trans "Privacy Policy" %}</a>
-                            </li>
-                        </ul>
-                    </nav>
-
+                    </div>
                 </div>
-            </div>
 
-            <div class="col-12 col-lg-4 mt-4 newsletter-column">
-                <div class="about-newsletter-signup w-100 pb-5">
-                    <h1>
-                        {% trans "NEWSLETTER" %}
-                    </h1>
-                    <p>
-                        {% blocktrans %}Don't miss out! Sign up to stay in the loop for news on the beta launch.{% endblocktrans %}
-                    </p>
-                    {% marketing_waitlist_form 'footer' as footer_waitlist_form %}
-                    {% include "marketing/partial/footer_waitlist_form.html" with form=footer_waitlist_form %}
+                <div class="col-12 col-lg-4 mt-4 newsletter-column">
+                    <div class="about-newsletter-signup w-100 pb-5">
+                        <h1>
+                            {% trans "NEWSLETTER" %}
+                        </h1>
+                        <p>
+                            {% blocktrans %}Don't miss out! Sign up to stay in the loop for news on the beta launch.{% endblocktrans %}
+                        </p>
+                        {% marketing_waitlist_form 'footer' as footer_waitlist_form %}
+                        {% include "marketing/partial/footer_waitlist_form.html" with form=footer_waitlist_form %}
+                    </div>
                 </div>
-            </div>
 
+            </div>
         </div>
-    </div>
-</footer>
+    </footer>

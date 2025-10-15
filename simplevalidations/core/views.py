@@ -1,8 +1,10 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.mail import mail_admins
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.http import HttpRequest
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
@@ -56,6 +58,18 @@ def submit_support_message(request: HttpRequest) -> HttpResponse:
     return redirect(reverse("marketing:contact"))
 
 
+@login_required
+def app_home_redirect(request: HttpRequest) -> HttpResponse:
+    """Redirect `/app/` requests to the user's current organization dashboard."""
+
+    org = request.user.get_current_org()
+    if not org:
+        messages.error(request, _("You do not belong to any organizations yet."))
+        return redirect("marketing:home")
+
+    return redirect(reverse("dashboard:my_dashboard", kwargs={"org_id": org.pk}))
+
+
 def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:
     user = request.user
     display_name = user.get_full_name() or user.email or str(user)
@@ -71,13 +85,3 @@ def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:
         "user_id": user.pk,
     }
     mail_admins(subject=subject, message=body, fail_silently=True)
-@login_required
-def app_home_redirect(request: HttpRequest) -> HttpResponse:
-    """Redirect `/app/` requests to the user's current organization dashboard."""
-
-    org = request.user.get_current_org()
-    if not org:
-        messages.error(request, _("You do not belong to any organizations yet."))
-        return redirect("marketing:home")
-
-    return redirect(reverse("dashboard:my_dashboard", kwargs={"org_id": org.pk}))

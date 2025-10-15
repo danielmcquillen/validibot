@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
-from simplevalidations.dashboard.widgets.base import DashboardWidget, register_widget
+from simplevalidations.dashboard.widgets.base import DashboardWidget
+from simplevalidations.dashboard.widgets.base import register_widget
 from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.models import ValidationFinding, ValidationRun
+from simplevalidations.validations.models import ValidationFinding
+from simplevalidations.validations.models import ValidationRun
 
 
 @register_widget
@@ -15,7 +17,7 @@ class TotalValidationsWidget(DashboardWidget):
     template_name = "dashboard/widgets/total_validations.html"
     width = "col-xl-3 col-md-6"
 
-    def get_context_data(self) -> Dict[str, Any]:
+    def get_context_data(self) -> dict[str, Any]:
         org = self.get_org()
         qs = ValidationRun.objects.all()
         if org:
@@ -35,7 +37,7 @@ class TotalErrorsWidget(DashboardWidget):
     template_name = "dashboard/widgets/total_errors.html"
     width = "col-xl-3 col-md-6"
 
-    def get_context_data(self) -> Dict[str, Any]:
+    def get_context_data(self) -> dict[str, Any]:
         org = self.get_org()
         qs = ValidationFinding.objects.filter(
             severity=Severity.ERROR,

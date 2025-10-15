@@ -11,6 +11,9 @@ from model_utils.models import TimeStampedModel
 
 from simplevalidations.users.models import Organization
 
+LUMINANCE_THRESHOLD = 150
+COLOR_LENGTH = 7
+
 
 # Create your models here.
 class ProjectQuerySet(models.QuerySet):
@@ -127,14 +130,14 @@ class Project(TimeStampedModel):
 
     def soft_delete(self) -> None:
         if not self.can_delete():
-            raise ValueError("Default projects cannot be deleted.")
+            raise ValueError(_("Default projects cannot be deleted."))
         if not self.is_active:
             return
-        from simplevalidations.integrations.models import OutboundEvent
-        from simplevalidations.submissions.models import Submission
-        from simplevalidations.tracking.models import TrackingEvent
-        from simplevalidations.validations.models import ValidationRun
-        from simplevalidations.workflows.models import Workflow
+        from simplevalidations.integrations.models import OutboundEvent  # noqa: PLC0415
+        from simplevalidations.submissions.models import Submission  # noqa: PLC0415
+        from simplevalidations.tracking.models import TrackingEvent  # noqa: PLC0415
+        from simplevalidations.validations.models import ValidationRun  # noqa: PLC0415
+        from simplevalidations.workflows.models import Workflow  # noqa: PLC0415
 
         now = timezone.now()
         Submission.objects.filter(project=self).update(project=None)
@@ -152,7 +155,7 @@ class Project(TimeStampedModel):
 
     def _parsed_rgb(self) -> tuple[int, int, int] | None:
         color = (self.color or "").strip()
-        if not color or len(color) != 7 or not color.startswith("#"):
+        if not color or len(color) != COLOR_LENGTH or not color.startswith("#"):
             return None
         hex_value = color[1:]
         try:
@@ -174,7 +177,7 @@ class Project(TimeStampedModel):
         r, g, b = components
         # Calculate relative luminance using standard coefficients.
         luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        return "#1F2328" if luminance > 150 else "#FFFFFF"
+        return "#1F2328" if luminance > LUMINANCE_THRESHOLD else "#FFFFFF"
 
     @property
     def badge_border_color(self) -> str:

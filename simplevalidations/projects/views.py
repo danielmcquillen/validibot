@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from django.views.generic import CreateView, ListView, UpdateView
+from django.views.generic import CreateView
+from django.views.generic import ListView
+from django.views.generic import UpdateView
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
@@ -30,7 +33,10 @@ class ProjectListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, ListView)
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["organization"] = self.organization
-        context["create_url"] = reverse_with_org("projects:project-create", request=self.request)
+        context["create_url"] = reverse_with_org(
+            "projects:project-create",
+            request=self.request,
+        )
         return context
 
 
@@ -55,7 +61,10 @@ class ProjectCreateView(
 
     def get_breadcrumbs(self):
         return [
-            {"name": _("Projects"), "url": reverse_with_org("projects:project-list", request=self.request)},
+            {
+                "name": _("Projects"),
+                "url": reverse_with_org("projects:project-list", request=self.request),
+            },
             {"name": _("New"), "url": ""},
         ]
 
@@ -79,7 +88,10 @@ class ProjectUpdateView(
     def get_organization(self):
         if hasattr(self, "_permission_project"):
             return self._permission_project.org
-        project = get_object_or_404(Project.objects.select_related("org"), pk=self.kwargs["pk"])
+        project = get_object_or_404(
+            Project.objects.select_related("org"),
+            pk=self.kwargs["pk"],
+        )
         self._permission_project = project
         return project.org
 
@@ -93,7 +105,10 @@ class ProjectUpdateView(
 
     def get_breadcrumbs(self):
         return [
-            {"name": _("Projects"), "url": reverse_with_org("projects:project-list", request=self.request)},
+            {
+                "name": _("Projects"),
+                "url": reverse_with_org("projects:project-list", request=self.request),
+            },
             {"name": self.object.name, "url": ""},
         ]
 
@@ -105,7 +120,10 @@ class ProjectDeleteView(OrganizationAdminRequiredMixin, View):
     def get_organization(self):
         if hasattr(self, "_project"):
             return self._project.org
-        project = get_object_or_404(Project.all_objects.select_related("org"), pk=self.kwargs["pk"])
+        project = get_object_or_404(
+            Project.all_objects.select_related("org"),
+            pk=self.kwargs["pk"],
+        )
         self._project = project
         return project.org
 
@@ -121,7 +139,12 @@ class ProjectDeleteView(OrganizationAdminRequiredMixin, View):
 
         if not project.can_delete():
             messages.error(request, _("Default projects cannot be deleted."))
-            return HttpResponseRedirect(reverse_with_org("projects:project-list", request=request))
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "projects:project-list",
+                    request=request,
+                ),
+            )
 
         project.soft_delete()
 
@@ -131,7 +154,12 @@ class ProjectDeleteView(OrganizationAdminRequiredMixin, View):
             return response
 
         messages.success(request, _("Project deleted."))
-        return HttpResponseRedirect(reverse_with_org("projects:project-list", request=request))
+        return HttpResponseRedirect(
+            reverse_with_org(
+                "projects:project-list",
+                request=request,
+            ),
+        )
 
     def post(self, request, *args, **kwargs):
         return self._handle(request, *args, **kwargs)

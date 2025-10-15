@@ -30,6 +30,7 @@ def site_feature_settings(request):
             "ACCOUNT_ALLOW_LOGIN": settings.ACCOUNT_ALLOW_LOGIN,
             "ACCOUNT_ALLOW_REGISTRATION": settings.ACCOUNT_ALLOW_REGISTRATION,
             "ENABLE_APP": settings.ENABLE_APP,
+            "ENABLE_API": settings.ENABLE_API,
         }
     except Exception:
         # In case settings are not properly configured yet

@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime, timedelta
-from typing import Iterable, List, Tuple
+from datetime import datetime
+from datetime import timedelta
+from re import T
+from typing import TYPE_CHECKING
 
-from django.db.models import Count, QuerySet
-from django.db.models.functions import TruncDay, TruncHour
+from django.db.models import Count
+from django.db.models import QuerySet
+from django.db.models.functions import TruncDay
+from django.db.models.functions import TruncHour
 from django.utils import timezone
 
 from simplevalidations.dashboard.time_ranges import ResolvedTimeRange
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _truncate_qs(qs: QuerySet, *, bucket: str):
@@ -30,7 +37,7 @@ def generate_time_series(
     bucket: str,
     value_field: str = "id",
     distinct: bool = False,
-) -> List[Tuple[datetime, int]]:
+) -> list[tuple[datetime, int]]:
     """
     Aggregate ``queryset`` into a time-series within ``time_range``.
 
@@ -78,7 +85,7 @@ def generate_time_series(
 
 
 def build_chart_payload(
-    series: Iterable[Tuple[datetime, int]],
+    series: Iterator[tuple[datetime, int]],
     *,
     label: str,
     color: str,
@@ -96,8 +103,8 @@ def build_chart_payload(
     Returns:
         dict: Chart.js configuration dictionary.
     """
-    labels: List[str] = []
-    values: List[int] = []
+    labels: list[str] = []
+    values: list[int] = []
     for period, value in series:
         if bucket == "hour":
             formatted = period.strftime("%b %d %H:%M")

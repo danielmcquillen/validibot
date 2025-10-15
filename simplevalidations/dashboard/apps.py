@@ -7,4 +7,4 @@ class DashboardConfig(AppConfig):
 
     def ready(self):
         # Ensure built-in widgets register with the dashboard registry.
-        from . import widgets  # noqa: F401
+        from simplevalidations.dashboard import widgets  # noqa: F401

@@ -42,35 +42,33 @@ urlpatterns = [
     ),
     # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),
+    # App URLs...
+    path("app/", core_views.app_home_redirect, name="app-home"),
+    path(
+        "app/dashboard/",
+        include("simplevalidations.dashboard.urls", namespace="dashboard"),
+    ),
+    path("app/users/", include("simplevalidations.users.urls", namespace="users")),
+    path("app/core/", include("simplevalidations.core.urls", namespace="core")),
+    path(
+        "app/projects/",
+        include("simplevalidations.projects.urls", namespace="projects"),
+    ),
+    path(
+        "app/workflows/",
+        include("simplevalidations.workflows.urls", namespace="workflows"),
+    ),
+    path(
+        "app/tracking/",
+        include("simplevalidations.tracking.urls", namespace="tracking"),
+    ),
+    path(
+        "app/validations/",
+        include("simplevalidations.validations.urls", namespace="validations"),
+    ),
+    *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
 
-if settings.ENABLE_APP:
-    urlpatterns += [
-        # App URLs...
-        path("app/", core_views.app_home_redirect, name="app-home"),
-        path(
-            "app/dashboard/",
-            include("simplevalidations.dashboard.urls", namespace="dashboard"),
-        ),
-        path("app/users/", include("simplevalidations.users.urls", namespace="users")),
-        path("app/core/", include("simplevalidations.core.urls", namespace="core")),
-        path(
-            "app/projects/",
-            include("simplevalidations.projects.urls", namespace="projects"),
-        ),
-        path(
-            "app/workflows/",
-            include("simplevalidations.workflows.urls", namespace="workflows"),
-        ),
-        path(
-            "app/tracking/",
-            include("simplevalidations.tracking.urls", namespace="tracking"),
-        ),
-        path(
-            "app/validations/",
-            include("simplevalidations.validations.urls", namespace="validations"),
-        ),
-    ]
 
 if settings.ACCOUNT_ALLOW_LOGIN:
     urlpatterns.append(path("accounts/", include("allauth.urls")))
@@ -80,24 +78,20 @@ if getattr(settings, "GITHUB_APP_ENABLED", False):
 
     urlpatterns.append(path("gh/", AsyncWebhookView.as_view(), name="github-webhook"))
 
-# Static media
-urlpatterns += [
-    *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
-]
-
 # API URLS
-urlpatterns += [
-    # API base url
-    path("api/v1/", include("config.api_router")),
-    # DRF auth token
-    path("api/v1/auth-token/", obtain_auth_token, name="obtain_auth_token"),
-    path("api/v1/schema/", SpectacularAPIView.as_view(), name="api-schema"),
-    path(
-        "api/v1/docs/",
-        SpectacularSwaggerView.as_view(url_name="api-schema"),
-        name="api-docs",
-    ),
-]
+if settings.ENABLE_API:
+    urlpatterns += [
+        # API base url
+        path("api/v1/", include("config.api_router")),
+        # DRF auth token
+        path("api/v1/auth-token/", obtain_auth_token, name="obtain_auth_token"),
+        path("api/v1/schema/", SpectacularAPIView.as_view(), name="api-schema"),
+        path(
+            "api/v1/docs/",
+            SpectacularSwaggerView.as_view(url_name="api-schema"),
+            name="api-docs",
+        ),
+    ]
 
 if settings.DEBUG:
     # Static file serving when using Gunicorn + Uvicorn for local web socket development

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict
+from typing import Any
 
-from simplevalidations.dashboard.services import build_chart_payload, generate_time_series
-from simplevalidations.dashboard.widgets.base import DashboardWidget, register_widget
+from simplevalidations.dashboard.services import build_chart_payload
+from simplevalidations.dashboard.services import generate_time_series
+from simplevalidations.dashboard.widgets.base import DashboardWidget
+from simplevalidations.dashboard.widgets.base import register_widget
 from simplevalidations.tracking.models import TrackingEvent
 
 
@@ -16,7 +18,7 @@ class EventsTimeSeriesWidget(DashboardWidget):
     template_name = "dashboard/widgets/events_time_series.html"
     width = "col-xl-6 col-lg-12"
 
-    def get_context_data(self) -> Dict[str, Any]:
+    def get_context_data(self) -> dict[str, Any]:
         org = self.get_org()
         qs = TrackingEvent.objects.all()
         if org:
@@ -49,7 +51,7 @@ class UsersTimeSeriesWidget(DashboardWidget):
     template_name = "dashboard/widgets/users_time_series.html"
     width = "col-xl-6 col-lg-12"
 
-    def get_context_data(self) -> Dict[str, Any]:
+    def get_context_data(self) -> dict[str, Any]:
         org = self.get_org()
         qs = TrackingEvent.objects.filter(user__isnull=False)
         if org:

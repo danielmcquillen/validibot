@@ -22,7 +22,7 @@ def reverse_with_org(
 
 def get_request_ip(request: HttpRequest) -> str | None:
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR") or request.headers.get(
-        "X-Forwarded-For"
+        "X-Forwarded-For",
     )
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()

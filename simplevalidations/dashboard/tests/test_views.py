@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from django.test import TestCase
@@ -13,6 +14,8 @@ from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.tests.factories import ValidationFindingFactory
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidationStepRunFactory
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardViewTests(TestCase):
@@ -42,6 +45,7 @@ class DashboardViewTests(TestCase):
 
     def test_total_validations_widget_counts_scoped_runs(self):
         run = self._create_run_for_org(hours_ago=2)
+        logger.info(f"Created run {run.pk} for org {self.org.name}")  # noqa: G004
         other_org = OrganizationFactory()
         other_submission = SubmissionFactory(org=other_org, project__org=other_org)
         other_run = ValidationRunFactory(submission=other_submission)

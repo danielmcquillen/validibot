@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Iterable
+from datetime import datetime
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from django.utils import timezone
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @dataclass(frozen=True)
@@ -65,7 +69,7 @@ _TIME_RANGE_OPTIONS: tuple[TimeRangeOption, ...] = (
 _DEFAULT_SLUG = "24h"
 
 
-def iter_time_range_options() -> Iterable[TimeRangeOption]:
+def iter_time_range_options() -> Iterator[TimeRangeOption]:
     return _TIME_RANGE_OPTIONS
 
 

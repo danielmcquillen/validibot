@@ -5,10 +5,8 @@ from django.template.response import TemplateResponse
 from django.views import View
 
 from simplevalidations.core.mixins import BreadcrumbMixin
-from simplevalidations.dashboard.time_ranges import (
-    iter_time_range_options,
-    resolve_time_range,
-)
+from simplevalidations.dashboard.time_ranges import iter_time_range_options
+from simplevalidations.dashboard.time_ranges import resolve_time_range
 from simplevalidations.dashboard.widgets import registry
 from simplevalidations.dashboard.widgets.base import WidgetRegistrationError
 

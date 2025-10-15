@@ -5,6 +5,8 @@ POST /api/workflows/{workflow_id}/start
 
 Auth: required. User must have EXECUTOR role in the workflow’s org.
 
+Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When the flag is `False`, all `/api/v1/` routes return 404.
+
 You can submit content in three ways:
 
 ## Mode 1: Raw Body (Header-Driven)

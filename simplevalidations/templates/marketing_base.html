@@ -48,11 +48,7 @@
   {% endif %}
   {% if structured_data_json %}
     <script type="application/ld+json">
-      {
-        {
-          structured_data_json | safe
-        }
-      }
+      {{ structured_data_json|safe }}
     </script>
   {% endif %}
 {% endblock head %}

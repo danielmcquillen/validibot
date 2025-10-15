@@ -55,6 +55,10 @@ urlpatterns = [
         include("simplevalidations.projects.urls", namespace="projects"),
     ),
     path(
+        "app/billing/",
+        include("simplevalidations.billing.urls", namespace="billing"),
+    ),
+    path(
         "app/workflows/",
         include("simplevalidations.workflows.urls", namespace="workflows"),
     ),

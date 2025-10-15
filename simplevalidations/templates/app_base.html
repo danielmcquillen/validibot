@@ -4,29 +4,45 @@
 
 {% comment %}
 app_base.html is meant to be used for all application-style pages, where
-the user is doing actual work. It has a left sidebar, a right sidebar,
-a top navigation bar, and a messages section below the top nav bar.
-
-It extends base.html, which has the basic HTML structure, head, and body tags.
-
+the user is doing actual work. It defines the CoreUI-inspired layout
+comprising the sidebar, top navigation, breadcrumbs, and main content
+region. Marketing layouts should continue to extend marketing_base.html.
 {% endcomment %}
 
-{% block top_nav %}
-    {# comment  do not show top nav when viewing app #}
-{% endblock top_nav %}
+{% block top_nav %}{% endblock top_nav %}
 
-{% block breadcrumbs_styles %}
-    app-breadcrumbs
-{% endblock breadcrumbs_styles %}
+{% block bodyclass %}
+  app-body
+{% endblock bodyclass %}
 
-{% block left_sidebar %}
+{% block body %}
+  <div class="app-layout">
+    <aside id="app-sidebar" class="app-sidebar" aria-label="{% trans 'Primary navigation' %}">
+      <div class="app-sidebar-scroll">
+        {% block left_sidebar %}{% endblock left_sidebar %}
+      </div>
+    </aside>
+    <div class="app-sidebar-backdrop" data-app-sidebar-dismiss aria-hidden="true"></div>
 
-{% endblock left_sidebar %}
+    <div class="app-main">
+      {% block app_top_nav %}
+        {% include "core/partial/app/top_nav.html" %}
+      {% endblock app_top_nav %}
 
-{% block content %}
-    <div id="app-content">
-        {% block app_content %}
+      <main id="main-content" class="app-main-content" role="main">
+        {% block breadcrumbs %}
+          <div id="breadcrumbs-wrapper"
+               class="app-breadcrumbs {% block breadcrumbs_styles %}{% endblock breadcrumbs_styles %}">
+            {% include "core/partial/breadcrumbs.html" %}
+          </div>
+        {% endblock breadcrumbs %}
 
-        {% endblock app_content %}
+        {% block content %}
+          <div id="app-content">
+            {% block app_content %}{% endblock app_content %}
+          </div>
+        {% endblock content %}
+      </main>
     </div>
-{% endblock content %}
+  </div>
+{% endblock body %}

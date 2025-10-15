@@ -2,6 +2,7 @@
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 import * as bootstrap from 'bootstrap';
+import * as coreui from '@coreui/coreui';
 import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 
@@ -10,12 +11,14 @@ declare global {
         bootstrap: typeof bootstrap;
         htmx: typeof htmx;
         Chart: typeof Chart;
+        coreui: typeof coreui;
     }
 }
 window.bootstrap = bootstrap;
 window.htmx = htmx;
 Chart.register(...registerables);
 window.Chart = Chart;
+window.coreui = coreui;
 import 'htmx.org';
 
 function initializeCharts(root: ParentNode | Document = document): void {
@@ -52,6 +55,10 @@ window.addEventListener('DOMContentLoaded', (event) => {
 
     // Bootstrap setup...
     simplevalidationsInitBootstrap();
+
+    initializeThemeToggle();
+    setupSidebarToggle();
+    initializeMarketingNavbarScroll();
 
     // HTMX global event listeners for disabling submit and showing spinner
     htmx.on('htmx:beforeRequest', (evt: any) => {
@@ -91,26 +98,157 @@ function simplevalidationsInitBootstrap() {
 }
 
 
+type ThemeMode = 'light' | 'dark';
 
-document.addEventListener("DOMContentLoaded", () => {
-    const navbar = document.getElementById("site-top-nav");
+const THEME_STORAGE_KEY = 'simplevalidations:theme-preference';
+const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+
+function applyThemePreference(theme: ThemeMode): void {
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    document.body.setAttribute('data-bs-theme', theme);
+}
+
+function readStoredTheme(): ThemeMode | null {
+    try {
+        const value = localStorage.getItem(THEME_STORAGE_KEY);
+        if (value === 'light' || value === 'dark') {
+            return value;
+        }
+    } catch (error) {
+        console.debug('Unable to access saved theme preference', error);
+    }
+    return null;
+}
+
+function persistThemePreference(theme: ThemeMode): void {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (error) {
+        console.debug('Unable to persist theme preference', error);
+    }
+}
+
+function updateThemeToggleState(toggle: HTMLButtonElement | null, theme: ThemeMode): void {
+    if (!toggle) {
+        return;
+    }
+    toggle.setAttribute('data-theme-state', theme);
+    const label = toggle.querySelector<HTMLElement>('[data-theme-label]');
+    const lightLabel = toggle.dataset.themeLabelLight || 'Light';
+    const darkLabel = toggle.dataset.themeLabelDark || 'Dark';
+    if (label) {
+        label.textContent = theme === 'dark' ? darkLabel : lightLabel;
+    }
+    toggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+}
+
+function initializeThemeToggle(): void {
+    const toggle = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
+    const mediaQuery = window.matchMedia(THEME_MEDIA_QUERY);
+
+    let manualTheme: ThemeMode | null = readStoredTheme();
+    let currentTheme: ThemeMode = manualTheme ?? (mediaQuery.matches ? 'dark' : 'light');
+
+    applyThemePreference(currentTheme);
+    updateThemeToggleState(toggle, currentTheme);
+
+    toggle?.addEventListener('click', () => {
+        currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyThemePreference(currentTheme);
+        updateThemeToggleState(toggle, currentTheme);
+        persistThemePreference(currentTheme);
+        manualTheme = currentTheme;
+    });
+
+    mediaQuery.addEventListener('change', (event) => {
+        if (manualTheme !== null) {
+            return;
+        }
+        currentTheme = event.matches ? 'dark' : 'light';
+        applyThemePreference(currentTheme);
+        updateThemeToggleState(toggle, currentTheme);
+    });
+}
+
+function setupSidebarToggle(): void {
+    const sidebar = document.getElementById('app-sidebar');
+    const toggler = document.querySelector<HTMLButtonElement>('[data-app-sidebar-toggle]');
+    const backdrop = document.querySelector<HTMLElement>('[data-app-sidebar-dismiss]');
+    if (!sidebar || !toggler) {
+        return;
+    }
+
+    const body = document.body;
+    const openClass = 'app-sidebar-open';
+
+    const closeSidebar = () => {
+        if (!body.classList.contains(openClass)) {
+            return;
+        }
+        body.classList.remove(openClass);
+        toggler.setAttribute('aria-expanded', 'false');
+    };
+
+    const toggleSidebar = () => {
+        const isOpen = body.classList.toggle(openClass);
+        toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    };
+
+    toggler.addEventListener('click', (event) => {
+        event.preventDefault();
+        toggleSidebar();
+    });
+
+    backdrop?.addEventListener('click', () => {
+        closeSidebar();
+    });
+
+    sidebar.querySelectorAll<HTMLElement>('[data-app-sidebar-link]').forEach((link) => {
+        link.addEventListener('click', () => {
+            if (window.matchMedia('(max-width: 991.98px)').matches) {
+                closeSidebar();
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeSidebar();
+        }
+    });
+
+    const handleResize = () => {
+        if (window.matchMedia('(min-width: 992px)').matches) {
+            body.classList.remove(openClass);
+            toggler.setAttribute('aria-expanded', 'false');
+        }
+    };
+
+    window.addEventListener('resize', handleResize);
+}
+
+function initializeMarketingNavbarScroll(): void {
+    const navbar = document.getElementById('site-top-nav');
+    if (!navbar) {
+        return;
+    }
+
     let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
 
-    window.addEventListener("scroll", () => {
+    window.addEventListener('scroll', () => {
         const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
 
-        if (currentScroll > lastScroll) {
-            // Scrolling down: hide navbar
-            navbar!.classList.add("navbar-hidden");
-        } else {
-            // Scrolling up: show navbar
-            navbar!.classList.remove("navbar-hidden");
+        if (currentScroll > lastScroll + 4) {
+            navbar.classList.add('navbar-hidden');
+        } else if (currentScroll < lastScroll - 4 || currentScroll <= 0) {
+            navbar.classList.remove('navbar-hidden');
         }
 
-        // Prevent negative scroll values
         lastScroll = currentScroll <= 0 ? 0 : currentScroll;
     });
-});
+}
+
+
 
 document.body.addEventListener('htmx:beforeSwap', function (evt) {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {

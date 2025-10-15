@@ -1,0 +1,95 @@
+{% load i18n core_tags %}
+{% user_settings_nav_state as user_settings_nav %}
+<header class="app-header">
+  <div class="app-header-inner">
+    <div class="app-header-left">
+      <button type="button"
+              class="app-header-toggler"
+              data-app-sidebar-toggle
+              aria-controls="app-sidebar"
+              aria-expanded="false"
+              aria-label="{% trans 'Toggle navigation' %}">
+        <i class="bi bi-list" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="app-header-right">
+      <button type="button"
+              class="btn btn-outline-secondary"
+              data-theme-toggle
+              data-theme-label-light="{% trans 'Light' %}"
+              data-theme-label-dark="{% trans 'Dark' %}"
+              aria-pressed="false">
+        <i class="bi bi-sun-fill" data-theme-icon="light" aria-hidden="true"></i>
+        <i class="bi bi-moon-stars-fill" data-theme-icon="dark" aria-hidden="true"></i>
+        <span data-theme-label>{% trans "Light" %}</span>
+      </button>
+
+      <div class="dropdown">
+        <button class="app-header-user dropdown-toggle"
+                type="button"
+                id="app-user-menu"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">
+          <span class="app-header-avatar">
+            {% if request.user.avatar %}
+              <img src="{{ request.user.avatar.url }}"
+                   alt="{% trans 'User avatar' %}" />
+            {% else %}
+              {% with avatar_source=request.user.name|default:request.user.username %}
+                {% if avatar_source %}
+                  {{ avatar_source|first|upper }}
+                {% else %}
+                  ?
+                {% endif %}
+              {% endwith %}
+            {% endif %}
+          </span>
+          <span class="app-header-identity">
+            <span class="app-header-identity-name">
+              {{ request.user.name|default:request.user.username }}
+            </span>
+            {% if request.user.email %}
+              <span class="app-header-identity-email">{{ request.user.email }}</span>
+            {% endif %}
+          </span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end app-header-dropdown"
+            aria-labelledby="app-user-menu">
+          <li class="dropdown-header">
+            <span class="fw-semibold">{{ request.user.name|default:request.user.username }}</span>
+            {% if request.user.email %}
+              <span class="text-muted">{{ request.user.email }}</span>
+            {% endif %}
+          </li>
+          <li>
+            <a class="dropdown-item{% if user_settings_nav.profile %} active{% endif %}"
+               href="{% org_url 'users:profile' %}">
+              {% trans "User Profile" %}
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item{% if user_settings_nav.email %} active{% endif %}"
+               href="{% org_url 'users:email' %}">
+              {% trans "User Email" %}
+            </a>
+          </li>
+          <li>
+            <a class="dropdown-item{% if user_settings_nav.api_key %} active{% endif %}"
+               href="{% org_url 'users:api-key' %}">
+              {% trans "API Key" %}
+            </a>
+          </li>
+          {% if ACCOUNT_ALLOW_LOGIN %}
+            <li><hr class="dropdown-divider" /></li>
+            <li>
+              <a class="dropdown-item text-danger"
+                 href="{% url 'account_logout' %}">
+                {% trans "Sign Out" %}
+              </a>
+            </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</header>

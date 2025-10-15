@@ -2,6 +2,14 @@ a {
   text-decoration: dotted underline;
 }
 
+#site-top-nav {
+  transition: transform 0.3s ease;
+}
+
+#site-top-nav.navbar-hidden {
+  transform: translateY(-110%);
+}
+
 .entrance-page {
   background: linear-gradient(152deg, #eef4f8, #dde5ea) !important;
   height: 100%;

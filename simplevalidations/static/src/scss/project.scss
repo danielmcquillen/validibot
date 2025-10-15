@@ -12,6 +12,8 @@
   $danger: settings.$red
 );
 
+@use "@coreui/coreui/scss/coreui";
+
 // simplevalidations STYLES
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 @use "base";

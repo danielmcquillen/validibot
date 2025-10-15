@@ -37,6 +37,7 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.ingest import prepare_inline_text
 from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
@@ -103,6 +104,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         user = request.user
 
         project = self._resolve_project(workflow=workflow, request=request)
+
+        if not workflow.is_active:
+            return Response(
+                {"detail": _("This workflow is inactive and cannot accept runs.")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         if not workflow.can_execute(user=user):
             # Return 404 to avoid leaking workflow existence when user lacks access.
@@ -397,6 +404,11 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
 class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """Reusable helpers for workflow UI views."""
+    manager_role_codes = {
+        RoleCode.OWNER,
+        RoleCode.ADMIN,
+        RoleCode.AUTHOR,
+    }
 
     def get_workflow_queryset(self):
         user = self.request.user
@@ -409,6 +421,15 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
 
     def get_queryset(self):
         return self.get_workflow_queryset()
+
+    def user_can_manage_workflow(self, *, user: User | None = None) -> bool:
+        user = user or self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        membership = user.membership_for_current_org()
+        if membership is None or not membership.is_active:
+            return False
+        return any(membership.has_role(code) for code in self.manager_role_codes)
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):
@@ -518,6 +539,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 ),
                 "recent_runs": recent_runs,
                 "max_step_count": MAX_STEP_COUNT,
+                "can_manage_activation": self.user_can_manage_workflow(),
             },
         )
         return context
@@ -662,6 +684,55 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
         if request.method == "DELETE":
             return HttpResponse(status=204)
         return HttpResponseRedirect(success_url)
+
+
+class WorkflowActivationUpdateView(WorkflowObjectMixin, View):
+    """Toggle workflow availability."""
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+
+        raw_state = (request.POST.get("is_active") or "").strip().lower()
+        if raw_state in {"true", "1", "on"}:
+            new_state = True
+        elif raw_state in {"false", "0", "off"}:
+            new_state = False
+        else:
+            return HttpResponse(status=400)
+
+        if workflow.is_active != new_state:
+            workflow.is_active = new_state
+            workflow.save(update_fields=["is_active"])
+            if new_state:
+                messages.success(
+                    request,
+                    _("Workflow reactivated. New validation runs can start immediately."),
+                )
+            else:
+                messages.info(
+                    request,
+                    _("Workflow disabled. Existing runs finish, but new ones are blocked."),
+                )
+        else:
+            messages.info(
+                request,
+                _("No change applied—the workflow is already in that state."),
+            )
+
+        redirect_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=request,
+            kwargs={"pk": workflow.pk},
+        )
+
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return response
+
+        return HttpResponseRedirect(redirect_url)
 
 
 class WorkflowStepListView(WorkflowObjectMixin, View):

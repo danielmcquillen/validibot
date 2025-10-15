@@ -49,6 +49,7 @@ def test_workflow_form_saves_selected_project():
             "slug": "compliance-checks",
             "project": str(default_project.pk),
             "version": "1.0",
+            "is_active": "on",
         },
         user=user,
     )

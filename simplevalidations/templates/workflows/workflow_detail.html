@@ -1,6 +1,6 @@
 {% extends "app_base.html" %}
 
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% block title %}
   {{ workflow.name }} · {% trans "Workflows" %} · SimpleValidations
@@ -13,12 +13,23 @@
 {% block app_content %}
   <div id="workflow-detail" class="container-fluid">
 
-    <div class="app-content-header-bar row">
-      <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
-        <div class="d-flex flex-row">
-          <h1 class="app-page-title">
-            {{ workflow.name }}
-          </h1>
+    <div class="app-content-header-bar row align-items-start">
+      <div class="app-content-header col-12 col-lg-4 d-flex align-items-start mb-2 mb-lg-0">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0">
+              {{ workflow.name }}
+            </h1>
+            {% if workflow.is_active %}
+              <span class="badge text-bg-success align-self-start">
+                {% trans "Active" %}
+              </span>
+            {% else %}
+              <span class="badge text-bg-secondary align-self-start">
+                {% trans "Inactive" %}
+              </span>
+            {% endif %}
+          </div>
           {% if workflow.version %}
             <div class="text-muted small">
               <i class="bi-tag me-1"></i>{% trans "Version" %} {{ workflow.version }}
@@ -27,9 +38,8 @@
         </div>
       </div>
 
-      <div class="col-12 col-lg-9 d-flex flex-column align-items-end">
-
-        <div class="d-flex flex-wrap gap-2">
+      <div class="col-12 col-lg-8 d-flex flex-column align-items-end">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
           <a class="btn btn-outline-secondary"
              href="{% url 'workflows:workflow_update' workflow.pk %}">
             <i class="bi-pencil-square me-1"></i>
@@ -93,6 +103,46 @@
               </dt>
               <dd class="col-sm-8">
                 {{ workflow.name }}
+              </dd>
+              <dt class="col-sm-4">
+                {% trans "Status" %}
+              </dt>
+              <dd class="col-sm-8">
+                <div class="d-flex flex-column gap-2">
+                  <div>
+                    {% if workflow.is_active %}
+                      <span class="badge text-bg-success">{% trans "Active" %}</span>
+                    {% else %}
+                      <span class="badge text-bg-secondary">{% trans "Inactive" %}</span>
+                    {% endif %}
+                  </div>
+                  <small class="text-muted">
+                    {% trans "Inactive workflows stay visible in the catalog but block new validation runs." %}
+                  </small>
+                  {% if can_manage_activation %}
+                    <form method="post"
+                          action="{% org_url 'workflows:workflow_activation' pk=workflow.pk %}">
+                      {% csrf_token %}
+                      {% if workflow.is_active %}
+                        <input type="hidden" name="is_active" value="false" />
+                        <button type="submit" class="btn btn-outline-warning btn-sm">
+                          <i class="bi-pause-circle me-1"></i>
+                          {% trans "Disable workflow" %}
+                        </button>
+                      {% else %}
+                        <input type="hidden" name="is_active" value="true" />
+                        <button type="submit" class="btn btn-outline-success btn-sm">
+                          <i class="bi-play-circle me-1"></i>
+                          {% trans "Enable workflow" %}
+                        </button>
+                      {% endif %}
+                    </form>
+                  {% else %}
+                    <small class="text-muted">
+                      {% trans "Contact an organization admin if you need to change its availability." %}
+                    </small>
+                  {% endif %}
+                </div>
               </dd>
 
               <dt class="col-sm-4">

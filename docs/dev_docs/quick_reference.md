@@ -21,6 +21,7 @@ SimpleValidations lets you run validations on submitted content through configur
    - 201 Created with the completed run (if it finished quickly), or
    - 202 Accepted with a Location you can poll until completion.
 4. Retrieve runs to see status and results. By default, list endpoints show runs from the last 30 days (use `?all=1` for everything).
+5. Owners, Admins, and Authors can temporarily disable a workflow when you need to stop new runs; re-enable it from the workflow detail page when ready.
 
 ### Security and Access
 

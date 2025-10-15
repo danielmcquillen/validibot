@@ -4,6 +4,7 @@ Endpoint:
 POST /api/workflows/{workflow_id}/start
 
 Auth: required. User must have EXECUTOR role in the workflow’s org.
+Workflow status: the workflow must be **active**. Disabled workflows return HTTP 403 with `{"detail": "This workflow is inactive..."}` and no run is created.
 
 Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When the flag is `False`, all `/api/v1/` routes return 404.
 

@@ -476,3 +476,25 @@ class TestWorkflowStartAPI:
         )
         # We return 404 to avoid leaking workflow existence
         assert resp.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_start_rejects_inactive_workflow(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+        workflow.is_active = False
+        workflow.save(update_fields=["is_active"])
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps({"content": {"example": True}}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert "inactive" in resp.data["detail"].lower()

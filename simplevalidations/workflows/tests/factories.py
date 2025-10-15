@@ -22,6 +22,7 @@ class WorkflowFactory(DjangoModelFactory):
     project = factory.SubFactory(ProjectFactory, org=factory.SelfAttribute("..org"))
     version = "1"
     is_locked = False
+    is_active = True
 
     @factory.post_generation
     def link_user(self, create, extracted, **kwargs):  # noqa: FBT001

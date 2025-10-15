@@ -146,6 +146,10 @@ class Workflow(TimeStampedModel):
     is_locked = models.BooleanField(
         default=False,
     )
+    is_active = models.BooleanField(
+        default=True,
+        help_text=_("Inactive workflows stay visible but cannot run validations."),
+    )
 
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -173,6 +177,8 @@ class Workflow(TimeStampedModel):
         Check if the given user can execute this workflow.
         Requires that the user has the EXECUTOR role in the workflow's org.
         """
+        if not self.is_active:
+            return False
         if not user or not user.is_authenticated:
             return False
 
@@ -209,6 +215,7 @@ class Workflow(TimeStampedModel):
             slug=self.slug,
             version=next_version,
             is_locked=False,
+            is_active=self.is_active,
         )
         steps = []
         for step in self.steps.all().order_by("order"):

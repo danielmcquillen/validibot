@@ -6,13 +6,12 @@ from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Any
 
-from django import forms
-from django.core.exceptions import ValidationError
-from django.utils.translation import gettext_lazy as _
-
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
+from django import forms
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
 from simplevalidations.validations.constants import RulesetType
@@ -134,8 +133,13 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 class WorkflowForm(forms.ModelForm):
     class Meta:
         model = Workflow
-        fields = ["name", "slug", "project", "version"]
-        help_texts = {"version": _("Optional label to help you track iterations.")}
+        fields = ["name", "slug", "project", "version", "is_active"]
+        help_texts = {
+            "version": _("Optional label to help you track iterations."),
+            "is_active": _(
+                "Disable a workflow to pause new validation runs without removing it.",
+            ),
+        }
 
     def __init__(self, *args, user=None, **kwargs):
         self.user = user
@@ -147,8 +151,14 @@ class WorkflowForm(forms.ModelForm):
             Field("slug", placeholder=""),
             Field("project"),
             Field("version", placeholder="e.g. 1.0"),
+            Field("is_active"),
         )
         self._configure_project_field()
+        self.fields["is_active"].label = _("Workflow active")
+        self.fields["is_active"].help_text = _(
+            "When unchecked, teammates can still view the workflow but cannot "
+            "launch runs until you reactivate it.",
+        )
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
@@ -192,10 +202,7 @@ class WorkflowStepTypeForm(forms.Form):
 
     def __init__(self, *args, validators: list[Validator], **kwargs):
         super().__init__(*args, **kwargs)
-        choices = [
-            (str(validator.pk), f"{validator.name}")
-            for validator in validators
-        ]
+        choices = [(str(validator.pk), f"{validator.name}") for validator in validators]
         self.fields["validator"].choices = choices
         self.validators = {str(validator.pk): validator for validator in validators}
 
@@ -241,9 +248,15 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
         super().__init__(*args, **kwargs)
         self.initial_from_step(step)
         if step and step.ruleset_id:
-            self.fields["schema_source"].choices += [("keep", _("Keep existing schema"))]
-            self.fields["schema_source"].initial = step.config.get("schema_source", "keep")
-            self.fields["schema_text"].initial = step.config.get("schema_text_preview", "")
+            self.fields["schema_source"].choices += [
+                ("keep", _("Keep existing schema"))
+            ]
+            self.fields["schema_source"].initial = step.config.get(
+                "schema_source", "keep"
+            )
+            self.fields["schema_text"].initial = step.config.get(
+                "schema_text_preview", ""
+            )
 
     def clean(self):
         cleaned = super().clean()
@@ -284,9 +297,15 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
         super().__init__(*args, **kwargs)
         self.initial_from_step(step)
         if step and step.ruleset_id:
-            self.fields["schema_source"].choices += [("keep", _("Keep existing schema"))]
-            self.fields["schema_source"].initial = step.config.get("schema_source", "keep")
-            self.fields["schema_text"].initial = step.config.get("schema_text_preview", "")
+            self.fields["schema_source"].choices += [
+                ("keep", _("Keep existing schema"))
+            ]
+            self.fields["schema_source"].initial = step.config.get(
+                "schema_source", "keep"
+            )
+            self.fields["schema_text"].initial = step.config.get(
+                "schema_text_preview", ""
+            )
             self.fields["schema_type"].initial = step.config.get("schema_type")
 
     def clean(self):

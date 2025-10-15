@@ -13,6 +13,11 @@ urlpatterns = [
         name="workflow_detail",
     ),
     path(
+        "<int:pk>/activation/",
+        views.WorkflowActivationUpdateView.as_view(),
+        name="workflow_activation",
+    ),
+    path(
         "<int:pk>/edit/",
         views.WorkflowUpdateView.as_view(),
         name="workflow_update",

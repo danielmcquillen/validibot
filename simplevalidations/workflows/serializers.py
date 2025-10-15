@@ -14,4 +14,5 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "uuid",
             "slug",
             "version",
+            "is_active",
         ]

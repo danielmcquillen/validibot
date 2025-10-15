@@ -64,7 +64,7 @@ This footer appears on all 'marketing' pages of the site available to all users,
                                         <a href="{% url 'marketing:pricing' %}">{% trans "Pricing" %}</a>
                                     </li>
                                 {% endif %}
-                                {% if request.user.is_authenticated %}
+                                {% if request.user.is_authenticated and ENABLE_APP %}
                                     <li>
                                         <a href="{% org_url 'dashboard:my_dashboard' %}">{% trans "My Dashboard" %}</a>
                                     </li>

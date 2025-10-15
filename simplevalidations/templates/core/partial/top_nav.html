@@ -48,7 +48,7 @@
             <ul class="navbar-nav">
 
                 {% block right_nav_items %}
-                    {% if request.user.is_authenticated %}
+                    {% if request.user.is_authenticated and ENABLE_APP  %}
                         <li class="nav-item ">
                             <a class="nav-link {% active_link 'app' %}"
                                href="{% org_url 'dashboard:my_dashboard' %}">{% translate "App" %}</a>

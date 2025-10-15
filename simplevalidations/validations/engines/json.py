@@ -1,27 +1,32 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing import Any
 
 from django.utils.translation import gettext as _
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
+from jsonschema import FormatChecker
 
-from simplevalidations.validations.constants import Severity, ValidationType
-from simplevalidations.validations.engines.base import (
-    BaseValidatorEngine,
-    ValidationIssue,
-    ValidationResult,
-)
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.base import BaseValidatorEngine
+from simplevalidations.validations.engines.base import ValidationIssue
+from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
-    from simplevalidations.validations.models import Ruleset, Submission, Validator
+    from simplevalidations.validations.models import Ruleset
+    from simplevalidations.validations.models import Submission
+    from simplevalidations.validations.models import Validator
 
 
 @register_engine(ValidationType.JSON_SCHEMA)
 class JsonSchemaValidatorEngine(BaseValidatorEngine):
     """
-    JSON Schema validator (Draft 2020-12 compatible by default if jsonschema lib supports).
+    JSON Schema validator (Draft 2020-12 compatible by default if
+    jsonschema lib supports).
+
     Expects a JSON Schema under (priority):
        1) ruleset.config['schema']
        2) validator.config['schema']
@@ -46,8 +51,8 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
         # ruleset.metadata under the 'schema' key
         try:
             raw_schema = ruleset.metadata.get("schema", None)
-        except Exception:
-            raise ValueError(_("Missing 'schema' in ruleset/validator config."))
+        except Exception as e:
+            raise ValueError(_("Missing 'schema' in ruleset/validator config.")) from e
         if isinstance(raw_schema, dict):
             return raw_schema
         if isinstance(raw_schema, str):
@@ -65,9 +70,9 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
             schema = self._load_schema(validator=validator, ruleset=ruleset)
         except Exception as e:
             return ValidationResult(
-                False,
-                [ValidationIssue("", str(e), Severity.ERROR)],
-                {"exception": type(e).__name__},
+                passed=False,
+                issues=[ValidationIssue("", str(e), Severity.ERROR)],
+                stats={"exception": type(e).__name__},
             )
 
         # Now load incoming content...
@@ -75,7 +80,7 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
 
         try:
             data = json.loads(payload)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return ValidationResult(
                 passed=False,
                 issues=[

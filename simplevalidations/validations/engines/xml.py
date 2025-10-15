@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from typing import Any
-from xml.etree.ElementTree import XML
 
 from django.utils.translation import gettext as _
 
@@ -24,7 +23,10 @@ if TYPE_CHECKING:
 class XmlSchemaValidatorEngine(BaseValidatorEngine):
     """
     XML validator that supports XSD (default) and Relax NG.
-    Select engine via ruleset.metadata['engine'] or ruleset.config['engine'] ∈ {'XSD','RELAXNG'}.
+
+    Select engine via ruleset.metadata['engine'] or
+    ruleset.config['engine'] ∈ {'XSD','RELAXNG'}.
+
     Provide the schema under ruleset.metadata['schema'] or ruleset.config['schema'].
 
     Expects a 'schema' entry in config:
@@ -49,7 +51,8 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         # Expect the upper-case string of the enum's value (e.g., "XSD" or "RELAXNG")
         if schema_type not in {XMLSchemaType.XSD.value, XMLSchemaType.RELAXNG.value}:
             err_msg = _(
-                "Invalid or missing XML schema_type '%(schema_type)s'; must be 'XSD' or 'RELAXNG'."
+                "Invalid or missing XML schema_type '%(schema_type)s';"
+                "must be 'XSD' or 'RELAXNG'.",
             ) % {"schema_type": schema_type or "<missing>"}
             raise ValueError(err_msg)
         return schema_type
@@ -59,7 +62,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         Parse the XML schema string and return an lxml schema object.
         """
         try:
-            from lxml import etree  # type: ignore
+            from lxml import etree  # noqa: PLC0415
         except Exception as e:  # pragma: no cover
             raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
 
@@ -97,7 +100,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         """
         # lxml optional (import lazily)
         try:
-            from lxml import etree  # type: ignore
+            from lxml import etree  # noqa: PLC0415
         except Exception as e:  # pragma: no cover
             return ValidationResult(
                 passed=False,
@@ -106,7 +109,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                         "",
                         _("lxml not installed or unusable: ") + str(e),
                         Severity.ERROR,
-                    )
+                    ),
                 ],
                 stats={"exception": type(e).__name__},
             )
@@ -121,7 +124,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                         "",
                         _("Missing 'schema' in ruleset/validator config."),
                         Severity.ERROR,
-                    )
+                    ),
                 ],
                 stats={"schema_type": schema_type},
             )
@@ -138,7 +141,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                         "",
                         _("Could not read submission content: ") + str(e),
                         Severity.ERROR,
-                    )
+                    ),
                 ],
                 stats={"schema_type": schema_type, "exception": type(e).__name__},
             )
@@ -150,7 +153,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                         "",
                         _("Empty submission content."),
                         Severity.ERROR,
-                    )
+                    ),
                 ],
                 stats={"schema_type": schema_type},
             )
@@ -164,8 +167,10 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                 passed=False,
                 issues=[
                     ValidationIssue(
-                        "", _("Invalid XML payload: ") + str(e), Severity.ERROR
-                    )
+                        "",
+                        _("Invalid XML payload: ") + str(e),
+                        Severity.ERROR,
+                    ),
                 ],
                 stats={"schema_type": schema_type, "exception": type(e).__name__},
             )
@@ -192,7 +197,8 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         for err in getattr(schema, "error_log", []) or []:
             path = (
                 getattr(err, "path", "")
-                or f"$ (line {getattr(err, 'line', '?')}, column {getattr(err, 'column', '?')})"
+                or f"$ (line {getattr(err, 'line', '?')}, "
+                "column {getattr(err, 'column', '?')})"
             )
             issues.append(ValidationIssue(path, str(err.message), Severity.ERROR))
 

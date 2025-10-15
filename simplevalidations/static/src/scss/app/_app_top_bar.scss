@@ -1,0 +1,23 @@
+#app-top-bar {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1px dotted #ccc;
+  min-height: 45px;
+  align-items: center;
+  justify-content: space-between;
+
+  .app-header-right {
+    margin-right: 1rem;
+  }
+
+  #user-profile-selector {
+    button {
+      width: 2.5rem;
+      height: 2.5rem;
+    }
+    .user-avatar {
+      width: 100%;
+      height: 100%;
+    }
+  }
+}

@@ -66,15 +66,17 @@
           <div id="main-content">
 
             {# Breadcrumbs #}
-            {% block breadcrumbs %}
-              <div id="breadcrumbs-wrapper"
-                   class="
-                          {% block breadcrumbs_styles %}
-                          {% endblock breadcrumbs_styles %}">
+            {% block top_bar %}
+              {% block breadcrumbs %}
+                <div id="breadcrumbs-wrapper"
+                     class="
+                            {% block breadcrumbs_styles %}
+                            {% endblock breadcrumbs_styles %}">
 
-                {% include "core/partial/breadcrumbs.html" %}
-              </div>
-            {% endblock breadcrumbs %}
+                  {% include "core/partial/breadcrumbs.html" %}
+                </div>
+              {% endblock breadcrumbs %}
+            {% endblock top_bar %}
 
             {% block content %}
 

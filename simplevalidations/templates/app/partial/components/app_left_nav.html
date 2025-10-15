@@ -1,0 +1,62 @@
+{% load i18n core_tags %}
+
+{% user_settings_nav_state as user_settings_nav %}
+<div id="app-left-nav" class="text-bg-dark d-flex flex-column h-100">
+
+  <div class="left-nav-title">
+    <a href="{% url 'marketing:home' %}" class="navbar-brand">
+      SimpleValidations
+    </a>
+  </div>
+
+  {% if org_memberships %}
+    {% include 'app/partial/components/workspace_selector.html' %}
+  {% endif %}
+
+  <ul class="nav nav-pills flex-column mb-auto" role="menu">
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'dashboard:my_dashboard' %}"
+         class="nav-link text-white {% active_link 'dashboard' %}"
+         role="menuitem">
+        <i class="bi bi-speedometer2"></i>
+        <span>{% trans "Dashboard" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'workflows:workflow_list' %}"
+         class="nav-link text-white {% active_link 'workflows' %}"
+         role="menuitem">
+        <i class="bi bi-diagram-3"></i>
+        <span>{% trans "Workflows" %}</span>
+      </a>
+    </li>
+    <li class="nav-item" role="none">
+      <a href="{% org_url 'validations:validation_list' %}"
+         class="nav-link text-white {% active_link 'validations' %}"
+         role="menuitem">
+        <i class="bi bi-shield-check"></i>
+        <span>{% trans "Validation Runs" %}</span>
+      </a>
+    </li>
+
+    {% if is_org_admin %}
+      <li class="nav-item" role="none">
+        <a href="{% org_url 'projects:project-list' %}"
+           class="nav-link text-white {% active_link 'projects' %}"
+           role="menuitem">
+          <i class="bi bi-kanban"></i>
+          <span>{% trans "Manage projects" %}</span>
+        </a>
+      </li>
+      <li class="nav-item" role="none">
+        <a href="{% org_url 'users:organization-list' %}"
+           class="nav-link text-white {% active_link 'users/organizations' %}"
+           role="menuitem">
+          <i class="bi bi-people"></i>
+          <span>{% trans "Manage orgs" %}</span>
+        </a>
+      </li>
+    {% endif %}
+  </ul>
+
+</div>

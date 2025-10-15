@@ -1,0 +1,86 @@
+{% load static i18n core_tags %}
+
+<div id="app-top-bar">
+    <div id="breadcrumbs-wrapper"
+         class="
+                {% block breadcrumbs_styles %}
+                {% endblock breadcrumbs_styles %}">
+
+        {% include "core/partial/breadcrumbs.html" %}
+    </div>
+    <div class="app-header-right">
+
+        <div id="user-profile-selector" class="dropdown">
+            <button class="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center p-0"
+                    type="button"
+                    id="app-user-menu"
+                    data-bs-toggle="dropdown"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    aria-label="{% trans 'Open user menu' %}">
+                {% if request.user.avatar %}
+                    <img src="{{ request.user.avatar.url }}"
+                         alt="{% trans 'User avatar' %}"
+                         class="rounded-circle object-fit-cover user-avatar" />
+                {% else %}
+                    {% with avatar_source=request.user.name|default:request.user.username %}
+                        {% if avatar_source %}
+                            {{ avatar_source|first|upper }}
+                        {% else %}
+                            ?
+                        {% endif %}
+                    {% endwith %}
+                {% endif %}
+                <span class="visually-hidden">
+                    {{ request.user.name|default:request.user.username }}
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm"
+                aria-labelledby="app-user-menu">
+                <li class="dropdown-header">
+                    <span class="fw-semibold">{{ request.user.name|default:request.user.username }}</span>
+                    {% if request.user.email %}
+                        <span class="text-muted">{{ request.user.email }}</span>
+                    {% endif %}
+                </li>
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.profile %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:profile' %}">
+                        {% trans "User Profile" %}
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.email %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:email' %}">
+                        {% trans "User Email" %}
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.api_key %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:api-key' %}">
+                        {% trans "API Key" %}
+                    </a>
+                </li>
+                {% if ACCOUNT_ALLOW_LOGIN %}
+                    <li>
+                        <hr class="dropdown-divider" />
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="{% url 'account_logout' %}">
+                            {% trans "Sign Out" %}
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>

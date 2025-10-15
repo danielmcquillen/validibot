@@ -5,7 +5,7 @@
 {% endblock %}
 {% block breadcrumbs %}
     {% include "admin/django_github_app/eventlog/includes/cleanup_breadcrumbs.html" %}
-{% endblock %}
+{% endblock breadcrumbs %}
 {% block content %}
     <form method="post">
         {% csrf_token %}

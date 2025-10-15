@@ -15,9 +15,9 @@ It extends base.html, which has the basic HTML structure, head, and body tags.
     {# comment  do not show top nav when viewing app #}
 {% endblock top_nav %}
 
-{% block breadcrumbs_styles %}
-    app-breadcrumbs
-{% endblock breadcrumbs_styles %}
+{% block top_bar %}
+    {% include "app/partial/components/app_top_bar.html" %}
+{% endblock top_bar %}
 
 {% block left_sidebar %}
 

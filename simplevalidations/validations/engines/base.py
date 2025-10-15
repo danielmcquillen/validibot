@@ -1,3 +1,13 @@
+"""
+Base classes and data structures for validator engines.
+
+A validator engine is a class that subclasses BaseValidatorEngine and implements
+the validate() method. The subclass is what does the actual validation work
+in a given validation step.
+
+You won't find any concrete implementations here; those are in other modules.
+"""
+
 from __future__ import annotations
 
 from abc import ABC

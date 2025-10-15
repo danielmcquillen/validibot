@@ -24,6 +24,7 @@ LIST_END_CHAR = "]"
 LIST_INDEX_TEMPLATE = "[{index}]"
 LIST_INDEX_PATTERN = r"\[(\d+)\]"
 LIST_INDEX_REGEX = re.compile(LIST_INDEX_PATTERN)
+FIND_NOT_FOUND = -1
 WILDCARD_TOKENS = frozenset({"*", "[*]"})
 COMPARISON_OPERATORS = frozenset({">=", ">", "<", "<=", "==", "!="})
 STRICT_COMPARISON_OPERATORS = frozenset({">=", ">", "<", "<="})
@@ -50,6 +51,11 @@ TEMPERATURE_MAX_C = 40
 POWER_ABSOLUTE_THRESHOLD = 1_000_000
 UPPERCASE_STRING_THRESHOLD = 80
 SELECTOR_SAMPLE_LIMIT = 5
+CONFIG_KEY_TEMPLATE = "template"
+CONFIG_KEY_SELECTORS = "selectors"
+CONFIG_KEY_POLICY_RULES = "policy_rules"
+CONFIG_KEY_MODE = "mode"
+CONFIG_KEY_COST_CAP = "cost_cap_cents"
 DEFAULT_TEMPLATE = "ai_critic"
 DEFAULT_SELECTORS: tuple[str, ...] = ()
 DEFAULT_POLICY_RULES: tuple[dict[str, Any], ...] = ()
@@ -70,6 +76,12 @@ STAT_KEY_SELECTOR_COUNT = "ai_selector_count"
 STAT_KEY_POLICY_RULE_COUNT = "ai_policy_rule_count"
 STAT_KEY_SELECTOR_SAMPLES = "ai_selector_samples"
 UNPARSED_TEMPLATE_NAME = "unparsed"
+RULE_DATA_KEY_ID = "id"
+RULE_DATA_KEY_PATH = "path"
+RULE_DATA_KEY_OPERATOR = "operator"
+RULE_DATA_KEY_VALUE = "value"
+RULE_DATA_KEY_VALUE_B = "value_b"
+RULE_DATA_KEY_MESSAGE = "message"
 
 @dataclass(slots=True)
 class PolicyRule:
@@ -105,7 +117,7 @@ def _flatten_path_tokens(path: str) -> list[str]:
                 tokens.append(buffer)
                 buffer = ""
             end = cleaned.find(LIST_END_CHAR, i)
-            if end == -1:
+            if end == FIND_NOT_FOUND:
                 tokens.append(cleaned[i:])
                 break
             tokens.append(cleaned[i : end + 1])
@@ -342,8 +354,9 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                 walk(value, next_pointer)
         elif isinstance(node, list):
             if node and all(
-                isinstance(v, (int, float)) and not isinstance(v, bool)
+                isinstance(v, (int, float))
                 for v in node
+                if not isinstance(v, bool)
             ):
                 numeric_values = [
                     float(v)
@@ -508,11 +521,11 @@ class AiAssistEngine(BaseValidatorEngine):
             )
 
         config = self.config or {}
-        template = config.get("template", DEFAULT_TEMPLATE)
-        selectors = config.get("selectors", DEFAULT_SELECTORS)
-        rules_raw = config.get("policy_rules", DEFAULT_POLICY_RULES)
-        mode = config.get("mode", DEFAULT_MODE).upper()
-        cost_cap = config.get("cost_cap_cents", DEFAULT_COST_CAP_CENTS)
+        template = config.get(CONFIG_KEY_TEMPLATE, DEFAULT_TEMPLATE)
+        selectors = config.get(CONFIG_KEY_SELECTORS, DEFAULT_SELECTORS)
+        rules_raw = config.get(CONFIG_KEY_POLICY_RULES, DEFAULT_POLICY_RULES)
+        mode = config.get(CONFIG_KEY_MODE, DEFAULT_MODE).upper()
+        cost_cap = config.get(CONFIG_KEY_COST_CAP, DEFAULT_COST_CAP_CENTS)
 
         stats.update(
             {
@@ -538,12 +551,15 @@ class AiAssistEngine(BaseValidatorEngine):
         if rules_raw:
             for rule_data in rules_raw:
                 rule = PolicyRule(
-                    identifier=rule_data.get("id", DEFAULT_RULE_IDENTIFIER),
-                    path=rule_data.get("path", DEFAULT_RULE_PATH),
-                    operator=rule_data.get("operator", DEFAULT_RULE_OPERATOR),
-                    value=rule_data.get("value"),
-                    value_b=rule_data.get("value_b"),
-                    message=rule_data.get("message")
+                    identifier=rule_data.get(RULE_DATA_KEY_ID, DEFAULT_RULE_IDENTIFIER),
+                    path=rule_data.get(RULE_DATA_KEY_PATH, DEFAULT_RULE_PATH),
+                    operator=rule_data.get(
+                        RULE_DATA_KEY_OPERATOR,
+                        DEFAULT_RULE_OPERATOR,
+                    ),
+                    value=rule_data.get(RULE_DATA_KEY_VALUE),
+                    value_b=rule_data.get(RULE_DATA_KEY_VALUE_B),
+                    message=rule_data.get(RULE_DATA_KEY_MESSAGE)
                     or DEFAULT_RULE_MESSAGE,
                 )
                 matches = _resolve_path(parsed, rule.path)

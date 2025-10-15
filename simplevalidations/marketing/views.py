@@ -178,9 +178,7 @@ class AboutPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("About SimpleValidations")
     meta_description = _(
-        "Learn about Daniel McQuillen and the story behind SimpleValidations, "
-        "inspired by mission-critical validation work at "
-        "Lawrence Berkeley National Laboratory.",
+        "Learn about Daniel McQuillen and the story behind SimpleValidations",
     )
     breadcrumbs = []
 

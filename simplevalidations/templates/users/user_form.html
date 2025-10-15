@@ -1,25 +1,49 @@
-{% extends "core/base.html" %}
+{% extends "app_base.html" %}
 
-{% load crispy_forms_tags %}
+{% load i18n crispy_forms_tags core_tags %}
 
 {% block title %}
-
   {{ user.username }}
-
 {% endblock title %}
-{% block content %}
-  <h1>
-    {{ user.username }}
-</h1>
-<form class="form-horizontal"
-      method="post"
-      action="{% url 'users:profile' %}">
-  {% csrf_token %}
-  {{ form|crispy }}
-  <div class="control-group">
-    <div class="controls">
-      <button type="submit" class="btn btn-primary">Update</button>
+
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="user-profile-form" class="app-page container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <h1 class="app-page-title">
+          {% trans "Update Profile" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Adjust how your information appears to teammates." %}
+        </p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <form class="card shadow-sm account-settings-form"
+              method="post"
+              action="{% org_url 'users:profile' %}"
+              novalidate>
+          <div class="card-body">
+            {% csrf_token %}
+            {{ form|crispy }}
+          </div>
+          <div class="card-footer text-end bg-transparent border-top-0 pt-0">
+            <button type="submit" class="btn btn-primary">
+              {% trans "Update" %}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
-</form>
-{% endblock content %}
+{% endblock app_content %}

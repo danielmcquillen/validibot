@@ -12447,6 +12447,8 @@ h4 {
   flex-direction: column;
   flex-shrink: 0;
   min-height: 100vh;
+  height: auto !important;
+  align-self: stretch;
   width: 200px;
   background-color: #eee;
   overflow: visible;
@@ -12477,6 +12479,9 @@ h4 {
 }
 #app-left-nav #workspace-selector {
   position: relative;
+}
+#app-left-nav #workspace-selector button {
+  min-height: 3rem;
 }
 #app-left-nav #workspace-selector .left-nav-org-avatar {
   background: #fff;
@@ -12803,14 +12808,15 @@ h4 {
 }
 
 .app-content-header-bar {
+  background: rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: row;
   align-items: center;
   margin-bottom: 1rem;
   border-radius: 0.5rem;
-  padding: 0 5px;
-  margin: 0.5rem 0 1rem;
-  min-height: 2.5rem;
+  padding: 0.5rem;
+  margin: 10px 0 1rem;
+  min-height: 3rem;
 }
 .app-content-header-bar .app-content-header {
   padding: 0;

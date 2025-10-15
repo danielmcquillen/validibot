@@ -12,7 +12,7 @@
 
 {% block app_content %}
 
-  <div id="workflow-list" class="container-fluid">
+  <div id="workflow-list" class="container-fluid d-flex flex-column h-100">
 
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
@@ -59,8 +59,7 @@
       </div>
     </div>
 
-    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4"
-         id="workflow-grid">
+    <div class="row h-100 row-cols-1 row-cols-md-2 row-cols-xl-3" id="workflow-grid">
       {% for workflow in workflows %}
         <div class="col" id="workflow-card-wrapper-{{ workflow.pk }}">
           <div class="card shadow-sm h-100" id="workflow-card-{{ workflow.pk }}">
@@ -96,8 +95,8 @@
                 {% trans "Updated" %}
                 {{ workflow.modified|date:"M j, Y" }}
               </p>
-              <div class="mt-auto d-flex flex-wrap gap-2">
-                <a class="btn btn-sm btn-outline-primary flex-grow-1"
+              <div class="mt-auto d-flex flex-wrap gap-2 justify-content-end">
+                <a class="btn btn-sm btn-primary "
                    href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
                   {% trans "View" %}
                 </a>
@@ -118,8 +117,8 @@
           </div>
         </div>
       {% empty %}
-        <div class="col-12">
-          <div class="text-center py-5 border rounded bg-body-tertiary">
+        <div class="col-12 d-flex flex-row justify-content-center align-items-center h-100">
+          <div class="text-center p-5 border rounded bg-body-tertiary mt-5">
             <h2 class="h5">
               {% trans "No workflows yet" %}
             </h2>

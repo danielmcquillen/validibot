@@ -70,6 +70,7 @@ def user_settings_nav_state(context) -> dict[str, bool]:
         "profile": False,
         "email": False,
         "api_key": False,
+        "organizations": False,
     }
     if not request:
         return state
@@ -87,7 +88,10 @@ def user_settings_nav_state(context) -> dict[str, bool]:
     state["profile"] = is_match("profile")
     state["email"] = is_match("email")
     state["api_key"] = is_match("api-key")
-    state["active"] = any(state[key] for key in ("profile", "email", "api_key"))
+    state["organizations"] = view_name.startswith("users:organization-")
+    state["active"] = any(
+        state[key] for key in ("profile", "email", "api_key", "organizations")
+    )
     return state
 
 

@@ -11,7 +11,7 @@
     <div class="app-header-right">
 
         <div id="user-profile-selector" class="dropdown">
-            <button class="btn btn-outline-secondary d-inline-flex align-items-center justify-content-center p-0"
+            <button class="btn btn-dark d-inline-flex align-items-center justify-content-center p-0 rounded-circle overflow-hidden"
                     type="button"
                     id="app-user-menu"
                     data-bs-toggle="dropdown"
@@ -21,7 +21,7 @@
                 {% if request.user.avatar %}
                     <img src="{{ request.user.avatar.url }}"
                          alt="{% trans 'User avatar' %}"
-                         class="rounded-circle object-fit-cover user-avatar" />
+                         class="object-fit-cover user-avatar" />
                 {% else %}
                     {% with avatar_source=request.user.name|default:request.user.username %}
                         {% if avatar_source %}
@@ -70,6 +70,19 @@
                         {% trans "API Key" %}
                     </a>
                 </li>
+                {% if is_org_admin %}
+                    {# divider #}
+                    <hr class="dropdown-divider" />
+                    <li>
+                        <a class="dropdown-item
+                                  {% if user_settings_nav.organizations %}
+                                      active
+                                  {% endif %}"
+                           href="{% org_url 'users:organization-list' %}">
+                            {% trans "Manage organizations" %}
+                        </a>
+                    </li>
+                {% endif %}
                 {% if ACCOUNT_ALLOW_LOGIN %}
                     <li>
                         <hr class="dropdown-divider" />

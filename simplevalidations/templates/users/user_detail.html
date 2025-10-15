@@ -1,104 +1,123 @@
-{% extends "core/base.html" %}
+{% extends "app_base.html" %}
 
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% block title %}
   {{ object.name|default:object.username }}
 {% endblock title %}
 
-{% block mainclass %}
-  container
-{% endblock mainclass %}
-
 {% block bodyclass %}
   {{ block.super }} account-settings-page
 {% endblock bodyclass %}
 
-{% block content %}
-  <section class="account-settings-wrapper py-5">
-    <div class="container">
-      <div class="row">
-        <div class="col-12 col-lg-8 col-xxl-6">
-          <div class="account-settings-card card shadow-sm border-0">
-            <div class="card-body p-4 p-lg-5">
-              <div class="text-center mb-4">
-                <div class="d-inline-flex align-items-center justify-content-center rounded-circle settings-avatar__placeholder mb-3">
-                  {% if object.avatar %}
-                    <img src="{{ object.avatar.url }}"
-                         alt="{{ object.username }}"
-                         class="img-fluid rounded-circle settings-avatar__image" />
-                  {% else %}
-                    <span class="fs-1 fw-semibold text-primary">
-                      {{ object.name|default:object.username|first|upper }}
-                    </span>
-                  {% endif %}
-                </div>
-                <h1 class="h3 mb-1">
-                  {{ object.name|default:object.username }}
-                </h1>
-                {% if object.job_title or object.company %}
-                  <p class="text-muted mb-0">
-                    {{ object.job_title }}
-                    {% if object.job_title and object.company %}
-                      ·
-                    {% endif %}
-                    {{ object.company }}
-                  </p>
-                {% endif %}
-                {% if object.location %}
-                  <p class="text-muted mb-0">
-                    {{ object.location }}
-                  </p>
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="user-profile-overview" class="app-page container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <h1 class="app-page-title">
+          {% if object == request.user %}
+            {% trans "Profile Overview" %}
+          {% else %}
+            {{ object.name|default:object.username }}
+          {% endif %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% if object == request.user %}
+            {% trans "See the details teammates view across the product." %}
+          {% else %}
+            {% blocktrans with username=object.name|default:object.username %}
+              Public profile information for {{ username }}.
+            {% endblocktrans %}
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8 col-xxl-6">
+        <div class="account-settings-card card shadow-sm border-0">
+          <div class="card-body p-4 p-lg-5">
+            <div class="text-center mb-4">
+              <div class="d-inline-flex align-items-center justify-content-center rounded-circle settings-avatar__placeholder mb-3">
+                {% if object.avatar %}
+                  <img src="{{ object.avatar.url }}"
+                       alt="{{ object.username }}"
+                       class="img-fluid rounded-circle settings-avatar__image" />
+                {% else %}
+                  <span class="fs-1 fw-semibold text-primary">
+                    {{ object.name|default:object.username|first|upper }}
+                  </span>
                 {% endif %}
               </div>
-
-              {% if object.bio %}
-                <div class="mb-4">
-                  <h2 class="h6 text-uppercase text-muted fw-semibold mb-2">
-                    {% trans "About" %}
-                  </h2>
-                  <p class="mb-0">
-                    {{ object.bio }}
-                  </p>
-                </div>
+              <h2 class="h3 mb-1">
+                {{ object.name|default:object.username }}
+              </h2>
+              {% if object.job_title or object.company %}
+                <p class="text-muted mb-0">
+                  {{ object.job_title }}
+                  {% if object.job_title and object.company %}
+                    ·
+                  {% endif %}
+                  {{ object.company }}
+                </p>
               {% endif %}
-
-              <div class="border rounded-3 p-3 bg-light-subtle">
-                <dl class="row mb-0 small text-muted">
-                  <dt class="col-4">
-                    {% trans "Username" %}
-                  </dt>
-                  <dd class="col-8 text-body">
-                    {{ object.username }}
-                  </dd>
-                  <dt class="col-4">
-                    {% trans "Email" %}
-                  </dt>
-                  <dd class="col-8 text-body">
-                    {{ object.email }}
-                  </dd>
-                  {% if object.timezone %}
-                    <dt class="col-4">
-                      {% trans "Timezone" %}
-                    </dt>
-                    <dd class="col-8 text-body">
-                      {{ object.timezone }}
-                    </dd>
-                  {% endif %}
-                </dl>
-              </div>
-
-              {% if object == request.user %}
-                <div class="mt-4 text-center">
-                  <a href="{% url 'users:profile' %}" class="btn btn-primary">
-                    {% trans "Edit profile" %}
-                  </a>
-                </div>
+              {% if object.location %}
+                <p class="text-muted mb-0">
+                  {{ object.location }}
+                </p>
               {% endif %}
             </div>
+
+            {% if object.bio %}
+              <div class="mb-4">
+                <h3 class="h6 text-uppercase text-muted fw-semibold mb-2">
+                  {% trans "About" %}
+                </h3>
+                <p class="mb-0">
+                  {{ object.bio }}
+                </p>
+              </div>
+            {% endif %}
+
+            <div class="border rounded-3 p-3 bg-light-subtle">
+              <dl class="row mb-0 small text-muted">
+                <dt class="col-4">
+                  {% trans "Username" %}
+                </dt>
+                <dd class="col-8 text-body">
+                  {{ object.username }}
+                </dd>
+                <dt class="col-4">
+                  {% trans "Email" %}
+                </dt>
+                <dd class="col-8 text-body">
+                  {{ object.email }}
+                </dd>
+                {% if object.timezone %}
+                  <dt class="col-4">
+                    {% trans "Timezone" %}
+                  </dt>
+                  <dd class="col-8 text-body">
+                    {{ object.timezone }}
+                  </dd>
+                {% endif %}
+              </dl>
+            </div>
+
+            {% if object == request.user %}
+              <div class="mt-4 text-center">
+                <a href="{% org_url 'users:profile' %}" class="btn btn-primary">
+                  {% trans "Edit profile" %}
+                </a>
+              </div>
+            {% endif %}
           </div>
         </div>
       </div>
     </div>
-  </section>
-{% endblock content %}
+  </div>
+{% endblock app_content %}

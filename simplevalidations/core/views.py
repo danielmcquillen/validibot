@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.mail import mail_admins
@@ -63,7 +64,7 @@ def app_home_redirect(request: HttpRequest) -> HttpResponse:
     """Redirect `/app/` requests to the user's current organization dashboard."""
 
     org = request.user.get_current_org()
-    if not org:
+    if not org or not settings.APP_ENABLED:
         messages.error(request, _("You do not belong to any organizations yet."))
         return redirect("marketing:home")
 

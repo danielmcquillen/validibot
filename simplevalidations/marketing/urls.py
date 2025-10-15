@@ -125,7 +125,7 @@ urlpatterns = [
 ]
 
 
-if settings.ENABLE_PRICING_PAGES:
+if settings.ENABLE_PRICING_SECTION:
     urlpatterns += [
         path(
             "pricing/",

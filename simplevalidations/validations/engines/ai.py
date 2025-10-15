@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import re
 from dataclasses import dataclass
@@ -28,8 +29,6 @@ class PolicyRule:
 
 
 def _ensure_json_structure(raw: str) -> Any:
-    import json
-
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -89,7 +88,7 @@ def _resolve_path(data: Any, path: str) -> list[tuple[str, Any]]:
                         next_results.append((f"{current_path}.{key}", value))
                 elif token in current_value:
                     next_results.append(
-                        (f"{current_path}.{token}", current_value[token])
+                        (f"{current_path}.{token}", current_value[token]),
                     )
             if isinstance(current_value, list):
                 if is_wildcard:
@@ -99,7 +98,7 @@ def _resolve_path(data: Any, path: str) -> list[tuple[str, Any]]:
                     idx = int(index_match.group(1))
                     if 0 <= idx < len(current_value):
                         next_results.append(
-                            (f"{current_path}[{idx}]", current_value[idx])
+                            (f"{current_path}[{idx}]", current_value[idx]),
                         )
         results = next_results
         if not results:
@@ -143,7 +142,10 @@ def _compare(rule: PolicyRule, actual: Any) -> tuple[str, Severity, str]:
                 ok = math.isclose(actual_num, expected_num, rel_tol=0.0, abs_tol=1e-9)
             case "!=":
                 ok = not math.isclose(
-                    actual_num, expected_num, rel_tol=0.0, abs_tol=1e-9
+                    actual_num,
+                    expected_num,
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
                 )
             case _:
                 ok = False
@@ -227,14 +229,20 @@ def _compare(rule: PolicyRule, actual: Any) -> tuple[str, Severity, str]:
 
 
 def _build_issue(
-    rule: PolicyRule, status: str, severity: Severity, path: str, detail: str
+    rule: PolicyRule,
+    status: str,
+    severity: Severity,
+    path: str,
+    detail: str,
 ) -> ValidationIssue | None:
     if status == "YES":
         return None
     message = rule.message or detail
     code = f"AI_RULE_{rule.identifier.upper()}"
     return ValidationIssue(
-        path=path or rule.path, message=f"{message} ({status})", severity=severity
+        path=path or rule.path,
+        message=f"{message} ({status})",
+        severity=severity,
     )
 
 
@@ -278,7 +286,8 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                             ValidationIssue(
                                 path=pointer,
                                 message=_(
-                                    "Numeric series is flat; check if variation was expected."
+                                    "Numeric series is flat; check "
+                                    "if variation was expected.",
                                 ),
                                 severity=Severity.INFO,
                             )
@@ -289,7 +298,8 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                                 ValidationIssue(
                                     path=f"{pointer}[{idx}]",
                                     message=_(
-                                        "Negative value %(value)s detected in schedule."
+                                        "Negative value %(value)s : "
+                                        "detected in schedule.",
                                     )
                                     % {"value": value},
                                     severity=Severity.WARNING,
@@ -380,7 +390,8 @@ class AiAssistEngine(BaseValidatorEngine):
                 ValidationIssue(
                     path="$",
                     message=_(
-                        "AI assist currently supports JSON submissions. Unable to parse this document."
+                        "AI assist currently supports JSON submissions. "
+                        "Unable to parse this document.",
                     ),
                     severity=Severity.WARNING,
                 )

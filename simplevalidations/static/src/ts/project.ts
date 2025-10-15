@@ -98,17 +98,18 @@ function simplevalidationsInitBootstrap() {
 }
 
 
+type ThemePreference = 'light' | 'dark' | 'auto';
 type ThemeMode = 'light' | 'dark';
 
 const THEME_STORAGE_KEY = 'simplevalidations:theme-preference';
 const THEME_MEDIA_QUERY = '(prefers-color-scheme: dark)';
 
-function applyThemePreference(theme: ThemeMode): void {
-    document.documentElement.setAttribute('data-bs-theme', theme);
-    document.body.setAttribute('data-bs-theme', theme);
+function applyThemeMode(mode: ThemeMode): void {
+    document.documentElement.setAttribute('data-bs-theme', mode);
+    document.body.setAttribute('data-bs-theme', mode);
 }
 
-function readStoredTheme(): ThemeMode | null {
+function readStoredThemePreference(): ThemePreference {
     try {
         const value = localStorage.getItem(THEME_STORAGE_KEY);
         if (value === 'light' || value === 'dark') {
@@ -117,56 +118,88 @@ function readStoredTheme(): ThemeMode | null {
     } catch (error) {
         console.debug('Unable to access saved theme preference', error);
     }
-    return null;
+    return 'auto';
 }
 
-function persistThemePreference(theme: ThemeMode): void {
+function persistThemePreference(theme: ThemePreference): void {
     try {
-        localStorage.setItem(THEME_STORAGE_KEY, theme);
+        if (theme === 'auto') {
+            localStorage.removeItem(THEME_STORAGE_KEY);
+        } else {
+            localStorage.setItem(THEME_STORAGE_KEY, theme);
+        }
     } catch (error) {
         console.debug('Unable to persist theme preference', error);
     }
 }
 
-function updateThemeToggleState(toggle: HTMLButtonElement | null, theme: ThemeMode): void {
-    if (!toggle) {
-        return;
+function resolveThemeMode(preference: ThemePreference, mediaQuery: MediaQueryList): ThemeMode {
+    if (preference === 'auto') {
+        return mediaQuery.matches ? 'dark' : 'light';
     }
-    toggle.setAttribute('data-theme-state', theme);
-    const label = toggle.querySelector<HTMLElement>('[data-theme-label]');
-    const lightLabel = toggle.dataset.themeLabelLight || 'Light';
-    const darkLabel = toggle.dataset.themeLabelDark || 'Dark';
-    if (label) {
-        label.textContent = theme === 'dark' ? darkLabel : lightLabel;
+    return preference;
+}
+
+function updateThemeControls(
+    toggle: HTMLButtonElement | null,
+    options: Iterable<HTMLButtonElement>,
+    preference: ThemePreference,
+): void {
+    if (toggle) {
+        toggle.setAttribute('data-theme-state', preference);
+        const label = toggle.querySelector<HTMLElement>('[data-theme-label]');
+        const lightLabel = toggle.dataset.themeLabelLight || 'Light';
+        const darkLabel = toggle.dataset.themeLabelDark || 'Dark';
+        const autoLabel = toggle.dataset.themeLabelAuto || 'Auto';
+        let selectedLabel = lightLabel;
+        if (preference === 'dark') {
+            selectedLabel = darkLabel;
+        } else if (preference === 'auto') {
+            selectedLabel = autoLabel;
+        }
+        if (label) {
+            label.textContent = selectedLabel;
+        }
     }
-    toggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    for (const option of options) {
+        const optionValue = option.dataset.themeOption as ThemePreference | undefined;
+        const isActive = optionValue === preference;
+        option.classList.toggle('active', isActive);
+        option.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
 }
 
 function initializeThemeToggle(): void {
-    const toggle = document.querySelector<HTMLButtonElement>('[data-theme-toggle]');
     const mediaQuery = window.matchMedia(THEME_MEDIA_QUERY);
 
-    let manualTheme: ThemeMode | null = readStoredTheme();
-    let currentTheme: ThemeMode = manualTheme ?? (mediaQuery.matches ? 'dark' : 'light');
+    let preference: ThemePreference = readStoredThemePreference();
+    let currentTheme: ThemeMode = resolveThemeMode(preference, mediaQuery);
 
-    applyThemePreference(currentTheme);
-    updateThemeToggleState(toggle, currentTheme);
+    applyThemeMode(currentTheme);
+    const picker = document.querySelector<HTMLElement>('[data-theme-picker]');
+    const toggle = picker?.querySelector<HTMLButtonElement>('[data-theme-display]') ?? null;
+    const options = picker?.querySelectorAll<HTMLButtonElement>('[data-theme-option]') ?? [];
 
-    toggle?.addEventListener('click', () => {
-        currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        applyThemePreference(currentTheme);
-        updateThemeToggleState(toggle, currentTheme);
-        persistThemePreference(currentTheme);
-        manualTheme = currentTheme;
-    });
+    updateThemeControls(toggle, options, preference);
+
+    for (const option of options) {
+        option.addEventListener('click', () => {
+            const selected = option.dataset.themeOption as ThemePreference | undefined;
+            preference = selected ?? 'auto';
+            currentTheme = resolveThemeMode(preference, mediaQuery);
+            applyThemeMode(currentTheme);
+            updateThemeControls(toggle, options, preference);
+            persistThemePreference(preference);
+        });
+    }
 
     mediaQuery.addEventListener('change', (event) => {
-        if (manualTheme !== null) {
+        if (preference !== 'auto') {
             return;
         }
         currentTheme = event.matches ? 'dark' : 'light';
-        applyThemePreference(currentTheme);
-        updateThemeToggleState(toggle, currentTheme);
+        applyThemeMode(currentTheme);
+        updateThemeControls(toggle, options, preference);
     });
 }
 

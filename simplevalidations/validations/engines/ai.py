@@ -275,7 +275,7 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                                 )
                                 % avg,
                                 severity=Severity.WARNING,
-                            )
+                            ),
                         )
                     if (
                         stdev == 0
@@ -290,7 +290,7 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                                     "if variation was expected.",
                                 ),
                                 severity=Severity.INFO,
-                            )
+                            ),
                         )
                     for idx, value in enumerate(numeric_values):
                         if value < 0:

@@ -148,20 +148,20 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
 
     if settings.ENABLE_AI_VALIDATIONS:
         meta_description = _(
-            "SimpleValidations pairs deterministic checks, AI review, and simulations "
-            "so every document is production-ready before it reaches your customers.",
+            "SimpleValidations lets you build robust data validation workflows with "
+            "schema checks, simulations, AI review, and credentialing.",
         )
     else:
         meta_description = _(
-            "SimpleValidations pairs deterministic checks and simulations "
-            "so every document is production-ready before it reaches your customers.",
+            "SimpleValidations lets you build robust data validation workflows with "
+            "schema checks, simulations, and credentialing.",
         )
     meta_keywords = (
         "data validation assistant, data quality automation, simulation validation"
     )
     share_image_path = MarketingShareImage.DEFAULT
     share_image_alt = _(
-        "SimpleValidations robot greeting teams beside the platform homepage interface.",
+        "SimpleValidations robot greeting teams beside an abstract workflow diagram",
     )
 
     def get_context_data(self, **kwargs):

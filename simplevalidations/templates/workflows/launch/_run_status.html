@@ -1,0 +1,122 @@
+{% load i18n humanize core_tags %}
+
+<div class="card shadow-sm"
+     id="workflow-launch-run-status-card"
+     hx-get="{% if status_url %}{{ status_url }}{% else %}{% org_url 'workflows:workflow_launch_status' pk=workflow.pk run_id=run.pk %}{% endif %}"
+     hx-target="#workflow-launch-run-status"
+     hx-swap="outerHTML"
+     {% if is_polling %}hx-trigger="load, every 3s"{% endif %}>
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <span class="fw-semibold">{% trans "Run in progress" %}</span>
+        <span class="badge {{ run.status_pill_class }} ms-2">{{ run.get_status_display }}</span>
+      </div>
+      <div class="text-muted small">
+        {{ run.created|naturaltime }}
+      </div>
+    </div>
+    <div class="card-body">
+      <dl class="row mb-3 small">
+        <dt class="col-5 col-lg-4">{% trans "Started" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
+        </dd>
+        <dt class="col-5 col-lg-4">{% trans "Completed" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
+        </dd>
+        <dt class="col-5 col-lg-4">{% trans "Duration" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {% if run.duration_ms %}
+            {{ run.duration_ms|floatformat:0 }} ms
+          {% elif is_polling %}
+            <span class="text-muted">{% trans "Running…" %}</span>
+          {% else %}
+            <span class="text-muted">{% trans "Not captured" %}</span>
+          {% endif %}
+        </dd>
+      </dl>
+      {% if run.error %}
+        <div class="alert alert-danger small" role="alert">
+          <i class="bi-exclamation-octagon me-2"></i>{{ run.error }}
+        </div>
+      {% endif %}
+      <div class="mb-4">
+        <h2 class="h6 d-flex align-items-center gap-2 mb-3">
+          <i class="bi-list-check"></i>
+          {% trans "Step status" %}
+        </h2>
+        {% if step_runs %}
+          <ul class="list-group list-group-flush">
+            {% for step_run in step_runs %}
+              <li class="list-group-item px-0 d-flex align-items-center justify-content-between">
+                <div>
+                  <span class="fw-semibold">
+                    {% if step_run.workflow_step %}
+                      {{ step_run.workflow_step.name|default:_("Step") }}
+                    {% else %}
+                      {% trans "Step" %}
+                    {% endif %}
+                  </span>
+                  <div class="text-muted small">
+                    {% if step_run.workflow_step and step_run.workflow_step.validator %}
+                      {{ step_run.workflow_step.validator.get_validation_type_display }}
+                    {% endif %}
+                  </div>
+                </div>
+                <span class="badge text-bg-light text-uppercase">
+                  {{ step_run.get_status_display }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted small mb-0">
+            {% trans "Step details will appear once execution begins." %}
+          </p>
+        {% endif %}
+      </div>
+      <div class="mb-4">
+        <h2 class="h6 d-flex align-items-center gap-2 mb-3">
+          <i class="bi-flag"></i>
+          {% trans "Findings" %}
+        </h2>
+        {% if findings %}
+          <ul class="list-group list-group-flush">
+            {% for finding in findings %}
+              <li class="list-group-item px-0">
+                <span class="badge text-bg-secondary text-uppercase me-2">{{ finding.get_severity_display }}</span>
+                {{ finding.message|truncatechars:160 }}
+                {% if finding.path %}
+                  <div class="small text-muted">
+                    <i class="bi-diagram-3 me-1"></i>{{ finding.path }}
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted small mb-0">
+            {% if run.status == "SUCCEEDED" %}
+              {% trans "No findings recorded for this run." %}
+            {% else %}
+              {% trans "Findings will be listed once available." %}
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <a class="btn btn-outline-secondary btn-sm"
+           href="{% if detail_url %}{{ detail_url }}{% else %}{% org_url 'validations:validation_detail' pk=run.pk %}{% endif %}">
+          <i class="bi-box-arrow-up-right me-1"></i>
+          {% trans "View full run" %}
+        </a>
+        {% if is_polling %}
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            {% trans "Refreshing automatically…" %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+</div>

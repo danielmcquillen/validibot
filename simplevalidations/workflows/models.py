@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from decimal import Decimal
 from decimal import InvalidOperation
@@ -13,12 +14,16 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
+from simplevalidations.core.mixins import FeaturedImageMixin
+from simplevalidations.core.utils import render_markdown_safe
 from simplevalidations.projects.models import Project
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import Role
 from simplevalidations.users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -34,16 +39,16 @@ class WorkflowQuerySet(models.QuerySet):
         required_role_code: RoleCode | None = None,
     ) -> WorkflowQuerySet:
         """
-        Get workflows accessible to the given user. 
-        
+        Get workflows accessible to the given user.
+
         If required_role is provided,
         only return workflows where the user has that role in the workflow's
         organization.
-        
+
         Otherwise, return all workflows where the user is an active member of the
         workflow's organization. Note this doesn't mean they can execute the workflow;
         that requires the EXECUTOR role specifically.
-        
+
         """
 
         if not getattr(user, "is_authenticated", False):
@@ -70,12 +75,20 @@ class WorkflowManager(models.Manager):
         return self.get_queryset().for_user(user, required_role_code=required_role_code)
 
 
-class Workflow(TimeStampedModel):
+class Workflow(FeaturedImageMixin, TimeStampedModel):
     """
     Reusable, versioned definition of a sequence of validation steps.
     """
 
     objects = WorkflowManager()
+
+    featured_image = models.FileField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "Optional image to represent the workflow Shown on the 'info' page.",
+        ),
+    )
 
     class Meta:
         constraints = [
@@ -104,7 +117,9 @@ class Workflow(TimeStampedModel):
         null=True,
         blank=True,
         related_name="workflows",
-        help_text=_("Default project to associate with runs triggered from this workflow."),
+        help_text=_(
+            "Default project to associate with runs triggered from this workflow."
+        ),
     )
 
     user = models.ForeignKey(
@@ -150,6 +165,13 @@ class Workflow(TimeStampedModel):
         default=True,
         help_text=_("Inactive workflows stay visible but cannot run validations."),
     )
+    make_info_public = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Allows non-logged in users to see details of the workflow validation.",
+        ),
+    )
+    featured_image_alt_candidates = ("name",)
 
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,11 +179,7 @@ class Workflow(TimeStampedModel):
     def clean(self):
         if not self.name or not self.name.strip():
             raise ValidationError({"name": _("Name is required.")})
-        if (
-            self.project_id
-            and self.org_id
-            and self.project.org_id != self.org_id
-        ):
+        if self.project_id and self.org_id and self.project.org_id != self.org_id:
             raise ValidationError(
                 {"project": _("Project must belong to the workflow's organization.")},
             )
@@ -251,6 +269,56 @@ class Workflow(TimeStampedModel):
 
         # Fall back to a simple incremental label.
         return "1"
+
+    @property
+    def get_public_info(self) -> WorkflowPublicInfo:
+        public_info, _ = WorkflowPublicInfo.objects.get_or_create(workflow=self)
+        return public_info
+
+
+class WorkflowPublicInfo(TimeStampedModel):
+    workflow = models.OneToOneField(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="public_info",
+    )
+    title = models.CharField(
+        max_length=200,
+        default="",
+        help_text=_(
+            "Optional title to show on the public info page. "
+            "If blank, the Workflow name will be used."
+        ),
+    )
+    content_md = models.TextField()  # user-authored Markdown
+    content_html = models.TextField(editable=False)  # cached sanitized HTML
+
+    show_steps = models.BooleanField(
+        default=True,
+        help_text=_("Whether to show the workflow steps on the public info page."),
+    )
+
+    def __str__(self):
+        return f"Public info for {self.workflow}"
+
+    def save(self, *args, **kwargs):
+        self.compile_content()
+        super().save(*args, **kwargs)
+
+    def compile_content(self):
+        try:
+            self.content_html = render_markdown_safe(self.content_md)
+        except Exception:
+            logger.exception("Error rendering markdown for workflow public info")
+            self.content_html = ""
+
+    def get_title(self) -> str:
+        if self.title and self.title.strip():
+            return self.title.strip()
+        return self.workflow.name
+
+    def get_html_content(self) -> str:
+        return self.content_html or ""
 
 
 class WorkflowStep(TimeStampedModel):

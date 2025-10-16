@@ -79,16 +79,43 @@
     </div>
     <div class="card-footer">
         <div class="mt-auto d-flex flex-wrap gap-2 justify-content-end align-items-center">
-            <a class="btn btn-sm btn-primary"
+            {% if workflow.can_execute_cached %}
+                <a class="btn btn-sm btn-success"
+                   href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="{% trans "Run workflow" %}"
+                   aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}Run {{ workflow_name }}{% endblocktrans %}">
+                    <i class="bi bi-play-fill"></i>
+                </a>
+            {% else %}
+                <span class="btn btn-sm btn-outline-secondary disabled"
+                      role="button"
+                      aria-disabled="true"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{% trans "Executor access required to run this workflow" %}">
+                    <i class="bi bi-play-fill"></i>
+                    <span class="visually-hidden">
+                        {% trans "Run workflow" %}
+                    </span>
+                </span>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-primary"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "Edit steps" %}"
+               aria-label="{% trans "Edit steps" %}"
                href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
-                <i class="bi bi-pencil-square me-1"></i>
-                {% trans "Edit steps" %}
+                <i class="bi bi-pencil-square"></i>
             </a>
             <a class="btn btn-sm btn-outline-secondary"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
-               aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}Edit settings for {{ workflow_name }}{% endblocktrans %}"
+               aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                               Edit settings for {{ workflow_name }}
+                           {% endblocktrans %}"
                title="{% trans "Edit workflow settings" %}">
                 <i class="bi bi-gear-fill"></i>
                 <span class="visually-hidden">
@@ -100,6 +127,12 @@
                     hx-delete="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
                     hx-target="#workflow-card-wrapper-{{ workflow.pk }}"
                     hx-swap="outerHTML"
+                    data-bs-toggle="tooltip"
+                    data-bs-placement="top"
+                    title="{% trans "Delete workflow" %}"
+                    aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                                    Delete {{ workflow_name }}
+                                {% endblocktrans %}"
                     hx-confirm="{% trans "Delete this workflow?" %}">
                 {% trans "Delete" %}
             </button>

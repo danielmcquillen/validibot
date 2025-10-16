@@ -16,6 +16,8 @@
 - Speak plainly, surface risks first, and reference file paths with line numbers when reviewing.
 - Update docs or inline comments whenever you introduce behaviour that is not obvious at first glance.
 - When you see ambiguity, clarify assumptions with the team before coding.
+- Default to Django Crispy Forms for HTML forms. If a legacy form is not
+  using Crispy, capture a TODO in the docs or tracking issue before diverging.
 
 ## Ready-to-Help Checklist
 

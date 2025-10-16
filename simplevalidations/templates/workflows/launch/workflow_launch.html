@@ -1,0 +1,28 @@
+{% extends "app_base.html" %}
+
+{% load i18n humanize core_tags %}
+
+{% block title %}
+  {{ workflow.name }} · {% trans "Launch Workflow" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="workflow-launch">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-boxes me-2"></i>{% trans "Launch Workflow " %} "{{ workflow.name }}"
+        </h1>
+      </div>
+    </div>
+
+    <div id="workflow-launch-panel">
+      {% include "workflows/launch/_launch_panel.html" with workflow=workflow launch_form=launch_form can_execute=can_execute active_run=active_run recent_runs=recent_runs polling_statuses=polling_statuses %}
+    </div>
+  </div>
+{% endblock app_content %}

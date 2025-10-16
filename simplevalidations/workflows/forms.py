@@ -14,11 +14,14 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
+from simplevalidations.users.models import User
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Validator
+from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowPublicInfo
 
 AI_TEMPLATES = (
     ("ai_critic", _("AI Critic")),
@@ -133,7 +136,15 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 class WorkflowForm(forms.ModelForm):
     class Meta:
         model = Workflow
-        fields = ["name", "slug", "project", "version", "is_active"]
+        fields = [
+            "name",
+            "slug",
+            "project",
+            "featured_image",
+            "version",
+            "is_active",
+            "make_info_public",
+        ]
         help_texts = {
             "version": _("Optional label to help you track iterations."),
             "is_active": _(
@@ -150,14 +161,26 @@ class WorkflowForm(forms.ModelForm):
             Field("name", placeholder=_("Name your workflow"), autofocus=True),
             Field("slug", placeholder=""),
             Field("project"),
+            Field("featured_image"),
             Field("version", placeholder="e.g. 1.0"),
             Field("is_active"),
+            Field("make_info_public"),
         )
         self._configure_project_field()
         self.fields["is_active"].label = _("Workflow active")
         self.fields["is_active"].help_text = _(
             "When unchecked, teammates can still view the workflow but cannot "
             "launch runs until you reactivate it.",
+        )
+        self.fields["make_info_public"].label = _("Make info public")
+        self.fields["make_info_public"].help_text = _(
+            "Allows non-logged in users to see details of the workflow validation.",
+        )
+        self.fields["featured_image"].widget = forms.ClearableFileInput()
+        self.fields["featured_image"].widget.attrs.update({"class": "form-control"})
+        self.fields["featured_image"].label = _("Featured image")
+        self.fields["featured_image"].help_text = _(
+            "Optional image shown on the workflow info page.",
         )
 
     def clean_name(self):
@@ -192,6 +215,111 @@ class WorkflowForm(forms.ModelForm):
             default_project = projects.filter(is_default=True).first()
             if default_project:
                 project_field.initial = default_project.pk
+
+
+class WorkflowLaunchForm(forms.Form):
+    filename = forms.CharField(
+        label=_("Filename"),
+        required=False,
+        help_text=_("Optional override used for inline submissions."),
+    )
+    content_type = forms.ChoiceField(
+        label=_("Content type"),
+        choices=[],
+    )
+    payload = forms.CharField(
+        label=_("Inline content"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 10,
+                "placeholder": _('{ "example": "value" }'),
+            },
+        ),
+        help_text=_(
+            "Paste JSON, XML, or text. Leave blank when uploading a file.",
+        ),
+    )
+    attachment = forms.FileField(
+        label=_("Attachment"),
+        required=False,
+        help_text=_("Upload a file instead of pasting inline content."),
+    )
+    metadata = forms.CharField(
+        label=_("Metadata (JSON)"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 4,
+                "placeholder": _('{"source": "ui"}'),
+            },
+        ),
+        help_text=_("Optional JSON payload stored with the submission."),
+    )
+
+    def __init__(self, *args, workflow: Workflow, user: User | None = None, **kwargs):
+        self.workflow = workflow
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self._apply_bootstrap_styles()
+        self._configure_content_type_field()
+
+    def _configure_content_type_field(self) -> None:
+        content_type_field = self.fields["content_type"]
+        choices: list[tuple[str, str]] = []
+        for content_type, file_type in SUPPORTED_CONTENT_TYPES.items():
+            label = f"{file_type.label} ({content_type})"
+            choices.append((content_type, label))
+        content_type_field.choices = choices
+        if not content_type_field.initial:
+            content_type_field.initial = "application/json"
+
+    def _apply_bootstrap_styles(self) -> None:
+        for field in self.fields.values():
+            widget = field.widget
+            base_class = widget.attrs.get("class", "")
+            match widget.__class__.__name__:
+                case "Select":
+                    widget.attrs["class"] = f"{base_class} form-select".strip()
+                case "Textarea":
+                    widget.attrs["class"] = f"{base_class} form-control".strip()
+                case "ClearableFileInput" | "FileInput":
+                    widget.attrs["class"] = f"{base_class} form-control".strip()
+                case _:
+                    widget.attrs["class"] = f"{base_class} form-control".strip()
+
+    def clean(self):
+        cleaned = super().clean()
+        payload = (cleaned.get("payload") or "").strip()
+        attachment = cleaned.get("attachment")
+        if payload and attachment:
+            raise forms.ValidationError(
+                _("Provide inline content or upload a file, not both."),
+            )
+        if not payload and not attachment:
+            raise forms.ValidationError(
+                _("Paste content or upload a file to launch the workflow."),
+            )
+
+        content_type = cleaned.get("content_type")
+        if content_type not in SUPPORTED_CONTENT_TYPES:
+            raise forms.ValidationError(
+                _("Select a supported content type."),
+            )
+        cleaned["payload"] = payload
+
+        metadata = cleaned.get("metadata")
+        if metadata:
+            try:
+                cleaned["metadata"] = json.loads(metadata)
+            except json.JSONDecodeError as exc:
+                raise forms.ValidationError(
+                    _("Metadata must be valid JSON."),
+                ) from exc
+        else:
+            cleaned["metadata"] = {}
+
+        return cleaned
 
 
 class WorkflowStepTypeForm(forms.Form):
@@ -488,3 +616,41 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,
     }
     return mapping.get(validation_type, BaseStepConfigForm)
+
+
+class WorkflowPublicInfoForm(forms.ModelForm):
+    class Meta:
+        model = WorkflowPublicInfo
+        fields = ["title", "content_md"]
+        widgets = {
+            "title": forms.TextInput(
+                attrs={"placeholder": _("Optional headline for the public page")},
+            ),
+            "content_md": forms.Textarea(
+                attrs={
+                    "rows": 12,
+                    "placeholder": _(
+                        "# Overview\nDescribe the workflow for public viewers...",
+                    ),
+                },
+            ),
+        }
+
+    def __init__(self, *args, workflow: Workflow, **kwargs):
+        self.workflow = workflow
+        instance = kwargs.get("instance")
+        if instance is None:
+            instance = workflow.get_public_info
+            kwargs["instance"] = instance
+        super().__init__(*args, **kwargs)
+        self.fields["title"].label = _("Public title")
+        self.fields["content_md"].label = _("Public description (Markdown)")
+        self.fields["title"].widget.attrs.setdefault("class", "form-control")
+        self.fields["content_md"].widget.attrs.setdefault("class", "form-control")
+        self.fields["title"].required = False
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Field("title"),
+            Field("content_md"),
+        )

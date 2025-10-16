@@ -27,7 +27,6 @@
           {% else %}
             {% trans "New Workflow" %}
           {% endif %}
-
         </h1>
       </div>
     </div>
@@ -36,7 +35,7 @@
       <div class="col-12 ">
         <div class="card shadow-sm app-form-card">
           <div class="card-body">
-            <form method="post" novalidate>
+            <form method="post" enctype="multipart/form-data" novalidate>
               {% csrf_token %}
               {% crispy form %}
 

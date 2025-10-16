@@ -8,12 +8,14 @@ from django.urls import reverse
 from django.utils.html import strip_tags
 from model_utils.models import TimeStampedModel
 
+from simplevalidations.core.mixins import FeaturedImageMixin
+
 User = get_user_model()
 
 STATUS = ((0, "Draft"), (1, "Publish"))
 
 
-class BlogPost(TimeStampedModel):
+class BlogPost(FeaturedImageMixin, TimeStampedModel):
     title = models.CharField(max_length=250, unique=False)
 
     summary = models.CharField(max_length=500, blank=True, default="")
@@ -61,21 +63,10 @@ class BlogPost(TimeStampedModel):
         preview = strip_tags(content).strip()
         return (preview[:200] + "...") if len(preview) > 200 else preview
 
-    def get_featured_image_alt(self) -> str:
-        return (self.featured_image_alt or self.title or "").strip()
-
-    def get_featured_image_url(self) -> str | None:
-        image_file = getattr(self, "featured_image", None)
-        if not image_file:
-            return None
-        try:
-            return image_file.url
-        except (ValueError, AttributeError):
-            return None
-
-    def has_featured_image(self) -> bool:
-        exists = bool(self.get_featured_image_url())
-        return exists
+    featured_image_alt_candidates = (
+        "featured_image_alt",
+        "title",
+    )
 
     def get_absolute_url(self) -> str:
         return reverse(

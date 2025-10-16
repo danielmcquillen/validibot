@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.models import ensure_default_project
@@ -10,6 +11,8 @@ from simplevalidations.users.tests.factories import (
     UserFactory,
 )
 from simplevalidations.workflows.forms import WorkflowForm
+from simplevalidations.workflows.forms import WorkflowLaunchForm
+from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -62,3 +65,100 @@ def test_workflow_form_saves_selected_project():
     workflow.save()
 
     assert workflow.project == default_project
+
+
+def test_workflow_launch_form_accepts_inline_payload():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowLaunchForm(
+        data={
+            "content_type": "application/json",
+            "payload": '{"hello": "world"}',
+            "metadata": '{"source": "ui"}',
+        },
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["metadata"] == {"source": "ui"}
+
+
+def test_workflow_launch_form_accepts_file_upload():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+
+    uploaded = SimpleUploadedFile(
+        "document.json",
+        b"{}",
+        content_type="application/json",
+    )
+    form = WorkflowLaunchForm(
+        data={"content_type": "application/json"},
+        files={"attachment": uploaded},
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+
+
+def test_workflow_launch_form_rejects_both_inputs():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+
+    uploaded = SimpleUploadedFile(
+        "document.json",
+        b"{}",
+        content_type="application/json",
+    )
+    form = WorkflowLaunchForm(
+        data={
+            "content_type": "application/json",
+            "payload": "{}",
+        },
+        files={"attachment": uploaded},
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert any(
+        "Provide inline content" in error for error in form.errors["__all__"]
+    )
+
+
+def test_workflow_launch_form_rejects_invalid_metadata():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowLaunchForm(
+        data={
+            "content_type": "application/json",
+            "payload": "{}",
+            "metadata": "not-json",
+        },
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert any("Metadata must be valid JSON." in error for error in form.errors["__all__"])
+
+
+def test_workflow_launch_form_rejects_unsupported_content_type():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowLaunchForm(
+        data={
+            "content_type": "application/pdf",
+            "payload": "{}",
+        },
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert not form.is_valid()
+    assert any("Select a supported content type." in error for error in form.errors["__all__"])

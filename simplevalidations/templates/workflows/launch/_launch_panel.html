@@ -1,0 +1,145 @@
+{% load i18n core_tags %}
+
+{% if not workflow.is_active %}
+  <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+    <i class="bi-pause-circle-fill fs-4"></i>
+    <div>
+      <p class="mb-1 fw-semibold">
+        {% trans "This workflow is currently inactive." %}
+      </p>
+      <p class="mb-1">
+        {% trans "Re-enable the workflow from the settings page before launching new runs." %}
+      </p>
+      <a class="btn btn-sm btn-outline-primary mt-2"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        {% trans "Manage workflow" %}
+      </a>
+    </div>
+  </div>
+{% elif not can_execute %}
+  <div class="alert alert-warning d-flex align-items-center" role="alert">
+    <i class="bi-exclamation-triangle-fill me-2"></i>
+    <div>
+      {% blocktrans %}
+        You do not have permission to run this workflow. Contact an organization admin to request the Executor role.
+      {% endblocktrans %}
+    </div>
+  </div>
+  <p class="text-muted">
+    {% trans "You can still review the workflow configuration from the Info tab." %}
+  </p>
+{% else %}
+  <div class="row g-4 align-items-start">
+    <div class="col-12 col-xl-7">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <span class="fw-semibold">{% trans "Submit content" %}</span>
+        </div>
+        <div class="card-body">
+          <form method="post"
+                action="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
+                enctype="multipart/form-data"
+                class="d-flex flex-column gap-3"
+                hx-post="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
+                hx-target="#workflow-launch-panel"
+                hx-swap="innerHTML"
+                hx-indicator="#workflow-launch-submit-indicator">
+            {% csrf_token %}
+            {% if launch_form.non_field_errors %}
+              <div class="alert alert-danger" role="alert">
+                {{ launch_form.non_field_errors }}
+              </div>
+            {% endif %}
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <label class="form-label fw-semibold">
+                  {{ launch_form.content_type.label }}
+                </label>
+                {{ launch_form.content_type }}
+                {{ launch_form.content_type.errors }}
+              </div>
+            </div>
+            <div>
+              <label class="form-label fw-semibold">
+                {{ launch_form.filename.label }}
+              </label>
+              {{ launch_form.filename }}
+              {% if launch_form.filename.help_text %}
+                <div class="form-text">
+                  {{ launch_form.filename.help_text }}
+                </div>
+              {% endif %}
+              {{ launch_form.filename.errors }}
+            </div>
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <label class="form-label fw-semibold">
+                  {{ launch_form.payload.label }}
+                </label>
+                {{ launch_form.payload }}
+                {% if launch_form.payload.help_text %}
+                  <div class="form-text">
+                    {{ launch_form.payload.help_text }}
+                  </div>
+                {% endif %}
+                {{ launch_form.payload.errors }}
+              </div>
+              <div class="col-12 col-lg-6">
+                <label class="form-label fw-semibold">
+                  {{ launch_form.attachment.label }}
+                </label>
+                {{ launch_form.attachment }}
+                {% if launch_form.attachment.help_text %}
+                  <div class="form-text">
+                    {{ launch_form.attachment.help_text }}
+                  </div>
+                {% endif %}
+                {{ launch_form.attachment.errors }}
+              </div>
+            </div>
+            <div>
+              <label class="form-label fw-semibold">
+                {{ launch_form.metadata.label }}
+              </label>
+              {{ launch_form.metadata }}
+              {% if launch_form.metadata.help_text %}
+                <div class="form-text">
+                  {{ launch_form.metadata.help_text }}
+                </div>
+              {% endif %}
+              {{ launch_form.metadata.errors }}
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <button type="submit" class="btn btn-primary">
+                <span id="workflow-launch-submit-indicator"
+                      class="spinner-border spinner-border-sm me-2 htmx-indicator"
+                      role="status"
+                      aria-hidden="true"></span>
+                {% trans "Run validation" %}
+              </button>
+              <small class="text-muted">
+                {% trans "The workflow runs asynchronously. Leave this tab open to watch progress." %}
+              </small>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-5">
+      {% if active_run %}
+        <div id="workflow-launch-run-status">
+          {% include "workflows/launch/_run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=active_run_is_polling polling_statuses=polling_statuses status_url=None %}
+        </div>
+      {% else %}
+        <div class="card shadow-sm h-100">
+          <div class="card-body d-flex flex-column justify-content-center align-items-center text-center text-muted p-5">
+            <i class="bi-rocket text-secondary display-5 mb-3"></i>
+            <p class="mb-0">
+              {% trans "Submit content to monitor the validation run here." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

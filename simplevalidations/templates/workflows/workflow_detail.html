@@ -31,23 +31,38 @@
 
       <div class="col-12 col-lg-8 d-flex flex-column align-items-end">
         <div class="d-flex flex-wrap gap-2 justify-content-end">
-          <a class="btn btn-outline-danger"
+
+          {# link to launch #}
+          <a class="btn btn-light"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "Start a new validation run with this workflow" %}"
+             href="{% url 'workflows:workflow_launch' workflow.pk %}">
+            <i class="bi-rocket me-1"></i>
+          </a>
+
+          <a class="btn btn-light"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "View Validations" %}"
+             href="{{ related_validations_url }}">
+            <i class="bi-diagram-3"></i>
+          </a>
+          <a class="btn btn-danger"
              hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
              hx-target="body"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "Delete this workflow" %}"
              hx-confirm="{% trans "Delete this workflow?" %}">
-            <i class="bi-trash me-1"></i>
-            {% trans "Delete" %}
-          </a>
-          <a class="btn btn-outline-primary" href="{{ related_validations_url }}">
-            <i class="bi-diagram-3 me-1"></i>
-            {% trans "View Validations" %}
+            <i class="bi-trash"></i>
           </a>
         </div>
       </div>
     </div>
 
     <div class="row">
-      <div class="col-12 col-lg-7">
+      <div class="col-12 col-lg-6 col-xxl-8">
         <div class="card shadow-sm mb-4" id="workflow-step-editor-card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <div>
@@ -74,7 +89,7 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-5">
+      <div class="col-12 col-lg-6 col-xxl-4">
         <div class="card shadow-sm mb-3">
           <div class="card-header d-flex align-items-center">
             <div class="d-flex align-items-center gap-2 me-auto">
@@ -89,28 +104,43 @@
                 {% csrf_token %}
                 {% if workflow.is_active %}
                   <input type="hidden" name="is_active" value="false" />
-                  <button type="submit" class="btn btn-outline-warning btn-sm">
-                    <i class="bi-pause-circle me-1"></i>
-                    {% trans "Disable workflow" %}
+                  <button type="submit"
+                          data-bs-toggle="tooltip"
+                          data-bs-placement="top"
+                          title="{% trans 'Disable workflow' %}"
+                          class="btn btn-warning btn-sm">
+                    <i class="bi-pause-circle"></i>
                   </button>
                 {% else %}
                   <input type="hidden" name="is_active" value="true" />
-                  <button type="submit" class="btn btn-outline-success btn-sm">
-                    <i class="bi-play-circle me-1"></i>
-                    {% trans "Enable workflow" %}
+                  <button type="submit"
+                          data-bs-toggle="tooltip"
+                          data-bs-placement="top"
+                          title="{% trans 'Enable workflow' %}"
+                          class="btn btn-success btn-sm">
+                    <i class="bi-play-circle me"></i>
                   </button>
                 {% endif %}
               </form>
             {% endif %}
-            <a class="btn btn-sm btn-primary ms-2"
+            <a class="btn btn-sm btn-light ms-2"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                aria-label="{% trans "Edit workflow details" %}"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
                title="{% trans "Workflow settings" %}">
               <i class="bi bi-gear-fill"></i>
-              {% trans "Edit Details" %}
             </a>
           </div>
+          {% if workflow.has_featured_image %}
+            <img src="{{ workflow.get_featured_image_url }}"
+                 class="card-img-top"
+                 alt="{% blocktrans with name=workflow.name %}
+                        Image for workflow {{ name }}
+                      {% endblocktrans %}" />
+          {% endif %}
           <div class="card-body">
+
             <dl class="row mb-0">
               <dt class="col-sm-4">
                 {% trans "Name" %}
@@ -135,6 +165,39 @@
                   </small>
 
                 </div>
+              </dd>
+
+              <dt class="col-sm-4">
+                {% trans "Info visibility" %}
+              </dt>
+              <dd class="col-sm-8">
+                {% if public_info_url %}
+                  <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
+                    <span class="badge text-bg-primary align-self-start me-2">
+                      {% trans "Public" %}
+                    </span>
+                    <a href="{{ public_info_url }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="btn btn-link btn-sm px-0">
+                      <i class="bi-box-arrow-up-right me-1"></i>{% trans "View public info" %}
+                    </a>
+                    <a class="btn btn-sm btn-outline-primary"
+                       href="{% org_url 'workflows:workflow_public_info_edit' pk=workflow.pk %}">
+                      <i class="bi-pencil me-1"></i>{% trans "Edit public info" %}
+                    </a>
+                  </div>
+                {% else %}
+                  <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
+                    <span class="badge text-bg-secondary">
+                      {% trans "Private" %}
+                    </span>
+                    <a class="btn btn-sm btn-outline-primary"
+                       href="{% org_url 'workflows:workflow_public_info_edit' pk=workflow.pk %}">
+                      <i class="bi-pencil me-1"></i>{% trans "Add public info" %}
+                    </a>
+                  </div>
+                {% endif %}
               </dd>
 
               <dt class="col-sm-4">

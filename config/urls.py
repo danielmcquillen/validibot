@@ -17,6 +17,7 @@ from simplevalidations.blog.sitemaps import BlogPostSitemap
 from simplevalidations.core import views as core_views
 from simplevalidations.marketing import views as marketing_views
 from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
+from simplevalidations.workflows import views as workflow_views
 
 # from django_github_app.views import AsyncWebhookView
 
@@ -39,6 +40,11 @@ urlpatterns = [
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),
         name="about",
+    ),
+    path(
+        "workflows/<uuid:workflow_uuid>/info/",
+        workflow_views.WorkflowPublicInfoView.as_view(),
+        name="workflow_public_info",
     ),
     # Admin URLs...
     path(settings.ADMIN_URL, admin.site.urls),

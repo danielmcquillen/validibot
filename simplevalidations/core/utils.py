@@ -1,3 +1,5 @@
+import bleach
+import markdown as md
 from django.http import HttpRequest
 from django.urls import reverse
 
@@ -30,3 +32,77 @@ def get_request_ip(request: HttpRequest) -> str | None:
     if remote_addr:
         return remote_addr.strip()
     return None
+
+
+ALLOWED_TAGS = [
+    # structure
+    "p",
+    "br",
+    "hr",
+    "blockquote",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "dl",
+    "dt",
+    "dd",
+    # inline
+    "a",
+    "strong",
+    "em",
+    "code",
+    "kbd",
+    "samp",
+    "sub",
+    "sup",
+    "span",
+    # tables & images (if you want them)
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "img",
+]
+ALLOWED_ATTRS = {
+    "a": ["href", "title", "target", "rel"],
+    "img": ["src", "alt", "title", "width", "height"],
+    "th": ["colspan", "rowspan"],
+    "td": ["colspan", "rowspan"],
+    "span": ["class"],
+    "code": ["class"],
+}
+ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
+
+
+def render_markdown_safe(text_md: str) -> str:
+    html = md.markdown(
+        text_md or "", extensions=["extra", "codehilite", "toc", "sane_lists", "tables"]
+    )
+    # First pass: clean
+    html = bleach.clean(
+        html,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRS,
+        protocols=ALLOWED_PROTOCOLS,
+        strip=True,
+    )
+
+    # Second pass: linkify + safe target/rel
+    def set_target(attrs, new=False):
+        href = attrs.get("href", "")
+        if href.startswith(("http://", "https://")):
+            attrs["target"] = "_blank"
+            attrs["rel"] = "noopener nofollow ugc"
+        return attrs
+
+    html = bleach.linkify(html, callbacks=[set_target])
+    return html

@@ -12437,8 +12437,8 @@ h4 {
   margin-right: 1rem;
 }
 #app-top-bar #user-profile-selector button {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.2rem;
+  height: 2.2rem;
 }
 #app-top-bar #user-profile-selector .user-avatar {
   width: 100%;
@@ -12834,13 +12834,13 @@ h4 {
 }
 
 .app-content-header-bar {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.03);
   display: flex;
   flex-direction: row;
   align-items: center;
   margin-bottom: 1rem;
   border-radius: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.2rem;
   margin: 10px 0 1rem;
   min-height: 3rem;
 }

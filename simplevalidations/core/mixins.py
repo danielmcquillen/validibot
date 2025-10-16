@@ -29,3 +29,40 @@ class BreadcrumbMixin:
         context = super().get_context_data(**kwargs)
         context["breadcrumbs"] = self.get_breadcrumbs()
         return context
+
+
+class FeaturedImageMixin:
+    """
+    Provides helper accessors for models that expose an optional `featured_image`
+    FileField. Subclasses can override `featured_image_field_name` or
+    `featured_image_alt_candidates` to tweak behaviour.
+    """
+
+    featured_image_field_name = "featured_image"
+    featured_image_alt_candidates = (
+        "featured_image_alt",
+        "title",
+        "name",
+    )
+
+    def get_featured_image_url(self) -> str | None:
+        image_file = getattr(self, self.featured_image_field_name, None)
+        if not image_file:
+            return None
+        try:
+            return image_file.url
+        except (ValueError, AttributeError):
+            return None
+
+    def get_featured_image_alt(self) -> str:
+        for attr in self.featured_image_alt_candidates:
+            value = getattr(self, attr, None)
+            if not value:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
+
+    def has_featured_image(self) -> bool:
+        return bool(self.get_featured_image_url())

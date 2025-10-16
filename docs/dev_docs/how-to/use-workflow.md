@@ -98,4 +98,18 @@ Poll the Location until status is SUCCEEDED or FAILED.
 - JSON envelope: when you must bundle metadata and can’t rely on custom headers.
 - Multipart: large files or browser uploads.
 
+## Run from the App UI
+
+When teammates need to test a workflow without writing code, send them to
+`/app/workflows/<workflow id>/launch/`. The page shows two tabs:
+
+- **Info** – read-only metadata about the workflow, steps, and recent runs.
+- **Run** – an inline form that accepts either pasted content or an uploaded
+  file. As soon as they submit, the page streams run status updates until the
+  run succeeds or fails.
+
+Users still need the EXECUTOR role in the workflow’s organization to access the
+Run tab. If you enable the *Make info public* flag, the Info tab is also
+available without authentication at `/workflows/<workflow uuid>/info`.
+
 All modes end up identical after ingestion: a Submission plus a queued ValidationRun.

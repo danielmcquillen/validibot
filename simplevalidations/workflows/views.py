@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import uuid
 from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
@@ -9,6 +10,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import models
 from django.db import transaction
@@ -17,10 +19,13 @@ from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.urls import reverse
+from django.utils.functional import Promise
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import DetailView
 from django.views.generic import ListView
+from django.views.generic import TemplateView
 from django.views.generic import UpdateView
 from django.views.generic.edit import CreateView
 from django.views.generic.edit import DeleteView
@@ -40,6 +45,8 @@ from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Ruleset
@@ -52,6 +59,8 @@ from simplevalidations.workflows.forms import AiAssistStepConfigForm
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
 from simplevalidations.workflows.forms import WorkflowForm
+from simplevalidations.workflows.forms import WorkflowLaunchForm
+from simplevalidations.workflows.forms import WorkflowPublicInfoForm
 from simplevalidations.workflows.forms import WorkflowStepTypeForm
 from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.forms import get_config_form_class
@@ -404,6 +413,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
 class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """Reusable helpers for workflow UI views."""
+
     manager_role_codes = {
         RoleCode.OWNER,
         RoleCode.ADMIN,
@@ -492,6 +502,13 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        workflows = list(context["workflows"])
+        context["workflows"] = workflows
+        context["object_list"] = workflows
+        user = self.request.user
+        for wf in workflows:
+            wf.can_execute_cached = wf.can_execute(user=user)
+
         context.update(
             {
                 "search_query": self.request.GET.get("q", ""),
@@ -540,6 +557,435 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 "recent_runs": recent_runs,
                 "max_step_count": MAX_STEP_COUNT,
                 "can_manage_activation": self.user_can_manage_workflow(),
+                "public_info_url": (
+                    self.request.build_absolute_uri(
+                        reverse(
+                            "workflow_public_info",
+                            kwargs={"workflow_uuid": workflow.uuid},
+                        ),
+                    )
+                    if workflow.make_info_public
+                    else None
+                ),
+            },
+        )
+        return context
+
+
+class WorkflowLaunchContextMixin(WorkflowObjectMixin):
+    launch_panel_template_name = "workflows/launch/_launch_panel.html"
+    run_status_template_name = "workflows/launch/_run_status.html"
+    polling_statuses = {
+        ValidationRunStatus.PENDING,
+        ValidationRunStatus.RUNNING,
+    }
+
+    def get_recent_runs(self, workflow: Workflow, limit: int = 5):
+        return list(
+            ValidationRun.objects.filter(workflow=workflow)
+            .select_related("submission", "user")
+            .order_by("-created")[:limit],
+        )
+
+    def get_launch_form(
+        self,
+        *,
+        workflow: Workflow,
+        data=None,
+        files=None,
+    ) -> WorkflowLaunchForm:
+        return WorkflowLaunchForm(
+            data=data,
+            files=files,
+            workflow=workflow,
+            user=self.request.user,
+        )
+
+    def load_run_for_display(
+        self,
+        *,
+        workflow: Workflow,
+        run_id,
+    ) -> ValidationRun | None:
+        if not run_id:
+            return None
+        try:
+            uuid_val = (
+                run_id if isinstance(run_id, uuid.UUID) else uuid.UUID(str(run_id))
+            )
+        except (TypeError, ValueError):
+            return None
+        return (
+            ValidationRun.objects.filter(pk=uuid_val, workflow=workflow)
+            .select_related("submission", "user")
+            .prefetch_related("step_runs", "step_runs__workflow_step", "findings")
+            .first()
+        )
+
+    def build_launch_context(
+        self,
+        *,
+        workflow: Workflow,
+        form: WorkflowLaunchForm,
+        active_run: ValidationRun | None,
+    ) -> dict[str, object]:
+        if active_run:
+            step_runs = list(active_run.step_runs.order_by("step_order"))
+            findings = list(active_run.findings.order_by("severity", "-created")[:10])
+            polling = active_run.status in self.polling_statuses
+        else:
+            step_runs = []
+            findings = []
+            polling = False
+        return {
+            "workflow": workflow,
+            "launch_form": form,
+            "can_execute": workflow.can_execute(user=self.request.user),
+            "recent_runs": self.get_recent_runs(workflow),
+            "active_run": active_run,
+            "active_run_step_runs": step_runs,
+            "active_run_findings": findings,
+            "active_run_is_polling": polling,
+            "polling_statuses": self.polling_statuses,
+        }
+
+
+class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
+    template_name = "workflows/launch/workflow_launch.html"
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Run"), "url": ""})
+        return breadcrumbs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        can_execute = workflow.can_execute(user=self.request.user)
+        form = self.get_launch_form(workflow=workflow) if can_execute else None
+        context.update(
+            {
+                "workflow": workflow,
+                "recent_runs": self.get_recent_runs(workflow),
+                "can_execute": can_execute,
+                "launch_form": form,
+                "active_run": None,
+                "active_run_step_runs": [],
+                "active_run_findings": [],
+                "active_run_is_polling": False,
+                "polling_statuses": self.polling_statuses,
+            },
+        )
+        return context
+
+
+class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        can_execute = workflow.can_execute(user=request.user)
+        if not can_execute:
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=None,
+                active_run=None,
+                status_code=403,
+                toast={
+                    "level": "danger",
+                    "message": str(_("You cannot run this workflow.")),
+                },
+            )
+
+        form = self.get_launch_form(
+            workflow=workflow,
+            data=request.POST,
+            files=request.FILES,
+        )
+
+        if not form.is_valid():
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=form,
+                active_run=None,
+                status_code=400,
+            )
+
+        try:
+            submission = self._create_submission(
+                request=request,
+                workflow=workflow,
+                form=form,
+            )
+        except ValidationError as exc:
+            form.add_error(None, exc.message if hasattr(exc, "message") else str(exc))
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=form,
+                active_run=None,
+                status_code=400,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception(
+                "Failed to prepare submission for workflow run.", exc_info=exc
+            )
+            form.add_error(
+                None, _("Something went wrong while preparing the submission.")
+            )
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=form,
+                active_run=None,
+                status_code=500,
+            )
+
+        try:
+            service = ValidationRunService()
+            response = service.launch(
+                request,
+                org=workflow.org,
+                workflow=workflow,
+                submission=submission,
+                user_id=getattr(request.user, "id", None),
+                metadata=form.cleaned_data.get("metadata"),
+            )
+        except PermissionError as exc:
+            logger.info("Permission denied running workflow %s: %s", workflow.pk, exc)
+            form.add_error(
+                None, _("You do not have permission to run this workflow.")
+            )
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=form,
+                active_run=None,
+                status_code=403,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception(
+                "Run service errored for workflow %s", workflow.pk, exc_info=exc
+            )
+            form.add_error(None, _("Could not run the workflow. Please try again."))
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=form,
+                active_run=None,
+                status_code=500,
+            )
+
+        run_id = None
+        response_data = getattr(response, "data", None)
+        if isinstance(response_data, dict):
+            run_id = response_data.get("id")
+
+        active_run = self.load_run_for_display(workflow=workflow, run_id=run_id)
+
+        toast_payload = {
+            "level": "success",
+            "message": str(_("Validation run started.")),
+        }
+
+        return self._launch_response(
+            request,
+            workflow=workflow,
+            form=self.get_launch_form(workflow=workflow),
+            active_run=active_run,
+            status_code=getattr(response, "status_code", 200),
+            toast=toast_payload,
+        )
+
+    def _create_submission(
+        self,
+        *,
+        request,
+        workflow: Workflow,
+        form: WorkflowLaunchForm,
+    ) -> Submission:
+        cleaned = form.cleaned_data
+        payload = cleaned.get("payload")
+        attachment = cleaned.get("attachment")
+        content_type = cleaned["content_type"]
+        filename = cleaned.get("filename") or ""
+        metadata = cleaned.get("metadata") or {}
+        file_type = SUPPORTED_CONTENT_TYPES[content_type]
+
+        submission = Submission(
+            org=workflow.org,
+            workflow=workflow,
+            user=request.user
+            if getattr(request.user, "is_authenticated", False)
+            else None,
+            project=workflow.project,
+            name="",
+            metadata=metadata,
+            checksum_sha256="",
+        )
+
+        if attachment:
+            max_file = int(
+                getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
+            )
+            ingest = prepare_uploaded_file(
+                uploaded_file=attachment,
+                filename=filename,
+                content_type=content_type,
+                max_bytes=max_file,
+            )
+            safe_filename = ingest.filename
+            submission.name = safe_filename
+            submission.checksum_sha256 = ingest.sha256
+            submission.set_content(
+                uploaded_file=attachment,
+                filename=safe_filename,
+                file_type=file_type,
+            )
+        else:
+            safe_filename, ingest = prepare_inline_text(
+                text=payload,
+                filename=filename,
+                content_type=content_type,
+                deny_magic_on_text=True,
+            )
+            submission.name = safe_filename
+            submission.checksum_sha256 = ingest.sha256
+            submission.set_content(
+                inline_text=payload,
+                filename=safe_filename,
+                file_type=file_type,
+            )
+
+        with transaction.atomic():
+            submission.full_clean()
+            submission.save()
+        return submission
+
+    def _launch_response(
+        self,
+        request,
+        *,
+        workflow: Workflow,
+        form: WorkflowLaunchForm | None,
+        active_run: ValidationRun | None,
+        status_code: int,
+        toast: dict[str, str] | None = None,
+    ):
+        form = form or self.get_launch_form(workflow=workflow)
+        context = self.build_launch_context(
+            workflow=workflow,
+            form=form,
+            active_run=active_run,
+        )
+        template_name = self.launch_panel_template_name
+        if request.headers.get("HX-Request") == "true":
+            response = render(
+                request,
+                template_name,
+                context=context,
+                status=status_code,
+            )
+        else:
+            response = render(
+                request,
+                "workflows/launch/workflow_launch.html",
+                context=context,
+                status=status_code,
+            )
+        if toast:
+            sanitized_toast = {
+                key: str(value) if isinstance(value, Promise) else value
+                for key, value in toast.items()
+            }
+            response["HX-Trigger"] = json.dumps({"toast": sanitized_toast})
+        return response
+
+
+class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
+    http_method_names = ["get"]
+
+    def get(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        run_id = kwargs.get("run_id")
+        run = self.load_run_for_display(workflow=workflow, run_id=run_id)
+        if run is None:
+            raise Http404
+
+        context = {
+            "workflow": workflow,
+            "run": run,
+            "step_runs": run.step_runs.order_by("step_order"),
+            "findings": run.findings.order_by("severity", "-created")[:10],
+            "is_polling": run.status in self.polling_statuses,
+            "polling_statuses": self.polling_statuses,
+            "status_url": reverse_with_org(
+                "workflows:workflow_launch_status",
+                request=request,
+                kwargs={"pk": workflow.pk, "run_id": run.pk},
+            ),
+            "detail_url": reverse_with_org(
+                "validations:validation_detail",
+                request=request,
+                kwargs={"pk": run.pk},
+            ),
+        }
+        return render(
+            request,
+            self.run_status_template_name,
+            context=context,
+        )
+
+
+class WorkflowPublicInfoView(DetailView):
+    template_name = "workflows/public/workflow_info.html"
+    context_object_name = "workflow"
+    slug_field = "uuid"
+    slug_url_kwarg = "workflow_uuid"
+    def get_queryset(self):
+        return (
+            Workflow.objects.filter(make_info_public=True)
+            .select_related("org", "project", "user")
+            .prefetch_related("steps")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = context["workflow"]
+        user = self.request.user
+        context.update(
+            {
+                "steps": workflow.steps.all().order_by("order"),
+                "recent_runs": list(
+                    workflow.validation_runs.select_related("user").order_by(
+                        "-created"
+                    )[:5],
+                ),
+                "user_has_access": (
+                    user.is_authenticated and workflow.can_execute(user=user)
+                ),
             },
         )
         return context
@@ -686,6 +1132,67 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
         return HttpResponseRedirect(success_url)
 
 
+class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
+    template_name = "workflows/workflow_public_info_form.html"
+    form_class = WorkflowPublicInfoForm
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_object(self, queryset=None):
+        return self.get_workflow().get_public_info
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["workflow"] = self.get_workflow()
+        return kwargs
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        messages.success(self.request, _("Public workflow info updated."))
+        return response
+
+    def get_success_url(self):
+        return reverse_with_org(
+            "workflows:workflow_public_info_edit",
+            request=self.request,
+            kwargs={"pk": self.get_workflow().pk},
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        context.update({"workflow": workflow})
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Public info"), "url": ""})
+        return breadcrumbs
+
+
 class WorkflowActivationUpdateView(WorkflowObjectMixin, View):
     """Toggle workflow availability."""
 
@@ -708,12 +1215,16 @@ class WorkflowActivationUpdateView(WorkflowObjectMixin, View):
             if new_state:
                 messages.success(
                     request,
-                    _("Workflow reactivated. New validation runs can start immediately."),
+                    _(
+                        "Workflow reactivated. New validation runs can start immediately."
+                    ),
                 )
             else:
                 messages.info(
                     request,
-                    _("Workflow disabled. Existing runs finish, but new ones are blocked."),
+                    _(
+                        "Workflow disabled. Existing runs finish, but new ones are blocked."
+                    ),
                 )
         else:
             messages.info(

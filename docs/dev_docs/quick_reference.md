@@ -22,6 +22,11 @@ SimpleValidations lets you run validations on submitted content through configur
    - 202 Accepted with a Location you can poll until completion.
 4. Retrieve runs to see status and results. By default, list endpoints show runs from the last 30 days (use `?all=1` for everything).
 5. Owners, Admins, and Authors can temporarily disable a workflow when you need to stop new runs; re-enable it from the workflow detail page when ready.
+6. Use the **Run** page (`/app/workflows/<workflow id>/launch/`) to review read-only workflow details and start manual runs. The Run tab requires EXECUTOR access and streams run updates over HTMX while processing.
+
+### Sharing Workflow Details
+
+- Toggle the **Make info public** setting on a workflow to expose its Info tab at `/workflows/<workflow uuid>/info`. Only the overview panel is shared; launching still requires authentication inside the app.
 
 ### Security and Access
 

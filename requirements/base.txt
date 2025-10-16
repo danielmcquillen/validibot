@@ -35,3 +35,6 @@ django-filter==25.2
 lxml==6.0.2
 # For validating JSON
 jsonschema==4.25.1
+
+# For cleaning markdown after rendering in HTML
+bleach==6.2.0

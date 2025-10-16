@@ -1,0 +1,65 @@
+{% load i18n humanize %}
+
+<style>
+  .public-workflow-hero .hero-image {
+    max-height: 300px;
+
+  }
+</style>
+
+<div class="public-workflow-hero card border-0 shadow-sm overflow-hidden">
+  {% if workflow.has_featured_image %}
+    <div class="ratio ratio-21x9 bg-body-tertiary hero-image">
+      <img src="{{ workflow.get_featured_image_url }}"
+           alt="{{ workflow.get_featured_image_alt }}"
+           class="object-fit-cover w-100 h-100" />
+    </div>
+  {% endif %}
+  <div class="card-body p-4 p-lg-5">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-4">
+      <div class="flex-grow-1 w-50">
+        <h1 class="display-6 fw-semibold mb-2">
+          {{ workflow.name }}
+        </h1>
+      </div>
+      <div class="bg-body-tertiary rounded-3 p-3 w-50 w-lg-auto">
+        <dl class="row small mb-0">
+          <dt class="col-sm-5 text-uppercase text-muted fw-semibold">
+            {% trans "Created" %}
+          </dt>
+          <dd class="col-sm-7">
+            {{ workflow.created|date:"M j, Y" }} · {{ workflow.created|naturaltime }}
+          </dd>
+          <dt class="col-sm-5 text-uppercase text-muted fw-semibold">
+            {% trans "Updated" %}
+          </dt>
+          <dd class="col-sm-7">
+            {{ workflow.modified|date:"M j, Y" }} · {{ workflow.modified|naturaltime }}
+          </dd>
+          <dt class="col-sm-5 text-uppercase text-muted fw-semibold">
+            {% trans "UUID" %}
+          </dt>
+          <dd class="col-sm-7">
+            <code>{{ workflow.uuid }}</code>
+          </dd>
+          <dt class="col-sm-5 text-uppercase text-muted fw-semibold">
+            {% trans "Slug" %}
+          </dt>
+          <dd class="col-sm-7">
+            <code>{{ workflow.slug }}</code>
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if public_info.get_html_content %}
+  <div class="card border-0 shadow-sm mt-4">
+    <div class="card-body p-4 p-lg-5">
+      <div class="markdown-content">
+        {{ public_info.get_html_content|safe }}
+      </div>
+    </div>
+  </div>
+{% endif %}

@@ -21,8 +21,6 @@
   posthog.init('phc_ey8RTRSsxruGtqXsWxF6HQ1d7s89SJZ2YIpJBQmiR3D', {
     api_host: 'https://eu.i.posthog.com',
     defaults: '2025-05-24',
-    {% if request.user.is_superuer %}
     person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
-    {% endif %}
   })
 </script>

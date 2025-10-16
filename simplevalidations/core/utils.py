@@ -91,7 +91,6 @@ def render_markdown_safe(text_md: str) -> str:
             "tables",
             "strike",
             "cuddled-lists",
-            "link-patterns",
         ],
     )
     # First pass: clean

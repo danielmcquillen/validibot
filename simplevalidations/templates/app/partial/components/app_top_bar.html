@@ -1,6 +1,20 @@
 {% load static i18n core_tags %}
 
 <div id="app-top-bar">
+
+    <div id="expand-collapse-btn-wrapper">
+        <button id="app-left-nav-toggle"
+                class="btn btn-sm btn-light"
+                type="button"
+                aria-controls="app-left-nav"
+                aria-expanded="true"
+                aria-label="{% trans 'Hide navigation' %}"
+                data-expanded-label="{% trans 'Hide navigation' %}"
+                data-collapsed-label="{% trans 'Show navigation' %}">
+            <i class="bi bi-list"></i>
+        </button>
+    </div>
+
     <div id="breadcrumbs-wrapper"
          class="
                 {% block breadcrumbs_styles %}
@@ -8,6 +22,7 @@
 
         {% include "core/partial/breadcrumbs.html" %}
     </div>
+
     <div class="app-header-right">
 
         <div id="user-profile-selector" class="dropdown">

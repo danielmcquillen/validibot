@@ -46,12 +46,53 @@ function initializeCharts(root: ParentNode | Document = document): void {
     });
 }
 
+const LEFT_NAV_STORAGE_KEY = 'simplevalidations:leftNavCollapsed'; // Persist the user's collapse preference across pages.
+
+function initAppLeftNavToggle(): void {
+    const nav = document.getElementById('app-left-nav');
+    const toggle = document.getElementById('app-left-nav-toggle') as HTMLButtonElement | null;
+
+    if (!nav || !toggle) {
+        return;
+    }
+
+    const collapsedClass = 'is-collapsed';
+    const collapsedLabel = toggle.dataset.collapsedLabel ?? 'Show navigation';
+    const expandedLabel = toggle.dataset.expandedLabel ?? 'Hide navigation';
+
+    const applyState = (collapsed: boolean) => {
+        nav.classList.toggle(collapsedClass, collapsed);
+        nav.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+        toggle.setAttribute('aria-expanded', (!collapsed).toString());
+        toggle.setAttribute('aria-label', collapsed ? collapsedLabel : expandedLabel);
+    };
+
+    let startCollapsed = false;
+    try {
+        startCollapsed = window.localStorage.getItem(LEFT_NAV_STORAGE_KEY) === '1';
+    } catch (error) {
+        console.debug('Unable to read left nav toggle preference', error);
+    }
+    applyState(startCollapsed);
+
+    toggle.addEventListener('click', () => {
+        const collapsed = !nav.classList.contains(collapsedClass);
+        applyState(collapsed);
+        try {
+            window.localStorage.setItem(LEFT_NAV_STORAGE_KEY, collapsed ? '1' : '0');
+        } catch (error) {
+            console.debug('Unable to persist left nav toggle preference', error);
+        }
+    });
+}
+
 window.addEventListener('DOMContentLoaded', (event) => {
 
     console.log("DOM fully loaded and parsed....");
 
     // Bootstrap setup...
     simplevalidationsInitBootstrap();
+    initAppLeftNavToggle();
 
     // HTMX global event listeners for disabling submit and showing spinner
     htmx.on('htmx:beforeRequest', (evt: any) => {

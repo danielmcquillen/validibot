@@ -14,8 +14,27 @@
 
   <div id="workflow-list" class="container-fluid d-flex flex-column h-100">
 
-   
-      <div class="app-content-header-search d-flex flex-row align-items-center align-items-lg-start col-12 col-lg-6 mb-2 mb-lg-0">
+    <div class="app-content-header-bar row ">
+
+      <!-- Title -->
+      <div class="app-content-header col-12 col-lg-4 d-flex flex-row align-items-center mb-2 mb-lg-0">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0">
+              <i class="bi bi-box me-2"></i>
+              {% trans "Workflow List" %}
+            </h1>
+          </div>
+          {% if workflow.version %}
+            <div class="text-muted small">
+              <i class="bi-tag me-1"></i>{% trans "Version" %} {{ workflow.version }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="app-content-header-search col-12 col-lg-5 d-flex flex-row align-items-center mb-2 mb-lg-0">
         <form method="get" class="row w-100">
           <div class="col">
             <label class="visually-hidden" for="workflow-search">
@@ -46,7 +65,9 @@
           {% endif %}
         </form>
       </div>
-      <div class="app-content-header-actions col-12 col-lg-3 d-flex flex-row justify-content-start justify-content-lg-end mb-2 mb-lg-0 p-0">
+
+      <!-- New button -->
+      <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0">
         <a class="btn btn-primary" href="{{ create_url }}">
           <i class="bi-plus-lg me-1"></i>
           {% trans "New Workflow" %}

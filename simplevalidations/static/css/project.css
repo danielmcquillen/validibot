@@ -12433,6 +12433,13 @@ h4 {
   align-items: center;
   justify-content: space-between;
 }
+#app-top-bar #expand-collapse-btn-wrapper {
+  margin-left: 0.5rem;
+  width: 3rem;
+}
+#app-top-bar #breadcrumbs-wrapper {
+  width: 100%;
+}
 #app-top-bar .app-header-right {
   margin-right: 1rem;
 }
@@ -12453,12 +12460,27 @@ h4 {
   height: auto !important;
   align-self: stretch;
   width: 200px;
-  background-color: #eee;
+  flex: 0 0 200px;
+  position: relative;
+  background-color: #04070f;
+  background-image: radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.08), transparent 55%), radial-gradient(circle at 80% 65%, rgba(255, 255, 255, 0.05), transparent 60%), linear-gradient(180deg, #1a3562 0%, #132748 100%);
+  background-repeat: no-repeat;
   overflow: visible;
+  color: rgba(255, 255, 255, 0.85);
+  transition: width 0.28s ease, flex-basis 0.28s ease, opacity 0.2s ease, visibility 0.2s ease;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
 }
+#app-left-nav.is-collapsed {
+  width: 0;
+  min-width: 0;
+  flex-basis: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
 #app-left-nav .left-nav-title {
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   min-height: 45px;
   display: flex;
   flex-direction: row;
@@ -12477,17 +12499,24 @@ h4 {
   margin-bottom: 0.25rem;
   font-size: 0.7rem;
   font-weight: 500;
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
 }
 #app-left-nav #workspace-selector {
   position: relative;
 }
-#app-left-nav #workspace-selector button {
+#app-left-nav #workspace-selector .workspace-selector-btn {
   min-height: 3rem;
+  border: 1px dotted rgba(255, 255, 255, 0.25);
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
 }
 #app-left-nav #workspace-selector .left-nav-org-avatar {
-  background: #fff;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
   width: 40px;
   height: 1.5rem;
   display: flex;
@@ -12502,6 +12531,7 @@ h4 {
   width: max-content;
   left: 0;
   right: auto;
+  color: var(--bs-body-color);
 }
 #app-left-nav #workspace-selector .dropdown-menu .dropdown-item {
   position: relative;
@@ -12523,7 +12553,7 @@ h4 {
   margin-left: -0.5rem;
 }
 #app-left-nav .nav-item:last-child {
-  border-bottom: 1px dotted #555;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.18);
 }
 #app-left-nav .nav-item .nav-link {
   display: flex;
@@ -12531,14 +12561,16 @@ h4 {
   transition: background 0.3s;
   text-decoration: none;
   align-items: center;
-  border-top: 1px dotted #555;
+  border-top: 1px dotted rgba(255, 255, 255, 0.18);
   border-radius: 0;
+  color: rgba(255, 255, 255, 0.8);
 }
 #app-left-nav .nav-item .nav-link:hover {
-  background-color: #000;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 #app-left-nav .nav-item .nav-link.active {
-  background-color: #6f42c1;
+  background-color: var(--bs-info);
   color: white;
 }
 #app-left-nav .nav-item .nav-link.active i {
@@ -12546,6 +12578,7 @@ h4 {
 }
 #app-left-nav .nav-item .nav-link i {
   padding-right: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .workflow-card dl {

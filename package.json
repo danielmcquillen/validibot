@@ -11,6 +11,7 @@
     "watch:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --sourcemap --outdir=simplevalidations/static/js --watch"
   },
   "devDependencies": {
+    "@types/bootstrap": "^5.2.10",
     "esbuild": "^0.25.3",
     "sass": "latest"
   },

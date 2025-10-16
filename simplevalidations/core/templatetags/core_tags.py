@@ -1,7 +1,7 @@
 import logging
-from typing import Optional
 
 from django import template
+from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 
 from simplevalidations.core.utils import reverse_with_org
@@ -12,30 +12,65 @@ logger = logging.getLogger(__name__)
 register = template.Library()
 
 
+BRIGHTNESS_THRESHOLD = 128
+MAX_HEX_COLOR_LENGTH = 6
+
+# INCLUSION TAGS
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+@register.inclusion_tag("core/partial/web_tracker.html", takes_context=True)
+def web_tracker(context):
+    """Include web tracker if conditions are met."""
+    include_tracker = True
+    try:
+        user = context["request"].user
+        include_tracker = not settings.DEBUG and (
+            not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
+        )
+    except Exception:
+        logger.exception("Error determining whether to include web tracker.")
+        include_tracker = not settings.debug
+
+    return {"include_tracker": include_tracker}
+
+
+# FILTERS
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 @register.filter
 def contrast_color(hex_color: str) -> str:
     """Given a hex color string, return either black or white depending on contrast."""
     hex_color = hex_color.lstrip("#")
-    if len(hex_color) != 6:
+    if len(hex_color) != MAX_HEX_COLOR_LENGTH:
         return "#000000"  # Default to black if invalid
 
     r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
     brightness = (r * 299 + g * 587 + b * 114) / 1000
-    return "#000000" if brightness > 128 else "#FFFFFF"
+    return "#000000" if brightness > BRIGHTNESS_THRESHOLD else "#FFFFFF"
+
+
+@register.filter
+def get_item(mapping, key):
+    return mapping.get(key)
+
+
+# SIMPLE TAGS
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 @register.simple_tag(takes_context=True)
-def site_name(context) -> Optional[str]:
+def site_name(context) -> str | None:
+    site_name = None
     request = context.get("request", None)
     if request:
         site = get_current_site(request)
         if site.name:
             return site.name
-        else:
-            return "(no site name defined)"
     else:
         logger.exception("site is not defined.")
-    return None
+    return site_name
 
 
 @register.simple_tag(takes_context=True)
@@ -104,23 +139,21 @@ def active_builder_link(context, nav_item_name):
     return ""
 
 
-@register.filter
-def get_item(mapping, key):
-    return mapping.get(key)
-
-
 @register.simple_tag(takes_context=True)
 def org_url(context, view_name, *args, **kwargs):
     request = context.get("request")
     resolved_kwargs = dict(kwargs or {})
     return reverse_with_org(
-        view_name, request=request, args=args, kwargs=resolved_kwargs
+        view_name,
+        request=request,
+        args=args,
+        kwargs=resolved_kwargs,
     )
 
 
 @register.simple_tag
 def marketing_waitlist_form(origin: str = "hero"):
-    from simplevalidations.marketing.forms import BetaWaitlistForm
+    from simplevalidations.marketing.forms import BetaWaitlistForm  # noqa: PLC0415
 
     value = origin.strip().lower() if origin else BetaWaitlistForm.ORIGIN_HERO
     if value not in BetaWaitlistForm.ALLOWED_ORIGINS:

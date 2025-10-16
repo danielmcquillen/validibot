@@ -1,4 +1,4 @@
-{% load static i18n %}
+{% load static i18n core_tags %}
 
 <!DOCTYPE html>
 {% get_current_language as LANGUAGE_CODE %}
@@ -24,9 +24,8 @@
       {% include 'core/partial/core_css_includes.html' %}
     {% endblock css %}
 
-    {% if not debug and (not request.user.is_superuser or TRACKER_INCLUDE_SUPERUSER) %}
-      {% include 'core/partial/web_tracker.html' %}
-    {% endif %}
+    {% web_tracker %}
+    
   </head>
 
   <body {% if csrf_token %}

@@ -1,5 +1,5 @@
 import bleach
-import markdown as md
+import markdown2
 from django.http import HttpRequest
 from django.urls import reverse
 
@@ -84,8 +84,15 @@ ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
 
 
 def render_markdown_safe(text_md: str) -> str:
-    html = md.markdown(
-        text_md or "", extensions=["extra", "codehilite", "toc", "sane_lists", "tables"]
+    html = markdown2.markdown(
+        text_md or "",
+        extras=[
+            "fenced-code-blocks",
+            "tables",
+            "strike",
+            "cuddled-lists",
+            "link-patterns",
+        ],
     )
     # First pass: clean
     html = bleach.clean(

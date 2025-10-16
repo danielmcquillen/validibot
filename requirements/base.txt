@@ -38,3 +38,6 @@ jsonschema==4.25.1
 
 # For cleaning markdown after rendering in HTML
 bleach==6.2.0
+
+# For user authoring of HTML content
+markdown2==2.5.4

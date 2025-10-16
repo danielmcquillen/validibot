@@ -24,7 +24,7 @@
       {% include 'core/partial/core_css_includes.html' %}
     {% endblock css %}
 
-    {% if not request.user.is_superuser or TRACKER_INCLUDE_SUPERUSER %}
+    {% if not debug and (not request.user.is_superuser or TRACKER_INCLUDE_SUPERUSER) %}
       {% include 'core/partial/web_tracker.html' %}
     {% endif %}
   </head>

@@ -13,22 +13,13 @@
 {% block app_content %}
   <div id="workflow-detail" class="container-fluid">
 
-    <div class="app-content-header-bar row align-items-start">
+    <div class="app-content-header-bar row ">
       <div class="app-content-header col-12 col-lg-4 d-flex align-items-start mb-2 mb-lg-0">
         <div class="d-flex flex-column gap-2">
           <div class="d-flex flex-wrap align-items-center gap-2">
             <h1 class="app-page-title mb-0">
-              {{ workflow.name }}
+               <i class="bi bi-box me-2"></i>Workflow: {{ workflow.name }}
             </h1>
-            {% if workflow.is_active %}
-              <span class="badge text-bg-success align-self-start">
-                {% trans "Active" %}
-              </span>
-            {% else %}
-              <span class="badge text-bg-secondary align-self-start">
-                {% trans "Inactive" %}
-              </span>
-            {% endif %}
           </div>
           {% if workflow.version %}
             <div class="text-muted small">
@@ -41,9 +32,11 @@
       <div class="col-12 col-lg-8 d-flex flex-column align-items-end">
         <div class="d-flex flex-wrap gap-2 justify-content-end">
           <a class="btn btn-outline-secondary"
-             href="{% url 'workflows:workflow_update' workflow.pk %}">
-            <i class="bi-pencil-square me-1"></i>
-            {% trans "Edit" %}
+             href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
+             aria-label="{% trans "Workflow settings" %}"
+             title="{% trans "Workflow settings" %}">
+            <i class="bi bi-gear-fill"></i>
+            <span class="visually-hidden">{% trans "Workflow settings" %}</span>
           </a>
           <a class="btn btn-outline-danger"
              hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
@@ -52,7 +45,7 @@
             <i class="bi-trash me-1"></i>
             {% trans "Delete" %}
           </a>
-          <a class="btn btn-primary" href="{{ related_validations_url }}">
+          <a class="btn btn-outline-primary" href="{{ related_validations_url }}">
             <i class="bi-diagram-3 me-1"></i>
             {% trans "View Validations" %}
           </a>
@@ -91,10 +84,19 @@
       <div class="col-12 col-lg-5">
         <div class="card shadow-sm mb-3">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <span class="fw-semibold">{% trans "Workflow Details" %}</span>
-            {% if workflow.is_locked %}
-              <span class="badge text-bg-warning">{% trans "Locked" %}</span>
-            {% endif %}
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold">{% trans "Workflow Details" %}</span>
+              {% if workflow.is_locked %}
+                <span class="badge text-bg-warning">{% trans "Locked" %}</span>
+              {% endif %}
+            </div>
+            <a class="btn btn-sm btn-outline-secondary"
+               href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
+               aria-label="{% trans "Edit workflow details" %}"
+               title="{% trans "Workflow settings" %}">
+              <i class="bi bi-gear-fill"></i>
+              <span class="visually-hidden">{% trans "Workflow settings" %}</span>
+            </a>
           </div>
           <div class="card-body">
             <dl class="row mb-0">

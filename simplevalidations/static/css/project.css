@@ -12545,6 +12545,29 @@ h4 {
   padding-right: 0.75rem;
 }
 
+.workflow-card dl {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  margin-bottom: 0.3rem;
+}
+.workflow-card dl dt {
+  font-size: 0.9rem;
+  font-weight: normal;
+  min-width: 5rem;
+}
+.workflow-card dl dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: normal;
+}
+.workflow-card .card-footer {
+  background: #fff;
+  border-top: 1px dotted #ccc;
+}
+
 #workflow-step-editor-card .editor-workspace {
   background: url("/static/marketing/images/notebook.png");
   min-height: 70vh;

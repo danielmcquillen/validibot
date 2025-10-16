@@ -24,8 +24,9 @@
       {% include 'core/partial/core_css_includes.html' %}
     {% endblock css %}
 
-    {% include 'core/partial/web_tracker.html' %}
-
+    {% if not request.user.is_superuser or TRACKER_INCLUDE_SUPERUSER %}
+      {% include 'core/partial/web_tracker.html' %}
+    {% endif %}
   </head>
 
   <body {% if csrf_token %}

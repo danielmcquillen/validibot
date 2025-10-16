@@ -12154,7 +12154,10 @@ h4 {
 
 .toast-container {
   z-index: 1000;
-  top: 60px;
+  position: fixed;
+  bottom: 1.75rem;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .toast-container .toast-body {
   min-width: 250px;
@@ -13595,7 +13598,7 @@ h3 {
 .about-headshot {
   width: 100%;
   padding-left: 5rem;
-  max-width: 400px;
+  max-width: 300px;
 }
 
 /*# sourceMappingURL=project.css.map */

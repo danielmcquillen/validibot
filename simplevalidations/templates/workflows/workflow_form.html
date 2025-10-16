@@ -16,17 +16,25 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div id="workflow-list" class="container-fluid">
+  <div id="workflow-edit" class="container-fluid">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-box me-2"></i>{% trans "Workflow Details" %} :
+          {% if object %}
+            {{ object.name }}
+          {% else %}
+            {% trans "New Workflow" %}
+          {% endif %}
+
+        </h1>
+      </div>
+    </div>
+
     <div class="row">
       <div class="col-12 ">
         <div class="card shadow-sm app-form-card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            {% if object %}
-              {% trans "Update Workflow" %}
-            {% else %}
-              {% trans "Create Workflow" %}
-            {% endif %}
-          </div>
           <div class="card-body">
             <form method="post" novalidate>
               {% csrf_token %}
@@ -34,7 +42,7 @@
 
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <a class="btn btn-outline-secondary"
-                   href="{% url 'workflows:workflow_list' %}">
+                   href="{% url 'workflows:workflow_detail' object.pk %}">
                   {% trans "Cancel" %}
                 </a>
                 <button type="submit" class="btn btn-primary">
@@ -51,4 +59,5 @@
       </div>
     </div>
   </div>
+</div>
 {% endblock app_content %}

@@ -1,6 +1,9 @@
 .toast-container {
   z-index: 1000;
-  top: 60px;
+  position: fixed;
+  bottom: 1.75rem;
+  left: 50%;
+  transform: translateX(-50%);
   .toast-body {
     min-width: 250px;
   }

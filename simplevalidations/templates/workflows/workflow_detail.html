@@ -18,7 +18,7 @@
         <div class="d-flex flex-column gap-2">
           <div class="d-flex flex-wrap align-items-center gap-2">
             <h1 class="app-page-title mb-0">
-               <i class="bi bi-box me-2"></i>Workflow: {{ workflow.name }}
+              <i class="bi bi-box me-2"></i>Workflow: {{ workflow.name }}
             </h1>
           </div>
           {% if workflow.version %}
@@ -31,13 +31,6 @@
 
       <div class="col-12 col-lg-8 d-flex flex-column align-items-end">
         <div class="d-flex flex-wrap gap-2 justify-content-end">
-          <a class="btn btn-outline-secondary"
-             href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
-             aria-label="{% trans "Workflow settings" %}"
-             title="{% trans "Workflow settings" %}">
-            <i class="bi bi-gear-fill"></i>
-            <span class="visually-hidden">{% trans "Workflow settings" %}</span>
-          </a>
           <a class="btn btn-outline-danger"
              hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
              hx-target="body"
@@ -83,19 +76,38 @@
       </div>
       <div class="col-12 col-lg-5">
         <div class="card shadow-sm mb-3">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center gap-2">
+          <div class="card-header d-flex align-items-center">
+            <div class="d-flex align-items-center gap-2 me-auto">
               <span class="fw-semibold">{% trans "Workflow Details" %}</span>
               {% if workflow.is_locked %}
                 <span class="badge text-bg-warning">{% trans "Locked" %}</span>
               {% endif %}
             </div>
-            <a class="btn btn-sm btn-outline-secondary"
+            {% if can_manage_activation %}
+              <form method="post"
+                    action="{% org_url 'workflows:workflow_activation' pk=workflow.pk %}">
+                {% csrf_token %}
+                {% if workflow.is_active %}
+                  <input type="hidden" name="is_active" value="false" />
+                  <button type="submit" class="btn btn-outline-warning btn-sm">
+                    <i class="bi-pause-circle me-1"></i>
+                    {% trans "Disable workflow" %}
+                  </button>
+                {% else %}
+                  <input type="hidden" name="is_active" value="true" />
+                  <button type="submit" class="btn btn-outline-success btn-sm">
+                    <i class="bi-play-circle me-1"></i>
+                    {% trans "Enable workflow" %}
+                  </button>
+                {% endif %}
+              </form>
+            {% endif %}
+            <a class="btn btn-sm btn-primary ms-2"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                aria-label="{% trans "Edit workflow details" %}"
                title="{% trans "Workflow settings" %}">
               <i class="bi bi-gear-fill"></i>
-              <span class="visually-hidden">{% trans "Workflow settings" %}</span>
+              {% trans "Edit Details" %}
             </a>
           </div>
           <div class="card-body">
@@ -121,29 +133,7 @@
                   <small class="text-muted">
                     {% trans "Inactive workflows stay visible in the catalog but block new validation runs." %}
                   </small>
-                  {% if can_manage_activation %}
-                    <form method="post"
-                          action="{% org_url 'workflows:workflow_activation' pk=workflow.pk %}">
-                      {% csrf_token %}
-                      {% if workflow.is_active %}
-                        <input type="hidden" name="is_active" value="false" />
-                        <button type="submit" class="btn btn-outline-warning btn-sm">
-                          <i class="bi-pause-circle me-1"></i>
-                          {% trans "Disable workflow" %}
-                        </button>
-                      {% else %}
-                        <input type="hidden" name="is_active" value="true" />
-                        <button type="submit" class="btn btn-outline-success btn-sm">
-                          <i class="bi-play-circle me-1"></i>
-                          {% trans "Enable workflow" %}
-                        </button>
-                      {% endif %}
-                    </form>
-                  {% else %}
-                    <small class="text-muted">
-                      {% trans "Contact an organization admin if you need to change its availability." %}
-                    </small>
-                  {% endif %}
+
                 </div>
               </dd>
 

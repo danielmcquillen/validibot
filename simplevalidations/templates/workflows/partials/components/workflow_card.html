@@ -86,11 +86,13 @@
             </a>
             <a class="btn btn-sm btn-outline-secondary"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}Edit settings for {{ workflow_name }}{% endblocktrans %}"
-               title="{% trans "Workflow settings" %}">
+               title="{% trans "Edit workflow settings" %}">
                 <i class="bi bi-gear-fill"></i>
                 <span class="visually-hidden">
-                    {% trans "Workflow settings" %}
+                    {% trans "Edit workflow settings" %}
                 </span>
             </a>
             <button type="button"

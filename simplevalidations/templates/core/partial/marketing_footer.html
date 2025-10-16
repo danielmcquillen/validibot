@@ -12,7 +12,13 @@ This footer appears on all 'marketing' pages of the site available to all users,
             <div class="col-12 col-lg-4 mt-4 mb-4">
 
                 <h1 class="mb-3">
-                    <a class="navbar-brand" href="{% url 'marketing:home' %}">SimpleValidations</a>
+                    <a class="navbar-brand brand-with-mark brand-with-mark--lg"
+                       href="{% url 'marketing:home' %}">
+                        <img src="{% static 'images/robot_head_bw.png' %}"
+                             alt="{% trans 'SimpleValidations logo' %}"
+                             class="brand-mark" />
+                        <span class="brand-name">SimpleValidations</span>
+                    </a>
                 </h1>
 
                 <div class="background">

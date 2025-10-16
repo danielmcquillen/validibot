@@ -6,9 +6,9 @@ from rest_framework.response import Response
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -17,6 +17,9 @@ def _force_login_for_workflow(client, workflow):
     user = workflow.user
     user.set_current_org(workflow.org)
     client.force_login(user)
+    session = client.session
+    session["active_org_id"] = workflow.org_id
+    session.save()
     return user
 
 
@@ -35,10 +38,12 @@ def test_launch_page_renders_for_org_member(client):
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
-    response = client.get(reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}))
+    response = client.get(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+    )
 
     assert response.status_code == 200
-    assert "Run validation" in response.content.decode()
+    assert "Start Validation" in response.content.decode()
 
 
 def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
@@ -96,7 +101,9 @@ def test_launch_start_requires_executor_role(client):
     )
 
     assert response.status_code == 403
-    assert "You do not have permission to run this workflow" in response.content.decode()
+    assert (
+        "You do not have permission to run this workflow" in response.content.decode()
+    )
 
 
 def test_public_info_view_accessible_when_enabled(client):

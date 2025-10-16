@@ -21,9 +21,9 @@
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 col-lg-3 d-flex align-items-start mb-2 mb-lg-0">
         <h1 class="app-page-title">
-          <i class="bi bi-box me-2"></i>{% trans "Workflow Details" %} :
+          <i class="bi bi-box me-2"></i>
           {% if object %}
-            {{ object.name }}
+            {% trans "Edit Workflow Settings" %} : "{{ object.name }}"
           {% else %}
             {% trans "New Workflow" %}
           {% endif %}

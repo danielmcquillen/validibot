@@ -23,6 +23,16 @@ def ensure_validator(validation_type: str, slug: str, name: str) -> Validator:
     )[0]
 
 
+def _login_for_workflow(client, workflow):
+    user = workflow.user
+    user.set_current_org(workflow.org)
+    user.refresh_from_db()
+    client.force_login(user)
+    session = client.session
+    session["active_org_id"] = workflow.org_id
+    session.save()
+
+
 def start_wizard(client, workflow, validator):
     select_url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
     response = client.post(
@@ -37,7 +47,7 @@ def start_wizard(client, workflow, validator):
 
 def test_wizard_creates_json_schema_step(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ValidatorFactory(validation_type=ValidationType.JSON_SCHEMA, slug="json-validator")
 
     select_url = start_wizard(client, workflow, validator)
@@ -69,7 +79,7 @@ def test_wizard_creates_json_schema_step(client):
 
 def test_wizard_creates_ai_step(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
     select_url = start_wizard(client, workflow, validator)
@@ -99,7 +109,7 @@ def test_wizard_creates_ai_step(client):
 
 def test_wizard_creates_energyplus_step(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS, slug="energyplus")
 
     select_url = start_wizard(client, workflow, validator)
@@ -130,7 +140,7 @@ def test_wizard_creates_energyplus_step(client):
 
 def test_step_limit_blocks_additional_steps(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
     for index in range(5):
@@ -149,7 +159,7 @@ def test_step_limit_blocks_additional_steps(client):
 
 def test_move_and_delete_step(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
     step_a = WorkflowStep.objects.create(
@@ -183,7 +193,7 @@ def test_move_and_delete_step(client):
 
 def test_edit_ai_step_prefills_form(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
     step = WorkflowStep.objects.create(
         workflow=workflow,
@@ -218,7 +228,7 @@ def test_edit_ai_step_prefills_form(client):
 
 def test_wizard_select_highlights_selected_card(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator_a = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
     validator_b = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
@@ -234,7 +244,7 @@ def test_wizard_select_highlights_selected_card(client):
 
 def test_json_schema_wizard_missing_upload_shows_error(client):
     workflow = WorkflowFactory()
-    client.force_login(workflow.user)
+    _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
 
     # Stage 1: move to configuration form

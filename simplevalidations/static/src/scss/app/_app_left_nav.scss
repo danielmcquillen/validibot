@@ -24,7 +24,8 @@
   background-repeat: no-repeat;
   overflow: visible;
   color: rgba(255, 255, 255, 0.85);
-  transition: width 0.28s ease, flex-basis 0.28s ease, opacity 0.2s ease, visibility 0.2s ease;
+  transition: width 0.28s ease, flex-basis 0.28s ease, opacity 0.2s ease,
+    visibility 0.2s ease;
 
   &.is-collapsed {
     width: 0;
@@ -49,10 +50,18 @@
     margin-bottom: 0.25rem;
 
     .navbar-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
       font-size: 1rem;
       padding: 0.2rem 0;
       font-family: "Space Grotesk", Arial, sans-serif !important;
       font-weight: 500;
+      color: rgba(255, 255, 255, 0.9);
+      text-decoration: none;
+      .brand-mark {
+        margin-top: -5px;
+      }
     }
   }
 
@@ -61,7 +70,7 @@
     margin-bottom: 0.25rem;
     font-size: 0.7rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.8);
     text-transform: uppercase;
   }
 

@@ -9,6 +9,9 @@
     padding: 0.2rem 0;
     font-family: "Space Grotesk", Arial, sans-serif;
     font-weight: 500;
+    .brand-mark {
+      margin-top: -3px;
+    }
   }
 
   .nav-link {
@@ -19,6 +22,15 @@
   // Ensure dropdowns appear above everything else
   .dropdown-menu {
     z-index: 1031; // Higher than the navbar itself
+  }
+
+  .app-nav-item {
+    margin-right: 1rem;
+    .robot-head-icon {
+      width: 15px;
+      height: 15px;
+      margin-top: -3px;
+    }
   }
 }
 

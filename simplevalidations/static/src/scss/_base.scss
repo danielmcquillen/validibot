@@ -10,6 +10,39 @@
 
 @use "./settings" as *;
 
+.brand-with-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+
+  &:hover,
+  &:focus {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .brand-mark {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    display: block;
+  }
+
+  .brand-name {
+    line-height: 1;
+    display: inline-block;
+  }
+}
+
+.brand-with-mark--lg {
+  .brand-mark {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
 .bg-blue-lt {
   background-color: $blue-lt !important;
 }

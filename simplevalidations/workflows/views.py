@@ -422,12 +422,18 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
 
     def get_workflow_queryset(self):
         user = self.request.user
-        return (
+        queryset = (
             Workflow.objects.for_user(user)
             .select_related("org", "user", "project")
             .prefetch_related("validation_runs")
             .order_by("name", "-version")
         )
+        current_org = None
+        if hasattr(user, "get_current_org"):
+            current_org = user.get_current_org()
+        if current_org:
+            return queryset.filter(org=current_org)
+        return queryset.none()
 
     def get_queryset(self):
         return self.get_workflow_queryset()
@@ -700,6 +706,15 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
 
 
 class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
+    """
+    Handle POST to start a workflow run from an HTML-based form.
+    This view is meant to be used in conjunction with WorkflowLaunchDetailView.
+
+    For API calls to start a workflow run, use the WorkflowViewSet.start_validation
+    action.
+
+    """
+
     http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
@@ -775,9 +790,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             )
         except PermissionError as exc:
             logger.info("Permission denied running workflow %s: %s", workflow.pk, exc)
-            form.add_error(
-                None, _("You do not have permission to run this workflow.")
-            )
+            form.add_error(None, _("You do not have permission to run this workflow."))
             return self._launch_response(
                 request,
                 workflow=workflow,
@@ -964,6 +977,7 @@ class WorkflowPublicInfoView(DetailView):
     context_object_name = "workflow"
     slug_field = "uuid"
     slug_url_kwarg = "workflow_uuid"
+
     def get_queryset(self):
         return (
             Workflow.objects.filter(make_info_public=True)

@@ -1,11 +1,15 @@
-{% load i18n core_tags %}
+{% load i18n core_tags static %}
 
 {% user_settings_nav_state as user_settings_nav %}
 <div id="app-left-nav" class="text-bg-dark d-flex flex-column h-100">
 
   <div class="left-nav-title">
-    <a href="{% url 'marketing:home' %}" class="navbar-brand">
-      SimpleValidations
+    <a href="{% url 'marketing:home' %}"
+       class="navbar-brand brand-with-mark">
+      <img src="{% static 'images/robot_head_bw.png' %}"
+           alt="{% trans 'SimpleValidations logo' %}"
+           class="brand-mark" />
+      <span class="brand-name">SimpleValidations</span>
     </a>
   </div>
 

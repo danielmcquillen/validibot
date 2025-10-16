@@ -11901,12 +11901,23 @@ h4 {
   font-family: "Space Grotesk", Arial, sans-serif;
   font-weight: 500;
 }
+#site-top-nav-wrapper .navbar-brand .brand-mark {
+  margin-top: -3px;
+}
 #site-top-nav-wrapper .nav-link {
   padding: 0.25rem 0.5rem !important;
   font-size: 0.85rem !important;
 }
 #site-top-nav-wrapper .dropdown-menu {
   z-index: 1031;
+}
+#site-top-nav-wrapper .app-nav-item {
+  margin-right: 1rem;
+}
+#site-top-nav-wrapper .app-nav-item .robot-head-icon {
+  width: 15px;
+  height: 15px;
+  margin-top: -3px;
 }
 
 .megamenu {
@@ -12046,6 +12057,9 @@ h4 {
   border-top: 1px solid #aaa;
   background-color: #f1f1f1;
   font-size: 0.8rem;
+}
+#marketing-footer .brand-mark {
+  margin-top: -8px;
 }
 #marketing-footer h1 {
   font-size: 1.1rem !important;
@@ -12377,6 +12391,33 @@ h4 {
   color: #066fd1;
 }
 
+.brand-with-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+}
+.brand-with-mark:hover, .brand-with-mark:focus {
+  text-decoration: none;
+  color: inherit;
+}
+.brand-with-mark .brand-mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  display: block;
+}
+.brand-with-mark .brand-name {
+  line-height: 1;
+  display: inline-block;
+}
+
+.brand-with-mark--lg .brand-mark {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
 .bg-blue-lt {
   background-color: #e9f0f9 !important;
 }
@@ -12435,7 +12476,7 @@ h4 {
 }
 #app-top-bar #expand-collapse-btn-wrapper {
   margin-left: 0.5rem;
-  width: 3rem;
+  width: 1.8rem;
 }
 #app-top-bar #breadcrumbs-wrapper {
   width: 100%;
@@ -12489,17 +12530,25 @@ h4 {
   margin-bottom: 0.25rem;
 }
 #app-left-nav .left-nav-title .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1rem;
   padding: 0.2rem 0;
   font-family: "Space Grotesk", Arial, sans-serif !important;
   font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+}
+#app-left-nav .left-nav-title .navbar-brand .brand-mark {
+  margin-top: -5px;
 }
 #app-left-nav .workspace-label {
   margin-left: 0.5rem;
   margin-bottom: 0.25rem;
   font-size: 0.7rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.8);
   text-transform: uppercase;
 }
 #app-left-nav #workspace-selector {

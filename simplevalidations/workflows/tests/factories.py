@@ -29,6 +29,11 @@ class WorkflowFactory(DjangoModelFactory):
         if not create:
             return
         grant_role(self.user, self.org, RoleCode.OWNER)
+        try:
+            self.user.set_current_org(self.org)
+        except ValueError:
+            # Tests may override membership manually; skip when access not allowed.
+            pass
 
 
 class WorkflowStepFactory(DjangoModelFactory):

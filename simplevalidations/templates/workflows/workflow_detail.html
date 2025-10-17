@@ -84,7 +84,7 @@
                  hx-trigger="load, steps-changed from:body"
                  hx-target="this"
                  hx-swap="innerHTML">
-              {% include "workflows/partials/workflow_step_list.html" with workflow=workflow steps=workflow.steps.all max_step_count=max_step_count %}
+              {% include "workflows/partials/workflow_step_list.html" with workflow=workflow steps=workflow.steps.all max_step_count=max_step_count show_private_notes=show_private_notes %}
             </div>
           </div>
         </div>

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import json
+
 import pytest
+from django.core.files.base import ContentFile
 from django.urls import reverse
 from rest_framework.response import Response
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
@@ -127,6 +134,26 @@ def test_launch_start_requires_executor_role(client):
 
 def test_public_info_view_accessible_when_enabled(client):
     workflow = WorkflowFactory(make_info_public=True)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.JSON_SCHEMA,
+        slug="public-json",
+    )
+    schema_text = json.dumps({"type": "object", "properties": {"sku": {"type": "string"}}})
+    ruleset = Ruleset.objects.create(
+        org=workflow.org,
+        user=workflow.user,
+        ruleset_type=RulesetType.JSON_SCHEMA,
+        name="Public schema",
+    )
+    ruleset.file.save("public-schema.json", ContentFile(schema_text.encode("utf-8")), save=True)
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        description="Validates base product payload.",
+        display_schema=True,
+        ruleset=ruleset,
+        config={"schema_source": "text", "schema_text_preview": schema_text[:100]},
+    )
 
     response = client.get(
         reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
@@ -136,6 +163,44 @@ def test_public_info_view_accessible_when_enabled(client):
     body = response.content.decode()
     assert workflow.name in body
     assert "Workflow overview" in body
+    assert "Validates base product payload." in body
+    assert "Show schema" in body
+    assert "sku" in body
+    assert "Validation steps" in body
+    assert "Schema shared" in body
+
+
+def test_public_info_view_hides_schema_when_not_shared(client):
+    workflow = WorkflowFactory(make_info_public=True)
+    validator = ValidatorFactory(
+        validation_type=ValidationType.XML_SCHEMA,
+        slug="public-xml",
+    )
+    xml_schema = """<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>\n  <xs:element name='item' type='xs:string'/>\n</xs:schema>"""
+    ruleset = Ruleset.objects.create(
+        org=workflow.org,
+        user=workflow.user,
+        ruleset_type=RulesetType.XML_SCHEMA,
+        name="Private schema",
+    )
+    ruleset.file.save("private-schema.xsd", ContentFile(xml_schema.encode("utf-8")), save=True)
+    WorkflowStepFactory(
+        workflow=workflow,
+        validator=validator,
+        description="Validates XML payload.",
+        display_schema=False,
+        ruleset=ruleset,
+        config={"schema_source": "text", "schema_text_preview": xml_schema[:100]},
+    )
+
+    response = client.get(
+        reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
+    )
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Show schema" not in body
+    assert "Schema shared" not in body
 
 
 def test_public_info_view_returns_404_when_disabled(client):

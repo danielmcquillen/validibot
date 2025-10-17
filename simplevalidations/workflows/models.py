@@ -348,6 +348,24 @@ class WorkflowStep(TimeStampedModel):
         blank=True,
         default="",
     )
+    description = models.CharField(
+        max_length=2000,
+        blank=True,
+        default="",
+        help_text=_("Brief description to help users understand what this step does."),
+    )
+    notes = models.CharField(
+        max_length=2000,
+        blank=True,
+        default="",
+        help_text=_(
+            "Author notes about this step (visible only by you and other users with author permissions for this workflow)."
+        ),
+    )
+    display_schema = models.BooleanField(
+        default=False,
+        help_text=_("Allow launchers to view this schema in public workflow pages."),
+    )
 
     validator = models.ForeignKey(
         "validations.Validator",

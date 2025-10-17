@@ -47,4 +47,7 @@ class WorkflowStepFactory(DjangoModelFactory):
         "simplevalidations.validations.tests.factories.ValidatorFactory",
     )
     name = factory.Sequence(lambda n: f"Step {n}")
+    description = ""
+    notes = ""
+    display_schema = False
     config = {}

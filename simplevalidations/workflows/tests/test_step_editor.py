@@ -6,11 +6,15 @@ from html.parser import HTMLParser
 import pytest
 from django.urls import reverse
 
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.models import WorkflowStep
 from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -59,6 +63,9 @@ def test_wizard_creates_json_schema_step(client):
             "stage": "configure",
             "validator_id": validator.pk,
             "name": "JSON Schema",
+            "description": "Ensures posted documents follow the schema.",
+            "notes": "Remember to update schema when payload changes.",
+            "display_schema": "on",
             "schema_source": "text",
             "schema_text": schema_text,
         },
@@ -75,6 +82,9 @@ def test_wizard_creates_json_schema_step(client):
     stored_schema = step.ruleset.file.read().decode()
     assert "type" in stored_schema
     assert step.config["schema_source"] == "text"
+    assert step.description == "Ensures posted documents follow the schema."
+    assert step.notes == "Remember to update schema when payload changes."
+    assert step.display_schema is True
 
 
 def test_wizard_creates_ai_step(client):
@@ -90,6 +100,9 @@ def test_wizard_creates_ai_step(client):
             "stage": "configure",
             "validator_id": validator.pk,
             "name": "Cooling policy",
+            "description": "Checks cooling setpoints before publishing.",
+            "notes": "Coordinate with HVAC team before changing limits.",
+            "display_schema": "on",
             "template": "policy_check",
             "selectors": "$.zones[*].cooling_setpoint",
             "policy_rules": "$.zones[*].cooling_setpoint >= 18 | Cooling must be ≥18°C",
@@ -105,6 +118,9 @@ def test_wizard_creates_ai_step(client):
     assert step.config["template"] == "policy_check"
     assert step.config["mode"] == "BLOCKING"
     assert step.config["policy_rules"]
+    assert step.description == "Checks cooling setpoints before publishing."
+    assert step.notes == "Coordinate with HVAC team before changing limits."
+    assert step.display_schema is False
 
 
 def test_wizard_creates_energyplus_step(client):
@@ -120,12 +136,14 @@ def test_wizard_creates_energyplus_step(client):
             "stage": "configure",
             "validator_id": validator.pk,
             "name": "EnergyPlus QA",
+            "description": "Runs EnergyPlus simulation checks.",
+            "notes": "Keep aligned with mechanical baseline files.",
             "run_simulation": "on",
             "idf_checks": ["duplicate-names", "hvac-sizing"],
             "simulation_checks": ["eui-range"],
             "eui_min": "40",
             "eui_max": "80",
-            "notes": "Baseline office model",
+            "energyplus_notes": "Baseline office model",
         },
         HTTP_HX_REQUEST="true",
     )
@@ -136,6 +154,10 @@ def test_wizard_creates_energyplus_step(client):
     assert step.config["run_simulation"] is True
     assert step.config["eui_band"]["min"] == 40.0
     assert step.config["eui_band"]["max"] == 80.0
+    assert step.config["notes"] == "Baseline office model"
+    assert step.description == "Runs EnergyPlus simulation checks."
+    assert step.notes == "Keep aligned with mechanical baseline files."
+    assert step.display_schema is False
 
 
 def test_step_limit_blocks_additional_steps(client):
@@ -200,6 +222,8 @@ def test_edit_ai_step_prefills_form(client):
         validator=validator,
         order=10,
         name="AI step",
+        description="Existing summary",
+        notes="Existing author notes",
         config={
             "template": "policy_check",
             "mode": "BLOCKING",
@@ -224,6 +248,8 @@ def test_edit_ai_step_prefills_form(client):
     content = response.content.decode()
     assert "policy_check" in content
     assert "Cooling must be" in content
+    assert "Existing summary" in content
+    assert "Existing author notes" in content
 
 
 def test_wizard_select_highlights_selected_card(client):
@@ -272,6 +298,55 @@ def test_json_schema_wizard_missing_upload_shows_error(client):
     html = response.content.decode()
     assert "Upload a JSON schema file" in html
     assert "is-invalid" in html or "invalid-feedback" in html
+
+
+def test_step_list_shows_author_notes_for_authors(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    WorkflowStepFactory(
+        workflow=workflow,
+        notes="Private deployment checklist",
+        description="Performs strict validation",
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Author notes" in body
+    assert "Private deployment checklist" in body
+
+
+def test_step_list_hides_author_notes_for_non_authors(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(
+        workflow=workflow,
+        notes="Only authors should see this",
+        description="General description",
+    )
+
+    other_user = UserFactory()
+    grant_role(other_user, workflow.org, RoleCode.EXECUTOR)
+    other_user.set_current_org(workflow.org)
+    client.force_login(other_user)
+    session = client.session
+    session["active_org_id"] = workflow.org_id
+    session.save()
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Author notes" not in body
+    assert "Only authors should see this" not in body
+
+
 class _CardParser(HTMLParser):
     def __init__(self):
         super().__init__()

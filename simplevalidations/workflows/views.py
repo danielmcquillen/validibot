@@ -1,7 +1,9 @@
 import base64
+import contextlib
 import json
 import logging
 import uuid
+from xml.dom import minidom
 from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
@@ -45,7 +47,6 @@ from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import RulesetType
-from simplevalidations.validations.constants import StepStatus
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -137,7 +138,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     "detail": _(
-                        "This workflow has no steps defined and cannot be executed."
+                        "This workflow has no steps defined and cannot be executed.",
                     ),
                     "code": WorkflowStartErrorCode.NO_WORKFLOW_STEPS,
                 },
@@ -583,6 +584,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 "recent_runs": recent_runs,
                 "max_step_count": MAX_STEP_COUNT,
                 "can_manage_activation": self.user_can_manage_workflow(),
+                "show_private_notes": self.user_can_manage_workflow(),
                 "public_info_url": (
                     self.request.build_absolute_uri(
                         reverse(
@@ -1032,9 +1034,11 @@ class WorkflowPublicInfoView(DetailView):
         context = super().get_context_data(**kwargs)
         workflow = context["workflow"]
         user = self.request.user
+        steps = list(workflow.steps.all().order_by("order"))
+        self._annotate_public_schema_steps(steps)
         context.update(
             {
-                "steps": workflow.steps.all().order_by("order"),
+                "steps": steps,
                 "recent_runs": list(
                     workflow.validation_runs.select_related("user").order_by(
                         "-created"
@@ -1046,6 +1050,75 @@ class WorkflowPublicInfoView(DetailView):
             },
         )
         return context
+
+    def _annotate_public_schema_steps(self, steps: list[WorkflowStep]) -> None:
+        for step in steps:
+            step.public_schema = None
+            vtype = step.validator.validation_type
+            if vtype not in {ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA}:
+                continue
+
+            schema_content: str | None = None
+            schema_language: str | None = None
+            if step.display_schema:
+                schema_content, schema_language = self._load_schema_content(step)
+
+            if schema_content:
+                step.public_schema = {
+                    "content": schema_content,
+                    "language": schema_language
+                    or (
+                        "json"
+                        if vtype == ValidationType.JSON_SCHEMA
+                        else "xml"
+                    ),
+                }
+
+    def _load_schema_content(
+        self,
+        step: WorkflowStep,
+    ) -> tuple[str | None, str | None]:
+        schema_text: str = ""
+        if step.ruleset and getattr(step.ruleset, "file", None):
+            try:
+                step.ruleset.file.open("rb")
+                raw = step.ruleset.file.read()
+            except Exception:
+                logger.exception(
+                    "Failed to read schema file for step", extra={"step_id": step.pk}
+                )
+                raw = b""
+            finally:
+                with contextlib.suppress(Exception):
+                    step.ruleset.file.close()
+            if isinstance(raw, bytes):
+                schema_text = raw.decode("utf-8", errors="replace")
+            else:
+                schema_text = str(raw or "")
+
+        if not schema_text:
+            schema_text = step.config.get("schema_text_preview", "")
+
+        if not schema_text:
+            return None, None
+
+        vtype = step.validator.validation_type
+        if vtype == ValidationType.JSON_SCHEMA:
+            try:
+                parsed = json.loads(schema_text)
+                pretty = json.dumps(parsed, indent=2, sort_keys=True)
+            except Exception:
+                pretty = schema_text
+            return pretty, "json"
+
+        if vtype == ValidationType.XML_SCHEMA:
+            try:
+                pretty = minidom.parseString(schema_text).toprettyxml(indent="  ")
+            except Exception:
+                pretty = schema_text
+            return pretty, "xml"
+
+        return schema_text, None
 
 
 class WorkflowFormViewMixin(WorkflowAccessMixin):
@@ -1328,10 +1401,12 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     except ValueError:
                         config["schema_type_label"] = schema_type
             step.config = config
+        show_private_notes = self.user_can_manage_workflow()
         context = {
             "workflow": workflow,
             "steps": steps,
             "max_step_count": MAX_STEP_COUNT,
+            "show_private_notes": show_private_notes,
         }
         return render(request, self.template_name, context)
 
@@ -1500,6 +1575,10 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         step = step or WorkflowStep(workflow=workflow)
         step.validator = validator
         step.name = form.cleaned_data.get("name", "").strip() or validator.name
+        step.description = (form.cleaned_data.get("description") or "").strip()
+        step.notes = (form.cleaned_data.get("notes") or "").strip()
+        if "display_schema" in form.cleaned_data:
+            step.display_schema = form.cleaned_data.get("display_schema", False)
 
         config: dict[str, Any]
         ruleset: Ruleset | None = None
@@ -1669,7 +1748,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "idf_checks": form.cleaned_data.get("idf_checks", []),
             "simulation_checks": form.cleaned_data.get("simulation_checks", []),
             "eui_band": eui_band,
-            "notes": form.cleaned_data.get("notes", ""),
+            "notes": form.cleaned_data.get("energyplus_notes", ""),
         }
 
     def _build_ai_config(self, form: AiAssistStepConfigForm) -> dict[str, Any]:

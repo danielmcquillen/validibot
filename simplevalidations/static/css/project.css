@@ -12391,6 +12391,62 @@ h4 {
   color: #066fd1;
 }
 
+#workflow-public-view .public-steps-card .card-body {
+  background: url("/static/marketing/images/notebook.png");
+}
+#workflow-public-view .public-workflow-hero .hero-image {
+  max-height: 300px;
+}
+#workflow-public-view .public-step-item {
+  position: relative;
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+  margin-bottom: 0;
+}
+#workflow-public-view .public-step-item:last-child {
+  margin-bottom: 0;
+}
+#workflow-public-view .public-step-marker {
+  width: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+#workflow-public-view .public-step-marker .marker-circle {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid rgba(13, 110, 253, 0.8);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9);
+}
+#workflow-public-view .public-step-marker .marker-line {
+  flex: 1;
+  width: 2px;
+  background: rgba(13, 110, 253, 0.2);
+  margin-top: 0.5rem;
+}
+#workflow-public-view .public-step-item:last-child .marker-line {
+  display: none;
+}
+#workflow-public-view .public-step-card {
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  padding: 1.5rem;
+  flex: 1;
+}
+#workflow-public-view .public-step-card .badge-step-index {
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+}
+#workflow-public-view .public-step-card .badge-type {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+}
+
 .brand-with-mark {
   display: inline-flex;
   align-items: center;

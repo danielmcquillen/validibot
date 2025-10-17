@@ -17,6 +17,11 @@
                     </h3>
                     <span class="badge text-bg-light text-uppercase small">{{ step.validator.get_validation_type_display }}</span>
                   </div>
+                  {% if step.description %}
+                    <p class="text-muted small mb-2">
+                      {{ step.description|linebreaksbr }}
+                    </p>
+                  {% endif %}
                   {% if step.validator.validation_type == 'AI_ASSIST' %}
                     <p class="text-muted small mb-2">
                       {% if config.template == 'policy_check' %}
@@ -163,6 +168,14 @@
                       </li>
                     {% endif %}
                   </ul>
+                </div>
+              {% endif %}
+              {% if show_private_notes and step.notes %}
+                <div class="mt-3 small text-muted border-top pt-2">
+                  <span class="fw-semibold text-secondary">
+                    <i class="bi-pen me-1"></i>{% trans "Author notes" %}:
+                  </span>
+                  {{ step.notes|linebreaksbr }}
                 </div>
               {% endif %}
             </div>

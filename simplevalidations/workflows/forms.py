@@ -347,10 +347,52 @@ class BaseStepConfigForm(forms.Form):
             attrs={"placeholder": _("Describe what this step checks")},
         ),
     )
+    description = forms.CharField(
+        label=_("Description"),
+        required=False,
+        max_length=2000,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "placeholder": _("In this step, we check that..."),
+            },
+        ),
+        help_text=_("Brief description to help users understand what this step does."),
+    )
+    display_schema = forms.BooleanField(
+        label=_("User can see schema"),
+        required=False,
+        initial=False,
+        help_text=_(
+            "When enabled, the schema becomes visible to people viewing the workflow."
+        ),
+    )
+    notes = forms.CharField(
+        label=_("Author notes"),
+        required=False,
+        max_length=2000,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 3,
+                "placeholder": _("Note to self..."),
+            },
+        ),
+        help_text=_(
+            "Author notes about this step (visible only by you and other users with author permissions for this workflow)."
+        ),
+    )
 
     def initial_from_step(self, step) -> None:
         if step and step.name:
             self.fields["name"].initial = step.name
+        if step and hasattr(step, "description") and step.description:
+            self.fields["description"].initial = step.description
+        if "display_schema" in self.fields:
+            self.fields["display_schema"].initial = bool(
+                getattr(step, "display_schema", False)
+            )
+        if step and hasattr(step, "notes") and step.notes:
+            self.fields["notes"].initial = step.notes
 
 
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
@@ -477,14 +519,15 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         min_value=0,
         decimal_places=2,
     )
-    notes = forms.CharField(
-        label=_("Notes"),
+    energyplus_notes = forms.CharField(
+        label=_("EnergyPlus notes"),
         required=False,
         widget=forms.Textarea(attrs={"rows": 3}),
     )
 
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields.pop("display_schema", None)
         self.initial_from_step(step)
         if step:
             config = step.config or {}
@@ -495,7 +538,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "simulation_checks": config.get("simulation_checks", []),
                     "eui_min": config.get("eui_band", {}).get("min"),
                     "eui_max": config.get("eui_band", {}).get("max"),
-                    "notes": config.get("notes", ""),
+                    "energyplus_notes": config.get("notes", ""),
                 }
             )
             for key, value in self.initial.items():
@@ -555,6 +598,7 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
 
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields.pop("display_schema", None)
         self.initial_from_step(step)
         if step:
             config = step.config or {}

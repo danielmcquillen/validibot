@@ -17,6 +17,23 @@
       </a>
     </div>
   </div>
+{% elif not has_steps %}
+  <div class="alert alert-info d-flex align-items-start gap-2"
+       role="alert">
+    <i class="bi-diagram-3 fs-4"></i>
+    <div>
+      <p class="mb-1 fw-semibold">
+        {% trans "This workflow has no steps yet." %}
+      </p>
+      <p class="mb-1">
+        {% trans "Add at least one validation step before launching new runs." %}
+      </p>
+      <a class="btn btn-sm btn-outline-primary mt-2"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        {% trans "Manage workflow" %}
+      </a>
+    </div>
+  </div>
 {% elif not can_execute %}
   <div class="alert alert-warning d-flex align-items-center" role="alert">
     <i class="bi-exclamation-triangle-fill me-2"></i>
@@ -72,6 +89,14 @@
               {% endif %}
               {{ launch_form.filename.errors }}
             </div>
+
+            <div class="row g-3 mt-3 text-muted text-sm">
+              <div class="col-12 d-flex flex-row justify-content-center">
+                {% trans "Add your data inline or as a data file (not both)" %}
+                <hr />
+              </div>
+            </div>
+
             <div class="row g-3">
               <div class="col-12 col-lg-6">
                 <label class="form-label fw-semibold">
@@ -98,6 +123,14 @@
                 {{ launch_form.attachment.errors }}
               </div>
             </div>
+
+            <div class="row g-3 mt-3 text-muted text-sm">
+              <div class="col-12 d-flex flex-row justify-content-center">
+                {% trans "Add any meta data this workflow needs..." %}
+                <hr />
+              </div>
+            </div>
+
             <div>
               <label class="form-label fw-semibold">
                 {{ launch_form.metadata.label }}

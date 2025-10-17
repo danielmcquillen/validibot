@@ -9,6 +9,7 @@ from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -35,6 +36,7 @@ def test_launch_page_requires_authentication(client):
 
 def test_launch_page_renders_for_org_member(client):
     workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
@@ -46,8 +48,24 @@ def test_launch_page_renders_for_org_member(client):
     assert "Start Validation" in response.content.decode()
 
 
+def test_launch_page_disables_form_without_steps(client):
+    workflow = WorkflowFactory()
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+
+    response = client.get(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+    )
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert "This workflow has no steps yet." in body
+    assert "Start Validation" not in body
+
+
 def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
     workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
@@ -89,6 +107,7 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
 
 def test_launch_start_requires_executor_role(client):
     workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
     _force_login_for_workflow(client, workflow)
 
     response = client.post(

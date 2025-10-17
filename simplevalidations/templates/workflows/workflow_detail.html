@@ -98,31 +98,6 @@
                 <span class="badge text-bg-warning">{% trans "Locked" %}</span>
               {% endif %}
             </div>
-            {% if can_manage_activation %}
-              <form method="post"
-                    action="{% org_url 'workflows:workflow_activation' pk=workflow.pk %}">
-                {% csrf_token %}
-                {% if workflow.is_active %}
-                  <input type="hidden" name="is_active" value="false" />
-                  <button type="submit"
-                          data-bs-toggle="tooltip"
-                          data-bs-placement="top"
-                          title="{% trans 'Disable workflow' %}"
-                          class="btn btn-warning btn-sm">
-                    <i class="bi-pause-circle"></i>
-                  </button>
-                {% else %}
-                  <input type="hidden" name="is_active" value="true" />
-                  <button type="submit"
-                          data-bs-toggle="tooltip"
-                          data-bs-placement="top"
-                          title="{% trans 'Enable workflow' %}"
-                          class="btn btn-success btn-sm">
-                    <i class="bi-play-circle me"></i>
-                  </button>
-                {% endif %}
-              </form>
-            {% endif %}
             <a class="btn btn-sm btn-light ms-2"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                aria-label="{% trans "Edit workflow details" %}"
@@ -154,16 +129,48 @@
               <dd class="col-sm-8">
                 <div class="d-flex flex-column gap-2">
                   <div>
-                    {% if workflow.is_active %}
-                      <span class="badge text-bg-success">{% trans "Active" %}</span>
-                    {% else %}
-                      <span class="badge text-bg-secondary">{% trans "Inactive" %}</span>
-                    {% endif %}
+
+                    <div class="d-flex flex-row gap-2 align-items-center">
+                      {% if workflow.is_active %}
+                        <span class="badge text-bg-success">
+                          {% trans "Active" %}
+                        </span>
+                      {% else %}
+                        <span class="badge text-bg-dark">
+                          {% trans "Inactive" %}
+                        </span>
+                      {% endif %}
+
+                      {% if can_manage_activation %}
+                        <form method="post"
+                              action="{% org_url 'workflows:workflow_activation' pk=workflow.pk %}">
+                          {% csrf_token %}
+                          {% if workflow.is_active %}
+                            <input type="hidden" name="is_active" value="false" />
+                            <button type="submit"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="{% trans 'Disable workflow' %}"
+                                    class="btn btn-warning btn-sm">
+                              <i class="bi-pause-circle"></i>
+                            </button>
+                          {% else %}
+                            <input type="hidden" name="is_active" value="true" />
+                            <button type="submit"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="{% trans 'Enable workflow' %}"
+                                    class="btn btn-success btn-sm">
+                              <i class="bi-play-circle me"></i>
+                            </button>
+                          {% endif %}
+                        </form>
+                      {% endif %}
+                    </div>
                   </div>
-                  <small class="text-muted">
+                  <small class="text-muted mb-2">
                     {% trans "Inactive workflows stay visible in the catalog but block new validation runs." %}
                   </small>
-
                 </div>
               </dd>
 

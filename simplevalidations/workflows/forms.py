@@ -219,9 +219,9 @@ class WorkflowForm(forms.ModelForm):
 
 class WorkflowLaunchForm(forms.Form):
     filename = forms.CharField(
-        label=_("Filename"),
+        label=_("Submission name"),
         required=False,
-        help_text=_("Optional override used for inline submissions."),
+        help_text=_("Optional name for reporting."),
     )
     content_type = forms.ChoiceField(
         label=_("Content type"),

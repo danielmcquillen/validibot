@@ -21,6 +21,11 @@ class TriggerType(models.TextChoices):
     GITHUB_APP = "GITHUB_APP", _("GitHub App")
 
 
+class WorkflowStartErrorCode(models.TextChoices):
+    NO_WORKFLOW_STEPS = "NO_WORKFLOW_STEPS", _("Workflow has no steps to execute")
+    WORKFLOW_INACTIVE = "WORKFLOW_INACTIVE", _("Workflow is inactive")
+
+
 SUPPORTED_CONTENT_TYPES = {
     "application/json": SubmissionFileType.JSON,
     "application/xml": SubmissionFileType.XML,

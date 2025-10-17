@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -21,12 +22,19 @@ from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.workflows.constants import WorkflowStartErrorCode
 from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.validations.tests.factories import ValidatorFactory
 
 try:
-    from simplevalidations.workflows.tests.factories import WorkflowFactory
+    from simplevalidations.workflows.tests.factories import (
+        WorkflowFactory,
+        WorkflowStepFactory,
+    )
 except Exception:  # noqa: BLE001
     WorkflowFactory = None
+    WorkflowStepFactory = None
 
 
 @pytest.fixture
@@ -47,8 +55,30 @@ def user(db):
 @pytest.fixture
 def workflow(db, org, user):
     if WorkflowFactory:
+        wf = WorkflowFactory(org=org, user=user)
+    else:
+        wf = Workflow.objects.create(
+            org=org,
+            user=user,
+            name=f"WF {uuid4().hex}",
+        )
+    if WorkflowStepFactory:
+        WorkflowStepFactory(workflow=wf)
+    else:
+        validator = ValidatorFactory(org=org)
+        WorkflowStep.objects.create(workflow=wf, order=10, validator=validator)
+    return wf
+
+
+@pytest.fixture
+def workflow_without_steps(db, org, user):
+    if WorkflowFactory:
         return WorkflowFactory(org=org, user=user)
-    return Workflow.objects.create(org=org, name="WF 1")
+    return Workflow.objects.create(
+        org=org,
+        user=user,
+        name=f"WF-no-steps-{uuid4().hex}",
+    )
 
 
 def start_url(workflow) -> str:
@@ -496,5 +526,31 @@ class TestWorkflowStartAPI:
             content_type="application/json",
         )
 
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
-        assert "inactive" in resp.data["detail"].lower()
+        assert resp.status_code == status.HTTP_409_CONFLICT
+        assert resp.data == {
+            "detail": "",
+            "code": WorkflowStartErrorCode.WORKFLOW_INACTIVE.value,
+        }
+
+    def test_start_rejects_workflow_without_steps(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow_without_steps,
+        mock_validation_service_success,
+    ):
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.post(
+            start_url(workflow_without_steps),
+            data=json.dumps({"content": {"example": True}}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data == {
+            "detail": "This workflow has no steps defined and cannot be executed.",
+            "code": WorkflowStartErrorCode.NO_WORKFLOW_STEPS.value,
+        }

@@ -55,6 +55,7 @@ from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
+from simplevalidations.workflows.constants import WorkflowStartErrorCode
 from simplevalidations.workflows.forms import AiAssistStepConfigForm
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
@@ -114,15 +115,34 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
         project = self._resolve_project(workflow=workflow, request=request)
 
-        if not workflow.is_active:
-            return Response(
-                {"detail": _("This workflow is inactive and cannot accept runs.")},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        if not workflow.can_execute(user=user):
+        executor_qs = Workflow.objects.for_user(
+            user,
+            required_role_code=RoleCode.EXECUTOR,
+        )
+        has_executor_role = executor_qs.filter(pk=workflow.pk).exists()
+        if not has_executor_role:
             # Return 404 to avoid leaking workflow existence when user lacks access.
             raise Http404
+
+        if not workflow.is_active:
+            return Response(
+                {
+                    "detail": "",
+                    "code": WorkflowStartErrorCode.WORKFLOW_INACTIVE,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if not workflow.steps.exists():
+            return Response(
+                {
+                    "detail": _(
+                        "This workflow has no steps defined and cannot be executed."
+                    ),
+                    "code": WorkflowStartErrorCode.NO_WORKFLOW_STEPS,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         content_type_header, body_bytes = extract_request_basics(request)
 
@@ -635,6 +655,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         form: WorkflowLaunchForm,
         active_run: ValidationRun | None,
     ) -> dict[str, object]:
+        has_steps = workflow.steps.exists()
         if active_run:
             step_runs = list(active_run.step_runs.order_by("step_order"))
             findings = list(active_run.findings.order_by("severity", "-created")[:10])
@@ -647,6 +668,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "workflow": workflow,
             "launch_form": form,
             "can_execute": workflow.can_execute(user=self.request.user),
+            "has_steps": has_steps,
             "recent_runs": self.get_recent_runs(workflow),
             "active_run": active_run,
             "active_run_step_runs": step_runs,
@@ -688,12 +710,18 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
         can_execute = workflow.can_execute(user=self.request.user)
-        form = self.get_launch_form(workflow=workflow) if can_execute else None
+        has_steps = workflow.steps.exists()
+        form = (
+            self.get_launch_form(workflow=workflow)
+            if can_execute and has_steps
+            else None
+        )
         context.update(
             {
                 "workflow": workflow,
                 "recent_runs": self.get_recent_runs(workflow),
                 "can_execute": can_execute,
+                "has_steps": has_steps,
                 "launch_form": form,
                 "active_run": None,
                 "active_run_step_runs": [],
@@ -730,6 +758,21 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 toast={
                     "level": "danger",
                     "message": str(_("You cannot run this workflow.")),
+                },
+            )
+
+        if not workflow.steps.exists():
+            return self._launch_response(
+                request,
+                workflow=workflow,
+                form=None,
+                active_run=None,
+                status_code=400,
+                toast={
+                    "level": "warning",
+                    "message": str(
+                        _("This workflow has no steps defined and cannot be executed.")
+                    ),
                 },
             )
 

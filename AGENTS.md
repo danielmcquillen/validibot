@@ -77,3 +77,28 @@ AI_CRITIC = "AI_CRITIC", _("AI Critic")
 AI*POLICY_CHECK = "AI_POLICY_CHECK", _("AI Policy Check")
 
 ```
+
+# API
+
+The API we are creating should follow best practices for REST API implementations.
+
+The typical structure for a REST API error reponse is explained in the following table:
+
+| Field | Type | Purpose | Example |
+| ----- | ---- | ------- | ------- |
+
+| detail | string | Human-readable message about what went wrong.| "This workflow is not active and cannot accept new runs."|
+| code | string | Machine-readable short code for programmatic handling. | "workflow_inactive" |
+| (optional) status | integer | HTTP status repeated in the body (some APIs include this). | 409 |
+| (optional) type | string (URI)| Error type identifier (useful in JSON:API or RFC 7807). | "https://api.example.com/errors/workflow_inactive" |
+| (optional) errors| array | List of field-level issues (for validation errors).| [{ "field": "name", "message": "This field is required." }]|
+
+# Tests
+
+Always create tests that can ensure added features work correctly. Don't create _too many_ tests, just
+a few key ones that make sure things work correctly.
+
+# Documentation
+
+Make sure to always add code documentation to the top of all classes. Explain clearly what the class is for
+and include a relevant example if helpful.

@@ -92,6 +92,12 @@ Retry-After: 5
 
 Poll the Location until status is SUCCEEDED or FAILED.
 
+### Error responses
+
+- 409 Conflict with `code: "WORKFLOW_INACTIVE"` (empty detail) when the target workflow is inactive.
+- 400 Bad Request with `code: "NO_WORKFLOW_STEPS"` when no validation steps are configured for the workflow.
+- Other validation errors reuse HTTP status codes (400/413) without custom `code` values; rely on the standard `detail` message.
+
 ## Which Mode Should I Use?
 
 - Raw body: simplest, when you control headers (backend services, curl).

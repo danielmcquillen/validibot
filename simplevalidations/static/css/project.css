@@ -12161,6 +12161,9 @@ h4 {
   text-decoration: none;
   border-bottom: 1px dotted #aaa;
 }
+#marketing-footer .copyright-wrapper {
+  border-top: 1px dotted #aaa;
+}
 
 .course-card .card-body {
   min-height: 250px;
@@ -12391,6 +12394,9 @@ h4 {
   color: #066fd1;
 }
 
+#workflow-public-view {
+  margin-bottom: 10rem;
+}
 #workflow-public-view .public-steps-card .card-body {
   background: url("/static/marketing/images/notebook.png");
 }

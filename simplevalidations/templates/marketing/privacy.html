@@ -4,10 +4,8 @@
 
 {% block content %}
   <section class="container marketing-page privacy-page">
-
-    <div class="row ">
+    <div class="row">
       <div class="col-12 col-lg-6">
-
         <header>
           <h1>
             {% trans "Privacy Policy" %}
@@ -15,97 +13,65 @@
         </header>
 
         <p class="text-muted">
-          Effective date: 1 April 2024
+          Effective date: 1 July 2025
         </p>
 
         <p>
-          This Privacy Policy explains how McQuillen Interactive Pty Ltd
-          ("SimpleValidations," "we," "our," or "us") collects, uses, discloses, and safeguards personal
-          information in connection with the SimpleValidations software-as-a-service platform, websites,
-          mobile applications, APIs, and related support services (collectively, the "Services"). We are
-          an Australian company headquartered in Victoria, and we provide Services to
-          customers in Australia, the United States, and other jurisdictions.
+          This Privacy Policy describes how McQuillen Interactive Pty Ltd ("SimpleValidations", "we", "our", or "us")
+          handles personal information when you visit our marketing site or request early access to the
+          SimpleValidations beta (collectively, the "Services"). We run a small, invite-only Django application and
+          collect only the data necessary to operate the waitlist and keep the site secure.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          1. Scope and Roles
+          1. Scope and Responsibility
         </h2>
         <p>
-          SimpleValidations acts as the "APP entity" under the Australian Privacy Act 1988 (Cth) and as the
-          "data controller" for personal information we collect directly from prospects, users, and
-          visitors. Where our customers submit personal information to the Services, SimpleValidations acts as a
-          "data processor" (or "service provider") on the customer's behalf. Customers remain
-          responsible for obtaining the necessary rights to submit personal information to the Services.
+          SimpleValidations acts as the data controller for information we collect through the marketing site and
+          beta waitlist. If we process personal information for a customer in the future, we will do so solely under
+          that customer's instructions.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
           2. Information We Collect
         </h2>
-        <p>
-          We collect the following categories of personal information:
-        </p>
         <ul>
           <li>
-            <strong>Account information.</strong> Name, employer, role, email address, authentication
-            credentials, billing contacts, and similar information provided when you create or manage
-            an account.
+            <strong>Waitlist signups.</strong> When you submit the beta waitlist form we collect your email address and
+            store technical context captured automatically by the form, including the section of the site you used,
+            referral URL, user agent, IP address, and timestamps.
           </li>
           <li>
-            <strong>Payment information.</strong> Limited payment details such as billing address and
-            transaction identifiers processed via our PCI-compliant payment partners; we do not store
-            full credit card numbers.
+            <strong>Communications.</strong> Messages you send to <a href="mailto:daniel@simplevalidations.com">daniel@simplevalidations.com</a>
+            along with any information you choose to include.
           </li>
           <li>
-            <strong>Customer Data.</strong> Files, datasets, and metadata uploaded or generated through the
-            Services, including audit logs, workflow configurations, validation history, and related
-            comments.
+            <strong>Operational logs.</strong> Heroku, our hosting provider, records device information, IP addresses, URLs
+            requested, and error details in rotating application logs to help us troubleshoot issues.
           </li>
           <li>
-            <strong>Usage and device data.</strong> Log data, IP address, browser type, device identifiers,
-            time zone, referral URLs, pages viewed, and interactions collected through cookies and
-            analytics tools when you access the Services. On our marketing pages this telemetry is
-            processed by PostHog Cloud EU and stored only in aggregated or pseudonymised form.
-          </li>
-          <li>
-            <strong>Support and communications.</strong> Information you submit via email, chat, or support
-            tickets, including recordings of support calls where permitted.
-          </li>
-          <li>
-            <strong>Marketing information.</strong> Preferences, event registrations, feedback, and marketing
-            communications history.
+            <strong>Analytics.</strong> We use PostHog Cloud EU to understand aggregated website usage. PostHog sets
+            first-party cookies or local storage identifiers and receives usage metadata (such as page views,
+            approximate location derived from IP address, and device type). PostHog operates on infrastructure
+            located in the European Union.
           </li>
         </ul>
 
         <h2 class="h4 fw-semibold mt-5">
-          3. How We Use Personal Information
+          3. How We Use Information
         </h2>
-        <p>
-          We use personal information to:
-        </p>
         <ul>
           <li>
-            Provide, configure, and maintain the Services;
+            Manage the beta waitlist, including sending welcome emails and product updates;
           </li>
           <li>
-            Authenticate users and secure accounts;
+            Operate, monitor, and secure the Services, including analysing performance and preventing abuse;
           </li>
           <li>
-            Process transactions, invoicing, and subscription renewals;
+            Respond to questions or support requests;
           </li>
           <li>
-            Deliver customer support, training, and professional services;
-          </li>
-          <li>
-            Monitor system performance, troubleshoot issues, and develop new features;
-          </li>
-          <li>
-            Send operational notices, security alerts, and administrative messages;
-          </li>
-          <li>
-            Conduct product research, analytics, and aggregated reporting;
-          </li>
-          <li>
-            Market and promote the Services consistent with your communication preferences; and
+            Improve the marketing experience by reviewing aggregated analytics; and
           </li>
           <li>
             Comply with legal obligations and enforce our agreements.
@@ -113,152 +79,94 @@
         </ul>
 
         <h2 class="h4 fw-semibold mt-5">
-          4. Legal Bases for Processing
+          4. How We Share Information
         </h2>
         <p>
-          For individuals located in the European Economic Area, the United Kingdom, or similar
-          jurisdictions, we rely on the following legal bases: (a) performance of a contract when we
-          provide the Services; (b) compliance with legal obligations; (c) legitimate interests in operating,
-          securing, and improving our business; and (d) consent for optional uses such as certain
-          marketing communications or cookies where required.
-        </p>
-
-        <h2 class="h4 fw-semibold mt-5">
-          5. How We Share Information
-        </h2>
-        <p>
-          We share personal information only with:
+          We do not sell personal information. We share information only with trusted service providers that
+          help us deliver the Services:
         </p>
         <ul>
           <li>
-            <strong>Service providers.</strong> Trusted vendors supplying hosting, payment processing,
-            analytics, customer support, email delivery, and other operational services bound by
-            confidentiality obligations. For product analytics we use PostHog Cloud EU, operated by
-            PostHog, Inc., which processes pseudonymised usage data on infrastructure located in the
-            AWS eu-central-1 (Frankfurt) region. PostHog acts solely as our data processor and is
-            contractually prohibited from using your information for its own purposes.
+            <strong>Hosting.</strong> Heroku (Salesforce, Inc.) provides infrastructure and log aggregation for the
+            marketing site and beta waitlist.
           </li>
           <li>
-            <strong>Integration partners.</strong> Third-party applications you choose to connect to the
-            Services. Data exchanged with integration partners is subject to their privacy policies.
+            <strong>Email delivery.</strong> Postmark (Wildbit LLC) sends transactional messages such as beta welcome emails on our behalf.
           </li>
           <li>
-            <strong>Professional advisors.</strong> Lawyers, accountants, auditors, and insurers assisting us in
-            managing our business.
-          </li>
-          <li>
-            <strong>Corporate transactions.</strong> An acquiring or merging entity, with appropriate safeguards,
-            if we undergo a business transition.
-          </li>
-          <li>
-            <strong>Legal and regulatory authorities.</strong> When required by applicable law, lawful request, or
-            to protect rights, property, safety, or enforce agreements.
+            <strong>Analytics.</strong> PostHog Cloud EU (PostHog, Inc.) processes pseudonymised usage data under our instructions.
           </li>
         </ul>
-
-        <h2 class="h4 fw-semibold mt-5">
-          6. International Data Transfers
-        </h2>
         <p>
-          We host application data primarily in Australia and the United States. Marketing-site analytics
-          data is processed separately through PostHog Cloud EU and remains within the European Union.
-          If we transfer personal information across borders, including to countries that may not provide
-          equivalent data protection, we will implement appropriate safeguards such as standard contractual
-          clauses, intra-group agreements, or reliance on adequacy decisions. By using the Services, you
-          authorise SimpleValidations to process and transfer personal information globally in accordance with
-          this Policy.
+          We may also disclose information if required by law, to protect rights or safety, or in connection with a
+          business transaction. Each provider is bound by agreements that limit their use of the data to what is
+          necessary to support us.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          7. Data Retention
+          5. Data Retention
         </h2>
         <p>
-          We retain personal information for as long as necessary to deliver the Services, comply with our
-          legal obligations, resolve disputes, and enforce agreements. Customer Data is retained in
-          accordance with the applicable subscription plan and is deleted or anonymised within 30 days
-          after termination unless we are legally required or permitted to retain it longer.
+          We retain waitlist records and related metadata until you ask us to delete them or until we no longer
+          need the information to operate the beta programme. Operational logs rotate automatically and are kept for
+          a short period consistent with Heroku's default retention. Analytics data is aggregated and retained by
+          PostHog according to its EU service commitments.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          8. Security
+          6. Security
         </h2>
         <p>
-          We maintain administrative, technical, and physical safeguards designed to protect personal
-          information against unauthorised access, disclosure, alteration, and destruction. Measures
-          include encryption in transit, role-based access controls, logging and monitoring, secure
-          software development practices, regular vulnerability assessments, and incident response
-          procedures. No system is fully secure; we encourage you to use strong passwords and enable
-          multi-factor authentication where available.
+          We limit access to waitlist data to the small SimpleValidations team, enforce authentication on the admin,
+          and rely on Heroku's managed security controls (including encryption in transit and at rest). No internet
+          service can be completely secure, so please use a strong, unique email account password.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          9. Your Rights
+          7. Your Rights and Choices
         </h2>
         <p>
-          Depending on your jurisdiction, you may have rights to access, correct, update, delete, restrict,
-          or object to the processing of your personal information, and to obtain a copy of your data in a
-          portable format. Australian users may request access or correction under the Privacy Act 1988.
-          Individuals in the EEA, UK, and similar regions have rights under GDPR, including the right to
-          lodge a complaint with a supervisory authority. California residents may exercise rights under
-          the California Consumer Privacy Act. To exercise these rights, contact us at
-          <a href="mailto:privacy@simplevalidations.com">privacy@simplevalidations.com</a>. We will verify requests and respond within
-          applicable timelines.
+          You may request access to, correction of, or deletion of your personal information by emailing
+          <a href="mailto:privacy@simplevalidations.com">privacy@simplevalidations.com</a>. You can unsubscribe from waitlist emails at any time using the
+          link in the message or by contacting us directly. Depending on your location, you may also have rights to
+          object to or restrict certain processing, or to lodge a complaint with a supervisory authority.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          10. Marketing Communications
+          8. Cookies and Analytics Controls
         </h2>
         <p>
-          We may send you marketing emails about new features, events, or promotions. You can opt out
-          at any time by using the unsubscribe link in the message or by contacting us. Even if you opt out
-          of marketing communications, we may still send essential transactional or security notices.
+          PostHog uses first-party cookies or browser storage to measure how visitors engage with the marketing site.
+          These cookies do not power advertising or track you across unrelated sites. You can block or delete cookies
+          through your browser settings or contact us to opt out of analytics for your device.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          11. Cookies and Similar Technologies
+          9. Children's Privacy
         </h2>
         <p>
-          We use cookies, web beacons, and similar technologies to authenticate users, remember
-          preferences, analyse usage, and improve the Services. Marketing-site analytics are powered by
-          PostHog Cloud EU, which sets first-party cookies (or local storage identifiers) to measure page
-          views, feature adoption, and aggregated engagement trends. We configure these analytics to avoid
-          storing payment details or the contents of user uploads, and we do not use PostHog to follow you
-          across unrelated websites or to build individual advertising profiles. You can adjust your browser
-          settings to block or delete cookies, reject analytics through any consent banner we display, or
-          contact us to have analytics disabled for your account. Where required, we will obtain your consent
-          before placing non-essential cookies.
+          The Services are not directed to children under 16, and we do not knowingly collect personal information from
+          children. If you believe a child has provided us with personal information, contact us and we will delete it.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          12. Children's Privacy
+          10. Changes to This Policy
         </h2>
         <p>
-          The Services are not directed to or intended for children under 16. We do not knowingly collect
-          personal information from children. If we learn that a child has provided personal information,
-          we will delete it promptly. Parents or guardians who believe their child has provided information
-          may contact us for assistance.
+          We may update this Privacy Policy from time to time. When we make material changes, we will post an update on
+          this page and adjust the effective date. Your continued use of the Services after the changes take effect
+          means you accept the revised Policy.
         </p>
 
         <h2 class="h4 fw-semibold mt-5">
-          13. Changes to This Policy
+          11. Contact Us
         </h2>
         <p>
-          We may update this Privacy Policy from time to time to reflect changes in law, technology, or our
-          Services. When we make material changes, we will provide notice through the Services or by
-          email. Your continued use of the Services after the effective date constitutes acceptance of the
-          updated Policy.
-        </p>
-
-        <h2 class="h4 fw-semibold mt-5">
-          14. Contact Us
-        </h2>
-        <p>
-          For questions, concerns, or complaints about this Privacy Policy or our privacy practices, contact
-          us at <a href="mailto:privacy@simplevalidations.com">privacy@simplevalidations.com</a> or by mail at McQuillen Interactive Pty Ltd,
-          Unit 7, 3 Bolinda Street, Bentleight, Victoria 3204, Australia. If you are located in the EEA or UK,
-          you also have the right to raise concerns with your local data protection authority.
+          For questions or concerns about this Privacy Policy, email us at
+          <a href="mailto:privacy@simplevalidations.com">privacy@simplevalidations.com</a> or write to McQuillen Interactive Pty Ltd, Unit 7, 3 Bolinda Street,
+          Bentleigh, Victoria 3204, Australia.
         </p>
       </div>
     </div>
   </section>
-{% endblock content %}
+{% endblock %}

@@ -80,3 +80,11 @@ marketing navigation:
   to `simplevalidations/marketing/sitemaps.py` whenever you introduce public pages.
 - Published blog posts surface to crawlers through `BlogPostSitemap`; keep slugs stable
   once content goes live so Google Search retains the indexed URL.
+
+## Legal placeholders
+
+- `templates/marketing/terms.html` and `templates/marketing/privacy.html` now
+  include high-level Australian Consumer Law and Privacy Act references suitable
+  for the beta waitlist. Before broad launch, coordinate with Australian counsel
+  to replace this placeholder copy with full production terms, confirm overseas
+  disclosure language, and align the documents with the final product offering.

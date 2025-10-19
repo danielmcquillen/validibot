@@ -9,6 +9,8 @@ register = template.Library()
 def most_recent_blog_post():
     """Return the most recently published blog post or ``None``."""
 
+    if BlogPost.objects.count() == 0:
+        return None
     return (
         BlogPost.objects.filter(status=1)  # published posts
         .order_by("-published_on")

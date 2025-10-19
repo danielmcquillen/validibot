@@ -30,7 +30,7 @@ def web_tracker(context):
         )
     except Exception:
         logger.exception("Error determining whether to include web tracker.")
-        include_tracker = not settings.debug
+        include_tracker = not settings.DEBUG
 
     return {"include_tracker": include_tracker}
 

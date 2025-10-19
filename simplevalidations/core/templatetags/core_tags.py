@@ -1,5 +1,7 @@
 import logging
+from operator import ge
 
+from attr import has
 from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
@@ -21,12 +23,18 @@ MAX_HEX_COLOR_LENGTH = 6
 
 @register.inclusion_tag("core/partial/web_tracker.html", takes_context=True)
 def web_tracker(context):
-    """Include web tracker if conditions are met."""
+    """
+    Include web tracker if conditions are met.
+    Don't want to track in DEBUG nor for superusers unless configured to do so.
+    """
     include_tracker = True
     try:
-        user = context["request"].user
-        include_tracker = not settings.DEBUG and (
-            not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
+        request = getattr(context, "request", None)
+        user = getattr(request, "user", None) if request else None
+        include_tracker = (
+            user
+            and not settings.DEBUG
+            and (not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER)
         )
     except Exception:
         logger.exception("Error determining whether to include web tracker.")

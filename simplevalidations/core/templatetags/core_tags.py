@@ -26,15 +26,18 @@ def web_tracker(context):
     Don't want to track in DEBUG nor for superusers unless configured to do so.
     """
     if settings.DEBUG:
-        return False
-    include_tracker = True
-    try:
-        request = getattr(context, "request", None)
-        user = getattr(request, "user", None) if request else None
-        if user:
-            return not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
-    except Exception:
-        include_tracker = not settings.DEBUG
+        include_tracker = False
+    else:
+        include_tracker = True
+        try:
+            request = getattr(context, "request", None)
+            user = getattr(request, "user", None) if request else None
+            if user:
+                include_tracker = (
+                    not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
+                )
+        except Exception:
+            include_tracker = not settings.DEBUG
 
     return {"include_tracker": include_tracker}
 

@@ -1,7 +1,5 @@
 import logging
-from operator import ge
 
-from attr import has
 from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
@@ -27,17 +25,15 @@ def web_tracker(context):
     Include web tracker if conditions are met.
     Don't want to track in DEBUG nor for superusers unless configured to do so.
     """
+    if settings.DEBUG:
+        return False
     include_tracker = True
     try:
         request = getattr(context, "request", None)
         user = getattr(request, "user", None) if request else None
-        include_tracker = (
-            user
-            and not settings.DEBUG
-            and (not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER)
-        )
+        if user:
+            return not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
     except Exception:
-        logger.exception("Error determining whether to include web tracker.")
         include_tracker = not settings.DEBUG
 
     return {"include_tracker": include_tracker}

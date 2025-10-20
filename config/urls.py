@@ -42,6 +42,11 @@ urlpatterns = [
         name="about",
     ),
     path(
+        "workflows/",
+        workflow_views.PublicWorkflowListView.as_view(),
+        name="public_workflow_list",
+    ),
+    path(
         "workflows/<uuid:workflow_uuid>/info/",
         workflow_views.WorkflowPublicInfoView.as_view(),
         name="workflow_public_info",

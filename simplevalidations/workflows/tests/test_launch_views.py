@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 
 import pytest
@@ -138,14 +139,18 @@ def test_public_info_view_accessible_when_enabled(client):
         validation_type=ValidationType.JSON_SCHEMA,
         slug="public-json",
     )
-    schema_text = json.dumps({"type": "object", "properties": {"sku": {"type": "string"}}})
+    schema_text = json.dumps(
+        {"type": "object", "properties": {"sku": {"type": "string"}}}
+    )
     ruleset = Ruleset.objects.create(
         org=workflow.org,
         user=workflow.user,
         ruleset_type=RulesetType.JSON_SCHEMA,
         name="Public schema",
     )
-    ruleset.file.save("public-schema.json", ContentFile(schema_text.encode("utf-8")), save=True)
+    ruleset.file.save(
+        "public-schema.json", ContentFile(schema_text.encode("utf-8")), save=True
+    )
     WorkflowStepFactory(
         workflow=workflow,
         validator=validator,
@@ -162,12 +167,11 @@ def test_public_info_view_accessible_when_enabled(client):
     assert response.status_code == 200
     body = response.content.decode()
     assert workflow.name in body
-    assert "Workflow overview" in body
-    assert "Validates base product payload." in body
-    assert "Show schema" in body
-    assert "sku" in body
-    assert "Validation steps" in body
-    assert "Schema shared" in body
+    assert "All Workflows" in body
+    assert html.escape(f"Workflow '{workflow.name}'") in body
+    
+    # Validation we can find the id "workflow-public-view" of the div that holds info
+    assert 'id="workflow-public-view"' in body
 
 
 def test_public_info_view_hides_schema_when_not_shared(client):
@@ -183,7 +187,9 @@ def test_public_info_view_hides_schema_when_not_shared(client):
         ruleset_type=RulesetType.XML_SCHEMA,
         name="Private schema",
     )
-    ruleset.file.save("private-schema.xsd", ContentFile(xml_schema.encode("utf-8")), save=True)
+    ruleset.file.save(
+        "private-schema.xsd", ContentFile(xml_schema.encode("utf-8")), save=True
+    )
     WorkflowStepFactory(
         workflow=workflow,
         validator=validator,

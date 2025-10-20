@@ -3,10 +3,10 @@ import contextlib
 import json
 import logging
 import uuid
-from xml.dom import minidom
 from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
+from xml.dom import minidom
 
 from django import forms
 from django.conf import settings
@@ -1017,6 +1017,107 @@ class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
         )
 
 
+class PublicWorkflowListView(ListView):
+    """
+    Public listing of workflows available to visitors and signed-in members.
+
+    Example:
+        /workflows/?q=data&layout=list&per_page=100
+    """
+
+    template_name = "workflows/public/workflow_list.html"
+    context_object_name = "workflows"
+    paginate_by = 50
+    page_size_options = (10, 50, 100)
+    http_method_names = ["get"]
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Workflow.objects.filter(is_active=True)
+        if user.is_authenticated:
+            accessible_ids = (
+                Workflow.objects.for_user(user)
+                .filter(is_active=True)
+                .values_list("pk", flat=True)
+            )
+            queryset = queryset.filter(
+                models.Q(make_info_public=True) | models.Q(pk__in=accessible_ids)
+            )
+        else:
+            queryset = queryset.filter(make_info_public=True)
+
+        search_query = self.request.GET.get("q", "").strip()
+        if search_query:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search_query)
+                | models.Q(slug__icontains=search_query),
+            )
+
+        return (
+            queryset.select_related("org", "project", "user")
+            .prefetch_related("steps")
+            .order_by("name", "pk")
+            .distinct()
+        )
+
+    def get_paginate_by(self, queryset):
+        per_page = self.request.GET.get("per_page")
+        page_size = self.paginate_by
+        if per_page:
+            try:
+                per_page_value = int(per_page)
+            except (TypeError, ValueError):
+                per_page_value = self.paginate_by
+            else:
+                if per_page_value in self.page_size_options:
+                    page_size = per_page_value
+        self.page_size = page_size
+        return page_size
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        layout = self._get_layout()
+        query_string = self._build_query_params()
+        context.update(
+            {
+                "search_query": self.request.GET.get("q", ""),
+                "current_layout": layout,
+                "layout_urls": {
+                    "grid": self._build_url_with_params(layout="grid"),
+                    "list": self._build_url_with_params(layout="list"),
+                },
+                "query_string": query_string,
+                "page_size_options": self.page_size_options,
+                "current_page_size": getattr(self, "page_size", self.paginate_by),
+                "page_title": _("All Workflows"),
+                "breadcrumbs": [
+                    {"name": _("All Workflows"), "url": ""},
+                ],
+            },
+        )
+        return context
+
+    def _get_layout(self) -> str:
+        layout = self.request.GET.get("layout", "grid")
+        if layout not in {"grid", "list"}:
+            return "grid"
+        return layout
+
+    def _build_query_params(self, **overrides) -> str:
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        for key, value in overrides.items():
+            if value is None:
+                params.pop(key, None)
+            else:
+                params[key] = value
+        return params.urlencode()
+
+    def _build_url_with_params(self, **overrides) -> str:
+        query = self._build_query_params(**overrides)
+        return f"?{query}" if query else "?"
+
+
 class WorkflowPublicInfoView(DetailView):
     template_name = "workflows/public/workflow_info.html"
     context_object_name = "workflow"
@@ -1047,6 +1148,16 @@ class WorkflowPublicInfoView(DetailView):
                 "user_has_access": (
                     user.is_authenticated and workflow.can_execute(user=user)
                 ),
+                "breadcrumbs": [
+                    {
+                        "name": _("All Workflows"),
+                        "url": reverse("public_workflow_list"),
+                    },
+                    {
+                        "name": _("Workflow '%(name)s'") % {"name": workflow.name},
+                        "url": "",
+                    },
+                ],
             },
         )
         return context

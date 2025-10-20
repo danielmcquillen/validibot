@@ -27,6 +27,11 @@ SimpleValidations lets you run validations on submitted content through configur
 ### Sharing Workflow Details
 
 - Toggle the **Make info public** setting on a workflow to expose its Info tab at `/workflows/<workflow uuid>/info`. Only the overview panel is shared; launching still requires authentication inside the app.
+- Visit `/workflows/` to browse all public workflows plus any you can access when signed in. Use the search bar, layout toggle, and pagination controls to find the right workflow quickly.
+
+### Seeding Demo Workflows
+
+- Run `uv run -- python manage.py create_dummy_workflows --count 10` to generate demo-ready workflows (defaults to 10). The command creates sample organizations, projects, public info, and steps with faker content so the public pages look realistic.
 
 ### Security and Access
 

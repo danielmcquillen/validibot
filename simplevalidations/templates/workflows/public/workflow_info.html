@@ -27,7 +27,7 @@ to launch the workflow.
             <div class="card">
               <div class="card-body p-3 validation-steps-card">
                 <div class="row">
-                  <div class="col-12 col-lg-7 d-flex flex-column align-items-start justify-content-start">
+                  <div class="col-12 col-lg-7 d-flex flex-column ">
                     <div class="ps-3">
                       <div class="text-muted fw-semibold mb-1 small">
                         {% trans "SimpleValidations Workflow Information" %}
@@ -37,12 +37,7 @@ to launch the workflow.
                       </h1>
                     </div>
                   </div>
-                  <div class="col-12 col-lg-5">
-
-                    {% comment %}
-                    Access Button / Text 
-                    {% endcomment %}
-
+                  <div class="col-12 col-lg-5 d-flex flex-column justify-content-center ">
                     <div class="mb-2">
                       {% if request.user.is_authenticated %}
                         {% if user_has_access %}
@@ -56,10 +51,12 @@ to launch the workflow.
                     </div>
                     <div>
                       {% if request.user.is_authenticated %}
-                        <a href="{% url 'workflows:workflow_launch' workflow.pk %}"
-                           class="btn btn-primary">
-                          {% trans "Open in app" %}
-                        </a>
+                        {% if user_has_access %}
+                          <a href="{% url 'workflows:workflow_launch' workflow.pk %}"
+                             class="btn btn-primary">
+                            {% trans "Open in app" %}
+                          </a>
+                        {% endif %}
                       {% else %}
                         <a href="{% url 'account_login' %}" class="btn btn-outline-primary">
                           {% trans "Sign in" %}

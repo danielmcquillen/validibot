@@ -107,8 +107,8 @@ def workflow_context(load_rng_asset, api_client):
         org=org,
         user=user,
         ruleset_type=ValidationType.XML_SCHEMA,
+        rules_text=schema,
         metadata={
-            "schema": schema,
             "schema_type": XMLSchemaType.RELAXNG.name,
         },
     )

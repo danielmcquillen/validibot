@@ -27,32 +27,16 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
     JSON Schema validator (Draft 2020-12 compatible by default if
     jsonschema lib supports).
 
-    Expects a JSON Schema under (priority):
-       1) ruleset.config['schema']
-       2) validator.config['schema']
-       3) self.config['schema'] (fallback if you injected one)
-
-     Example config on your Validator model:
-       {
-         "schema": {
-           "$schema": "https://json-schema.org/draft/2020-12/schema",
-           "type": "object",
-           "required": ["version"],
-           "properties": { "version": { "type": "string" } },
-           "additionalProperties": false
-         }
-       }
+    Expects a JSON Schema stored on the associated ruleset via ``rules_text`` or
+    ``rules_file`` (retrieved through ``ruleset.rules``).
     """
 
     def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:
-        raw_schema = None
-
-        # Right now we expect the schema to be stored in
-        # ruleset.metadata under the 'schema' key
-        try:
-            raw_schema = ruleset.metadata.get("schema", None)
-        except Exception as e:
-            raise ValueError(_("Missing 'schema' in ruleset/validator config.")) from e
+        raw_schema = getattr(ruleset, "rules", None)
+        if not raw_schema:
+            raise ValueError(
+                _("Ruleset must provide schema text via rules_text or rules_file."),
+            )
         if isinstance(raw_schema, dict):
             return raw_schema
         if isinstance(raw_schema, str):

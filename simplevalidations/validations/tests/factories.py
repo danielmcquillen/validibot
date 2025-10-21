@@ -1,13 +1,17 @@
+import json
+
 import factory
 from factory.django import DjangoModelFactory
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import StepStatus
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Artifact
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationFinding
@@ -26,17 +30,31 @@ class RulesetFactory(DjangoModelFactory):
     ruleset_type = RulesetType.JSON_SCHEMA
     version = "1"
 
-    # We don't need to define schema_type.
-    # Give an empty schema by default to avoid validation errors
-    metadata = factory.Dict(
-        {
-            "schema": {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "properties": {},
-            },
-        },
-    )
+    @factory.lazy_attribute
+    def rules_text(self):
+        if self.ruleset_type == RulesetType.JSON_SCHEMA:
+            return json.dumps(
+                {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {},
+                }
+            )
+        if self.ruleset_type == RulesetType.XML_SCHEMA:
+            return "<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>"
+        return ""
+
+    @factory.lazy_attribute
+    def metadata(self):
+        if self.ruleset_type == RulesetType.JSON_SCHEMA:
+            return {
+                "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
+            }
+        if self.ruleset_type == RulesetType.XML_SCHEMA:
+            return {
+                "schema_type": XMLSchemaType.XSD.value,
+            }
+        return {}
 
 
 class ValidatorFactory(DjangoModelFactory):

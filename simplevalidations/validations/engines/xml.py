@@ -22,34 +22,29 @@ if TYPE_CHECKING:
 @register_engine(ValidationType.XML_SCHEMA)
 class XmlSchemaValidatorEngine(BaseValidatorEngine):
     """
-    XML validator that supports XSD (default) and Relax NG.
+    XML validator that supports XSD (default), Relax NG, and DTD.
 
-    Select engine via ruleset.metadata['engine'] or
-    ruleset.config['engine'] ∈ {'XSD','RELAXNG'}.
+    Ruleset requirements:
+      * ``ruleset.metadata['schema_type']`` must be one of ``XMLSchemaType``.
+      * ``ruleset.rules_text`` or ``ruleset.rules_file`` should provide the schema text.
 
-    Provide the schema under ruleset.metadata['schema'] or ruleset.config['schema'].
-
-    Expects a 'schema' entry in config:
-      - str: the XSD schema as a string
-
-    Example config on your Validator model:
-      {
-        "schema": "<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>...</xs:schema>"
-      }
+    For legacy rulesets that did not embed the schema, we fall back to
+    ``validator.config['schema']``. New rulesets should keep the schema in
+    metadata so it travels with the reusable asset.
     """
 
     def _resolve_schema_type(self, ruleset) -> str:
         schema_type = None
         if ruleset is not None:
-            for cfg in (
-                getattr(ruleset, "config", None),
-                getattr(ruleset, "metadata", None),
-            ):
-                if isinstance(cfg, dict) and "schema_type" in cfg:
-                    schema_type = (cfg["schema_type"] or "").strip().upper()
-                    break
+            metadata = getattr(ruleset, "metadata", None) or {}
+            if isinstance(metadata, dict):
+                schema_type = (metadata.get("schema_type") or "").strip().upper()
         # Expect the upper-case string of the enum's value (e.g., "XSD" or "RELAXNG")
-        if schema_type not in {XMLSchemaType.XSD.value, XMLSchemaType.RELAXNG.value}:
+        if schema_type not in {
+            XMLSchemaType.XSD,
+            XMLSchemaType.RELAXNG,
+            XMLSchemaType.DTD,
+        }:
             err_msg = _(
                 "Invalid or missing XML schema_type '%(schema_type)s';"
                 "must be 'XSD' or 'RELAXNG'.",
@@ -70,23 +65,26 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             return etree.XMLSchema(etree.XML(raw.encode("utf-8")))
         if schema_type == XMLSchemaType.RELAXNG.name:
             return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
+        if schema_type == XMLSchemaType.DTD.name:
+            return etree.DTD(etree.XML(raw.encode("utf-8")))
         raise ValueError(_("Unsupported XML engine: ") + schema_type)
 
-    def _get_schema_raw(self, *, validator, ruleset) -> str | None:
-        raw = None
+    def _get_schema_raw(
+        self,
+        *,
+        validator: Validator,
+        ruleset: Ruleset,
+    ) -> str | None:
+        raw: str | None = None
         if ruleset is not None:
-            for cfg in (
-                getattr(ruleset, "config", None),
-                getattr(ruleset, "metadata", None),
-            ):
-                if isinstance(cfg, dict) and "schema" in cfg:
-                    raw = cfg["schema"]
-                    break
-        if raw is None and isinstance(getattr(validator, "config", None), dict):
-            raw = validator.config.get("schema")
-        if isinstance(raw, str):
-            return raw
-        return None
+            raw_candidate = getattr(ruleset, "rules", None)
+            if isinstance(raw_candidate, str) and raw_candidate.strip():
+                raw = raw_candidate
+        if not raw and isinstance(getattr(validator, "config", None), dict):
+            raw_config = validator.config.get("schema")
+            if isinstance(raw_config, str):
+                raw = raw_config
+        return raw
 
     def validate(
         self,

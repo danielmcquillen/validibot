@@ -6,14 +6,12 @@ import uuid
 from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
-from xml.dom import minidom
 
 from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.core.files.base import ContentFile
 from django.db import models
 from django.db import transaction
 from django.http import Http404
@@ -39,6 +37,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.core.utils import pretty_json
+from simplevalidations.core.utils import pretty_xml
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.ingest import prepare_inline_text
@@ -46,6 +46,7 @@ from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
@@ -395,6 +396,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if isinstance(response_data, dict):
             run_id = response_data.get("id")
             run_status = response_data.get("status")
+            logger.info("Started ValidationRun %s with status %s", run_id, run_status)
 
         extra_payload: dict[str, object] = {}
         if run_status is not None:
@@ -433,7 +435,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
 
 class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
-    """Reusable helpers for workflow UI views."""
+    """
+    Reusable helpers for workflow UI views.
+    """
 
     manager_role_codes = {
         RoleCode.OWNER,
@@ -601,8 +605,22 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
 
 
 class WorkflowLaunchContextMixin(WorkflowObjectMixin):
+    """
+    This mixin provides helper methods to build context for launching workflows
+    via the UI. It also provides methods to get recent runs and load a specific run
+    for display.
+
+    Args:
+        WorkflowObjectMixin (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+
     launch_panel_template_name = "workflows/launch/_launch_panel.html"
+
     run_status_template_name = "workflows/launch/_run_status.html"
+
     polling_statuses = {
         ValidationRunStatus.PENDING,
         ValidationRunStatus.RUNNING,
@@ -773,7 +791,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 toast={
                     "level": "warning",
                     "message": str(
-                        _("This workflow has no steps defined and cannot be executed.")
+                        _("This workflow has no steps defined and cannot be executed."),
                     ),
                 },
             )
@@ -810,10 +828,12 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
-                "Failed to prepare submission for workflow run.", exc_info=exc
+                "Failed to prepare submission for workflow run.",
+                exc_info=exc,
             )
             form.add_error(
-                None, _("Something went wrong while preparing the submission.")
+                None,
+                _("Something went wrong while preparing the submission."),
             )
             return self._launch_response(
                 request,
@@ -845,7 +865,9 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
-                "Run service errored for workflow %s", workflow.pk, exc_info=exc
+                "Run service errored for workflow %s",
+                workflow.pk,
+                exc_info=exc,
             )
             form.add_error(None, _("Could not run the workflow. Please try again."))
             return self._launch_response(
@@ -905,9 +927,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
         )
 
         if attachment:
-            max_file = int(
-                getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
-            )
+            max_file = int(settings.SUBMISSION_FILE_MAX_BYTES)
             ingest = prepare_uploaded_file(
                 uploaded_file=attachment,
                 filename=filename,
@@ -1041,7 +1061,7 @@ class PublicWorkflowListView(ListView):
                 .values_list("pk", flat=True)
             )
             queryset = queryset.filter(
-                models.Q(make_info_public=True) | models.Q(pk__in=accessible_ids)
+                models.Q(make_info_public=True) | models.Q(pk__in=accessible_ids),
             )
         else:
             queryset = queryset.filter(make_info_public=True)
@@ -1119,6 +1139,16 @@ class PublicWorkflowListView(ListView):
 
 
 class WorkflowPublicInfoView(DetailView):
+    """
+    Handles public display of workflow information for visitors.
+    This is a read-only view showing workflow details and recent runs,
+    available to the public if the workflow is marked as public, and
+    to authenticated users who have access to the workflow.
+
+    If an authenticated user has access to the workflow and wants to launch
+    the workflow, a control is provided to navigate to the launch page.
+    """
+
     template_name = "workflows/public/workflow_info.html"
     context_object_name = "workflow"
     slug_field = "uuid"
@@ -1142,7 +1172,7 @@ class WorkflowPublicInfoView(DetailView):
                 "steps": steps,
                 "recent_runs": list(
                     workflow.validation_runs.select_related("user").order_by(
-                        "-created"
+                        "-created",
                     )[:5],
                 ),
                 "user_has_access": (
@@ -1178,34 +1208,33 @@ class WorkflowPublicInfoView(DetailView):
                 step.public_schema = {
                     "content": schema_content,
                     "language": schema_language
-                    or (
-                        "json"
-                        if vtype == ValidationType.JSON_SCHEMA
-                        else "xml"
-                    ),
+                    or ("json" if vtype == ValidationType.JSON_SCHEMA else "xml"),
                 }
 
     def _load_schema_content(
         self,
         step: WorkflowStep,
     ) -> tuple[str | None, str | None]:
+        """
+        Load and pretty-print schema content for public display.
+
+
+        Args:
+            step (WorkflowStep)
+
+        Returns:
+            tuple[str | None, str | None] : (pretty_schema_content, language)
+        """
         schema_text: str = ""
-        if step.ruleset and getattr(step.ruleset, "file", None):
+        if step.ruleset:
             try:
-                step.ruleset.file.open("rb")
-                raw = step.ruleset.file.read()
+                schema_text = step.ruleset.rules
             except Exception:
                 logger.exception(
-                    "Failed to read schema file for step", extra={"step_id": step.pk}
+                    "Failed to load rules for step",
+                    extra={"step_id": step.pk},
                 )
-                raw = b""
-            finally:
-                with contextlib.suppress(Exception):
-                    step.ruleset.file.close()
-            if isinstance(raw, bytes):
-                schema_text = raw.decode("utf-8", errors="replace")
-            else:
-                schema_text = str(raw or "")
+                schema_text = ""
 
         if not schema_text:
             schema_text = step.config.get("schema_text_preview", "")
@@ -1216,15 +1245,14 @@ class WorkflowPublicInfoView(DetailView):
         vtype = step.validator.validation_type
         if vtype == ValidationType.JSON_SCHEMA:
             try:
-                parsed = json.loads(schema_text)
-                pretty = json.dumps(parsed, indent=2, sort_keys=True)
+                pretty = pretty_json(schema_text)
             except Exception:
                 pretty = schema_text
             return pretty, "json"
 
         if vtype == ValidationType.XML_SCHEMA:
             try:
-                pretty = minidom.parseString(schema_text).toprettyxml(indent="  ")
+                pretty = pretty_xml(schema_text)
             except Exception:
                 pretty = schema_text
             return pretty, "xml"
@@ -1457,14 +1485,16 @@ class WorkflowActivationUpdateView(WorkflowObjectMixin, View):
                 messages.success(
                     request,
                     _(
-                        "Workflow reactivated. New validation runs can start immediately."
+                        "Workflow reactivated. New validation "
+                        "runs can start immediately.",
                     ),
                 )
             else:
                 messages.info(
                     request,
                     _(
-                        "Workflow disabled. Existing runs finish, but new ones are blocked."
+                        "Workflow disabled. Existing runs finish, "
+                        "but new ones are blocked.",
                     ),
                 )
         else:
@@ -1523,6 +1553,22 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
 
 
 class WorkflowStepWizardView(WorkflowObjectMixin, View):
+    """
+    Handle adding or editing a workflow step via a two-stage HTMX wizard:
+    1) Select the validation type
+    2) Configure the step settings
+
+    Forms are validated via POST, and on success the step is saved and a trigger
+    response is returned to notify the client to refresh the step list.
+
+    Args:
+        WorkflowObjectMixin (_type_): _description_
+        View (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+
     template_select = "workflows/partials/workflow_step_wizard_select.html"
     template_config = "workflows/partials/workflow_step_wizard_config.html"
 
@@ -1729,6 +1775,18 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         step: WorkflowStep | None,
         ruleset_type: str,
     ) -> Ruleset:
+        """
+        Ensure a ruleset exists for the given workflow step and type.
+
+        Args:
+            workflow (Workflow)
+            step (WorkflowStep | None)
+            ruleset_type (str)
+
+        Returns:
+            Ruleset
+        """
+
         if step and step.ruleset and step.ruleset.ruleset_type == ruleset_type:
             ruleset = step.ruleset
         else:
@@ -1746,14 +1804,41 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         form: JsonSchemaStepConfigForm,
         step: WorkflowStep | None,
     ) -> tuple[dict[str, Any], Ruleset | None]:
+        """
+        Build JSON Schema step configuration and manage ruleset.
+        Args:
+            workflow (Workflow)
+            form (JsonSchemaStepConfigForm)
+            step (WorkflowStep | None)
+
+        Returns:
+            tuple[dict[str, Any], Ruleset | None]
+        """
+
         source = form.cleaned_data.get("schema_source")
         text = (form.cleaned_data.get("schema_text") or "").strip()
         uploaded = form.cleaned_data.get("schema_file")
+        schema_type = form.cleaned_data.get("schema_type")
+
+        if schema_type not in JSONSchemaVersion.values:
+            raise ValidationError(_("Select a valid JSON Schema draft."))
 
         if source == "keep" and step and step.ruleset_id:
             preview = step.config.get("schema_text_preview", "")
-            config = {"schema_source": "keep", "schema_text_preview": preview}
-            return config, step.ruleset
+            ruleset = step.ruleset
+            metadata = dict((ruleset.metadata or {}))
+            metadata["schema_type"] = schema_type
+            metadata.pop("schema", None)
+            ruleset.metadata = metadata
+            ruleset.full_clean()
+            ruleset.save(update_fields=["metadata"])
+            config = {
+                "schema_source": "keep",
+                "schema_text_preview": preview,
+                "schema_type": schema_type,
+                "schema_type_label": str(JSONSchemaVersion(schema_type).label),
+            }
+            return config, ruleset
 
         ruleset = self._ensure_ruleset(
             workflow=workflow,
@@ -1761,26 +1846,45 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             ruleset_type=RulesetType.JSON_SCHEMA,
         )
 
+        schema_payload: str | None = None
+
         if source == "text":
-            content = ContentFile(
-                text.encode("utf-8"),
-                name=f"schema-{uuid4().hex}.json",
-            )
-            if ruleset.file:
-                ruleset.file.delete(save=False)
-            ruleset.file.save(content.name, content, save=False)
+            ruleset.rules_text = text
+            if ruleset.rules_file:
+                ruleset.rules_file.delete(save=False)
+            ruleset.rules_file = None
+            schema_payload = text
             preview = text[:1200]
         else:
-            if ruleset.file:
-                ruleset.file.delete(save=False)
-            ruleset.file.save(uploaded.name, uploaded, save=False)
-            preview = ""
+            if uploaded is None:
+                raise ValidationError(_("Upload a JSON schema file."))
+            uploaded.seek(0)
+            raw_bytes = uploaded.read()
+            uploaded.seek(0)
+            if ruleset.rules_file:
+                ruleset.rules_file.delete(save=False)
+            ruleset.rules_file.save(uploaded.name, uploaded, save=False)
+            ruleset.rules_text = ""
+            schema_payload = (
+                raw_bytes.decode("utf-8", errors="replace")
+                if isinstance(raw_bytes, bytes)
+                else str(raw_bytes or "")
+            )
+            preview = schema_payload[:1200]
 
-        ruleset.metadata = {"kind": "json"}
+        metadata = dict(ruleset.metadata or {})
+        metadata["schema_type"] = schema_type
+        metadata.pop("schema", None)
+        ruleset.metadata = metadata
         ruleset.full_clean()
         ruleset.save()
 
-        config = {"schema_source": source, "schema_text_preview": preview}
+        config = {
+            "schema_source": source,
+            "schema_text_preview": preview,
+            "schema_type": schema_type,
+            "schema_type_label": str(JSONSchemaVersion(schema_type).label),
+        }
         return config, ruleset
 
     def _build_xml_schema(
@@ -1789,19 +1893,41 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         form: XmlSchemaStepConfigForm,
         step: WorkflowStep | None,
     ) -> tuple[dict[str, Any], Ruleset | None]:
+        """
+        Build XML Schema step configuration and manage ruleset.
+
+        Args:
+            workflow (Workflow)
+            form (XmlSchemaStepConfigForm)
+            step (WorkflowStep | None)
+
+        Returns:
+            tuple[dict[str, Any], Ruleset | None]
+        """
         source = form.cleaned_data.get("schema_source")
         text = (form.cleaned_data.get("schema_text") or "").strip()
         uploaded = form.cleaned_data.get("schema_file")
         schema_type = form.cleaned_data.get("schema_type")
 
+        if schema_type not in XMLSchemaType.values:
+            raise ValidationError(_("Select a valid XML schema type."))
+
         if source == "keep" and step and step.ruleset_id:
             preview = step.config.get("schema_text_preview", "")
+            ruleset = step.ruleset
+            metadata = dict((ruleset.metadata or {}))
+            metadata["schema_type"] = schema_type
+            metadata.pop("schema", None)
+            ruleset.metadata = metadata
+            ruleset.full_clean()
+            ruleset.save(update_fields=["metadata"])
             config = {
                 "schema_source": "keep",
-                "schema_type": schema_type or step.config.get("schema_type"),
+                "schema_type": schema_type,
                 "schema_text_preview": preview,
+                "schema_type_label": str(XMLSchemaType(schema_type).label),
             }
-            return config, step.ruleset
+            return config, ruleset
 
         ruleset = self._ensure_ruleset(
             workflow=workflow,
@@ -1815,22 +1941,36 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             XMLSchemaType.RELAXNG: ".rng",
         }.get(schema_type, ".xml")
 
+        schema_payload: str | None = None
+
         if source == "text":
-            content = ContentFile(
-                text.encode("utf-8"),
-                name=f"schema-{uuid4().hex}{extension}",
-            )
-            if ruleset.file:
-                ruleset.file.delete(save=False)
-            ruleset.file.save(content.name, content, save=False)
+            ruleset.rules_text = text
+            if ruleset.rules_file:
+                ruleset.rules_file.delete(save=False)
+            ruleset.rules_file = None
+            schema_payload = text
             preview = text[:1200]
         else:
-            if ruleset.file:
-                ruleset.file.delete(save=False)
-            ruleset.file.save(uploaded.name, uploaded, save=False)
-            preview = ""
+            if uploaded is None:
+                raise ValidationError(_("Upload an XML schema file."))
+            uploaded.seek(0)
+            raw_bytes = uploaded.read()
+            uploaded.seek(0)
+            if ruleset.rules_file:
+                ruleset.rules_file.delete(save=False)
+            ruleset.rules_file.save(uploaded.name, uploaded, save=False)
+            ruleset.rules_text = ""
+            schema_payload = (
+                raw_bytes.decode("utf-8", errors="replace")
+                if isinstance(raw_bytes, bytes)
+                else str(raw_bytes or "")
+            )
+            preview = schema_payload[:1200]
 
-        ruleset.metadata = {"schema_type": schema_type}
+        metadata = dict(ruleset.metadata or {})
+        metadata["schema_type"] = schema_type
+        metadata.pop("schema", None)
+        ruleset.metadata = metadata
         ruleset.full_clean()
         ruleset.save()
 
@@ -1838,7 +1978,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "schema_source": source,
             "schema_type": schema_type,
             "schema_text_preview": preview,
-            "schema_type_label": XMLSchemaType(schema_type).label
+            "schema_type_label": str(XMLSchemaType(schema_type).label)
             if schema_type in XMLSchemaType.values
             else schema_type,
         }
@@ -1848,6 +1988,16 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         self,
         form: EnergyPlusStepConfigForm,
     ) -> dict[str, Any]:
+        """
+        Build EnergyPlus step configuration.
+
+        Args:
+            form (EnergyPlusStepConfigForm)
+
+        Returns:
+            dict[str, Any]
+        """
+
         eui_min = form.cleaned_data.get("eui_min")
         eui_max = form.cleaned_data.get("eui_max")
         eui_band = {

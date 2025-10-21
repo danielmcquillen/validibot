@@ -15,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -43,6 +44,9 @@ ENERGYPLUS_SIMULATION_CHECK_CHOICES = (
     ("eui-range", _("Flag if Energy Use Intensity is outside range")),
     ("peak-load", _("Check peak heating/cooling load")),
 )
+
+
+SCHEMA_UPLOAD_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
 @dataclass(slots=True)
@@ -293,13 +297,17 @@ class WorkflowLaunchForm(forms.Form):
         payload = (cleaned.get("payload") or "").strip()
         attachment = cleaned.get("attachment")
         if payload and attachment:
-            raise forms.ValidationError(
-                _("Provide inline content or upload a file, not both."),
-            )
+            both_msg = _("Provide inline content or upload a file, not both.")
+            self.add_error("payload", both_msg)
+            self.add_error("attachment", both_msg)
+            raise forms.ValidationError(both_msg)
         if not payload and not attachment:
-            raise forms.ValidationError(
-                _("Paste content or upload a file to launch the workflow."),
+            missing_msg = _(
+                "Add content inline or upload a file before starting the validation."
             )
+            self.add_error("payload", missing_msg)
+            self.add_error("attachment", missing_msg)
+            raise forms.ValidationError(missing_msg)
 
         content_type = cleaned.get("content_type")
         if content_type not in SUPPORTED_CONTENT_TYPES:
@@ -396,6 +404,12 @@ class BaseStepConfigForm(forms.Form):
 
 
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
+    schema_type = forms.ChoiceField(
+        label=_("Schema version"),
+        choices=JSONSchemaVersion.choices,
+        initial=JSONSchemaVersion.DRAFT_2020_12,
+        help_text=_("Select the JSON Schema draft that matches your schema."),
+    )
     schema_source = forms.ChoiceField(
         label=_("Schema source"),
         choices=(
@@ -418,6 +432,16 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
         super().__init__(*args, **kwargs)
         self.initial_from_step(step)
         if step and step.ruleset_id:
+            current_schema_type = (
+                (step.ruleset.metadata or {}).get("schema_type")
+                if step.ruleset
+                else None
+            )
+            if current_schema_type in JSONSchemaVersion.values:
+                self.fields["schema_type"].initial = current_schema_type
+            elif step and step.config and step.config.get("schema_type") in JSONSchemaVersion.values:
+                self.fields["schema_type"].initial = step.config.get("schema_type")
+        if step and step.ruleset_id:
             self.fields["schema_source"].choices += [
                 ("keep", _("Keep existing schema"))
             ]
@@ -437,6 +461,11 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
             self.add_error("schema_text", _("Provide JSON schema text."))
         if source == "upload" and not file:
             self.add_error("schema_file", _("Upload a JSON schema file."))
+        if file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
+            self.add_error(
+                "schema_file",
+                _("Uploaded schema files must be 2 MB or smaller."),
+            )
         return cleaned
 
 
@@ -467,6 +496,13 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
         super().__init__(*args, **kwargs)
         self.initial_from_step(step)
         if step and step.ruleset_id:
+            current_schema_type = None
+            if step.ruleset:
+                current_schema_type = (step.ruleset.metadata or {}).get("schema_type")
+            if current_schema_type in XMLSchemaType.values:
+                self.fields["schema_type"].initial = current_schema_type
+            elif step and step.config and step.config.get("schema_type") in XMLSchemaType.values:
+                self.fields["schema_type"].initial = step.config.get("schema_type")
             self.fields["schema_source"].choices += [
                 ("keep", _("Keep existing schema"))
             ]
@@ -476,7 +512,6 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
             self.fields["schema_text"].initial = step.config.get(
                 "schema_text_preview", ""
             )
-            self.fields["schema_type"].initial = step.config.get("schema_type")
 
     def clean(self):
         cleaned = super().clean()
@@ -487,19 +522,32 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
             self.add_error("schema_text", _("Provide XML schema text."))
         if source == "upload" and not file:
             self.add_error("schema_file", _("Upload an XML schema file."))
+        if file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
+            self.add_error(
+                "schema_file",
+                _("Uploaded schema files must be 2 MB or smaller."),
+            )
         return cleaned
 
 
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
-    run_simulation = forms.BooleanField(
-        label=_("Run EnergyPlus simulation"),
-        required=False,
-    )
+    """Collects EnergyPlus step options including optional simulation checks.
+
+    Example:
+        form = EnergyPlusStepConfigForm(data={"run_simulation": True})
+    """
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
         required=False,
         choices=ENERGYPLUS_IDF_CHECK_CHOICES,
         widget=forms.CheckboxSelectMultiple,
+    )
+    run_simulation = forms.BooleanField(
+        label=_("Run EnergyPlus simulation"),
+        help_text=_(
+            "If this option is unchecked, only IDF syntax checks will be performed.",
+        ),
+        required=False,
     )
     simulation_checks = forms.MultipleChoiceField(
         label=_("Post-simulation checks"),
@@ -549,6 +597,13 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         cleaned = super().clean()
         eui_min = cleaned.get("eui_min")
         eui_max = cleaned.get("eui_max")
+        run_simulation = cleaned.get("run_simulation")
+        simulation_checks = cleaned.get("simulation_checks") or []
+        if not run_simulation and simulation_checks:
+            self.add_error(
+                "simulation_checks",
+                _("Enable 'Run EnergyPlus simulation' to use post-simulation checks."),
+            )
         if eui_min is not None and eui_max is not None and eui_min > eui_max:
             raise ValidationError(_("EUI minimum cannot exceed maximum."))
         return cleaned

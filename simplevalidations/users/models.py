@@ -362,6 +362,25 @@ class Membership(TimeStampedModel):
     def role_labels(self) -> list[str]:
         return list(self.roles.values_list("name", flat=True))
 
+    def _demote_other_owners(self):
+        if not self.org_id:
+            return
+        other_owner_memberships = (
+            Membership.objects.filter(
+                org_id=self.org_id,
+                is_active=True,
+                membership_roles__role__code=RoleCode.OWNER,
+            )
+            .exclude(pk=self.pk)
+            .distinct()
+        )
+        for other in other_owner_memberships:
+            remaining_codes = set(other.role_codes)
+            if RoleCode.OWNER not in remaining_codes:
+                continue
+            remaining_codes.discard(RoleCode.OWNER)
+            other.set_roles(remaining_codes or {RoleCode.ADMIN})
+
     def add_role(self, role_code: str):
         if role_code not in RoleCode.values:
             raise ValueError(f"Invalid role code: {role_code}")
@@ -371,13 +390,24 @@ class Membership(TimeStampedModel):
                 "name": role_code.title(),
             },
         )
+        if role_code == RoleCode.OWNER:
+            self._demote_other_owners()
         MembershipRole.objects.get_or_create(membership=self, role=role)
+        if role_code == RoleCode.OWNER:
+            admin_role, _ = Role.objects.get_or_create(
+                code=RoleCode.ADMIN,
+                defaults={"name": RoleCode.ADMIN.label},
+            )
+            MembershipRole.objects.get_or_create(membership=self, role=admin_role)
 
     def set_roles(self, role_codes: list[str] | set[str]):
-        valid_codes = {code for code in role_codes if code in RoleCode.values}
-        roles = list(Role.objects.filter(code__in=valid_codes))
-        if len(valid_codes) != len(roles):
-            missing = valid_codes - set(role.code for role in roles)
+        normalized_codes = {code for code in role_codes if code in RoleCode.values}
+        if RoleCode.OWNER in normalized_codes:
+            normalized_codes.add(RoleCode.ADMIN)
+            self._demote_other_owners()
+        roles = list(Role.objects.filter(code__in=normalized_codes))
+        if len(normalized_codes) != len(roles):
+            missing = normalized_codes - set(role.code for role in roles)
             for code in missing:
                 role, _ = Role.objects.get_or_create(
                     code=code,
@@ -390,7 +420,9 @@ class Membership(TimeStampedModel):
             MembershipRole.objects.get_or_create(membership=self, role=role)
 
     def remove_role(self, role_code: str):
-        MembershipRole.objects.filter(membership=self, role__code=role_code).delete()
+        updated_codes = set(self.role_codes)
+        updated_codes.discard(role_code)
+        self.set_roles(updated_codes)
 
 
 class MembershipRole(models.Model):

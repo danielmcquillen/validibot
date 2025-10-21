@@ -77,15 +77,17 @@
         </dl>
 
     </div>
-    <div class="card-footer">
-        <div class="mt-auto d-flex flex-wrap gap-2 justify-content-end align-items-center">
+    <div class="card-footer d-flex flex-row">
+        <div class="d-flex flex-row gap-2 me-auto">
             {% if workflow.can_execute_cached %}
-                <a class="btn btn-sm btn-success"
+                <a class="btn btn-sm btn-outline-success"
                    href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
                    title="{% trans "Run workflow" %}"
-                   aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}Run {{ workflow_name }}{% endblocktrans %}">
+                   aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                                   Run {{ workflow_name }}
+                               {% endblocktrans %}">
                     <i class="bi bi-play-fill"></i>
                 </a>
             {% else %}
@@ -101,6 +103,9 @@
                     </span>
                 </span>
             {% endif %}
+        </div>
+        <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center">
+
             <a class="btn btn-sm btn-outline-primary"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
@@ -134,7 +139,7 @@
                                     Delete {{ workflow_name }}
                                 {% endblocktrans %}"
                     hx-confirm="{% trans "Delete this workflow?" %}">
-                {% trans "Delete" %}
+                <i class="bi-trash me-1"></i>
             </button>
         </div>
     </div>

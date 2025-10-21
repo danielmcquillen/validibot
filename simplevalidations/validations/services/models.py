@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from dataclasses import dataclass
 from dataclasses import field
 
@@ -30,3 +31,16 @@ class ValidationRunTaskResult:
     status: ValidationRunStatus
     summary: ValidationRunSummary | None = None
     error: str | None = None
+
+    def to_payload(self) -> dict[str, object]:
+        """
+        Return a JSON-serializable representation of the task result.
+        """
+        payload: dict[str, object] = {
+            "run_id": str(self.run_id),
+            "status": str(self.status),
+            "error": self.error,
+        }
+        if self.summary:
+            payload["summary"] = asdict(self.summary)
+        return payload

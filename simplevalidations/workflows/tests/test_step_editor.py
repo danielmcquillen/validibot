@@ -9,6 +9,7 @@ from django.urls import reverse
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.tests.factories import ValidatorFactory
@@ -66,6 +67,7 @@ def test_wizard_creates_json_schema_step(client):
             "description": "Ensures posted documents follow the schema.",
             "notes": "Remember to update schema when payload changes.",
             "display_schema": "on",
+            "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
             "schema_source": "text",
             "schema_text": schema_text,
         },
@@ -79,12 +81,14 @@ def test_wizard_creates_json_schema_step(client):
     step = WorkflowStep.objects.get(workflow=workflow)
     assert step.validator == validator
     assert step.ruleset is not None
-    stored_schema = step.ruleset.file.read().decode()
+    stored_schema = step.ruleset.rules
     assert "type" in stored_schema
     assert step.config["schema_source"] == "text"
+    assert step.config["schema_type"] == JSONSchemaVersion.DRAFT_2020_12.value
     assert step.description == "Ensures posted documents follow the schema."
     assert step.notes == "Remember to update schema when payload changes."
     assert step.display_schema is True
+    assert step.ruleset.metadata.get("schema_type") == JSONSchemaVersion.DRAFT_2020_12.value
 
 
 def test_wizard_creates_ai_step(client):

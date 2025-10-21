@@ -496,6 +496,24 @@ class OrganizationMemberRolesUpdateView(OrganizationAdminRequiredMixin, FormView
                 )
                 return self.form_invalid(form)
 
+        if RoleCode.OWNER not in new_roles:
+            remaining_owners = (
+                Membership.objects.filter(
+                    org=organization,
+                    is_active=True,
+                    membership_roles__role__code=RoleCode.OWNER,
+                )
+                .exclude(pk=self.membership.pk)
+                .distinct()
+                .count()
+            )
+            if remaining_owners == 0:
+                form.add_error(
+                    None,
+                    _("An organization must retain at least one owner."),
+                )
+                return self.form_invalid(form)
+
         form.save()
         messages.success(self.request, _("Roles updated."))
         return redirect(
@@ -543,6 +561,30 @@ class OrganizationMemberDeleteView(OrganizationAdminRequiredMixin, View):
                 messages.error(
                     request,
                     _("Cannot remove the final administrator from an organization."),
+                )
+                return redirect(
+                    reverse_with_org(
+                        "users:organization-detail",
+                        request=request,
+                        kwargs={"pk": organization.pk},
+                    )
+                )
+
+        if membership.has_role(RoleCode.OWNER):
+            remaining_owners = (
+                Membership.objects.filter(
+                    org=organization,
+                    is_active=True,
+                    membership_roles__role__code=RoleCode.OWNER,
+                )
+                .exclude(pk=membership.pk)
+                .distinct()
+                .count()
+            )
+            if remaining_owners == 0:
+                messages.error(
+                    request,
+                    _("Cannot remove the final owner from an organization."),
                 )
                 return redirect(
                     reverse_with_org(

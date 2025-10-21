@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 from django.core.exceptions import ValidationError
@@ -13,6 +14,7 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import StepStatus
@@ -24,8 +26,11 @@ from simplevalidations.workflows.models import WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
-    """
-    Schema or rule bundle (JSON Schema, XSD, YAML rules, etc.)
+    """Reusable rule bundle (JSON Schema, XML schema, custom logic, etc.).
+
+    Rules can be stored inline via ``rules_text`` or uploaded as ``rules_file``.
+    Only one storage mechanism should be used at a time; helper ``rules``
+    returns the effective rule definition as text.
     Can be global (org=None) or org-private.
     """
 
@@ -81,31 +86,127 @@ class Ruleset(TimeStampedModel):
         default="",
     )
 
-    file = models.FileField(upload_to="rulesets/")  # or TextField for inline content
+    rules_file = models.FileField(
+        upload_to="rulesets/",
+        blank=True,
+        help_text=_(
+            "Optional uploaded file containing the ruleset definition. "
+            "Leave empty when pasting rules directly.",
+        ),
+    )
 
-    metadata = models.JSONField(default=dict, blank=True)
+    rules_text = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Inline ruleset definition (for example, JSON Schema or XML schema text). "
+            "Use this when you prefer to paste or store the "
+            "rules without uploading a file.",
+        ),
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Additional metadata about the ruleset (non-rule data only)."),
+    )
 
     def clean(self):
         super().clean()
 
+        has_file = bool(self.rules_file and getattr(self.rules_file, "name", None))
+        has_text = bool((self.rules_text or "").strip())
+        if has_file and has_text:
+            raise ValidationError(
+                {
+                    "rules_file": _("Provide rules either as text or file, not both."),
+                    "rules_text": _("Provide rules either as text or file, not both."),
+                },
+            )
+
         # Validate XML schema_type when this ruleset is for XML
         if self.ruleset_type == RulesetType.XML_SCHEMA:
-            meta = self.metadata or {}
-            schema_type = meta.get("schema_type")
-            if not schema_type:
-                # Default to XSD if not specified
-                meta["schema_type"] = XMLSchemaType.XSD.value
-                self.metadata = meta
-                return
-            schema_type = str(schema_type).strip().upper()
-            # Compare against TextChoices values (strings)
+            meta = dict(self.metadata or {})
+            schema_type_raw = str(meta.get("schema_type") or "").strip()
+            if not schema_type_raw:
+                raise ValidationError(
+                    {
+                        "metadata": _(
+                            "XML schema rulesets must define metadata['schema_type'].",
+                        ),
+                    },
+                )
+            schema_type = schema_type_raw.upper()
             if schema_type not in set(XMLSchemaType.values):
                 raise ValidationError(
                     {
                         "metadata": _("Schema type '%(st)s' is not valid for %(rt)s.")
-                        % {"st": schema_type, "rt": self.ruleset_type},
+                        % {"st": schema_type_raw, "rt": self.ruleset_type},
                     },
                 )
+            meta["schema_type"] = schema_type
+            self.metadata = meta
+
+        if self.ruleset_type == RulesetType.JSON_SCHEMA:
+            meta = dict(self.metadata or {})
+            schema_type_raw = str(meta.get("schema_type") or "").strip()
+            if not schema_type_raw:
+                raise ValidationError(
+                    {
+                        "metadata": _(
+                            "JSON schema rulesets must define metadata['schema_type'].",
+                        ),
+                    },
+                )
+            schema_type_value = schema_type_raw
+            if schema_type_value not in set(JSONSchemaVersion.values):
+                candidate = schema_type_raw.upper()
+                if candidate in JSONSchemaVersion.__members__:
+                    schema_type_value = JSONSchemaVersion[candidate].value
+                else:
+                    raise ValidationError(
+                        {
+                            "metadata": _(
+                                "Schema type '%(st)s' is not valid for %(rt)s.",
+                            )
+                            % {"st": schema_type_raw, "rt": self.ruleset_type},
+                        },
+                    )
+            meta["schema_type"] = schema_type_value
+            self.metadata = meta
+
+        if self.ruleset_type in {RulesetType.JSON_SCHEMA, RulesetType.XML_SCHEMA}:
+            if not has_file and not has_text:
+                raise ValidationError(
+                    {
+                        "rules_text": _(
+                            "Schema rulesets must include either inline "
+                            "rules text or an uploaded file.",
+                        ),
+                    },
+                )
+
+    @property
+    def rules(self) -> str:
+        """
+        Return the stored ruleset definition as text.
+
+        Prefers inline ``rules_text`` and falls back to reading the uploaded file.
+        """
+        text = (self.rules_text or "").strip()
+        if text:
+            return text
+        if self.rules_file:
+            try:
+                self.rules_file.open("rb")
+                raw = self.rules_file.read()
+            finally:
+                with contextlib.suppress(Exception):
+                    self.rules_file.close()
+            if isinstance(raw, bytes):
+                return raw.decode("utf-8", errors="replace")
+            return str(raw or "")
+        return ""
 
 
 class Validator(TimeStampedModel):

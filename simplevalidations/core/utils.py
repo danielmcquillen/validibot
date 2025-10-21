@@ -1,7 +1,10 @@
+import json
+
 import bleach
 import markdown2
 from django.http import HttpRequest
 from django.urls import reverse
+from lxml import etree
 
 
 def is_htmx(request: HttpRequest) -> bool:
@@ -112,3 +115,41 @@ def render_markdown_safe(text_md: str) -> str:
 
     html = bleach.linkify(html, callbacks=[set_target])
     return html
+
+
+def pretty_xml(text: str) -> str:
+    """
+    Safely pretty-print user-supplied XML for display.
+    """
+    if not text:
+        return ""
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    root = etree.fromstring(
+        text.encode("utf-8"),
+        parser=parser,
+    )  # may raise; handle errors
+    pretty = etree.tostring(root, encoding="unicode", pretty_print=True)
+    return pretty
+
+
+def pretty_json(text: str) -> str:
+    """
+    Safely pretty-print user-supplied JSON for display.
+    Returns a string that is ready to be escaped in the template.
+    """
+    if not text:
+        return ""
+    try:
+        # Parse JSON — this will raise if malformed
+        obj = json.loads(text)
+        # Pretty-print with 2-space indentation and sorted keys for consistency
+        formatted = json.dumps(
+            obj,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+    except json.JSONDecodeError:
+        # If invalid JSON, just return the raw text
+        formatted = text.strip()
+    return formatted

@@ -26,13 +26,13 @@ The configuration form is specific to the validation type you picked. All forms 
 
 ### JSON Schema
 - Pick whether to **paste** the schema or **upload** a file.
-- Pasting text saves the schema into a `Ruleset`; a short preview is stored with the step.
-- Uploading replaces any existing schema file associated with the step.
+- Pasting text stores the schema in the ruleset's `rules_text` field; a short preview is stored with the step for quick inspection.
+- Uploading saves the schema to `rules_file`, clears any inline text, and overwrites the previous file (uploads are capped at 2&nbsp;MB).
 
 ### XML Schema
 - Choose the schema flavour (**DTD**, **XSD**, or **RELAXNG**).
-- Paste the XSD/RNG/DTD content or upload a file—behaviour mirrors the JSON workflow.
-- The schema type is preserved in the associated `Ruleset` metadata.
+- Paste the XSD/RNG/DTD content or upload a file—behaviour mirrors the JSON workflow and uses the same `rules_text`/`rules_file` storage model.
+- The selected schema type is persisted on the ruleset metadata (`metadata['schema_type']`).
 
 ### EnergyPlus
 - Decide whether the step **runs a simulation** or only performs static IDF checks.

@@ -59,6 +59,13 @@
                         · {{ step.ruleset.name }}
                       {% endif %}
                     </p>
+                  {% elif step.validator.validation_type == 'JSON_SCHEMA' %}
+                    <p class="text-muted small mb-2">
+                      {% trans "JSON Schema" %}
+                      {% if config.schema_type_label %}
+                        · {{ config.schema_type_label }}
+                      {% endif %}
+                    </p>
                   {% elif step.validator.validation_type == 'XML_SCHEMA' %}
                     <p class="text-muted small mb-2">
                       {% trans "XML Schema" %}

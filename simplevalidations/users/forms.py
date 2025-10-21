@@ -124,6 +124,9 @@ class OrganizationMemberForm(forms.Form):
             self.fields["email"].help_text = _(
                 "Enter the email address of an existing user to add them to %(org)s."
             ) % {"org": self.organization.name}
+        self.fields["roles"].help_text = _(
+            "Selecting Owner transfers the role from the current owner and keeps them as an Admin."
+        )
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
@@ -174,6 +177,9 @@ class OrganizationMemberRolesForm(forms.Form):
         self.membership: Membership = kwargs.pop("membership")
         super().__init__(*args, **kwargs)
         self.fields["roles"].initial = list(self.membership.role_codes)
+        self.fields["roles"].help_text = _(
+            "Only one member can be Owner; choosing it here will move the role from the current owner."
+        )
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False

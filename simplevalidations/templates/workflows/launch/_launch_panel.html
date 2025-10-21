@@ -65,7 +65,9 @@
             {% csrf_token %}
             {% if launch_form.non_field_errors %}
               <div class="alert alert-danger" role="alert">
-                {{ launch_form.non_field_errors }}
+                {% for error in launch_form.non_field_errors %}
+                  <p class="mb-0">{{ error }}</p>
+                {% endfor %}
               </div>
             {% endif %}
             <div class="row g-3">

@@ -4,15 +4,16 @@ import html
 import json
 
 import pytest
-from django.core.files.base import ContentFile
 from django.urls import reverse
 from rest_framework.response import Response
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidatorFactory
@@ -148,16 +149,23 @@ def test_public_info_view_accessible_when_enabled(client):
         ruleset_type=RulesetType.JSON_SCHEMA,
         name="Public schema",
     )
-    ruleset.file.save(
-        "public-schema.json", ContentFile(schema_text.encode("utf-8")), save=True
-    )
+    ruleset.metadata = {
+        "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
+    }
+    ruleset.rules_text = schema_text
+    ruleset.save(update_fields=["metadata", "rules_text"])
     WorkflowStepFactory(
         workflow=workflow,
         validator=validator,
         description="Validates base product payload.",
         display_schema=True,
         ruleset=ruleset,
-        config={"schema_source": "text", "schema_text_preview": schema_text[:100]},
+        config={
+            "schema_source": "text",
+            "schema_text_preview": schema_text[:100],
+            "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
+            "schema_type_label": str(JSONSchemaVersion.DRAFT_2020_12.label),
+        },
     )
 
     response = client.get(
@@ -169,7 +177,7 @@ def test_public_info_view_accessible_when_enabled(client):
     assert workflow.name in body
     assert "All Workflows" in body
     assert html.escape(f"Workflow '{workflow.name}'") in body
-    
+
     # Validation we can find the id "workflow-public-view" of the div that holds info
     assert 'id="workflow-public-view"' in body
 
@@ -187,16 +195,23 @@ def test_public_info_view_hides_schema_when_not_shared(client):
         ruleset_type=RulesetType.XML_SCHEMA,
         name="Private schema",
     )
-    ruleset.file.save(
-        "private-schema.xsd", ContentFile(xml_schema.encode("utf-8")), save=True
-    )
+    ruleset.metadata = {
+        "schema_type": XMLSchemaType.XSD.value,
+    }
+    ruleset.rules_text = xml_schema
+    ruleset.save(update_fields=["metadata", "rules_text"])
     WorkflowStepFactory(
         workflow=workflow,
         validator=validator,
         description="Validates XML payload.",
         display_schema=False,
         ruleset=ruleset,
-        config={"schema_source": "text", "schema_text_preview": xml_schema[:100]},
+        config={
+            "schema_source": "text",
+            "schema_text_preview": xml_schema[:100],
+            "schema_type": XMLSchemaType.XSD.value,
+            "schema_type_label": str(XMLSchemaType.XSD.label),
+        },
     )
 
     response = client.get(

@@ -101,10 +101,6 @@ def grant_role(user: User, org: Organization, role_code: RoleCode) -> None:
     """
     Ensure user has an active membership in org with the given role.
     """
-    role, _ = Role.objects.get_or_create(
-        code=role_code,
-        defaults={"name": getattr(role_code, "label", None) or str(role_code).title()},
-    )
     membership, _ = Membership.objects.get_or_create(
         user=user,
         org=org,
@@ -113,4 +109,4 @@ def grant_role(user: User, org: Organization, role_code: RoleCode) -> None:
     if not membership.is_active:
         membership.is_active = True
         membership.save(update_fields=["is_active"])
-    MembershipRole.objects.get_or_create(membership=membership, role=role)
+    membership.add_role(role_code)

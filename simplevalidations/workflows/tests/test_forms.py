@@ -10,6 +10,11 @@ from simplevalidations.users.tests.factories import (
     OrganizationFactory,
     UserFactory,
 )
+from simplevalidations.validations.constants import JSONSchemaVersion
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
+from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
+from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.forms import WorkflowForm
 from simplevalidations.workflows.forms import WorkflowLaunchForm
 from simplevalidations.workflows.tests.factories import WorkflowFactory
@@ -162,3 +167,71 @@ def test_workflow_launch_form_rejects_unsupported_content_type():
 
     assert not form.is_valid()
     assert any("Select a supported content type." in error for error in form.errors["__all__"])
+
+
+def test_json_schema_form_rejects_large_upload():
+    big_content = b"{" * (2 * 1024 * 1024 + 1)
+    uploaded = SimpleUploadedFile(
+        "schema.json",
+        big_content,
+        content_type="application/json",
+    )
+    form = JsonSchemaStepConfigForm(
+        data={
+            "name": "Large JSON schema",
+            "schema_source": "upload",
+            "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
+        },
+        files={"schema_file": uploaded},
+    )
+
+    assert not form.is_valid()
+    assert "2 MB or smaller" in form.errors["schema_file"][0]
+
+
+def test_xml_schema_form_rejects_large_upload():
+    big_content = b"<" * (2 * 1024 * 1024 + 1)
+    uploaded = SimpleUploadedFile(
+        "schema.xsd",
+        big_content,
+        content_type="application/xml",
+    )
+    form = XmlSchemaStepConfigForm(
+        data={
+            "name": "Large XML schema",
+            "schema_source": "upload",
+            "schema_type": XMLSchemaType.XSD.value,
+        },
+        files={"schema_file": uploaded},
+    )
+
+    assert not form.is_valid()
+    assert "2 MB or smaller" in form.errors["schema_file"][0]
+
+
+def test_energyplus_form_blocks_simulation_checks_without_run_flag():
+    form = EnergyPlusStepConfigForm(
+        data={
+            "name": "Energy simulation",
+            "simulation_checks": ["eui-range"],
+        }
+    )
+
+    assert not form.is_valid()
+    assert any(
+        "Enable 'Run EnergyPlus simulation' to use post-simulation checks."
+        in error
+        for error in form.errors["simulation_checks"]
+    )
+
+
+def test_energyplus_form_accepts_simulation_checks_when_enabled():
+    form = EnergyPlusStepConfigForm(
+        data={
+            "name": "Energy simulation",
+            "run_simulation": "on",
+            "simulation_checks": ["eui-range"],
+        }
+    )
+
+    assert form.is_valid(), form.errors

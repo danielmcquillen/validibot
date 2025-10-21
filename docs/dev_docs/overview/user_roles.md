@@ -12,110 +12,106 @@ The permission system is built around three core concepts:
 
 Users can belong to multiple organizations with different roles in each, providing flexible access management across teams and projects.
 
-## Role Hierarchy
+## Role Catalogue
 
-SimpleValidations defines four primary roles, listed from highest to lowest privilege:
+SimpleValidations defines five organization-scoped roles. Permissions are cumulative unless otherwise noted, and organization management actions currently hinge on the **Admin** role. Use the table below as a quick reference.
 
-### Owner (OWNER)
+| Role | Code | Primary scope | Key capabilities |
+| ---- | ---- | ------------- | ---------------- |
+| Owner | `OWNER` | Strategic control | Signals ultimate responsibility for the organization; expected to pair with `ADMIN`. |
+| Admin | `ADMIN` | Operational management | Manage organization settings, members, and lifecycle (including deletion safeguards). |
+| Author | `AUTHOR` | Workflow design | Create, edit, and retire workflows across the organization. |
+| Executor | `EXECUTOR` | Validation operations | Launch runs and inspect detailed results. |
+| Viewer | `VIEWER` | Transparency | Read-only access to workflows, runs, and documentation. |
 
-**Full administrative control over the organization**
+### Owner (`OWNER`)
 
-**Permissions:**
+**What it represents:** The accountable owner of the organization (billing contact, contractual responsibility).
 
-- All Author, Executor, and Viewer permissions
-- Manage organization settings and billing
-- Invite and remove users from the organization
-- Assign and revoke roles for other users
-- Delete the organization (where applicable)
-- Access to all workflows, regardless of specific workflow permissions
+**Permissions in practice:**
 
-**Typical Users:**
+- Inherits all capabilities from Author, Executor, and Viewer when combined with those roles.
+- Owner alone does *not* unlock organization-admin views; pair with `ADMIN` when provisioning.
+- Used for auditing, billing flows, and future enterprise features.
 
-- Organization founders
-- Department heads
-- Primary administrators
-
-**Notes:**
-
-- Every organization must have at least one Owner
-- Owners are automatically created when new organizations are established
-- Personal workspaces automatically assign Owner role to the user
-
-### Author (AUTHOR)
-
-**Create and manage validation workflows**
-
-**Permissions:**
-
-- All Executor and Viewer permissions
-- Create new workflows within the organization
-- Edit existing workflows (name, steps, configuration)
-- Delete workflows they created
-- Manage workflow-specific access permissions
-- Upload and manage rulesets (validation schemas)
-- View organization usage statistics
-
-**Typical Users:**
-
-- Data architects
-- Validation engineers
-- Team leads responsible for data quality standards
+**Typical holders:** Executive sponsor, procurement lead, customer of record.
 
 **Notes:**
 
-- Authors can only modify workflows within their organization
-- They cannot change organization-level settings or manage user memberships
+- Exactly one member holds the Owner role at any time; assigning Owner to someone else automatically revokes it from the previous holder (they remain Admin).
+- Personal workspaces create a membership flagged as Owner and also grant `ADMIN` and `EXECUTOR` so the user can operate immediately.
+- Track at least one Owner for each organization even though enforcement currently focuses on keeping at least one Admin.
 
-### Executor (EXECUTOR)
+### Admin (`ADMIN`)
 
-**Execute validations and view results**
-
-**Permissions:**
-
-- All Viewer permissions
-- Start validation runs against accessible workflows
-- Upload submissions for validation
-- Access detailed validation results and logs
-- Download validation artifacts and reports
-- Re-run existing validations
-
-**Typical Users:**
-
-- Application developers
-- Data engineers
-- QA engineers
-- Anyone who needs to validate data regularly
-
-**Notes:**
-
-- This is the minimum role required to actually perform validations
-- Executors cannot modify workflows but can use them extensively
-- API integrations typically use accounts with Executor role
-
-### Viewer (VIEWER)
-
-**Read-only access to validation information**
+**What it represents:** Operational administrator empowered to configure the organization day to day.
 
 **Permissions:**
 
-- Browse workflows they have access to
-- View workflow configurations and steps
-- See validation run history and status
-- View high-level validation results
-- Access organization and workflow documentation
+- All Author, Executor, and Viewer permissions (if those roles are also assigned).
+- Access to organization management UI/API (`OrganizationAdminRequiredMixin` checks this role explicitly).
+- Invite or remove members, edit organization metadata, and reassign roles.
+- Delete non-personal organizations (guarded so at least one other active admin remains).
+- Switch active organization context and seed new organizations via the UI.
 
-**Typical Users:**
-
-- Stakeholders who need visibility into data quality
-- Auditors and compliance personnel
-- New team members during onboarding
-- External consultants with limited access needs
+**Typical holders:** Team lead, platform administrator, senior engineer responsible for tooling.
 
 **Notes:**
 
-- Cannot execute validations or make any changes
-- Useful for providing transparency without operational access
-- Default role for new organization members
+- Keep at least two admins per organization; the deletion flow enforces this.
+- Grant Admin to any Owner who needs to manage people or settings.
+
+### Author (`AUTHOR`)
+
+**What it represents:** Designer and maintainer of validation workflows.
+
+**Permissions:**
+
+- Configure workflows: create, edit, clone, lock, and delete steps.
+- Manage workflow-level access controls.
+- See run histories and operational metrics.
+
+**Typical holders:** Validation engineers, quality specialists, workflow authors.
+
+**Notes:**
+
+- Authors cannot change organization membership or settings unless they are also Admins.
+- Workflow UI treats Owner, Admin, and Author memberships as managers (`WorkflowAccessMixin.manager_role_codes`).
+
+### Executor (`EXECUTOR`)
+
+**What it represents:** Operator who runs validations and investigates outcomes.
+
+**Permissions:**
+
+- Start validation runs (UI and API).
+- Upload submissions and metadata.
+- Inspect detailed run results, logs, and generated artifacts.
+- Re-run eligible workflows.
+
+**Typical holders:** Application developers, QA engineers, CI/CD service accounts.
+
+**Notes:**
+
+- Minimum role required for active validation work (`Workflow.can_execute` checks this role specifically).
+- Executors cannot alter workflow configuration or organization settings.
+
+### Viewer (`VIEWER`)
+
+**What it represents:** Read-only participant who needs visibility without edit rights.
+
+**Permissions:**
+
+- Browse workflow catalog and step configuration.
+- Review run summaries, statuses, and documentation.
+- Access public workflow info pages when permitted.
+
+**Typical holders:** Product stakeholders, compliance reviewers, onboarding teammates.
+
+**Notes:**
+
+- Default role for new invitees when no role is specified.
+- Cannot run workflows or upload content.
 
 ## Organization Model
 
@@ -124,14 +120,14 @@ SimpleValidations defines four primary roles, listed from highest to lowest priv
 **Regular Organizations**
 
 - Multi-user workspaces for teams and companies
-- Managed by Owners who can invite other users
+- Managed by Admins (often also Owners) who can invite other users
 - Support all role types and collaborative workflows
 - Can have custom billing and usage limits
 
 **Personal Organizations**
 
 - Single-user workspaces automatically created for each user
-- User is automatically assigned Owner role
+- User is automatically assigned Owner, Admin, and Executor roles
 - Provides a private space for personal validation work
 - Can be used for prototyping before sharing with teams
 
@@ -139,7 +135,7 @@ SimpleValidations defines four primary roles, listed from highest to lowest priv
 
 Users join organizations through:
 
-1. **Invitation**: Existing Owners invite users via email
+1. **Invitation**: Existing Admins (often also Owners) invite users via email
 2. **Automatic Creation**: Personal organizations are created automatically
 3. **Self-Service**: Organizations can enable open registration (optional)
 
@@ -148,6 +144,9 @@ Each membership tracks:
 - **Join Date**: When the user became a member
 - **Active Status**: Whether the membership is currently active
 - **Role History**: Audit trail of role changes over time
+
+Only members with the `ADMIN` role (Owners must also hold `ADMIN`) can perform invitations, role changes, or other organization-level management tasks in the UI and API.
+When a new Owner is assigned, the previous Owner is automatically downgraded (usually to Admin) to maintain the single-owner rule.
 
 ## Workflow Access Control
 
@@ -158,6 +157,7 @@ Beyond organization-level roles, SimpleValidations provides workflow-specific ac
 By default, workflows inherit organization-level permissions:
 
 - **Owners**: See all workflows in the organization
+- **Admins**: See all workflows in the organization
 - **Authors**: See all workflows in the organization
 - **Executors**: See workflows they have access to execute
 - **Viewers**: See workflows they have permission to view
@@ -208,7 +208,7 @@ def get_queryset(self):
 
 Templates and forms adapt based on user roles:
 
-- Owners see organization management options
+    - Admins (often also Owners) see organization management options
 - Authors see workflow creation buttons
 - Executors see validation execution controls
 - Viewers see read-only interfaces
@@ -269,6 +269,7 @@ Service Account: "production-validator"
 - Start with Viewer role for new users
 - Promote to higher roles as responsibilities increase
 - Regularly audit role assignments for appropriateness
+- Pair strategic Owners with the Admin role so they can act on their authority
 
 ### Separation of Duties
 
@@ -278,7 +279,7 @@ Service Account: "production-validator"
 
 ### Emergency Access
 
-- Maintain multiple Owners per organization
+- Maintain multiple Admins (and, where appropriate, multiple Owners) per organization
 - Document emergency access procedures
 - Consider temporary role escalation for incident response
 
@@ -310,10 +311,10 @@ Service Account: "production-validator"
 
 ### Role Assignment Problems
 
-1. Only Owners can assign roles to other users
-2. Users cannot assign roles higher than their own
-3. Every organization must maintain at least one Owner
-4. Role changes may require session refresh to take effect
+1. Confirm the acting user holds the `ADMIN` role—Owner-only memberships cannot update roles.
+2. The UI blocks removing the final Admin; promote another member before demoting the last admin.
+3. New role grants may require the user to reselect the organization or refresh the session.
+4. Double-check invitations include every role the user needs (Owners typically need `ADMIN` and `EXECUTOR` as well).
 
 ### Access Control Debugging
 

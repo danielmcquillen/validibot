@@ -44,3 +44,11 @@ class XMLSchemaType(TextChoices):
     DTD = "DTD", _("Document Type Definition (DTD)")
     XSD = "XSD", _("XML Schema Definition (XSD)")
     RELAXNG = "RELAXNG", _("Relax NG (RNG)")
+
+
+class JSONSchemaVersion(TextChoices):
+    DRAFT_2020_12 = "2020-12", _("Draft 2020-12")
+    DRAFT_2019_09 = "2019-09", _("Draft 2019-09")
+    DRAFT_07 = "draft-07", _("Draft 7")
+    DRAFT_06 = "draft-06", _("Draft 6")
+    DRAFT_04 = "draft-04", _("Draft 4")

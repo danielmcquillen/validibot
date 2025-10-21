@@ -14,6 +14,7 @@ from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.tests.factories import RulesetFactory
@@ -65,7 +66,10 @@ def workflow_context(load_json_asset, api_client):
         org=org,
         user=user,
         ruleset_type=ValidationType.JSON_SCHEMA,
-        metadata={"schema": schema},
+        rules_text=json.dumps(schema),
+        metadata={
+            "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
+        },
     )
 
     workflow = WorkflowFactory(org=org, user=user)

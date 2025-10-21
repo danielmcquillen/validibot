@@ -17,13 +17,15 @@ user/organization relationship is modeled and enforced.
 
 ### Role codes
 
-Role membership is defined in `users.constants.RoleCode`. The important ones for
-workflow execution today are:
+Role membership is defined in `users.constants.RoleCode`. Current codes are:
 
-- `OWNER` – full administrative control, including managing roles and billing.
-- `ADMIN` – day-to-day management powers.
-- `EXECUTOR` – ability to launch workflows and see validation results.
-- `VIEWER` – read-only visibility.
+- `OWNER` – denotes organizational accountability (billing, contractual owner); pair with `ADMIN` to act on that authority.
+- `ADMIN` – required for organization management actions (invitations, role changes, org updates/deletion guard).
+- `AUTHOR` – build and maintain workflows (create, edit, clone, delete steps).
+- `EXECUTOR` – launch validation runs and inspect detailed results.
+- `VIEWER` – read-only visibility into workflows and runs.
+
+Exactly one membership per organization can hold the `OWNER` role at a time. Assigning `OWNER` to another member automatically removes it from the previous holder (they retain any remaining roles, including `ADMIN`).
 
 The column values in the database come from `RoleCode`, which keeps the string
 representation consistent everywhere we compare roles.
@@ -46,8 +48,8 @@ When a user signs in for the first time we call
 
 1. Create a new `Organization` flagged as `is_personal=True`.
 2. Create a corresponding `Membership` for the user.
-3. Grant both `OWNER` _and_ `EXECUTOR` roles to that membership so they can
-   manage the org and run workflows immediately.
+3. Grant the `ADMIN`, `OWNER`, and `EXECUTOR` roles to that membership so they can
+   manage the org, invite others, and run workflows immediately (matches the behavior in `ensure_personal_workspace`).
 4. Persist the new org as `user.current_org`.
 
 Granting the executor role automatically was recently hardened so personal orgs
@@ -78,3 +80,6 @@ inspect roles without additional queries.
 - When inviting a user to an organization, add all required roles in one place.
 - The `Role` table is intentionally short; feel free to extend it with display
   names or descriptions to power better UI messaging.
+- Remember that organization management views look specifically for the `ADMIN`
+  role (`OrganizationAdminRequiredMixin`), so Owners should also hold Admin when they need those capabilities.
+- If you promote someone else to Owner, the system will automatically drop the role from the previous Owner so the uniqueness guarantee holds.

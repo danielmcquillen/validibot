@@ -37,4 +37,4 @@ def execute_validation_run(
 
     # We return a result, even though Celery doesn't do anything with it.
     # The way this result gets to the API caller is via the DB record.
-    return result
+    return result.to_payload()

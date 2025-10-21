@@ -439,3 +439,13 @@ ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
 
 # PostHog (or other) tracker settings
 TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)
+
+
+# AWS / KMS
+KMS_KEY_ID = env("KMS_KEY_ID", default="alias/sv-badge-signing-prod")
+AWS_DEFAULT_REGION = env("AWS_DEFAULT_REGION", default="us-west-1")
+SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
+SV_JWKS_KEYS = env.list(
+    "SV_JWKS_KEYS",
+    default=[KMS_KEY_ID],  # include prior key IDs during rotation
+)

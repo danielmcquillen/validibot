@@ -4,13 +4,16 @@ from django.contrib.auth.decorators import login_required
 from django.core.mail import mail_admins
 from django.http import HttpRequest
 from django.http import HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_http_methods
 
 from simplevalidations.core.forms import SupportMessageForm
+from simplevalidations.core.jwks import jwk_from_kms_key
 from simplevalidations.core.utils import is_htmx
 
 
@@ -86,3 +89,22 @@ def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:
         "user_id": user.pk,
     }
     mail_admins(subject=subject, message=body, fail_silently=True)
+
+
+# Allow multiple keys (old + new) for rotation
+def _key_ids():
+    # Add old key IDs during rotation so verifiers can see both keys.
+    keys = getattr(settings, "SV_JWKS_KEYS", [])
+    return [key for key in keys if key]
+
+
+@cache_page(60 * 15)  # cache 15 minutes
+def jwks_view(request):
+    alg = getattr(settings, "SV_JWKS_ALG", "ES256")
+    keys = [jwk_from_kms_key(k, alg) for k in _key_ids()]
+    # Best-practice content-type for JWKS:
+    resp = JsonResponse({"keys": keys})
+    resp["Content-Type"] = "application/jwk-set+json"
+    # Cache hints for verifiers / CDNs
+    resp["Cache-Control"] = "public, max-age=900"
+    return resp

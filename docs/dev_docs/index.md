@@ -23,6 +23,7 @@ This site describes the core concepts, data model, and API for working with vali
 - [Using a Workflow via the API](how-to/use-workflow.md) - Step-by-step API integration guide
 - [Author Workflow Steps](how-to/author-workflow-steps.md) - Configure validation templates via the UI wizard
 - [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
+- [Configure the Badge JWKS Endpoint](how-to/configure-jwks.md) - Publish KMS-backed signing keys
 
 ### Marketing
 

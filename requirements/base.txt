@@ -41,3 +41,10 @@ bleach==6.2.0
 
 # For user authoring of HTML content
 markdown2==2.5.4
+
+# For signing badges with AWS KMS
+cryptography==46.0.3
+authlib==1.6.5
+
+# For AWS interaction, mainly KMS
+boto3==1.40.55

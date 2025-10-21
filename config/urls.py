@@ -15,6 +15,7 @@ from rest_framework.authtoken.views import obtain_auth_token
 
 from simplevalidations.blog.sitemaps import BlogPostSitemap
 from simplevalidations.core import views as core_views
+from simplevalidations.core.views import jwks_view
 from simplevalidations.marketing import views as marketing_views
 from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
 from simplevalidations.workflows import views as workflow_views
@@ -27,6 +28,8 @@ sitemaps = {
 }
 
 urlpatterns = [
+    # Public key
+    path(".well-known/jwks.json", jwks_view, name="jwks"),
     # Marketing and misc pages...
     path("", include("simplevalidations.marketing.urls", namespace="marketing")),
     path("robots.txt", marketing_views.robots_txt, name="robots"),

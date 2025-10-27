@@ -33,59 +33,6 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
     metadata so it travels with the reusable asset.
     """
 
-    def _resolve_schema_type(self, ruleset) -> str:
-        schema_type = None
-        if ruleset is not None:
-            metadata = getattr(ruleset, "metadata", None) or {}
-            if isinstance(metadata, dict):
-                schema_type = (metadata.get("schema_type") or "").strip().upper()
-        # Expect the upper-case string of the enum's value (e.g., "XSD" or "RELAXNG")
-        if schema_type not in {
-            XMLSchemaType.XSD,
-            XMLSchemaType.RELAXNG,
-            XMLSchemaType.DTD,
-        }:
-            err_msg = _(
-                "Invalid or missing XML schema_type '%(schema_type)s';"
-                "must be 'XSD' or 'RELAXNG'.",
-            ) % {"schema_type": schema_type or "<missing>"}
-            raise ValueError(err_msg)
-        return schema_type
-
-    def _load_schema(self, schema_type: str, raw: str) -> Any:
-        """
-        Parse the XML schema string and return an lxml schema object.
-        """
-        try:
-            from lxml import etree  # noqa: PLC0415
-        except Exception as e:  # pragma: no cover
-            raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
-
-        if schema_type == XMLSchemaType.XSD.name:
-            return etree.XMLSchema(etree.XML(raw.encode("utf-8")))
-        if schema_type == XMLSchemaType.RELAXNG.name:
-            return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
-        if schema_type == XMLSchemaType.DTD.name:
-            return etree.DTD(etree.XML(raw.encode("utf-8")))
-        raise ValueError(_("Unsupported XML engine: ") + schema_type)
-
-    def _get_schema_raw(
-        self,
-        *,
-        validator: Validator,
-        ruleset: Ruleset,
-    ) -> str | None:
-        raw: str | None = None
-        if ruleset is not None:
-            raw_candidate = getattr(ruleset, "rules", None)
-            if isinstance(raw_candidate, str) and raw_candidate.strip():
-                raw = raw_candidate
-        if not raw and isinstance(getattr(validator, "config", None), dict):
-            raw_config = validator.config.get("schema")
-            if isinstance(raw_config, str):
-                raw = raw_config
-        return raw
-
     def validate(
         self,
         validator: Validator,
@@ -205,3 +152,56 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             issues=issues,
             stats={"error_count": len(issues), "schema_type": schema_type},
         )
+
+    def _resolve_schema_type(self, ruleset) -> str:
+        schema_type = None
+        if ruleset is not None:
+            metadata = getattr(ruleset, "metadata", None) or {}
+            if isinstance(metadata, dict):
+                schema_type = (metadata.get("schema_type") or "").strip().upper()
+        # Expect the upper-case string of the enum's value (e.g., "XSD" or "RELAXNG")
+        if schema_type not in {
+            XMLSchemaType.XSD,
+            XMLSchemaType.RELAXNG,
+            XMLSchemaType.DTD,
+        }:
+            err_msg = _(
+                "Invalid or missing XML schema_type '%(schema_type)s';"
+                "must be 'XSD' or 'RELAXNG'.",
+            ) % {"schema_type": schema_type or "<missing>"}
+            raise ValueError(err_msg)
+        return schema_type
+
+    def _load_schema(self, schema_type: str, raw: str) -> Any:
+        """
+        Parse the XML schema string and return an lxml schema object.
+        """
+        try:
+            from lxml import etree  # noqa: PLC0415
+        except Exception as e:  # pragma: no cover
+            raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
+
+        if schema_type == XMLSchemaType.XSD.name:
+            return etree.XMLSchema(etree.XML(raw.encode("utf-8")))
+        if schema_type == XMLSchemaType.RELAXNG.name:
+            return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
+        if schema_type == XMLSchemaType.DTD.name:
+            return etree.DTD(etree.XML(raw.encode("utf-8")))
+        raise ValueError(_("Unsupported XML engine: ") + schema_type)
+
+    def _get_schema_raw(
+        self,
+        *,
+        validator: Validator,
+        ruleset: Ruleset,
+    ) -> str | None:
+        raw: str | None = None
+        if ruleset is not None:
+            raw_candidate = getattr(ruleset, "rules", None)
+            if isinstance(raw_candidate, str) and raw_candidate.strip():
+                raw = raw_candidate
+        if not raw and isinstance(getattr(validator, "config", None), dict):
+            raw_config = validator.config.get("schema")
+            if isinstance(raw_config, str):
+                raw = raw_config
+        return raw

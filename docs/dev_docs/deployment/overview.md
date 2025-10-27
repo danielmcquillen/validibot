@@ -20,7 +20,9 @@ and the order of operations so you can promote changes without surprises.
 5. After the very first deploy (or after a migration reset) run
    `heroku run python manage.py setup_all` to seed roles, personal workspaces, and the
    default AI validator.
-6. Verify the site (`/`), the Celery worker dashboard logs, and Sentry for errors.
+6. Verify the site (`/`), the Celery worker dashboard logs, and Sentry for errors. Fatal
+   errors will not e-mail `ADMINS`; Sentry is the source of alerting for production
+   crashes.
 
 ## Config Vars Cheat Sheet
 

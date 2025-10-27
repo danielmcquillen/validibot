@@ -31,18 +31,6 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
     ``rules_file`` (retrieved through ``ruleset.rules``).
     """
 
-    def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:
-        raw_schema = getattr(ruleset, "rules", None)
-        if not raw_schema:
-            raise ValueError(
-                _("Ruleset must provide schema text via rules_text or rules_file."),
-            )
-        if isinstance(raw_schema, dict):
-            return raw_schema
-        if isinstance(raw_schema, str):
-            return json.loads(raw_schema)
-        raise TypeError(_("Unsupported schema type; expected dict or JSON string."))
-
     def validate(
         self,
         validator: Validator,
@@ -87,3 +75,15 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
             issues=issues,
             stats={"error_count": len(issues)},
         )
+
+    def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:
+        raw_schema = getattr(ruleset, "rules", None)
+        if not raw_schema:
+            raise ValueError(
+                _("Ruleset must provide schema text via rules_text or rules_file."),
+            )
+        if isinstance(raw_schema, dict):
+            return raw_schema
+        if isinstance(raw_schema, str):
+            return json.loads(raw_schema)
+        raise TypeError(_("Unsupported schema type; expected dict or JSON string."))

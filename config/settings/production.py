@@ -9,6 +9,7 @@ from sentry_sdk.integrations.redis import RedisIntegration
 
 from .base import *  # noqa: F403
 from .base import DATABASES
+from .base import DEFAULT_FROM_EMAIL
 from .base import INSTALLED_APPS
 from .base import REDIS_URL
 from .base import SPECTACULAR_SETTINGS
@@ -115,10 +116,7 @@ MEDIA_URL = f"https://{aws_s3_domain}/media/"
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email
-DEFAULT_FROM_EMAIL = env(
-    "DJANGO_DEFAULT_FROM_EMAIL",
-    default="SimpleValidations <daniel@simplevalidations.com>",
-)
+
 # https://docs.djangoproject.com/en/dev/ref/settings/#server-email
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-subject-prefix
@@ -180,6 +178,11 @@ LOGGING = {
     },
     "loggers": {
         "django.db.backends": {
+            "level": "ERROR",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "django.request": {
             "level": "ERROR",
             "handlers": ["console"],
             "propagate": False,

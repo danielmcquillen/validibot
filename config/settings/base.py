@@ -291,6 +291,13 @@ LOGGING = {
         },
     },
     "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "django.request": {
+            "level": "ERROR",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+    },
 }
 
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
@@ -448,4 +455,10 @@ SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
 SV_JWKS_KEYS = env.list(
     "SV_JWKS_KEYS",
     default=[KMS_KEY_ID],  # include prior key IDs during rotation
+)
+
+# EMAIL
+DEFAULT_FROM_EMAIL = env(
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    default="SimpleValidations <daniel@simplevalidations.com>",
 )

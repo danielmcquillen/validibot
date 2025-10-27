@@ -1,18 +1,55 @@
+import logging
+
 from django.conf import settings
 
 from simplevalidations.users.models import ensure_personal_workspace
 
+logger = logging.getLogger(__name__)
+
 
 def organization_context(request):
-    if not request.user.is_authenticated:
+    """
+    Provide organization context for the current user.
+    Sets request.active_org to the active organization.
+    """
+
+    if not hasattr(request, "user"):
         return {}
 
-    ensure_personal_workspace(request.user)
+    if not hasattr(request, "session"):
+        return {}
 
+    try:
+        if not request.user.is_authenticated:
+            return {}
+    except Exception:
+        return {}
+
+    try:
+        ensure_personal_workspace(request.user)
+    except Exception:
+        logger.exception(
+            "Failed to ensure personal workspace for user %s", request.user.id
+        )
+
+    try:
+        return _apply_organization_context(request)
+    except Exception:
+        logger.exception(
+            "Failed to apply organization context for user %s", request.user.id
+        )
+        return {}
+
+
+def _apply_organization_context(request):
+    """
+    Determines the active organization for the user and
+    returns relevant context variables.
+    """
     memberships = list(
         request.user.memberships.filter(is_active=True)
         .select_related("org")
-        .order_by("org__name")
+        .order_by("org__name"),
     )
 
     session_org_id = request.session.get("active_org_id")

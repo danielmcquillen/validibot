@@ -48,3 +48,6 @@ authlib==1.6.5
 
 # For AWS interaction, mainly KMS
 boto3==1.40.55
+
+# For typing and such
+pydantic==2.12.3

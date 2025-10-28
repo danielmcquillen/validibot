@@ -145,6 +145,7 @@ ignore = [
   "BLE001",  #We want blind exceptions
   "PLR0912", # Too many branches (13/12)
   "PLR0911", # Too many statements (50/50)
+  "EM101",  # Allow use of 'print' function
   #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require

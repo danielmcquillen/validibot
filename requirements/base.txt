@@ -51,3 +51,9 @@ boto3==1.40.55
 
 # For typing and such
 pydantic==2.12.3
+
+# For running tasks in Modal
+modal==1.2.1
+
+# For modal.com communication
+sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main

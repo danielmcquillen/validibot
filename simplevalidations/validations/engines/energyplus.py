@@ -3,9 +3,13 @@ EnergyPlus validation engine powered by the Modal runner.
 
 This engine forwards incoming epJSON submissions to the Modal function defined
 in ``sv_modal.projects.sv_energyplus`` and translates the response into
-SimpleValidations issues. For the initial integration we enforce the Energy Use
-Intensity band when configured and surface any errors reported by the Modal
-service. Additional IDF/static checks can be layered on once the runner exposes
+SimpleValidations issues.
+
+The response is a typed ``EnergyPlusSimulationResult`` model defined in
+``sv_shared.energyplus.models``. We can use that model for raw data to
+compare against the user's configured checks.
+
+Additional IDF/static checks can be layered on once the runner exposes
 the necessary signals.
 """
 
@@ -17,6 +21,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from django.utils.translation import gettext as _
+from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
+from sv_shared.energyplus.models import EnergyPlusSimulationResult
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
@@ -25,8 +31,6 @@ from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.modal import ModalRunnerMixin
 from simplevalidations.validations.engines.registry import register_engine
-from sv_shared.energyplus.models import SimulationMetrics
-from sv_shared.energyplus.models import SimulationResult
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +40,6 @@ if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
     from simplevalidations.validations.models import Ruleset
     from simplevalidations.validations.models import Validator
-
-try:
-    from pathlib import Path as _EnergyPlusPath
-except ImportError:  # pragma: no cover - stdlib availability
-    _EnergyPlusPath = None
 
 
 def _serialize_path_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -172,7 +171,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             stats["modal_error"] = str(exc)
             return ValidationResult(passed=False, issues=issues, stats=stats)
 
-        typed_result: SimulationResult = self._parse_modal_result(
+        typed_result: EnergyPlusSimulationResult = self._parse_modal_result(
             raw_result,
             issues,
             stats,
@@ -242,8 +241,8 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         raw_result: Any,
         issues: list[ValidationIssue],
         stats: dict[str, Any],
-    ) -> SimulationResult | None:
-        if SimulationResult is None:
+    ) -> EnergyPlusSimulationResult | None:
+        if EnergyPlusSimulationResult is None:
             issues.append(
                 ValidationIssue(
                     path="",
@@ -257,7 +256,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             stats["modal_result_raw"] = raw_result
             return None
         try:
-            return SimulationResult.model_validate(raw_result)
+            return EnergyPlusSimulationResult.model_validate(raw_result)
         except Exception as exc:
             logger.exception("Unable to parse EnergyPlus result payload.")
             issues.append(
@@ -276,7 +275,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         *,
         simulation_checks: list[str],
         eui_band: dict[str, Any],
-        metrics: SimulationMetrics,
+        metrics: EnergyPlusSimulationMetrics,
     ) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
         if "eui-range" in simulation_checks:

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime
 from datetime import timedelta
-from re import T
 from typing import TYPE_CHECKING
 
 from django.db.models import Count
@@ -12,10 +10,11 @@ from django.db.models.functions import TruncDay
 from django.db.models.functions import TruncHour
 from django.utils import timezone
 
-from simplevalidations.dashboard.time_ranges import ResolvedTimeRange
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from datetime import datetime
+
+    from simplevalidations.dashboard.time_ranges import ResolvedTimeRange
 
 
 def _truncate_qs(qs: QuerySet, *, bucket: str):

@@ -11,6 +11,11 @@
 - Workflow architecture details: `docs/dev_docs/overview/how_it_works.md`.
 - Working agreements: `docs/dev_docs/overview/platform_overview.md#working-agreements-for-developers`.
 
+## Cross-Repo Awareness
+
+- Always consider the neighbouring projects `../sv_modal` and `sv_shared` (installed here, source in `../sv_shared`) when assessing behaviour or authoring code, especially for integrations like EnergyPlus.
+- At the start of a task, open the relevant modules in those repos so their current contracts guide decisions made in `simplevalidations`.
+
 ## Collaboration Principles
 
 - Speak plainly, surface risks first, and reference file paths with line numbers when reviewing.

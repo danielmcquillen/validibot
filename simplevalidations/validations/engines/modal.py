@@ -11,19 +11,18 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import ClassVar
 
 from django.utils.translation import gettext as _
+from modal import Function as ModalFunction
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
-
-try:  # pragma: no cover - optional dependency
-    from modal import Function as ModalFunction
-except Exception:  # pragma: no cover - modal not installed
-    ModalFunction = None  # type: ignore[assignment]
 
 
 _FALSEY_STRINGS = {"0", "false", "False"}
@@ -74,7 +73,9 @@ class ModalRunnerMixin:
         if cls._modal_runner_state.error:
             raise RuntimeError(cls._modal_runner_state.error)
         if cls._modal_function_cls is None:
-            error_message = _("Install the 'modal' package to run this validation step.")
+            error_message = _(
+                "Install the 'modal' package to run this validation step."
+            )
             cls._modal_runner_state = _ModalRunnerState(
                 runner=None,
                 error=error_message,
@@ -134,4 +135,3 @@ class ModalRunnerMixin:
         if callable(runner):  # pragma: no cover - injected doubles
             return runner(**call_kwargs)
         raise RuntimeError("Resolved Modal runner is not callable.")
-

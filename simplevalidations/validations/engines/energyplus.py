@@ -1,20 +1,21 @@
 """
 EnergyPlus validation engine powered by the Modal runner.
 
-This engine forwards incoming epJSON submissions to the Modal function defined
-in ``sv_modal.projects.sv_energyplus`` and translates the response into
-SimpleValidations issues.
+This engine forwards incoming EnergyPlus submissions (epJSON or IDF) to the
+Modal function defined in ``sv_modal.projects.sv_energyplus`` and translates
+the response into SimpleValidations issues.
 
 The response is a typed ``EnergyPlusSimulationResult`` model defined in
 ``sv_shared.energyplus.models``. We can use that model for raw data to
 compare against the user's configured checks.
 
-Additional IDF/static checks can be layered on once the runner exposes
-the necessary signals.
+Additional static checks can be layered on once the runner exposes the
+necessary signals.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -42,24 +43,6 @@ if TYPE_CHECKING:
     from simplevalidations.validations.models import Validator
 
 
-def _serialize_path_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Convert any nested Path objects inside a dict to strings.
-    """
-
-    serialized: dict[str, Any] = {}
-    for key, value in payload.items():
-        if hasattr(value, "model_dump"):
-            serialized[key] = _serialize_path_payload(
-                value.model_dump(mode="json", exclude_none=True),
-            )
-        elif isinstance(value, dict):
-            serialized[key] = _serialize_path_payload(value)
-        else:
-            serialized[key] = value
-    return serialized
-
-
 @register_engine(ValidationType.ENERGYPLUS)
 class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
     """
@@ -72,11 +55,17 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
     * Provide a weather file name via the ruleset metadata
       (``ruleset.metadata['weather_file']``) or the
       ``ENERGYPLUS_DEFAULT_WEATHER`` environment variable.
+
+    Optional cleanup:
+    * Set ``cleanup_after_run`` in the engine config to request the Modal cleanup
+      function after results are processed. ``cleanup_missing_ok`` can be used to
+      control whether missing output directories raise errors.
     """
 
-    modal_app_name = "energyplus-epjson-runner"
+    modal_app_name = "energyplus-runner"
     modal_function_name = "run_energyplus_simulation"
     modal_return_logs_env_var = "ENERGYPLUS_MODAL_RETURN_LOGS"
+    modal_cleanup_function_name = "cleanup_simulation_outputs"
 
     def validate(
         self,
@@ -86,12 +75,19 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
     ) -> ValidationResult:
         config = self.config or {}
         run_simulation = bool(config.get("run_simulation", True))
+
+        # The 'stats' dict is the per-run telemetry we attach to the
+        # ValidationResult, giving downstream callers insight into how
+        # the simulation was invoked (modal function,
+        # weather file, run duration, outputs, cleanup status, etc.)
         stats: dict[str, Any] = {
             "modal_app": self.modal_app_name,
             "modal_function": self.modal_function_name,
             "run_simulation": run_simulation,
         }
         issues: list[ValidationIssue] = []
+
+        # We will do the syntax check within the modal function.
 
         if not run_simulation:
             issues.append(
@@ -108,7 +104,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             return ValidationResult(passed=False, issues=issues, stats=stats)
 
         try:
-            epjson_payload = submission.get_content()
+            energyplus_payload = submission.get_content()
         except Exception as exc:  # pragma: no cover - defensive read failure
             logger.exception("Unable to load submission content for EnergyPlus.")
             issues.append(
@@ -121,11 +117,12 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             )
             return ValidationResult(passed=False, issues=issues, stats=stats)
 
-        if not epjson_payload.strip():
+        stripped_payload = energyplus_payload.strip()
+        if not stripped_payload:
             issues.append(
                 ValidationIssue(
                     path="",
-                    message=_("Submission has no epJSON content."),
+                    message=_("Submission has no EnergyPlus content."),
                     severity=Severity.ERROR,
                 ),
             )
@@ -153,8 +150,15 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             )
 
         try:
+            energyplus_payload_arg: Any = stripped_payload
+            if stripped_payload.startswith("{"):
+                try:
+                    energyplus_payload_arg = json.loads(stripped_payload)
+                except json.JSONDecodeError:
+                    energyplus_payload_arg = stripped_payload
+
             raw_result = self._invoke_modal_runner(
-                epjson=epjson_payload,
+                energyplus_payload=energyplus_payload_arg,
                 weather_file=weather_file,
                 simulation_id=str(submission.id),
             )
@@ -184,8 +188,11 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         stats["invocation_mode"] = typed_result.invocation_mode
         stats["energyplus_returncode"] = typed_result.energyplus_returncode
         stats["messages"] = list(typed_result.messages)
-        stats["outputs"] = _serialize_path_payload(
-            typed_result.outputs.model_dump(mode="json", exclude_none=True),
+        # `mode="json"` ensures Path fields inside the Pydantic model 
+        # are serialized as strings.
+        stats["outputs"] = typed_result.outputs.model_dump(
+            mode="json",
+            exclude_none=True,
         )
         stats["metrics"] = typed_result.metrics.model_dump(
             mode="json",
@@ -196,6 +203,46 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                 mode="json",
                 exclude_none=True,
             )
+        energyplus_input_path = getattr(
+            typed_result,
+            "energyplus_input_file_path",
+            None,
+        )
+        if energyplus_input_path is not None:
+            stats["energyplus_input_file_path"] = str(energyplus_input_path)
+        payload_format = getattr(
+            typed_result,
+            "energyplus_payload_format",
+            None,
+        )
+        if payload_format is not None:
+            stats["energyplus_payload_format"] = payload_format
+
+        cleanup_after_run = bool(config.get("cleanup_after_run"))
+        if cleanup_after_run:
+            stats["cleanup_requested"] = True
+            cleanup_missing_ok = bool(config.get("cleanup_missing_ok", True))
+            try:
+                cleanup_result = self._invoke_modal_cleanup(
+                    simulation_id=typed_result.simulation_id,
+                    missing_ok=cleanup_missing_ok,
+                )
+            except Exception as exc:  # pragma: no cover - defensive cleanup failure
+                logger.exception(
+                    "EnergyPlus cleanup failed for simulation %s",
+                    typed_result.simulation_id,
+                )
+                issues.append(
+                    ValidationIssue(
+                        path="",
+                        message=_("EnergyPlus cleanup failed: %(error)s")
+                        % {"error": exc},
+                        severity=Severity.WARNING,
+                    ),
+                )
+                stats["cleanup_error"] = str(exc)
+            else:
+                stats["cleanup_result"] = cleanup_result
 
         if typed_result.status != "success":
             issues.extend(
@@ -256,6 +303,15 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             stats["modal_result_raw"] = raw_result
             return None
         try:
+            if isinstance(raw_result, dict):
+                if (
+                    "epjson_path" in raw_result
+                    and "energyplus_input_file_path" not in raw_result
+                ):
+                    raw_result["energyplus_input_file_path"] = raw_result[
+                        "epjson_path"
+                    ]
+                raw_result.pop("epjson_path", None)
             return EnergyPlusSimulationResult.model_validate(raw_result)
         except Exception as exc:
             logger.exception("Unable to parse EnergyPlus result payload.")
@@ -331,9 +387,16 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         return issues
 
 
-def configure_modal_runner(mock_callable: Callable[..., Any] | None) -> None:
+def configure_modal_runner(
+    mock_callable: Callable[..., Any] | None,
+    *,
+    cleanup_callable: Callable[..., Any] | None = None,
+) -> None:
     """
     Backwards-compatible helper to configure the Modal runner for tests.
     """
 
-    EnergyPlusValidationEngine.configure_modal_runner(mock_callable)
+    EnergyPlusValidationEngine.configure_modal_runner(
+        mock_callable,
+        cleanup_callable=cleanup_callable,
+    )

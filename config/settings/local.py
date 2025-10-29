@@ -81,3 +81,6 @@ SUPERUSER_USERNAME = env("SUPERUSER_USERNAME", default="admin")
 SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default="someadminpwchangeforrealz")
 SUPERUSER_EMAIL = env("SUPERUSER_EMAIL", default="")
 SUPERUSER_NAME = env("SUPERUSER_NAME", default="Admin User")
+
+
+TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=False)

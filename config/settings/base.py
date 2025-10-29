@@ -444,6 +444,8 @@ ENABLE_HELP_CENTER = env.bool("ENABLE_HELP_CENTER", False)
 ENABLE_SYSTEM_STATUS = env.bool("ENABLE_SYSTEM_STATUS", False)
 ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
 
+TEST_ENERGYPLUS_WEATHER_FILE = env("TEST_ENERGYPLUS_WEATHER_FILE", default="USA_CA_SF.epw")
+
 # PostHog (or other) tracker settings
 TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)
 
@@ -462,3 +464,9 @@ DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
     default="SimpleValidations <daniel@simplevalidations.com>",
 )
+
+MODAL_TOKEN_ID = env("MODAL_TOKEN_ID", default="")
+MODAL_TOKEN_SECRET = env("MODAL_TOKEN_SECRET", default="")
+
+
+TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=False)

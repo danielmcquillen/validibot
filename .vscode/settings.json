@@ -34,5 +34,7 @@
             "pattern": "**/imsmanifest.xml",
             "systemId": "http://www.imsglobal.org/profile/cc/ccv1p3/ccv1p3_imscp_v1p2_v1p0.xsd"
         }
-    ]
+    ],
+    "python.envFile": "${workspaceFolder}/_envs/_local/django.env",
+    "python.testing.pytestEnabled": true
 }

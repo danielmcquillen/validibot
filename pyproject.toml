@@ -146,6 +146,9 @@ ignore = [
   "PLR0912", # Too many branches (13/12)
   "PLR0911", # Too many statements (50/50)
   "EM101",  # Allow use of 'print' function
+  "W293",  # blank line contains whitespace
+  "W291",  # trailing whitespace
+  "PLR0915", # Too many statements in a class (112/100)
   #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require

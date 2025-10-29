@@ -4,6 +4,7 @@ This note explains how the Django app talks to the `sv_modal` repository and wha
 to watch for when wiring workflow steps to the Modal-backed EnergyPlus runner.
 
 ## Repository layout
+
 - `sv_modal/` lives at the project root (symlink or checkout). It exposes Modal
   callable modules under `sv_modal.projects.*`.
 - The EnergyPlus runner lives in
@@ -19,8 +20,9 @@ to watch for when wiring workflow steps to the Modal-backed EnergyPlus runner.
   a value.
 
 ## Calling the runner
+
 1. During Django startup (for example, in a Celery worker module) call
-   `modal.Function.lookup("energyplus-epjson-runner", "run_energyplus_simulation")`.
+   `modal.Function.lookup("energyplus-runner", "run_energyplus_simulation")`.
    Cache the resulting proxy; lookups are relatively expensive.
 2. Submit the payload with
    ```python
@@ -39,6 +41,7 @@ to watch for when wiring workflow steps to the Modal-backed EnergyPlus runner.
    function after downstream storage copies any required artifacts.
 
 ## Outstanding questions
+
 - The Django app and Modal code both need the Pydantic models in
   `sv_modal/projects/sv_energyplus/constants.py`. Consider promoting them into a
   small shared package (for example, `sv_modal.shared.energyplus`) so imports

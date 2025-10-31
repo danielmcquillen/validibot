@@ -29,16 +29,27 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Quick Reference: quick_reference.md
+  - Quick Reference:
+      - Quick Reference: quick_reference.md
+      - Related Libraries: related_libraries.md
   - Overview:
       - Platform Overview: overview/platform_overview.md
+      - Terminology: overview/terminology.md
       - User Roles & Permissions: overview/user_roles.md
       - How It Works: overview/how_it_works.md
+      - Submission Modes: overview/request_modes.md
       - Dashboard: dashboard.md
   - How-to:
       - Use a Workflow: how-to/use-workflow.md
       - Author Workflow Steps: how-to/author-workflow-steps.md
+      - Add a Form: how-to/add-a-form.md
+      - Configure the Badge JWKS Endpoint: how-to/configure-jwks.md
       - Manage Organizations & Projects: organization_management.md
+  - Integrations:
+      - EnergyPlus Modal: integrations/energyplus_modal.md
+  - Marketing:
+      - Homepage Waitlist: marketing/homepage.md
+      - Feature Pages: marketing/features.md
   - Data Model:
       - Overview: data-model/index.md
       - Submissions: data-model/submissions.md
@@ -46,6 +57,10 @@ nav:
       - Steps: data-model/steps.md
       - Findings: data-model/findings.md
       - Users & Roles: data-model/users_roles.md
+      - Deletions: data-model/deletions.md
+  - Architecture Decisions:
+      - ADR Directory: adr/index.md
+      - ADR-0021: adr/2025-10-31-ruleset-and-provider.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
       - Heroku: deployment/heroku.md

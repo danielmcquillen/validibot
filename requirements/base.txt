@@ -57,3 +57,9 @@ modal==1.2.1
 
 # For modal.com communication
 sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main
+
+
+# For python CEL operations during Validation steps
+# Consider moving to Rust-based CEL implementation if we can determin that it's
+# a better option (it doesn't have many stars) : https://github.com/hardbyte/python-common-expression-language
+cel-python==0.4.0

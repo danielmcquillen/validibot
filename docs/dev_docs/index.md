@@ -6,6 +6,14 @@ This site describes the core concepts, data model, and API for working with vali
 
 ## Contents
 
+- [Quick Reference](#quick-reference)
+- [Overview](#overview)
+- [How-To Guides](#how-to-guides)
+- [Marketing](#marketing)
+- [Architecture Decision Records](#architecture-decision-records)
+- [Deployment](#deployment)
+- [Data Model](#data-model)
+
 ## Quick Reference
 
 - [Quick Reference](quick_reference.md) - Summary of core concepts and basic usage
@@ -30,6 +38,10 @@ This site describes the core concepts, data model, and API for working with vali
 
 - [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
 - [Feature Pages](marketing/features.md) - Messaging guide for the marketing feature content
+
+### Architecture Decision Records
+
+- [Architecture Decision Records](adr/index.md) - Directory of decisions that guide the platform
 
 ### Deployment
 

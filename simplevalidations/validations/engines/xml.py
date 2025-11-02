@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -167,7 +168,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         }:
             err_msg = _(
                 "Invalid or missing XML schema_type '%(schema_type)s';"
-                "must be 'XSD' or 'RELAXNG'.",
+                "must be 'XSD', 'RELAXNG', or 'DTD'.",
             ) % {"schema_type": schema_type or "<missing>"}
             raise ValueError(err_msg)
         return schema_type
@@ -186,7 +187,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         if schema_type == XMLSchemaType.RELAXNG.name:
             return etree.RelaxNG(etree.XML(raw.encode("utf-8")))
         if schema_type == XMLSchemaType.DTD.name:
-            return etree.DTD(etree.XML(raw.encode("utf-8")))
+            return etree.DTD(io.StringIO(raw))
         raise ValueError(_("Unsupported XML engine: ") + schema_type)
 
     def _get_schema_raw(

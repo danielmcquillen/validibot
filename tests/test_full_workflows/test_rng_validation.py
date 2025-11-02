@@ -101,7 +101,7 @@ def workflow_context(load_rng_asset, api_client):
         validation_type=ValidationType.XML_SCHEMA,
     )
 
-    schema = load_rng_asset("example_product_schema.rng")
+    schema = load_rng_asset("product.rng")
 
     ruleset = RulesetFactory(
         org=org,

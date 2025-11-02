@@ -179,7 +179,6 @@ def test_json_schema_form_rejects_large_upload():
     form = JsonSchemaStepConfigForm(
         data={
             "name": "Large JSON schema",
-            "schema_source": "upload",
             "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
         },
         files={"schema_file": uploaded},
@@ -187,6 +186,38 @@ def test_json_schema_form_rejects_large_upload():
 
     assert not form.is_valid()
     assert "2 MB or smaller" in form.errors["schema_file"][0]
+
+
+def test_json_schema_form_requires_2020_12_declaration_for_text():
+    form = JsonSchemaStepConfigForm(
+        data={
+            "name": "Missing schema",
+            "schema_text": "{\n  \"type\": \"object\"\n}",
+        }
+    )
+
+    assert not form.is_valid()
+    assert any(
+        "Draft 2020-12" in error for error in form.errors["schema_text"]
+    )
+
+
+def test_json_schema_form_requires_2020_12_declaration_for_files():
+    payload = b'{"$schema": "https://json-schema.org/draft-07/schema", "type": "object"}'
+    uploaded = SimpleUploadedFile(
+        "schema.json",
+        payload,
+        content_type="application/json",
+    )
+    form = JsonSchemaStepConfigForm(
+        data={"name": "Bad schema upload"},
+        files={"schema_file": uploaded},
+    )
+
+    assert not form.is_valid()
+    assert any(
+        "Draft 2020-12" in error for error in form.errors["schema_file"]
+    )
 
 
 def test_xml_schema_form_rejects_large_upload():
@@ -199,7 +230,6 @@ def test_xml_schema_form_rejects_large_upload():
     form = XmlSchemaStepConfigForm(
         data={
             "name": "Large XML schema",
-            "schema_source": "upload",
             "schema_type": XMLSchemaType.XSD.value,
         },
         files={"schema_file": uploaded},

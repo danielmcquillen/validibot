@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import asdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
 
 from crispy_forms.helper import FormHelper
@@ -14,15 +14,17 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
-from simplevalidations.users.models import User
 from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.validations.models import Validator
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowPublicInfo
+
+if TYPE_CHECKING:
+    from simplevalidations.users.models import User
+    from simplevalidations.validations.models import Validator
+
 
 AI_TEMPLATES = (
     ("ai_critic", _("AI Critic")),
@@ -45,8 +47,15 @@ ENERGYPLUS_SIMULATION_CHECK_CHOICES = (
     ("peak-load", _("Check peak heating/cooling load")),
 )
 
+MIN_NUMBER_RULE_LINE_PARTS = 2
+
+MAX_SELECTORS = 20
 
 SCHEMA_UPLOAD_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+JSON_SCHEMA_2020_12_URIS = {
+    "https://json-schema.org/draft/2020-12/schema",
+    "http://json-schema.org/draft/2020-12/schema",
+}
 
 
 @dataclass(slots=True)
@@ -91,7 +100,7 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
         if "|" in stripped:
             stripped, message = [part.strip() for part in stripped.split("|", 1)]
         segments = stripped.split()
-        if len(segments) < 2:
+        if len(segments) < MIN_NUMBER_RULE_LINE_PARTS:
             raise RuleParseError(
                 _("Rule lines must include at least a path and operator."),
             )
@@ -102,14 +111,14 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 
         match operator:
             case "between":
-                if len(segments) < 4:
+                if len(segments) < 4:  # noqa: PLR2004
                     raise RuleParseError(
                         _("'between' rules require two numeric bounds."),
                     )
                 value = segments[2]
                 value_b = segments[3]
             case "in" | "not_in":
-                if len(segments) < 3:
+                if len(segments) < 3:  # noqa: PLR2004
                     raise RuleParseError(
                         _("'%s' rules require a list of options.") % operator,
                     )
@@ -117,7 +126,7 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
             case "nonempty":
                 value = None
             case _:
-                if len(segments) < 3:
+                if len(segments) < 3:  # noqa: PLR2004
                     raise RuleParseError(
                         _("Operator '%(op)s' requires a comparison value."),
                     ) % {"op": operator}
@@ -303,7 +312,7 @@ class WorkflowLaunchForm(forms.Form):
             raise forms.ValidationError(both_msg)
         if not payload and not attachment:
             missing_msg = _(
-                "Add content inline or upload a file before starting the validation."
+                "Add content inline or upload a file before starting the validation.",
             )
             self.add_error("payload", missing_msg)
             self.add_error("attachment", missing_msg)
@@ -368,11 +377,11 @@ class BaseStepConfigForm(forms.Form):
         help_text=_("Brief description to help users understand what this step does."),
     )
     display_schema = forms.BooleanField(
-        label=_("User can see schema"),
+        label=_("User can view schema"),
         required=False,
         initial=False,
         help_text=_(
-            "When enabled, the schema becomes visible to people viewing the workflow."
+            "When enabled, users can view the schema.",
         ),
     )
     notes = forms.CharField(
@@ -386,9 +395,18 @@ class BaseStepConfigForm(forms.Form):
             },
         ),
         help_text=_(
-            "Author notes about this step (visible only by you and other users with author permissions for this workflow)."
+            "Author notes about this step (visible only by you and other "
+            "users with author permissions for this workflow).",
         ),
     )
+
+    def __init__(self, *args, step=None, **kwargs):
+        self.step = step
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.disable_csrf = True
+        self.initial_from_step(step)
 
     def initial_from_step(self, step) -> None:
         if step and step.name:
@@ -397,7 +415,7 @@ class BaseStepConfigForm(forms.Form):
             self.fields["description"].initial = step.description
         if "display_schema" in self.fields:
             self.fields["display_schema"].initial = bool(
-                getattr(step, "display_schema", False)
+                getattr(step, "display_schema", False),
             )
         if step and hasattr(step, "notes") and step.notes:
             self.fields["notes"].initial = step.notes
@@ -406,17 +424,15 @@ class BaseStepConfigForm(forms.Form):
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
     schema_type = forms.ChoiceField(
         label=_("Schema version"),
-        choices=JSONSchemaVersion.choices,
-        initial=JSONSchemaVersion.DRAFT_2020_12,
-        help_text=_("Select the JSON Schema draft that matches your schema."),
-    )
-    schema_source = forms.ChoiceField(
-        label=_("Schema source"),
-        choices=(
-            ("text", _("Paste schema")),
-            ("upload", _("Upload file")),
-        ),
-        widget=forms.RadioSelect,
+        choices=[
+            (
+                JSONSchemaVersion.DRAFT_2020_12.value,
+                JSONSchemaVersion.DRAFT_2020_12.label,
+            )
+        ],
+        initial=JSONSchemaVersion.DRAFT_2020_12.value,
+        required=False,
+        widget=forms.HiddenInput(),
     )
     schema_text = forms.CharField(
         label=_("JSON Schema"),
@@ -429,43 +445,94 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
     )
 
     def __init__(self, *args, step=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.initial_from_step(step)
+        super().__init__(*args, step=step, **kwargs)
+        schema_field = self.fields["schema_type"]
+        schema_field.widget = forms.HiddenInput()
+        schema_field.required = False
+        schema_field.initial = JSONSchemaVersion.DRAFT_2020_12.value
+        self.initial["schema_type"] = JSONSchemaVersion.DRAFT_2020_12.value
         if step and step.ruleset_id:
-            current_schema_type = (
-                (step.ruleset.metadata or {}).get("schema_type")
-                if step.ruleset
-                else None
-            )
-            if current_schema_type in JSONSchemaVersion.values:
-                self.fields["schema_type"].initial = current_schema_type
-            elif step and step.config and step.config.get("schema_type") in JSONSchemaVersion.values:
-                self.fields["schema_type"].initial = step.config.get("schema_type")
-        if step and step.ruleset_id:
-            self.fields["schema_source"].choices += [
-                ("keep", _("Keep existing schema"))
-            ]
-            self.fields["schema_source"].initial = step.config.get(
-                "schema_source", "keep"
-            )
             self.fields["schema_text"].initial = step.config.get(
-                "schema_text_preview", ""
+                "schema_text_preview",
+                "",
             )
+            self.fields["schema_text"].help_text = _(
+                "Leave blank to keep the existing schema. "
+                "Paste new JSON to replace it.",
+            )
+        else:
+            self.fields["schema_text"].help_text = _(
+                "Paste your JSON schema or upload a file below.",
+            )
+        self.fields["schema_type"].initial = JSONSchemaVersion.DRAFT_2020_12.value
+        self.initial["schema_type"] = JSONSchemaVersion.DRAFT_2020_12.value
 
     def clean(self):
         cleaned = super().clean()
-        source = cleaned.get("schema_source")
         text = cleaned.get("schema_text", "").strip()
         file = cleaned.get("schema_file")
-        if source == "text" and not text:
-            self.add_error("schema_text", _("Provide JSON schema text."))
-        if source == "upload" and not file:
-            self.add_error("schema_file", _("Upload a JSON schema file."))
-        if file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
+        has_text = bool(text)
+        has_file = bool(file)
+
+        cleaned["schema_type"] = JSONSchemaVersion.DRAFT_2020_12.value
+
+        if has_text and has_file:
+            error = _("Paste the schema or upload a file, not both.")
+            self.add_error("schema_text", error)
+            self.add_error("schema_file", error)
+        if has_file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
             self.add_error(
                 "schema_file",
                 _("Uploaded schema files must be 2 MB or smaller."),
             )
+        if not has_text and not has_file:
+            if self.step and self.step.ruleset_id:
+                cleaned["schema_source"] = "keep"
+            else:
+                message = _("Add content directly or upload a file.")
+                self.add_error("schema_text", message)
+                self.add_error("schema_file", message)
+        else:
+            cleaned["schema_source"] = "text" if has_text else "upload"
+            if has_text:
+                cleaned["schema_text"] = text
+        source = cleaned.get("schema_source")
+        if source in {"text", "upload"}:
+            field_name = "schema_text" if source == "text" else "schema_file"
+            payload: str | None = None
+            if source == "text":
+                payload = text
+            else:
+                upload = cleaned.get("schema_file")
+                if upload:
+                    upload.seek(0)
+                    raw_bytes = upload.read()
+                    upload.seek(0)
+                    try:
+                        payload = raw_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        self.add_error(
+                            field_name,
+                            _("Uploaded schema must be UTF-8 encoded."),
+                        )
+                        payload = None
+            if payload:
+                try:
+                    schema_payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    self.add_error(
+                        field_name,
+                        _("Schema content must be valid JSON."),
+                    )
+                else:
+                    schema_uri = schema_payload.get("$schema")
+                    if schema_uri not in JSON_SCHEMA_2020_12_URIS:
+                        self.add_error(
+                            field_name,
+                            _(
+                                "JSON schemas must declare $schema as Draft 2020-12."
+                            ),
+                        )
         return cleaned
 
 
@@ -473,14 +540,6 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
     schema_type = forms.ChoiceField(
         label=_("Schema type"),
         choices=XMLSchemaType.choices,
-    )
-    schema_source = forms.ChoiceField(
-        label=_("Schema source"),
-        choices=(
-            ("text", _("Paste schema")),
-            ("upload", _("Upload file")),
-        ),
-        widget=forms.RadioSelect,
     )
     schema_text = forms.CharField(
         label=_("XML Schema"),
@@ -493,40 +552,58 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
     )
 
     def __init__(self, *args, step=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.initial_from_step(step)
+        super().__init__(*args, step=step, **kwargs)
         if step and step.ruleset_id:
             current_schema_type = None
             if step.ruleset:
                 current_schema_type = (step.ruleset.metadata or {}).get("schema_type")
             if current_schema_type in XMLSchemaType.values:
                 self.fields["schema_type"].initial = current_schema_type
-            elif step and step.config and step.config.get("schema_type") in XMLSchemaType.values:
+            elif (
+                step
+                and step.config
+                and step.config.get("schema_type") in XMLSchemaType.values
+            ):
                 self.fields["schema_type"].initial = step.config.get("schema_type")
-            self.fields["schema_source"].choices += [
-                ("keep", _("Keep existing schema"))
-            ]
-            self.fields["schema_source"].initial = step.config.get(
-                "schema_source", "keep"
-            )
             self.fields["schema_text"].initial = step.config.get(
-                "schema_text_preview", ""
+                "schema_text_preview",
+                "",
+            )
+            self.fields["schema_text"].help_text = _(
+                "Leave blank to keep the existing schema. Paste new XML to replace it.",
+            )
+        else:
+            self.fields["schema_text"].help_text = _(
+                "Paste your XML schema or upload a file below.",
             )
 
     def clean(self):
         cleaned = super().clean()
-        source = cleaned.get("schema_source")
         text = cleaned.get("schema_text", "").strip()
         file = cleaned.get("schema_file")
-        if source == "text" and not text:
-            self.add_error("schema_text", _("Provide XML schema text."))
-        if source == "upload" and not file:
-            self.add_error("schema_file", _("Upload an XML schema file."))
-        if file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
+        has_text = bool(text)
+        has_file = bool(file)
+
+        if has_text and has_file:
+            error = _("Paste the schema or upload a file, not both.")
+            self.add_error("schema_text", error)
+            self.add_error("schema_file", error)
+        if has_file and file.size > SCHEMA_UPLOAD_MAX_BYTES:
             self.add_error(
                 "schema_file",
                 _("Uploaded schema files must be 2 MB or smaller."),
             )
+        if not has_text and not has_file:
+            if self.step and self.step.ruleset_id:
+                cleaned["schema_source"] = "keep"
+            else:
+                message = _("Add content directly or upload a file.")
+                self.add_error("schema_text", message)
+                self.add_error("schema_file", message)
+        else:
+            cleaned["schema_source"] = "text" if has_text else "upload"
+            if has_text:
+                cleaned["schema_text"] = text
         return cleaned
 
 
@@ -536,6 +613,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     Example:
         form = EnergyPlusStepConfigForm(data={"run_simulation": True})
     """
+
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
         required=False,
@@ -574,9 +652,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     )
 
     def __init__(self, *args, step=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, step=step, **kwargs)
         self.fields.pop("display_schema", None)
-        self.initial_from_step(step)
         if step:
             config = step.config or {}
             self.initial.update(
@@ -633,7 +710,8 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
             attrs={
                 "rows": 4,
                 "placeholder": _(
-                    "$.zones[*].cooling_setpoint >= 18 | Cooling setpoint must be ≥18°C"
+                    "$.zones[*].cooling_setpoint >= 18 | "
+                    "Cooling setpoint must be ≥18°C",
                 ),
                 "spellcheck": "false",
             },
@@ -652,9 +730,8 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
     )
 
     def __init__(self, *args, step=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, step=step, **kwargs)
         self.fields.pop("display_schema", None)
-        self.initial_from_step(step)
         if step:
             config = step.config or {}
             self.fields["template"].initial = config.get("template", "ai_critic")
@@ -687,7 +764,7 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
     def clean_selectors(self) -> list[str]:
         raw = self.cleaned_data.get("selectors", "")
         selectors = [line.strip() for line in raw.splitlines() if line.strip()]
-        if len(selectors) > 10:
+        if len(selectors) > MAX_SELECTORS:
             raise ValidationError(_("Limit selectors to 10 paths."))
         return selectors
 

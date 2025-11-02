@@ -141,7 +141,11 @@ def test_public_info_view_accessible_when_enabled(client):
         slug="public-json",
     )
     schema_text = json.dumps(
-        {"type": "object", "properties": {"sku": {"type": "string"}}}
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {"sku": {"type": "string"}},
+        }
     )
     ruleset = Ruleset.objects.create(
         org=workflow.org,

@@ -23225,6 +23225,9 @@
   }
   document.addEventListener("DOMContentLoaded", () => {
     const navbar = document.getElementById("site-top-nav");
+    if (!navbar) {
+      return;
+    }
     let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
     window.addEventListener("scroll", () => {
       const currentScroll = window.pageYOffset || document.documentElement.scrollTop;

@@ -1,0 +1,116 @@
+{% extends "app_base.html" %}
+
+{% load i18n crispy_forms_tags %}
+
+{% block title %}
+  {% if is_create %}
+    {% blocktrans with name=workflow.name %}Add Step · {{ name }} · SimpleValidations{% endblocktrans %}
+  {% else %}
+    {% blocktrans with name=workflow.name step_id=step.pk %}Step {{ step_id }} · {{ name }} · SimpleValidations{% endblocktrans %}
+  {% endif %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="workflow-step-form" class="container-fluid">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8 d-flex flex-column gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-gear-wide-connected text-primary fs-4"></i>
+          <h1 class="app-page-title mb-0">
+            {% if is_create %}
+              {% trans "Add workflow step" %}
+            {% else %}
+              {% blocktrans with step_id=step.pk %}Edit step {{ step_id }}{% endblocktrans %}
+            {% endif %}
+          </h1>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-xxl-9">
+        <div class="card shadow-sm app-form-card mb-5">
+          <div class="card-body">
+            <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+              <div>
+                <h2 class="h5 mb-1">
+                  {{ validator_details.name }}
+                </h2>
+                {% if validator_details.description %}
+                  <p class="text-muted mb-0">
+                    {{ validator_details.description }}
+                  </p>
+                {% endif %}
+              </div>
+              <span class="badge text-bg-primary">
+                {{ validator_details.type_label }}
+              </span>
+            </div>
+
+            {% if form.errors %}
+              <div class="alert alert-danger" role="alert">
+                <h2 class="h6 mb-0">
+                  {% trans "We found a few issues. Please update the highlighted fields." %}
+                </h2>
+                {% if form.non_field_errors %}
+                  <ul class="mb-0 mt-2 small">
+                    {% for error in form.non_field_errors %}
+                      <li>{{ error }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            {% endif %}
+
+            <form method="post"
+                  enctype="multipart/form-data"
+                  class="d-flex flex-column gap-4">
+              {% csrf_token %}
+              {{ form.media }}
+              {% crispy form %}
+
+              <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mt-2 pt-3 border-top">
+                <div class="d-flex flex-wrap gap-2">
+                  <a class="btn btn-outline-secondary"
+                     href="{% url 'workflows:workflow_detail' workflow.pk %}#workflow-steps-col">
+                    <i class="bi-arrow-left-short me-1"></i>{% trans "Back to workflow" %}
+                  </a>
+                  <a class="btn btn-outline-secondary"
+                     href="{% url 'workflows:workflow_validation_list' workflow.pk %}">
+                    <i class="bi-diagram-3 me-1"></i>{% trans "View validations" %}
+                  </a>
+                </div>
+                <div class="d-flex flex-wrap gap-2 ms-lg-auto">
+                  {% if previous_step %}
+                    <a class="btn btn-light"
+                       href="{% url 'workflows:workflow_step_edit' workflow.pk previous_step.pk %}">
+                      <i class="bi-arrow-left me-1"></i>{% trans "Previous step" %}
+                    </a>
+                  {% endif %}
+                  {% if next_step %}
+                    <a class="btn btn-light"
+                       href="{% url 'workflows:workflow_step_edit' workflow.pk next_step.pk %}">
+                      {% trans "Next step" %}<i class="bi-arrow-right ms-1"></i>
+                    </a>
+                  {% endif %}
+                  <button type="submit" class="btn btn-primary">
+                    {% if is_create %}
+                      {% trans "Create step" %}
+                    {% else %}
+                      {% trans "Save changes" %}
+                    {% endif %}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

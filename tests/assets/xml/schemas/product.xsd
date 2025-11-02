@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="SkuCode">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z0-9]{8}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Rating">
+    <xs:restriction base="xs:integer">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="100"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="UnitType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="cm"/>
+      <xs:enumeration value="in"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="PositiveDecimal">
+    <xs:restriction base="xs:decimal">
+      <xs:minExclusive value="0"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="DimensionType">
+    <xs:simpleContent>
+      <xs:extension base="PositiveDecimal">
+        <xs:attribute name="unit" type="UnitType" use="optional" default="cm"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="product">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="sku" type="SkuCode"/>
+        <xs:element name="name" type="xs:string"/>
+        <xs:element name="rating" type="Rating"/>
+        <xs:element name="description" type="xs:string"/>
+        <xs:element name="dimensions">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="length" type="DimensionType"/>
+              <xs:element name="width" type="DimensionType"/>
+              <xs:element name="height" type="DimensionType"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

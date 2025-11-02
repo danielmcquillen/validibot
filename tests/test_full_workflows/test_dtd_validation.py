@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import pytest
 from django.urls import reverse
 from rest_framework.status import HTTP_200_OK
+from rest_framework.status import HTTP_201_CREATED
+from rest_framework.status import HTTP_202_ACCEPTED
 
 from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
@@ -27,7 +29,7 @@ pytestmark = pytest.mark.django_db
 def start_workflow_url(workflow_id: int) -> str:
     try:
         return reverse("api:workflow-start", args=[workflow_id])
-    except Exception:
+    except Exception:  # pragma: no cover - fallback for mismatched urls
         logger.debug("Could not reverse for workflow start")
     return f"/api/v1/workflows/{workflow_id}/start/"
 
@@ -82,21 +84,13 @@ def extract_issues(data: dict) -> list[dict]:
 
 
 @pytest.fixture
-def workflow_context(load_xsd_asset, api_client):
-    """
-    Create a workflow for XML validation. engine ∈ {"XSD","RELAXNG"}.
-    """
+def workflow_context(load_dtd_asset, api_client):
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
-
-    # Ensure caller has EXECUTOR permissions in this org
     grant_role(user, org, RoleCode.EXECUTOR)
 
-    validator = ValidatorFactory(
-        validation_type=ValidationType.XML_SCHEMA,
-    )
-
-    schema = load_xsd_asset("product.xsd")
+    validator = ValidatorFactory(validation_type=ValidationType.XML_SCHEMA)
+    schema = load_dtd_asset("product.dtd")
 
     ruleset = RulesetFactory(
         org=org,
@@ -104,7 +98,7 @@ def workflow_context(load_xsd_asset, api_client):
         ruleset_type=ValidationType.XML_SCHEMA,
         rules_text=schema,
         metadata={
-            "schema_type": XMLSchemaType.XSD.name,
+            "schema_type": XMLSchemaType.DTD.name,
         },
     )
 
@@ -116,29 +110,21 @@ def workflow_context(load_xsd_asset, api_client):
         order=1,
     )
 
-    # Authenticate API client
     api_client.force_authenticate(user=user)
 
     return {
-        "org": org,
-        "user": user,
-        "validator": validator,
-        "ruleset": ruleset,
         "workflow": workflow,
-        "step": step,
         "client": api_client,
+        "step": step,
     }
 
 
-def _run_and_poll(
-    client,
-    workflow,
-    content: str,
-    content_type: str = "application/xml",
-) -> dict:
+def _run_and_poll(client, workflow, *, content: str) -> dict:
     start_url = start_workflow_url(workflow.pk)
-    resp = client.post(start_url, data=content, content_type=content_type)
-    assert resp.status_code in (200, 201, 202), resp.content
+    resp = client.post(start_url, data=content, content_type="application/xml")
+    assert resp.status_code in (HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED), (
+        resp.content
+    )
 
     loc = resp.headers.get("Location") or resp.headers.get("location") or ""
     poll_url = normalize_poll_url(loc)
@@ -146,16 +132,16 @@ def _run_and_poll(
         data = {}
         try:
             data = resp.json()
-        except Exception as e:
-            logger.debug("Could not parse JSON response: %s", e)
+        except Exception:
+            data = {}
         run_id = data.get("id")
         if run_id:
             for name in ("validation-run-detail", "api:validation-run-detail"):
                 try:
                     poll_url = reverse(name, args=[run_id])
                     break
-                except Exception as e:
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, e)
+                except Exception:
+                    continue
             if not poll_url:
                 poll_url = f"/api/v1/validation-runs/{run_id}/"
 
@@ -164,41 +150,24 @@ def _run_and_poll(
     return data
 
 
-def test_xml_xsd_happy_path(load_xml_asset, workflow_context):
-    valid_product_xml = load_xml_asset("valid_product.xml")
+def test_xml_dtd_happy_path(load_xml_asset, workflow_context):
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(
-        client=client,
-        workflow=workflow,
-        content=valid_product_xml,
-    )
+    payload = load_xml_asset("valid_product.xml")
+
+    data = _run_and_poll(client, workflow, content=payload)
     run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
-        f"Unexpected status: {run_status} payload={data}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) == 0, f"Expected no issues, got: {issues}"
+    assert run_status == ValidationRunStatus.SUCCEEDED.name
+    assert extract_issues(data) == []
 
 
-def test_xml_xsd_one_field_fails(load_xml_asset, workflow_context):
-    invalid_product_xml = load_xml_asset("invalid_product.xml")
+def test_xml_dtd_missing_required_elements(load_xml_asset, workflow_context):
     client = workflow_context["client"]
     workflow = workflow_context["workflow"]
-    data = _run_and_poll(
-        client=client,
-        workflow=workflow,
-        content=invalid_product_xml,
-    )
+    payload = load_xml_asset("invalid_product.xml")
+
+    data = _run_and_poll(client, workflow, content=payload)
     run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.FAILED.name, (
-        f"Unexpected status: {run_status}"
-    )
+    assert run_status == ValidationRunStatus.FAILED.name
     issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) >= 1, "Expected at least one issue for invalid payload"
-    joined = " | ".join(str(i) for i in issues)
-    assert ("rating" in joined) or ("max" in joined.lower()), (
-        f"Expected rating/max error in issues, got: {issues}"
-    )
+    assert issues, "Expected DTD validation issues"

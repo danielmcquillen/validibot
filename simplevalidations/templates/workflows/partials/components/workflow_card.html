@@ -114,6 +114,7 @@
                href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
                 <i class="bi bi-pencil-square"></i>
             </a>
+            {% comment %}
             <a class="btn btn-sm btn-outline-secondary"
                href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                data-bs-toggle="tooltip"
@@ -127,6 +128,8 @@
                     {% trans "Edit workflow settings" %}
                 </span>
             </a>
+            {% endcomment %}
+
             <button type="button"
                     class="btn btn-sm btn-outline-danger"
                     hx-delete="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"

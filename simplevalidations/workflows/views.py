@@ -29,6 +29,7 @@ from django.views.generic import TemplateView
 from django.views.generic import UpdateView
 from django.views.generic.edit import CreateView
 from django.views.generic.edit import DeleteView
+from django.views.generic.edit import FormView
 from rest_framework import permissions
 from rest_framework import status
 from rest_framework import viewsets
@@ -515,6 +516,258 @@ def _hx_trigger_response(
         payload["close-modal"] = close_modal
     response["HX-Trigger"] = json.dumps(payload)
     return response
+
+
+def _ensure_ruleset(
+    *,
+    workflow: Workflow,
+    step: WorkflowStep | None,
+    ruleset_type: str,
+) -> Ruleset:
+    """
+    Ensure a ruleset exists for the given workflow step and type.
+    """
+
+    if step and step.ruleset and step.ruleset.ruleset_type == ruleset_type:
+        ruleset = step.ruleset
+    else:
+        ruleset = Ruleset(org=workflow.org, user=workflow.user)
+    ruleset.org = workflow.org
+    ruleset.user = workflow.user
+    ruleset.ruleset_type = ruleset_type
+    ruleset.name = ruleset.name or f"ruleset-{uuid4().hex[:8]}"
+    ruleset.version = ruleset.version or "1"
+    return ruleset
+
+
+def _build_json_schema_config(
+    workflow: Workflow,
+    form: JsonSchemaStepConfigForm,
+    step: WorkflowStep | None,
+) -> tuple[dict[str, Any], Ruleset | None]:
+    source = form.cleaned_data.get("schema_source")
+    text = (form.cleaned_data.get("schema_text") or "").strip()
+    uploaded = form.cleaned_data.get("schema_file")
+    schema_type = form.cleaned_data.get("schema_type")
+
+    if schema_type not in JSONSchemaVersion.values:
+        raise ValidationError(_("Select a valid JSON Schema draft."))
+
+    if source == "keep" and step and step.ruleset_id:
+        preview = step.config.get("schema_text_preview", "")
+        ruleset = step.ruleset
+        metadata = dict(ruleset.metadata or {})
+        metadata["schema_type"] = schema_type
+        metadata.pop("schema", None)
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save(update_fields=["metadata"])
+        config = {
+            "schema_source": "keep",
+            "schema_text_preview": preview,
+            "schema_type": schema_type,
+            "schema_type_label": str(JSONSchemaVersion(schema_type).label),
+        }
+        return config, ruleset
+
+    ruleset = _ensure_ruleset(
+        workflow=workflow,
+        step=step,
+        ruleset_type=RulesetType.JSON_SCHEMA,
+    )
+
+    schema_payload: str | None = None
+
+    if source == "text":
+        ruleset.rules_text = text
+        if ruleset.rules_file:
+            ruleset.rules_file.delete(save=False)
+        ruleset.rules_file = None
+        schema_payload = text
+        preview = text[:1200]
+    else:
+        if uploaded is None:
+            raise ValidationError(_("Upload a JSON schema file."))
+        uploaded.seek(0)
+        raw_bytes = uploaded.read()
+        uploaded.seek(0)
+        if ruleset.rules_file:
+            ruleset.rules_file.delete(save=False)
+        ruleset.rules_file.save(uploaded.name, uploaded, save=False)
+        ruleset.rules_text = ""
+        schema_payload = (
+            raw_bytes.decode("utf-8", errors="replace")
+            if isinstance(raw_bytes, bytes)
+            else str(raw_bytes or "")
+        )
+        preview = schema_payload[:1200]
+
+    metadata = dict(ruleset.metadata or {})
+    metadata["schema_type"] = schema_type
+    metadata.pop("schema", None)
+    ruleset.metadata = metadata
+    ruleset.full_clean()
+    ruleset.save()
+
+    config = {
+        "schema_source": source,
+        "schema_text_preview": preview,
+        "schema_type": schema_type,
+        "schema_type_label": str(JSONSchemaVersion(schema_type).label),
+    }
+    return config, ruleset
+
+
+def _build_xml_schema_config(
+    workflow: Workflow,
+    form: XmlSchemaStepConfigForm,
+    step: WorkflowStep | None,
+) -> tuple[dict[str, Any], Ruleset | None]:
+    source = form.cleaned_data.get("schema_source")
+    text = (form.cleaned_data.get("schema_text") or "").strip()
+    uploaded = form.cleaned_data.get("schema_file")
+    schema_type = form.cleaned_data.get("schema_type")
+
+    if schema_type not in XMLSchemaType.values:
+        raise ValidationError(_("Select a valid XML schema type."))
+
+    if source == "keep" and step and step.ruleset_id:
+        preview = step.config.get("schema_text_preview", "")
+        ruleset = step.ruleset
+        metadata = dict((ruleset.metadata or {}))
+        metadata["schema_type"] = schema_type
+        metadata.pop("schema", None)
+        ruleset.metadata = metadata
+        ruleset.full_clean()
+        ruleset.save(update_fields=["metadata"])
+        config = {
+            "schema_source": "keep",
+            "schema_type": schema_type,
+            "schema_text_preview": preview,
+            "schema_type_label": str(XMLSchemaType(schema_type).label),
+        }
+        return config, ruleset
+
+    ruleset = _ensure_ruleset(
+        workflow=workflow,
+        step=step,
+        ruleset_type=RulesetType.XML_SCHEMA,
+    )
+
+    if source == "text":
+        ruleset.rules_text = text
+        if ruleset.rules_file:
+            ruleset.rules_file.delete(save=False)
+        ruleset.rules_file = None
+        preview = text[:1200]
+    else:
+        if uploaded is None:
+            raise ValidationError(_("Upload an XML schema file."))
+        uploaded.seek(0)
+        raw_bytes = uploaded.read()
+        uploaded.seek(0)
+        if ruleset.rules_file:
+            ruleset.rules_file.delete(save=False)
+        ruleset.rules_file.save(uploaded.name, uploaded, save=False)
+        ruleset.rules_text = ""
+        schema_payload = (
+            raw_bytes.decode("utf-8", errors="replace")
+            if isinstance(raw_bytes, bytes)
+            else str(raw_bytes or "")
+        )
+        preview = schema_payload[:1200]
+
+    metadata = dict(ruleset.metadata or {})
+    metadata["schema_type"] = schema_type
+    metadata.pop("schema", None)
+    ruleset.metadata = metadata
+    ruleset.full_clean()
+    ruleset.save()
+
+    config = {
+        "schema_source": source,
+        "schema_type": schema_type,
+        "schema_text_preview": preview,
+        "schema_type_label": str(XMLSchemaType(schema_type).label),
+    }
+    return config, ruleset
+
+
+def _build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
+    eui_min = form.cleaned_data.get("eui_min")
+    eui_max = form.cleaned_data.get("eui_max")
+    eui_band = {
+        "min": float(eui_min) if eui_min is not None else None,
+        "max": float(eui_max) if eui_max is not None else None,
+    }
+    return {
+        "run_simulation": form.cleaned_data.get("run_simulation", False),
+        "idf_checks": form.cleaned_data.get("idf_checks", []),
+        "simulation_checks": form.cleaned_data.get("simulation_checks", []),
+        "eui_band": eui_band,
+        "notes": form.cleaned_data.get("energyplus_notes", ""),
+    }
+
+
+def _build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
+    selectors = form.cleaned_data.get("selectors", [])
+    policy_rules = form.cleaned_data.get("policy_rules", [])
+    return {
+        "template": form.cleaned_data.get("template"),
+        "mode": form.cleaned_data.get("mode"),
+        "cost_cap_cents": form.cleaned_data.get("cost_cap_cents"),
+        "selectors": selectors,
+        "policy_rules": [asdict(rule) for rule in policy_rules],
+    }
+
+
+def save_workflow_step(
+    workflow: Workflow,
+    validator: Validator,
+    form: forms.Form,
+    *,
+    step: WorkflowStep | None = None,
+) -> WorkflowStep:
+    """
+    Persist a workflow step using the supplied form data and validator.
+    """
+    is_new = step is None
+    step = step or WorkflowStep(workflow=workflow)
+    step.validator = validator
+    step.name = form.cleaned_data.get("name", "").strip() or validator.name
+    step.description = (form.cleaned_data.get("description") or "").strip()
+    step.notes = (form.cleaned_data.get("notes") or "").strip()
+    if "display_schema" in form.cleaned_data:
+        step.display_schema = form.cleaned_data.get("display_schema", False)
+
+    config: dict[str, Any]
+    ruleset: Ruleset | None = None
+    vtype = validator.validation_type
+
+    if vtype == ValidationType.JSON_SCHEMA:
+        config, ruleset = _build_json_schema_config(workflow, form, step)
+    elif vtype == ValidationType.XML_SCHEMA:
+        config, ruleset = _build_xml_schema_config(workflow, form, step)
+    elif vtype == ValidationType.ENERGYPLUS:
+        config = _build_energyplus_config(form)
+    elif vtype == ValidationType.AI_ASSIST:
+        config = _build_ai_config(form)
+    else:
+        config = {}
+
+    if ruleset is not None:
+        step.ruleset = ruleset
+    elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
+        step.ruleset = None
+
+    step.config = config
+
+    if is_new:
+        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
+        step.order = (max_order or 0) + 10
+
+    step.save()
+    return step
 
 
 class WorkflowListView(WorkflowAccessMixin, ListView):
@@ -1553,24 +1806,9 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
 
 
 class WorkflowStepWizardView(WorkflowObjectMixin, View):
-    """
-    Handle adding or editing a workflow step via a two-stage HTMX wizard:
-    1) Select the validation type
-    2) Configure the step settings
-
-    Forms are validated via POST, and on success the step is saved and a trigger
-    response is returned to notify the client to refresh the step list.
-
-    Args:
-        WorkflowObjectMixin (_type_): _description_
-        View (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
+    """Present the validator selector in the add-step modal."""
 
     template_select = "workflows/partials/workflow_step_wizard_select.html"
-    template_config = "workflows/partials/workflow_step_wizard_config.html"
 
     def dispatch(self, request, *args, **kwargs):
         if not request.headers.get("HX-Request"):
@@ -1581,9 +1819,14 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         workflow = self.get_workflow()
         step = self._get_step()
         if step is not None:
-            validator = step.validator
-            form = self._build_config_form(validator, step=step)
-            return self._render_config(request, workflow, validator, form, step)
+            edit_url = reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=request,
+                kwargs={"pk": workflow.pk, "step_id": step.pk},
+            )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = edit_url
+            return response
         if workflow.steps.count() >= MAX_STEP_COUNT:
             context = {
                 "workflow": workflow,
@@ -1601,49 +1844,46 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         step = self._get_step()
         stage = request.POST.get("stage", "select")
 
-        if stage == "select" and step is None:
-            validators = self._available_validators(workflow)
-            form = WorkflowStepTypeForm(request.POST, validators=validators)
-            if form.is_valid():
-                validator = form.get_validator()
-                config_form = self._build_config_form(validator, step=None)
-                return self._render_config(
-                    request,
-                    workflow,
-                    validator,
-                    config_form,
-                    None,
+        if stage != "select":
+            if step is not None:
+                redirect_url = reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=request,
+                    kwargs={"pk": workflow.pk, "step_id": step.pk},
                 )
-            return self._render_select(request, workflow, form=form)
+            else:
+                redirect_url = reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=request,
+                    kwargs={"pk": workflow.pk},
+                )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return response
 
-        validator = self._resolve_validator(request, step)
-        if validator is None:
-            return HttpResponse(status=400)
-
-        config_form = self._build_config_form(
-            validator,
-            step=step,
-            data=request.POST,
-            files=request.FILES,
-        )
-        if config_form.is_valid():
-            if step is None and workflow.steps.count() >= MAX_STEP_COUNT:
+        validators = self._available_validators(workflow)
+        form = WorkflowStepTypeForm(request.POST, validators=validators)
+        if form.is_valid():
+            if workflow.steps.count() >= MAX_STEP_COUNT:
                 message = _("You can add up to %(count)s steps per workflow.") % {
                     "count": MAX_STEP_COUNT,
                 }
                 return _hx_trigger_response(message, level="warning", status_code=409)
-            self._save_step(workflow, validator, config_form, step=step)
-            _resequence_workflow_steps(workflow)
-            message = _("Workflow step saved.")
-            return _hx_trigger_response(message)
-        return self._render_config(
-            request,
-            workflow,
-            validator,
-            config_form,
-            step,
-            status=200,
-        )
+            validator = form.get_validator()
+            create_url = reverse_with_org(
+                "workflows:workflow_step_create",
+                request=request,
+                kwargs={"pk": workflow.pk, "validator_id": validator.pk},
+            )
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = create_url
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "close-modal": "workflowStepModal",
+                },
+            )
+            return response
+        return self._render_select(request, workflow, form=form)
 
     # Helper methods ---------------------------------------------------------
 
@@ -1656,20 +1896,6 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
         return list(Validator.objects.all().order_by("validation_type", "name", "pk"))
-
-    def _build_config_form(
-        self,
-        validator: Validator,
-        *,
-        step: WorkflowStep | None,
-        data=None,
-        files=None,
-    ) -> forms.Form:
-        form_class = get_config_form_class(validator.validation_type)
-        kwargs = {"step": step}
-        if data is not None or files is not None:
-            return form_class(data or None, files or None, **kwargs)
-        return form_class(**kwargs)
 
     def _render_select(self, request, workflow: Workflow, form=None, status=200):
         validators = self._available_validators(workflow)
@@ -1690,338 +1916,189 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         }
         return render(request, self.template_select, context, status=status)
 
-    def _render_config(
-        self,
-        request,
-        workflow: Workflow,
-        validator: Validator,
-        form: forms.Form,
-        step: WorkflowStep | None,
-        status: int = 200,
-    ):
-        context = {
-            "workflow": workflow,
-            "validator": validator,
-            "form": form,
-            "step": step,
-            "max_step_count": MAX_STEP_COUNT,
-        }
-        return render(request, self.template_config, context, status=status)
 
-    def _resolve_validator(
-        self,
-        request,
-        step: WorkflowStep | None,
-    ) -> Validator | None:
-        if step is not None:
-            return step.validator
-        validator_id = request.POST.get("validator") or request.POST.get("validator_id")
-        if not validator_id:
+class WorkflowStepFormView(WorkflowObjectMixin, FormView):
+    """Render the full-screen workflow step editor for create/update."""
+
+    template_name = "workflows/workflow_step_form.html"
+    mode: str = "create"
+    validator_url_kwarg = "validator_id"
+    step_url_kwarg = "step_id"
+    saved_step: WorkflowStep | None = None
+
+    def dispatch(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        if self.mode == "create" and workflow.steps.count() >= MAX_STEP_COUNT:
+            messages.warning(
+                request,
+                _("You can add up to %(count)s steps per workflow.")
+                % {
+                    "count": MAX_STEP_COUNT,
+                },
+            )
+            detail_url = reverse_with_org(
+                "workflows:workflow_detail",
+                request=request,
+                kwargs={"pk": workflow.pk},
+            )
+            return HttpResponseRedirect(detail_url)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_step(self) -> WorkflowStep | None:
+        if self.mode != "update":
             return None
-        return get_object_or_404(Validator, pk=validator_id)
+        if not hasattr(self, "_step"):
+            workflow = self.get_workflow()
+            step_id = self.kwargs.get(self.step_url_kwarg)
+            self._step = get_object_or_404(
+                WorkflowStep,
+                workflow=workflow,
+                pk=step_id,
+            )
+        return getattr(self, "_step", None)
 
-    def _save_step(
-        self,
-        workflow: Workflow,
-        validator: Validator,
-        form: forms.Form,
-        *,
-        step: WorkflowStep | None,
-    ) -> WorkflowStep:
-        is_new = step is None
-        step = step or WorkflowStep(workflow=workflow)
-        step.validator = validator
-        step.name = form.cleaned_data.get("name", "").strip() or validator.name
-        step.description = (form.cleaned_data.get("description") or "").strip()
-        step.notes = (form.cleaned_data.get("notes") or "").strip()
-        if "display_schema" in form.cleaned_data:
-            step.display_schema = form.cleaned_data.get("display_schema", False)
+    def get_validator(self) -> Validator:
+        if not hasattr(self, "_validator"):
+            if self.mode == "update":
+                step = self.get_step()
+                if step is None:
+                    raise Http404
+                self._validator = step.validator
+            else:
+                validator_id = self.kwargs.get(self.validator_url_kwarg)
+                self._validator = get_object_or_404(Validator, pk=validator_id)
+        return self._validator
 
-        config: dict[str, Any]
-        ruleset: Ruleset | None = None
-        vtype = validator.validation_type
+    def get_form_class(self):
+        validator = self.get_validator()
+        return get_config_form_class(validator.validation_type)
 
-        if vtype == ValidationType.JSON_SCHEMA:
-            config, ruleset = self._build_json_schema(workflow, form, step)
-        elif vtype == ValidationType.XML_SCHEMA:
-            config, ruleset = self._build_xml_schema(workflow, form, step)
-        elif vtype == ValidationType.ENERGYPLUS:
-            config = self._build_energyplus_config(form)
-        elif vtype == ValidationType.AI_ASSIST:
-            config = self._build_ai_config(form)
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["step"] = self.get_step()
+        return kwargs
+
+    def form_valid(self, form):
+        workflow = self.get_workflow()
+        validator = self.get_validator()
+        saved_step = save_workflow_step(
+            workflow,
+            validator,
+            form,
+            step=self.get_step(),
+        )
+        _resequence_workflow_steps(workflow)
+        self.saved_step = saved_step
+        if self.mode == "create":
+            message = _("Workflow step added.")
         else:
-            config = {}
+            message = _("Workflow step updated.")
+        messages.success(self.request, message)
+        return HttpResponseRedirect(self.get_success_url())
 
-        if ruleset is not None:
-            step.ruleset = ruleset
-        elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
-            step.ruleset = None
-
-        step.config = config
-
-        if is_new:
-            max_order = workflow.steps.aggregate(max_order=models.Max("order"))[
-                "max_order"
-            ]
-            step.order = (max_order or 0) + 10
-
-        step.save()
-        return step
-
-    def _ensure_ruleset(
-        self,
-        *,
-        workflow: Workflow,
-        step: WorkflowStep | None,
-        ruleset_type: str,
-    ) -> Ruleset:
-        """
-        Ensure a ruleset exists for the given workflow step and type.
-
-        Args:
-            workflow (Workflow)
-            step (WorkflowStep | None)
-            ruleset_type (str)
-
-        Returns:
-            Ruleset
-        """
-
-        if step and step.ruleset and step.ruleset.ruleset_type == ruleset_type:
-            ruleset = step.ruleset
-        else:
-            ruleset = Ruleset(org=workflow.org, user=workflow.user)
-        ruleset.org = workflow.org
-        ruleset.user = workflow.user
-        ruleset.ruleset_type = ruleset_type
-        ruleset.name = ruleset.name or f"ruleset-{uuid4().hex[:8]}"
-        ruleset.version = ruleset.version or "1"
-        return ruleset
-
-    def _build_json_schema(
-        self,
-        workflow: Workflow,
-        form: JsonSchemaStepConfigForm,
-        step: WorkflowStep | None,
-    ) -> tuple[dict[str, Any], Ruleset | None]:
-        """
-        Build JSON Schema step configuration and manage ruleset.
-        Args:
-            workflow (Workflow)
-            form (JsonSchemaStepConfigForm)
-            step (WorkflowStep | None)
-
-        Returns:
-            tuple[dict[str, Any], Ruleset | None]
-        """
-
-        source = form.cleaned_data.get("schema_source")
-        text = (form.cleaned_data.get("schema_text") or "").strip()
-        uploaded = form.cleaned_data.get("schema_file")
-        schema_type = form.cleaned_data.get("schema_type")
-
-        if schema_type not in JSONSchemaVersion.values:
-            raise ValidationError(_("Select a valid JSON Schema draft."))
-
-        if source == "keep" and step and step.ruleset_id:
-            preview = step.config.get("schema_text_preview", "")
-            ruleset = step.ruleset
-            metadata = dict((ruleset.metadata or {}))
-            metadata["schema_type"] = schema_type
-            metadata.pop("schema", None)
-            ruleset.metadata = metadata
-            ruleset.full_clean()
-            ruleset.save(update_fields=["metadata"])
-            config = {
-                "schema_source": "keep",
-                "schema_text_preview": preview,
-                "schema_type": schema_type,
-                "schema_type_label": str(JSONSchemaVersion(schema_type).label),
-            }
-            return config, ruleset
-
-        ruleset = self._ensure_ruleset(
-            workflow=workflow,
-            step=step,
-            ruleset_type=RulesetType.JSON_SCHEMA,
+    def form_invalid(self, form):
+        return self.render_to_response(
+            self.get_context_data(form=form),
+            status=400,
         )
 
-        schema_payload: str | None = None
-
-        if source == "text":
-            ruleset.rules_text = text
-            if ruleset.rules_file:
-                ruleset.rules_file.delete(save=False)
-            ruleset.rules_file = None
-            schema_payload = text
-            preview = text[:1200]
-        else:
-            if uploaded is None:
-                raise ValidationError(_("Upload a JSON schema file."))
-            uploaded.seek(0)
-            raw_bytes = uploaded.read()
-            uploaded.seek(0)
-            if ruleset.rules_file:
-                ruleset.rules_file.delete(save=False)
-            ruleset.rules_file.save(uploaded.name, uploaded, save=False)
-            ruleset.rules_text = ""
-            schema_payload = (
-                raw_bytes.decode("utf-8", errors="replace")
-                if isinstance(raw_bytes, bytes)
-                else str(raw_bytes or "")
-            )
-            preview = schema_payload[:1200]
-
-        metadata = dict(ruleset.metadata or {})
-        metadata["schema_type"] = schema_type
-        metadata.pop("schema", None)
-        ruleset.metadata = metadata
-        ruleset.full_clean()
-        ruleset.save()
-
-        config = {
-            "schema_source": source,
-            "schema_text_preview": preview,
-            "schema_type": schema_type,
-            "schema_type_label": str(JSONSchemaVersion(schema_type).label),
-        }
-        return config, ruleset
-
-    def _build_xml_schema(
-        self,
-        workflow: Workflow,
-        form: XmlSchemaStepConfigForm,
-        step: WorkflowStep | None,
-    ) -> tuple[dict[str, Any], Ruleset | None]:
-        """
-        Build XML Schema step configuration and manage ruleset.
-
-        Args:
-            workflow (Workflow)
-            form (XmlSchemaStepConfigForm)
-            step (WorkflowStep | None)
-
-        Returns:
-            tuple[dict[str, Any], Ruleset | None]
-        """
-        source = form.cleaned_data.get("schema_source")
-        text = (form.cleaned_data.get("schema_text") or "").strip()
-        uploaded = form.cleaned_data.get("schema_file")
-        schema_type = form.cleaned_data.get("schema_type")
-
-        if schema_type not in XMLSchemaType.values:
-            raise ValidationError(_("Select a valid XML schema type."))
-
-        if source == "keep" and step and step.ruleset_id:
-            preview = step.config.get("schema_text_preview", "")
-            ruleset = step.ruleset
-            metadata = dict((ruleset.metadata or {}))
-            metadata["schema_type"] = schema_type
-            metadata.pop("schema", None)
-            ruleset.metadata = metadata
-            ruleset.full_clean()
-            ruleset.save(update_fields=["metadata"])
-            config = {
-                "schema_source": "keep",
-                "schema_type": schema_type,
-                "schema_text_preview": preview,
-                "schema_type_label": str(XMLSchemaType(schema_type).label),
-            }
-            return config, ruleset
-
-        ruleset = self._ensure_ruleset(
-            workflow=workflow,
-            step=step,
-            ruleset_type=RulesetType.XML_SCHEMA,
+    def get_success_url(self):
+        workflow = self.get_workflow()
+        detail_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=self.request,
+            kwargs={"pk": workflow.pk},
         )
+        return f"{detail_url}#workflow-steps-col"
 
-        extension = {
-            XMLSchemaType.DTD: ".dtd",
-            XMLSchemaType.XSD: ".xsd",
-            XMLSchemaType.RELAXNG: ".rng",
-        }.get(schema_type, ".xml")
+    def get_neighbor_steps(self) -> tuple[WorkflowStep | None, WorkflowStep | None]:
+        step = self.get_step()
+        if step is None:
+            return (None, None)
+        steps = list(self.get_workflow().steps.all().order_by("order", "pk"))
+        previous_step = None
+        next_step = None
+        for index, current in enumerate(steps):
+            if current.pk == step.pk:
+                if index > 0:
+                    previous_step = steps[index - 1]
+                if index < len(steps) - 1:
+                    next_step = steps[index + 1]
+                break
+        return previous_step, next_step
 
-        schema_payload: str | None = None
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        step = self.get_step()
+        validator = self.get_validator()
+        prev_step, next_step = self.get_neighbor_steps()
+        context.update(
+            {
+                "workflow": workflow,
+                "step": step,
+                "validator": validator,
+                "is_create": self.mode == "create",
+                "max_step_count": MAX_STEP_COUNT,
+                "previous_step": prev_step,
+                "next_step": next_step,
+                "steps_count": workflow.steps.count(),
+                "validator_details": {
+                    "name": validator.name,
+                    "description": validator.description,
+                    "type_label": validator.get_validation_type_display(),
+                },
+            },
+        )
+        return context
 
-        if source == "text":
-            ruleset.rules_text = text
-            if ruleset.rules_file:
-                ruleset.rules_file.delete(save=False)
-            ruleset.rules_file = None
-            schema_payload = text
-            preview = text[:1200]
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        if self.mode == "create":
+            breadcrumbs.append({"name": _("Add step"), "url": ""})
         else:
-            if uploaded is None:
-                raise ValidationError(_("Upload an XML schema file."))
-            uploaded.seek(0)
-            raw_bytes = uploaded.read()
-            uploaded.seek(0)
-            if ruleset.rules_file:
-                ruleset.rules_file.delete(save=False)
-            ruleset.rules_file.save(uploaded.name, uploaded, save=False)
-            ruleset.rules_text = ""
-            schema_payload = (
-                raw_bytes.decode("utf-8", errors="replace")
-                if isinstance(raw_bytes, bytes)
-                else str(raw_bytes or "")
+            step = self.get_step()
+            breadcrumbs.append(
+                {
+                    "name": _("Step %(id)s") % {"id": step.pk if step else ""},
+                    "url": "",
+                },
             )
-            preview = schema_payload[:1200]
+        return breadcrumbs
 
-        metadata = dict(ruleset.metadata or {})
-        metadata["schema_type"] = schema_type
-        metadata.pop("schema", None)
-        ruleset.metadata = metadata
-        ruleset.full_clean()
-        ruleset.save()
 
-        config = {
-            "schema_source": source,
-            "schema_type": schema_type,
-            "schema_text_preview": preview,
-            "schema_type_label": str(XMLSchemaType(schema_type).label)
-            if schema_type in XMLSchemaType.values
-            else schema_type,
-        }
-        return config, ruleset
+class WorkflowStepCreateView(WorkflowStepFormView):
+    """Create a new workflow step for the given validator."""
 
-    def _build_energyplus_config(
-        self,
-        form: EnergyPlusStepConfigForm,
-    ) -> dict[str, Any]:
-        """
-        Build EnergyPlus step configuration.
+    mode = "create"
 
-        Args:
-            form (EnergyPlusStepConfigForm)
 
-        Returns:
-            dict[str, Any]
-        """
+class WorkflowStepUpdateView(WorkflowStepFormView):
+    """Edit an existing workflow step in full-page mode."""
 
-        eui_min = form.cleaned_data.get("eui_min")
-        eui_max = form.cleaned_data.get("eui_max")
-        eui_band = {
-            "min": float(eui_min) if eui_min is not None else None,
-            "max": float(eui_max) if eui_max is not None else None,
-        }
-        return {
-            "run_simulation": form.cleaned_data.get("run_simulation", False),
-            "idf_checks": form.cleaned_data.get("idf_checks", []),
-            "simulation_checks": form.cleaned_data.get("simulation_checks", []),
-            "eui_band": eui_band,
-            "notes": form.cleaned_data.get("energyplus_notes", ""),
-        }
-
-    def _build_ai_config(self, form: AiAssistStepConfigForm) -> dict[str, Any]:
-        selectors = form.cleaned_data.get("selectors", [])
-        policy_rules = form.cleaned_data.get("policy_rules", [])
-        return {
-            "template": form.cleaned_data.get("template"),
-            "mode": form.cleaned_data.get("mode"),
-            "cost_cap_cents": form.cleaned_data.get("cost_cap_cents"),
-            "selectors": selectors,
-            "policy_rules": [asdict(rule) for rule in policy_rules],
-        }
+    mode = "update"
 
 
 class WorkflowStepDeleteView(WorkflowObjectMixin, View):

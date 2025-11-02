@@ -107,15 +107,11 @@
                 <div class="btn-group btn-group-sm"
                      role="group"
                      aria-label="{% trans 'Step actions' %}">
-                  <button class="btn btn-outline-secondary"
-                          data-bs-toggle="modal"
-                          data-bs-target="#workflowStepModal"
-                          hx-get="{% url 'workflows:workflow_step_wizard_existing' workflow.pk step.id %}"
-                          hx-target="#workflow-step-modal-content"
-                          hx-swap="innerHTML">
+                  <a class="btn btn-outline-secondary"
+                     href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
                     <i class="bi-pencil-square"></i>
                     <span class="visually-hidden">{% trans "Edit" %}</span>
-                  </button>
+                  </a>
                   <button class="btn btn-outline-secondary"
                           hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
                           hx-target="this"

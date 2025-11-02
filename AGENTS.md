@@ -107,3 +107,9 @@ a few key ones that make sure things work correctly.
 
 Make sure to always add code documentation to the top of all classes. Explain clearly what the class is for
 and include a relevant example if helpful.
+
+# Coding Standards
+
+Make sure to always add trailing commas so we don't get Rust linting errors (Trailing comma missing, COM812)
+All other code should be correct and not cause the Rust linter to fail. For example, don't make really long
+string lines, instead break them up by using parenthesis and newslines.

@@ -58,9 +58,19 @@ urlpatterns = [
         name="workflow_step_wizard",
     ),
     path(
+        "<int:pk>/steps/add/<int:validator_id>/",
+        views.WorkflowStepCreateView.as_view(),
+        name="workflow_step_create",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/wizard/",
         views.WorkflowStepWizardView.as_view(),
         name="workflow_step_wizard_existing",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/edit/",
+        views.WorkflowStepUpdateView.as_view(),
+        name="workflow_step_edit",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/delete/",

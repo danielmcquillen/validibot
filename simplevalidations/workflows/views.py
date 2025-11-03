@@ -1467,7 +1467,13 @@ class WorkflowPublicInfoView(DetailView):
         return (
             Workflow.objects.filter(make_info_public=True)
             .select_related("org", "project", "user")
-            .prefetch_related("steps")
+            .prefetch_related(
+                "steps",
+                "steps__validator",
+                "steps__ruleset",
+                "steps__action",
+                "steps__action__definition",
+            )
         )
 
     def get_context_data(self, **kwargs):
@@ -1504,6 +1510,14 @@ class WorkflowPublicInfoView(DetailView):
     def _annotate_public_schema_steps(self, steps: list[WorkflowStep]) -> None:
         for step in steps:
             step.public_schema = None
+            step.public_action_meta = None
+            step.public_action_summary = {}
+
+            if step.validator is None:
+                if step.action:
+                    self._populate_public_action(step)
+                continue
+
             vtype = step.validator.validation_type
             if vtype not in {ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA}:
                 continue
@@ -1519,6 +1533,27 @@ class WorkflowPublicInfoView(DetailView):
                     "language": schema_language
                     or ("json" if vtype == ValidationType.JSON_SCHEMA else "xml"),
                 }
+
+    def _populate_public_action(self, step: WorkflowStep) -> None:
+        action = step.action
+        definition = action.definition
+        variant = action.get_variant()
+        summary: dict[str, str] = {}
+
+        if isinstance(variant, SlackMessageAction):
+            summary["message"] = variant.message
+        elif isinstance(variant, SignedCertificateAction):
+            summary["certificate_template"] = (
+                variant.get_certificate_template_display_name()
+            )
+
+        step.public_action_meta = {
+            "category_label": definition.get_action_category_display(),
+            "type": definition.type,
+            "icon": definition.icon or "bi-gear",
+            "definition_name": definition.name,
+        }
+        step.public_action_summary = summary
 
     def _load_schema_content(
         self,

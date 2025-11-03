@@ -4,8 +4,25 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <span class="badge text-bg-primary badge-step-index">{% trans "Step" %} {{ forloop.counter }}</span>
             <h3 class="h6 mb-0">
-                {{ step.name|default:step.validator.name }}
+                {% if step.name %}
+                    {{ step.name }}
+                {% elif step.validator %}
+                    {{ step.validator.name }}
+                {% elif step.action %}
+                    {{ step.action.name }}
+                {% else %}
+                    {% trans "Workflow step" %}
+                {% endif %}
             </h3>
+            {% if step.validator %}
+                <span class="badge text-bg-light text-uppercase small">
+                    {{ step.validator.get_validation_type_display }}
+                </span>
+            {% elif step.public_action_meta %}
+                <span class="badge text-bg-light text-uppercase small">
+                    {{ step.public_action_meta.category_label }}
+                </span>
+            {% endif %}
         </div>
         {% if step.description %}
             <p class="text-muted mb-3">
@@ -35,6 +52,25 @@
 <code class="language-{{ step.public_schema.language|default:'text' }}">{{ step.public_schema.content|escape }}</code>
                     </pre>
                 </div>
+            </div>
+        {% elif step.public_action_meta %}
+            <div class="mt-3">
+                <div class="text-muted small">
+                    <i class="bi {{ step.public_action_meta.icon|default:'bi-gear' }} me-1"></i>
+                    {{ step.public_action_meta.definition_name }}
+                </div>
+                {% if step.public_action_summary.message %}
+                    <p class="text-muted small mt-2 mb-0">
+                        <span class="fw-semibold">{% trans "Message" %}:</span><br>
+                        {{ step.public_action_summary.message|linebreaksbr }}
+                    </p>
+                {% endif %}
+                {% if step.public_action_summary.certificate_template %}
+                    <p class="text-muted small mt-2 mb-0">
+                        <span class="fw-semibold">{% trans "Certificate template" %}:</span>
+                        <code class="text-break">{{ step.public_action_summary.certificate_template }}</code>
+                    </p>
+                {% endif %}
             </div>
         {% endif %}
     </div>

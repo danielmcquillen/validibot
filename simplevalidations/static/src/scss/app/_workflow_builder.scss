@@ -1,3 +1,5 @@
+@use "../settings" as s;
+
 #workflow-step-editor-card {
   // only the top card body needs the background
   .editor-workspace {
@@ -208,7 +210,7 @@
 
 // Selected state for validator cards
 // Using both :checked + selector and .is-selected class for reliability
-.btn-check.validator-option:checked + .validator-card,
+.btn-check.step-option:checked + .validator-card,
 .validator-card.is-selected {
   border-color: var(--bs-primary) !important;
   background-color: var(--bs-primary) !important;
@@ -228,8 +230,8 @@
 }
 
 // Keep hover state but don't override selected state
-.btn-check.validator-option:checked + .validator-card:hover,
-.btn-check.validator-option:checked + .validator-card:focus,
+.btn-check.step-option:checked + .validator-card:hover,
+.btn-check.step-option:checked + .validator-card:focus,
 .validator-card.is-selected:hover,
 .validator-card.is-selected:focus {
   border-color: var(--bs-primary) !important;
@@ -238,7 +240,7 @@
   color: var(--bs-white) !important;
 }
 
-.btn-check.validator-option:focus-visible + .validator-card {
+.btn-check.step-option:focus-visible + .validator-card {
   outline: 0;
   box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
 }
@@ -246,7 +248,7 @@
 #workflow-step-modal-content {
   .card {
     border: 0;
-    background: #eee;
+    background: s.$blue-lt;
 
     .nav-tabs {
       margin-left: 1rem;
@@ -256,9 +258,8 @@
     .card-body {
       margin: 1rem;
       padding: 0;
-      background: #eee;
+      background: s.$blue-lt;
     }
-
 
     .tab-content {
       background: #fff;

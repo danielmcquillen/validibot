@@ -15,10 +15,13 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 ## 1. Choose the validation type
 
 1. Open a workflow (either create a new workflow or open an existing one) and click **Add step**.
-2. A modal displays every `Validator` grouped by `validation_type`. Each option shows:
-   - The validator name and type.
-   - An info tooltip with the validator description (if provided).
-3. Select the validator you want to use and press **Continue**. The modal closes and you are redirected to the full-screen step editor with breadcrumb navigation (`Workflows > <Workflow> > Step …`).
+2. A modal displays every available option across four tabs:
+   - **Basic validations** (JSON and XML schema validators)
+   - **Advanced validations** (AI Assist and EnergyPlus)
+   - **Integrations** (action definitions such as Slack notifications)
+   - **Certifications** (action definitions that issue certificates or badges)
+   Each card shows the item name, category, icon, and description.
+3. Select the validator or action you want to use and press **Continue**. The modal closes and you are redirected to the full-screen editor with breadcrumb navigation (`Workflows > <Workflow> > Step …`).
 
 ## 2. Configure the validation
 
@@ -46,6 +49,13 @@ The dedicated editor is specific to the validation type you picked. All forms in
 - Add JSONPath selectors to control which parts of the document are sent to the AI engine.
 - Define policy rules using the syntax `<path> <operator> <value> | optional message`. Supported operators: `>=`, `>`, `<=`, `<`, `==`, `!=`, `between`, `in`, `not_in`, `nonempty`.
 - Pick advisory vs blocking mode and set a per-run cost cap.
+
+### Actions (Integrations & Certifications)
+- Actions reuse catalogued definitions (for example, sending a Slack message or issuing a signed certificate).
+- Slack integrations prompt for the message that will be posted when the step runs; the text is stored on a dedicated `SlackMessageAction` model.
+- Certification steps let you upload an optional certificate template. If you skip the upload, SimpleValidations falls back to the bundled `default_signed_certificate.pdf`. Editing the step keeps the previous upload unless you explicitly provide a replacement.
+- The editor lets you rename the step, adjust the author notes, and record any action-specific inputs in purpose-built forms instead of the generic JSON payload we used previously.
+- Action steps never expose schemas to end users, but they appear alongside validation steps in the workflow timeline and step navigation.
 
 After saving, you are redirected to the workflow detail page and the step list refreshes automatically. Steps are always resequenced with gaps of 10 so you can reorder them later without conflicts.
 

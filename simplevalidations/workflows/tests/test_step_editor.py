@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from html.parser import HTMLParser
 import json
+from html.parser import HTMLParser
+from uuid import uuid4
 
 import pytest
-from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
+from django.test import override_settings
 
+from simplevalidations.actions.constants import ActionCategoryType
+from simplevalidations.actions.constants import CertificationActionType
+from simplevalidations.actions.constants import IntegrationActionType
+from simplevalidations.actions.models import ActionDefinition
+from simplevalidations.actions.models import SignedCertificateAction
+from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
@@ -29,6 +37,35 @@ def ensure_validator(validation_type: str, slug: str, name: str) -> Validator:
     )[0]
 
 
+def make_action_definition(
+    *,
+    category: str = ActionCategoryType.INTEGRATION,
+    name: str | None = None,
+    type_value: str | None = None,
+) -> ActionDefinition:
+    if type_value is None:
+        type_value = (
+            IntegrationActionType.SLACK_MESSAGE
+            if category == ActionCategoryType.INTEGRATION
+            else CertificationActionType.SIGNED_CERTIFICATE
+        )
+    slug = f"{category.lower()}-{type_value.lower()}"
+    definition, _ = ActionDefinition.objects.get_or_create(
+        action_category=category,
+        type=type_value,
+        defaults={
+            "slug": slug,
+            "name": name or f"{category.title()} action",
+            "description": "Automated test action",
+            "icon": "bi-gear",
+        },
+    )
+    if name:
+        definition.name = name
+        definition.save(update_fields=["name"])
+    return definition
+
+
 def _login_for_workflow(client, workflow):
     user = workflow.user
     user.set_current_org(workflow.org)
@@ -39,17 +76,25 @@ def _login_for_workflow(client, workflow):
     session.save()
 
 
-def _select_validator(client, workflow, validator) -> str:
+def _select_step_option(client, workflow, value: str) -> str:
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
     response = client.post(
         url,
-        data={"stage": "select", "validator": validator.pk},
+        data={"stage": "select", "choice": value},
         HTTP_HX_REQUEST="true",
     )
     assert response.status_code == 204
     redirect_url = response.headers.get("HX-Redirect")
     assert redirect_url, "wizard should instruct the client to navigate to the editor"
     return redirect_url
+
+
+def _select_validator(client, workflow, validator) -> str:
+    return _select_step_option(client, workflow, f"validator:{validator.pk}")
+
+
+def _select_action(client, workflow, definition: ActionDefinition) -> str:
+    return _select_step_option(client, workflow, f"action:{definition.pk}")
 
 
 def test_wizard_redirects_to_create_view(client):
@@ -64,6 +109,42 @@ def test_wizard_redirects_to_create_view(client):
         args=[workflow.pk, validator.pk],
     )
     assert expected in redirect_url
+
+
+def test_wizard_redirects_to_action_create_view(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Slack message")
+
+    redirect_url = _select_action(client, workflow, definition)
+
+    expected = reverse(
+        "workflows:workflow_step_action_create",
+        args=[workflow.pk, definition.pk],
+    )
+    assert expected in redirect_url
+
+
+def test_wizard_lists_action_tabs(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    integration_def = make_action_definition(
+        category=ActionCategoryType.INTEGRATION,
+        name="Send Slack message",
+    )
+    certification_def = make_action_definition(
+        category=ActionCategoryType.CERTIFICATION,
+        name="Issue certificate",
+    )
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert integration_def.name in html
+    assert certification_def.name in html
+    assert "Integrations" in html
+    assert "Certifications" in html
 
 
 def test_create_view_creates_json_schema_step(client):
@@ -116,6 +197,151 @@ def test_create_view_creates_json_schema_step(client):
     assert step.display_schema is True
     assert step.ruleset.metadata.get("schema_type") == JSONSchemaVersion.DRAFT_2020_12.value
 
+
+def test_create_view_creates_action_step(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Notify team")
+
+    create_url = _select_action(client, workflow, definition)
+
+    response = client.get(create_url)
+    assert response.status_code == 200
+    assert "Add workflow step" in response.content.decode()
+
+    response = client.post(
+        create_url,
+        data={
+            "name": "Send Slack alert",
+            "description": "Notify the #alerts channel after validation.",
+            "notes": "Rotate webhook quarterly.",
+            "message": "Validation finished successfully.",
+        },
+    )
+    assert response.status_code == 302
+
+    step = WorkflowStep.objects.get(workflow=workflow)
+    assert step.validator is None
+    assert step.action is not None
+    assert step.action.definition == definition
+    assert step.action.name == "Send Slack alert"
+    variant = step.action.get_variant()
+    assert isinstance(variant, SlackMessageAction)
+    assert variant.message == "Validation finished successfully."
+    assert step.description == "Notify the #alerts channel after validation."
+    assert step.notes == "Rotate webhook quarterly."
+    assert step.config.get("message") == "Validation finished successfully."
+
+
+def test_create_certificate_action_uses_default_when_missing(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(
+        category=ActionCategoryType.CERTIFICATION,
+        name="Issue certificate",
+    )
+
+    create_url = _select_action(client, workflow, definition)
+
+    response = client.post(
+        create_url,
+        data={
+            "name": "Issue certificate",
+            "description": "Provide certificates for passing runs.",
+        },
+    )
+    assert response.status_code == 302
+
+    step = WorkflowStep.objects.get(workflow=workflow)
+    variant = step.action.get_variant()
+    assert isinstance(variant, SignedCertificateAction)
+    assert variant.certificate_template == "" or variant.certificate_template.name == ""
+    assert variant.get_certificate_template_display_name().endswith(
+        "default_signed_certificate.pdf",
+    )
+    assert step.config.get("certificate_template").endswith(
+        "default_signed_certificate.pdf",
+    )
+
+
+def test_create_certificate_action_step(client, tmp_path):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(
+        category=ActionCategoryType.CERTIFICATION,
+        name="Issue certificate",
+    )
+
+    create_url = _select_action(client, workflow, definition)
+
+    template_file = SimpleUploadedFile(
+        "certificate.html",
+        b"<html>Certificate</html>",
+        content_type="text/html",
+    )
+
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        response = client.post(
+            create_url,
+            data={
+                "name": "Issue certificate",
+                "description": "Provide certificates for passing runs.",
+                "certificate_template": template_file,
+            },
+        )
+        assert response.status_code == 302
+
+    step = WorkflowStep.objects.get(workflow=workflow)
+    variant = step.action.get_variant()
+    assert isinstance(variant, SignedCertificateAction)
+    assert variant.certificate_template.name.endswith("certificate.html")
+    assert step.config.get("certificate_template") == "certificate.html"
+
+
+def test_update_certificate_action_step_allows_existing_template(client, tmp_path):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(
+        category=ActionCategoryType.CERTIFICATION,
+        name="Issue certificate",
+    )
+
+    original_template = SimpleUploadedFile(
+        "original.html",
+        b"<html>Original</html>",
+        content_type="text/html",
+    )
+
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        action = SignedCertificateAction.objects.create(
+            definition=definition,
+            name="Issue certificate",
+            description="Existing description",
+            certificate_template=original_template,
+        )
+        step = WorkflowStep.objects.create(
+            workflow=workflow,
+            action=action,
+            order=10,
+            name="Issue certificate",
+            description="Existing description",
+            config={"certificate_template": "original.html"},
+        )
+
+        edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+        response = client.post(
+            edit_url,
+            data={
+                "name": "Issue certificate",
+                "description": "Existing description",
+                "notes": "",
+            },
+        )
+        assert response.status_code == 302
+
+        step.refresh_from_db()
+        variant = step.action.get_variant()
+        assert variant.certificate_template.name.endswith("original.html")
 
 def test_create_view_validates_missing_upload(client):
     workflow = WorkflowFactory()
@@ -291,6 +517,53 @@ def test_update_view_prefills_ai_step(client):
     assert step.config["mode"] == "ADVISORY"
 
 
+def test_update_view_prefills_action_step(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Slack alert")
+    action = SlackMessageAction.objects.create(
+        definition=definition,
+        name="Alert ops",
+        description="Existing description",
+        message="Original message",
+    )
+    step = WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=10,
+        name="Alert ops",
+        description="Existing description",
+        notes="Existing notes",
+        config={"message": "Original message"},
+    )
+
+    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Original message" in html
+    assert "Existing notes" in html
+    assert "Alert ops" in html
+
+    response = client.post(
+        edit_url,
+        data={
+            "name": "Alert ops updated",
+            "description": "Updated description",
+            "notes": "Updated notes",
+            "message": "Escalate to ops channel.",
+        },
+    )
+    assert response.status_code == 302
+    step.refresh_from_db()
+    action_variant = step.action.get_variant()
+    assert step.action.name == "Alert ops updated"
+    assert step.description == "Updated description"
+    assert step.notes == "Updated notes"
+    assert isinstance(action_variant, SlackMessageAction)
+    assert action_variant.message == "Escalate to ops channel."
+
+
 def test_step_form_navigation_links(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -361,6 +634,37 @@ def test_step_list_shows_author_notes_for_authors(client):
     assert "Private deployment checklist" in body
 
 
+def test_step_list_renders_action_step(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    definition = make_action_definition(name="Slack integration")
+    action = SlackMessageAction.objects.create(
+        definition=definition,
+        name="Notify Slack",
+        description="Send a Slack notification",
+        message="Ping #alerts when the workflow completes.",
+    )
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        action=action,
+        order=10,
+        name="Notify Slack",
+        description="Send a Slack notification",
+        config={"message": "Ping #alerts when the workflow completes."},
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_step_list", args=[workflow.pk]),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Notify Slack" in html
+    assert definition.get_action_category_display() in html
+    assert "#alerts" in html
+
+
 def test_step_list_hides_author_notes_for_non_authors(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(
@@ -395,13 +699,17 @@ def test_wizard_select_highlights_selected_card(client):
     validator_b = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
-    response = client.get(url, {"selected": validator_b.pk}, HTTP_HX_REQUEST="true")
+    response = client.get(
+        url,
+        {"selected": f"validator:{validator_b.pk}"},
+        HTTP_HX_REQUEST="true",
+    )
     assert response.status_code == 200
     html = response.content.decode()
     parser = _CardParser()
     parser.feed(html)
     assert parser.selected_cards == 1
-    assert parser.checked_values == [str(validator_b.pk)]
+    assert parser.checked_values == [f"validator:{validator_b.pk}"]
 
 
 class _CardParser(HTMLParser):
@@ -419,7 +727,7 @@ class _CardParser(HTMLParser):
         if (
             tag == "input"
             and attrs_dict.get("type") == "radio"
-            and attrs_dict.get("name") == "validator"
+            and attrs_dict.get("name") == "choice"
         ):
             if any(name == "checked" for name, _ in attrs):
                 self.checked_values.append(str(attrs_dict.get("value")))

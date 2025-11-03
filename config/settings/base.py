@@ -106,6 +106,7 @@ LOCAL_APPS = [
     "simplevalidations.core",
     "simplevalidations.users",
     "simplevalidations.validations",
+    "simplevalidations.actions",
     "simplevalidations.projects",
     "simplevalidations.events",
     "simplevalidations.tracking",

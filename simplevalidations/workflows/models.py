@@ -10,10 +10,12 @@ from django.db import models
 from django.db import transaction
 from django.db.models import Exists
 from django.db.models import OuterRef
+from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
+from simplevalidations.actions.models import Action
 from simplevalidations.core.mixins import FeaturedImageMixin
 from simplevalidations.core.utils import render_markdown_safe
 from simplevalidations.projects.models import Project
@@ -161,16 +163,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     is_locked = models.BooleanField(
         default=False,
     )
+
     is_active = models.BooleanField(
         default=True,
         help_text=_("Inactive workflows stay visible but cannot run validations."),
     )
+
     make_info_public = models.BooleanField(
         default=False,
         help_text=_(
             "Allows non-logged in users to see details of the workflow validation.",
         ),
     )
+
     featured_image_alt_candidates = ("name",)
 
     # Methods
@@ -334,6 +339,15 @@ class WorkflowStep(TimeStampedModel):
             ),
         ]
         ordering = ["order"]
+        constraints = [
+            models.CheckConstraint(
+                name="workflowstep_validator_xor_action",
+                condition=(
+                    Q(validator__isnull=False, action__isnull=True)
+                    | Q(validator__isnull=True, action__isnull=False)
+                ),
+            ),
+        ]
 
     workflow = models.ForeignKey(
         Workflow,
@@ -371,6 +385,16 @@ class WorkflowStep(TimeStampedModel):
     validator = models.ForeignKey(
         "validations.Validator",
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+
+    action = models.ForeignKey(
+        Action,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="workflow_steps",
     )
 
     ruleset = models.ForeignKey(
@@ -394,9 +418,21 @@ class WorkflowStep(TimeStampedModel):
             raise ValidationError({"order": _("Order already used in this workflow.")})
 
         # Ensure the ruleset chosen matches the validator's type
+        if bool(self.validator_id) == bool(self.action_id):
+            raise ValidationError(
+                {
+                    "validator": _(
+                        "Specify either a validator or an action for this step.",
+                    ),
+                    "action": _(
+                        "Specify either a validator or an action for this step.",
+                    ),
+                },
+            )
+
         if (
-            self.ruleset
-            and self.validator
+            self.validator
+            and self.ruleset
             and (self.ruleset.ruleset_type != self.validator.validation_type)
         ):
             raise ValidationError(
@@ -404,6 +440,9 @@ class WorkflowStep(TimeStampedModel):
                     "ruleset": _("Ruleset type must match validator type."),
                 },
             )
+
+        if self.action and self.display_schema:
+            self.display_schema = False
 
 
 class WorkflowRoleAccess(models.Model):

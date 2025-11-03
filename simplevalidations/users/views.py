@@ -1,41 +1,39 @@
+from allauth.account.views import EmailView as AllauthEmailView
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
-from django.db.models import QuerySet
-from django.http import HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, redirect, render
 from django.core.exceptions import PermissionDenied
+from django.db.models import QuerySet
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import redirect
+from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
+from django.views import View
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView
+from django.views.generic import DeleteView
 from django.views.generic import DetailView
+from django.views.generic import FormView
 from django.views.generic import RedirectView
 from django.views.generic import TemplateView
 from django.views.generic import UpdateView
-from django.views.generic import DeleteView
-from django.views.generic import FormView
-from django.views import View
-
-from allauth.account.views import EmailView as AllauthEmailView
 from rest_framework.authtoken.models import Token
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.forms import (
-    OrganizationForm,
-    OrganizationMemberForm,
-    OrganizationMemberRolesForm,
-    UserProfileForm,
-)
+from simplevalidations.users.forms import OrganizationForm
+from simplevalidations.users.forms import OrganizationMemberForm
+from simplevalidations.users.forms import OrganizationMemberRolesForm
+from simplevalidations.users.forms import UserProfileForm
 from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
-from simplevalidations.users.models import (
-    Membership,
-    Organization,
-    User,
-    ensure_default_project,
-)
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import User
+from simplevalidations.users.models import ensure_default_project
 
 
 class UserDetailView(BreadcrumbMixin, LoginRequiredMixin, DetailView):
@@ -132,9 +130,7 @@ def user_api_key_rotate_view(request):
         return response
 
     messages.success(request, _("Generated a new API key."))
-    return HttpResponseRedirect(
-        reverse_with_org("users:api-key", request=request)
-    )
+    return HttpResponseRedirect(reverse_with_org("users:api-key", request=request))
 
 
 class UserEmailView(
@@ -189,6 +185,21 @@ user_api_key_view = UserApiKeyView.as_view()
 @login_required
 @require_POST
 def switch_current_org_view(request, org_id: int) -> HttpResponse:
+    """
+    Switch the current organization for the logged-in user.
+    We redirec to the dashboard by default, as the user might not
+    have access to the referring page in the new organization.
+
+    Args:
+        request (_type_): _description_
+        org_id (int): _description_
+
+    Raises:
+        PermissionDenied: _description_
+
+    Returns:
+        HttpResponse: _description_
+    """
     organization = get_object_or_404(Organization, pk=org_id)
     membership = (
         request.user.memberships.filter(org=organization, is_active=True)
@@ -201,11 +212,7 @@ def switch_current_org_view(request, org_id: int) -> HttpResponse:
     request.user.set_current_org(organization)
     request.session["active_org_id"] = organization.id
 
-    next_url = request.POST.get("next")
-    if not next_url:
-        next_url = request.META.get("HTTP_REFERER")
-    if not next_url:
-        next_url = reverse_with_org("dashboard:my_dashboard", request=request)
+    next_url = reverse_with_org("dashboard:my_dashboard", request=request)
 
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)
@@ -241,7 +248,9 @@ class OrganizationListView(BreadcrumbMixin, LoginRequiredMixin, TemplateView):
         rows = [
             {
                 "membership": membership,
-                "member_count": Membership.objects.filter(org=membership.org, is_active=True).count(),
+                "member_count": Membership.objects.filter(
+                    org=membership.org, is_active=True
+                ).count(),
             }
             for membership in memberships
         ]
@@ -291,7 +300,12 @@ class OrganizationCreateView(
 
     def get_breadcrumbs(self):
         return [
-            {"name": _("Organizations"), "url": reverse_with_org("users:organization-list", request=self.request)},
+            {
+                "name": _("Organizations"),
+                "url": reverse_with_org(
+                    "users:organization-list", request=self.request
+                ),
+            },
             {"name": _("New"), "url": ""},
         ]
 
@@ -310,8 +324,20 @@ class OrganizationUpdateView(
     def get_breadcrumbs(self):
         organization = getattr(self, "organization", None) or self.get_object()
         return [
-            {"name": _("Organizations"), "url": reverse_with_org("users:organization-list", request=self.request)},
-            {"name": organization.name, "url": reverse_with_org("users:organization-detail", request=self.request, kwargs={"pk": organization.pk})},
+            {
+                "name": _("Organizations"),
+                "url": reverse_with_org(
+                    "users:organization-list", request=self.request
+                ),
+            },
+            {
+                "name": organization.name,
+                "url": reverse_with_org(
+                    "users:organization-detail",
+                    request=self.request,
+                    kwargs={"pk": organization.pk},
+                ),
+            },
             {"name": _("Edit"), "url": ""},
         ]
 
@@ -336,8 +362,20 @@ class OrganizationDeleteView(
     def get_breadcrumbs(self):
         organization = getattr(self, "organization", None) or self.get_object()
         return [
-            {"name": _("Organizations"), "url": reverse_with_org("users:organization-list", request=self.request)},
-            {"name": organization.name, "url": reverse_with_org("users:organization-detail", request=self.request, kwargs={"pk": organization.pk})},
+            {
+                "name": _("Organizations"),
+                "url": reverse_with_org(
+                    "users:organization-list", request=self.request
+                ),
+            },
+            {
+                "name": organization.name,
+                "url": reverse_with_org(
+                    "users:organization-detail",
+                    request=self.request,
+                    kwargs={"pk": organization.pk},
+                ),
+            },
             {"name": _("Delete"), "url": ""},
         ]
 
@@ -365,7 +403,9 @@ class OrganizationDeleteView(
         if len(admin_user_ids) <= 1:
             messages.error(
                 request,
-                _("You must assign another administrator before deleting this organization."),
+                _(
+                    "You must assign another administrator before deleting this organization."
+                ),
             )
             return redirect(
                 reverse_with_org(
@@ -397,14 +437,21 @@ class OrganizationDeleteView(
         return reverse_with_org("users:organization-list", request=self.request)
 
 
-class OrganizationDetailView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView):
+class OrganizationDetailView(
+    OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView
+):
     organization_context_attr = "organization"
     template_name = "users/organizations/organization_detail.html"
 
     def get_breadcrumbs(self):
         organization = getattr(self, "organization", None)
         return [
-            {"name": _("Organizations"), "url": reverse_with_org("users:organization-list", request=self.request)},
+            {
+                "name": _("Organizations"),
+                "url": reverse_with_org(
+                    "users:organization-list", request=self.request
+                ),
+            },
             {"name": organization.name, "url": ""},
         ]
 

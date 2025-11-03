@@ -368,20 +368,24 @@ class WorkflowLaunchForm(forms.Form):
 
 
 class WorkflowStepTypeForm(forms.Form):
-    validator = forms.ChoiceField(
-        label=_("Validation type"),
+    """Select the kind of workflow step to add (validation or action)."""
+
+    choice = forms.ChoiceField(
+        label=_("Step option"),
         widget=forms.RadioSelect,
     )
 
-    def __init__(self, *args, validators: list[Validator], **kwargs):
+    def __init__(self, *args, options: list[dict[str, object]], **kwargs):
         super().__init__(*args, **kwargs)
-        choices = [(str(validator.pk), f"{validator.name}") for validator in validators]
-        self.fields["validator"].choices = choices
-        self.validators = {str(validator.pk): validator for validator in validators}
+        self.options_by_value = {str(opt["value"]): opt for opt in options}
+        self.fields["choice"].choices = [
+            (str(opt["value"]), opt["label"])
+            for opt in options
+        ]
 
-    def get_validator(self) -> Validator:
-        value = self.cleaned_data.get("validator")
-        return self.validators[str(value)]
+    def get_selection(self) -> dict[str, object]:
+        value = str(self.cleaned_data.get("choice"))
+        return self.options_by_value[value]
 
 
 class BaseStepConfigForm(forms.Form):

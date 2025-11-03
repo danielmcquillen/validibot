@@ -63,6 +63,11 @@ urlpatterns = [
         name="workflow_step_create",
     ),
     path(
+        "<int:pk>/steps/add/action/<int:action_definition_id>/",
+        views.WorkflowActionStepCreateView.as_view(),
+        name="workflow_step_action_create",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/wizard/",
         views.WorkflowStepWizardView.as_view(),
         name="workflow_step_wizard_existing",

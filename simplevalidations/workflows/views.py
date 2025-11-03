@@ -37,6 +37,11 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from simplevalidations.actions.constants import ActionCategoryType
+from simplevalidations.actions.models import ActionDefinition
+from simplevalidations.actions.models import SignedCertificateAction
+from simplevalidations.actions.models import SlackMessageAction
+from simplevalidations.actions.registry import get_action_form
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import pretty_json
 from simplevalidations.core.utils import pretty_xml
@@ -634,7 +639,7 @@ def _build_xml_schema_config(
     if source == "keep" and step and step.ruleset_id:
         preview = step.config.get("schema_text_preview", "")
         ruleset = step.ruleset
-        metadata = dict((ruleset.metadata or {}))
+        metadata = dict(ruleset.metadata or {})
         metadata["schema_type"] = schema_type
         metadata.pop("schema", None)
         ruleset.metadata = metadata
@@ -734,6 +739,7 @@ def save_workflow_step(
     is_new = step is None
     step = step or WorkflowStep(workflow=workflow)
     step.validator = validator
+    step.action = None
     step.name = form.cleaned_data.get("name", "").strip() or validator.name
     step.description = (form.cleaned_data.get("description") or "").strip()
     step.notes = (form.cleaned_data.get("notes") or "").strip()
@@ -761,6 +767,47 @@ def save_workflow_step(
         step.ruleset = None
 
     step.config = config
+
+    if is_new:
+        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
+        step.order = (max_order or 0) + 10
+
+    step.save()
+    return step
+
+
+def save_workflow_action_step(
+    workflow: Workflow,
+    definition: ActionDefinition,
+    form: forms.Form,
+    *,
+    step: WorkflowStep | None = None,
+) -> WorkflowStep:
+    """Persist a workflow step that references an action definition."""
+
+    is_new = step is None
+    step = step or WorkflowStep(workflow=workflow)
+    action = getattr(step, "action", None)
+
+    if not hasattr(form, "save_action"):
+        raise ValueError("Action forms must implement save_action().")
+
+    action = form.save_action(
+        definition,
+        current_action=action,
+    )
+
+    step.validator = None
+    step.ruleset = None
+    step.action = action
+    step.name = action.name
+    step.description = action.description
+    step.notes = (form.cleaned_data.get("notes") or "").strip()
+    step.display_schema = False
+    summary = {}
+    if hasattr(form, "build_step_summary"):
+        summary = form.build_step_summary(action) or {}
+    step.config = summary
 
     if is_new:
         max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
@@ -810,7 +857,16 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
     context_object_name = "workflow"
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related("steps")
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                "steps__validator",
+                "steps__ruleset",
+                "steps__action",
+                "steps__action__definition",
+            )
+        )
 
     def get_breadcrumbs(self):
         workflow = getattr(self, "object", None) or self.get_object()
@@ -1775,25 +1831,70 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
 
     def get(self, request, *args, **kwargs):
         workflow = self.get_workflow()
-        steps = workflow.steps.all().order_by("order", "pk")
+        steps = (
+            workflow.steps.all()
+            .order_by("order", "pk")
+            .select_related("validator", "ruleset", "action", "action__definition")
+        )
         for step in steps:
-            config = step.config or {}
-            if step.validator.validation_type == ValidationType.ENERGYPLUS:
-                band = config.get("eui_band") or {}
-                config.setdefault(
-                    "eui_band",
-                    {
-                        "min": band.get("min"),
-                        "max": band.get("max"),
-                    },
-                )
-            elif step.validator.validation_type == ValidationType.XML_SCHEMA:
-                schema_type = config.get("schema_type")
-                if schema_type:
-                    try:
-                        config["schema_type_label"] = XMLSchemaType(schema_type).label
-                    except ValueError:
-                        config["schema_type_label"] = schema_type
+            config = dict(step.config or {})
+            if step.validator:
+                vtype = step.validator.validation_type
+                if vtype == ValidationType.ENERGYPLUS:
+                    band = config.get("eui_band") or {}
+                    config.setdefault(
+                        "eui_band",
+                        {
+                            "min": band.get("min"),
+                            "max": band.get("max"),
+                        },
+                    )
+                elif vtype == ValidationType.XML_SCHEMA:
+                    schema_type = config.get("schema_type")
+                    if schema_type:
+                        try:
+                            config["schema_type_label"] = XMLSchemaType(
+                                schema_type,
+                            ).label
+                        except ValueError:
+                            config["schema_type_label"] = schema_type
+                elif vtype == ValidationType.JSON_SCHEMA:
+                    schema_type = config.get("schema_type")
+                    if schema_type:
+                        try:
+                            config["schema_type_label"] = JSONSchemaVersion(
+                                schema_type
+                            ).label
+                        except ValueError:
+                            config["schema_type_label"] = schema_type
+            elif step.action:
+                definition = step.action.definition
+                variant = step.action.get_variant()
+                step.action_variant = variant
+                if not config and variant:
+                    if isinstance(variant, SlackMessageAction):
+                        config["message"] = variant.message
+                    elif isinstance(variant, SignedCertificateAction):
+                        config["certificate_template"] = (
+                            variant.get_certificate_template_display_name()
+                        )
+                step.action_meta = {
+                    "category_label": definition.get_action_category_display(),
+                    "type": definition.type,
+                    "icon": definition.icon or "bi-gear",
+                    "definition_name": definition.name,
+                    "definition_description": definition.description,
+                }
+                extras = {
+                    key: value
+                    for key, value in config.items()
+                    if key not in {"message", "certificate_template"}
+                }
+                step.action_summary = {
+                    "message": config.get("message"),
+                    "certificate_template": config.get("certificate_template"),
+                    "extras": extras,
+                }
             step.config = config
         show_private_notes = self.user_can_manage_workflow()
         context = {
@@ -1862,19 +1963,33 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             return response
 
         validators = self._available_validators(workflow)
-        form = WorkflowStepTypeForm(request.POST, validators=validators)
+        action_definitions = self._available_action_definitions()
+        tabs, options = self._build_step_tabs(validators, action_definitions)
+        form = WorkflowStepTypeForm(request.POST, options=options)
         if form.is_valid():
             if workflow.steps.count() >= MAX_STEP_COUNT:
                 message = _("You can add up to %(count)s steps per workflow.") % {
                     "count": MAX_STEP_COUNT,
                 }
                 return _hx_trigger_response(message, level="warning", status_code=409)
-            validator = form.get_validator()
-            create_url = reverse_with_org(
-                "workflows:workflow_step_create",
-                request=request,
-                kwargs={"pk": workflow.pk, "validator_id": validator.pk},
-            )
+            selection = form.get_selection()
+            if selection["kind"] == "validator":
+                validator = selection["object"]
+                create_url = reverse_with_org(
+                    "workflows:workflow_step_create",
+                    request=request,
+                    kwargs={"pk": workflow.pk, "validator_id": validator.pk},
+                )
+            else:
+                definition: ActionDefinition = selection["object"]
+                create_url = reverse_with_org(
+                    "workflows:workflow_step_action_create",
+                    request=request,
+                    kwargs={
+                        "pk": workflow.pk,
+                        "action_definition_id": definition.pk,
+                    },
+                )
             response = HttpResponse(status=204)
             response["HX-Redirect"] = create_url
             response["HX-Trigger"] = json.dumps(
@@ -1895,36 +2010,53 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return get_object_or_404(WorkflowStep, workflow=workflow, pk=step_id)
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
-        return list(Validator.objects.all().order_by("validation_type", "name", "pk"))
+        return list(
+            Validator.objects.all().order_by("validation_type", "name", "pk"),
+        )
+
+    def _available_action_definitions(self) -> list[ActionDefinition]:
+        return list(
+            ActionDefinition.objects.filter(is_active=True).order_by(
+                "action_category", "name"
+            )
+        )
 
     def _render_select(self, request, workflow: Workflow, form=None, status=200):
         validators = self._available_validators(workflow)
-        selected_id = None
-        if form is not None:
-            selected_id = form.data.get("validator") or form.initial.get("validator")
-        else:
-            selected_id = request.GET.get("selected")
+        action_definitions = self._available_action_definitions()
 
-        tabs = self._build_validator_tabs(validators)
-        selected_tab = self._resolve_selected_tab(tabs, selected_id)
+        tabs, options = self._build_step_tabs(validators, action_definitions)
+
+        selected_value = None
+        if form is not None:
+            selected_value = form.data.get("choice") or form.initial.get("choice")
+        else:
+            selected_value = request.GET.get("selected")
+
+        selected_tab = self._resolve_selected_tab(tabs, selected_value)
+        form = form or WorkflowStepTypeForm(options=options)
 
         context = {
             "workflow": workflow,
-            "form": form or WorkflowStepTypeForm(validators=validators),
-            "validators": validators,
+            "form": form,
             "validator_tabs": tabs,
             "selected_tab": selected_tab,
             "max_step_count": MAX_STEP_COUNT,
             "step": None,
             "limit_reached": False,
-            "selected_validator": str(selected_id) if selected_id else None,
+            "selected_value": str(selected_value) if selected_value else None,
         }
         return render(request, self.template_select, context, status=status)
 
-    def _build_validator_tabs(
-        self, validators: list[Validator]
-    ) -> list[dict[str, object]]:
-        groups: list[tuple[str, str, set[str] | None]] = [
+    def _build_step_tabs(
+        self,
+        validators: list[Validator],
+        action_definitions: list[ActionDefinition],
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        tabs: list[dict[str, object]] = []
+        options: list[dict[str, object]] = []
+
+        validator_groups: list[tuple[str, str, set[str] | None]] = [
             (
                 "basic",
                 str(_("Basic Validations")),
@@ -1941,41 +2073,105 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.ENERGYPLUS,
                 },
             ),
-            ("integrations", str(_("Integrations")), None),
-            ("certifications", str(_("Certifications")), None),
         ]
 
-        tabs: list[dict[str, object]] = []
         handled: list[Validator] = []
-        for slug, label, types in groups:
+        for slug, label, types in validator_groups:
             if types:
-                members = [v for v in validators if v.validation_type in types]
-                handled.extend(members)
+                filtered = [
+                    v
+                    for v in validators
+                    if v.validation_type in types and v not in handled
+                ]
+                handled.extend(filtered)
             else:
-                members = []
-            tabs.append({"slug": slug, "label": label, "validators": members})
+                filtered = []
+            members = [self._serialize_validator(v) for v in filtered]
+            tabs.append({"slug": slug, "label": label, "entries": members})
+            options.extend(members)
 
-        remaining = [v for v in validators if v not in handled]
-        if remaining:
-            for tab in tabs:
-                if tab["slug"] == "advanced":
-                    tab["validators"] = list(tab["validators"]) + remaining
-                    break
+        remaining_validators = [v for v in validators if v not in handled]
+        if remaining_validators:
+            advanced_tab = next(
+                (tab for tab in tabs if tab["slug"] == "advanced"),
+                None,
+            )
+            if advanced_tab is not None:
+                serialized = [
+                    self._serialize_validator(v) for v in remaining_validators
+                ]
+                advanced_tab["entries"].extend(serialized)
+                options.extend(serialized)
 
-        return tabs
+        integration_entries = [
+            self._serialize_action_definition(defn)
+            for defn in action_definitions
+            if defn.action_category == ActionCategoryType.INTEGRATION
+        ]
+        certification_entries = [
+            self._serialize_action_definition(defn)
+            for defn in action_definitions
+            if defn.action_category == ActionCategoryType.CERTIFICATION
+        ]
+
+        tabs.append(
+            {
+                "slug": "integrations",
+                "label": str(_("Integrations")),
+                "entries": integration_entries,
+            },
+        )
+        tabs.append(
+            {
+                "slug": "certifications",
+                "label": str(_("Certifications")),
+                "entries": certification_entries,
+            },
+        )
+        options.extend(integration_entries)
+        options.extend(certification_entries)
+
+        return tabs, options
+
+    def _serialize_validator(self, validator: Validator) -> dict[str, object]:
+        return {
+            "value": f"validator:{validator.pk}",
+            "label": validator.name,
+            "name": validator.name,
+            "subtitle": validator.get_validation_type_display(),
+            "description": validator.description,
+            "icon": getattr(validator, "display_icon", "bi-sliders"),
+            "kind": "validator",
+            "object": validator,
+        }
+
+    def _serialize_action_definition(
+        self,
+        definition: ActionDefinition,
+    ) -> dict[str, object]:
+        return {
+            "value": f"action:{definition.pk}",
+            "label": definition.name,
+            "name": definition.name,
+            "subtitle": definition.get_action_category_display(),
+            "description": definition.description,
+            "icon": definition.icon or "bi-gear",
+            "kind": "action",
+            "object": definition,
+        }
 
     def _resolve_selected_tab(
         self,
         tabs: list[dict[str, object]],
-        selected_id: str | None,
+        selected_value: str | None,
     ) -> str:
-        if selected_id:
+        if selected_value:
             for tab in tabs:
-                for validator in tab["validators"]:
-                    if str(getattr(validator, "pk", "")) == str(selected_id):
+                for entry in tab["entries"]:
+                    if str(entry["value"]) == str(selected_value):
                         return tab["slug"]
         for tab in tabs:
-            if tab["validators"]:
+            if tab["entries"]:
                 return tab["slug"]
         return tabs[0]["slug"] if tabs else "basic"
 
@@ -1986,6 +2182,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
     template_name = "workflows/workflow_step_form.html"
     mode: str = "create"
     validator_url_kwarg = "validator_id"
+    action_definition_url_kwarg = "action_definition_id"
     step_url_kwarg = "step_id"
     saved_step: WorkflowStep | None = None
 
@@ -2023,6 +2220,8 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return getattr(self, "_step", None)
 
     def get_validator(self) -> Validator:
+        if self.is_action_step():
+            raise Http404
         if not hasattr(self, "_validator"):
             if self.mode == "update":
                 step = self.get_step()
@@ -2034,24 +2233,63 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 self._validator = get_object_or_404(Validator, pk=validator_id)
         return self._validator
 
+    def get_action_definition(self) -> ActionDefinition:
+        if not hasattr(self, "_action_definition"):
+            if self.mode == "update":
+                step = self.get_step()
+                if step is None or not step.action:
+                    raise Http404
+                self._action_definition = step.action.definition
+            else:
+                definition_id = self.kwargs.get(self.action_definition_url_kwarg)
+                self._action_definition = get_object_or_404(
+                    ActionDefinition,
+                    pk=definition_id,
+                    is_active=True,
+                )
+        return self._action_definition
+
+    def is_action_step(self) -> bool:
+        if self.mode == "update":
+            step = self.get_step()
+            return bool(step and step.action_id)
+        return bool(self.kwargs.get(self.action_definition_url_kwarg))
+
     def get_form_class(self):
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            form_class = get_action_form(definition.type)
+            if form_class is None:
+                raise Http404("Unsupported action type.")
+            return form_class
         validator = self.get_validator()
         return get_config_form_class(validator.validation_type)
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["step"] = self.get_step()
+        if self.is_action_step():
+            kwargs["definition"] = self.get_action_definition()
         return kwargs
 
     def form_valid(self, form):
         workflow = self.get_workflow()
-        validator = self.get_validator()
-        saved_step = save_workflow_step(
-            workflow,
-            validator,
-            form,
-            step=self.get_step(),
-        )
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            saved_step = save_workflow_action_step(
+                workflow,
+                definition,
+                form,
+                step=self.get_step(),
+            )
+        else:
+            validator = self.get_validator()
+            saved_step = save_workflow_step(
+                workflow,
+                validator,
+                form,
+                step=self.get_step(),
+            )
         _resequence_workflow_steps(workflow)
         self.saved_step = saved_step
         if self.mode == "create":
@@ -2096,23 +2334,39 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
         step = self.get_step()
-        validator = self.get_validator()
+        details: dict[str, object]
+        icon = "bi-sliders"
+        if self.is_action_step():
+            definition = self.get_action_definition()
+            icon = definition.icon or icon
+            details = {
+                "name": definition.name,
+                "description": definition.description,
+                "type_label": definition.get_action_category_display(),
+                "icon": icon,
+            }
+        else:
+            validator = self.get_validator()
+            icon = getattr(validator, "display_icon", icon)
+            details = {
+                "name": validator.name,
+                "description": validator.description,
+                "type_label": validator.get_validation_type_display(),
+                "icon": icon,
+            }
         prev_step, next_step = self.get_neighbor_steps()
         context.update(
             {
                 "workflow": workflow,
                 "step": step,
-                "validator": validator,
+                "subject_details": details,
+                "validator_details": details,
+                "is_action_step": self.is_action_step(),
                 "is_create": self.mode == "create",
                 "max_step_count": MAX_STEP_COUNT,
                 "previous_step": prev_step,
                 "next_step": next_step,
                 "steps_count": workflow.steps.count(),
-                "validator_details": {
-                    "name": validator.name,
-                    "description": validator.description,
-                    "type_label": validator.get_validation_type_display(),
-                },
             },
         )
         return context
@@ -2154,6 +2408,12 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
 class WorkflowStepCreateView(WorkflowStepFormView):
     """Create a new workflow step for the given validator."""
+
+    mode = "create"
+
+
+class WorkflowActionStepCreateView(WorkflowStepFormView):
+    """Create a new workflow step for the selected action definition."""
 
     mode = "create"
 

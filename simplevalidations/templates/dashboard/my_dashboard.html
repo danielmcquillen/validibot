@@ -14,14 +14,17 @@
   <div id="dashboard-root" class="container-fluid">
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0">
+
         <h1 class="app-page-title">
+          <i class="bi bi-speedometer2 me-2"></i>
           {% trans "Dashboard" %}
         </h1>
       </div>
       <div class="col-12 col-lg-6 d-flex justify-content-end pe-0">
         <div class="d-flex flex-row gap-3 align-items-center flex-wrap">
           <div class="dashboard-filter d-flex flex-row align-items-center">
-            <label class="form-label fw-semibold small mb-0 pe-2" for="dashboard-time-range">
+            <label class="form-label fw-semibold small mb-0 pe-2"
+                   for="dashboard-time-range">
               {% trans "Range" %}
             </label>
             <select id="dashboard-time-range"

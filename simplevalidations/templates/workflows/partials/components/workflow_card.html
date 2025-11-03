@@ -80,7 +80,7 @@
     <div class="card-footer d-flex flex-row">
         <div class="d-flex flex-row gap-2 me-auto">
             {% if workflow.can_execute_cached %}
-                <a class="btn btn-sm btn-outline-success"
+                <a class="btn btn-sm btn-light"
                    href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
@@ -91,7 +91,7 @@
                     <i class="bi bi-play-fill"></i>
                 </a>
             {% else %}
-                <span class="btn btn-sm btn-outline-secondary disabled"
+                <span class="btn btn-sm btn-light disabled"
                       role="button"
                       aria-disabled="true"
                       data-bs-toggle="tooltip"
@@ -106,7 +106,7 @@
         </div>
         <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center">
 
-            <a class="btn btn-sm btn-outline-primary"
+            <a class="btn btn-sm btn-light"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "Edit steps" %}"

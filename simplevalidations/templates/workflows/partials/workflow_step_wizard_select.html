@@ -15,7 +15,7 @@
           aria-label="{% trans 'Close' %}">
   </button>
 </div>
-<div class="modal-body">
+<div class="modal-body p-0">
   {% if limit_reached %}
     <div class="alert alert-warning" role="alert">
       {% blocktrans with max=max_step_count %}

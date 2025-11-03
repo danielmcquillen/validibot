@@ -8,6 +8,7 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include
 from django.urls import path
 from django.views import defaults as default_views
+from django.views.decorators.cache import cache_page
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularSwaggerView
@@ -35,7 +36,7 @@ urlpatterns = [
     path("robots.txt", marketing_views.robots_txt, name="robots"),
     path(
         "sitemap.xml",
-        sitemap,
+        cache_page(60 * 60)(sitemap),
         {"sitemaps": sitemaps},
         name="sitemap",
     ),

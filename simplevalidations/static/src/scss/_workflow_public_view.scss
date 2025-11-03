@@ -53,7 +53,8 @@
   .public-step-card {
     background: #fff;
     border-radius: 1rem;
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.02);
+    border: 1px solid rgba(var(--bs-primary-rgb), 0.25);
     padding: 1.5rem;
     flex: 1;
   }
@@ -67,5 +68,12 @@
   .public-step-card .badge-type {
     font-size: 0.7rem;
     letter-spacing: 0.04em;
+  }
+
+  .description-header {
+    font-size: 0.9rem;
+  }
+  .description-text {
+    min-height: 10rem;
   }
 }

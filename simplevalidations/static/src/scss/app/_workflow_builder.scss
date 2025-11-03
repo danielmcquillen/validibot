@@ -44,10 +44,26 @@
   min-height: 5rem;
 }
 
+.workflow-step-complete-pill {
+  margin-top: 0rem;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  background-color: #fff;
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.3);
+  color: var(--bs-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .workflow-step-dotted-line {
   width: 2px;
   height: 3rem;
-  border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.35);
+  border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
 }
 
 .workflow-step-add-terminal {

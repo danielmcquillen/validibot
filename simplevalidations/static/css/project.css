@@ -12440,7 +12440,8 @@ h4 {
 #workflow-public-view .public-step-card {
   background: #fff;
   border-radius: 1rem;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.02);
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.25);
   padding: 1.5rem;
   flex: 1;
 }
@@ -12452,6 +12453,12 @@ h4 {
 #workflow-public-view .public-step-card .badge-type {
   font-size: 0.7rem;
   letter-spacing: 0.04em;
+}
+#workflow-public-view .description-header {
+  font-size: 0.9rem;
+}
+#workflow-public-view .description-text {
+  min-height: 10rem;
 }
 
 .brand-with-mark {
@@ -12756,10 +12763,26 @@ h4 {
   min-height: 5rem;
 }
 
+.workflow-step-complete-pill {
+  margin-top: 0rem;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  background-color: #fff;
+  border: 1px solid rgba(var(--bs-primary-rgb), 0.3);
+  color: var(--bs-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .workflow-step-dotted-line {
   width: 2px;
   height: 3rem;
-  border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.35);
+  border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
 }
 
 .workflow-step-add-terminal {

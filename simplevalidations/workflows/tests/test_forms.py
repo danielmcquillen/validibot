@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from simplevalidations.projects.tests.factories import ProjectFactory
@@ -20,6 +22,9 @@ from simplevalidations.workflows.forms import WorkflowLaunchForm
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
+
+BASE_DIR = Path(__file__).resolve().parents[3] / "tests" / "assets"
+XML_SCHEMA_DIR = BASE_DIR / "xml" / "schemas"
 
 
 def create_user_in_org():
@@ -237,6 +242,54 @@ def test_xml_schema_form_rejects_large_upload():
 
     assert not form.is_valid()
     assert "2 MB or smaller" in form.errors["schema_file"][0]
+
+
+def _load_schema_asset(filename: str) -> str:
+    return (XML_SCHEMA_DIR / filename).read_text(encoding="utf-8")
+
+
+def test_xml_schema_form_detects_mismatched_relaxng_text():
+    rng_schema = _load_schema_asset("product.rng")
+    form = XmlSchemaStepConfigForm(
+        data={
+            "name": "RNG schema uploaded",
+            "schema_type": XMLSchemaType.XSD.value,
+            "schema_text": rng_schema,
+        }
+    )
+
+    assert not form.is_valid()
+    errors = form.errors.get("schema_text") or []
+    assert any("Relax NG" in error for error in errors)
+
+
+def test_xml_schema_form_detects_mismatched_dtd_file():
+    dtd_schema = _load_schema_asset("product.dtd").encode("utf-8")
+    uploaded = SimpleUploadedFile("product.dtd", dtd_schema, content_type="text/plain")
+    form = XmlSchemaStepConfigForm(
+        data={
+            "name": "DTD upload",
+            "schema_type": XMLSchemaType.XSD.value,
+        },
+        files={"schema_file": uploaded},
+    )
+
+    assert not form.is_valid()
+    errors = form.errors.get("schema_file") or []
+    assert any("Document Type Definition" in error for error in errors)
+
+
+def test_xml_schema_form_accepts_matching_rng():
+    rng_schema = _load_schema_asset("product.rng")
+    form = XmlSchemaStepConfigForm(
+        data={
+            "name": "RNG schema",
+            "schema_type": XMLSchemaType.RELAXNG.value,
+            "schema_text": rng_schema,
+        }
+    )
+
+    assert form.is_valid(), form.errors
 
 
 def test_energyplus_form_blocks_simulation_checks_without_run_flag():

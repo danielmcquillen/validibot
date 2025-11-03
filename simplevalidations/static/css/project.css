@@ -12831,6 +12831,16 @@ h4 {
   transition: color 0.2s ease;
 }
 
+.modal-step-selector-dialog {
+  --bs-modal-width: min(1100px, 95vw);
+}
+.modal-step-selector-dialog .modal-content {
+  min-height: 75vh;
+}
+.modal-step-selector-dialog form {
+  min-height: 0;
+}
+
 .validator-group-heading {
   letter-spacing: 0.05em;
   margin-bottom: 0.35rem;

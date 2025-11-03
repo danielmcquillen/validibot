@@ -127,6 +127,18 @@
   }
 }
 
+.modal-step-selector-dialog {
+  --bs-modal-width: min(1100px, 95vw);
+
+  .modal-content {
+    min-height: 75vh;
+  }
+
+  form {
+    min-height: 0;
+  }
+}
+
 .validator-group-heading {
   letter-spacing: 0.05em;
   margin-bottom: 0.35rem;

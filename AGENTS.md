@@ -4,6 +4,12 @@
 
 - Keep SimpleValidations maintainable and transparent for a single developer.
 - Prefer straightforward Django patterns; document any advanced technique you touch.
+- Follow google guidelines for Python development.
+
+## Code documentation
+
+- Follow Google guidelines for Python documentation. All classes should have a block of comments
+  describing what the class does and how it relates to its wider context.
 
 ## Quick Links
 

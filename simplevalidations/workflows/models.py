@@ -118,7 +118,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         blank=True,
         related_name="workflows",
         help_text=_(
-            "Default project to associate with runs triggered from this workflow."
+            "Default project to associate with runs triggered from this workflow.",
         ),
     )
 
@@ -148,7 +148,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         blank=True,
         help_text=_(
             "A unique identifier for the workflow, used in URLs. "
-            "(Leave blank to auto-generate from name.)"
+            "(Leave blank to auto-generate from name.)",
         ),
     )
 
@@ -220,7 +220,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         sibling_versions = list(
             Workflow.objects.filter(org=self.org, slug=self.slug)
             .exclude(pk=self.pk)
-            .values_list("version", flat=True)
+            .values_list("version", flat=True),
         )
         sibling_versions.append(self.version)
 
@@ -287,7 +287,7 @@ class WorkflowPublicInfo(TimeStampedModel):
         default="",
         help_text=_(
             "Optional title to show on the public info page. "
-            "If blank, the Workflow name will be used."
+            "If blank, the Workflow name will be used.",
         ),
     )
     content_md = models.TextField()  # user-authored Markdown
@@ -359,7 +359,8 @@ class WorkflowStep(TimeStampedModel):
         blank=True,
         default="",
         help_text=_(
-            "Author notes about this step (visible only by you and other users with author permissions for this workflow)."
+            "Author notes about this step (visible only by you and other users "
+            "with author permissions for this workflow).",
         ),
     )
     display_schema = models.BooleanField(

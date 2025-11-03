@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import uuid
 from dataclasses import dataclass
@@ -56,6 +57,33 @@ JSON_SCHEMA_2020_12_URIS = {
     "https://json-schema.org/draft/2020-12/schema",
     "http://json-schema.org/draft/2020-12/schema",
 }
+
+
+def _detect_xml_schema_type(payload: str) -> str | None:
+    try:
+        from lxml import etree  # noqa: PLC0415
+    except Exception:  # pragma: no cover
+        return None
+
+    try:
+        etree.XMLSchema(etree.XML(payload.encode("utf-8")))
+        return XMLSchemaType.XSD.value
+    except Exception:
+        pass
+
+    try:
+        etree.RelaxNG(etree.XML(payload.encode("utf-8")))
+        return XMLSchemaType.RELAXNG.value
+    except Exception:
+        pass
+
+    try:
+        etree.DTD(io.StringIO(payload))
+        return XMLSchemaType.DTD.value
+    except Exception:
+        pass
+
+    return None
 
 
 @dataclass(slots=True)
@@ -534,6 +562,7 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
                             ),
                         )
         return cleaned
+        return cleaned
 
 
 class XmlSchemaStepConfigForm(BaseStepConfigForm):
@@ -604,6 +633,50 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
             cleaned["schema_source"] = "text" if has_text else "upload"
             if has_text:
                 cleaned["schema_text"] = text
+        selected_type = (cleaned.get("schema_type") or "").upper()
+        source = cleaned.get("schema_source")
+        if source in {"text", "upload"}:
+            field_name = "schema_text" if source == "text" else "schema_file"
+            payload: str | None = None
+            if source == "text":
+                payload = text
+            else:
+                upload = cleaned.get("schema_file")
+                if upload:
+                    upload.seek(0)
+                    raw_bytes = upload.read()
+                    upload.seek(0)
+                    try:
+                        payload = raw_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        self.add_error(
+                            field_name,
+                            _("Uploaded schema must be UTF-8 encoded."),
+                        )
+                        payload = None
+            if payload:
+                detected_type = _detect_xml_schema_type(payload)
+                if not detected_type:
+                    expected_label = (
+                        XMLSchemaType(selected_type).label
+                        if selected_type in XMLSchemaType.values
+                        else _("XML schema")
+                    )
+                    self.add_error(
+                        field_name,
+                        _(
+                            "Unable to parse the XML schema. Ensure it matches the %(expected)s format."
+                        )
+                        % {"expected": expected_label},
+                    )
+                elif selected_type and detected_type != selected_type:
+                    detected_label = XMLSchemaType(detected_type).label
+                    selected_label = XMLSchemaType(selected_type).label
+                    message = _(
+                        "Uploaded schema appears to be %(detected)s but you selected %(selected)s."
+                    ) % {"detected": detected_label, "selected": selected_label}
+                    self.add_error(field_name, message)
+                    self.add_error("schema_type", message)
         return cleaned
 
 

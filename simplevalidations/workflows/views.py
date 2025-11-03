@@ -1905,16 +1905,79 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         else:
             selected_id = request.GET.get("selected")
 
+        tabs = self._build_validator_tabs(validators)
+        selected_tab = self._resolve_selected_tab(tabs, selected_id)
+
         context = {
             "workflow": workflow,
             "form": form or WorkflowStepTypeForm(validators=validators),
             "validators": validators,
+            "validator_tabs": tabs,
+            "selected_tab": selected_tab,
             "max_step_count": MAX_STEP_COUNT,
             "step": None,
             "limit_reached": False,
             "selected_validator": str(selected_id) if selected_id else None,
         }
         return render(request, self.template_select, context, status=status)
+
+    def _build_validator_tabs(
+        self, validators: list[Validator]
+    ) -> list[dict[str, object]]:
+        groups: list[tuple[str, str, set[str] | None]] = [
+            (
+                "basic",
+                str(_("Basic Validations")),
+                {
+                    ValidationType.JSON_SCHEMA,
+                    ValidationType.XML_SCHEMA,
+                },
+            ),
+            (
+                "advanced",
+                str(_("Advanced Validations")),
+                {
+                    ValidationType.AI_ASSIST,
+                    ValidationType.ENERGYPLUS,
+                },
+            ),
+            ("integrations", str(_("Integrations")), None),
+            ("certifications", str(_("Certifications")), None),
+        ]
+
+        tabs: list[dict[str, object]] = []
+        handled: list[Validator] = []
+        for slug, label, types in groups:
+            if types:
+                members = [v for v in validators if v.validation_type in types]
+                handled.extend(members)
+            else:
+                members = []
+            tabs.append({"slug": slug, "label": label, "validators": members})
+
+        remaining = [v for v in validators if v not in handled]
+        if remaining:
+            for tab in tabs:
+                if tab["slug"] == "advanced":
+                    tab["validators"] = list(tab["validators"]) + remaining
+                    break
+
+        return tabs
+
+    def _resolve_selected_tab(
+        self,
+        tabs: list[dict[str, object]],
+        selected_id: str | None,
+    ) -> str:
+        if selected_id:
+            for tab in tabs:
+                for validator in tab["validators"]:
+                    if str(getattr(validator, "pk", "")) == str(selected_id):
+                        return tab["slug"]
+        for tab in tabs:
+            if tab["validators"]:
+                return tab["slug"]
+        return tabs[0]["slug"] if tabs else "basic"
 
 
 class WorkflowStepFormView(WorkflowObjectMixin, FormView):

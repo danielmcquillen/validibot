@@ -1,6 +1,7 @@
 from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
+from simplevalidations.blog.constants import BlogPostStatus
 from simplevalidations.blog.models import BlogPost
 
 
@@ -11,7 +12,7 @@ class BlogPostSitemap(Sitemap):
 
     def items(self):
         return (
-            BlogPost.objects.filter(status="published")
+            BlogPost.objects.filter(status=BlogPostStatus.PUBLISHED)
             .only("slug", "published_on", "modified")
             .order_by("-published_on")
         )

@@ -8,14 +8,20 @@ from django.urls import reverse
 from django.utils.html import strip_tags
 from model_utils.models import TimeStampedModel
 
+from simplevalidations.blog.constants import BlogPostStatus
 from simplevalidations.core.mixins import FeaturedImageMixin
 
 User = get_user_model()
 
-STATUS = ((0, "Draft"), (1, "Publish"))
-
 
 class BlogPost(FeaturedImageMixin, TimeStampedModel):
+    """Editorial content used on the marketing blog and sitemap.
+
+    Blog posts are drafted by staff in the Django admin, optionally linked to an
+    author, and exposed across marketing views once the status flips to
+    ``BlogPostStatus.PUBLISHED``.
+    """
+
     title = models.CharField(max_length=250, unique=False)
 
     summary = models.CharField(max_length=500, blank=True, default="")
@@ -36,7 +42,11 @@ class BlogPost(FeaturedImageMixin, TimeStampedModel):
 
     published_on = models.DateTimeField(default=datetime.now, blank=True)
 
-    status = models.IntegerField(choices=STATUS, default=0)
+    status = models.CharField(
+        max_length=16,
+        choices=BlogPostStatus.choices,
+        default=BlogPostStatus.DRAFT,
+    )
 
     featured_image_credit = models.CharField(
         max_length=200,

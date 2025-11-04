@@ -7,6 +7,7 @@ from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
 from django.views import generic
 
+from simplevalidations.blog.constants import BlogPostStatus
 from simplevalidations.blog.models import BlogPost
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.marketing.constants import MarketingShareImage
@@ -30,7 +31,7 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
         queryset = BlogPost.objects.select_related("author").order_by("-published_on")
         user = self.request.user
         if not user.is_staff and not user.is_superuser:
-            queryset = queryset.filter(status=1)
+            queryset = queryset.filter(status=BlogPostStatus.PUBLISHED)
         return queryset
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -43,7 +44,9 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
                     "Insights, guides, and product updates from the "
                     "SimpleValidations team.",
                 ),
-                "has_drafts": context["blog_posts"].filter(status=0).exists()
+                "has_drafts": context["blog_posts"]
+                .filter(status=BlogPostStatus.DRAFT)
+                .exists()
                 if self.request.user.is_staff or self.request.user.is_superuser
                 else False,
             },
@@ -60,7 +63,7 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
         queryset = super().get_queryset().select_related("author")
         user = self.request.user
         if not user.is_staff and not user.is_superuser:
-            queryset = queryset.filter(status=1)
+            queryset = queryset.filter(status=BlogPostStatus.PUBLISHED)
         return queryset
 
     def get_breadcrumbs(self):
@@ -143,5 +146,5 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
         queryset = BlogPost.objects.exclude(pk=blog_post.pk).order_by("-published_on")
         user = self.request.user
         if not user.is_staff and not user.is_superuser:
-            queryset = queryset.filter(status=1)
+            queryset = queryset.filter(status=BlogPostStatus.PUBLISHED)
         return queryset[:3]

@@ -1,5 +1,6 @@
 from django import template
 
+from simplevalidations.blog.constants import BlogPostStatus
 from simplevalidations.blog.models import BlogPost
 
 register = template.Library()
@@ -12,7 +13,7 @@ def most_recent_blog_post():
     if BlogPost.objects.count() == 0:
         return None
     return (
-        BlogPost.objects.filter(status=1)  # published posts
+        BlogPost.objects.filter(status=BlogPostStatus.PUBLISHED)
         .order_by("-published_on")
         .select_related("author")
         .first()

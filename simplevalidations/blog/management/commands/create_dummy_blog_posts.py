@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 
+from simplevalidations.blog.constants import BlogPostStatus
 from simplevalidations.blog.models import BlogPost
 
 LOREM = (
@@ -25,7 +26,7 @@ class Command(BaseCommand):
             )
             post.title = title
             post.content = LOREM
-            post.status = 1  # Published
+            post.status = BlogPostStatus.PUBLISHED
             post.save()
             if created:
                 created_posts.append(post)

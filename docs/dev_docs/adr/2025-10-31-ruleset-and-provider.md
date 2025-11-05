@@ -363,6 +363,13 @@ Notes for future phases will be appended here as we encounter edge cases.
 - Implemented custom-validator CRUD with permission checks (owners/admins/authors) and templates for list/detail/form/delete flows.
 - Context processors now expose `can_manage_validators`, and template navigation reflects the new entry.
 
+### Phase 4 Workplan (2025-11-06)
+
+- Ruleset editor must load the validator catalog so assertions reference valid slugs.
+- Step editor UX needs to surface assertions inline (catalog pickers, severity, message template).
+- Prepare service should hydrate catalog metadata per ruleset and enforce slug existence at publish time.
+- Minimal assertion persistence model is required (start with a simple JSON payload tied to ruleset; can expand later).
+
 ## Appendix A — CEL helper definitions (behavior)
 
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.

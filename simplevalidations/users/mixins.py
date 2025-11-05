@@ -5,6 +5,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
 from simplevalidations.users.models import Membership, Organization
+from simplevalidations.users.scoping import ensure_active_org_scope
 
 
 class OrganizationAdminRequiredMixin(LoginRequiredMixin):
@@ -14,14 +15,14 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
     organization_context_attr = "managed_organization"
 
     def dispatch(self, request, *args, **kwargs):
+        memberships, _, _ = ensure_active_org_scope(request)
         organization = self.get_organization()
         if organization is None:
             raise PermissionDenied("Organization context is required.")
 
-        membership = (
-            Membership.objects.select_related("org")
-            .filter(user=request.user, org=organization, is_active=True)
-            .first()
+        membership = next(
+            (m for m in memberships if m.org_id == organization.id),
+            None,
         )
         if not membership or not membership.is_admin:
             raise PermissionDenied("You do not have administrator access to this organization.")

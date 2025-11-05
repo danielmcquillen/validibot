@@ -159,3 +159,26 @@ def test_purge_projects_command_removes_old_soft_deleted_projects(client_admin):
     call_command("purge_projects", days=7)
 
     assert not Project.all_objects.filter(pk=project.pk).exists()
+
+
+@pytest.mark.django_db
+def test_project_list_recovers_from_stale_session_scope(client):
+    valid_org = OrganizationFactory(name="Alpha Org")
+    rogue_org = OrganizationFactory(name="Ghost Org")
+    user = UserFactory(orgs=[valid_org])
+    grant_role(user, valid_org, RoleCode.ADMIN)
+    client.force_login(user)
+    session = client.session
+    session["active_org_id"] = rogue_org.pk
+    session.save()
+
+    response = client.get(reverse("projects:project-list"))
+
+    assert response.status_code == 200
+    assert client.session["active_org_id"] != rogue_org.pk
+    user.refresh_from_db()
+    valid_org_ids = set(
+        user.memberships.filter(is_active=True).values_list("org_id", flat=True)
+    )
+    assert client.session["active_org_id"] in valid_org_ids
+    assert user.current_org_id == client.session["active_org_id"]

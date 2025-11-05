@@ -229,3 +229,37 @@ def test_switch_current_org_updates_session(client, db):
     )
     assert response.status_code == 200
     assert client.session["active_org_id"] == org.id
+
+
+@pytest.mark.django_db
+def test_switch_current_org_redirects_to_safe_next(client, db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    client.force_login(user)
+    safe_next = reverse("workflows:workflow_list")
+
+    response = client.post(
+        reverse("users:organization-switch", args=[org.pk]),
+        data={"next": safe_next},
+    )
+
+    assert response.status_code == 302
+    assert response["Location"] == safe_next
+
+
+@pytest.mark.django_db
+def test_switch_current_org_falls_back_for_unsafe_next(client, db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    client.force_login(user)
+    unsafe_next = "https://evil.example.com/phish"
+
+    response = client.post(
+        reverse("users:organization-switch", args=[org.pk]),
+        data={"next": unsafe_next},
+    )
+
+    assert response.status_code == 302
+    assert response["Location"] == reverse("dashboard:my_dashboard")

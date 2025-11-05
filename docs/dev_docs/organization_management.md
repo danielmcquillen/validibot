@@ -14,6 +14,9 @@ management links.
 - Switching updates both the session (`active_org_id`) and the user’s
   `current_org` field so the selection persists across requests (subdomains can
   later be layered on top).
+- Session scope is self-healing: if `active_org_id` references an organization
+  the user can no longer access, the app now clears the stale value and falls
+  back to the next available membership before rendering any admin view.
 
 ## Organization CRUD
 

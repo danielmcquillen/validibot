@@ -10,6 +10,7 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.decorators.http import require_POST
@@ -186,19 +187,18 @@ user_api_key_view = UserApiKeyView.as_view()
 @require_POST
 def switch_current_org_view(request, org_id: int) -> HttpResponse:
     """
-    Switch the current organization for the logged-in user.
-    We redirec to the dashboard by default, as the user might not
-    have access to the referring page in the new organization.
+    Switch the logged-in user's active organization and redirect safely.
 
     Args:
-        request (_type_): _description_
-        org_id (int): _description_
+        request: The active HttpRequest.
+        org_id: Primary key of the organization being selected.
 
     Raises:
-        PermissionDenied: _description_
+        PermissionDenied: If the user is not an active member of the org.
 
     Returns:
-        HttpResponse: _description_
+        HttpResponse: Redirect (or HX-Redirect) to either the requested
+            next URL or the dashboard fallback when the request target is unsafe.
     """
     organization = get_object_or_404(Organization, pk=org_id)
     membership = (
@@ -211,8 +211,16 @@ def switch_current_org_view(request, org_id: int) -> HttpResponse:
 
     request.user.set_current_org(organization)
     request.session["active_org_id"] = organization.id
-
-    next_url = reverse_with_org("dashboard:my_dashboard", request=request)
+    default_next_url = reverse_with_org("dashboard:my_dashboard", request=request)
+    requested_next = request.POST.get("next") or request.GET.get("next")
+    if requested_next and url_has_allowed_host_and_scheme(
+        url=requested_next,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        next_url = requested_next
+    else:
+        next_url = default_next_url
 
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)

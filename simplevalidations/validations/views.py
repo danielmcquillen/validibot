@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 
 import django_filters
 from django.contrib import messages
@@ -6,7 +7,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import models
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import redirect
 from django.utils import timezone
 from django.utils.http import urlencode
 from django.utils.translation import gettext_lazy as _
@@ -14,7 +16,8 @@ from django.views import View
 from django.views.generic import DetailView
 from django.views.generic import ListView
 from django.views.generic import TemplateView
-from django.views.generic.edit import DeleteView, FormView
+from django.views.generic.edit import DeleteView
+from django.views.generic.edit import FormView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
@@ -24,20 +27,17 @@ from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.forms import (
-    CustomValidatorCreateForm,
-    CustomValidatorUpdateForm,
-    RulesetAssertionForm,
-)
+from simplevalidations.validations.forms import CustomValidatorCreateForm
+from simplevalidations.validations.forms import CustomValidatorUpdateForm
+from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import Validator
-from simplevalidations.validations.utils import (
-    create_custom_validator,
-    update_custom_validator,
-)
 from simplevalidations.validations.serializers import ValidationRunSerializer
+from simplevalidations.validations.utils import create_custom_validator
+from simplevalidations.validations.utils import update_custom_validator
 from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -112,7 +112,9 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         user = self.request.user
         if not user.is_authenticated:
             return ValidationRun.objects.none()
-        org_ids = user.memberships.filter(is_active=True).values_list("org_id", flat=True)
+        org_ids = user.memberships.filter(is_active=True).values_list(
+            "org_id", flat=True
+        )
         return (
             ValidationRun.objects.filter(org_id__in=org_ids)
             .select_related("workflow", "submission", "org")
@@ -204,7 +206,9 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         breadcrumbs.append(
             {
                 "name": _("Validations"),
-                "url": reverse_with_org("validations:validation_list", request=self.request),
+                "url": reverse_with_org(
+                    "validations:validation_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append(
@@ -216,12 +220,12 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
         return breadcrumbs
 
 
-# Validation Library Views
+# Validator Library Views
 # --------------------------------------------------------------------------
 
 
 class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
-    """Shared helpers for Validation Library views."""
+    """Shared helpers for Validator Library views."""
 
     def get_active_org(self):
         org = getattr(self.request, "active_org", None)
@@ -268,7 +272,7 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         breadcrumbs = super().get_breadcrumbs()
         breadcrumbs.append(
             {
-                "name": _("Validation Library"),
+                "name": _("Validator Library"),
                 "url": reverse_with_org(
                     "validations:validation_library",
                     request=self.request,
@@ -280,20 +284,30 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
 
 class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     template_name = "validations/library/library.html"
+    default_tab = "custom"
+    allowed_tabs = ("custom", "system")
 
     def get_breadcrumbs(self):
         return [
             {
-                "name": _("Validation Library"),
+                "name": _("Validator Library"),
                 "url": "",
             },
         ]
 
+    def get_active_tab(self):
+        tab = (self.request.GET.get("tab") or self.default_tab).lower()
+        if tab not in self.allowed_tabs:
+            return self.default_tab
+        return tab
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         org = self.get_active_org()
+        active_tab = self.get_active_tab()
         context.update(
             {
+                "active_tab": active_tab,
                 "can_manage_validators": self.can_manage_validators(),
                 "system_validators": Validator.objects.filter(is_system=True)
                 .order_by("validation_type", "name")
@@ -330,6 +344,13 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         context["can_manage_validators"] = self.can_manage_validators()
         return context
 
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        validator = getattr(self, "object", None) or self.get_object()
+        label = validator.name or validator.slug
+        breadcrumbs.append({"name": label, "url": ""})
+        return breadcrumbs
+
 
 class CustomValidatorManageMixin(ValidatorLibraryMixin):
     """Require author/admin access for CRUD operations."""
@@ -360,7 +381,18 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
         context = super().get_context_data(**kwargs)
         context["form_title"] = _("Create Custom Validator")
         context["can_manage_validators"] = True
+        context["validator"] = None
         return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Create new validator"),
+                "url": "",
+            },
+        )
+        return breadcrumbs
 
     def form_valid(self, form):
         org = self.get_active_org()
@@ -418,6 +450,18 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         )
         return context
 
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        validator = self.custom_validator.validator
+        label = validator.name or validator.slug
+        breadcrumbs.append(
+            {
+                "name": _("Edit %(name)s") % {"name": label},
+                "url": "",
+            },
+        )
+        return breadcrumbs
+
     def form_valid(self, form):
         custom = update_custom_validator(
             self.custom_validator,
@@ -427,8 +471,7 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         )
         messages.success(
             self.request,
-            _("Updated custom validator “%(name)s”.")
-            % {"name": custom.validator.name},
+            _("Updated custom validator “%(name)s”.") % {"name": custom.validator.name},
         )
         return redirect(self.get_success_url(custom.validator))
 
@@ -461,12 +504,24 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
+        return self.handle_delete(request)
+
+    def delete(self, request, *args, **kwargs):
+        return self.handle_delete(request)
+
+    def handle_delete(self, request):
         validator = self.custom_validator.validator
+        blocker = self._get_delete_blocker(validator)
+        if blocker:
+            return self._delete_blocked_response(request, blocker)
+
+        success_message = _("Deleted custom validator “%(name)s”.") % {
+            "name": validator.name
+        }
         validator.delete()
-        messages.success(
-            request,
-            _("Deleted custom validator “%(name)s”.") % {"name": validator.name},
-        )
+        if request.headers.get("HX-Request"):
+            return self._hx_toast_response(success_message, status=204)
+        messages.success(request, success_message)
         return redirect(
             reverse_with_org(
                 "validations:validation_library",
@@ -474,9 +529,43 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
             ),
         )
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        return context
+    def _get_delete_blocker(self, validator):
+        if WorkflowStep.objects.filter(validator=validator).exists():
+            return _(
+                "Cannot delete %(name)s because workflow steps still reference this validator.",
+            ) % {"name": validator.name}
+        return None
+
+    def _delete_blocked_response(self, request, message):
+        if request.headers.get("HX-Request"):
+            return self._hx_toast_response(
+                message,
+                level="danger",
+                status=400,
+                reswap="none",
+            )
+        messages.error(request, message)
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=request,
+                kwargs={"slug": self.custom_validator.validator.slug},
+            ),
+        )
+
+    def _hx_toast_response(self, message, *, level="success", status=200, reswap=None):
+        response = HttpResponse(status=status)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "toast": {
+                    "level": level,
+                    "message": str(message),
+                }
+            }
+        )
+        if reswap:
+            response["HX-Reswap"] = reswap
+        return response
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
@@ -491,7 +580,9 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
         breadcrumbs.append(
             {
                 "name": _("Validations"),
-                "url": reverse_with_org("validations:validation_list", request=self.request),
+                "url": reverse_with_org(
+                    "validations:validation_list", request=self.request
+                ),
             },
         )
         breadcrumbs.append(

@@ -1,0 +1,44 @@
+{% load i18n core_tags %}
+
+<div class="validator-card-wrapper h-100" id="validator-card-{{ validator.pk }}">
+  <div class="card validator-library-card h-100 shadow-sm {{ card_border_class }}">
+    <div class="card-body position-relative">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <span class="{{ badge_class }}">{{ badge_text }}</span>
+        <i class="{{ icon_class }} fs-4 text-muted"></i>
+      </div>
+      <h3 class="h6 text-dark mb-1">
+        {{ validator.name }}
+      </h3>
+      <p class="text-muted mb-0 small">
+        {{ validator.description|default:_("No description provided.") }}
+      </p>
+      <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+         class="stretched-link">
+        <span class="visually-hidden">
+          {% blocktrans trimmed with name=validator.name %}
+            View details for {{ name }}
+          {% endblocktrans %}
+        </span>
+      </a>
+    </div>
+    {% if can_manage_validators and not validator.is_system %}
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+           aria-label="{% blocktrans trimmed with name=validator.name %}Edit {{ name }}{% endblocktrans %}">
+          <i class="bi bi-pencil"></i>
+        </a>
+        <button type="button"
+                class="btn btn-sm btn-outline-danger"
+                hx-delete="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}"
+                hx-target="#validator-card-{{ validator.pk }}"
+                hx-swap="outerHTML"
+                hx-confirm="{% blocktrans trimmed with name=validator.name %}Delete {{ name }}?{% endblocktrans %}">
+          <i class="bi bi-trash"></i>
+          <span class="visually-hidden">{% trans "Delete validator" %}</span>
+        </button>
+      </div>
+    {% endif %}
+  </div>
+</div>

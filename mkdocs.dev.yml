@@ -52,6 +52,8 @@ nav:
       - Feature Pages: marketing/features.md
   - Data Model:
       - Overview: data-model/index.md
+      - Validators: data-model/validators.md
+      - Assertions: data-model/assertions.md
       - Submissions: data-model/submissions.md
       - Runs: data-model/runs.md
       - Steps: data-model/steps.md

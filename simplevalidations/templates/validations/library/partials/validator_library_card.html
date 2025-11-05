@@ -1,0 +1,74 @@
+{% load i18n core_tags %}
+
+<div class="app-card validator-card-wrapper h-100"
+     id="validator-card-{{ validator.pk }}">
+    <div class="card validator-library-card h-100 shadow-sm
+                {% if not validator.is_system %}
+                    border-primary-subtle
+                {% endif %}">
+        <div class="card-header">
+            <div class="validator-type-icon">
+                <i class="bi {{ validator.display_icon }} fs-4 text-muted"></i>
+            </div>
+            <div class="validator-name">
+                {{ validator.name }}
+            </div>
+        </div>
+        <div class="card-body position-relative">
+
+            <div class="d-flex flex-row">
+                <div class="validator-info w-100">
+                    <p class="text-muted mb-0 small">
+                        {{ validator.description|default:_("No description provided.") }}
+                    </p>
+                </div>
+                {% if validator.is_custom %}
+                    <div class="validator-type">
+                        <span class="badge
+                                     {% if validator.is_system %}
+                                         text-bg-secondary
+                                     {% else %}
+                                         text-bg-info text-uppercase
+                                     {% endif %}">
+                            {% if validator.is_system %}
+                                {{ validator.validation_type }}
+                            {% else %}
+                                {{ validator.custom_validator.custom_type|default:_("Custom") }}
+                            {% endif %}
+                        </span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2">
+            {% if validator.is_system %}
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+                   aria-label="{% blocktrans trimmed with validator_name=validator.name %}
+                                   View {{ validator_name }}
+                               {% endblocktrans %}">
+                    Details
+                </a>
+            {% elif not validator.is_system and can_manage_validators %}
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+                   aria-label="{% blocktrans trimmed with validator_name=validator.name %}
+                                   Edit {{ validator_name }}
+                               {% endblocktrans %}">
+                    <i class="bi bi-pencil"></i>
+                </a>
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        hx-delete="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}"
+                        hx-target="#validator-card-{{ validator.pk }}"
+                        hx-swap="outerHTML"
+                        hx-confirm="{% blocktrans trimmed with validator_name=validator.name %}
+                                        Delete {{ validator_name }}?
+                                    {% endblocktrans %}">
+                    <i class="bi bi-trash"></i>
+                    <span class="visually-hidden">{% trans "Delete validator" %}</span>
+                </button>
+            {% endif %}
+        </div>
+    </div>
+</div>

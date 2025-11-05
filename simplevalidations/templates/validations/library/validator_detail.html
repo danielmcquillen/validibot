@@ -2,7 +2,7 @@
 {% load i18n core_tags %}
 
 {% block title %}
-  {{ validator.name }} · {% trans "Validation Library" %}
+  {{ validator.name }} · {% trans "Validator Library" %}
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -13,12 +13,6 @@
   <div class="container-fluid">
     <div class="app-content-header-bar row align-items-center">
       <div class="col-12 col-lg-8">
-        <p class="text-muted mb-1">
-          <a href="{% org_url 'validations:validation_library' %}" class="text-muted text-decoration-none">
-            <i class="bi bi-arrow-left me-1"></i>
-            {% trans "Back to Validation Library" %}
-          </a>
-        </p>
         <h1 class="app-page-title mb-0">
           {{ validator.name }}
         </h1>
@@ -97,6 +91,14 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-4">
+      <a href="{% org_url 'validations:validation_library' %}"
+         class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>
+        {% trans "Back to Validator Library" %}
+      </a>
     </div>
   </div>
 {% endblock app_content %}

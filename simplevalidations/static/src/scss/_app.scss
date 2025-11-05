@@ -1,7 +1,9 @@
 @use "app/app_top_bar";
 @use "app/app_left_nav";
+@use "app/elements/cards";
 @use "app/workflow";
 @use "app/workflow_builder";
+@use "app/validator_library";
 @use "app/project_form";
 
 #main-content {

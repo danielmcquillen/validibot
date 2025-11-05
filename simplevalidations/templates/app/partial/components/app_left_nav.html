@@ -17,7 +17,7 @@
     {% include 'app/partial/components/workspace_selector.html' %}
   {% endif %}
 
-  <ul class="nav nav-pills flex-column mb-auto" role="menu">
+  <ul class="nav nav-pills flex-column " role="menu">
     <li class="nav-item" role="none">
       <a href="{% org_url 'dashboard:my_dashboard' %}"
          class="nav-link text-white {% active_link 'dashboard' %}"
@@ -35,23 +35,35 @@
       </a>
     </li>
     <li class="nav-item" role="none">
+      <a href="{% org_url 'validations:validation_library' %}"
+         class="nav-link text-white {% active_link_views 'validations:validation_library' 'validations:custom_validator_create' 'validations:custom_validator_update' 'validations:custom_validator_delete' 'validations:validator_detail' %}"
+         role="menuitem">
+        <i class="bi bi-journal-bookmark"></i>
+        <span>{% trans "Validator Library" %}</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="group-label mt-4">
+    Analytics
+  </div>
+
+  <ul class="nav nav-pills flex-column" role="menu">
+    <li class="nav-item" role="none">
       <a href="{% org_url 'validations:validation_list' %}"
-         class="nav-link text-white {% active_link 'validations' %}"
+         class="nav-link text-white {% active_link_views 'validations:validation_list' 'validations:validation_detail' 'validations:validation_delete' %}"
          role="menuitem">
         <i class="bi bi-shield-check"></i>
         <span>{% trans "Validation Runs" %}</span>
       </a>
     </li>
-    <li class="nav-item" role="none">
-      <a href="{% org_url 'validations:validation_library' %}"
-         class="nav-link text-white {% active_link 'validations/library' %}"
-         role="menuitem">
-        <i class="bi bi-journal-bookmark"></i>
-        <span>{% trans "Validation Library" %}</span>
-      </a>
-    </li>
+  </ul>
 
+  <ul class="nav nav-pills flex-column mb-auto" role="menu">
     {% if is_org_admin %}
+      <div class="group-label mt-4">
+        Admin
+      </div>
       <li class="nav-item" role="none">
         <a href="{% org_url 'projects:project-list' %}"
            class="nav-link text-white {% active_link 'projects' %}"

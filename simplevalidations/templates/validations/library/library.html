@@ -1,8 +1,9 @@
 {% extends "app_base.html" %}
+
 {% load i18n core_tags %}
 
 {% block title %}
-  {% trans "Validation Library" %} · SimpleValidations
+  {% trans "Validator Library" %} · SimpleValidations
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -10,16 +11,13 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div class="container-fluid">
+  <div id="validator-library" class="container-fluid">
     <div class="app-content-header-bar row align-items-center">
-      <div class="col-12 col-lg-8">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
         <h1 class="app-page-title">
           <i class="bi bi-journal-bookmark me-2"></i>
-          {% trans "Validation Library" %}
+          {% trans "Validator Library" %}
         </h1>
-        <p class="text-muted mb-0">
-          {% trans "Browse built-in validators or configure custom ones for your organization." %}
-        </p>
       </div>
       <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0">
         {% if can_manage_validators %}
@@ -32,89 +30,125 @@
       </div>
     </div>
 
-    <div class="row g-4 mt-2">
+    <div class="row g-4">
       <div class="col-12">
-        <div class="card shadow-sm h-100">
-          <div class="card-header">
-            <h2 class="card-title h5 mb-0">
-              <i class="bi bi-grid-1x2 me-2"></i>
-              {% trans "System Validators" %}
-            </h2>
-          </div>
-          <div class="card-body">
-            {% if system_validators %}
-              <div class="row g-3">
-                {% for validator in system_validators %}
-                  <div class="col-12 col-md-6 col-xl-4">
-                    <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
-                       class="card h-100 text-decoration-none shadow-sm">
-                      <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                          <span class="badge text-bg-secondary">{{ validator.validation_type }}</span>
-                          <i class="{{ validator.display_icon }} fs-4 text-muted"></i>
-                        </div>
-                        <h3 class="h6 text-dark mb-1">{{ validator.name }}</h3>
-                        <p class="text-muted mb-0 small">{{ validator.description|default:_("No description provided.") }}</p>
-                      </div>
-                    </a>
-                  </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <p class="text-muted mb-0">{% trans "No system validators are registered." %}</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      <div class="col-12">
-        <div class="card shadow-sm h-100">
-          <div class="card-header d-flex align-items-center justify-content-between">
-            <h2 class="card-title h5 mb-0">
-              <i class="bi bi-person-gear me-2"></i>
-              {% trans "Your Custom Validators" %}
-            </h2>
-            {% if can_manage_validators %}
-              <span class="badge text-bg-primary">
+        <div class="tabs d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+          <div class="nav nav-tabs validator-library-tabs" role="tablist">
+            <a class="nav-link
+                      {% if active_tab == 'custom' %}
+                        active
+                      {% endif %}"
+               id="library-custom-tab"
+               role="tab"
+               aria-controls="library-custom-panel"
+               aria-selected="{% if active_tab == 'custom' %}
+                                true
+                              {% else %}
+                                false
+                              {% endif %}"
+               href="{% org_url 'validations:validation_library' %}?tab=custom">
+              <span class="fw-semibold">{% trans "Custom" %}</span>
+              <span class="badge text-bg-light ms-2">
                 {{ custom_validators|length }}
               </span>
-            {% endif %}
+            </a>
+            <a class="nav-link
+                      {% if active_tab == 'system' %}
+                        active
+                      {% endif %}"
+               id="library-system-tab"
+               role="tab"
+               aria-controls="library-system-panel"
+               aria-selected="{% if active_tab == 'system' %}
+                                true
+                              {% else %}
+                                false
+                              {% endif %}"
+               href="{% org_url 'validations:validation_library' %}?tab=system">
+              <span class="fw-semibold">{% trans "System" %}</span>
+              <span class="badge text-bg-light ms-2">
+                {{ system_validators|length }}
+              </span>
+            </a>
           </div>
+        </div>
+        <div class="card shadow-sm">
           <div class="card-body">
-            {% if custom_validators %}
-              <div class="row g-3">
-                {% for validator in custom_validators %}
-                  <div class="col-12 col-md-6 col-xl-4">
-                    <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
-                       class="card h-100 text-decoration-none border-primary-subtle shadow-sm">
-                      <div class="card-body">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                          <span class="badge text-bg-info text-uppercase">
-                            {{ validator.custom_validator.custom_type }}
-                          </span>
-                          <i class="bi bi-person-workspace fs-4 text-muted"></i>
-                        </div>
-                        <h3 class="h6 text-dark mb-1">{{ validator.name }}</h3>
-                        <p class="text-muted mb-0 small">{{ validator.description|default:_("No description provided.") }}</p>
-                      </div>
-                    </a>
+            <div class="tab-content">
+              <div class="tab-pane fade
+                          {% if active_tab == 'custom' %}
+                            show active
+                          {% endif %}"
+                   id="library-custom-panel"
+                   role="tabpanel"
+                   aria-labelledby="library-custom-tab"
+                   aria-hidden="{% if active_tab == 'custom' %}
+                                  false
+                                {% else %}
+                                  true
+                                {% endif %}">
+                <div class="d-flex align-items-center gap-2 mb-4">
+                  <i class="bi bi-person-gear text-muted"></i>
+                  <div class="h6 mb-0">
+                    {% trans "Your Custom Validators" %}
                   </div>
-                {% endfor %}
-              </div>
-            {% else %}
-              <div class="text-center py-4">
-                <p class="text-muted mb-2">
-                  {% trans "You have not created any custom validators yet." %}
-                </p>
-                {% if can_manage_validators %}
-                  <a href="{% org_url 'validations:custom_validator_create' %}"
-                     class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-plus me-1"></i>
-                    {% trans "Create the first custom validator" %}
-                  </a>
+                </div>
+                {% if custom_validators %}
+                  <div class="row g-3">
+                    {% for validator in custom_validators %}
+                      <div class="col-12 col-md-6 col-xl-4">
+                        {% include 'validations/library/partials/validator_library_card.html' with validator=validator can_manage_validators=can_manage_validators %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="text-center py-4">
+                    <p class="text-muted mb-2">
+                      {% trans "You have not created any custom validators yet." %}
+                    </p>
+                    {% if can_manage_validators %}
+                      <a href="{% org_url 'validations:custom_validator_create' %}"
+                         class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-plus me-1"></i>
+                        {% trans "Create the first custom validator" %}
+                      </a>
+                    {% endif %}
+                  </div>
                 {% endif %}
               </div>
-            {% endif %}
+              <div class="tab-pane fade
+                          {% if active_tab == 'system' %}
+                            show active
+                          {% endif %}"
+                   id="library-system-panel"
+                   role="tabpanel"
+                   aria-labelledby="library-system-tab"
+                   aria-hidden="{% if active_tab == 'system' %}
+                                  false
+                                {% else %}
+                                  true
+                                {% endif %}">
+                <div class="d-flex align-items-center gap-2 mb-4">
+                  <i class="bi bi-grid-1x2 text-muted"></i>
+                  <div class="h6 mb-0">
+                    {% trans "System Validators" %}
+                  </div>
+                </div>
+                {% if system_validators %}
+                  <div class="row g-3">
+                    {% for validator in system_validators %}
+                      <div class="col-12 col-md-6 col-xl-4">
+                        {% include 'validations/library/partials/validator_library_card.html' with validator=validator can_manage_validators=can_manage_validators %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="text-muted mb-0">
+                    {% trans "No system validators are registered." %}
+                  </p>
+                {% endif %}
+              </div>
+            </div>
           </div>
         </div>
       </div>

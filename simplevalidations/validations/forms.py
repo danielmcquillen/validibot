@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Column
+from crispy_forms.layout import Layout
+from crispy_forms.layout import Row
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -31,6 +35,19 @@ class CustomValidatorCreateForm(forms.Form):
         help_text=_("Optional notes shown to other authors in your org."),
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("name", css_class="col-12 col-xl-7"),
+                Column("custom_type", css_class="col-12 col-xl-5"),
+            ),
+            "description",
+            "notes",
+        )
+
 
 class CustomValidatorUpdateForm(forms.Form):
     """Edit form for an existing custom validator."""
@@ -49,6 +66,16 @@ class CustomValidatorUpdateForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 3}),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(Column("name", css_class="col-12")),
+            "description",
+            "notes",
+        )
 
 
 class RulesetAssertionForm(forms.Form):

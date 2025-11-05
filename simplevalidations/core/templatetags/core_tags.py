@@ -103,6 +103,32 @@ def active_link_any(context, *nav_item_names):
 
 
 @register.simple_tag(takes_context=True)
+def active_link_views(context, *view_names):
+    """Return 'active' when the resolved view name matches any supplied values."""
+    request = context.get("request", None)
+    if not request:
+        return ""
+
+    match = getattr(request, "resolver_match", None)
+    if not match:
+        return ""
+
+    current_view_name = (getattr(match, "view_name", "") or "").strip()
+    current_url_name = (getattr(match, "url_name", "") or "").strip()
+    if not (current_view_name or current_url_name):
+        return ""
+
+    normalized = {
+        (name or "").strip()
+        for name in view_names
+        if (name or "").strip()
+    }
+    if current_view_name in normalized or current_url_name in normalized:
+        return "active"
+    return ""
+
+
+@register.simple_tag(takes_context=True)
 def user_settings_nav_state(context) -> dict[str, bool]:
     """Return navigation state booleans for the user settings menu."""
 

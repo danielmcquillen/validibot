@@ -12194,7 +12194,7 @@ h4 {
   margin-bottom: 0;
 }
 .breadcrumb .breadcrumb-item {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   max-width: 150px;
   white-space: nowrap;
   overflow: hidden;
@@ -12590,6 +12590,17 @@ h4 {
   pointer-events: none;
   overflow: hidden;
 }
+#app-left-nav hr {
+  margin: 0.5rem 0;
+}
+#app-left-nav .group-label {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+}
 #app-left-nav .left-nav-title {
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   min-height: 45px;
@@ -12700,6 +12711,12 @@ h4 {
   color: rgba(255, 255, 255, 0.6);
 }
 
+.app-card .card-footer {
+  background: #fff;
+  border-top: 1px dotted #ccc;
+  padding: 8px;
+}
+
 .workflow-card dl {
   display: flex;
   flex-direction: row;
@@ -12717,10 +12734,6 @@ h4 {
   margin: 0;
   font-size: 0.9rem;
   font-weight: normal;
-}
-.workflow-card .card-footer {
-  background: #fff;
-  border-top: 1px dotted #ccc;
 }
 
 #workflow-step-editor-card .editor-workspace {
@@ -12977,6 +12990,61 @@ h4 {
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
   border: 1px solid var(--bs-border-color);
+}
+
+#validator-library .tabs {
+  margin-left: 1rem;
+}
+#validator-library .tabs .nav-tabs {
+  border-bottom: 0;
+}
+#validator-library .tabs .nav-link {
+  z-index: 10;
+  border-bottom: 0;
+}
+#validator-library .tabs .nav-link.active {
+  margin-bottom: -2px;
+}
+#validator-library .tab-content {
+  min-height: 80vh;
+}
+#validator-library .validator-library-card {
+  overflow: hidden;
+}
+#validator-library .validator-library-card .card-header {
+  height: 3rem;
+  background: linear-gradient(180deg, #eaf1f8 0%, #dfe9f3 100%);
+  display: flex;
+  flex-direction: row;
+  padding: 0.5rem;
+}
+#validator-library .validator-library-card .card-header .validator-type-icon {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding-left: 0.5rem;
+  padding-right: 1rem;
+  height: 100%;
+}
+#validator-library .validator-library-card .card-header .validator-type-icon i {
+  font-size: 2rem;
+  color: #425d7a;
+}
+#validator-library .validator-library-card .card-header .validator-name {
+  display: flex;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #425d7a;
+}
+#validator-library .validator-library-card .card-header .validator-info {
+  display: flex;
+  flex-direction: column;
+}
+#validator-library .validator-library-card .card-header .validator-type {
+  display: flex;
+  flex-direction: column;
 }
 
 .project-color-widget {

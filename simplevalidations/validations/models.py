@@ -219,6 +219,7 @@ class Ruleset(TimeStampedModel):
         Falls back to None when the ruleset has not been attached yet.
         """
         from simplevalidations.workflows.models import WorkflowStep  # noqa: PLC0415
+
         step = (
             WorkflowStep.objects.filter(ruleset=self)
             .select_related("validator")
@@ -372,7 +373,7 @@ class Validator(TimeStampedModel):
             ValidationType.XML_SCHEMA: "bi-filetype-xml",
             ValidationType.ENERGYPLUS: "bi-lightning-charge-fill",
             ValidationType.AI_ASSIST: "bi-robot",
-        }.get(self.validation_type, "bi-puzzle")  # default icon
+        }.get(self.validation_type, "bi-journal-bookmark")  # default icon
         return bi_icon_class
 
     def __str__(self):

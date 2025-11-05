@@ -40,6 +40,19 @@
   // Subtle drop shadow to the right
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
 
+  hr {
+    margin: 0.5rem 0;
+  }
+
+  .group-label {
+    color: #ffffff66;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
   .left-nav-title {
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     min-height: 45px;

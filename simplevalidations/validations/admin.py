@@ -1,6 +1,10 @@
 from django.contrib import admin
 
-from simplevalidations.validations.models import Ruleset, ValidationRun, Validator
+from simplevalidations.validations.models import CustomValidator
+from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
 
 
 @admin.register(Ruleset)
@@ -25,15 +29,49 @@ class ValidatorAdmin(admin.ModelAdmin):
         "id",
         "name",
         "slug",
+        "org",
         "order",
         "validation_type",
         "version",
+        "is_system",
         "created",
         "modified",
     )
-    list_filter = ("validation_type", "created", "modified")
-    search_fields = ("name", "slug", "version")
+    list_filter = ("validation_type", "is_system", "created", "modified")
+    search_fields = ("name", "slug", "version", "org__name")
     ordering = ("order",)
+
+
+@admin.register(ValidatorCatalogEntry)
+class ValidatorCatalogEntryAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "validator",
+        "entry_type",
+        "slug",
+        "data_type",
+        "is_required",
+        "order",
+        "created",
+    )
+    list_filter = ("entry_type", "data_type", "is_required")
+    search_fields = ("validator__name", "slug", "label")
+    ordering = ("validator", "entry_type", "order")
+
+
+@admin.register(CustomValidator)
+class CustomValidatorAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "validator",
+        "org",
+        "custom_type",
+        "base_validation_type",
+        "created",
+        "modified",
+    )
+    list_filter = ("custom_type", "base_validation_type")
+    search_fields = ("validator__name", "org__name")
 
 
 @admin.register(ValidationRun)

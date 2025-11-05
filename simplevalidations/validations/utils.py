@@ -65,9 +65,11 @@ def create_default_validators():
             logger.info(f"  - created default validator: {validator.slug}")
         else:
             skipped += 1
-            
+
         # Update order in case it has changed
         validator.order = validator_data["order"]
+        validator.is_system = True
+        validator.org = None
         validator.save()
 
     return created, skipped

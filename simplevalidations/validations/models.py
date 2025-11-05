@@ -14,6 +14,9 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogValueType
+from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
@@ -208,6 +211,23 @@ class Ruleset(TimeStampedModel):
             return str(raw or "")
         return ""
 
+    @property
+    def validator(self):
+        """
+        Returns the validator linked via any workflow step that references this ruleset.
+        Falls back to None when the ruleset has not been attached yet.
+        Do this lookup each time. Don't use a cache as we want to make sure 
+        we always get the latest linked validator.
+        """
+        from simplevalidations.workflows.models import WorkflowStep  # noqa: PLC0415
+        step = (
+            WorkflowStep.objects.filter(ruleset=self)
+            .select_related("validator")
+            .first()
+        )
+        validator = getattr(step, "validator", None)
+        return validator
+
 
 class Validator(TimeStampedModel):
     """
@@ -255,6 +275,17 @@ class Validator(TimeStampedModel):
         blank=False,
     )  # display label
 
+    org = models.ForeignKey(
+        Organization,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="validators",
+        help_text=_(
+            "Owning organization for custom validators (null for system validators)."
+        ),
+    )
+
     validation_type = models.CharField(
         max_length=40,
         choices=ValidationType.choices,
@@ -282,6 +313,11 @@ class Validator(TimeStampedModel):
         help_text=_("Relative ordering for display purposes."),
     )
 
+    is_system = models.BooleanField(
+        default=True,
+        help_text=_("True when the validator ships with the platform."),
+    )
+
     @property
     def display_icon(self) -> str:
         bi_icon_class = {
@@ -293,12 +329,183 @@ class Validator(TimeStampedModel):
         return bi_icon_class
 
     def __str__(self):
-        return f"{self.validation_type} {self.slug} v{self.version}"
+        prefix = f"{self.validation_type}"
+        if self.org_id:
+            prefix = f"{self.org.name} · {self.validation_type}"
+        return f"{prefix} {self.slug} v{self.version}".strip()
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(f"{self.name}")
+            base_slug = slugify(f"{self.name}")
+            if self.org_id:
+                base_slug = slugify(f"{self.org_id}-{self.name}")
+            self.slug = base_slug
+        if self.org_id:
+            self.is_system = False
         super().save(*args, **kwargs)
+
+    @property
+    def is_custom(self) -> bool:
+        return bool(self.org_id and not self.is_system)
+
+    def catalog_entries_by_type(self) -> dict[str, list["ValidatorCatalogEntry"]]:
+        grouped: dict[str, list["ValidatorCatalogEntry"]] = {
+            CatalogEntryType.SIGNAL_INPUT: [],
+            CatalogEntryType.SIGNAL_OUTPUT: [],
+            CatalogEntryType.DERIVATION: [],
+        }
+        for entry in self.catalog_entries.all().order_by("order", "slug"):
+            grouped.setdefault(entry.entry_type, []).append(entry)
+        return grouped
+
+    def get_catalog_entries(
+        self,
+        *,
+        entry_type: CatalogEntryType | None = None,
+    ) -> models.QuerySet["ValidatorCatalogEntry"]:
+        qs = self.catalog_entries.all()
+        if entry_type:
+            qs = qs.filter(entry_type=entry_type)
+        return qs
+
+
+class ValidatorCatalogEntry(TimeStampedModel):
+    """
+    Catalog metadata describing signals, derivations, and other reusable items
+    available to rulesets referencing a validator.
+    """
+
+    validator = models.ForeignKey(
+        Validator,
+        on_delete=models.CASCADE,
+        related_name="catalog_entries",
+    )
+    entry_type = models.CharField(
+        max_length=32,
+        choices=CatalogEntryType.choices,
+    )
+    slug = models.SlugField(
+        max_length=255,
+        help_text=_("Unique identifier for this catalog entry within the validator."),
+    )
+    label = models.CharField(
+        max_length=255,
+        help_text=_("Human-friendly label shown in editors."),
+    )
+    data_type = models.CharField(
+        max_length=32,
+        choices=CatalogValueType.choices,
+        default=CatalogValueType.NUMBER,
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+    )
+    binding_config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Provider-specific binding metadata."),
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Additional UI metadata (example units, tags, etc.)."),
+    )
+    is_required = models.BooleanField(
+        default=False,
+        help_text=_("Whether this entry must be present for every ruleset."),
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["validator", "entry_type", "slug"],
+                name="uq_validator_catalog_entry",
+            ),
+        ]
+        ordering = [
+            "order",
+            "slug",
+        ]
+
+    def __str__(self):
+        return f"{self.validator.slug}:{self.slug}"
+
+
+class CustomValidator(TimeStampedModel):
+    """
+    Author-defined validator built on top of a base validation type.
+    """
+
+    validator = models.OneToOneField(
+        Validator,
+        on_delete=models.CASCADE,
+        related_name="custom_validator",
+    )
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="custom_validator_configs",
+    )
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="custom_validators",
+    )
+    custom_type = models.CharField(
+        max_length=32,
+        choices=CustomValidatorType.choices,
+    )
+    base_validation_type = models.CharField(
+        max_length=40,
+        choices=ValidationType.choices,
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_type", "validator"],
+                name="uq_custom_validator_org_type_validator",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.validator.validation_type != self.base_validation_type:
+            raise ValidationError(
+                {
+                    "base_validation_type": _(
+                        "Base validation type must match the linked Validator validation_type.",
+                    ),
+                },
+            )
+        if self.validator.org_id and self.validator.org_id != self.org_id:
+            raise ValidationError(
+                {
+                    "validator": _(
+                        "Validator already belongs to a different organization.",
+                    ),
+                },
+            )
+
+    def save(self, *args, **kwargs):
+        # Ensure the linked validator points at this org and is marked custom.
+        self.validator.org = self.org
+        self.validator.is_system = False
+        if not self.validator.slug:
+            self.validator.slug = slugify(f"{self.org_id}-{self.validator.name}")
+        self.validator.save()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.org} · {self.custom_type}"
 
 
 class ValidationRun(TimeStampedModel):

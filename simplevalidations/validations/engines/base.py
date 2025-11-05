@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
 
+from simplevalidations.validations.cel import DEFAULT_HELPERS
+from simplevalidations.validations.cel import CelHelper
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
 
@@ -77,10 +79,18 @@ class BaseValidatorEngine(ABC):
     """
 
     validation_type: ValidationType
+    cel_helpers = DEFAULT_HELPERS
 
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
         # Arbitrary configuration (e.g., schema, thresholds, flags)
         self.config: dict[str, Any] = config or {}
+
+    def get_cel_helpers(self) -> dict[str, "CelHelper"]:
+        """
+        Return the helper allowlist for this engine. Subclasses can override to
+        append or remove helpers based on validator metadata.
+        """
+        return dict(self.cel_helpers)
 
     @abstractmethod
     def validate(

@@ -5,6 +5,10 @@ from factory.django import DjangoModelFactory
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogValueType
+from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
@@ -13,11 +17,13 @@ from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Artifact
+from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -66,7 +72,37 @@ class ValidatorFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Validator {n}")
     validation_type = ValidationType.JSON_SCHEMA
     version = "1"
-    default_ruleset = factory.SubFactory(RulesetFactory)
+    default_ruleset = None
+    org = None
+    is_system = True
+
+
+class ValidatorCatalogEntryFactory(DjangoModelFactory):
+    class Meta:
+        model = ValidatorCatalogEntry
+
+    validator = factory.SubFactory(ValidatorFactory)
+    entry_type = CatalogEntryType.SIGNAL_INPUT
+    slug = factory.Sequence(lambda n: f"signal-input-{n}")
+    label = factory.LazyAttribute(lambda o: o.slug.replace("-", " ").title())
+    data_type = CatalogValueType.NUMBER
+    order = 0
+
+
+class CustomValidatorFactory(DjangoModelFactory):
+    class Meta:
+        model = CustomValidator
+
+    validator = factory.SubFactory(
+        ValidatorFactory,
+        validation_type=ValidationType.CUSTOM_RULES,
+        is_system=False,
+    )
+    org = factory.SubFactory(OrganizationFactory)
+    custom_type = CustomValidatorType.MODELICA
+    base_validation_type = ValidationType.CUSTOM_RULES
+    notes = "Custom validator for tests."
+    created_by = factory.SubFactory(UserFactory)
 
 
 class ValidationRunFactory(DjangoModelFactory):

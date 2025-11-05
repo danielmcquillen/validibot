@@ -2045,8 +2045,11 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return get_object_or_404(WorkflowStep, workflow=workflow, pk=step_id)
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
+        qs = Validator.objects.filter(
+            models.Q(org__isnull=True) | models.Q(org=workflow.org)
+        )
         return list(
-            Validator.objects.all().order_by("validation_type", "name", "pk"),
+            qs.order_by("validation_type", "name", "pk"),
         )
 
     def _available_action_definitions(self) -> list[ActionDefinition]:

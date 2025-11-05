@@ -34,6 +34,11 @@ class ValidationType(TextChoices):
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
+class CustomValidatorType(TextChoices):
+    MODELICA = "MODELICA", _("Modelica")
+    PYWINCALC = "PYWINCALC", _("PyWinCalc")
+
+
 class Severity(TextChoices):
     INFO = "INFO", _("Info")
     WARNING = "WARNING", _("Warning")
@@ -52,3 +57,17 @@ class JSONSchemaVersion(TextChoices):
     DRAFT_07 = "draft-07", _("Draft 7")
     DRAFT_06 = "draft-06", _("Draft 6")
     DRAFT_04 = "draft-04", _("Draft 4")
+
+
+class CatalogEntryType(TextChoices):
+    SIGNAL_INPUT = "signal_input", _("Signal (Input)")
+    SIGNAL_OUTPUT = "signal_output", _("Signal (Output)")
+    DERIVATION = "derivation", _("Derivation")
+
+
+class CatalogValueType(TextChoices):
+    NUMBER = "number", _("Number")
+    TIMESERIES = "timeseries", _("Timeseries")
+    STRING = "string", _("String")
+    BOOLEAN = "boolean", _("Boolean")
+    OBJECT = "object", _("Object")

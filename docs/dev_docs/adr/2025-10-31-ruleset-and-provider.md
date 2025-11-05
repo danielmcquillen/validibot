@@ -319,6 +319,38 @@ Since Assertions do not have many fields, the create/edit UI can appear directly
 - What minimal **templating filters** for messages do we ship at v1 (`round`, `fmt`, `unit`)?
 - Do we allow **wildcard keys** in E+ sources (`key: "*"`) and aggregate rules per key vs all-keys?
 
+## Implementation Plan (2025-11-05)
+
+We are landing the ADR in four deliberate phases so downstream changes stay reviewable:
+
+1. **Models & Services (in progress)**  
+   - Add `validator_catalog_entries` and `custom_validators` tables/models.  
+   - Update preparation/runtime services so catalogs live on the validator (rulesets reference slugs only).  
+   - Introduce CEL helper allowlists at the engine level.
+
+2. **Provider & Engine Updates**  
+   - Flesh out the provider registry and hook `BaseValidatorEngine` into it.  
+   - Implement the minimal EnergyPlus provider behavior from the ADR (single-pass instrumentation, explicit catalog).  
+   - Ensure schema-style validators continue to work with the shared plumbing.
+
+3. **Validation Library UI**  
+   - Add a “Validation Library” nav item with read-only system validator pages and CRUD for custom validators (MODELICA, PYWINCALC to start).  
+   - Wire permissions (org admins/authors) and surface the validator catalog editor.
+
+4. **Ruleset Assertion UX & Docs**  
+   - Update the ruleset/step editors to reference validator catalog slugs, including new assertion tooling.  
+   - Refresh developer docs + authoring guides with the validator/provider/ruleset flow.  
+   - Add integration tests covering custom validators, catalog edits, and validation runs.
+
+Notes for future phases will be appended here as we encounter edge cases.
+
+### Phase 1 Notes (2025-11-05)
+
+- Added `validator_catalog_entries` + `custom_validators` models/migrations.
+- Validators now carry `org`/`is_system` flags and expose catalog helper APIs.
+- Base validator engines publish a default CEL helper allowlist; subclasses will extend it in later phases.
+- Rulesets continue to resolve their validator context via attached workflow steps (no direct FK stored) to keep the data model normalized.
+
 ## Appendix A — CEL helper definitions (behavior)
 
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.

@@ -73,6 +73,10 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         submission: Submission,
         ruleset: Ruleset | None,
     ) -> ValidationResult:
+        provider = self.resolve_provider(validator)
+        if provider:
+            provider.ensure_catalog_entries()
+
         config = self.config or {}
         run_simulation = bool(config.get("run_simulation", True))
 

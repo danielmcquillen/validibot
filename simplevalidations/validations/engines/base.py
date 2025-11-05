@@ -21,6 +21,7 @@ from simplevalidations.validations.cel import DEFAULT_HELPERS
 from simplevalidations.validations.cel import CelHelper
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.providers import get_provider_for_validator
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
@@ -91,6 +92,12 @@ class BaseValidatorEngine(ABC):
         append or remove helpers based on validator metadata.
         """
         return dict(self.cel_helpers)
+
+    def resolve_provider(self, validator: "Validator"):
+        """
+        Resolve the provider configured for the given validator, if any.
+        """
+        return get_provider_for_validator(validator)
 
     @abstractmethod
     def validate(

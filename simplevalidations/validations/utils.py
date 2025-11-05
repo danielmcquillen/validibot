@@ -3,6 +3,7 @@ import logging
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.providers import get_provider_for_validator
 
 logger = logging.getLogger(__name__)
 
@@ -71,5 +72,9 @@ def create_default_validators():
         validator.is_system = True
         validator.org = None
         validator.save()
+
+        provider = get_provider_for_validator(validator)
+        if provider:
+            provider.ensure_catalog_entries()
 
     return created, skipped

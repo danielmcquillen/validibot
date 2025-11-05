@@ -351,6 +351,12 @@ Notes for future phases will be appended here as we encounter edge cases.
 - Base validator engines publish a default CEL helper allowlist; subclasses will extend it in later phases.
 - Rulesets continue to resolve their validator context via attached workflow steps (no direct FK stored) to keep the data model normalized.
 
+### Phase 2 Notes (2025-11-05)
+
+- Introduced the provider registry + base provider contract along with the EnergyPlus provider seeding default catalog entries.
+- Engine bootstrap now resolves providers so default catalogs stay synced (`create_default_validators` also syncs during bootstrap).
+- Providers can extend CEL helpers and instrumentation hooks in later phases without touching workflow code.
+
 ## Appendix A — CEL helper definitions (behavior)
 
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.

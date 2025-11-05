@@ -1,0 +1,123 @@
+{% extends "app_base.html" %}
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Validation Library" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="col-12 col-lg-8">
+        <h1 class="app-page-title">
+          <i class="bi bi-journal-bookmark me-2"></i>
+          {% trans "Validation Library" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Browse built-in validators or configure custom ones for your organization." %}
+        </p>
+      </div>
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0">
+        {% if can_manage_validators %}
+          <a href="{% org_url 'validations:custom_validator_create' %}"
+             class="btn btn-primary">
+            <i class="bi bi-plus me-2"></i>
+            {% trans "New Custom Validator" %}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-4 mt-2">
+      <div class="col-12">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <h2 class="card-title h5 mb-0">
+              <i class="bi bi-grid-1x2 me-2"></i>
+              {% trans "System Validators" %}
+            </h2>
+          </div>
+          <div class="card-body">
+            {% if system_validators %}
+              <div class="row g-3">
+                {% for validator in system_validators %}
+                  <div class="col-12 col-md-6 col-xl-4">
+                    <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+                       class="card h-100 text-decoration-none shadow-sm">
+                      <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                          <span class="badge text-bg-secondary">{{ validator.validation_type }}</span>
+                          <i class="{{ validator.display_icon }} fs-4 text-muted"></i>
+                        </div>
+                        <h3 class="h6 text-dark mb-1">{{ validator.name }}</h3>
+                        <p class="text-muted mb-0 small">{{ validator.description|default:_("No description provided.") }}</p>
+                      </div>
+                    </a>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">{% trans "No system validators are registered." %}</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card shadow-sm h-100">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <h2 class="card-title h5 mb-0">
+              <i class="bi bi-person-gear me-2"></i>
+              {% trans "Your Custom Validators" %}
+            </h2>
+            {% if can_manage_validators %}
+              <span class="badge text-bg-primary">
+                {{ custom_validators|length }}
+              </span>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% if custom_validators %}
+              <div class="row g-3">
+                {% for validator in custom_validators %}
+                  <div class="col-12 col-md-6 col-xl-4">
+                    <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+                       class="card h-100 text-decoration-none border-primary-subtle shadow-sm">
+                      <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                          <span class="badge text-bg-info text-uppercase">
+                            {{ validator.custom_validator.custom_type }}
+                          </span>
+                          <i class="bi bi-person-workspace fs-4 text-muted"></i>
+                        </div>
+                        <h3 class="h6 text-dark mb-1">{{ validator.name }}</h3>
+                        <p class="text-muted mb-0 small">{{ validator.description|default:_("No description provided.") }}</p>
+                      </div>
+                    </a>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-center py-4">
+                <p class="text-muted mb-2">
+                  {% trans "You have not created any custom validators yet." %}
+                </p>
+                {% if can_manage_validators %}
+                  <a href="{% org_url 'validations:custom_validator_create' %}"
+                     class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-plus me-1"></i>
+                    {% trans "Create the first custom validator" %}
+                  </a>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

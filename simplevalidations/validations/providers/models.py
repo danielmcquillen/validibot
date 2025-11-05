@@ -8,6 +8,7 @@ shape.
 
 from __future__ import annotations
 
+from django.utils.translation import gettext_lazy as _
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
@@ -26,33 +27,53 @@ class CatalogEntryDefinition(BaseModel):
 
     entry_type: CatalogEntryType = Field(
         ...,
-        description="Whether this entry is an input signal, output signal, or derivation.",
+        description=_(
+            "Whether this entry is an input signal, output signal, or derivation.",
+        ),
     )
-    slug: str = Field(..., description="Unique identifier within the validator.")
-    label: str = Field(..., description="Human readable label.")
+
+    slug: str = Field(
+        ...,
+        description=_(
+            "Unique identifier within the validator.",
+        ),
+    )
+
+    label: str = Field(
+        ...,
+        description=_("Human readable label."),
+    )
+
     data_type: CatalogValueType = Field(
         default=CatalogValueType.NUMBER,
-        description="Runtime type for the value (number, timeseries, etc.).",
+        description=_("Runtime type for the value (number, timeseries, etc.)."),
     )
+
     description: str = Field(
         default="",
-        description="Detailed description shown in editors.",
+        description=_("Detailed description shown in editors."),
     )
+
     binding_config: dict = Field(
         default_factory=dict,
-        description="Provider-specific binding metadata (source identifiers, paths, etc.).",
+        description=_(
+            "Provider-specific binding metadata (source identifiers, paths, etc.).",
+        ),
     )
+
     metadata: dict = Field(
         default_factory=dict,
-        description="Additional metadata for the UI (units, tags, etc.).",
+        description=_("Additional metadata for the UI (units, tags, etc.)."),
     )
+
     is_required: bool = Field(
         default=False,
-        description="Whether every ruleset must include this entry.",
+        description=_("Whether every ruleset must include this entry."),
     )
+
     order: int = Field(
         default=0,
-        description="Display ordering.",
+        description=_("Display ordering."),
     )
 
     model_config = ConfigDict(use_enum_values=True)

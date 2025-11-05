@@ -1,0 +1,102 @@
+{% extends "app_base.html" %}
+{% load i18n core_tags %}
+
+{% block title %}
+  {{ validator.name }} · {% trans "Validation Library" %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="col-12 col-lg-8">
+        <p class="text-muted mb-1">
+          <a href="{% org_url 'validations:validation_library' %}" class="text-muted text-decoration-none">
+            <i class="bi bi-arrow-left me-1"></i>
+            {% trans "Back to Validation Library" %}
+          </a>
+        </p>
+        <h1 class="app-page-title mb-0">
+          {{ validator.name }}
+        </h1>
+        <div class="d-flex gap-2 mt-2 flex-wrap">
+          <span class="badge text-bg-secondary">{{ validator.validation_type }}</span>
+          {% if validator.is_system %}
+            <span class="badge text-bg-dark">{% trans "System" %}</span>
+          {% else %}
+            <span class="badge text-bg-primary">{% trans "Custom" %}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if can_manage_validators and not validator.is_system %}
+        <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0 gap-2">
+          <a href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+             class="btn btn-outline-secondary">
+            <i class="bi bi-pencil me-1"></i>
+            {% trans "Edit" %}
+          </a>
+          <a href="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}"
+             class="btn btn-outline-danger">
+            <i class="bi bi-trash me-1"></i>
+            {% trans "Delete" %}
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="row g-4 mt-1">
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h2 class="h5">{% trans "Description" %}</h2>
+            <p class="text-muted">
+              {{ validator.description|default:_("No description provided.") }}
+            </p>
+            {% if validator.custom_validator %}
+              <dl class="row small">
+                <dt class="col-sm-4">{% trans "Custom type" %}</dt>
+                <dd class="col-sm-8">{{ validator.custom_validator.custom_type }}</dd>
+                <dt class="col-sm-4">{% trans "Notes" %}</dt>
+                <dd class="col-sm-8">
+                  {{ validator.custom_validator.notes|default:_("No notes yet.") }}
+                </dd>
+              </dl>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h2 class="h5">{% trans "Catalog Entries" %}</h2>
+            {% with entries=validator.catalog_entries.all %}
+            {% if entries %}
+              <ul class="list-group list-group-flush">
+                {% for entry in entries %}
+                  <li class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                      <span class="fw-semibold">{{ entry.label }}</span>
+                      <span class="badge text-bg-light text-uppercase">
+                        {{ entry.entry_type }}
+                      </span>
+                    </div>
+                    <p class="small mb-1 text-muted">{{ entry.description|default:_("No description.") }}</p>
+                    <div class="text-muted small">
+                      {% trans "Slug" %}: <code>{{ entry.slug }}</code>
+                    </div>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
+            {% endif %}
+            {% endwith %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

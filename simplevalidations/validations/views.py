@@ -3,14 +3,18 @@ from datetime import timedelta
 import django_filters
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import models
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.utils.http import urlencode
 from django.utils.translation import gettext_lazy as _
+from django.views import View
 from django.views.generic import DetailView
 from django.views.generic import ListView
-from django.views.generic.edit import DeleteView
+from django.views.generic import TemplateView
+from django.views.generic.edit import DeleteView, FormView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from rest_framework import permissions
@@ -18,8 +22,19 @@ from rest_framework import viewsets
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.forms import (
+    CustomValidatorCreateForm,
+    CustomValidatorUpdateForm,
+)
+from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import Validator
+from simplevalidations.validations.utils import (
+    create_custom_validator,
+    update_custom_validator,
+)
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.workflows.models import Workflow
 
@@ -198,6 +213,265 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             },
         )
         return breadcrumbs
+
+
+# Validation Library Views
+# --------------------------------------------------------------------------
+
+
+class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
+    """Shared helpers for Validation Library views."""
+
+    def get_active_org(self):
+        org = getattr(self.request, "active_org", None)
+        if org:
+            return org
+        if hasattr(self.request.user, "get_current_org"):
+            return self.request.user.get_current_org()
+        return None
+
+    def get_active_membership(self):
+        membership = getattr(self.request, "active_membership", None)
+        if membership:
+            return membership
+        if hasattr(self.request.user, "membership_for_current_org"):
+            return self.request.user.membership_for_current_org()
+        return None
+
+    def can_manage_validators(self) -> bool:
+        membership = self.get_active_membership()
+        if not membership:
+            return False
+        return bool(
+            membership.is_admin
+            or membership.has_role(RoleCode.AUTHOR)
+            or membership.has_role(RoleCode.OWNER)
+        )
+
+    def require_manage_permission(self):
+        if not self.can_manage_validators():
+            messages.error(
+                self.request,
+                _("You do not have permission to manage custom validators."),
+            )
+            return False
+        if not self.get_active_org():
+            messages.error(
+                self.request,
+                _("Select an organization before modifying validators."),
+            )
+            return False
+        return True
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Validation Library"),
+                "url": reverse_with_org(
+                    "validations:validation_library",
+                    request=self.request,
+                ),
+            },
+        )
+        return breadcrumbs
+
+
+class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
+    template_name = "validations/library/library.html"
+
+    def get_breadcrumbs(self):
+        return [
+            {
+                "name": _("Validation Library"),
+                "url": "",
+            },
+        ]
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        org = self.get_active_org()
+        context.update(
+            {
+                "can_manage_validators": self.can_manage_validators(),
+                "system_validators": Validator.objects.filter(is_system=True)
+                .order_by("validation_type", "name")
+                .select_related("custom_validator", "org"),
+                "custom_validators": Validator.objects.filter(org=org)
+                .order_by("name")
+                .select_related("custom_validator"),
+            }
+        )
+        return context
+
+
+class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
+    template_name = "validations/library/validator_detail.html"
+    context_object_name = "validator"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+
+    def get_queryset(self):
+        org = self.get_active_org()
+        qs = (
+            Validator.objects.select_related("custom_validator", "org")
+            .prefetch_related("catalog_entries")
+            .order_by("validation_type", "name")
+        )
+        if org:
+            qs = qs.filter(models.Q(is_system=True) | models.Q(org=org))
+        else:
+            qs = qs.filter(is_system=True)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["can_manage_validators"] = self.can_manage_validators()
+        return context
+
+
+class CustomValidatorManageMixin(ValidatorLibraryMixin):
+    """Require author/admin access for CRUD operations."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_manage_permission():
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_success_url(self, validator):
+        return reverse_with_org(
+            "validations:validator_detail",
+            request=self.request,
+            kwargs={"slug": validator.slug},
+        )
+
+
+class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
+    template_name = "validations/library/custom_validator_form.html"
+    form_class = CustomValidatorCreateForm
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = _("Create Custom Validator")
+        context["can_manage_validators"] = True
+        return context
+
+    def form_valid(self, form):
+        org = self.get_active_org()
+        custom_validator = create_custom_validator(
+            org=org,
+            user=self.request.user,
+            name=form.cleaned_data["name"],
+            description=form.cleaned_data.get("description") or "",
+            custom_type=form.cleaned_data["custom_type"],
+            notes=form.cleaned_data.get("notes") or "",
+        )
+        messages.success(
+            self.request,
+            _("Created custom validator “%(name)s”.")
+            % {"name": custom_validator.validator.name},
+        )
+        return redirect(self.get_success_url(custom_validator.validator))
+
+
+class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
+    template_name = "validations/library/custom_validator_form.html"
+    form_class = CustomValidatorUpdateForm
+
+    def dispatch(self, request, *args, **kwargs):
+        self.custom_validator = self.get_object()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_object(self):
+        org = self.get_active_org()
+        validator = get_object_or_404(
+            Validator,
+            slug=self.kwargs["slug"],
+            org=org,
+            is_system=False,
+        )
+        return validator.custom_validator
+
+    def get_initial(self):
+        validator = self.custom_validator.validator
+        return {
+            "name": validator.name,
+            "description": validator.description,
+            "notes": self.custom_validator.notes,
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = self.custom_validator.validator
+        context.update(
+            {
+                "form_title": _("Edit %(name)s") % {"name": validator.name},
+                "validator": validator,
+                "can_manage_validators": True,
+            }
+        )
+        return context
+
+    def form_valid(self, form):
+        custom = update_custom_validator(
+            self.custom_validator,
+            name=form.cleaned_data["name"],
+            description=form.cleaned_data.get("description") or "",
+            notes=form.cleaned_data.get("notes") or "",
+        )
+        messages.success(
+            self.request,
+            _("Updated custom validator “%(name)s”.")
+            % {"name": custom.validator.name},
+        )
+        return redirect(self.get_success_url(custom.validator))
+
+
+class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
+    template_name = "validations/library/custom_validator_confirm_delete.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.custom_validator = self.get_object()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_object(self):
+        org = self.get_active_org()
+        validator = get_object_or_404(
+            Validator,
+            slug=self.kwargs["slug"],
+            org=org,
+            is_system=False,
+        )
+        return validator.custom_validator
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "validator": self.custom_validator.validator,
+                "can_manage_validators": True,
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        validator = self.custom_validator.validator
+        validator.delete()
+        messages.success(
+            request,
+            _("Deleted custom validator “%(name)s”.") % {"name": validator.name},
+        )
+        return redirect(
+            reverse_with_org(
+                "validations:validation_library",
+                request=request,
+            ),
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

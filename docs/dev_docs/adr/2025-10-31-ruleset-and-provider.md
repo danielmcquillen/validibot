@@ -357,6 +357,12 @@ Notes for future phases will be appended here as we encounter edge cases.
 - Engine bootstrap now resolves providers so default catalogs stay synced (`create_default_validators` also syncs during bootstrap).
 - Providers can extend CEL helpers and instrumentation hooks in later phases without touching workflow code.
 
+### Phase 3 Notes (2025-11-05)
+
+- Added the Validation Library UI (left-nav item) so authors can browse system validators and org-specific custom validators.
+- Implemented custom-validator CRUD with permission checks (owners/admins/authors) and templates for list/detail/form/delete flows.
+- Context processors now expose `can_manage_validators`, and template navigation reflects the new entry.
+
 ## Appendix A — CEL helper definitions (behavior)
 
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.

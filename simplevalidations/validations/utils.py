@@ -2,6 +2,9 @@ import logging
 
 from django.utils.translation import gettext_lazy as _
 
+from django.utils.text import slugify
+
+from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.providers import get_provider_for_validator
 
@@ -78,3 +81,76 @@ def create_default_validators():
             provider.ensure_catalog_entries()
 
     return created, skipped
+
+
+def create_custom_validator(
+    *,
+    org,
+    user,
+    name: str,
+    description: str,
+    custom_type: str,
+    notes: str = "",
+):
+    """Create a custom validator and matching CustomValidator wrapper."""
+    from simplevalidations.validations.models import CustomValidator, Validator
+
+    base_validation_type = _custom_type_to_validation_type(custom_type)
+    slug = _unique_validator_slug(org, name)
+    validator = Validator.objects.create(
+        name=name,
+        description=description,
+        validation_type=base_validation_type,
+        org=org,
+        is_system=False,
+        slug=slug,
+    )
+    custom_validator = CustomValidator.objects.create(
+        validator=validator,
+        org=org,
+        created_by=user,
+        custom_type=custom_type,
+        base_validation_type=base_validation_type,
+        notes=notes,
+    )
+    return custom_validator
+
+
+def update_custom_validator(
+    custom_validator,
+    *,
+    name: str,
+    description: str,
+    notes: str,
+):
+    """Update validator + custom metadata."""
+    validator = custom_validator.validator
+    validator.name = name
+    validator.description = description
+    validator.save(update_fields=["name", "description", "modified"])
+    custom_validator.notes = notes
+    custom_validator.save(update_fields=["notes", "modified"])
+    return custom_validator
+
+
+def _custom_type_to_validation_type(custom_type: str) -> ValidationType:
+    """Map CustomValidatorType to the corresponding ValidationType."""
+    mapping = {
+        CustomValidatorType.MODELICA: ValidationType.CUSTOM_RULES,
+        CustomValidatorType.PYWINCALC: ValidationType.CUSTOM_RULES,
+    }
+    return mapping.get(custom_type, ValidationType.CUSTOM_RULES)
+
+
+def _unique_validator_slug(org, name: str) -> str:
+    """Generate a slug unique across validators."""
+    from simplevalidations.validations.models import Validator
+
+    base = slugify(f"{org.pk}-{name}")[:50] or f"validator-{org.pk}"
+    slug = base
+    counter = 2
+    while Validator.objects.filter(slug=slug).exists():
+        slug_candidate = f"{base}-{counter}"
+        slug = slug_candidate[:50]
+        counter += 1
+    return slug

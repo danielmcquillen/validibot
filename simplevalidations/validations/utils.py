@@ -32,7 +32,7 @@ def create_default_validators():
             "order": 2,
         },
         {
-            "name": _("EnergyPlus IDF Validation"),
+            "name": _("EnergyPlus Validation"),
             "slug": "energyplus-idf-validation",
             "description": _(
                 "Validate an EnergyPlus IDF file for correctness and output values."

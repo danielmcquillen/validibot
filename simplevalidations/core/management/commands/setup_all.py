@@ -5,21 +5,21 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 
+from simplevalidations.actions.utils import create_default_actions
 from simplevalidations.projects.models import Project
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import Role
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.models import Validator
+from simplevalidations.validations.utils import create_default_validators
 from simplevalidations.workflows.models import Workflow
 
 logger = logging.getLogger(__name__)
 
 
 def _manager_for(model):
-    return getattr(model, "all_objects", model._default_manager)
+    return getattr(model, "all_objects", model._default_manager)  # noqa: SLF001
 
 
 class Command(BaseCommand):
@@ -34,19 +34,32 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write("Setting up SimpleValidations.")
+
         self.stdout.write("Ensuring roles...")
         self._ensure_roles()
+
         self.stdout.write("Ensuring personal workspaces...")
         self._ensure_personal_workspaces()
+
         self.stdout.write("Ensuring default projects for personal orgs...")
         self._ensure_default_projects_for_personal_orgs()
-        self.stdout.write("Ensuring AI validator...")
-        self._ensure_ai_validator()
+
+        self.stdout.write("Ensuring default validators...")
+        self._ensure_default_validators()
+
         self.stdout.write("Assigning default projects to workflows...")
         self._assign_default_projects_to_workflows()
+
         self.stdout.write("Setting up local superuser...")
         self._setup_local_superuser()
+
+        self.stdout.write("Setting up default actions...")
+        self._setup_default_actions()
+
         self.stdout.write("DONE setting up SimpleValidations")
+
+    def _setup_default_actions(self):
+        create_default_actions()
 
     # ---------------------------------------------------------------------
     # Superuser helpers
@@ -100,7 +113,12 @@ class Command(BaseCommand):
         return f"{name}'s Workspace"
 
     def _unique_slug(
-        self, model, base: str, *, prefix: str = "", filter_kwargs=None
+        self,
+        model,
+        base: str,
+        *,
+        prefix: str = "",
+        filter_kwargs=None,
     ) -> str:
         base_slug = slugify(base) or uuid4().hex[:8]
         if prefix:
@@ -114,8 +132,8 @@ class Command(BaseCommand):
             counter += 1
         return slug
 
-    def _ensure_default_project(self, org, Project):
-        manager = _manager_for(Project)
+    def _ensure_default_project(self, org, project):
+        manager = _manager_for(project)
         project = manager.filter(org=org, is_default=True).order_by("id").first()
         if project:
             if not project.is_active:
@@ -149,7 +167,8 @@ class Command(BaseCommand):
         missing = [code for code, role in roles_needed.items() if role is None]
         if missing:
             logger.warning(
-                "Cannot assign roles %s – they do not exist.", ", ".join(missing)
+                "Cannot assign roles %s – they do not exist.",
+                ", ".join(missing),
             )
 
         for user in User.objects.all():
@@ -204,15 +223,12 @@ class Command(BaseCommand):
     # ---------------------------------------------------------------------
     # Feature defaults
     # ---------------------------------------------------------------------
-    def _ensure_ai_validator(self):
-        Validator.objects.update_or_create(
-            validation_type=ValidationType.AI_ASSIST,
-            slug="ai-assist",
-            defaults={
-                "name": "AI Assist",
-                "description": "AI-assisted policy and critique validator.",
-            },
-        )
+    def _ensure_default_validators(self):
+        created, skipped = create_default_validators()
+        if created:
+            logger.info("Created %d default validators.", created)
+        if skipped:
+            logger.info("Skipped %d existing default validators.", skipped)
 
     def _assign_default_projects_to_workflows(self):
         for workflow in Workflow.objects.filter(project__isnull=True).select_related(

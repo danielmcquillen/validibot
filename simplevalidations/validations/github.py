@@ -69,7 +69,7 @@ if getattr(settings, "GITHUB_APP_ENABLED", False):
                     "status": "completed",
                     "conclusion": conclusion,
                     "output": {
-                        "title": "EnergyPlus IDF validation",
+                        "title": "EnergyPlus validation",
                         "summary": summary,
                     },
                 },

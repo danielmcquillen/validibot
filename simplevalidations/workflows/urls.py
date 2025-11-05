@@ -88,6 +88,31 @@ urlpatterns = [
         name="workflow_step_move",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/assertions/",
+        views.WorkflowStepAssertionsView.as_view(),
+        name="workflow_step_assertions",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/assertions/new/",
+        views.WorkflowStepAssertionCreateView.as_view(),
+        name="workflow_step_assertion_create",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/assertions/<int:assertion_id>/edit/",
+        views.WorkflowStepAssertionUpdateView.as_view(),
+        name="workflow_step_assertion_update",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/assertions/<int:assertion_id>/delete/",
+        views.WorkflowStepAssertionDeleteView.as_view(),
+        name="workflow_step_assertion_delete",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/assertions/<int:assertion_id>/move/",
+        views.WorkflowStepAssertionMoveView.as_view(),
+        name="workflow_step_assertion_move",
+    ),
+    path(
         "<int:pk>/validations/",
         views.WorkflowValidationListView.as_view(),
         name="workflow_validation_list",

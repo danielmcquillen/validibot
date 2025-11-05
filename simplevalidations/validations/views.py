@@ -27,6 +27,7 @@ from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
     CustomValidatorUpdateForm,
+    RulesetAssertionForm,
 )
 from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import ValidationRun

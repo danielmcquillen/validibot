@@ -71,3 +71,8 @@ class CatalogValueType(TextChoices):
     STRING = "string", _("String")
     BOOLEAN = "boolean", _("Boolean")
     OBJECT = "object", _("Object")
+
+
+class AssertionType(TextChoices):
+    THRESHOLD_MAX = "threshold_max", _("Must Be ≤ Value")
+    THRESHOLD_MIN = "threshold_min", _("Must Be ≥ Value")

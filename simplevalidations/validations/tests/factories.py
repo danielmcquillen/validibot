@@ -6,6 +6,7 @@ from factory.django import DjangoModelFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import CustomValidatorType
@@ -19,6 +20,7 @@ from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Artifact
 from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import RulesetAssertion
 from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
@@ -154,3 +156,16 @@ class ArtifactFactory(DjangoModelFactory):
     content_type = "text/plain"
     size_bytes = 0
     # file is optional; tests can attach a ContentFile if needed
+
+
+class RulesetAssertionFactory(DjangoModelFactory):
+    class Meta:
+        model = RulesetAssertion
+
+    ruleset = factory.SubFactory(RulesetFactory)
+    order = factory.Sequence(lambda n: n * 10)
+    assertion_type = AssertionType.THRESHOLD_MAX
+    target_slug = "facility_electric_demand_w"
+    severity = Severity.ERROR
+    definition = factory.Dict({"value": 100})
+    message_template = "Peak too high."

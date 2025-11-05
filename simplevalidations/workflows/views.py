@@ -11,7 +11,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models
 from django.db import transaction
 from django.http import Http404
@@ -52,12 +52,15 @@ from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import RulesetAssertion
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
@@ -82,6 +85,10 @@ from simplevalidations.workflows.serializers import WorkflowSerializer
 logger = logging.getLogger(__name__)
 
 MAX_STEP_COUNT = 5
+ADVANCED_VALIDATION_TYPES = {
+    ValidationType.ENERGYPLUS,
+    ValidationType.CUSTOM_RULES,
+}
 
 
 # API Views
@@ -523,6 +530,12 @@ def _hx_trigger_response(
     return response
 
 
+def _hx_redirect_response(url: str) -> HttpResponse:
+    response = HttpResponse(status=204)
+    response["HX-Redirect"] = url
+    return response
+
+
 def _ensure_ruleset(
     *,
     workflow: Workflow,
@@ -542,6 +555,28 @@ def _ensure_ruleset(
     ruleset.ruleset_type = ruleset_type
     ruleset.name = ruleset.name or f"ruleset-{uuid4().hex[:8]}"
     ruleset.version = ruleset.version or "1"
+    return ruleset
+
+
+def _ensure_advanced_ruleset(
+    workflow: Workflow,
+    step: WorkflowStep | None,
+    validator: Validator,
+) -> Ruleset:
+    """Guarantee a ruleset exists for validators requiring assertions."""
+    ruleset = getattr(step, "ruleset", None)
+    if ruleset is None:
+        ruleset = Ruleset(
+            org=workflow.org,
+            user=workflow.user,
+            name=f"{validator.slug}-ruleset",
+            ruleset_type=validator.validation_type,
+            version="1",
+        )
+        ruleset.save()
+        if step:
+            step.ruleset = ruleset
+            step.save(update_fields=["ruleset", "modified"])
     return ruleset
 
 
@@ -763,6 +798,8 @@ def save_workflow_step(
 
     if ruleset is not None:
         step.ruleset = ruleset
+    elif vtype in ADVANCED_VALIDATION_TYPES:
+        step.ruleset = _ensure_advanced_ruleset(workflow, step, validator)
     elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
         step.ruleset = None
 
@@ -2345,6 +2382,20 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
     def get_success_url(self):
         workflow = self.get_workflow()
+        if (
+            hasattr(self, "saved_step")
+            and self.saved_step
+            and self.saved_step.validator
+            and self.saved_step.validator.validation_type in ADVANCED_VALIDATION_TYPES
+        ):
+            return reverse_with_org(
+                "workflows:workflow_step_assertions",
+                request=self.request,
+                kwargs={
+                    "pk": workflow.pk,
+                    "step_id": self.saved_step.pk,
+                },
+            )
         detail_url = reverse_with_org(
             "workflows:workflow_detail",
             request=self.request,
@@ -2405,6 +2456,12 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 "previous_step": prev_step,
                 "next_step": next_step,
                 "steps_count": workflow.steps.count(),
+                "show_assertion_link": bool(
+                    not self.is_action_step()
+                    and step
+                    and step.validator
+                    and step.validator.validation_type in ADVANCED_VALIDATION_TYPES
+                ),
             },
         )
         return context
@@ -2558,3 +2615,268 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
         )
         breadcrumbs.append({"name": _("Validations"), "url": ""})
         return breadcrumbs
+
+
+class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
+    """Shared helpers for assertion management views."""
+
+    template_name = "workflows/workflow_step_assertions.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        if not self._supports_assertions():
+            messages.error(
+                request,
+                _("Assertions are only available for advanced validators."),
+            )
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=request,
+                    kwargs={"pk": self.get_workflow().pk},
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def _supports_assertions(self) -> bool:
+        validator = getattr(self.step, "validator", None)
+        if not validator:
+            return False
+        return validator.validation_type in ADVANCED_VALIDATION_TYPES
+
+    def get_ruleset(self) -> Ruleset:
+        validator = self.step.validator
+        ruleset = getattr(self.step, "ruleset", None)
+        if ruleset is None and validator is not None:
+            ruleset = _ensure_advanced_ruleset(
+                self.get_workflow(),
+                self.step,
+                validator,
+            )
+        return ruleset
+
+    def get_catalog_choices(self):
+        validator = self.step.validator
+        choices = []
+        if validator:
+            for entry in validator.catalog_entries.order_by("order", "slug"):
+                label = f"{entry.label} ({entry.slug})"
+                choices.append((entry.slug, label))
+        return choices
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        context.update(
+            {
+                "workflow": workflow,
+                "step": self.step,
+                "validator": self.step.validator,
+                "ruleset": self.get_ruleset(),
+                "assertions": self.get_ruleset()
+                .assertions.all()
+                .order_by("order", "pk"),
+                "can_manage_assertions": self.user_can_manage_workflow(),
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        workflow = self.get_workflow()
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Assertions"), "url": ""})
+        return breadcrumbs
+
+
+class WorkflowStepAssertionsView(WorkflowStepAssertionsMixin, TemplateView):
+    """Display assertions for a workflow step."""
+
+
+class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
+    template_name = "workflows/partials/assertion_form.html"
+    form_class = RulesetAssertionForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["catalog_choices"] = self.get_catalog_choices()
+        return kwargs
+
+    def render_to_response(self, context, **response_kwargs):
+        if self.request.headers.get("HX-Request"):
+            return render(
+                self.request,
+                self.template_name,
+                context,
+                status=response_kwargs.get("status", 200),
+            )
+        return super().render_to_response(context, **response_kwargs)
+
+    def get_success_url(self):
+        return reverse_with_org(
+            "workflows:workflow_step_assertions",
+            request=self.request,
+            kwargs={
+                "pk": self.get_workflow().pk,
+                "step_id": self.step.pk,
+            },
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "modal_title": getattr(self, "modal_title", _("Assertion")),
+                "form_action": self.request.path,
+                "submit_label": getattr(self, "submit_label", _("Save")),
+            }
+        )
+        return context
+
+
+class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
+    modal_title = _("Add Assertion")
+    submit_label = _("Add Assertion")
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        ruleset = self.get_ruleset()
+        definition = form.build_definition()
+        max_order = (
+            ruleset.assertions.aggregate(max_order=models.Max("order"))["max_order"]
+            or 0
+        )
+        RulesetAssertion.objects.create(
+            ruleset=ruleset,
+            order=max_order + 10,
+            assertion_type=form.cleaned_data["assertion_type"],
+            target_slug=form.cleaned_data["target_slug"],
+            severity=form.cleaned_data["severity"],
+            when_expression=form.cleaned_data.get("when_expression") or "",
+            definition=definition,
+            message_template=form.cleaned_data.get("message_template") or "",
+        )
+        messages.success(self.request, _("Assertion added."))
+        return _hx_redirect_response(self.get_success_url())
+
+
+class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
+    modal_title = _("Edit Assertion")
+    submit_label = _("Save changes")
+
+    def dispatch(self, request, *args, **kwargs):
+        self.assertion = get_object_or_404(
+            RulesetAssertion,
+            pk=self.kwargs.get("assertion_id"),
+            ruleset=self.get_ruleset(),
+        )
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_initial(self):
+        return {
+            "assertion_type": self.assertion.assertion_type,
+            "target_slug": self.assertion.target_slug,
+            "threshold_value": self.assertion.definition.get("value"),
+            "severity": self.assertion.severity,
+            "when_expression": self.assertion.when_expression,
+            "message_template": self.assertion.message_template,
+        }
+
+    def form_valid(self, form):
+        definition = form.build_definition()
+        RulesetAssertion.objects.filter(pk=self.assertion.pk).update(
+            assertion_type=form.cleaned_data["assertion_type"],
+            target_slug=form.cleaned_data["target_slug"],
+            severity=form.cleaned_data["severity"],
+            when_expression=form.cleaned_data.get("when_expression") or "",
+            definition=definition,
+            message_template=form.cleaned_data.get("message_template") or "",
+        )
+        messages.success(self.request, _("Assertion updated."))
+        return _hx_redirect_response(self.get_success_url())
+
+
+class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
+    def post(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        ruleset = self.get_ruleset()
+        assertion = get_object_or_404(
+            RulesetAssertion,
+            pk=self.kwargs.get("assertion_id"),
+            ruleset=ruleset,
+        )
+        assertion.delete()
+        messages.success(request, _("Assertion removed."))
+        return HttpResponseRedirect(
+            reverse_with_org(
+                "workflows:workflow_step_assertions",
+                request=request,
+                kwargs={
+                    "pk": self.get_workflow().pk,
+                    "step_id": self.step.pk,
+                },
+            )
+        )
+
+
+class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
+    def post(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        ruleset = self.get_ruleset()
+        assertion = get_object_or_404(
+            RulesetAssertion,
+            pk=self.kwargs.get("assertion_id"),
+            ruleset=ruleset,
+        )
+        direction = request.POST.get("direction")
+        assertions = list(ruleset.assertions.order_by("order", "pk"))
+        try:
+            index = assertions.index(assertion)
+        except ValueError:
+            return _hx_trigger_response(status_code=400, message=_("Assertion not found."))
+        if direction == "up" and index > 0:
+            assertions[index - 1], assertions[index] = (
+                assertions[index],
+                assertions[index - 1],
+            )
+        elif direction == "down" and index < len(assertions) - 1:
+            assertions[index], assertions[index + 1] = (
+                assertions[index + 1],
+                assertions[index],
+            )
+        else:
+            return _hx_trigger_response(status_code=204)
+        with transaction.atomic():
+            for pos, item in enumerate(assertions, start=1):
+                RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)
+        return _hx_redirect_response(
+            reverse_with_org(
+                "workflows:workflow_step_assertions",
+                request=request,
+                kwargs={
+                    "pk": self.get_workflow().pk,
+                    "step_id": self.step.pk,
+                },
+            )
+        )

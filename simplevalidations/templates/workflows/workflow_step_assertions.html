@@ -1,0 +1,155 @@
+{% extends "app_base.html" %}
+{% load i18n core_tags %}
+
+{% block title %}
+  {% blocktrans with step=step.name %}Assertions · {{ step }} · SimpleValidations{% endblocktrans %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="col-12 col-lg-8">
+        <p class="text-muted mb-1">
+          <a class="text-decoration-none" href="{% org_url 'workflows:workflow_detail' workflow.pk %}#workflow-steps-col">
+            <i class="bi bi-arrow-left me-1"></i>
+            {% trans "Back to workflow" %}
+          </a>
+        </p>
+        <h1 class="app-page-title mb-1">
+          {% blocktrans with name=step.name %}Assertions · {{ name }}{% endblocktrans %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Define the checks this step will run. Changes apply immediately after saving." %}
+        </p>
+      </div>
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-3 mt-lg-0">
+        <a class="btn btn-outline-secondary"
+           href="{% org_url 'workflows:workflow_step_edit' workflow.pk step.pk %}">
+          <i class="bi bi-pencil-square me-1"></i>
+          {% trans "Edit step" %}
+        </a>
+        {% if can_manage_assertions %}
+          <button class="btn btn-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#workflowAssertionModal"
+                  hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}"
+                  hx-target="#workflow-assertion-modal-content"
+                  hx-trigger="click">
+            <i class="bi bi-plus me-1"></i>
+            {% trans "Add assertion" %}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+      <div class="col-12">
+        {% if assertions %}
+          {% for assertion in assertions %}
+            <div class="card shadow-sm mb-3">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                  <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                      <span class="badge text-bg-light text-uppercase">{{ assertion.get_assertion_type_display }}</span>
+                      <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
+                    </div>
+                    <h2 class="h6 mb-1">{{ assertion.target_slug }}</h2>
+                    <p class="text-muted small mb-1">
+                      {% trans "Threshold" %}: {{ assertion.definition.value }}
+                    </p>
+                    {% if assertion.message_template %}
+                      <p class="text-muted small mb-0">{{ assertion.message_template }}</p>
+                    {% endif %}
+                  </div>
+                  {% if can_manage_assertions %}
+                    <div class="btn-group" role="group">
+                      <form method="post"
+                            action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="direction" value="up" />
+                        <button class="btn btn-outline-secondary btn-sm" {% if forloop.first %}disabled{% endif %}>
+                          <i class="bi bi-arrow-up"></i>
+                        </button>
+                      </form>
+                      <form method="post"
+                            action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="direction" value="down" />
+                        <button class="btn btn-outline-secondary btn-sm" {% if forloop.last %}disabled{% endif %}>
+                          <i class="bi bi-arrow-down"></i>
+                        </button>
+                      </form>
+                      <button class="btn btn-outline-primary btn-sm"
+                              data-bs-toggle="modal"
+                              data-bs-target="#workflowAssertionModal"
+                              hx-get="{% org_url 'workflows:workflow_step_assertion_update' workflow.pk step.pk assertion.pk %}"
+                              hx-target="#workflow-assertion-modal-content"
+                              hx-trigger="click">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <form method="post"
+                            action="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
+                            onsubmit="return confirm('{% trans "Delete this assertion?" %}');">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-danger btn-sm">
+                          <i class="bi bi-trash"></i>
+                        </button>
+                      </form>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="card shadow-sm">
+            <div class="card-body text-center py-5">
+              <p class="text-muted mb-2">{% trans "No assertions have been added yet." %}</p>
+              {% if can_manage_assertions %}
+                <button class="btn btn-outline-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowAssertionModal"
+                        hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}"
+                        hx-target="#workflow-assertion-modal-content"
+                        hx-trigger="click">
+                  <i class="bi bi-plus me-1"></i>
+                  {% trans "Create the first assertion" %}
+                </button>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="workflowAssertionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" id="workflow-assertion-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.body.addEventListener('close-modal', (event) => {
+      const targetId = event.detail?.['close-modal'] || 'workflowAssertionModal';
+      const modalEl = document.getElementById(targetId);
+      if (!modalEl) {
+        return;
+      }
+      let modalInstance = bootstrap.Modal.getInstance(modalEl);
+      if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modalEl);
+      }
+      modalInstance.hide();
+    });
+  </script>
+{% endblock app_content %}

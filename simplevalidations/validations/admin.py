@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from simplevalidations.validations.models import CustomValidator
 from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import RulesetAssertion
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.models import ValidatorCatalogEntry
@@ -21,6 +22,21 @@ class RulesetAdmin(admin.ModelAdmin):
     list_filter = ("org", "ruleset_type", "created", "modified")
     search_fields = ("name", "org__name", "version")
     ordering = ("-created",)
+
+
+@admin.register(RulesetAssertion)
+class RulesetAssertionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "ruleset",
+        "assertion_type",
+        "target_slug",
+        "severity",
+        "order",
+        "created",
+    )
+    list_filter = ("assertion_type", "severity")
+    search_fields = ("ruleset__name", "target_slug")
 
 
 @admin.register(Validator)

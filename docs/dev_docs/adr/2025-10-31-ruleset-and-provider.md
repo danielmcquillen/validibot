@@ -370,6 +370,12 @@ Notes for future phases will be appended here as we encounter edge cases.
 - Prepare service should hydrate catalog metadata per ruleset and enforce slug existence at publish time.
 - Minimal assertion persistence model is required (start with a simple JSON payload tied to ruleset; can expand later).
 
+### Phase 4 Notes (2025-11-06)
+
+- Added the assertion data model (`RulesetAssertion`) plus CRUD UI for advanced workflow steps.
+- Workflow step editing now redirects to the Assertions panel for validators like EnergyPlus, and the UI mimics the workflow-step list with modal create/edit forms.
+- Validator catalogs drive the assertion forms, ensuring every rule references a known slug; backend tests cover the create/reorder flows.
+
 ## Appendix A — CEL helper definitions (behavior)
 
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.

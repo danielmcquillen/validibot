@@ -14,6 +14,7 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import CustomValidatorType
@@ -216,8 +217,6 @@ class Ruleset(TimeStampedModel):
         """
         Returns the validator linked via any workflow step that references this ruleset.
         Falls back to None when the ruleset has not been attached yet.
-        Do this lookup each time. Don't use a cache as we want to make sure 
-        we always get the latest linked validator.
         """
         from simplevalidations.workflows.models import WorkflowStep  # noqa: PLC0415
         step = (
@@ -227,6 +226,54 @@ class Ruleset(TimeStampedModel):
         )
         validator = getattr(step, "validator", None)
         return validator
+
+
+class RulesetAssertion(TimeStampedModel):
+    """
+    Normalized assertion definition tied to a ruleset.
+    """
+
+    ruleset = models.ForeignKey(
+        Ruleset,
+        on_delete=models.CASCADE,
+        related_name="assertions",
+    )
+    order = models.PositiveIntegerField(default=0)
+    assertion_type = models.CharField(
+        max_length=64,
+        choices=AssertionType.choices,
+        default=AssertionType.THRESHOLD_MAX,
+    )
+    target_slug = models.CharField(
+        max_length=255,
+        help_text=_("Catalog slug this assertion references."),
+    )
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.ERROR,
+    )
+    when_expression = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional CEL expression gating when the assertion evaluates."),
+    )
+    definition = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Assertion specific payload (threshold config, values, etc.)."),
+    )
+    message_template = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Message rendered when the assertion fails."),
+    )
+
+    class Meta:
+        ordering = ["order", "pk"]
+
+    def __str__(self):
+        return f"{self.ruleset_id}:{self.assertion_type}:{self.target_slug}"
 
 
 class Validator(TimeStampedModel):

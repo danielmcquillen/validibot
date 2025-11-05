@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable
-from collections.abc import Coroutine
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import ParamSpec
 from typing import TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Coroutine
 
 from asgiref.sync import async_to_sync
 

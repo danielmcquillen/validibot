@@ -54,3 +54,22 @@ you need to bootstrap a new Heroku app.
 
 The [Heroku deployment guide](heroku.md) contains the copy/paste commands and
 per-app defaults.
+
+## ASGI vs WSGI
+
+SimpleValidations can run either as an ASGI app (for long-lived connections and
+websockets) or as a traditional WSGI app. The key touch points are:
+
+- `config/asgi.py` and `config/wsgi.py` expose the respective entrypoints. The ASGI
+  wrapper routes HTTP to Django and websockets to `config.websocket`.
+- `config/settings/base.py` currently sets `WSGI_APPLICATION = "config.wsgi.application"`.
+  To run fully async, flip that to `ASGI_APPLICATION = "config.asgi.application"`
+  (and comment out the WSGI setting) so Django knows which callable to import.
+- `Procfile` controls what Heroku launches. The existing `web` dyno uses
+  `gunicorn config.wsgi:application -k uvicorn_worker.UvicornWorker`, which keeps the
+  ASGI worker ready while still bootstrapping the WSGI module. To run in pure WSGI
+  mode remove the `-k uvicorn_worker.UvicornWorker` flag. To go full ASGI switch the
+  command to `gunicorn config.asgi:application -k uvicorn_worker.UvicornWorker`.
+
+Whenever you toggle modes, update both the settings file and the Procfile entry in
+the same commit, then re-deploy so Heroku rebuilds the slug with the new interface.

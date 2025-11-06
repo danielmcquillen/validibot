@@ -33,3 +33,174 @@
     </div>
   </form>
 </div>
+
+<script>
+(function () {
+  const CONDITIONAL_FIELDS = [
+    "operator",
+    "comparison_value",
+    "comparison_value_secondary",
+    "list_values",
+    "regex_pattern",
+    "include_min",
+    "include_max",
+    "case_insensitive",
+    "unicode_fold",
+    "coerce_types",
+    "treat_missing_as_null",
+    "tolerance_value",
+    "tolerance_mode",
+    "datetime_value",
+    "collection_operator",
+    "collection_value",
+    "cel_expression",
+    "cel_allow_custom_signals",
+  ];
+
+  const GENERAL_BASIC_FIELDS = ["coerce_types", "treat_missing_as_null"];
+  const STRING_OPTION_FIELDS = ["case_insensitive", "unicode_fold"];
+
+  const OPERATOR_FIELDS = {
+    eq: ["comparison_value"],
+    ne: ["comparison_value"],
+    lt: ["comparison_value"],
+    le: ["comparison_value"],
+    gt: ["comparison_value"],
+    ge: ["comparison_value"],
+    len_eq: ["comparison_value"],
+    len_le: ["comparison_value"],
+    len_ge: ["comparison_value"],
+    type_is: ["comparison_value"],
+    between: ["comparison_value", "comparison_value_secondary", "include_min", "include_max"],
+    count_between: ["comparison_value", "comparison_value_secondary", "include_min", "include_max"],
+    in: ["list_values"],
+    not_in: ["list_values"],
+    subset: ["list_values"],
+    superset: ["list_values"],
+    unique: [],
+    contains: ["comparison_value"],
+    not_contains: ["comparison_value"],
+    starts_with: ["comparison_value"],
+    ends_with: ["comparison_value"],
+    matches: ["regex_pattern"],
+    is_null: [],
+    not_null: [],
+    is_empty: [],
+    not_empty: [],
+    approx_eq: ["comparison_value", "tolerance_value", "tolerance_mode"],
+    before: ["datetime_value"],
+    after: ["datetime_value"],
+    within: ["comparison_value"],
+    any: ["collection_operator", "collection_value"],
+    all: ["collection_operator", "collection_value"],
+    none: ["collection_operator", "collection_value"],
+  };
+
+  const STRING_OPERATORS = new Set([
+    "contains",
+    "not_contains",
+    "starts_with",
+    "ends_with",
+    "matches",
+  ]);
+
+  function initAssertionForm(container) {
+    if (!container || container.dataset.assertionFormEnhanced === "1") {
+      return;
+    }
+    container.dataset.assertionFormEnhanced = "1";
+
+    const typeField = container.querySelector("#id_assertion_type");
+    const operatorField = container.querySelector("#id_operator");
+    if (!typeField || !operatorField) {
+      return;
+    }
+
+    const wrappers = {};
+    CONDITIONAL_FIELDS.forEach((name) => {
+      const field = container.querySelector(`[name="${name}"]`);
+      if (!field) {
+        return;
+      }
+      const group =
+        field.closest(".form-group") ||
+        field.closest(".form-check") ||
+        field.parentElement;
+      wrappers[name] = group;
+    });
+
+    function setVisible(name, visible) {
+      const wrapper = wrappers[name];
+      if (!wrapper) {
+        return;
+      }
+      wrapper.style.display = visible ? "" : "none";
+    }
+
+    function hideAllConditional() {
+      CONDITIONAL_FIELDS.forEach((name) => setVisible(name, false));
+    }
+
+    function showFields(names) {
+      names.forEach((name) => setVisible(name, true));
+    }
+
+    function updateOperatorVisibility() {
+      hideAllConditional();
+      const typeValue = typeField.value;
+      if (typeValue === "cel_expr") {
+        setVisible("cel_expression", true);
+        setVisible("cel_allow_custom_signals", true);
+        operatorField.value = "";
+        return;
+      }
+
+      setVisible("operator", true);
+      const operatorValue = operatorField.value;
+      if (!operatorValue) {
+        return;
+      }
+
+      const fieldSet = new Set(GENERAL_BASIC_FIELDS);
+      (OPERATOR_FIELDS[operatorValue] || []).forEach((name) =>
+        fieldSet.add(name),
+      );
+      if (STRING_OPERATORS.has(operatorValue)) {
+        STRING_OPTION_FIELDS.forEach((name) => fieldSet.add(name));
+      }
+
+      fieldSet.forEach((name) => setVisible(name, true));
+    }
+
+    typeField.addEventListener("change", () => {
+      if (typeField.value === "cel_expr") {
+        operatorField.value = "";
+      }
+      updateOperatorVisibility();
+    });
+
+    operatorField.addEventListener("change", updateOperatorVisibility);
+    updateOperatorVisibility();
+  }
+
+  function setupAssertionForm(root) {
+    const form = root.querySelector("form");
+    if (form) {
+      initAssertionForm(root);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const modal = document.getElementById("workflow-assertion-modal-content");
+    if (modal) {
+      setupAssertionForm(modal);
+    }
+  });
+
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    if (event.detail && event.detail.target && event.detail.target.id === "workflow-assertion-modal-content") {
+      setupAssertionForm(event.detail.target);
+    }
+  });
+})();
+</script>

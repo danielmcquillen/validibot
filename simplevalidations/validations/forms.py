@@ -280,7 +280,9 @@ class RulesetAssertionForm(forms.Form):
                 "placeholder": _("Search or enter a custom path"),
             },
         )
-        self.fields["operator"].choices = self._basic_operator_choices()
+        operator_choices = [("", _("(Select one)"))]
+        operator_choices.extend(self._basic_operator_choices())
+        self.fields["operator"].choices = operator_choices
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(

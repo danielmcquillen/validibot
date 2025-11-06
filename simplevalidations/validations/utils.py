@@ -1,8 +1,7 @@
 import logging
 
-from django.utils.translation import gettext_lazy as _
-
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import ValidationType
@@ -93,7 +92,8 @@ def create_custom_validator(
     notes: str = "",
 ):
     """Create a custom validator and matching CustomValidator wrapper."""
-    from simplevalidations.validations.models import CustomValidator, Validator
+    from simplevalidations.validations.models import CustomValidator  # noqa: PLC0415
+    from simplevalidations.validations.models import Validator  # noqa: PLC0415
 
     base_validation_type = _custom_type_to_validation_type(custom_type)
     slug = _unique_validator_slug(org, name)
@@ -137,14 +137,14 @@ def _custom_type_to_validation_type(custom_type: str) -> ValidationType:
     """Map CustomValidatorType to the corresponding ValidationType."""
     mapping = {
         CustomValidatorType.MODELICA: ValidationType.CUSTOM_RULES,
-        CustomValidatorType.PYWINCALC: ValidationType.CUSTOM_RULES,
+        CustomValidatorType.KERML: ValidationType.CUSTOM_RULES,
     }
     return mapping.get(custom_type, ValidationType.CUSTOM_RULES)
 
 
 def _unique_validator_slug(org, name: str) -> str:
     """Generate a slug unique across validators."""
-    from simplevalidations.validations.models import Validator
+    from simplevalidations.validations.models import Validator  # noqa: PLC0415
 
     base = slugify(f"{org.pk}-{name}")[:50] or f"validator-{org.pk}"
     slug = base

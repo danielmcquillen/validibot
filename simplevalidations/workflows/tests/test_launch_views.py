@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+from http import HTTPStatus
 
 import pytest
 from django.urls import reverse
@@ -39,7 +40,7 @@ def test_launch_page_requires_authentication(client):
 
     response = client.get(url)
 
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert "login" in response.url
 
 
@@ -53,7 +54,7 @@ def test_launch_page_renders_for_org_member(client):
         reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "Start Validation" in response.content.decode()
 
 
@@ -67,7 +68,7 @@ def test_launch_page_disables_form_without_steps(client):
     )
 
     body = response.content.decode()
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "This workflow has no steps yet." in body
     assert "Start Validation" not in body
 
@@ -106,7 +107,7 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 202
+    assert response.status_code == HTTPStatus.ACCEPTED
     body = response.content.decode()
     assert "Run in progress" in body
     assert ValidationRun.objects.filter(workflow=workflow).count() == 1
@@ -128,7 +129,7 @@ def test_launch_start_requires_executor_role(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
     assert (
         "You do not have permission to run this workflow" in response.content.decode()
     )
@@ -176,7 +177,7 @@ def test_public_info_view_accessible_when_enabled(client):
         reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert workflow.name in body
     assert "All Workflows" in body
@@ -222,7 +223,7 @@ def test_public_info_view_hides_schema_when_not_shared(client):
         reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Show schema" not in body
     assert "Schema shared" not in body
@@ -235,4 +236,4 @@ def test_public_info_view_returns_404_when_disabled(client):
         reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),
     )
 
-    assert response.status_code == 404
+    assert response.status_code == HTTPStatus.NOT_FOUND

@@ -117,5 +117,8 @@ and include a relevant example if helpful.
 # Coding Standards
 
 Make sure to always add trailing commas so we don't get Rust linting errors (Trailing comma missing, COM812)
-All other code should be correct and not cause the Rust linter to fail. For example, don't make really long
-string lines, instead break them up by using parenthesis and newslines.
+
+All other code should be correct and not cause the Rust linter to fail. For example, don't make really long string lines, instead break them up by using parenthesis and newslines.
+
+When possible, try not to use 'magic numbers' in code (avoid the linting error PLR2004). For example use HTTPStatus rather than integers.
+Otherwise, create a static variable at the top of the module, and then use that variable in the code. For example MAX_NUMBER_TRIES=3 (and then use MAX_NUMBER_TRIES in code).

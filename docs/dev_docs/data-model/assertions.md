@@ -1,6 +1,6 @@
 # Ruleset Assertions
 
-Ruleset Assertions capture the reusable checks that a validator will execute once a workflow step
+Ruleset Assertions capture the checks that a validator will execute once a workflow step
 reaches the validation engine. They live in the `ruleset_assertions` table and are referenced by a
 ruleset revision so authors can version and reuse collections of checks without mutating workflow
 steps directly.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 from decimal import Decimal
 from decimal import InvalidOperation
@@ -326,6 +327,9 @@ class WorkflowPublicInfo(TimeStampedModel):
         return self.content_html or ""
 
 
+import math
+
+
 class WorkflowStep(TimeStampedModel):
     """
     One step in a workflow, ordered. Linear for MVP.
@@ -406,6 +410,19 @@ class WorkflowStep(TimeStampedModel):
 
     # Optional per-step config (e.g., severity thresholds, mapping)
     config = models.JSONField(default=dict, blank=True)
+
+    @property
+    def step_number(self) -> int:
+        """Return the display position for this step based on its order."""
+        if not self.order:
+            return 1
+        return max(1, math.ceil(self.order / 10))
+
+    @property
+    def step_number_display(self) -> str:
+        """Return a localized display string for this step's number."""
+        step_number = self.step_number
+        return _("Step") + f" {step_number}"
 
     def clean(self):
         super().clean()

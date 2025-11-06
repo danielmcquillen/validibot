@@ -122,6 +122,20 @@ class RulesetAssertionForm(forms.Form):
         super().__init__(*args, **kwargs)
         catalog_choices = catalog_choices or []
         self.fields["target_slug"].choices = catalog_choices
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("assertion_type", css_class="col-12 col-lg-6"),
+                Column("target_slug", css_class="col-12 col-lg-6"),
+            ),
+            Row(
+                Column("threshold_value", css_class="col-12 col-lg-6"),
+                Column("severity", css_class="col-12 col-lg-6"),
+            ),
+            "when_expression",
+            "message_template",
+        )
 
     def populate_from_instance(self, assertion):
         self.initial.update(

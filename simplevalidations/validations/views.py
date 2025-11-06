@@ -310,7 +310,7 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "active_tab": active_tab,
                 "can_manage_validators": self.can_manage_validators(),
                 "system_validators": Validator.objects.filter(is_system=True)
-                .order_by("validation_type", "name")
+                .order_by("order", "validation_type", "name")
                 .select_related("custom_validator", "org"),
                 "custom_validators": Validator.objects.filter(org=org)
                 .order_by("name")
@@ -342,7 +342,14 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["can_manage_validators"] = self.can_manage_validators()
+        context["return_tab"] = self._resolve_return_tab(context["validator"])
         return context
+
+    def _resolve_return_tab(self, validator):
+        requested = (self.request.GET.get("tab") or "").lower()
+        if requested in {"system", "custom"}:
+            return requested
+        return "system" if validator.is_system else "custom"
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
@@ -520,7 +527,7 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         }
         validator.delete()
         if request.headers.get("HX-Request"):
-            return self._hx_toast_response(success_message, status=204)
+            return self._hx_toast_response(success_message, status=200)
         messages.success(request, success_message)
         return redirect(
             reverse_with_org(
@@ -554,7 +561,7 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         )
 
     def _hx_toast_response(self, message, *, level="success", status=200, reswap=None):
-        response = HttpResponse(status=status)
+        response = HttpResponse("", status=status)
         response["HX-Trigger"] = json.dumps(
             {
                 "toast": {

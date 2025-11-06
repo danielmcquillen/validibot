@@ -22,7 +22,7 @@
                         {{ validator.description|default:_("No description provided.") }}
                     </p>
                 </div>
-                {% if validator.is_custom %}
+                {% if not validator.is_system %}
                     <div class="validator-type">
                         <span class="badge
                                      {% if validator.is_system %}
@@ -41,15 +41,11 @@
             </div>
         </div>
         <div class="card-footer d-flex justify-content-end gap-2">
-            {% if validator.is_system %}
-                <a class="btn btn-sm btn-outline-secondary"
-                   href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
-                   aria-label="{% blocktrans trimmed with validator_name=validator.name %}
-                                   View {{ validator_name }}
-                               {% endblocktrans %}">
-                    Details
-                </a>
-            {% elif not validator.is_system and can_manage_validators %}
+            <a class="btn btn-sm btn-outline-primary"
+               href="{% org_url 'validations:validator_detail' slug=validator.slug %}{% if validator.is_system %}?tab=system{% else %}?tab=custom{% endif %}">
+                {% trans "View" %}
+            </a>
+            {% if not validator.is_system and can_manage_validators %}
                 <a class="btn btn-sm btn-outline-secondary"
                    href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
                    aria-label="{% blocktrans trimmed with validator_name=validator.name %}
@@ -63,7 +59,7 @@
                         hx-target="#validator-card-{{ validator.pk }}"
                         hx-swap="outerHTML"
                         hx-confirm="{% blocktrans trimmed with validator_name=validator.name %}
-                                        Delete {{ validator_name }}?
+                                        Delete '{{ validator_name }}'?
                                     {% endblocktrans %}">
                     <i class="bi bi-trash"></i>
                     <span class="visually-hidden">{% trans "Delete validator" %}</span>

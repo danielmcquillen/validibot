@@ -12,7 +12,7 @@
                 <div>
                   {% with validator=step.validator action=step.action meta=step.action_meta %}
                     <div class="d-flex align-items-center gap-2 mb-1">
-                      <span class="badge text-bg-primary">Step {{ forloop.counter }}</span>
+                      <span class="badge text-bg-primary">{% trans 'Step' %} {{ step.step_number }}</span>
                       <h3 class="h6 mb-0">
                         {{ step.name|default:_("Untitled step") }}
                       </h3>
@@ -127,7 +127,8 @@
                       {% with summary=step.action_summary %}
                         {% if summary.message %}
                           <p class="text-muted small mb-2">
-                            <span class="fw-semibold">{% trans "Message" %}:</span><br>
+                            <span class="fw-semibold">{% trans "Message" %}:</span>
+                            <br />
                             {{ summary.message|linebreaksbr }}
                           </p>
                         {% endif %}

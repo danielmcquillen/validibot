@@ -12737,7 +12737,7 @@ h4 {
 }
 
 #workflow-step-editor-card .editor-workspace {
-  background: url("/static/marketing/images/notebook.png");
+  background: url("/static/images/app/notebook.png");
   min-height: 70vh;
   padding-bottom: 10rem;
 }
@@ -12992,6 +12992,16 @@ h4 {
   border: 1px solid var(--bs-border-color);
 }
 
+#workflow-step-assertions-editor-card .editor-workspace {
+  background: url("/static/images/app/notebook_green.png");
+  min-height: 70vh;
+  padding-bottom: 10rem;
+}
+#workflow-step-assertions-editor-card .workflow-step-card {
+  background: #fff;
+  width: 100%;
+}
+
 #validator-library .tabs {
   margin-left: 1rem;
 }
@@ -13024,7 +13034,7 @@ h4 {
   justify-content: center;
   align-items: center;
   padding-left: 0.5rem;
-  padding-right: 1rem;
+  padding-right: 0.5rem;
   height: 100%;
 }
 #validator-library .validator-library-card .card-header .validator-type-icon i {

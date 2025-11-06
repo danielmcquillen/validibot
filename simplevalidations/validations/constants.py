@@ -35,8 +35,9 @@ class ValidationType(TextChoices):
 
 
 class CustomValidatorType(TextChoices):
+    SIMPLE = "SIMPLE", _("Simple")
     MODELICA = "MODELICA", _("Modelica")
-    PYWINCALC = "PYWINCALC", _("PyWinCalc")
+    KERML = "KERML", _("KerML")
 
 
 class Severity(TextChoices):

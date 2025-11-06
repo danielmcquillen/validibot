@@ -21,6 +21,7 @@ from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
+from simplevalidations.validations.tests.factories import CustomValidatorFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.models import WorkflowStep
 from simplevalidations.workflows.tests.factories import WorkflowFactory
@@ -198,6 +199,47 @@ def test_create_view_creates_json_schema_step(client):
     assert step.ruleset.metadata.get("schema_type") == JSONSchemaVersion.DRAFT_2020_12.value
 
 
+def test_create_view_with_custom_validator(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    custom_validator = CustomValidatorFactory(org=workflow.org)
+
+    create_url = _select_validator(client, workflow, custom_validator.validator)
+    response = client.post(
+        create_url,
+        data={
+            "name": "Custom check",
+            "description": "Runs custom logic",
+            "notes": "Initial custom validator step",
+        },
+    )
+    assert response.status_code == 302
+
+    step = WorkflowStep.objects.get(workflow=workflow)
+    assert step.validator == custom_validator.validator
+    assert step.ruleset is not None
+    assert step.ruleset.ruleset_type == custom_validator.validator.validation_type
+
+
+def test_custom_validator_multiple_steps_get_unique_rulesets(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    custom_validator = CustomValidatorFactory(org=workflow.org)
+
+    first_url = _select_validator(client, workflow, custom_validator.validator)
+    second_url = _select_validator(client, workflow, custom_validator.validator)
+
+    response = client.post(first_url, data={"name": "Step A"})
+    assert response.status_code == 302
+
+    response = client.post(second_url, data={"name": "Step B"})
+    assert response.status_code == 302
+
+    steps = WorkflowStep.objects.filter(workflow=workflow).order_by("order")
+    assert steps.count() == 2
+    assert steps[0].ruleset != steps[1].ruleset
+
+
 def test_create_view_creates_action_step(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
@@ -328,7 +370,7 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
             config={"certificate_template": "original.html"},
         )
 
-        edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+        edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
         response = client.post(
             edit_url,
             data={
@@ -486,7 +528,7 @@ def test_update_view_prefills_ai_step(client):
         },
     )
 
-    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
     assert response.status_code == 200
     body = response.content.decode()
@@ -537,7 +579,7 @@ def test_update_view_prefills_action_step(client):
         config={"message": "Original message"},
     )
 
-    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
     assert response.status_code == 200
     html = response.content.decode()
@@ -571,7 +613,7 @@ def test_step_form_navigation_links(client):
     first_step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
     second_step = WorkflowStepFactory(workflow=workflow, validator=validator, order=20)
 
-    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, second_step.pk])
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, second_step.pk])
     response = client.get(edit_url)
     assert response.status_code == 200
     html = response.content.decode()

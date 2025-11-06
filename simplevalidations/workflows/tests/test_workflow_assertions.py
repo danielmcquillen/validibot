@@ -4,6 +4,7 @@ from django.urls import reverse
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.tests.factories import (
+    CustomValidatorFactory,
     ValidatorCatalogEntryFactory,
     ValidatorFactory,
 )
@@ -31,7 +32,7 @@ class TestWorkflowStepAssertions:
         self._login(client, workflow)
         step = self._make_energyplus_step(workflow)
         url = reverse(
-            "workflows:workflow_step_assertions",
+            "workflows:workflow_step_edit",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
         response = client.get(url)
@@ -62,12 +63,32 @@ class TestWorkflowStepAssertions:
         step.refresh_from_db()
         assert step.ruleset.assertions.count() == 1
 
+    def test_custom_validator_assertion_modal_renders(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        custom_validator = CustomValidatorFactory(org=workflow.org)
+        ValidatorCatalogEntryFactory(
+            validator=custom_validator.validator,
+            slug="custom-signal",
+            label="Custom signal",
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=custom_validator.validator)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.get(url, HTTP_HX_REQUEST="true")
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert "Assertion Type" in body
+        assert "custom-signal" in body
+
     def test_step_update_redirects_to_assertions(self, client):
         workflow = WorkflowFactory()
         step = self._make_energyplus_step(workflow)
         user = self._login(client, workflow)
         url = reverse(
-            "workflows:workflow_step_edit",
+            "workflows:workflow_step_settings",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
         response = client.post(

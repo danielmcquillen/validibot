@@ -11,7 +11,8 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
 from django.http import Http404
@@ -51,6 +52,7 @@ from simplevalidations.submissions.ingest import prepare_inline_text
 from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import JSONSchemaVersion
@@ -566,18 +568,47 @@ def _ensure_advanced_ruleset(
     """Guarantee a ruleset exists for validators requiring assertions."""
     ruleset = getattr(step, "ruleset", None)
     if ruleset is None:
+        base_name = f"{validator.slug}-ruleset"
+        ruleset_name = _unique_ruleset_name(
+            org=workflow.org,
+            ruleset_type=validator.validation_type,
+            base_name=base_name,
+            version="1",
+        )
         ruleset = Ruleset(
             org=workflow.org,
             user=workflow.user,
-            name=f"{validator.slug}-ruleset",
+            name=ruleset_name,
             ruleset_type=validator.validation_type,
             version="1",
         )
         ruleset.save()
         if step:
             step.ruleset = ruleset
-            step.save(update_fields=["ruleset", "modified"])
+            if step.pk:
+                step.save(update_fields=["ruleset", "modified"])
     return ruleset
+
+
+def _unique_ruleset_name(
+    *,
+    org: Organization,
+    ruleset_type: str,
+    base_name: str,
+    version: str,
+) -> str:
+    name = base_name
+    suffix = 2
+    while Ruleset.objects.filter(
+        org=org,
+        ruleset_type=ruleset_type,
+        name=name,
+        version=version,
+    ).exists():
+        truncated_base = base_name[: max(0, 240)]
+        name = f"{truncated_base}-{suffix}"
+        suffix += 1
+    return name
 
 
 def _build_json_schema_config(
@@ -2382,19 +2413,21 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
     def get_success_url(self):
         workflow = self.get_workflow()
-        if (
-            hasattr(self, "saved_step")
-            and self.saved_step
-            and self.saved_step.validator
-            and self.saved_step.validator.validation_type in ADVANCED_VALIDATION_TYPES
-        ):
-            return reverse_with_org(
-                "workflows:workflow_step_assertions",
-                request=self.request,
-                kwargs={
-                    "pk": workflow.pk,
-                    "step_id": self.saved_step.pk,
-                },
+        if hasattr(self, "saved_step") and self.saved_step:
+            anchor = (
+                "#workflow-step-assertions"
+                if self.saved_step.validator
+                and self.saved_step.validator.validation_type
+                in ADVANCED_VALIDATION_TYPES
+                else "#workflow-step-details"
+            )
+            return (
+                reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": self.saved_step.pk},
+                )
+                + anchor
             )
         detail_url = reverse_with_org(
             "workflows:workflow_detail",
@@ -2478,6 +2511,108 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 ),
             },
         )
+        if self.mode == "create":
+            breadcrumbs.append({"name": _("Add step"), "url": ""})
+        else:
+            step = self.get_step()
+            breadcrumbs.append(
+                {
+                    "name": workflow.name,
+                    "url": reverse_with_org(
+                        "workflows:workflow_detail",
+                        request=self.request,
+                        kwargs={"pk": workflow.pk},
+                    ),
+                },
+            )
+            step_url = reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=self.request,
+                kwargs={"pk": workflow.pk, "step_id": step.pk if step else ""},
+            )
+
+            breadcrumbs.append(
+                {
+                    "name": step.step_number_display,
+                    "url": step_url,
+                },
+            )
+            breadcrumbs.append({"name": _("Edit Detail"), "url": ""})
+        return breadcrumbs
+
+
+class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
+    """Two-column overview for validator-based steps."""
+
+    template_name = "workflows/workflow_step_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        if self.step.action_id:
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_step_settings",
+                    request=request,
+                    kwargs={
+                        "pk": self.get_workflow().pk,
+                        "step_id": self.step.pk,
+                    },
+                )
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        validator = self.step.validator
+        ruleset = None
+        assertions = []
+        catalog_entries = []
+        allow_assertions = (
+            validator and validator.validation_type in ADVANCED_VALIDATION_TYPES
+        )
+        if allow_assertions:
+            ruleset = self.step.ruleset or _ensure_advanced_ruleset(
+                workflow, self.step, validator
+            )
+            assertions = list(ruleset.assertions.all().order_by("order", "pk"))
+        if validator:
+            catalog_entries = list(
+                validator.catalog_entries.order_by("entry_type", "order", "slug")
+            )
+        context.update(
+            {
+                "workflow": workflow,
+                "step": self.step,
+                "validator": validator,
+                "assertions": assertions,
+                "ruleset": ruleset,
+                "can_manage_assertions": self.user_can_manage_workflow()
+                and allow_assertions,
+                "supports_assertions": allow_assertions,
+                "catalog_entries": catalog_entries,
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
         breadcrumbs.append(
             {
                 "name": workflow.name,
@@ -2488,16 +2623,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 ),
             },
         )
-        if self.mode == "create":
-            breadcrumbs.append({"name": _("Add step"), "url": ""})
-        else:
-            step = self.get_step()
-            breadcrumbs.append(
-                {
-                    "name": _("Step %(id)s") % {"id": step.pk if step else ""},
-                    "url": "",
-                },
-            )
+        breadcrumbs.append(
+            {
+                "name": self.step.step_number_display,
+                "url": reverse_with_org(
+                    "workflows:workflow_step_edit",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "step_id": self.step.pk},
+                ),
+            },
+        )
         return breadcrumbs
 
 
@@ -2620,8 +2755,6 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
 class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
     """Shared helpers for assertion management views."""
 
-    template_name = "workflows/workflow_step_assertions.html"
-
     def dispatch(self, request, *args, **kwargs):
         self.step = get_object_or_404(
             WorkflowStep,
@@ -2702,10 +2835,6 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         return breadcrumbs
 
 
-class WorkflowStepAssertionsView(WorkflowStepAssertionsMixin, TemplateView):
-    """Display assertions for a workflow step."""
-
-
 class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
     template_name = "workflows/partials/assertion_form.html"
     form_class = RulesetAssertionForm
@@ -2726,13 +2855,16 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
         return super().render_to_response(context, **response_kwargs)
 
     def get_success_url(self):
-        return reverse_with_org(
-            "workflows:workflow_step_assertions",
-            request=self.request,
-            kwargs={
-                "pk": self.get_workflow().pk,
-                "step_id": self.step.pk,
-            },
+        return (
+            reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=self.request,
+                kwargs={
+                    "pk": self.get_workflow().pk,
+                    "step_id": self.step.pk,
+                },
+            )
+            + "#workflow-step-assertions"
         )
 
     def get_context_data(self, **kwargs):
@@ -2829,7 +2961,7 @@ class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
         messages.success(request, _("Assertion removed."))
         return HttpResponseRedirect(
             reverse_with_org(
-                "workflows:workflow_step_assertions",
+                "workflows:workflow_step_edit",
                 request=request,
                 kwargs={
                     "pk": self.get_workflow().pk,
@@ -2854,7 +2986,9 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
         try:
             index = assertions.index(assertion)
         except ValueError:
-            return _hx_trigger_response(status_code=400, message=_("Assertion not found."))
+            return _hx_trigger_response(
+                status_code=400, message=_("Assertion not found.")
+            )
         if direction == "up" and index > 0:
             assertions[index - 1], assertions[index] = (
                 assertions[index],
@@ -2872,11 +3006,12 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
                 RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)
         return _hx_redirect_response(
             reverse_with_org(
-                "workflows:workflow_step_assertions",
+                "workflows:workflow_step_edit",
                 request=request,
                 kwargs={
                     "pk": self.get_workflow().pk,
                     "step_id": self.step.pk,
                 },
             )
+            + "#workflow-step-assertions"
         )

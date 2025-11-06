@@ -239,31 +239,38 @@ class RulesetAssertion(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="assertions",
     )
+
     order = models.PositiveIntegerField(default=0)
+
     assertion_type = models.CharField(
         max_length=64,
         choices=AssertionType.choices,
         default=AssertionType.THRESHOLD_MAX,
     )
+
     target_slug = models.CharField(
         max_length=255,
         help_text=_("Catalog slug this assertion references."),
     )
+
     severity = models.CharField(
         max_length=16,
         choices=Severity.choices,
         default=Severity.ERROR,
     )
+
     when_expression = models.TextField(
         blank=True,
         default="",
         help_text=_("Optional CEL expression gating when the assertion evaluates."),
     )
+
     definition = models.JSONField(
         default=dict,
         blank=True,
         help_text=_("Assertion specific payload (threshold config, values, etc.)."),
     )
+
     message_template = models.TextField(
         blank=True,
         default="",

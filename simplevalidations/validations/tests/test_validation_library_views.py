@@ -116,6 +116,27 @@ class TestValidationLibraryViews:
         breadcrumbs = response.context["breadcrumbs"]
         assert breadcrumbs[-1]["name"] == "Edit Room Automation"
 
+    def test_system_validator_detail_preserves_tab_query(self, client):
+        self._setup_user(client, RoleCode.ADMIN)
+        validator = Validator.objects.create(
+            name="System Check",
+            slug="system-check",
+            validation_type="ENERGYPLUS",
+            description="System validator",
+            is_system=True,
+        )
+
+        response = client.get(
+            reverse(
+                "validations:validator_detail",
+                kwargs={"slug": validator.slug},
+            )
+            + "?tab=system"
+        )
+
+        assert response.status_code == 200
+        assert response.context["return_tab"] == "system"
+
     def test_htmx_delete_custom_validator_succeeds(self, client):
         user, org = self._setup_user(client, RoleCode.AUTHOR)
         custom_validator = create_custom_validator(
@@ -138,7 +159,7 @@ class TestValidationLibraryViews:
             HTTP_X_CSRFTOKEN=csrf_token,
         )
 
-        assert response.status_code == 204
+        assert response.status_code == 200
         assert not Validator.objects.filter(pk=custom_validator.validator.pk).exists()
         trigger = json.loads(response.headers["HX-Trigger"])
         assert trigger["toast"]["level"] == "success"

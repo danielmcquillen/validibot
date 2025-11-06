@@ -74,8 +74,13 @@ urlpatterns = [
     ),
     path(
         "<int:pk>/steps/<int:step_id>/edit/",
-        views.WorkflowStepUpdateView.as_view(),
+        views.WorkflowStepEditView.as_view(),
         name="workflow_step_edit",
+    ),
+    path(
+        "<int:pk>/steps/<int:step_id>/settings/",
+        views.WorkflowStepUpdateView.as_view(),
+        name="workflow_step_settings",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/delete/",
@@ -86,11 +91,6 @@ urlpatterns = [
         "<int:pk>/steps/<int:step_id>/move/",
         views.WorkflowStepMoveView.as_view(),
         name="workflow_step_move",
-    ),
-    path(
-        "<int:pk>/steps/<int:step_id>/assertions/",
-        views.WorkflowStepAssertionsView.as_view(),
-        name="workflow_step_assertions",
     ),
     path(
         "<int:pk>/steps/<int:step_id>/assertions/new/",

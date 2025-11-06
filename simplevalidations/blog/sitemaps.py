@@ -21,4 +21,4 @@ class BlogPostSitemap(Sitemap):
         return getattr(obj, "modified", None) or obj.published_on
 
     def location(self, obj):
-        return reverse("blog:detail", kwargs={"slug": obj.slug})
+        return reverse("marketing:blog:blog_post_detail", kwargs={"slug": obj.slug})

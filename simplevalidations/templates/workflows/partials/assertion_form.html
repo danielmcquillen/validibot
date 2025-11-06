@@ -11,6 +11,22 @@
         hx-swap="innerHTML">
     {% csrf_token %}
     {{ form|crispy }}
+    <datalist id="{{ target_slug_datalist_id }}">
+      {% for value, label in catalog_choices %}
+        <option value="{{ value }}" label="{{ label }}"></option>
+      {% endfor %}
+    </datalist>
+    <p class="form-text mt-n2">
+      {% if allow_custom_targets %}
+        {% blocktrans %}
+          You may enter new targets using dot notation (e.g., data.error.message) and [index] for lists.
+        {% endblocktrans %}
+      {% else %}
+        {% blocktrans %}
+          Only catalog targets are available for this validator.
+        {% endblocktrans %}
+      {% endif %}
+    </p>
     <div class="d-flex justify-content-end gap-2">
       <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
       <button type="submit" class="btn btn-primary">{{ submit_label }}</button>

@@ -30,13 +30,19 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
         "id",
         "ruleset",
         "assertion_type",
-        "target_slug",
+        "operator",
+        "target_catalog",
+        "target_field",
         "severity",
         "order",
         "created",
     )
-    list_filter = ("assertion_type", "severity")
-    search_fields = ("ruleset__name", "target_slug")
+    list_filter = ("assertion_type", "operator", "severity")
+    search_fields = (
+        "ruleset__name",
+        "target_catalog__slug",
+        "target_field",
+    )
 
 
 @admin.register(Validator)
@@ -50,6 +56,7 @@ class ValidatorAdmin(admin.ModelAdmin):
         "validation_type",
         "version",
         "is_system",
+        "allow_custom_assertion_targets",
         "created",
         "modified",
     )

@@ -14,6 +14,7 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
+from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogValueType
@@ -30,7 +31,8 @@ from simplevalidations.workflows.models import WorkflowStep
 
 
 class Ruleset(TimeStampedModel):
-    """Reusable rule bundle (JSON Schema, XML schema, custom logic, etc.).
+    """
+    Reusable rule bundle (JSON Schema, XML schema, custom logic, etc.).
 
     Rules can be stored inline via ``rules_text`` or uploaded as ``rules_file``.
     Only one storage mechanism should be used at a time; helper ``rules``
@@ -232,6 +234,10 @@ class Ruleset(TimeStampedModel):
 class RulesetAssertion(TimeStampedModel):
     """
     Normalized assertion definition tied to a ruleset.
+
+    Assertions fall into two buckets:
+    - BASIC assertions use a structured operator + payload.
+    - CEL_EXPRESSION assertions store raw CEL plus optional guards.
     """
 
     ruleset = models.ForeignKey(
@@ -243,14 +249,33 @@ class RulesetAssertion(TimeStampedModel):
     order = models.PositiveIntegerField(default=0)
 
     assertion_type = models.CharField(
-        max_length=64,
+        max_length=32,
         choices=AssertionType.choices,
-        default=AssertionType.THRESHOLD_MAX,
+        default=AssertionType.BASIC,
     )
 
-    target_slug = models.CharField(
+    operator = models.CharField(
+        max_length=32,
+        choices=AssertionOperator.choices,
+        default=AssertionOperator.LE,
+        help_text=_("Structured operator used for BASIC assertions."),
+    )
+
+    target_catalog = models.ForeignKey(
+        "validations.ValidatorCatalogEntry",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ruleset_assertions",
+        help_text=_("Reference to a catalog entry when targeting a known signal."),
+    )
+    target_field = models.CharField(
         max_length=255,
-        help_text=_("Catalog slug this assertion references."),
+        blank=True,
+        default="",
+        help_text=_(
+            "Custom JSON-style path for validators that allow free-form targets.",
+        ),
     )
 
     severity = models.CharField(
@@ -265,10 +290,18 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Optional CEL expression gating when the assertion evaluates."),
     )
 
-    definition = models.JSONField(
+    rhs = models.JSONField(
         default=dict,
         blank=True,
-        help_text=_("Assertion specific payload (threshold config, values, etc.)."),
+        help_text=_("Operator payload (values, range bounds, regex pattern, etc.)."),
+    )
+
+    options = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_(
+            "Operator options (inclusive bounds, tolerance metadata, case folding, etc.).",
+        ),
     )
 
     message_template = models.TextField(
@@ -277,11 +310,121 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Message rendered when the assertion fails."),
     )
 
+    cel_cache = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Normalized CEL preview generated from the stored payload."),
+    )
+
+    spec_version = models.PositiveIntegerField(
+        default=1,
+        help_text=_("Schema version for `rhs` and `options` payloads."),
+    )
+
     class Meta:
         ordering = ["order", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                name="ck_ruleset_assertion_target_oneof",
+                check=(
+                    Q(target_catalog__isnull=False, target_field="")
+                    | (Q(target_catalog__isnull=True) & ~Q(target_field=""))
+                ),
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["ruleset", "order"]),
+            models.Index(fields=["operator"]),
+        ]
 
     def __str__(self):
-        return f"{self.ruleset_id}:{self.assertion_type}:{self.target_slug}"
+        target = self.target_catalog.slug if self.target_catalog_id else self.target_field
+        return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
+
+    def clean(self):
+        super().clean()
+        catalog_set = bool(self.target_catalog_id)
+        field = (self.target_field or "").strip()
+        if catalog_set == bool(field):
+            raise ValidationError(
+                {
+                    "target_field": _(
+                        "Provide either a catalog target or a custom path (but not both).",
+                    ),
+                },
+            )
+
+    @property
+    def target_display(self) -> str:
+        if self.target_catalog_id and self.target_catalog:
+            label = self.target_catalog.label or self.target_catalog.slug
+            return f"{label} ({self.target_catalog.slug})"
+        return self.target_field
+
+    @property
+    def condition_display(self) -> str:
+        if self.assertion_type == AssertionType.CEL_EXPRESSION:
+            return (self.rhs or {}).get("expr", "")
+        formatter = self._format_literal
+        rhs = self.rhs or {}
+        options = self.options or {}
+        op = AssertionOperator(self.operator)
+        if op == AssertionOperator.LE:
+            return _("≤ %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.LT:
+            return _("< %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.GE:
+            return _("≥ %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.GT:
+            return _("> %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.EQ:
+            return _("Equals %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.NE:
+            return _("Not equals %(value)s") % {"value": formatter(rhs.get("value"))}
+        if op == AssertionOperator.BETWEEN:
+            bounds = _(
+                "%(min)s %(min_cmp)s target %(max_cmp)s %(max)s",
+            ) % {
+                "min": formatter(rhs.get("min")),
+                "max": formatter(rhs.get("max")),
+                "min_cmp": ">=" if options.get("include_min", True) else ">",
+                "max_cmp": "<=" if options.get("include_max", True) else "<",
+            }
+            return bounds
+        if op in {AssertionOperator.IN, AssertionOperator.NOT_IN}:
+            values = ", ".join(formatter(v) for v in rhs.get("values", []))
+            return (
+                _("One of %(values)s") if op == AssertionOperator.IN else _("Not in %(values)s")
+            ) % {"values": values}
+        if op == AssertionOperator.MATCHES:
+            return _("Matches %(pattern)s") % {"pattern": formatter(rhs.get("pattern"))}
+        if op in {
+            AssertionOperator.CONTAINS,
+            AssertionOperator.NOT_CONTAINS,
+            AssertionOperator.STARTS_WITH,
+            AssertionOperator.ENDS_WITH,
+        }:
+            verb = self.get_operator_display()
+            return _("%(verb)s %(value)s") % {
+                "verb": verb,
+                "value": formatter(rhs.get("value")),
+            }
+        if op in {AssertionOperator.IS_NULL, AssertionOperator.NOT_NULL}:
+            return self.get_operator_display()
+        if op == AssertionOperator.APPROX_EQ:
+            tol = rhs.get("tolerance")
+            return _("≈ %(value)s ± %(tol)s") % {
+                "value": formatter(rhs.get("value")),
+                "tol": formatter(tol),
+            }
+        return self.get_operator_display()
+
+    def _format_literal(self, value) -> str:
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return _("true") if value else _("false")
+        return str(value)
 
 
 class Validator(TimeStampedModel):
@@ -371,6 +514,13 @@ class Validator(TimeStampedModel):
     is_system = models.BooleanField(
         default=True,
         help_text=_("True when the validator ships with the platform."),
+    )
+
+    allow_custom_assertion_targets = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Allow authors to enter assertion targets not present in the catalog.",
+        ),
     )
 
     @property

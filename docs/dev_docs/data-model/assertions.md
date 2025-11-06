@@ -7,16 +7,21 @@ steps directly.
 
 Each assertion row stores:
 
-- `slug` – stable identifier scoped to the ruleset.
-- `assertion_type` – e.g., `threshold.max`, `range.between`, `custom.expression`.
-- `target_slug` – references a validator catalog entry (input/output/derivation).
+- `assertion_type` – coarse mode (`basic` vs. `cel_expr`).
+- `operator` – normalized comparison operator (only meaningful for `basic` assertions).
+- `target_catalog` / `target_field` – FK to a catalog entry or a JSON-style path when the
+  validator allows free-form bindings.
 - `severity` – maps to the normalized Finding severity (`error`, `warning`, `info`).
 - `when_expression` – optional CEL guard that determines whether the assertion runs.
-- `definition` – JSON payload validated against the provider registry (threshold values, expected series, etc.).
+- `rhs` – operator payload (single value, min/max bounds, regex, etc.).
+- `options` – operator metadata (inclusive bounds, case folding, tolerance units, etc.).
+- `cel_cache` – read-only CEL preview rendered from the operator payload for auditability.
 - `message_template` – templated string rendered with evaluation context (e.g., `{{value | round(1)}}`).
 
-Because every assertion points to catalog slugs defined by a validator, the engine can resolve the
-exact signal semantics during execution and findings remain stable even as rulesets evolve.
+Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
+units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
+persisted in `target_field`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
+`target_*` columns for consistency.
 
 ## Relationship to validators and rulesets
 

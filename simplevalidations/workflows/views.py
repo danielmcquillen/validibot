@@ -2793,12 +2793,18 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         return ruleset
 
     def get_catalog_choices(self):
+        if hasattr(self, "_catalog_choice_cache"):
+            return self._catalog_choice_cache
         validator = self.step.validator
-        choices = []
+        choices: list[tuple[str, str]] = []
+        entries = []
         if validator:
-            for entry in validator.catalog_entries.order_by("order", "slug"):
+            entries = list(validator.catalog_entries.order_by("order", "slug"))
+            for entry in entries:
                 label = f"{entry.label} ({entry.slug})"
                 choices.append((entry.slug, label))
+        self._catalog_entries_cache = entries
+        self._catalog_choice_cache = choices
         return choices
 
     def get_context_data(self, **kwargs):
@@ -2842,7 +2848,14 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["catalog_choices"] = self.get_catalog_choices()
+        kwargs["catalog_entries"] = getattr(self, "_catalog_entries_cache", [])
+        kwargs["validator"] = self.step.validator
+        kwargs["target_slug_datalist_id"] = self.get_target_slug_datalist_id()
         return kwargs
+
+    def get_target_slug_datalist_id(self) -> str:
+        step_id = getattr(self.step, "pk", "step")
+        return f"assertion-target-slug-options-{step_id}"
 
     def render_to_response(self, context, **response_kwargs):
         if self.request.headers.get("HX-Request"):
@@ -2874,6 +2887,11 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
                 "modal_title": getattr(self, "modal_title", _("Assertion")),
                 "form_action": self.request.path,
                 "submit_label": getattr(self, "submit_label", _("Save")),
+                "target_slug_datalist_id": self.get_target_slug_datalist_id(),
+                "catalog_choices": self.get_catalog_choices(),
+                "allow_custom_targets": bool(
+                    getattr(self.step.validator, "allow_custom_assertion_targets", False)
+                ),
             }
         )
         return context
@@ -2890,7 +2908,6 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
 
     def form_valid(self, form):
         ruleset = self.get_ruleset()
-        definition = form.build_definition()
         max_order = (
             ruleset.assertions.aggregate(max_order=models.Max("order"))["max_order"]
             or 0
@@ -2899,11 +2916,15 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             ruleset=ruleset,
             order=max_order + 10,
             assertion_type=form.cleaned_data["assertion_type"],
-            target_slug=form.cleaned_data["target_slug"],
+            operator=form.cleaned_data["resolved_operator"],
+            target_catalog=form.cleaned_data.get("target_catalog_entry"),
+            target_field=form.cleaned_data.get("target_field_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",
-            definition=definition,
+            rhs=form.cleaned_data["rhs_payload"],
+            options=form.cleaned_data["options_payload"],
             message_template=form.cleaned_data.get("message_template") or "",
+            cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion added."))
         return _hx_redirect_response(self.get_success_url())
@@ -2924,24 +2945,20 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
         return super().dispatch(request, *args, **kwargs)
 
     def get_initial(self):
-        return {
-            "assertion_type": self.assertion.assertion_type,
-            "target_slug": self.assertion.target_slug,
-            "threshold_value": self.assertion.definition.get("value"),
-            "severity": self.assertion.severity,
-            "when_expression": self.assertion.when_expression,
-            "message_template": self.assertion.message_template,
-        }
+        return RulesetAssertionForm.initial_from_instance(self.assertion)
 
     def form_valid(self, form):
-        definition = form.build_definition()
         RulesetAssertion.objects.filter(pk=self.assertion.pk).update(
             assertion_type=form.cleaned_data["assertion_type"],
-            target_slug=form.cleaned_data["target_slug"],
+            operator=form.cleaned_data["resolved_operator"],
+            target_catalog=form.cleaned_data.get("target_catalog_entry"),
+            target_field=form.cleaned_data.get("target_field_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",
-            definition=definition,
+            rhs=form.cleaned_data["rhs_payload"],
+            options=form.cleaned_data["options_payload"],
             message_template=form.cleaned_data.get("message_template") or "",
+            cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion updated."))
         return _hx_redirect_response(self.get_success_url())

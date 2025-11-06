@@ -75,5 +75,57 @@ class CatalogValueType(TextChoices):
 
 
 class AssertionType(TextChoices):
-    THRESHOLD_MAX = "threshold_max", _("Must Be ≤ Value")
-    THRESHOLD_MIN = "threshold_min", _("Must Be ≥ Value")
+    BASIC = "basic", _("Basic Assertion")
+    CEL_EXPRESSION = "cel_expr", _("CEL expression")
+
+
+class AssertionOperator(TextChoices):
+    # Comparisons (numeric/text/temporal where applicable)
+    EQ = "eq", _("Equals")
+    NE = "ne", _("Not equals")
+    LT = "lt", _("Less than")
+    LE = "le", _("Less than or equal")  # alias for THRESHOLD_MAX UI copy
+    GT = "gt", _("Greater than")
+    GE = "ge", _("Greater than or equal")  # alias for THRESHOLD_MIN UI copy
+    BETWEEN = "between", _("Between (range)")
+
+    # Membership / set relations
+    IN = "in", _("Is one of")
+    NOT_IN = "not_in", _("Is not one of")
+    SUBSET = "subset", _("Set is subset of")
+    SUPERSET = "superset", _("Set is superset of")
+    UNIQUE = "unique", _("All values unique")
+
+    # String / pattern
+    CONTAINS = "contains", _("Contains")
+    NOT_CONTAINS = "not_contains", _("Does not contain")
+    STARTS_WITH = "starts_with", _("Starts with")
+    ENDS_WITH = "ends_with", _("Ends with")
+    MATCHES = "matches", _("Matches regex")
+
+    # Null/emptiness/type
+    IS_NULL = "is_null", _("Is null")
+    NOT_NULL = "not_null", _("Is not null")
+    IS_EMPTY = "is_empty", _("Is empty")
+    NOT_EMPTY = "not_empty", _("Is not empty")
+    TYPE_IS = "type_is", _("Type is")
+
+    # Length / cardinality
+    LEN_EQ = "len_eq", _("Length equals")
+    LEN_LE = "len_le", _("Length ≤")
+    LEN_GE = "len_ge", _("Length ≥")
+    COUNT_BETWEEN = "count_between", _("Count between")
+
+    # Temporal
+    BEFORE = "before", _("Before")
+    AFTER = "after", _("After")
+    WITHIN = "within", _("Within duration")
+
+    # Numeric tolerance / approx
+    APPROX_EQ = "approx_eq", _("≈ Equals (tolerance)")
+
+    # Collection quantifiers
+    ANY = "any", _("Any element satisfies")
+    ALL = "all", _("All elements satisfy")
+    NONE = "none", _("No element satisfies")
+    CEL_EXPR = "cel_expr", _("CEL expression")

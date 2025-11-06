@@ -7,13 +7,11 @@
             <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
         </div>
         <h2 class="h6 mb-1">
-            {{ assertion.target_slug }}
+            {{ assertion.target_display }}
         </h2>
-        {% if assertion.definition.value %}
-            <p class="text-muted small mb-1">
-                {% trans "Threshold" %}: {{ assertion.definition.value }}
-            </p>
-        {% endif %}
+        <p class="text-muted small mb-1">
+            {{ assertion.condition_display }}
+        </p>
         {% if assertion.message_template %}
             <p class="text-muted small mb-0">
                 {{ assertion.message_template }}

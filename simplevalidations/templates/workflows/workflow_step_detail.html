@@ -14,15 +14,15 @@
   <div id="workflow-step-detail"
        class="container-fluid d-flex flex-column flex-grow-1">
 
-    <div class="app-content-header-bar row ">
-      <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
-        <div class="d-flex flex-column gap-2">
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <h1 class="app-page-title mb-0">
-              <span class="badge text-bg-primary me-2">{% trans 'Step' %} {{ step.step_number }}</span>
-              {{ step.name|default:"( no name )" }}
-            </h1>
-          </div>
+    <div class="app-content-header-bar row p-0">
+      <div class="app-content-header">
+        <div class="badge-wrapper h-100">
+          <span class="badge text-bg-primary me-2">{% trans 'Step' %} {{ step.step_number }}</span>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
+          <h1 class="app-page-title mb-0">
+            {{ step.name|default:"( no name )" }}
+          </h1>
         </div>
       </div>
     </div>

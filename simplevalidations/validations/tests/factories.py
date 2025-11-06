@@ -6,6 +6,7 @@ from factory.django import DjangoModelFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogValueType
@@ -164,8 +165,10 @@ class RulesetAssertionFactory(DjangoModelFactory):
 
     ruleset = factory.SubFactory(RulesetFactory)
     order = factory.Sequence(lambda n: n * 10)
-    assertion_type = AssertionType.THRESHOLD_MAX
-    target_slug = "facility_electric_demand_w"
+    assertion_type = AssertionType.BASIC
+    operator = AssertionOperator.LE
+    target_field = "facility_electric_demand_w"
     severity = Severity.ERROR
-    definition = factory.Dict({"value": 100})
+    rhs = factory.Dict({"value": 100})
+    options = factory.Dict({})
     message_template = "Peak too high."

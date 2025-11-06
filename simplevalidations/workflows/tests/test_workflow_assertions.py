@@ -50,9 +50,10 @@ class TestWorkflowStepAssertions:
         response = client.post(
             create_url,
             data={
-                "assertion_type": "threshold_max",
-                "target_slug": "facility_electric_demand_w",
-                "threshold_value": "1000",
+                "assertion_type": "basic",
+                "target_field": "facility_electric_demand_w",
+                "operator": "le",
+                "comparison_value": "1000",
                 "severity": "ERROR",
                 "when_expression": "",
                 "message_template": "Too high",
@@ -82,6 +83,84 @@ class TestWorkflowStepAssertions:
         body = response.content.decode()
         assert "Assertion Type" in body
         assert "custom-signal" in body
+
+    def test_custom_target_requires_validator_permission(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            allow_custom_assertion_targets=False,
+        )
+        ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.post(
+            create_url,
+            data={
+                "assertion_type": "basic",
+                "target_field": "data.custom.path",
+                "operator": "le",
+                "comparison_value": "10",
+                "severity": "ERROR",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 200
+        assert "catalog targets" in response.content.decode()
+
+    def test_cel_expression_rejects_unknown_slugs_when_disabled(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        entry = ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.post(
+            create_url,
+            data={
+                "assertion_type": "cel_expr",
+                "target_field": entry.slug,
+                "cel_expression": "series('unknown_slug') > 10",
+                "cel_allow_custom_signals": "",
+                "severity": "ERROR",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert "Unknown signal" in body
+
+    def test_create_custom_target_when_validator_allows(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.ENERGYPLUS,
+            allow_custom_assertion_targets=True,
+        )
+        ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.post(
+            create_url,
+            data={
+                "assertion_type": "basic",
+                "target_field": "metrics.custom.value",
+                "operator": "ge",
+                "comparison_value": "42",
+                "severity": "ERROR",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 204
 
     def test_step_update_redirects_to_assertions(self, client):
         workflow = WorkflowFactory()

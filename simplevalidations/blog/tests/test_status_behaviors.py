@@ -40,6 +40,15 @@ class BlogStatusBehaviorsTests(TestCase):
         items = list(sitemap.items())
         self.assertEqual(items, [self.published])
 
+    def test_sitemap_location_uses_marketing_blog_namespace(self):
+        sitemap = BlogPostSitemap()
+        location = sitemap.location(self.published)
+        expected_url = reverse(
+            "marketing:blog:blog_post_detail",
+            kwargs={"slug": self.published.slug},
+        )
+        self.assertEqual(location, expected_url)
+
     def test_template_tag_returns_latest_published_post(self):
         latest = most_recent_blog_post()
         self.assertEqual(latest, self.published)

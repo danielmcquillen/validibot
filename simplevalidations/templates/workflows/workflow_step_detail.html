@@ -27,11 +27,11 @@
       </div>
     </div>
 
-    <div class="row workflow-step-detail-layout flex-grow-1 align-items-stretch">
+    <div class="row assertion-step-builder-layout flex-grow-1 align-items-stretch">
       <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
 
-        <div class="card shadow-sm mb-4 d-flex flex-column flex-grow-1"
-             id="workflow-step-assertions-editor-card">
+        <div id="assertions-editor-card"
+             class="card shadow-sm mb-4 d-flex flex-column flex-grow-1">
 
           <div class="card-header d-flex justify-content-between align-items-center">
 
@@ -66,23 +66,18 @@
               {% endif %}
 
             {% else %}
-
               <div class="alert alert-info">
                 {% trans "This validator does not support assertions." %}
               </div>
-
             {% endif %}
 
           </div>
-
         </div>
       </div>
-
       <div class="col-12 col-xl-4">
         {% include 'workflows/partials/components/step_details_card.html' %}
       </div>
     </div>
-
   </div>
 
   <div class="modal fade"
@@ -111,6 +106,9 @@
         modalInstance = new bootstrap.Modal(modalEl);
       }
       modalInstance.hide();
+    });
+    document.body.addEventListener('assertions-changed', () => {
+      window.location.reload();
     });
   </script>
 

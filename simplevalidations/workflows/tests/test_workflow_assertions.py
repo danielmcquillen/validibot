@@ -1,10 +1,15 @@
+import json
 import pytest
 from django.urls import reverse
 
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.tests.factories import (
     CustomValidatorFactory,
+    RulesetAssertionFactory,
+    RulesetFactory,
     ValidatorCatalogEntryFactory,
     ValidatorFactory,
 )
@@ -29,7 +34,12 @@ class TestWorkflowStepAssertions:
 
     def _make_basic_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-        return WorkflowStepFactory(workflow=workflow, validator=validator)
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        if not step.ruleset_id:
+            ruleset = RulesetFactory(org=workflow.org)
+            step.ruleset = ruleset
+            step.save(update_fields=["ruleset"])
+        return step
 
     def test_assertions_page_renders(self, client):
         workflow = WorkflowFactory()
@@ -98,6 +108,93 @@ class TestWorkflowStepAssertions:
         )
         response = client.get(url, HTTP_HX_REQUEST="true")
         assert response.status_code == 200
+
+    def test_basic_assertion_create_allows_custom_target(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        step = self._make_basic_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.post(
+            url,
+            data={
+                "assertion_type": "basic",
+                "target_field": "price",
+                "operator": "lt",
+                "comparison_value": "20",
+                "severity": "ERROR",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 204
+        step.refresh_from_db()
+        assert step.ruleset.assertions.filter(target_field="price").exists()
+        payload = json.loads(response.headers["HX-Trigger"])
+        assert payload.get("assertions-changed")
+        assert payload.get("close-modal") == "workflowAssertionModal"
+
+    def test_basic_assertion_edit_modal_renders(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        step = self._make_basic_step(workflow)
+        assertion = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.LT,
+            target_field="price",
+            rhs={"value": 20},
+            options={},
+        )
+
+        url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+        response = client.get(url, HTTP_HX_REQUEST="true")
+        assert response.status_code == 200
+
+    def test_basic_assertion_update_triggers_refresh(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        step = self._make_basic_step(workflow)
+        assertion = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            assertion_type=AssertionType.BASIC,
+            operator=AssertionOperator.LT,
+            target_field="price",
+            rhs={"value": 20},
+            options={},
+        )
+
+        url = reverse(
+            "workflows:workflow_step_assertion_update",
+            kwargs={
+                "pk": workflow.pk,
+                "step_id": step.pk,
+                "assertion_id": assertion.pk,
+            },
+        )
+        response = client.post(
+            url,
+            data={
+                "assertion_type": "basic",
+                "target_field": "price",
+                "operator": "lt",
+                "comparison_value": "19",
+                "severity": "ERROR",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        assert response.status_code == 204
+        payload = json.loads(response.headers["HX-Trigger"])
+        assert payload.get("assertions-changed")
+        assert payload.get("close-modal") == "workflowAssertionModal"
 
     def test_custom_target_requires_validator_permission(self, client):
         workflow = WorkflowFactory()

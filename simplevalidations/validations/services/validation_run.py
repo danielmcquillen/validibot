@@ -8,6 +8,7 @@ from typing import Any
 
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
+from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -25,6 +26,10 @@ from simplevalidations.validations.services.models import ValidationRunTaskResul
 from simplevalidations.validations.services.models import ValidationStepSummary
 
 logger = logging.getLogger(__name__)
+
+GENERIC_EXECUTION_ERROR = _(
+    "This validation run could not be completed. Please try again later."
+)
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
@@ -109,44 +114,69 @@ class ValidationRunService:
         elif getattr(request.user, "is_authenticated", False):
             run_user = request.user
 
-        validation_run = ValidationRun.objects.create(
-            org=org,
-            workflow=workflow,
-            submission=submission,
-            project=getattr(submission, "project", None)
-            or getattr(workflow, "project", None),
-            user=run_user,
-            status=ValidationRunStatus.PENDING,
-        )
-        try:
-            if hasattr(submission, "latest_run_id"):
-                submission.latest_run = validation_run
-                submission.save(update_fields=["latest_run"])
-        except Exception:
-            logger.exception(
-                "Failed to update submission.latest_run for submission",
-                extra={"submission_id": submission.id},
+        async_result_box: list[Any] = []
+
+        def _enqueue_task(run_id: int):
+            def _enqueue():
+                async_result = execute_validation_run.apply_async(
+                    kwargs={
+                        "validation_run_id": run_id,
+                        "user_id": request.user.id,
+                        "metadata": metadata or {},
+                    },
+                    countdown=2,
+                )
+                async_result_box.append(async_result)
+
+            return _enqueue
+
+        with transaction.atomic():
+            validation_run = ValidationRun.objects.create(
+                org=org,
+                workflow=workflow,
+                submission=submission,
+                project=getattr(submission, "project", None)
+                or getattr(workflow, "project", None),
+                user=run_user,
+                status=ValidationRunStatus.PENDING,
+            )
+            try:
+                if hasattr(submission, "latest_run_id"):
+                    submission.latest_run = validation_run
+                    submission.save(update_fields=["latest_run"])
+            except Exception:
+                logger.exception(
+                    "Failed to update submission.latest_run for submission",
+                    extra={"submission_id": submission.id},
+                )
+
+            tracking_service = TrackingEventService()
+            created_extra: dict[str, Any] = {}
+            if metadata:
+                created_extra["metadata_keys"] = sorted(metadata.keys())
+            tracking_service.log_validation_run_created(
+                run=validation_run,
+                user=run_user,
+                submission_id=submission.pk,
+                extra_data=created_extra or None,
             )
 
-        tracking_service = TrackingEventService()
-        created_extra: dict[str, Any] = {}
-        if metadata:
-            created_extra["metadata_keys"] = sorted(metadata.keys())
-        tracking_service.log_validation_run_created(
-            run=validation_run,
-            user=run_user,
-            submission_id=submission.pk,
-            extra_data=created_extra or None,
-        )
+            transaction.on_commit(_enqueue_task(validation_run.id))
 
-        async_result = execute_validation_run.apply_async(
-            kwargs={
-                "validation_run_id": validation_run.id,
-                "user_id": request.user.id,
-                "metadata": metadata or {},
-            },
-            countdown=2,  # slight delay to ensure DB transaction commits first
-        )
+        async_result = async_result_box[0] if async_result_box else None
+        if async_result is None:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "ValidationRun %s task was not scheduled via on_commit; scheduling immediately.",
+                validation_run.id,
+            )
+            async_result = execute_validation_run.apply_async(
+                kwargs={
+                    "validation_run_id": validation_run.id,
+                    "user_id": request.user.id,
+                    "metadata": metadata or {},
+                },
+                countdown=2,
+            )
 
         per_attempt = int(getattr(settings, "VALIDATION_START_ATTEMPT_TIMEOUT", 5))
         attempts = int(getattr(settings, "VALIDATION_START_ATTEMPTS", 4))
@@ -214,12 +244,23 @@ class ValidationRunService:
         Returns:
             ValidationRunSummary: The result of the validation run execution.
         """
-        validation_run: ValidationRun = ValidationRun.objects.select_related(
-            "workflow",
-            "org",
-            "project",
-            "submission",
-        ).get(id=validation_run_id)
+        try:
+            validation_run: ValidationRun = ValidationRun.objects.select_related(
+                "workflow",
+                "org",
+                "project",
+                "submission",
+            ).get(id=validation_run_id)
+        except ValidationRun.DoesNotExist:
+            logger.error(
+                "ValidationRun %s missing when execution task started.",
+                validation_run_id,
+            )
+            return ValidationRunTaskResult(
+                run_id=validation_run_id,
+                status=ValidationRunStatus.FAILED,
+                error=GENERIC_EXECUTION_ERROR,
+            )
 
         if validation_run.status not in (
             ValidationRunStatus.PENDING,
@@ -276,13 +317,13 @@ class ValidationRunService:
                     failing_step_id = wf_step.id
                     # For now we stop on first failure
                     break
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Validation run execution failed")
             validation_run.status = ValidationRunStatus.FAILED
             if hasattr(validation_run, "ended_at"):
                 validation_run.ended_at = timezone.now()
             if hasattr(validation_run, "error"):
-                validation_run.error = str(exc)
+                validation_run.error = GENERIC_EXECUTION_ERROR
             validation_run.save()
             tracking_service.log_validation_run_status(
                 run=validation_run,
@@ -293,7 +334,7 @@ class ValidationRunService:
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
-                error="Validation run execution failed.",
+                error=GENERIC_EXECUTION_ERROR,
             )
 
         validation_run_summary: ValidationRunSummary = ValidationRunSummary(

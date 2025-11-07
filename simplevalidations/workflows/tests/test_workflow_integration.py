@@ -1,5 +1,7 @@
 import pytest
 from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.constants import RoleCode
@@ -7,13 +9,63 @@ from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import RulesetAssertion
+from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+
+@pytest.fixture
+def run_validation_tasks_inline(monkeypatch):
+    """
+    Execute validation runs synchronously during tests so API responses include
+    the real ValidationRun payload instead of a pending status.
+    """
+    from simplevalidations.validations import tasks as validation_tasks
+    from simplevalidations.validations.services.validation_run import (
+        ValidationRunService,
+    )
+
+    def immediate_apply_async(*_, **kwargs):
+        task_kwargs = kwargs.get("kwargs") or {}
+
+        class ImmediateResult:
+            def __init__(self):
+                self._executed = False
+
+            def get(self, timeout=None, propagate=False):
+                if self._executed:
+                    return None
+                self._executed = True
+                service = ValidationRunService()
+                return service.execute(
+                    validation_run_id=task_kwargs.get("validation_run_id"),
+                    user_id=task_kwargs.get("user_id"),
+                    metadata=task_kwargs.get("metadata"),
+                )
+
+        return ImmediateResult()
+
+    monkeypatch.setattr(
+        validation_tasks.execute_validation_run,
+        "apply_async",
+        immediate_apply_async,
+    )
 
 
 def _ensure_basic_validator():
@@ -43,7 +95,7 @@ def _login_user_for_org(client, user, org):
 def test_create_workflow_with_basic_step_and_assertion(client):
     user = UserFactory()
     org = OrganizationFactory()
-    ProjectFactory(org=org, is_default=True)
+    project = ProjectFactory(org=org, is_default=True)
     _login_user_for_org(client, user, org)
 
     validator = _ensure_basic_validator()
@@ -57,11 +109,12 @@ def test_create_workflow_with_basic_step_and_assertion(client):
             "version": "1.0",
             "is_active": "on",
             "make_info_public": "",
+            "project": str(project.pk),
         },
     )
     assert response.status_code == 302
     workflow = Workflow.objects.get(name="Price check")
-    assert workflow.project is not None
+    assert workflow.project == project
 
     # Add BASIC step
     step_response = client.post(
@@ -103,3 +156,86 @@ def test_create_workflow_with_basic_step_and_assertion(client):
     assert (
         assertion.message_template == "Price is too expensive! It should be less than $20."
     )
+
+
+def test_basic_workflow_api_flow_returns_failure_when_price_high(
+    api_client,
+    run_validation_tasks_inline,
+):
+    user = UserFactory()
+    org = OrganizationFactory()
+    grant_role(user, org, RoleCode.OWNER)
+    grant_role(user, org, RoleCode.EXECUTOR)
+    api_client.force_authenticate(user=user)
+
+    create_resp = api_client.post(
+        reverse("api:workflow-list"),
+        data={
+            "org": org.pk,
+            "user": user.pk,
+            "name": "Price check",
+            "slug": "price-check",
+            "version": "1.0",
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert create_resp.status_code == status.HTTP_201_CREATED
+    workflow_id = create_resp.data["id"]
+    workflow = Workflow.objects.get(pk=workflow_id)
+
+    validator = ValidatorFactory(
+        validation_type=ValidationType.BASIC,
+        allow_custom_assertion_targets=True,
+        org=org,
+        is_system=False,
+    )
+    ruleset = Ruleset.objects.create(
+        org=org,
+        user=user,
+        name="price-check-rules",
+        ruleset_type=RulesetType.BASIC,
+        version="1.0",
+    )
+    WorkflowStep.objects.create(
+        workflow=workflow,
+        validator=validator,
+        ruleset=ruleset,
+        order=10,
+        name="Manual price gate",
+        description="",
+        notes="",
+        config={},
+    )
+    message = "Price is too expensive! It should be less than $20."
+    RulesetAssertion.objects.create(
+        ruleset=ruleset,
+        order=10,
+        assertion_type=AssertionType.BASIC,
+        operator=AssertionOperator.LT,
+        target_field="price",
+        severity=Severity.ERROR,
+        rhs={"value": 20},
+        options={},
+        message_template=message,
+    )
+
+    start_url = reverse("api:workflow-start", kwargs={"pk": workflow.pk})
+    run_resp = api_client.post(start_url, data={"price": 25}, format="json")
+    assert run_resp.status_code == status.HTTP_201_CREATED
+    body = run_resp.json()
+    assert body["status"] == ValidationRunStatus.FAILED
+    assert body["workflow"] == workflow.slug
+    assert body["error"]
+    assert body["steps"], body
+    price_step = body["steps"][0]
+    assert price_step["status"] == "FAILED"
+    issues = price_step["issues"]
+    assert issues
+    issue = issues[0]
+    assert issue["path"] == "price"
+    assert issue["message"] == message
+    assert issue["severity"] == Severity.ERROR
+
+    run = ValidationRun.objects.get(pk=body["id"])
+    assert run.status == ValidationRunStatus.FAILED

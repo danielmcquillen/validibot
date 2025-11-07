@@ -522,9 +522,12 @@ def _hx_trigger_response(
     *,
     status_code: int = 204,
     close_modal: str | None = "workflowStepModal",
+    extra_payload: dict[str, object] | None = None,
 ) -> HttpResponse:
     response = HttpResponse(status=status_code)
     payload: dict[str, object] = {"steps-changed": True}
+    if extra_payload:
+        payload.update(extra_payload)
     if message:
         payload["toast"] = {"level": level, "message": str(message)}
     if close_modal:
@@ -1695,11 +1698,26 @@ class WorkflowFormViewMixin(WorkflowAccessMixin):
             return project
         project_id = form.initial.get("project") or form.data.get("project")
         if not project_id:
+            default = self._default_project_for_org()
+            if default:
+                if isinstance(form.initial, dict):
+                    form.initial.setdefault("project", default.pk)
+                return default
             return None
         try:
             return Project.objects.get(pk=project_id)
         except (Project.DoesNotExist, ValueError, TypeError):
             return None
+
+    def _default_project_for_org(self) -> Project | None:
+        user = getattr(self.request, "user", None)
+        org = getattr(user, "get_current_org", lambda: None)() if user else None
+        if not org:
+            return None
+        project = Project.objects.filter(org=org, is_default=True).first()
+        if project:
+            return project
+        return Project.objects.filter(org=org).order_by("name").first()
 
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
@@ -1707,7 +1725,7 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
-        project = self._project_from_request()
+        project = self._project_from_request() or self._default_project_for_org()
         if project:
             initial["project"] = project.pk
         return initial
@@ -2970,7 +2988,11 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion added."))
-        return _hx_redirect_response(self.get_success_url())
+        return _hx_trigger_response(
+            message=_("Assertion added."),
+            close_modal="workflowAssertionModal",
+            extra_payload={"assertions-changed": True},
+        )
 
 
 class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
@@ -2978,20 +3000,25 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
     submit_label = _("Save changes")
 
     def dispatch(self, request, *args, **kwargs):
-        self.assertion = get_object_or_404(
-            RulesetAssertion,
-            pk=self.kwargs.get("assertion_id"),
-            ruleset=self.get_ruleset(),
-        )
         if not self.user_can_manage_workflow():
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
 
+    def _get_assertion(self) -> RulesetAssertion:
+        if not hasattr(self, "_assertion"):
+            self._assertion = get_object_or_404(
+                RulesetAssertion,
+                pk=self.kwargs.get("assertion_id"),
+                ruleset=self.get_ruleset(),
+            )
+        return self._assertion
+
     def get_initial(self):
-        return RulesetAssertionForm.initial_from_instance(self.assertion)
+        return RulesetAssertionForm.initial_from_instance(self._get_assertion())
 
     def form_valid(self, form):
-        RulesetAssertion.objects.filter(pk=self.assertion.pk).update(
+        assertion = self._get_assertion()
+        RulesetAssertion.objects.filter(pk=assertion.pk).update(
             assertion_type=form.cleaned_data["assertion_type"],
             operator=form.cleaned_data["resolved_operator"],
             target_catalog=form.cleaned_data.get("target_catalog_entry"),
@@ -3004,7 +3031,11 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion updated."))
-        return _hx_redirect_response(self.get_success_url())
+        return _hx_trigger_response(
+            message=_("Assertion updated."),
+            close_modal="workflowAssertionModal",
+            extra_payload={"assertions-changed": True},
+        )
 
 
 class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
@@ -3019,6 +3050,12 @@ class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
         )
         assertion.delete()
         messages.success(request, _("Assertion removed."))
+        if request.headers.get("HX-Request"):
+            return _hx_trigger_response(
+                message=_("Assertion removed."),
+                close_modal="workflowAssertionModal",
+                extra_payload={"assertions-changed": True},
+            )
         return HttpResponseRedirect(
             reverse_with_org(
                 "workflows:workflow_step_edit",

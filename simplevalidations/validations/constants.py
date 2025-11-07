@@ -22,6 +22,7 @@ class StepStatus(TextChoices):
 
 
 class RulesetType(TextChoices):
+    BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")

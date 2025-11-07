@@ -18,6 +18,7 @@ from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
 
 
 class CustomValidatorCreateForm(forms.Form):
@@ -392,6 +393,8 @@ class RulesetAssertionForm(forms.Form):
         self.cleaned_data["target_field_value"] = value
 
     def _validator_allows_custom_targets(self) -> bool:
+        if getattr(self.validator, "validation_type", "") == ValidationType.BASIC:
+            return True
         return bool(
             getattr(self.validator, "allow_custom_assertion_targets", False),
         )

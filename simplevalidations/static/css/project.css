@@ -12992,15 +12992,11 @@ h4 {
   border: 1px solid var(--bs-border-color);
 }
 
-#assertion-step-builder {
-  overflow: hidden;
-}
 #assertion-step-builder .app-content-header-bar {
   padding: 0;
   display: flex;
   flex-direction: row;
   height: 3rem;
-  overflow: hidden;
 }
 #assertion-step-builder .app-content-header-bar .app-content-header {
   display: flex;
@@ -13008,7 +13004,6 @@ h4 {
   height: 100%;
   justify-content: flex-start;
   align-items: center;
-  overflow: hidden;
 }
 #assertion-step-builder .app-content-header-bar .app-content-header .badge-wrapper {
   height: 100% !important;
@@ -13028,14 +13023,58 @@ h4 {
 #assertion-step-builder .app-content-header-bar .app-content-header .title-wrapper {
   border: 1px solid var(--bs-dark-border) !important;
 }
-#assertion-step-builder #workflow-step-assertions-editor-card .editor-workspace {
+#assertion-step-builder #assertions-editor-card .editor-workspace {
   background: url("/static/images/app/notebook_green.png");
   min-height: 70vh;
   padding-bottom: 10rem;
 }
-#assertion-step-builder #workflow-step-assertions-editor-card .assertion-card {
+#assertion-step-builder #assertions-editor-card .assertion-card {
   background: #fff;
   width: 100%;
+  margin-bottom: 1rem;
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background-color: var(--bs-white);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions form {
+  margin: 0;
+  display: inline-flex;
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn {
+  border: 0;
+  border-radius: 0;
+  padding: 4px 8px !important;
+  color: var(--bs-primary);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn:disabled {
+  opacity: 0.4;
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-secondary {
+  color: var(--bs-primary);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-secondary:hover, #assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-secondary:focus {
+  background-color: rgba(var(--bs-primary-rgb), 0.05);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-primary {
+  color: var(--bs-primary);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-danger {
+  color: var(--bs-danger);
+  border-left: 1px solid var(--bs-danger-border-subtle);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-danger:hover, #assertion-step-builder #assertions-editor-card .assertion-actions .btn-outline-danger:focus {
+  background-color: rgba(var(--bs-danger-rgb), 0.05);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn:first-child {
+  border-right: 1px solid var(--bs-border-color);
+}
+#assertion-step-builder #assertions-editor-card .assertion-actions .btn:last-child {
+  border-left: 1px solid var(--bs-border-color);
 }
 
 #validator-library .tabs {

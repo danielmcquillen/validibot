@@ -1,63 +1,69 @@
 {% load i18n core_tags %}
 
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-    <div>
-        <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="badge text-bg-light text-uppercase">{{ assertion.get_assertion_type_display }}</span>
-            <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
+<div class="assertion-step-wrapper" data-step-id="{{ step.id }}">
+    <div class="assertion-card card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="badge text-bg-light text-uppercase">{{ assertion.get_assertion_type_display }}</span>
+                        <span class="badge text-bg-secondary">{{ assertion.get_severity_display }}</span>
+                    </div>
+                    <h2 class="h6 mb-1">
+                        {{ assertion.target_display }}
+                    </h2>
+                    <p class="text-muted small mb-1">
+                        {{ assertion.condition_display }}
+                    </p>
+                    {% if assertion.message_template %}
+                        <p class="text-muted small mb-0">
+                            {{ assertion.message_template }}
+                        </p>
+                    {% endif %}
+                </div>
+                {% if can_manage_assertions %}
+                    <div class="btn-group" role="group">
+                        <form method="post"
+                              action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="direction" value="up" />
+                            <button class="btn btn-outline-secondary btn-sm"
+                                    {% if forloop.first %}
+                                        disabled
+                                    {% endif %}>
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                        </form>
+                        <form method="post"
+                              action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="direction" value="down" />
+                            <button class="btn btn-outline-secondary btn-sm"
+                                    {% if forloop.last %}
+                                        disabled
+                                    {% endif %}>
+                                <i class="bi bi-arrow-down"></i>
+                            </button>
+                        </form>
+                        <button class="btn btn-outline-primary btn-sm"
+                                data-bs-toggle="modal"
+                                data-bs-target="#workflowAssertionModal"
+                                hx-get="{% org_url 'workflows:workflow_step_assertion_update' workflow.pk step.pk assertion.pk %}"
+                                hx-target="#workflow-assertion-modal-content"
+                                hx-trigger="click">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form method="post"
+                              action="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
+                              onsubmit="return confirm('{% trans "Delete this assertion?" %}');">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
         </div>
-        <h2 class="h6 mb-1">
-            {{ assertion.target_display }}
-        </h2>
-        <p class="text-muted small mb-1">
-            {{ assertion.condition_display }}
-        </p>
-        {% if assertion.message_template %}
-            <p class="text-muted small mb-0">
-                {{ assertion.message_template }}
-            </p>
-        {% endif %}
     </div>
-    {% if can_manage_assertions %}
-        <div class="btn-group" role="group">
-            <form method="post"
-                  action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
-                {% csrf_token %}
-                <input type="hidden" name="direction" value="up" />
-                <button class="btn btn-outline-secondary btn-sm"
-                        {% if forloop.first %}
-                            disabled
-                        {% endif %}>
-                    <i class="bi bi-arrow-up"></i>
-                </button>
-            </form>
-            <form method="post"
-                  action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
-                {% csrf_token %}
-                <input type="hidden" name="direction" value="down" />
-                <button class="btn btn-outline-secondary btn-sm"
-                        {% if forloop.last %}
-                            disabled
-                        {% endif %}>
-                    <i class="bi bi-arrow-down"></i>
-                </button>
-            </form>
-            <button class="btn btn-outline-primary btn-sm"
-                    data-bs-toggle="modal"
-                    data-bs-target="#workflowAssertionModal"
-                    hx-get="{% org_url 'workflows:workflow_step_assertion_update' workflow.pk step.pk assertion.pk %}"
-                    hx-target="#workflow-assertion-modal-content"
-                    hx-trigger="click">
-                <i class="bi bi-pencil"></i>
-            </button>
-            <form method="post"
-                  action="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
-                  onsubmit="return confirm('{% trans "Delete this assertion?" %}');">
-                {% csrf_token %}
-                <button class="btn btn-outline-danger btn-sm">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </form>
-        </div>
-    {% endif %}
 </div>

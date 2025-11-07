@@ -230,13 +230,19 @@ class WorkflowForm(forms.ModelForm):
             raise ValidationError(_("Name is required."))
         return name
 
+    def clean_project(self):
+        project = self.cleaned_data.get("project")
+        if self.instance and self.instance.pk:
+            return self.instance.project
+        return project
+
     def _configure_project_field(self):
         project_field = self.fields.get("project")
         if project_field is None:
             return
 
-        project_field.required = True
-        project_field.empty_label = _("Select a project")
+        project_field.required = False
+        project_field.widget = forms.HiddenInput()
         project_field.queryset = Project.objects.none()
 
         if not self.user or not getattr(self.user, "is_authenticated", False):
@@ -249,13 +255,17 @@ class WorkflowForm(forms.ModelForm):
         projects = Project.objects.filter(org=org).order_by("name")
         project_field.queryset = projects
 
-        if self.instance and self.instance.pk and self.instance.project_id:
+        if self.instance and self.instance.pk:
+            project_field.initial = self.instance.project_id
             return
 
-        if not self.initial.get("project"):
-            default_project = projects.filter(is_default=True).first()
-            if default_project:
-                project_field.initial = default_project.pk
+        if self.initial.get("project"):
+            project_field.initial = self.initial["project"]
+            return
+
+        default_project = projects.filter(is_default=True).first() or projects.first()
+        if default_project:
+            project_field.initial = default_project.pk
 
 
 class WorkflowLaunchForm(forms.Form):
@@ -863,6 +873,7 @@ class AiAssistStepConfigForm(BaseStepConfigForm):
 
 def get_config_form_class(validation_type: str) -> type[forms.Form]:
     mapping: dict[str, type[forms.Form]] = {
+        ValidationType.BASIC: BasicStepConfigForm,
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
@@ -907,3 +918,9 @@ class WorkflowPublicInfoForm(forms.ModelForm):
             Field("title"),
             Field("content_md"),
         )
+class BasicStepConfigForm(BaseStepConfigForm):
+    """Minimal form for manual assertion steps (name/description/notes only)."""
+
+    def __init__(self, *args, step=None, **kwargs):
+        super().__init__(*args, step=step, **kwargs)
+        self.fields.pop("display_schema", None)

@@ -18,6 +18,7 @@ from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
@@ -498,6 +499,41 @@ def test_create_energyplus_requires_simulation_toggle_for_checks(client):
     assert "simulation_checks" in html
     assert '<button type="submit" class="btn btn-primary">' in html
     assert "Create step" in html
+
+
+def test_step_settings_does_not_expose_validator_selector(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
+    step = WorkflowStepFactory(workflow=workflow, validator=validator)
+
+    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'name="validator_choice"' not in body
+
+
+def test_create_basic_step_uses_minimal_fields(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ensure_validator(ValidationType.BASIC, "basic-validator", "Manual Assertions")
+
+    create_url = _select_validator(client, workflow, validator)
+    response = client.post(
+        create_url,
+        data={
+            "name": "Manual assertions",
+            "description": "Hand-written checks",
+            "notes": "Remember to add derivations later",
+        },
+    )
+
+    assert response.status_code == 302
+    step = WorkflowStep.objects.get(workflow=workflow, validator=validator)
+    assert step.name == "Manual assertions"
+    assert step.config == {}
 
 
 def test_update_view_prefills_ai_step(client):

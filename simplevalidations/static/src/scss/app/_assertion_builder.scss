@@ -1,4 +1,4 @@
-#workflow-step-detail {
+#assertion-step-builder {
   overflow: hidden;
   .app-content-header-bar {
     padding: 0;
@@ -27,7 +27,7 @@
         padding-right: 0.5rem;
         background-image: url("/static/images/app/notebook.png");
         border: 1px solid var(--bs-primary-border-subtle);
-        border-top-left-radius : 0.75rem;
+        border-top-left-radius: 0.75rem;
         border-bottom-left-radius: 0.75rem;
       }
       .title-wrapper {
@@ -36,14 +36,12 @@
     }
   }
   #workflow-step-assertions-editor-card {
-    // only the top card body needs the background
     .editor-workspace {
       background: url("/static/images/app/notebook_green.png");
       min-height: 70vh;
       padding-bottom: 10rem;
     }
-
-    .workflow-step-card {
+    .assertion-card {
       background: #fff;
       width: 100%;
     }

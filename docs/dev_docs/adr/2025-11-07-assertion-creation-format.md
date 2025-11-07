@@ -42,6 +42,10 @@ in to free-form targets per validator.
 - Update `AssertionType` so we only have the coarse modes `BASIC` (structured
   operator-based assertions) and `CEL_EXPRESSION` (raw CEL text). Future types
   can extend this enum without another schema change.
+- Validators remain immutable once a step is created. If an author wants to try
+  a different validation engine they should create a new step; this keeps
+  existing rulesets, catalogs, and audit history attached to the original
+  validator.
 - BASIC assertions always store their target in `target_catalog` or
   `target_field`, set `operator`, and persist the operator payload in `rhs`
   (values) plus `options` (inclusive bounds, tolerance, etc.).

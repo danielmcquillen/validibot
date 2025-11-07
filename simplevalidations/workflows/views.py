@@ -88,6 +88,7 @@ logger = logging.getLogger(__name__)
 
 MAX_STEP_COUNT = 5
 ADVANCED_VALIDATION_TYPES = {
+    ValidationType.BASIC,
     ValidationType.ENERGYPLUS,
     ValidationType.CUSTOM_RULES,
 }
@@ -1680,9 +1681,36 @@ class WorkflowFormViewMixin(WorkflowAccessMixin):
         kwargs["user"] = self.request.user
         return kwargs
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = context.get("form")
+        context["project_context"] = self._project_from_form(form) if form else None
+        return context
+
+    def _project_from_form(self, form: WorkflowForm) -> Project | None:
+        if not form:
+            return None
+        project = getattr(form.instance, "project", None)
+        if project:
+            return project
+        project_id = form.initial.get("project") or form.data.get("project")
+        if not project_id:
+            return None
+        try:
+            return Project.objects.get(pk=project_id)
+        except (Project.DoesNotExist, ValueError, TypeError):
+            return None
+
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
     template_name = "workflows/workflow_form.html"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        project = self._project_from_request()
+        if project:
+            initial["project"] = project.pk
+        return initial
 
     def get_breadcrumbs(self):
         breadcrumbs = super().get_breadcrumbs()
@@ -1718,6 +1746,19 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
             request=self.request,
             kwargs={"pk": self.object.pk},
         )
+
+    def _project_from_request(self) -> Project | None:
+        project_id = self.request.GET.get("project")
+        if not project_id:
+            return None
+        user = self.request.user
+        org = getattr(user, "get_current_org", lambda: None)()
+        if not org:
+            return None
+        try:
+            return Project.objects.get(pk=project_id, org=org)
+        except (Project.DoesNotExist, ValueError, TypeError):
+            return None
 
 
 class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
@@ -2165,15 +2206,16 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         validator_groups: list[tuple[str, str, set[str] | None]] = [
             (
                 "basic",
-                str(_("Basic Validations")),
+                str(_("Validators")),
                 {
+                    ValidationType.BASIC,
                     ValidationType.JSON_SCHEMA,
                     ValidationType.XML_SCHEMA,
                 },
             ),
             (
                 "advanced",
-                str(_("Advanced Validations")),
+                str(_("Advanced Validators")),
                 {
                     ValidationType.AI_ASSIST,
                     ValidationType.ENERGYPLUS,
@@ -2499,6 +2541,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         )
         return context
 
+
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
         breadcrumbs = super().get_breadcrumbs()
@@ -2537,7 +2580,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     "url": step_url,
                 },
             )
-            breadcrumbs.append({"name": _("Edit Detail"), "url": ""})
+            breadcrumbs.append({"name": _("Edit Step Detail"), "url": ""})
         return breadcrumbs
 
 

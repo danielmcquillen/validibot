@@ -78,6 +78,18 @@ class ValidatorFactory(DjangoModelFactory):
     default_ruleset = None
     org = None
     is_system = True
+    allow_custom_assertion_targets = False
+
+    @factory.post_generation
+    def ensure_defaults(self, create, extracted, **kwargs):  # noqa: D401
+        """Align flags with the chosen validation type."""
+        desired = self.allow_custom_assertion_targets
+        if self.validation_type == ValidationType.BASIC:
+            desired = True
+        if desired != self.allow_custom_assertion_targets:
+            self.allow_custom_assertion_targets = desired
+            if create:
+                self.save(update_fields=["allow_custom_assertion_targets"])
 
 
 class ValidatorCatalogEntryFactory(DjangoModelFactory):

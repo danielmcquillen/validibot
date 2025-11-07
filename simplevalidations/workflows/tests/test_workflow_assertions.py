@@ -27,6 +27,10 @@ class TestWorkflowStepAssertions:
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         return step
 
+    def _make_basic_step(self, workflow):
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+        return WorkflowStepFactory(workflow=workflow, validator=validator)
+
     def test_assertions_page_renders(self, client):
         workflow = WorkflowFactory()
         self._login(client, workflow)
@@ -83,6 +87,17 @@ class TestWorkflowStepAssertions:
         body = response.content.decode()
         assert "Assertion Type" in body
         assert "custom-signal" in body
+
+    def test_basic_validator_supports_assertions(self, client):
+        workflow = WorkflowFactory()
+        self._login(client, workflow)
+        step = self._make_basic_step(workflow)
+        url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = client.get(url, HTTP_HX_REQUEST="true")
+        assert response.status_code == 200
 
     def test_custom_target_requires_validator_permission(self, client):
         workflow = WorkflowFactory()

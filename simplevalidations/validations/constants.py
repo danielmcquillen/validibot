@@ -1,3 +1,5 @@
+from logging import BASIC_FORMAT
+
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
@@ -27,6 +29,7 @@ class RulesetType(TextChoices):
 
 
 class ValidationType(TextChoices):
+    BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")

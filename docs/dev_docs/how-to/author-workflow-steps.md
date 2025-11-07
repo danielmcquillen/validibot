@@ -16,8 +16,8 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 
 1. Open a workflow (either create a new workflow or open an existing one) and click **Add step**.
 2. A modal displays every available option across four tabs:
-   - **Basic validations** (JSON and XML schema validators)
-   - **Advanced validations** (AI Assist and EnergyPlus)
+   - **Validators** (BASIC, JSON Schema, and XML Schema)
+   - **Advanced validators** (AI Assist and EnergyPlus)
    - **Integrations** (action definitions such as Slack notifications)
    - **Certifications** (action definitions that issue certificates or badges)
    Each card shows the item name, category, icon, and description.

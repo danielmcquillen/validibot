@@ -104,27 +104,28 @@
     "matches",
   ]);
 
-  function initAssertionForm(container) {
-    if (!container || container.dataset.assertionFormEnhanced === "1") {
+  function initAssertionForm(form) {
+    if (!form) {
       return;
     }
-    container.dataset.assertionFormEnhanced = "1";
+    const alreadyInitialized = form.dataset.assertionFormEnhanced === "1";
 
-    const typeField = container.querySelector("#id_assertion_type");
-    const operatorField = container.querySelector("#id_operator");
+    const typeField = form.querySelector("#id_assertion_type");
+    const operatorField = form.querySelector("#id_operator");
     if (!typeField || !operatorField) {
       return;
     }
 
     const wrappers = {};
     CONDITIONAL_FIELDS.forEach((name) => {
-      const field = container.querySelector(`[name="${name}"]`);
+      const field = form.querySelector(`[name="${name}"]`);
       if (!field) {
         return;
       }
       const group =
         field.closest(".form-group") ||
         field.closest(".form-check") ||
+        field.closest(".mb-3") ||
         field.parentElement;
       wrappers[name] = group;
     });
@@ -172,21 +173,24 @@
       fieldSet.forEach((name) => setVisible(name, true));
     }
 
-    typeField.addEventListener("change", () => {
-      if (typeField.value === "cel_expr") {
-        operatorField.value = "";
-      }
-      updateOperatorVisibility();
-    });
+    if (!alreadyInitialized) {
+      form.dataset.assertionFormEnhanced = "1";
+      typeField.addEventListener("change", () => {
+        if (typeField.value === "cel_expr") {
+          operatorField.value = "";
+        }
+        updateOperatorVisibility();
+      });
 
-    operatorField.addEventListener("change", updateOperatorVisibility);
+      operatorField.addEventListener("change", updateOperatorVisibility);
+    }
     updateOperatorVisibility();
   }
 
   function setupAssertionForm(root) {
     const form = root.querySelector("form");
     if (form) {
-      initAssertionForm(root);
+      initAssertionForm(form);
     }
   }
 

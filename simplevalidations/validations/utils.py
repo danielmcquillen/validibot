@@ -19,6 +19,15 @@ def create_default_validators():
 
     default_validators = [
         {
+            "name": _("Manual Assertions"),
+            "slug": "basic-assertions",
+            "description": _("Author assertions directly without a provider catalog."),
+            "validation_type": ValidationType.BASIC,
+            "version": "1.0",
+            "order": 0,
+            "allow_custom_assertion_targets": True,
+        },
+        {
             "name": _("JSON Schema Validation"),
             "slug": "json-schema-validation",
             "description": _("Validate JSON payload against a predefined schema."),
@@ -73,6 +82,10 @@ def create_default_validators():
         validator.order = validator_data["order"]
         validator.is_system = True
         validator.org = None
+        validator.allow_custom_assertion_targets = validator_data.get(
+            "allow_custom_assertion_targets",
+            validator.allow_custom_assertion_targets,
+        )
         validator.save()
 
         provider = get_provider_for_validator(validator)

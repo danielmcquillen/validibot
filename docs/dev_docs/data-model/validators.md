@@ -2,7 +2,15 @@
 
 Validators define the concrete execution engine that a workflow step will call. They bundle the technical
 contract (validation type + provider version), the catalog of signals/derivations the engine exposes,
-and optional organization-specific extensions (custom validators).
+and optional organization-specific extensions (custom validators). The platform now ships with five stock
+validation types:
+
+- **BASIC** — no provider backing; authors add assertions manually via the UI. These steps still produce
+  rulesets so findings remain auditable, but there is no catalog beyond whatever the assertion references.
+- **JSON_SCHEMA / XML_SCHEMA** — schema validations that require uploading or pasting schema content.
+- **ENERGYPLUS** — advanced simulation validators with IDF/simulation options and catalog entries.
+- **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
+- **CUSTOM_RULES** — organization-defined validators registered via the custom validator UI.
 
 Validators are stored in the `validators` table. Each row records the following:
 
@@ -30,6 +38,8 @@ rows live in `validator_catalog_entries` and carry:
 Inputs represent values already available before the engine runs (project metadata, uploaded files,
 environment). Outputs represent telemetry the engine emits during execution. Derivations describe
 computed metrics, and are evaluated (via CEL) before assertions fire. By centralising these definitions on the validator we let every ruleset reuse them without duplicating structure inside each rule. Workflow step authors can still define as many assertions as necessary by referencing the catalog slugs stored on the validator; see [Ruleset Assertions](assertions.md) for how those references are persisted and executed.
+Basic validators intentionally skip catalog management; every assertion directly references the custom
+target path the author entered.
 
 ## Custom validators
 

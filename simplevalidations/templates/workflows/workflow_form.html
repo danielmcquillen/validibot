@@ -35,6 +35,17 @@
       <div class="col-12 ">
         <div class="card shadow-sm app-form-card">
           <div class="card-body">
+            {% if project_context %}
+              <div class="alert alert-info d-flex align-items-center justify-content-between mb-4">
+                <div>
+                  <strong>{% trans "Project" %}:</strong>
+                  {{ project_context.name }}
+                </div>
+                <span class="text-muted small">
+                  {% trans "Workflows stay attached to the project they were created in." %}
+                </span>
+              </div>
+            {% endif %}
             <form method="post" enctype="multipart/form-data" novalidate>
               {% csrf_token %}
               {% crispy form %}

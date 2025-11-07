@@ -21,7 +21,8 @@ Each assertion row stores:
 Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
 persisted in `target_field`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
-`target_*` columns for consistency.
+`target_*` columns for consistency. BASIC validators always run in “custom target” mode because there
+is no provider catalog; authors add assertions manually and the system persists exactly what they enter.
 
 ## Relationship to validators and rulesets
 

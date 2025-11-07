@@ -16,7 +16,10 @@ Each assertion row stores:
 - `rhs` – operator payload (single value, min/max bounds, regex, etc.).
 - `options` – operator metadata (inclusive bounds, case folding, tolerance units, etc.).
 - `cel_cache` – read-only CEL preview rendered from the operator payload for auditability.
-- `message_template` – templated string rendered with evaluation context (e.g., `{{value | round(1)}}`).
+- `message_template` – templated string rendered with evaluation context (e.g., `{{value | round(1)}}`). Supported filters today are:
+  - `round(digits)` – rounds numeric values (defaults to `0` digits).
+  - `upper` / `lower` – coercion to uppercase or lowercase.
+  - `default("fallback")` – substitute the provided fallback when the value is blank/`None`.
 
 Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is

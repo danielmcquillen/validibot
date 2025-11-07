@@ -232,6 +232,9 @@ class RulesetAssertionForm(forms.Form):
     message_template = forms.CharField(
         label=_("Message"),
         required=False,
+        help_text=_(
+            "Supports {{value}} style placeholders plus filters round, upper, lower, default."
+        ),
         widget=forms.Textarea(
             attrs={
                 "rows": 2,

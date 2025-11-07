@@ -239,7 +239,7 @@ class RulesetAssertion(models.Model):
     # Presentation
     message_template = models.TextField(
         blank=True, default="",
-        help_text=_("Failure message. Supports {{field}}, {{actual}}, {{value}}, {{min}}, {{max}}, {{tolerance}}, {{units}}.")
+        help_text=_("Failure message. Supports {{field}}, {{actual}}, {{value}}, {{min}}, {{max}}, {{tolerance}}, {{units}} with filters (round, upper, lower, default).")
     )
 
     # Diagnostics / forward-compat

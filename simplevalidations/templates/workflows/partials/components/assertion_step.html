@@ -17,7 +17,7 @@
                     </p>
                     {% if assertion.message_template %}
                         <p class="text-muted small mb-0">
-                            {{ assertion.message_template }}
+                            {{ assertion.message_template|linebreaksbr }}
                         </p>
                     {% endif %}
                 </div>

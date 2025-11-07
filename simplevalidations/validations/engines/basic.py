@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING
 from typing import Any
 
+from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 
 from simplevalidations.validations.constants import AssertionOperator
@@ -27,6 +28,10 @@ if TYPE_CHECKING:
 _PATH_TOKEN_PATTERN = re.compile(r"([A-Za-z0-9_-]+)|\[(\d+)\]")
 _TEMPLATE_PATTERN = re.compile(r"{{\s*(?P<expr>.*?)\s*}}")
 _FILTER_PATTERN = re.compile(r"^(?P<name>\w+)(?:\((?P<args>.*)\))?$")
+
+
+class MessageTemplateRenderError(Exception):
+    """Raised when an assertion message template fails to render."""
 
 logger = logging.getLogger(__name__)
 
@@ -450,11 +455,20 @@ class BasicValidatorEngine(BaseValidatorEngine):
         actual: Any,
     ) -> str:
         template = (assertion.message_template or "").strip()
+        message: str | None = None
         if template:
-            rendered = self._render_message_template(template, context)
-            if rendered:
-                return rendered
-        return fallback_message or self._default_message(assertion, actual)
+            try:
+                rendered = self._render_message_template(template, context)
+            except MessageTemplateRenderError:
+                message = _(
+                    "Message template error – falling back to default output."
+                )
+            else:
+                if rendered:
+                    message = rendered
+        if message is None:
+            message = fallback_message or self._default_message(assertion, actual)
+        return strip_tags(str(message))
 
     def _build_template_context(
         self,
@@ -514,9 +528,12 @@ class BasicValidatorEngine(BaseValidatorEngine):
             expr = match.group("expr")
             try:
                 value = self._resolve_template_expression(expr, context)
-            except Exception:
-                logger.exception("Failed to render assertion message template expression '%s'.", expr)
-                return match.group(0)
+            except Exception as exc:
+                logger.exception(
+                    "Failed to render assertion message template expression '%s'.",
+                    expr,
+                )
+                raise MessageTemplateRenderError from exc
             if value is None:
                 return match.group(0)
             return str(value)

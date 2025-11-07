@@ -16,6 +16,7 @@ from simplevalidations.actions.models import ActionDefinition
 from simplevalidations.actions.models import SignedCertificateAction
 from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import AssertionType
@@ -75,6 +76,15 @@ def _login_for_workflow(client, workflow):
     client.force_login(user)
     session = client.session
     session["active_org_id"] = workflow.org_id
+    session.save()
+
+
+def _login_user_for_org(client, user, org):
+    user.set_current_org(org)
+    user.refresh_from_db()
+    client.force_login(user)
+    session = client.session
+    session["active_org_id"] = org.pk
     session.save()
 
 
@@ -185,6 +195,7 @@ def test_create_view_creates_json_schema_step(client):
         },
     )
     assert response.status_code == 302
+
 
     step = WorkflowStep.objects.get(workflow=workflow)
     assert step.validator == validator
@@ -690,6 +701,56 @@ def test_move_and_delete_step(client):
     response = client.post(delete_url, HTTP_HX_REQUEST="true")
     assert response.status_code == 204
     assert list(workflow.steps.all()) == [step_b]
+
+
+def test_step_create_rejects_validator_from_other_org(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    foreign_org = OrganizationFactory()
+    bad_validator = ValidatorFactory(org=foreign_org, is_system=False)
+
+    url = reverse(
+        "workflows:workflow_step_create",
+        args=[workflow.pk, bad_validator.pk],
+    )
+    response = client.get(url)
+    assert response.status_code == 404
+
+
+def test_step_delete_requires_manager_role(client):
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow)
+    user = UserFactory()
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    _login_user_for_org(client, user, workflow.org)
+
+    url = reverse(
+        "workflows:workflow_step_delete",
+        args=[workflow.pk, step.pk],
+    )
+    response = client.post(url)
+    assert response.status_code == 403
+    assert WorkflowStep.objects.filter(pk=step.pk).exists()
+
+
+def test_step_move_requires_manager_role(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow, order=10)
+    target_step = WorkflowStepFactory(workflow=workflow, order=20)
+    user = UserFactory()
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    _login_user_for_org(client, user, workflow.org)
+
+    url = reverse(
+        "workflows:workflow_step_move",
+        args=[workflow.pk, target_step.pk],
+    )
+    response = client.post(url, data={"direction": "up"})
+    assert response.status_code == 403
+    orders = list(
+        workflow.steps.order_by("order").values_list("order", flat=True),
+    )
+    assert orders == [10, 20]
 
 
 def test_step_list_shows_author_notes_for_authors(client):

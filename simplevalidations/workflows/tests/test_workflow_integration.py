@@ -207,7 +207,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         notes="",
         config={},
     )
-    message = "Price is too expensive! It should be less than $20."
+    message = "The price {{price}} is too expensive! Limit {{ value }}"
     RulesetAssertion.objects.create(
         ruleset=ruleset,
         order=10,
@@ -234,7 +234,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
     assert issues
     issue = issues[0]
     assert issue["path"] == "price"
-    assert issue["message"] == message
+    assert issue["message"] == "The price 25 is too expensive! Limit 20"
     assert issue["severity"] == Severity.ERROR
 
     run = ValidationRun.objects.get(pk=body["id"])

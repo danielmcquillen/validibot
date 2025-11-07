@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from typing import TYPE_CHECKING
@@ -24,6 +25,10 @@ if TYPE_CHECKING:
 
 
 _PATH_TOKEN_PATTERN = re.compile(r"([A-Za-z0-9_-]+)|\[(\d+)\]")
+_TEMPLATE_PATTERN = re.compile(r"{{\s*(?P<expr>.*?)\s*}}")
+_FILTER_PATTERN = re.compile(r"^(?P<name>\w+)(?:\((?P<args>.*)\))?$")
+
+logger = logging.getLogger(__name__)
 
 
 @register_engine(ValidationType.BASIC)
@@ -93,10 +98,15 @@ class BasicValidatorEngine(BaseValidatorEngine):
                 rhs=assertion.rhs or {},
                 options=options,
             )
+            template_context = self._build_template_context(
+                assertion=assertion,
+                path=path,
+                actual=actual,
+                rhs=assertion.rhs or {},
+                options=options,
+            )
             if not passed:
-                message = assertion.message_template or failure_message or self._default_message(
-                    assertion, actual,
-                )
+                message = self._render_message(assertion, template_context, failure_message, actual)
                 issues.append(
                     ValidationIssue(
                         path or "",
@@ -429,3 +439,140 @@ class BasicValidatorEngine(BaseValidatorEngine):
             "condition": assertion.condition_display,
             "actual": actual,
         }
+
+    # --------------------------- Message templating helpers
+
+    def _render_message(
+        self,
+        assertion,
+        context: dict[str, Any],
+        fallback_message: str | None,
+        actual: Any,
+    ) -> str:
+        template = (assertion.message_template or "").strip()
+        if template:
+            rendered = self._render_message_template(template, context)
+            if rendered:
+                return rendered
+        return fallback_message or self._default_message(assertion, actual)
+
+    def _build_template_context(
+        self,
+        *,
+        assertion,
+        path: str | None,
+        actual: Any,
+        rhs: dict[str, Any],
+        options: dict[str, Any],
+    ) -> dict[str, Any]:
+        context: dict[str, Any] = {
+            "field": assertion.target_display or path or "",
+            "target": assertion.target_display or path or "",
+            "target_field": assertion.target_field,
+            "target_slug": getattr(assertion.target_catalog, "slug", "")
+            if assertion.target_catalog_id
+            else "",
+            "path": path or "",
+            "actual": actual,
+            "value": rhs.get("value"),
+            "expected": rhs.get("value"),
+            "values": rhs.get("values"),
+            "min": rhs.get("min"),
+            "max": rhs.get("max"),
+            "tolerance": rhs.get("tolerance") or options.get("tolerance"),
+            "units": options.get("units"),
+            "severity": assertion.severity,
+            "operator": assertion.get_operator_display(),
+            "when": assertion.when_expression,
+            "rhs": rhs,
+            "options": options,
+        }
+        self._add_target_alias(context, assertion, actual)
+        return context
+
+    def _add_target_alias(self, context: dict[str, Any], assertion, actual: Any) -> None:
+        alias = ""
+        if assertion.target_catalog_id and assertion.target_catalog:
+            alias = assertion.target_catalog.slug or ""
+        elif assertion.target_field:
+            alias = assertion.target_field
+        alias = alias.strip()
+        if not alias:
+            return
+        last_segment = alias
+        for sep in (".", "["):
+            if sep in last_segment:
+                last_segment = re.split(r"[.\[]", alias)[-1]
+                break
+        last_segment = re.sub(r"]+$", "", last_segment)
+        sanitized = re.sub(r"\W+", "_", last_segment).strip("_")
+        if sanitized and sanitized not in context:
+            context[sanitized] = actual
+
+    def _render_message_template(self, template: str, context: dict[str, Any]) -> str:
+        def _replace(match: re.Match) -> str:
+            expr = match.group("expr")
+            try:
+                value = self._resolve_template_expression(expr, context)
+            except Exception:
+                logger.exception("Failed to render assertion message template expression '%s'.", expr)
+                return match.group(0)
+            if value is None:
+                return match.group(0)
+            return str(value)
+
+        return _TEMPLATE_PATTERN.sub(_replace, template)
+
+    def _resolve_template_expression(self, expr: str, context: dict[str, Any]) -> Any:
+        parts = [part.strip() for part in expr.split("|") if part.strip()]
+        if not parts:
+            return ""
+        key = parts[0]
+        value = context.get(key)
+        for spec in parts[1:]:
+            value = self._apply_template_filter(value, spec)
+        return value
+
+    def _apply_template_filter(self, value: Any, spec: str) -> Any:
+        if spec == "":
+            return value
+        match = _FILTER_PATTERN.match(spec)
+        if not match:
+            return value
+        name = match.group("name")
+        args = self._parse_filter_args(match.group("args"))
+        if name == "round":
+            digits = 0
+            if args:
+                try:
+                    digits = int(float(args[0]))
+                except (TypeError, ValueError):
+                    digits = 0
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return value
+            rounded = round(number, digits)
+            if digits == 0:
+                if rounded.is_integer():
+                    return int(rounded)
+                return rounded
+            return rounded
+        if name == "upper":
+            return str(value).upper()
+        if name == "lower":
+            return str(value).lower()
+        if name == "default":
+            return value if value not in (None, "") else (args[0] if args else "")
+        return value
+
+    def _parse_filter_args(self, args: str | None) -> list[str]:
+        if not args:
+            return []
+        parsed: list[str] = []
+        for raw in args.split(","):
+            val = raw.strip()
+            if len(val) >= 2 and val[0] in {'"', "'"} and val[-1] == val[0]:
+                val = val[1:-1]
+            parsed.append(val)
+        return parsed

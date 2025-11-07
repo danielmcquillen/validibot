@@ -15,6 +15,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
+from django.db.models import Q
 from django.http import Http404
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
@@ -2385,6 +2386,12 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             )
         return getattr(self, "_step", None)
 
+    def _validator_queryset(self):
+        workflow = self.get_workflow()
+        return Validator.objects.filter(
+            Q(is_system=True) | Q(org=workflow.org),
+        )
+
     def get_validator(self) -> Validator:
         if self.is_action_step():
             raise Http404
@@ -2396,7 +2403,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 self._validator = step.validator
             else:
                 validator_id = self.kwargs.get(self.validator_url_kwarg)
-                self._validator = get_object_or_404(Validator, pk=validator_id)
+                self._validator = get_object_or_404(self._validator_queryset(), pk=validator_id)
         return self._validator
 
     def get_action_definition(self) -> ActionDefinition:
@@ -2718,6 +2725,8 @@ class WorkflowStepUpdateView(WorkflowStepFormView):
 class WorkflowStepDeleteView(WorkflowObjectMixin, View):
     def post(self, request, *args, **kwargs):
         workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
         step = get_object_or_404(
             WorkflowStep,
             workflow=workflow,
@@ -2732,6 +2741,8 @@ class WorkflowStepDeleteView(WorkflowObjectMixin, View):
 class WorkflowStepMoveView(WorkflowObjectMixin, View):
     def post(self, request, *args, **kwargs):
         workflow = self.get_workflow()
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
         step = get_object_or_404(
             WorkflowStep,
             workflow=workflow,

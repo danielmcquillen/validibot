@@ -2,6 +2,7 @@ import pytest
 
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.tests.factories import (
@@ -20,18 +21,22 @@ def test_validator_catalog_entries_grouped():
     validator = ValidatorFactory(validation_type=ValidationType.CUSTOM_RULES)
     ValidatorCatalogEntryFactory(
         validator=validator,
-        entry_type=CatalogEntryType.SIGNAL_INPUT,
+        entry_type=CatalogEntryType.SIGNAL,
+        run_stage=CatalogRunStage.INPUT,
         slug="floor-area",
     )
     ValidatorCatalogEntryFactory(
         validator=validator,
-        entry_type=CatalogEntryType.SIGNAL_OUTPUT,
+        entry_type=CatalogEntryType.SIGNAL,
+        run_stage=CatalogRunStage.OUTPUT,
         slug="electric-demand",
     )
     grouped = validator.catalog_entries_by_type()
-    assert len(grouped[CatalogEntryType.SIGNAL_INPUT]) == 1
-    assert grouped[CatalogEntryType.SIGNAL_INPUT][0].slug == "floor-area"
-    assert len(grouped[CatalogEntryType.SIGNAL_OUTPUT]) == 1
+    assert len(grouped[CatalogEntryType.SIGNAL]) == 2
+    stage_grouped = validator.catalog_entries_by_stage()
+    assert len(stage_grouped[CatalogRunStage.INPUT]) == 1
+    assert stage_grouped[CatalogRunStage.INPUT][0].slug == "floor-area"
+    assert len(stage_grouped[CatalogRunStage.OUTPUT]) == 1
 
 
 @pytest.mark.django_db

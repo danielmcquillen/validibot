@@ -181,6 +181,9 @@ class ValidationRunStartSerializer(serializers.Serializer):
 
         normalized_content = raw_content
         if isinstance(normalized_content, (dict, list)):
+            # Preserve a consistent storage format by converting Python lists/dicts
+            # into JSON strings. This matches the raw JSON payload workflows expect
+            # when they ingest submissions later in the pipeline.
             normalized_content = json.dumps(normalized_content)
         elif normalized_content is not None and not isinstance(normalized_content, str):
             normalized_content = str(normalized_content)

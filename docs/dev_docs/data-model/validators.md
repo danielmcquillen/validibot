@@ -28,16 +28,17 @@ rows live in `validator_catalog_entries` and carry:
 
 | Field | Meaning |
 | --- | --- |
-| `entry_type` | `signal_input`, `signal_output`, or `derivation`. |
+| `entry_type` | `signal` or `derivation`. |
+| `run_stage` | Whether the entry is available during the **input** phase (before the engine runs) or the **output** phase (after the engine completes). |
 | `slug` | Stable identifier referenced by rulesets and assertions. |
 | `data_type` | Scalar/list metadata (number, datetime, bool, series). |
-| `availability` | When the signal exists (`pre_run`, `post_run`, etc.). |
 | `binding_config` | Provider-specific hints (e.g., EnergyPlus meter path). |
 | `metadata` | Free-form JSON used by the UI and provider tooling. |
 
 Inputs represent values already available before the engine runs (project metadata, uploaded files,
 environment). Outputs represent telemetry the engine emits during execution. Derivations describe
-computed metrics, and are evaluated (via CEL) before assertions fire. By centralising these definitions on the validator we let every ruleset reuse them without duplicating structure inside each rule. Workflow step authors can still define as many assertions as necessary by referencing the catalog slugs stored on the validator; see [Ruleset Assertions](assertions.md) for how those references are persisted and executed.
+computed metrics, and their `run_stage` flag indicates whether they enrich inputs or post-process
+validator outputs. By centralising these definitions on the validator we let every ruleset reuse them without duplicating structure inside each rule. Workflow step authors can still define as many assertions as necessary by referencing the catalog slugs stored on the validator; see [Ruleset Assertions](assertions.md) for how those references are persisted and executed.
 Basic validators intentionally skip catalog management; every assertion directly references the custom
 target path the author entered.
 

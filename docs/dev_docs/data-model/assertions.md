@@ -68,7 +68,7 @@ Once a validation run reaches a step with assertions:
 1. The engine resolves the provider and loads the validator catalog snapshot stored during preparation.
 2. Providers optionally `instrument()` the uploaded artifact (EnergyPlus outputs, Modelica probes, etc.).
 3. `bind()` constructs helper closures (e.g., `series('p95_W')`) and caches.
-4. Derivations execute in topological order, then assertions evaluate sequentially, honoring `when` guards.
+4. Derivations execute in topological order for the **input** stage, then staged assertions run: input-stage assertions gate whether the validator can run, the validator executes, and finally output-stage derivations/assertions consume the emitted telemetry. All assertions continue to honor `when` guards.
 5. Failures become Findings with severity, message, target slug, and a copy of the assertion metadata.
 
 This flow ensures findings remain reproducible: rerunning the same submission with the same ruleset +

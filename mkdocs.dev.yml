@@ -5,6 +5,8 @@ site_url: https://danielmcquillen.github.io/simplevalidations/dev/
 docs_dir: docs/dev_docs
 use_directory_urls: true
 
+dev_addr: 127.0.0.1:9000
+
 repo_url: https://github.com/danielmcquillen/simplevalidations
 repo_name: danielmcquillen/simplevalidations
 
@@ -38,6 +40,7 @@ nav:
       - User Roles & Permissions: overview/user_roles.md
       - How It Works: overview/how_it_works.md
       - Submission Modes: overview/request_modes.md
+      - System Administration: overview/system_admin.md
       - Dashboard: dashboard.md
   - How-to:
       - Use a Workflow: how-to/use-workflow.md

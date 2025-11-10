@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from simplevalidations.core.models import SiteSettings
 from simplevalidations.core.models import SupportMessage
 
 
@@ -16,3 +17,33 @@ class SupportMessageAdmin(admin.ModelAdmin):
     search_fields = ("subject", "message", "user__username", "user__email")
     readonly_fields = ("created", "modified")
     ordering = ("-created",)
+
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "slug",
+        "modified",
+    )
+    readonly_fields = (
+        "slug",
+        "created",
+        "modified",
+    )
+    fieldsets = (
+        (
+            "Site Configuration",
+            {
+                "fields": (
+                    "slug",
+                    "data",
+                    "created",
+                    "modified",
+                ),
+                "description": (
+                    "Only system administrators should edit these values. "
+                    "Keep JSON well-formed and rely on the application to fill missing defaults."
+                ),
+            },
+        ),
+    )

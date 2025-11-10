@@ -65,9 +65,13 @@ class JSONSchemaVersion(TextChoices):
 
 
 class CatalogEntryType(TextChoices):
-    SIGNAL_INPUT = "signal_input", _("Signal (Input)")
-    SIGNAL_OUTPUT = "signal_output", _("Signal (Output)")
+    SIGNAL = "signal", _("Signal")
     DERIVATION = "derivation", _("Derivation")
+
+
+class CatalogRunStage(TextChoices):
+    INPUT = "input", _("Input")
+    OUTPUT = "output", _("Output")
 
 
 class CatalogValueType(TextChoices):

@@ -5,6 +5,8 @@ site_url: https://docs.simplevalidations.app/
 docs_dir: docs/user_docs
 use_directory_urls: true
 
+dev_addr: 127.0.0.1:9001
+
 theme:
   name: material
   language: en
@@ -22,4 +24,20 @@ markdown_extensions:
 
 nav:
   - Welcome: index.md
-  - Getting Started: getting-started.md
+  - Quick Start:
+      - Getting Started: getting-started.md
+  - Core Tasks:
+      - Manage Workflows: workflow-management.md
+      - Run Validations: running-validations.md
+      - Review Results: reviewing-results.md
+      - Collaborate & Share: collaboration.md
+  - API Integrations:
+      - API Overview: api-overview.md
+      - Data Shapes & Types: api/data-shapes.md
+      - Authentication: api/authentication.md
+      - Sending Data to the API: api/sending-data.md
+      - Webhooks & Notifications: api/webhooks.md
+  - Reference:
+      - Glossary: glossary.md
+      - Troubleshooting: troubleshooting.md
+      - FAQ: faq.md

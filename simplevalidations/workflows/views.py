@@ -1,9 +1,9 @@
 import base64
-import contextlib
 import json
 import logging
 import uuid
 from dataclasses import asdict
+from typing import TYPE_CHECKING
 from typing import Any
 from uuid import uuid4
 
@@ -45,6 +45,8 @@ from simplevalidations.actions.models import SignedCertificateAction
 from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.actions.registry import get_action_form
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.core.site_settings import MetadataPolicyError
+from simplevalidations.core.site_settings import get_site_settings
 from simplevalidations.core.utils import pretty_json
 from simplevalidations.core.utils import pretty_xml
 from simplevalidations.core.utils import reverse_with_org
@@ -55,7 +57,8 @@ from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
@@ -81,9 +84,13 @@ from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.forms import get_config_form_class
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.workflows.request_utils import SubmissionRequestMode
+from simplevalidations.workflows.request_utils import detect_mode
 from simplevalidations.workflows.request_utils import extract_request_basics
-from simplevalidations.workflows.request_utils import is_raw_body_mode
 from simplevalidations.workflows.serializers import WorkflowSerializer
+
+if TYPE_CHECKING:
+    from simplevalidations.workflows.request_utils import ModeDetectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +129,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     ) -> Response:
         """
         Helper to start a validation run for a given workflow.
+
+        This method is called regardless of how the workflow was
+        started. It centralizes the logic to handle the request 
+        and create the validation run.
 
         Args:
             request (Request):
@@ -165,7 +176,39 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
         content_type_header, body_bytes = extract_request_basics(request)
 
-        if is_raw_body_mode(request, content_type_header, body_bytes):
+        # Have a look at the incoming request and
+        # decide which submission mode applies. Report errors
+        # back to the API caller if we can't make sense of it.
+        detection_result: ModeDetectionResult = detect_mode(
+            request=request,
+            content_type_header=content_type_header,
+            body_bytes=body_bytes,
+        )
+        if detection_result.has_error:
+            error_message = detection_result.error or _("Invalid request payload.")
+            logger.warning(
+                "Submission mode detection failed",
+                extra={
+                    "workflow_id": workflow.pk,
+                    "content_type": detection_result.content_type,
+                    "error": detection_result.error,
+                },
+            )
+            return Response(
+                {
+                    "detail": _("Invalid request payload."),
+                    "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
+                    "errors": [
+                        {
+                            "field": "content",
+                            "message": error_message,
+                        },
+                    ],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if detection_result.mode == SubmissionRequestMode.RAW_BODY:
             return self._handle_raw_body_mode(
                 request=request,
                 workflow=workflow,
@@ -175,11 +218,40 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 project=project,
             )
 
-        return self._handle_envelope_or_multipart_mode(
-            request=request,
-            workflow=workflow,
-            user=user,
-            project=project,
+        if detection_result.mode == SubmissionRequestMode.JSON_ENVELOPE:
+            submission_settings = get_site_settings().api_submission
+            return self._handle_json_envelope(
+                request=request,
+                workflow=workflow,
+                user=user,
+                project=project,
+                envelope=detection_result.parsed_envelope or {},
+                submission_settings=submission_settings,
+            )
+
+        if detection_result.mode == SubmissionRequestMode.MULTIPART:
+            submission_settings = get_site_settings().api_submission
+            return self._handle_multipart_mode(
+                request=request,
+                workflow=workflow,
+                user=user,
+                project=project,
+                submission_settings=submission_settings,
+            )
+
+        logger.warning(
+            "Unsupported submission mode detected",
+            extra={
+                "workflow_id": workflow.pk,
+                "content_type": detection_result.content_type,
+            },
+        )
+        return Response(
+            {
+                "detail": _("Unsupported request content type."),
+                "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     # ---------------------- Raw Body Mode ----------------------
@@ -286,17 +358,62 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
     # ---------------------- Envelope / Multipart Modes ----------------------
 
-    def _handle_envelope_or_multipart_mode(
+    def _handle_json_envelope(
         self,
         request: Request,
         workflow: Workflow,
         user: User,
         project: Project | None,
+        envelope: dict[str, Any],
+        submission_settings,
     ) -> Response:
         """
-        Process Mode 2 (JSON envelope) or Mode 3 (multipart).
+        Process Mode 2 (JSON envelope).
+        """
+        payload = dict(envelope or {})
+        return self._process_structured_payload(
+            request=request,
+            workflow=workflow,
+            user=user,
+            project=project,
+            payload=payload,
+            submission_settings=submission_settings,
+        )
+
+    def _handle_multipart_mode(
+        self,
+        request: Request,
+        workflow: Workflow,
+        user: User,
+        project: Project | None,
+        submission_settings,
+    ) -> Response:
+        """
+        Process Mode 3 (multipart).
         """
         payload = request.data.copy()
+        return self._process_structured_payload(
+            request=request,
+            workflow=workflow,
+            user=user,
+            project=project,
+            payload=payload,
+            submission_settings=submission_settings,
+        )
+
+    def _process_structured_payload(
+        self,
+        request: Request,
+        workflow: Workflow,
+        user: User,
+        project: Project | None,
+        payload: dict[str, Any],
+        submission_settings=None,
+    ) -> Response:
+        """
+        Shared serializer handling for JSON envelope and multipart submissions.
+        """
+        payload = payload.copy()
         payload["workflow"] = workflow.pk
         serializer = self.get_serializer(data=payload)
         try:
@@ -315,7 +432,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             if getattr(file_obj, "size", 0) > max_file:
                 return Response({"detail": _("File too large.")}, status=413)
 
+        submission_settings = submission_settings or get_site_settings().api_submission
         metadata = vd.get("metadata") or {}
+        try:
+            metadata = self._enforce_metadata_policy(metadata, submission_settings)
+        except MetadataPolicyError as exc:
+            return self._metadata_policy_error_response(str(exc))
 
         if vd.get("file") is not None:
             file_obj = vd["file"]
@@ -353,6 +475,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 deny_magic_on_text=True,
             )
             metadata = {**metadata, "sha256": ingest.sha256}
+            try:
+                metadata = self._enforce_metadata_policy(metadata, submission_settings)
+            except MetadataPolicyError as exc:
+                return self._metadata_policy_error_response(str(exc))
 
             submission = Submission(
                 org=workflow.org,
@@ -383,6 +509,26 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 metadata=metadata,
                 user_id=getattr(user, "id", None),
             )
+
+    def _enforce_metadata_policy(self, metadata, submission_settings):
+        metadata = dict(metadata or {})
+        submission_settings.enforce_metadata_policy(metadata)
+        return metadata
+
+    def _metadata_policy_error_response(self, message: str) -> Response:
+        return Response(
+            {
+                "detail": _("Invalid request payload."),
+                "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
+                "errors": [
+                    {
+                        "field": "metadata",
+                        "message": str(message),
+                    },
+                ],
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # ---------------------- Launch Helper ----------------------
 
@@ -1685,31 +1831,6 @@ class WorkflowFormViewMixin(WorkflowAccessMixin):
         kwargs["user"] = self.request.user
         return kwargs
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        form = context.get("form")
-        context["project_context"] = self._project_from_form(form) if form else None
-        return context
-
-    def _project_from_form(self, form: WorkflowForm) -> Project | None:
-        if not form:
-            return None
-        project = getattr(form.instance, "project", None)
-        if project:
-            return project
-        project_id = form.initial.get("project") or form.data.get("project")
-        if not project_id:
-            default = self._default_project_for_org()
-            if default:
-                if isinstance(form.initial, dict):
-                    form.initial.setdefault("project", default.pk)
-                return default
-            return None
-        try:
-            return Project.objects.get(pk=project_id)
-        except (Project.DoesNotExist, ValueError, TypeError):
-            return None
-
     def _default_project_for_org(self) -> Project | None:
         user = getattr(self.request, "user", None)
         org = getattr(user, "get_current_org", lambda: None)() if user else None
@@ -2026,7 +2147,7 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
                     if schema_type:
                         try:
                             config["schema_type_label"] = JSONSchemaVersion(
-                                schema_type
+                                schema_type,
                             ).label
                         except ValueError:
                             config["schema_type_label"] = schema_type
@@ -2174,7 +2295,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
         qs = Validator.objects.filter(
-            models.Q(org__isnull=True) | models.Q(org=workflow.org)
+            models.Q(org__isnull=True) | models.Q(org=workflow.org),
         )
         return list(
             qs.order_by("validation_type", "name", "pk"),
@@ -2183,8 +2304,9 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
     def _available_action_definitions(self) -> list[ActionDefinition]:
         return list(
             ActionDefinition.objects.filter(is_active=True).order_by(
-                "action_category", "name"
-            )
+                "action_category",
+                "name",
+            ),
         )
 
     def _render_select(self, request, workflow: Workflow, form=None, status=200):
@@ -2403,7 +2525,10 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 self._validator = step.validator
             else:
                 validator_id = self.kwargs.get(self.validator_url_kwarg)
-                self._validator = get_object_or_404(self._validator_queryset(), pk=validator_id)
+                self._validator = get_object_or_404(
+                    self._validator_queryset(),
+                    pk=validator_id,
+                )
         return self._validator
 
     def get_action_definition(self) -> ActionDefinition:
@@ -2560,12 +2685,11 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     not self.is_action_step()
                     and step
                     and step.validator
-                    and step.validator.validation_type in ADVANCED_VALIDATION_TYPES
+                    and step.validator.validation_type in ADVANCED_VALIDATION_TYPES,
                 ),
             },
         )
         return context
-
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
@@ -2631,7 +2755,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                         "pk": self.get_workflow().pk,
                         "step_id": self.step.pk,
                     },
-                )
+                ),
             )
         return super().dispatch(request, *args, **kwargs)
 
@@ -2647,24 +2771,87 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         )
         if allow_assertions:
             ruleset = self.step.ruleset or _ensure_advanced_ruleset(
-                workflow, self.step, validator
+                workflow,
+                self.step,
+                validator,
             )
             assertions = list(ruleset.assertions.all().order_by("order", "pk"))
+        catalog_inputs = []
+        catalog_outputs = []
+        catalog_input_derivations = []
+        catalog_output_derivations = []
+        catalog_input_total = 0
+        catalog_output_total = 0
+        catalog_uses_tabs = False
         if validator:
             catalog_entries = list(
-                validator.catalog_entries.order_by("entry_type", "order", "slug")
+                validator.catalog_entries.order_by(
+                    "entry_type",
+                    "run_stage",
+                    "order",
+                    "slug",
+                ),
             )
+            catalog_inputs = [
+                entry
+                for entry in catalog_entries
+                if entry.entry_type == CatalogEntryType.SIGNAL
+                and entry.run_stage == CatalogRunStage.INPUT
+            ]
+            catalog_outputs = [
+                entry
+                for entry in catalog_entries
+                if entry.entry_type == CatalogEntryType.SIGNAL
+                and entry.run_stage == CatalogRunStage.OUTPUT
+            ]
+            catalog_input_derivations = [
+                entry
+                for entry in catalog_entries
+                if entry.entry_type == CatalogEntryType.DERIVATION
+                and entry.run_stage == CatalogRunStage.INPUT
+            ]
+            catalog_output_derivations = [
+                entry
+                for entry in catalog_entries
+                if entry.entry_type == CatalogEntryType.DERIVATION
+                and entry.run_stage == CatalogRunStage.OUTPUT
+            ]
+            catalog_input_total = len(catalog_inputs) + len(catalog_input_derivations)
+            catalog_output_total = len(catalog_outputs) + len(
+                catalog_output_derivations,
+            )
+            catalog_uses_tabs = bool(catalog_inputs and catalog_outputs)
+        grouped_assertions = {
+            "input": [],
+            "output": [],
+        }
+        for assertion in assertions:
+            stage = assertion.resolved_run_stage
+            key = "input" if stage == CatalogRunStage.INPUT else "output"
+            grouped_assertions[key].append(assertion)
+        uses_signal_stages = bool(
+            validator and validator.has_signal_stages() and allow_assertions
+        )
         context.update(
             {
                 "workflow": workflow,
                 "step": self.step,
                 "validator": validator,
                 "assertions": assertions,
+                "assertion_groups": grouped_assertions,
+                "uses_signal_stages": uses_signal_stages,
                 "ruleset": ruleset,
                 "can_manage_assertions": self.user_can_manage_workflow()
                 and allow_assertions,
                 "supports_assertions": allow_assertions,
                 "catalog_entries": catalog_entries,
+                "catalog_inputs": catalog_inputs,
+                "catalog_outputs": catalog_outputs,
+                "catalog_input_derivations": catalog_input_derivations,
+                "catalog_output_derivations": catalog_output_derivations,
+                "catalog_input_total": catalog_input_total,
+                "catalog_output_total": catalog_output_total,
+                "catalog_uses_tabs": catalog_uses_tabs,
             },
         )
         return context
@@ -2962,11 +3149,27 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
                 "target_slug_datalist_id": self.get_target_slug_datalist_id(),
                 "catalog_choices": self.get_catalog_choices(),
                 "allow_custom_targets": bool(
-                    getattr(self.step.validator, "allow_custom_assertion_targets", False)
+                    getattr(
+                        self.step.validator, "allow_custom_assertion_targets", False
+                    )
                 ),
             }
         )
         return context
+
+    def _determine_run_stage_from_form(self, form: RulesetAssertionForm) -> str:
+        entry = form.cleaned_data.get("target_catalog_entry")
+        if entry and getattr(entry, "run_stage", None):
+            return entry.run_stage
+        return CatalogRunStage.OUTPUT
+
+    def _stage_filter(self, stage: str) -> Q:
+        if stage == CatalogRunStage.INPUT:
+            return Q(target_catalog__run_stage=CatalogRunStage.INPUT)
+        return Q(
+            Q(target_catalog__run_stage=CatalogRunStage.OUTPUT)
+            | Q(target_catalog__isnull=True)
+        )
 
 
 class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
@@ -2980,11 +3183,15 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
 
     def form_valid(self, form):
         ruleset = self.get_ruleset()
+        stage = self._determine_run_stage_from_form(form)
+        stage_q = self._stage_filter(stage)
         max_order = (
-            ruleset.assertions.aggregate(max_order=models.Max("order"))["max_order"]
+            ruleset.assertions.filter(stage_q).aggregate(max_order=models.Max("order"))[
+                "max_order"
+            ]
             or 0
         )
-        RulesetAssertion.objects.create(
+        assertion = RulesetAssertion.objects.create(
             ruleset=ruleset,
             order=max_order + 10,
             assertion_type=form.cleaned_data["assertion_type"],
@@ -3002,7 +3209,11 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
         return _hx_trigger_response(
             message=_("Assertion added."),
             close_modal="workflowAssertionModal",
-            extra_payload={"assertions-changed": True},
+            extra_payload={
+                "assertions-changed": {
+                    "focus_assertion_id": assertion.pk,
+                },
+            },
         )
 
 
@@ -3045,7 +3256,11 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
         return _hx_trigger_response(
             message=_("Assertion updated."),
             close_modal="workflowAssertionModal",
-            extra_payload={"assertions-changed": True},
+            extra_payload={
+                "assertions-changed": {
+                    "focus_assertion_id": assertion.pk,
+                },
+            },
         )
 
 
@@ -3095,7 +3310,8 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
             index = assertions.index(assertion)
         except ValueError:
             return _hx_trigger_response(
-                status_code=400, message=_("Assertion not found.")
+                status_code=400,
+                message=_("Assertion not found."),
             )
         if direction == "up" and index > 0:
             assertions[index - 1], assertions[index] = (
@@ -3121,5 +3337,5 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
                     "step_id": self.step.pk,
                 },
             )
-            + "#workflow-step-assertions"
+            + "#workflow-step-assertions",
         )

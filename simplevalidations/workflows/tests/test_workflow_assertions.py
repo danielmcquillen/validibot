@@ -5,6 +5,7 @@ from django.urls import reverse
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.tests.factories import (
     CustomValidatorFactory,
@@ -28,7 +29,16 @@ class TestWorkflowStepAssertions:
 
     def _make_energyplus_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
+        ValidatorCatalogEntryFactory(
+            validator=validator,
+            slug="floor_area",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        ValidatorCatalogEntryFactory(
+            validator=validator,
+            slug="facility_electric_demand_w",
+            run_stage=CatalogRunStage.OUTPUT,
+        )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         return step
 
@@ -132,7 +142,9 @@ class TestWorkflowStepAssertions:
         step.refresh_from_db()
         assert step.ruleset.assertions.filter(target_field="price").exists()
         payload = json.loads(response.headers["HX-Trigger"])
-        assert payload.get("assertions-changed")
+        detail = payload.get("assertions-changed")
+        assert detail
+        assert detail.get("focus_assertion_id")
         assert payload.get("close-modal") == "workflowAssertionModal"
 
     def test_basic_assertion_edit_modal_renders(self, client):
@@ -193,7 +205,9 @@ class TestWorkflowStepAssertions:
         )
         assert response.status_code == 204
         payload = json.loads(response.headers["HX-Trigger"])
-        assert payload.get("assertions-changed")
+        detail = payload.get("assertions-changed")
+        assert detail
+        assert detail.get("focus_assertion_id") == assertion.pk
         assert payload.get("close-modal") == "workflowAssertionModal"
 
     def test_custom_target_requires_validator_permission(self, client):

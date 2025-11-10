@@ -26,6 +26,8 @@ from rest_framework import viewsets
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.forms import CustomValidatorCreateForm
 from simplevalidations.validations.forms import CustomValidatorUpdateForm
@@ -341,8 +343,54 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["can_manage_validators"] = self.can_manage_validators()
-        context["return_tab"] = self._resolve_return_tab(context["validator"])
+        validator = context["validator"]
+        catalog_entries = list(
+            validator.catalog_entries.order_by(
+                "entry_type",
+                "run_stage",
+                "order",
+                "slug",
+            ),
+        )
+        input_signals = [
+            entry
+            for entry in catalog_entries
+            if entry.entry_type == CatalogEntryType.SIGNAL
+            and entry.run_stage == CatalogRunStage.INPUT
+        ]
+        output_signals = [
+            entry
+            for entry in catalog_entries
+            if entry.entry_type == CatalogEntryType.SIGNAL
+            and entry.run_stage == CatalogRunStage.OUTPUT
+        ]
+        input_derivations = [
+            entry
+            for entry in catalog_entries
+            if entry.entry_type == CatalogEntryType.DERIVATION
+            and entry.run_stage == CatalogRunStage.INPUT
+        ]
+        output_derivations = [
+            entry
+            for entry in catalog_entries
+            if entry.entry_type == CatalogEntryType.DERIVATION
+            and entry.run_stage == CatalogRunStage.OUTPUT
+        ]
+        context.update(
+            {
+                "can_manage_validators": self.can_manage_validators(),
+                "return_tab": self._resolve_return_tab(validator),
+                "catalog_entries": catalog_entries,
+                "catalog_inputs": input_signals,
+                "catalog_outputs": output_signals,
+                "catalog_derivations": input_derivations + output_derivations,
+                "catalog_input_derivations": input_derivations,
+                "catalog_output_derivations": output_derivations,
+                "catalog_input_total": len(input_signals) + len(input_derivations),
+                "catalog_output_total": len(output_signals) + len(output_derivations),
+                "uses_signal_tabs": bool(input_signals and output_signals),
+            },
+        )
         return context
 
     def _resolve_return_tab(self, validator):

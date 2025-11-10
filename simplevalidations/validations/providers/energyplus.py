@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.providers import BaseValidationProvider
@@ -20,6 +21,7 @@ class EnergyPlusProvider(BaseValidationProvider):
         return [
             CatalogEntryDefinition(
                 entry_type=CatalogEntryType.SIGNAL_INPUT,
+                run_stage=CatalogRunStage.INPUT,
                 slug="floor_area_m2",
                 label="Floor Area (m²)",
                 data_type=CatalogValueType.NUMBER,
@@ -34,6 +36,7 @@ class EnergyPlusProvider(BaseValidationProvider):
             ),
             CatalogEntryDefinition(
                 entry_type=CatalogEntryType.SIGNAL_OUTPUT,
+                run_stage=CatalogRunStage.OUTPUT,
                 slug="facility_electric_demand_w",
                 label="Facility Electricity Demand (W)",
                 data_type=CatalogValueType.TIMESERIES,
@@ -48,6 +51,7 @@ class EnergyPlusProvider(BaseValidationProvider):
             ),
             CatalogEntryDefinition(
                 entry_type=CatalogEntryType.SIGNAL_OUTPUT,
+                run_stage=CatalogRunStage.OUTPUT,
                 slug="facility_electricity_kwh",
                 label="Facility Electricity (kWh)",
                 data_type=CatalogValueType.NUMBER,
@@ -62,6 +66,7 @@ class EnergyPlusProvider(BaseValidationProvider):
             ),
             CatalogEntryDefinition(
                 entry_type=CatalogEntryType.DERIVATION,
+                run_stage=CatalogRunStage.OUTPUT,
                 slug="peak_demand_w",
                 label="Peak Facility Demand (W)",
                 data_type=CatalogValueType.NUMBER,

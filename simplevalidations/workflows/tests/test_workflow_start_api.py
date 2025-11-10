@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIClient
 
 import simplevalidations.workflows.views as views_mod
+from simplevalidations.core.models import SiteSettings
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.constants import SubmissionFileType
@@ -83,6 +84,19 @@ def workflow_without_steps(db, org, user):
 
 def start_url(workflow) -> str:
     return f"/api/v1/workflows/{workflow.pk}/start/"
+
+
+@pytest.fixture(autouse=True)
+def reset_site_settings(db):
+    SiteSettings.objects.update_or_create(
+        slug=SiteSettings.DEFAULT_SLUG,
+        defaults={"data": {}},
+    )
+    yield
+    SiteSettings.objects.update_or_create(
+        slug=SiteSettings.DEFAULT_SLUG,
+        defaults={"data": {}},
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -173,6 +187,145 @@ class TestWorkflowStartAPI:
         run = ValidationRun.objects.get(pk=body["id"])
         assert run.workflow_id == workflow.id
         assert run.submission_id is not None
+
+    def test_start_with_invalid_json_returns_error(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.post(
+            start_url(workflow),
+            data="{invalid-json",
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
+        assert resp.data["errors"][0]["field"] == "content"
+        assert "Invalid JSON payload" in resp.data["errors"][0]["message"]
+
+    def test_start_with_unsupported_content_type_returns_error(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=b"raw-binary",
+            content_type="application/pdf",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
+        assert "Unsupported Content-Type" in resp.data["errors"][0]["message"]
+
+    def test_start_with_missing_content_type_returns_error(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.generic(
+            "POST",
+            start_url(workflow),
+            b"no-header",
+            content_type="",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
+        assert "Missing Content-Type" in resp.data["errors"][0]["message"]
+
+    def test_metadata_key_value_only_blocks_nested_values(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        SiteSettings.objects.update_or_create(
+            slug=SiteSettings.DEFAULT_SLUG,
+            defaults={
+                "data": {
+                    "api_submission": {
+                        "metadata_key_value_only": True,
+                    },
+                },
+            },
+        )
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": "{}",
+            "content_type": "application/json",
+            "metadata": {"nested": {"oops": True}},
+        }
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
+        assert "Metadata value for 'nested'" in resp.data["errors"][0]["message"]
+
+    def test_metadata_size_limit_enforced(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        SiteSettings.objects.update_or_create(
+            slug=SiteSettings.DEFAULT_SLUG,
+            defaults={
+                "data": {
+                    "api_submission": {
+                        "metadata_max_bytes": 20,
+                    },
+                },
+            },
+        )
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        envelope = {
+            "content": "{}",
+            "content_type": "application/json",
+            "metadata": {"big": "x" * 100},
+        }
+
+        resp = api_client.post(
+            start_url(workflow),
+            data=json.dumps(envelope),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
+        assert "Metadata is too large" in resp.data["errors"][0]["message"]
 
     def test_start_logs_tracking_event_with_user(
         self,

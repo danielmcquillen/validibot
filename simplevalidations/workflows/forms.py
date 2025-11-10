@@ -232,8 +232,20 @@ class WorkflowForm(forms.ModelForm):
 
     def clean_project(self):
         project = self.cleaned_data.get("project")
-        if self.instance and self.instance.pk:
-            return self.instance.project
+        if project is None:
+            return None
+
+        expected_org_id = None
+        if self.instance and getattr(self.instance, "org_id", None):
+            expected_org_id = self.instance.org_id
+        elif self.user and getattr(self.user, "is_authenticated", False):
+            current_org = self.user.get_current_org()
+            expected_org_id = getattr(current_org, "pk", None)
+
+        if expected_org_id and project.org_id != expected_org_id:
+            raise ValidationError(
+                _("Select a project from your current organization."),
+            )
         return project
 
     def _configure_project_field(self):
@@ -242,7 +254,16 @@ class WorkflowForm(forms.ModelForm):
             return
 
         project_field.required = False
-        project_field.widget = forms.HiddenInput()
+        project_field.widget = forms.Select(
+            attrs={
+                "class": "form-select",
+            },
+        )
+        project_field.empty_label = _("Select a project")
+        project_field.help_text = _(
+            "Workflow runs started from this workflow default to the selected "
+            "project. Projects listed belong to your current organization.",
+        )
         project_field.queryset = Project.objects.none()
 
         if not self.user or not getattr(self.user, "is_authenticated", False):

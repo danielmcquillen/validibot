@@ -149,6 +149,7 @@ ignore = [
   "W293",  # blank line contains whitespace
   "W291",  # trailing whitespace
   "PLR0915", # Too many statements in a class (112/100)
+  "RUF059", # Allow use of dataclass with mutable default values
   #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require

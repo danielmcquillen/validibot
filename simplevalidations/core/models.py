@@ -21,3 +21,34 @@ class SupportMessage(TimeStampedModel):
 
     def __str__(self):
         return self.subject
+
+
+class SiteSettings(TimeStampedModel):
+    """
+    Singleton-style container for platform-wide configuration.
+
+    A single row (slugged as ``default``) stores a JSON document that is loaded
+    into typed settings objects elsewhere in the codebase. System administrators
+    manage these values via the Django admin.
+    """
+
+    DEFAULT_SLUG = "default"
+
+    slug = models.SlugField(
+        max_length=100,
+        unique=True,
+        default=DEFAULT_SLUG,
+        help_text="Identifier for this settings record. Only 'default' is used.",
+    )
+    data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON payload containing namespaced site configuration.",
+    )
+
+    class Meta:
+        verbose_name = "Site settings"
+        verbose_name_plural = "Site settings"
+
+    def __str__(self):
+        return f"SiteSettings<{self.slug}>"

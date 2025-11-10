@@ -1,9 +1,38 @@
 import json
 import logging
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel
 
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 logger = logging.getLogger(__name__)
+
+
+class SubmissionRequestMode(str, Enum):
+    RAW_BODY = "raw_body"
+    JSON_ENVELOPE = "json_envelope"
+    MULTIPART = "multipart"
+    UNKNOWN = "unknown"
+
+
+class ModeDetectionResult(BaseModel):
+    """
+    Result of detecting the submission request mode
+    when an incoming API request is first received.
+    """
+
+    mode: SubmissionRequestMode
+    content_type: str
+    parsed_envelope: dict[str, Any] | None = None
+    error: str | None = None
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @property
+    def has_error(self) -> bool:
+        return bool(self.error)
 
 
 # ---------------------- Mode Detection Helpers ----------------------
@@ -18,33 +47,64 @@ def extract_request_basics(request) -> tuple[str, bytes]:
     return content_type_header, body_bytes
 
 
-def is_raw_body_mode(
+def detect_mode(
     request,
     content_type_header: str,
     body_bytes: bytes,
-) -> bool:
+) -> ModeDetectionResult:
     """
-    Decide if this request should be treated as Mode 1 (raw body).
-    Criteria:
-        - NOT multipart/*
-        - Content-Type is in SUPPORTED_CONTENT_TYPES
-        - If application/json and JSON parses into object containing 'content',
-        treat as envelope instead (return False).
+    Decide which submission mode applies to an incoming request.
     """
     if content_type_header.startswith("multipart/"):
-        return False
-    if content_type_header not in SUPPORTED_CONTENT_TYPES:
-        return False
+        return ModeDetectionResult(
+            mode=SubmissionRequestMode.MULTIPART,
+            content_type=content_type_header,
+        )
+
     if content_type_header == "application/json":
-        # quick cheap check to avoid decode when obviously not JSON
-        if body_bytes[:1] == b"{":
+        parsed = None
+        if body_bytes:
             try:
-                probe = json.loads(body_bytes.decode("utf-8"))
-                if isinstance(probe, dict) and "content" in probe:
-                    return False
-            except Exception:
-                logger.debug(
-                    "JSON raw probe failed (still treating as raw).",
+                parsed = json.loads(body_bytes.decode("utf-8"))
+            except Exception as exc:
+                message = f"Invalid JSON payload: {exc}"
+                logger.warning(
+                    "JSON envelope detection failed: %s",
+                    exc,
                     exc_info=True,
                 )
-    return True
+                return ModeDetectionResult(
+                    mode=SubmissionRequestMode.UNKNOWN,
+                    content_type=content_type_header,
+                    error=message,
+                )
+        if isinstance(parsed, dict) and "content" in parsed:
+            return ModeDetectionResult(
+                mode=SubmissionRequestMode.JSON_ENVELOPE,
+                content_type=content_type_header,
+                parsed_envelope=parsed,
+            )
+        if content_type_header in SUPPORTED_CONTENT_TYPES:
+            return ModeDetectionResult(
+                mode=SubmissionRequestMode.RAW_BODY,
+                content_type=content_type_header,
+            )
+
+    if content_type_header in SUPPORTED_CONTENT_TYPES:
+        return ModeDetectionResult(
+            mode=SubmissionRequestMode.RAW_BODY,
+            content_type=content_type_header,
+        )
+
+    if not content_type_header:
+        return ModeDetectionResult(
+            mode=SubmissionRequestMode.UNKNOWN,
+            content_type="",
+            error="Missing Content-Type header.",
+        )
+
+    return ModeDetectionResult(
+        mode=SubmissionRequestMode.UNKNOWN,
+        content_type=content_type_header,
+        error=f"Unsupported Content-Type '{content_type_header}'.",
+    )

@@ -14,6 +14,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
 
 
@@ -30,6 +31,10 @@ class CatalogEntryDefinition(BaseModel):
         description=_(
             "Whether this entry is an input signal, output signal, or derivation.",
         ),
+    )
+    run_stage: CatalogRunStage = Field(
+        default=CatalogRunStage.INPUT,
+        description=_("Phase of the validator run where this entry is available."),
     )
 
     slug: str = Field(

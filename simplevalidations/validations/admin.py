@@ -71,15 +71,16 @@ class ValidatorCatalogEntryAdmin(admin.ModelAdmin):
         "id",
         "validator",
         "entry_type",
+        "run_stage",
         "slug",
         "data_type",
         "is_required",
         "order",
         "created",
     )
-    list_filter = ("entry_type", "data_type", "is_required")
+    list_filter = ("entry_type", "run_stage", "data_type", "is_required")
     search_fields = ("validator__name", "slug", "label")
-    ordering = ("validator", "entry_type", "order")
+    ordering = ("validator", "entry_type", "run_stage", "order")
 
 
 @admin.register(CustomValidator)

@@ -45,6 +45,10 @@ management links.
 - The project form includes a GitHub-style color picker with a quick randomize
   action; the chosen color is used for workflow badges so teams can spot context
   quickly.
+- Workflow editors can reassign an existing workflow to any other project within
+  the same organization directly from the workflow settings form. Use this when
+  teams restructure projects; it no longer requires cloning and deleting the
+  original workflow.
 - Deleting a project detaches submissions, validation runs, and tracking events
   from the project so historical data remains intact.
 

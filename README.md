@@ -108,12 +108,10 @@ Internal documentation for contributors and developers working on SimpleValidati
 To serve the developer docs locally:
 
 ```bash
-mkdocs serve -a localhost:8001
-# or explicitly:
-mkdocs serve -f mkdocs.dev.yml -a localhost:8001
+uv run --extra dev mkdocs serve -f mkdocs.dev.yml
 ```
 
-The developer docs will be available at http://127.0.0.1:8001
+The developer docs will be available at <http://127.0.0.1:9000>.
 
 ### User Documentation
 
@@ -122,10 +120,20 @@ Product tutorials and walkthroughs for SimpleValidations end users.
 To serve the user docs locally:
 
 ```bash
-mkdocs serve -f mkdocs.user.yml -a localhost:8001
+uv run --extra dev mkdocs serve -f mkdocs.user.yml
 ```
 
-The user docs will be available at http://127.0.0.1:8001
+The user docs will be available at <http://127.0.0.1:9001>.
+
+### Serve Both Doc Sites Together
+
+You can launch both servers in a single terminal session:
+
+```bash
+uv run --extra dev bash -lc "mkdocs serve -f mkdocs.dev.yml & mkdocs serve -f mkdocs.user.yml & wait"
+```
+
+This command starts the developer docs on port 9000 and the user docs on port 9001; press `Ctrl+C` once to stop both.
 
 ### Building Documentation
 

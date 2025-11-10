@@ -1,0 +1,29 @@
+{% load i18n %}
+
+{% if entries %}
+  <ul class="list-group list-group-flush">
+    {% for entry in entries %}
+      <li class="list-group-item">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <span class="fw-semibold">{{ entry.label }}</span>
+          <span class="badge text-bg-light text-uppercase">
+            {{ entry.get_entry_type_display }}
+            {% if entry.entry_type == 'signal' %}
+              · {{ entry.get_run_stage_display }}
+            {% endif %}
+          </span>
+        </div>
+        <p class="small mb-1 text-muted">
+          {{ entry.description|default:_("No description.") }}
+        </p>
+        <div class="text-muted small">
+          {% trans "Slug" %}: <code>{{ entry.slug }}</code>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="text-muted mb-0">
+    {% trans "No catalog entries registered yet." %}
+  </p>
+{% endif %}

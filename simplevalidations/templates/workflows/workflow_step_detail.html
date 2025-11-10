@@ -57,12 +57,24 @@
 
             {% if can_manage_assertions and supports_assertions %}
 
-              {% if supports_assertions %}
-                {% for assertion in assertions %}
-                  {% include 'workflows/partials/components/assertion_step.html' %}
-                {% endfor %}
+              {% if uses_signal_stages %}
+                {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input signals") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
+
+                <div class="validator-process-divider text-center my-3">
+                  <span class="validator-process-chip px-3 py-1 rounded-pill border">
+                    {% trans "Validator process" %}
+                  </span>
+                </div>
+
+                {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output signals") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
               {% else %}
-                {% include 'workflows/partials/components/empty_assertions.html' %}
+                {% if assertions %}
+                  {% for assertion in assertions %}
+                    {% include 'workflows/partials/components/assertion_step.html' %}
+                  {% endfor %}
+                {% else %}
+                  {% include 'workflows/partials/components/empty_assertions.html' %}
+                {% endif %}
               {% endif %}
 
             {% else %}
@@ -107,8 +119,30 @@
       }
       modalInstance.hide();
     });
-    document.body.addEventListener('assertions-changed', () => {
+    document.body.addEventListener('assertions-changed', (event) => {
+      const detail = event.detail?.['assertions-changed'];
+      const focusId = detail && typeof detail === 'object' ? detail['focus_assertion_id'] : null;
+      if (focusId) {
+        sessionStorage.setItem('assertion-focus-id', focusId);
+      }
       window.location.reload();
+    });
+    window.addEventListener('DOMContentLoaded', () => {
+      const focusId = sessionStorage.getItem('assertion-focus-id');
+      if (!focusId) {
+        return;
+      }
+      sessionStorage.removeItem('assertion-focus-id');
+      const target = document.getElementById(`assertion-card-${focusId}`);
+      if (!target) {
+        return;
+      }
+      target.classList.add('assertion-card-highlight');
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      setTimeout(() => target.classList.remove('assertion-card-highlight'), 4000);
     });
   </script>
 

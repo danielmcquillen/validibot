@@ -5,6 +5,7 @@ from pathlib import Path
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from simplevalidations.projects.models import Project
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.models import ensure_default_project
 from simplevalidations.users.tests.factories import (
@@ -75,6 +76,51 @@ def test_workflow_form_saves_selected_project():
     workflow.save()
 
     assert workflow.project == default_project
+
+
+def test_workflow_form_allows_switching_projects_within_org():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+    second_project = ProjectFactory(org=workflow.org)
+
+    form = WorkflowForm(
+        data={
+            "name": workflow.name,
+            "slug": workflow.slug,
+            "project": str(second_project.pk),
+            "version": workflow.version,
+            "is_active": "on",
+        },
+        instance=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["project"] == second_project
+
+
+def test_workflow_form_rejects_project_from_other_org():
+    workflow = WorkflowFactory()
+    workflow.user.set_current_org(workflow.org)
+    other_project = ProjectFactory()
+
+    form = WorkflowForm(
+        data={
+            "name": workflow.name,
+            "slug": workflow.slug,
+            "project": str(other_project.pk),
+            "version": workflow.version,
+            "is_active": "on",
+        },
+        instance=workflow,
+        user=workflow.user,
+    )
+    form.fields["project"].queryset = Project.objects.filter(
+        pk__in=[workflow.project_id, other_project.pk],
+    )
+
+    assert not form.is_valid()
+    assert "project" in form.errors
 
 
 def test_workflow_launch_form_accepts_inline_payload():

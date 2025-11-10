@@ -17,6 +17,7 @@ from simplevalidations.users.models import User
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import JSONSchemaVersion
@@ -341,6 +342,12 @@ class RulesetAssertion(TimeStampedModel):
         target = self.target_catalog.slug if self.target_catalog_id else self.target_field
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
+    @property
+    def resolved_run_stage(self) -> CatalogRunStage:
+        if self.target_catalog_id and self.target_catalog:
+            return CatalogRunStage(self.target_catalog.run_stage)
+        return CatalogRunStage.OUTPUT
+
     def clean(self):
         super().clean()
         catalog_set = bool(self.target_catalog_id)
@@ -555,13 +562,36 @@ class Validator(TimeStampedModel):
 
     def catalog_entries_by_type(self) -> dict[str, list["ValidatorCatalogEntry"]]:
         grouped: dict[str, list["ValidatorCatalogEntry"]] = {
-            CatalogEntryType.SIGNAL_INPUT: [],
-            CatalogEntryType.SIGNAL_OUTPUT: [],
+            CatalogEntryType.SIGNAL: [],
             CatalogEntryType.DERIVATION: [],
         }
         for entry in self.catalog_entries.all().order_by("order", "slug"):
             grouped.setdefault(entry.entry_type, []).append(entry)
         return grouped
+
+    def catalog_entries_by_stage(self) -> dict[str, list["ValidatorCatalogEntry"]]:
+        grouped: dict[str, list["ValidatorCatalogEntry"]] = {
+            CatalogRunStage.INPUT: [],
+            CatalogRunStage.OUTPUT: [],
+        }
+        qs = (
+            self.catalog_entries.filter(entry_type=CatalogEntryType.SIGNAL)
+            .order_by("run_stage", "order", "slug")
+        )
+        for entry in qs:
+            grouped.setdefault(entry.run_stage, []).append(entry)
+        return grouped
+
+    def has_signal_stage(self, stage: CatalogRunStage) -> bool:
+        return self.catalog_entries.filter(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=stage,
+        ).exists()
+
+    def has_signal_stages(self) -> bool:
+        return self.has_signal_stage(CatalogRunStage.INPUT) and self.has_signal_stage(
+            CatalogRunStage.OUTPUT,
+        )
 
     def get_catalog_entries(
         self,
@@ -588,6 +618,12 @@ class ValidatorCatalogEntry(TimeStampedModel):
     entry_type = models.CharField(
         max_length=32,
         choices=CatalogEntryType.choices,
+    )
+    run_stage = models.CharField(
+        max_length=16,
+        choices=CatalogRunStage.choices,
+        default=CatalogRunStage.INPUT,
+        help_text=_("Phase of the validator run when this entry is available."),
     )
     slug = models.SlugField(
         max_length=255,

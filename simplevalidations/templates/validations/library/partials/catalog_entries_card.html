@@ -1,0 +1,98 @@
+{% load i18n core_tags %}
+<div class="card catalog-entry-list-card shadow-sm h-100">
+    <div class="card-body">
+        <h2 class="h5">
+            {% trans "Catalog Entries" %}
+        </h2>
+        {% if uses_signal_tabs %}
+            <div class="tabs">
+                <div class="nav nav-tabs validator-library-tabs" role="tablist">
+                    <button class="nav-link active"
+                            id="validator-input-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#validator-input-panel"
+                            type="button"
+                            role="tab"
+                            aria-controls="validator-input-panel"
+                            aria-selected="true">
+                        <span class="fw-semibold">{% trans "Inputs" %}</span>
+                        <span class="badge text-bg-light ms-2">
+                            {{ catalog_input_total }}
+                        </span>
+                    </button>
+                    <button class="nav-link"
+                            id="validator-output-tab"
+                            data-bs-toggle="tab"
+                            data-bs-target="#validator-output-panel"
+                            type="button"
+                            role="tab"
+                            aria-controls="validator-output-panel"
+                            aria-selected="false">
+                        <span class="fw-semibold">{% trans "Outputs" %}</span>
+                        <span class="badge text-bg-light ms-2">
+                            {{ catalog_output_total }}
+                        </span>
+                    </button>
+                </div>
+            </div>
+            <div class="tab-content ">
+                <div class="tab-pane fade show active p-3"
+                     id="validator-input-panel"
+                     role="tabpanel"
+                     aria-labelledby="validator-input-tab">
+                    {% if catalog_inputs or catalog_input_derivations %}
+                        {% if catalog_inputs %}
+                            <div class="catalog-entry-sublist-header">
+                                {% trans "Input signals" %}
+                            </div>
+                            {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_inputs %}
+                        {% endif %}
+                        {% if catalog_input_derivations %}
+                            <div class="catalog-entry-sublist-header mt-3">
+                                {% trans "Input derivations" %}
+                            </div>
+                            {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_input_derivations %}
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            {% trans "No input signals." %}
+                        </p>
+                    {% endif %}
+                </div>
+                <div class="tab-pane fade p-3"
+                     id="validator-output-panel"
+                     role="tabpanel"
+                     aria-labelledby="validator-output-tab">
+                    {% if catalog_outputs or catalog_output_derivations %}
+                        {% if catalog_outputs %}
+                            <div class="catalog-entry-sublist-header">
+                                {% trans "Output signals" %}
+                            </div>
+                            {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_outputs %}
+                        {% endif %}
+                        {% if catalog_output_derivations %}
+                            <div class="catalog-entry-sublist-header mt-3">
+                                {% trans "Output derivations" %}
+                            </div>
+                            <div class="small text-muted mb-2">
+                                {% trans "Output derivations can contain both input and output signals" %}
+                            </div>
+                            {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_output_derivations %}
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted mb-0">
+                            {% trans "No output signals." %}
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        {% elif catalog_entries %}
+            {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_entries %}
+        {% else %}
+            <p class="text-muted mb-0">
+                {% trans "No catalog entries registered yet." %}
+            </p>
+        {% endif %}
+
+    </div>
+</div>

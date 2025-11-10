@@ -11,7 +11,7 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-  <div class="container-fluid">
+  <div id="validator-detail" class="container-fluid">
 
     <div class="app-content-header-bar row align-items-center">
       <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
@@ -66,39 +66,7 @@
         </div>
       </div>
       <div class="col-12 col-lg-6">
-        <div class="card shadow-sm h-100">
-          <div class="card-body">
-            <h2 class="h5">
-              {% trans "Catalog Entries" %}
-            </h2>
-            {% with entries=validator.catalog_entries.all %}
-              {% if entries %}
-                <ul class="list-group list-group-flush">
-                  {% for entry in entries %}
-                    <li class="list-group-item">
-                      <div class="d-flex justify-content-between">
-                        <span class="fw-semibold">{{ entry.label }}</span>
-                        <span class="badge text-bg-light text-uppercase">
-                          {{ entry.entry_type }}
-                        </span>
-                      </div>
-                      <p class="small mb-1 text-muted">
-                        {{ entry.description|default:_("No description.") }}
-                      </p>
-                      <div class="text-muted small">
-                        {% trans "Slug" %}: <code>{{ entry.slug }}</code>
-                      </div>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="text-muted mb-0">
-                  {% trans "No catalog entries registered yet." %}
-                </p>
-              {% endif %}
-            {% endwith %}
-          </div>
-        </div>
+        {% include 'validations/library/partials/catalog_entries_card.html' %}
       </div>
     </div>
 

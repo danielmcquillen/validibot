@@ -1,6 +1,10 @@
 {% load i18n core_tags %}
 
-<div class="assertion-step-wrapper" data-step-id="{{ step.id }}">
+<div class="assertion-step-wrapper"
+     id="assertion-card-{{ assertion.id }}"
+     data-step-id="{{ step.id }}"
+     data-assertion-id="{{ assertion.id }}"
+     data-run-stage="{{ run_stage|default:assertion.resolved_run_stage }}">
     <div class="assertion-card card shadow-sm">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">

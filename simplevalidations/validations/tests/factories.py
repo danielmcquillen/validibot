@@ -9,6 +9,7 @@ from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import CustomValidatorType
 from simplevalidations.validations.constants import JSONSchemaVersion
@@ -97,7 +98,8 @@ class ValidatorCatalogEntryFactory(DjangoModelFactory):
         model = ValidatorCatalogEntry
 
     validator = factory.SubFactory(ValidatorFactory)
-    entry_type = CatalogEntryType.SIGNAL_INPUT
+    entry_type = CatalogEntryType.SIGNAL
+    run_stage = CatalogRunStage.INPUT
     slug = factory.Sequence(lambda n: f"signal-input-{n}")
     label = factory.LazyAttribute(lambda o: o.slug.replace("-", " ").title())
     data_type = CatalogValueType.NUMBER

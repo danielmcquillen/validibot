@@ -20,7 +20,7 @@ class EnergyPlusProvider(BaseValidationProvider):
     def get_catalog_defaults(self):
         return [
             CatalogEntryDefinition(
-                entry_type=CatalogEntryType.SIGNAL_INPUT,
+                entry_type=CatalogEntryType.SIGNAL,
                 run_stage=CatalogRunStage.INPUT,
                 slug="floor_area_m2",
                 label="Floor Area (m²)",
@@ -35,7 +35,7 @@ class EnergyPlusProvider(BaseValidationProvider):
                 order=10,
             ),
             CatalogEntryDefinition(
-                entry_type=CatalogEntryType.SIGNAL_OUTPUT,
+                entry_type=CatalogEntryType.SIGNAL,
                 run_stage=CatalogRunStage.OUTPUT,
                 slug="facility_electric_demand_w",
                 label="Facility Electricity Demand (W)",
@@ -50,7 +50,7 @@ class EnergyPlusProvider(BaseValidationProvider):
                 order=20,
             ),
             CatalogEntryDefinition(
-                entry_type=CatalogEntryType.SIGNAL_OUTPUT,
+                entry_type=CatalogEntryType.SIGNAL,
                 run_stage=CatalogRunStage.OUTPUT,
                 slug="facility_electricity_kwh",
                 label="Facility Electricity (kWh)",

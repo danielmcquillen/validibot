@@ -4,6 +4,7 @@
 import * as bootstrap from 'bootstrap';
 import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
+import { initAppFeatures } from './app';
 
 declare global {
     interface Window {
@@ -86,7 +87,7 @@ function initAppLeftNavToggle(): void {
     });
 }
 
-window.addEventListener('DOMContentLoaded', (event) => {
+window.addEventListener('DOMContentLoaded', () => {
 
     console.log("DOM fully loaded and parsed....");
 
@@ -95,37 +96,38 @@ window.addEventListener('DOMContentLoaded', (event) => {
     initAppLeftNavToggle();
 
     // HTMX global event listeners for disabling submit and showing spinner
-    htmx.on('htmx:beforeRequest', (evt: any) => {
-        const target = evt.target as HTMLElement;
-        if (target.matches('.assessment-form')) {
-            const btn = target.querySelector('button[type=submit]') as HTMLButtonElement;
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML =
-                    '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting...';
-            }
+    htmx.on('htmx:beforeRequest', (event: Event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement) || !target.matches('.assessment-form')) {
+            return;
+        }
+        const submitButton = target.querySelector<HTMLButtonElement>('button[type=submit]');
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML =
+                '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting...';
         }
     });
 
     initializeCharts(document);
+    initAppFeatures(document);
 });
 
 function simplevalidationsInitBootstrap() {
     try {
 
         console.log("Enabling bootstrap toasts...")
-        let toastElList = [].slice.call(document.querySelectorAll('.toast'))
-        let toastList = toastElList.map(function (toastEl) {
-            return new bootstrap.Toast(toastEl, {});
-        }
-        )
-        toastList.forEach(toast => toast.show());
+        const toastElements = Array.from(document.querySelectorAll<HTMLElement>('.toast'));
+        const toastList = toastElements.map((toastEl) => new bootstrap.Toast(toastEl));
+        toastList.forEach((toast) => toast.show());
 
         console.log("Enabling bootstrap tooltips...")
-        let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        let tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        })
+        const tooltipTriggerList = Array.from(
+            document.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]'),
+        );
+        tooltipTriggerList.forEach((tooltipTriggerEl) => {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
     } catch (err) {
         console.log("Error initializing bootstrap: ", err)
     }
@@ -156,56 +158,46 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-document.body.addEventListener('htmx:beforeSwap', function (evt) {
-    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-        var tooltip = bootstrap.Tooltip.getInstance(el);
+document.body.addEventListener('htmx:beforeSwap', () => {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+        const tooltip = bootstrap.Tooltip.getInstance(el);
         if (tooltip) {
             tooltip.hide();
         }
     });
 });
 
-document.body.addEventListener('htmx:afterSwap', function (evt: any) {
-    // evt.detail.target is the element that received the new content
-    const newContent = evt.detail.target;
-    // Find elements in new content that need tooltips
-    const tooltipTriggerList = [].slice.call(newContent.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-        // Create a new tooltip instance for each element
+type QueryableRoot = ParentNode & Node;
+
+function resolveRoot(node: Node | null | undefined): QueryableRoot {
+    if (node && 'querySelectorAll' in (node as ParentNode)) {
+        return node as QueryableRoot;
+    }
+    return document;
+}
+
+window.htmx.onLoad((content: Node) => {
+    const root = resolveRoot(content);
+    initializeCharts(root);
+    initAppFeatures(root);
+
+    root.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
         new window.bootstrap.Tooltip(tooltipTriggerEl);
     });
-});
 
-document.body.addEventListener('htmx:afterSwap', function (evt: any) {
-    // Look for any new collapse triggers in the swapped content
-    console.log("wiring up collapse triggers")
-    const container = evt.detail.target;
-    container.querySelectorAll('[data-bs-toggle="collapse"]').forEach(trigger => {
-        // Get the target selector from the trigger's data attribute
+    root.querySelectorAll<HTMLElement>('[data-bs-toggle="collapse"]').forEach((trigger) => {
         const targetSelector = trigger.getAttribute('data-bs-target');
-        if (targetSelector) {
-            const collapseEl = container.querySelector(targetSelector);
-            if (collapseEl) {
-                // Only create a new collapse instance if one doesn't already exist
-                if (!window.bootstrap.Collapse.getInstance(collapseEl)) {
-                    new window.bootstrap.Collapse(collapseEl, {
-                        toggle: false
-                    });
-                }
-            }
+        if (!targetSelector) {
+            return;
+        }
+        const collapseEl = document.querySelector<HTMLElement>(targetSelector);
+        if (collapseEl && !window.bootstrap.Collapse.getInstance(collapseEl)) {
+            new window.bootstrap.Collapse(collapseEl, { toggle: false });
         }
     });
-});
 
-document.body.addEventListener('htmx:afterSwap', (event) => {
-    // If the swapped content contains toast elements, initialize them.
-    const toastElements = document.querySelectorAll('.toast');
-    toastElements.forEach((toastEl) => {
+    root.querySelectorAll<HTMLElement>('.toast').forEach((toastEl) => {
         const toast = new bootstrap.Toast(toastEl);
         toast.show();
     });
-});
-
-document.body.addEventListener('htmx:afterSwap', (evt: any) => {
-    initializeCharts(evt.detail.target ?? document);
 });

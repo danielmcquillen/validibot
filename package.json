@@ -8,12 +8,14 @@
     "build:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --minify --sourcemap --outdir=simplevalidations/static/js",
     "watch": "npm run watch:css & npm run watch:js",
     "watch:css": "sass --watch --quiet-deps --load-path=node_modules simplevalidations/static/src/scss/project.scss:simplevalidations/static/css/project.css",
-    "watch:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --sourcemap --outdir=simplevalidations/static/js --watch"
+    "watch:js": "esbuild simplevalidations/static/src/ts/project.ts --bundle --sourcemap --outdir=simplevalidations/static/js --watch",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bootstrap": "^5.2.10",
     "esbuild": "^0.25.3",
-    "sass": "latest"
+    "sass": "latest",
+    "typescript": "^5.6.3"
   },
   "dependencies": {
     "bootstrap": "^5.3.7",

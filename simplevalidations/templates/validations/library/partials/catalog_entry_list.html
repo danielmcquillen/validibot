@@ -3,9 +3,13 @@
 {% if entries %}
   <ul class="list-group list-group-flush">
     {% for entry in entries %}
-      <li class="list-group-item">
+      <li class="list-group-item"
+          data-sv-catalog-entry
+          data-sv-catalog-label="{{ entry.label|escape }}"
+          data-sv-catalog-slug="{{ entry.slug|escape }}">
         <div class="d-flex justify-content-between align-items-start gap-2">
-          <span class="fw-semibold">{{ entry.label }}</span>
+          <span class="fw-semibold catalog-entry-label"
+                data-original-text="{{ entry.label|escape }}">{{ entry.label }}</span>
           <span class="badge text-bg-light text-uppercase">
             {{ entry.get_entry_type_display }}
             {% if entry.entry_type == 'signal' %}
@@ -17,7 +21,8 @@
           {{ entry.description|default:_("No description.") }}
         </p>
         <div class="text-muted small">
-          {% trans "Slug" %}: <code>{{ entry.slug }}</code>
+          {% trans "Slug" %}: <code class="catalog-entry-slug"
+                                   data-original-text="{{ entry.slug|escape }}">{{ entry.slug }}</code>
         </div>
       </li>
     {% endfor %}

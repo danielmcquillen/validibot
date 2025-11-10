@@ -2766,6 +2766,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         ruleset = None
         assertions = []
         catalog_entries = []
+        catalog_display = validator.catalog_display if validator else None
         allow_assertions = (
             validator and validator.validation_type in ADVANCED_VALIDATION_TYPES
         )
@@ -2776,13 +2777,6 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 validator,
             )
             assertions = list(ruleset.assertions.all().order_by("order", "pk"))
-        catalog_inputs = []
-        catalog_outputs = []
-        catalog_input_derivations = []
-        catalog_output_derivations = []
-        catalog_input_total = 0
-        catalog_output_total = 0
-        catalog_uses_tabs = False
         if validator:
             catalog_entries = list(
                 validator.catalog_entries.order_by(
@@ -2792,35 +2786,6 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                     "slug",
                 ),
             )
-            catalog_inputs = [
-                entry
-                for entry in catalog_entries
-                if entry.entry_type == CatalogEntryType.SIGNAL
-                and entry.run_stage == CatalogRunStage.INPUT
-            ]
-            catalog_outputs = [
-                entry
-                for entry in catalog_entries
-                if entry.entry_type == CatalogEntryType.SIGNAL
-                and entry.run_stage == CatalogRunStage.OUTPUT
-            ]
-            catalog_input_derivations = [
-                entry
-                for entry in catalog_entries
-                if entry.entry_type == CatalogEntryType.DERIVATION
-                and entry.run_stage == CatalogRunStage.INPUT
-            ]
-            catalog_output_derivations = [
-                entry
-                for entry in catalog_entries
-                if entry.entry_type == CatalogEntryType.DERIVATION
-                and entry.run_stage == CatalogRunStage.OUTPUT
-            ]
-            catalog_input_total = len(catalog_inputs) + len(catalog_input_derivations)
-            catalog_output_total = len(catalog_outputs) + len(
-                catalog_output_derivations,
-            )
-            catalog_uses_tabs = bool(catalog_inputs and catalog_outputs)
         grouped_assertions = {
             "input": [],
             "output": [],
@@ -2845,13 +2810,8 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 and allow_assertions,
                 "supports_assertions": allow_assertions,
                 "catalog_entries": catalog_entries,
-                "catalog_inputs": catalog_inputs,
-                "catalog_outputs": catalog_outputs,
-                "catalog_input_derivations": catalog_input_derivations,
-                "catalog_output_derivations": catalog_output_derivations,
-                "catalog_input_total": catalog_input_total,
-                "catalog_output_total": catalog_output_total,
-                "catalog_uses_tabs": catalog_uses_tabs,
+                "catalog_display": catalog_display,
+                "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
             },
         )
         return context

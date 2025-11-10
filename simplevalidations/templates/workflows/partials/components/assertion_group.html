@@ -1,10 +1,11 @@
 {% load i18n %}
 
-<div class="assertion-group mb-4" data-assertion-stage="{{ stage }}">
-  <div class="assertion-group-label text-uppercase small text-muted mb-2">
-    {{ label }}
-  </div>
-  <div class="assertion-group-panel p-3">
+<div class="assertion-group" data-assertion-stage="{{ stage }}">
+
+  <div class="assertion-group-panel">
+    <div class="assertion-group-label">
+      {{ label }}
+    </div>
     {% if assertions %}
       {% for assertion in assertions %}
         {% include 'workflows/partials/components/assertion_step.html' with assertion=assertion run_stage=stage %}

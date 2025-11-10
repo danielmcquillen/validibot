@@ -85,6 +85,7 @@ class BaseValidatorEngine(ABC):
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
         # Arbitrary configuration (e.g., schema, thresholds, flags)
         self.config: dict[str, Any] = config or {}
+        self.processor_name: str = self.config.get("processor_name", "").strip()
 
     def get_cel_helpers(self) -> dict[str, "CelHelper"]:
         """

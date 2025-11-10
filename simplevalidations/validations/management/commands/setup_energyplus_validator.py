@@ -32,6 +32,8 @@ class Command(BaseCommand):
         validator.validation_type = ValidationType.ENERGYPLUS
         validator.is_system = True
         validator.org = None
+        if not validator.processor_name:
+            validator.processor_name = "EnergyPlus Simulation"
         validator.save()
 
         entries = [

@@ -17,6 +17,12 @@
     <div class="app-content-header-bar row p-0">
       <div class="app-content-header">
         <div class="badge-wrapper h-100">
+          <div class="me-2">
+            <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
+               class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-chevron-double-left"></i>
+            </a>
+          </div>
           <span class="badge text-bg-primary me-2">{% trans 'Step' %} {{ step.step_number }}</span>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
@@ -53,20 +59,21 @@
             {% endif %}
           </div>
 
-          <div class="card-body editor-workspace d-flex flex-column flex-grow-1">
+          <div class="card-body editor-workspace d-flex flex-column flex-grow-1 {% if uses_signal_stages %}has-validator-flow{% endif %}">
 
             {% if can_manage_assertions and supports_assertions %}
 
               {% if uses_signal_stages %}
-                {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input signals") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
 
-                <div class="validator-process-divider text-center my-3">
-                  <span class="validator-process-chip px-3 py-1 rounded-pill border">
-                    {% trans "Validator process" %}
+                {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
+
+                <div class="validator-process-divider">
+                  <span class="validator-process-chip">
+                    {{ validator.processor_name|default:_("Validator process") }}
                   </span>
                 </div>
 
-                {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output signals") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
+                {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
               {% else %}
                 {% if assertions %}
                   {% for assertion in assertions %}
@@ -86,8 +93,11 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4">
+      <div class="col-12 col-xl-4 d-flex flex-column gap-4">
         {% include 'workflows/partials/components/step_details_card.html' %}
+        {% if catalog_display %}
+          {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix flat_mode=True %}
+        {% endif %}
       </div>
     </div>
   </div>

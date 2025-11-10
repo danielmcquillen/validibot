@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import contextlib
 import uuid
+from dataclasses import dataclass
+from functools import cached_property
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -434,6 +436,18 @@ class RulesetAssertion(TimeStampedModel):
         return str(value)
 
 
+@dataclass(frozen=True)
+class CatalogDisplay:
+    entries: list["ValidatorCatalogEntry"]
+    inputs: list["ValidatorCatalogEntry"]
+    outputs: list["ValidatorCatalogEntry"]
+    input_derivations: list["ValidatorCatalogEntry"]
+    output_derivations: list["ValidatorCatalogEntry"]
+    input_total: int
+    output_total: int
+    uses_tabs: bool
+
+
 class Validator(TimeStampedModel):
     """
     A pluggable validator 'type' and version.
@@ -511,6 +525,13 @@ class Validator(TimeStampedModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="+",
+    )
+
+    processor_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=_("The name of the process that generates output signals from input signals."),
     )
 
     order = models.PositiveIntegerField(
@@ -591,6 +612,55 @@ class Validator(TimeStampedModel):
     def has_signal_stages(self) -> bool:
         return self.has_signal_stage(CatalogRunStage.INPUT) and self.has_signal_stage(
             CatalogRunStage.OUTPUT,
+        )
+
+    @cached_property
+    def catalog_display(self) -> CatalogDisplay:
+        entries = list(
+            self.catalog_entries.all().order_by(
+                "entry_type",
+                "run_stage",
+                "order",
+                "slug",
+            ),
+        )
+        inputs = [
+            entry
+            for entry in entries
+            if entry.entry_type == CatalogEntryType.SIGNAL
+            and entry.run_stage == CatalogRunStage.INPUT
+        ]
+        outputs = [
+            entry
+            for entry in entries
+            if entry.entry_type == CatalogEntryType.SIGNAL
+            and entry.run_stage == CatalogRunStage.OUTPUT
+        ]
+        input_derivations = [
+            entry
+            for entry in entries
+            if entry.entry_type == CatalogEntryType.DERIVATION
+            and entry.run_stage == CatalogRunStage.INPUT
+        ]
+        output_derivations = [
+            entry
+            for entry in entries
+            if entry.entry_type == CatalogEntryType.DERIVATION
+            and entry.run_stage == CatalogRunStage.OUTPUT
+        ]
+        input_total = len(inputs) + len(input_derivations)
+        output_total = len(outputs) + len(output_derivations)
+        total_entries = len(entries)
+        uses_tabs = bool(inputs and outputs) or total_entries == 0
+        return CatalogDisplay(
+            entries=entries,
+            inputs=inputs,
+            outputs=outputs,
+            input_derivations=input_derivations,
+            output_derivations=output_derivations,
+            input_total=input_total,
+            output_total=output_total,
+            uses_tabs=uses_tabs,
         )
 
     def get_catalog_entries(

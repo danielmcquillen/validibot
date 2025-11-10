@@ -1251,7 +1251,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 ),
             },
         )
-        breadcrumbs.append({"name": _("Run"), "url": ""})
+        breadcrumbs.append({"name": _("Launch Workflow"), "url": ""})
         return breadcrumbs
 
     def get_context_data(self, **kwargs):

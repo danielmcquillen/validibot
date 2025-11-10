@@ -18,8 +18,7 @@
     </div>
   </div>
 {% elif not has_steps %}
-  <div class="alert alert-info d-flex align-items-start gap-2"
-       role="alert">
+  <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
     <i class="bi-diagram-3 fs-4"></i>
     <div>
       <p class="mb-1 fw-semibold">
@@ -47,9 +46,9 @@
     {% trans "You can still review the workflow configuration from the Info tab." %}
   </p>
 {% else %}
-  <div class="row g-4 align-items-start">
-    <div class="col-12 col-xl-7">
-      <div class="card shadow-sm">
+  <div class="row d-flex flex-row flex-grow-1 g-4 align-items-start">
+    <div class="col-12 col-xl-7 d-flex flex-column flex-grow-1">
+      <div class="card app-card submit-content-card">
         <div class="card-header d-flex align-items-center justify-content-between">
           <span class="fw-semibold">{% trans "Submit content" %}</span>
         </div>
@@ -66,7 +65,9 @@
             {% if launch_form.non_field_errors %}
               <div class="alert alert-danger" role="alert">
                 {% for error in launch_form.non_field_errors %}
-                  <p class="mb-0">{{ error }}</p>
+                  <p class="mb-0">
+                    {{ error }}
+                  </p>
                 {% endfor %}
               </div>
             {% endif %}
@@ -163,13 +164,13 @@
         </div>
       </div>
     </div>
-    <div class="col-12 col-xl-5">
+    <div class="col-12 col-xl-5 d-flex flex-column flex-grow-1">
       {% if active_run %}
         <div id="workflow-launch-run-status">
           {% include "workflows/launch/_run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=active_run_is_polling polling_statuses=polling_statuses status_url=None %}
         </div>
       {% else %}
-        <div class="card shadow-sm h-100">
+        <div class="card app-card launch-status-card">
           <div class="card-body d-flex flex-column justify-content-center align-items-center text-center text-muted p-5">
             <i class="bi-rocket text-secondary display-5 mb-3"></i>
             <p class="mb-0">

@@ -1,5 +1,39 @@
 .app-card {
   // Basic card used throughout app for simple content containers
+  // Try to use this class on every card in the app to ensure consistent styling,
+  // (rather than using bootstrap classes).
+  box-shadow: var(--bs-box-shadow-sm) !important;
+
+  .card-header {
+    // card header always has a title but only sometimes has action buttons
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    padding: 0.1rem 0.5rem 0.1rem 1rem !important;
+
+    // app cards will usually have either buttons
+    // or a status marker in the right side of the header.
+
+    .card-title {
+      flex-direction: row;
+      align-items: center;
+      margin-bottom: 0;
+      padding: 0;
+    }
+
+    .card-header-buttons {
+      display: flex;
+      flex-direction: row;
+      gap: 0.5rem;
+    }
+
+    .card-header-status {
+      margin-left: 1rem;
+    }
+  }
+
   .card-footer {
     background: #fff;
     border-top: 1px dotted #ccc;

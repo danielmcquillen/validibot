@@ -1,0 +1,18 @@
+#workflow-launch {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  #workflow-launch-panel {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-height: 0;
+  }
+  .submit-content-card {
+    min-height: 80vh;
+  }
+
+  .launch-status-card {
+    min-height: 80vh;
+  }
+}

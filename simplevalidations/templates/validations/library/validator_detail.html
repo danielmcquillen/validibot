@@ -36,10 +36,15 @@
       {% endif %}
     </div>
 
-    <div class="row g-4 mt-1">
-      <div class="col-12 col-lg-6">
-        <div class="card shadow-sm h-100">
-          <div class="card-body">
+    <div class="row g-4 d-flex flex-row flex-grow-1 h-100">
+      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+        <div class="card app-card h-100">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Validator Details" %}
+            </div>
+          </div>
+          <div class="card-body h-100">
             <h2 class="h5">
               {% trans "Description" %}
             </h2>
@@ -65,12 +70,12 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
         {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix %}
       </div>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 mt-4">
+    <div class="d-flex flex-wrap gap-2 mt-3 mb-3">
       <a href="{% org_url 'validations:validation_library' %}{% if return_tab %}?tab={{ return_tab }}{% endif %}"
          class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>

@@ -1,10 +1,15 @@
 #workflow-public-view {
   margin-bottom: 10rem;
   .public-steps-card {
+    min-height: 70vh;
     .card-body {
       background: url("/static/marketing/images/notebook.png");
       height: 100%;
     }
+  }
+
+  .public-details-card {
+    min-height: 70vh;
   }
 
   .public-workflow-hero .hero-image {

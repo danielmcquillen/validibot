@@ -34,6 +34,9 @@
   }
 
   #assertions-editor-card {
+    height: 100%;
+    margin-bottom: 1rem;
+
     .editor-workspace {
       background: url("/static/images/app/notebook_green.png");
       min-height: 70vh;

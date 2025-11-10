@@ -1,6 +1,6 @@
 {% load i18n core_tags %}
 
-<div class="card catalog-entry-list-card shadow-sm h-100 mb-4"
+<div class="card app-card catalog-entries-card"
      data-sv-catalog
      data-sv-catalog-mode="{% if flat_mode %}
                              flat
@@ -8,7 +8,9 @@
                              tabs
                            {% endif %}">
   <div class="card-header">
-    {% trans "Catalog Entries" %}
+    <div class="card-title">
+      {% trans "Catalog Entries" %}
+    </div>
   </div>
   <div class="card-body">
     {% if flat_mode %}

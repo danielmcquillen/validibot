@@ -12397,9 +12397,15 @@ h4 {
 #workflow-public-view {
   margin-bottom: 10rem;
 }
+#workflow-public-view .public-steps-card {
+  min-height: 70vh;
+}
 #workflow-public-view .public-steps-card .card-body {
   background: url("/static/marketing/images/notebook.png");
   height: 100%;
+}
+#workflow-public-view .public-details-card {
+  min-height: 70vh;
 }
 #workflow-public-view .public-workflow-hero .hero-image {
   max-height: 300px;
@@ -12711,6 +12717,31 @@ h4 {
   color: rgba(255, 255, 255, 0.6);
 }
 
+.app-card {
+  box-shadow: var(--bs-box-shadow-sm) !important;
+}
+.app-card .card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  padding: 0.1rem 0.5rem 0.1rem 1rem !important;
+}
+.app-card .card-header .card-title {
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 0;
+  padding: 0;
+}
+.app-card .card-header .card-header-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+}
+.app-card .card-header .card-header-status {
+  margin-left: 1rem;
+}
 .app-card .card-footer {
   background: #fff;
   border-top: 1px dotted #ccc;
@@ -12736,10 +12767,33 @@ h4 {
   font-weight: normal;
 }
 
+#workflow-launch {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+#workflow-launch #workflow-launch-panel {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+}
+#workflow-launch .submit-content-card {
+  min-height: 80vh;
+}
+#workflow-launch .launch-status-card {
+  min-height: 80vh;
+}
+
+#workflow-step-editor-card {
+  height: 100%;
+  margin-bottom: 1rem;
+}
 #workflow-step-editor-card .editor-workspace {
   background: url("/static/images/app/notebook.png");
-  min-height: 70vh;
+  min-height: 80vh;
   padding-bottom: 10rem;
+  height: 100%;
 }
 #workflow-step-editor-card .workflow-step-card {
   background: #fff;
@@ -12767,13 +12821,12 @@ h4 {
 }
 .workflow-step-connector .workflow-step-arrow {
   width: 2px;
-  height: 3rem;
+  height: 1.5rem;
   border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
 }
 
 .workflow-step-connector--terminal {
   gap: 0;
-  min-height: 5rem;
 }
 
 .workflow-step-complete-pill {
@@ -12794,7 +12847,7 @@ h4 {
 
 .workflow-step-dotted-line {
   width: 2px;
-  height: 3rem;
+  height: 1.5rem;
   border-left: 2px dotted rgba(var(--bs-primary-rgb), 0.45);
 }
 
@@ -13023,6 +13076,10 @@ h4 {
 #assertion-step-builder .app-content-header-bar .app-content-header .title-wrapper {
   border: 1px solid var(--bs-dark-border) !important;
 }
+#assertion-step-builder #assertions-editor-card {
+  height: 100%;
+  margin-bottom: 1rem;
+}
 #assertion-step-builder #assertions-editor-card .editor-workspace {
   background: url("/static/images/app/notebook_green.png");
   min-height: 70vh;
@@ -13140,7 +13197,7 @@ h4 {
   border-bottom: 0;
 }
 .tabs .nav-link.active {
-  margin-bottom: -2px;
+  margin-bottom: -1px;
 }
 
 #validator-library .tabs {
@@ -13194,8 +13251,11 @@ h4 {
   flex-direction: column;
 }
 
-#validator-detail .catalog-entry-list-card {
-  background: #eef3f7;
+#validator-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-grow: 1;
 }
 #validator-detail .catalog-entry-sublist-header {
   margin-top: 1rem;
@@ -13217,6 +13277,11 @@ h4 {
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
   border: 1px solid var(--bs-border-color);
+}
+#validator-detail .catalog-entries-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .project-color-widget {

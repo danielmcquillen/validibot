@@ -77,11 +77,11 @@ to launch the workflow.
         <div class="row">
           <div class="col-12 col-lg-7 order-2 order-lg-1">
 
-            <div class="card border-0 shadow-sm mt-4 public-steps-card">
-              <div class="card-header bg-white py-3 px-4">
+            <div class="card app-card public-steps-card mt-4">
+              <div class="card-header">
                 {% trans "Workflow Validation Steps" %}
               </div>
-              <div class="card-body p-4 p-lg-5 ">
+              <div class="card-body p-4 p-lg-5">
                 {% if steps %}
                   {% for step in steps %}
                     {% include 'workflows/partials/components/public_step_card.html' %}
@@ -105,8 +105,8 @@ to launch the workflow.
           </div>
 
           <div class="col-12 col-lg-5 order-1 order-lg-2">
-            <div class="card border-0 shadow-sm mt-4 ">
-              <div class="card-header bg-white py-3 px-4">
+            <div class="card app-card public-details-card mt-4 ">
+              <div class="card-header">
                 {% trans "Workflow Details" %}
               </div>
               {% if workflow.has_featured_image %}

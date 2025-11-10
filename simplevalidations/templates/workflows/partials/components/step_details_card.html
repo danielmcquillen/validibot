@@ -1,15 +1,17 @@
 {% load i18n core_tags %}
 
-<div class="card shadow-sm">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <h2 class="card-title h6 mb-0">
+<div class="card app-card">
+    <div class="card-header">
+        <div class="card-title">
             {% trans "Step details" %}
-        </h2>
-        <a class="btn btn-sm btn-light"
-           href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
-            <i class="bi bi-pencil-square"></i>
-            <span class="visually-hidden">{% trans "Edit step" %}</span>
-        </a>
+        </div>
+        <div class="card-header-buttons">
+            <a class="btn btn-sm btn-light"
+               href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
+                <i class="bi bi-pencil-square"></i>
+                <span class="visually-hidden">{% trans "Edit step" %}</span>
+            </a>
+        </div>
     </div>
     <div class="card-body">
         <dl class="row small mb-0">

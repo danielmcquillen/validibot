@@ -385,7 +385,7 @@ class WorkflowLaunchForm(forms.Form):
             self.single_file_type_label = choices[0][1]
 
     def _apply_bootstrap_styles(self) -> None:
-        for field in self.fields.values():
+        for name, field in self.fields.items():
             widget = field.widget
             base_class = widget.attrs.get("class", "")
             match widget.__class__.__name__:
@@ -397,6 +397,13 @@ class WorkflowLaunchForm(forms.Form):
                     widget.attrs["class"] = f"{base_class} form-control".strip()
                 case _:
                     widget.attrs["class"] = f"{base_class} form-control".strip()
+            if name == "attachment":
+                widget.attrs.update(
+                    {
+                        "data-dropzone-input": "true",
+                        "class": f"{widget.attrs.get('class', '')} visually-hidden".strip(),
+                    },
+                )
 
     def clean(self):
         cleaned = super().clean()

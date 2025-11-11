@@ -331,7 +331,7 @@ class WorkflowLaunchForm(forms.Form):
         choices=[],
     )
     payload = forms.CharField(
-        label=_("Inline content"),
+        label=_("Submission data"),
         required=False,
         widget=forms.Textarea(
             attrs={
@@ -346,7 +346,7 @@ class WorkflowLaunchForm(forms.Form):
     attachment = forms.FileField(
         label=_("Attachment"),
         required=False,
-        help_text=_("Upload a file instead of pasting inline content."),
+        help_text=_("Upload a file instead of pasting submission data."),
     )
     metadata = forms.CharField(
         label=_("Metadata (JSON)"),

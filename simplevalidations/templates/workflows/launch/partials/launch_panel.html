@@ -1,0 +1,82 @@
+{% load i18n core_tags %}
+
+{% if not workflow.is_active %}
+  <div class="alert alert-warning d-flex align-items-start gap-2"
+       role="alert">
+    <i class="bi-pause-circle-fill fs-4"></i>
+    <div>
+      <p class="mb-1 fw-semibold">
+        {% trans "This workflow is currently inactive." %}
+      </p>
+      <p class="mb-1">
+        {% trans "Re-enable the workflow from the settings page before launching new runs." %}
+      </p>
+      <a class="btn btn-sm btn-outline-primary mt-2"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        {% trans "Manage workflow" %}
+      </a>
+    </div>
+  </div>
+{% elif not has_steps %}
+  <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+    <i class="bi-diagram-3 fs-4"></i>
+    <div>
+      <p class="mb-1 fw-semibold">
+        {% trans "This workflow has no steps yet." %}
+      </p>
+      <p class="mb-1">
+        {% trans "Add at least one validation step before launching new runs." %}
+      </p>
+      <a class="btn btn-sm btn-outline-primary mt-2"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        {% trans "Manage workflow" %}
+      </a>
+    </div>
+  </div>
+{% elif not can_execute %}
+  <div class="alert alert-warning d-flex align-items-center" role="alert">
+    <i class="bi-exclamation-triangle-fill me-2"></i>
+    <div>
+      {% blocktrans %}
+        You do not have permission to run this workflow. Contact an organization admin to request the Executor role.
+      {% endblocktrans %}
+    </div>
+  </div>
+  <p class="text-muted">
+    {% trans "You can still review the workflow configuration from the Info tab." %}
+  </p>
+{% else %}
+  <div class="row d-flex flex-row flex-grow-1 g-4 align-items-start">
+    <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+
+      {# SUBMISSION PANEL #}
+      {# This is the panel that allows the user to submit content for the validation workflow #}
+      {% include "workflows/launch/partials/submit_content_form.html" %}
+
+    </div>
+    <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+
+      {% if active_run %}
+        <div id="workflow-launch-run-status">
+
+          {# STATUS PANEL #}
+          {# This is the panel that shows either the current status or the results of the validation workflow run #}
+          {% include "workflows/launch/partials/run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=active_run_is_polling polling_statuses=polling_statuses status_url=None %}
+
+        </div>
+
+      {% else %}
+
+        <div class="card app-card launch-status-card">
+          <div class="card-body d-flex flex-column justify-content-center align-items-center text-center text-muted p-5">
+            <i class="bi-rocket text-secondary display-5 mb-3"></i>
+            <p class="mb-0">
+              {% trans "Submit content to monitor the validation run here." %}
+            </p>
+          </div>
+        </div>
+
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

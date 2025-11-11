@@ -1291,9 +1291,9 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         _type_: _description_
     """
 
-    launch_panel_template_name = "workflows/launch/_launch_panel.html"
+    launch_panel_template_name = "workflows/launch/partials/launch_panel.html"
 
-    run_status_template_name = "workflows/launch/_run_status.html"
+    run_status_template_name = "workflows/launch/partials/run_status.html"
 
     polling_statuses = {
         ValidationRunStatus.PENDING,

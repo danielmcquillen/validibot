@@ -15,10 +15,10 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowPublicInfo
 
@@ -175,21 +175,37 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 
 
 class WorkflowForm(forms.ModelForm):
+    allowed_file_types = forms.MultipleChoiceField(
+        label=_("Allowed file types"),
+        help_text=_(
+            "Choose the submission file types this workflow accepts. "
+            "Note that each validator in the workflow will further "
+            "constrain the allowed types.",
+        ),
+        choices=SubmissionFileType.choices,
+        widget=forms.CheckboxSelectMultiple,
+        required=True,
+    )
+
     class Meta:
         model = Workflow
         fields = [
             "name",
             "slug",
             "project",
+            "allowed_file_types",
             "featured_image",
             "version",
             "is_active",
-            "make_info_public",
         ]
         help_texts = {
             "version": _("Optional label to help you track iterations."),
             "is_active": _(
                 "Disable a workflow to pause new validation runs without removing it.",
+            ),
+            "allowed_file_types": _(
+                "Choose the submission file types this workflow accepts. "
+                "Launchers can only upload/run content using these formats."
             ),
         }
 
@@ -202,10 +218,10 @@ class WorkflowForm(forms.ModelForm):
             Field("name", placeholder=_("Name your workflow"), autofocus=True),
             Field("slug", placeholder=""),
             Field("project"),
+            Field("allowed_file_types"),
             Field("featured_image"),
             Field("version", placeholder="e.g. 1.0"),
             Field("is_active"),
-            Field("make_info_public"),
         )
         self._configure_project_field()
         self.fields["is_active"].label = _("Workflow active")
@@ -213,16 +229,17 @@ class WorkflowForm(forms.ModelForm):
             "When unchecked, teammates can still view the workflow but cannot "
             "launch runs until you reactivate it.",
         )
-        self.fields["make_info_public"].label = _("Make info public")
-        self.fields["make_info_public"].help_text = _(
-            "Allows non-logged in users to see details of the workflow validation.",
-        )
         self.fields["featured_image"].widget = forms.ClearableFileInput()
         self.fields["featured_image"].widget.attrs.update({"class": "form-control"})
         self.fields["featured_image"].label = _("Featured image")
         self.fields["featured_image"].help_text = _(
             "Optional image shown on the workflow info page.",
         )
+        allowed_field = self.fields["allowed_file_types"]
+        if self.instance and self.instance.pk:
+            allowed_field.initial = list(self.instance.allowed_file_types or [])
+        elif not allowed_field.initial:
+            allowed_field.initial = [SubmissionFileType.JSON]
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
@@ -247,6 +264,20 @@ class WorkflowForm(forms.ModelForm):
                 _("Select a project from your current organization."),
             )
         return project
+
+    def clean_allowed_file_types(self):
+        values = self.cleaned_data.get("allowed_file_types") or []
+        deduped: list[str] = []
+        for value in values:
+            if value not in SubmissionFileType.values:
+                raise ValidationError(
+                    _("'%(value)s' is not a supported file type.") % {"value": value},
+                )
+            if value not in deduped:
+                deduped.append(value)
+        if not deduped:
+            raise ValidationError(_("Select at least one file type."))
+        return deduped
 
     def _configure_project_field(self):
         project_field = self.fields.get("project")
@@ -295,8 +326,8 @@ class WorkflowLaunchForm(forms.Form):
         required=False,
         help_text=_("Optional name for reporting."),
     )
-    content_type = forms.ChoiceField(
-        label=_("Content type"),
+    file_type = forms.ChoiceField(
+        label=_("File type"),
         choices=[],
     )
     payload = forms.CharField(
@@ -334,17 +365,24 @@ class WorkflowLaunchForm(forms.Form):
         self.user = user
         super().__init__(*args, **kwargs)
         self._apply_bootstrap_styles()
-        self._configure_content_type_field()
+        self.single_file_type_label: str | None = None
+        self._configure_file_type_field()
 
-    def _configure_content_type_field(self) -> None:
-        content_type_field = self.fields["content_type"]
+    def _configure_file_type_field(self) -> None:
+        file_type_field = self.fields["file_type"]
         choices: list[tuple[str, str]] = []
-        for content_type, file_type in SUPPORTED_CONTENT_TYPES.items():
-            label = f"{file_type.label} ({content_type})"
-            choices.append((content_type, label))
-        content_type_field.choices = choices
-        if not content_type_field.initial:
-            content_type_field.initial = "application/json"
+        for value in self.workflow.allowed_file_types or []:
+            try:
+                label = SubmissionFileType(value).label
+            except Exception:
+                label = value
+            choices.append((value, label))
+        file_type_field.choices = choices
+        if choices and not file_type_field.initial:
+            file_type_field.initial = choices[0][0]
+        if len(choices) == 1:
+            file_type_field.widget = forms.HiddenInput()
+            self.single_file_type_label = choices[0][1]
 
     def _apply_bootstrap_styles(self) -> None:
         for field in self.fields.values():
@@ -377,10 +415,11 @@ class WorkflowLaunchForm(forms.Form):
             self.add_error("attachment", missing_msg)
             raise forms.ValidationError(missing_msg)
 
-        content_type = cleaned.get("content_type")
-        if content_type not in SUPPORTED_CONTENT_TYPES:
+        file_type = cleaned.get("file_type")
+        allowed_values = set(self.workflow.allowed_file_types or [])
+        if file_type not in allowed_values:
             raise forms.ValidationError(
-                _("Select a supported content type."),
+                _("Select a supported file type."),
             )
         cleaned["payload"] = payload
 
@@ -410,8 +449,7 @@ class WorkflowStepTypeForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.options_by_value = {str(opt["value"]): opt for opt in options}
         self.fields["choice"].choices = [
-            (str(opt["value"]), opt["label"])
-            for opt in options
+            (str(opt["value"]), opt["label"]) for opt in options
         ]
 
     def get_selection(self) -> dict[str, object]:
@@ -592,9 +630,7 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
                     if schema_uri not in JSON_SCHEMA_2020_12_URIS:
                         self.add_error(
                             field_name,
-                            _(
-                                "JSON schemas must declare $schema as Draft 2020-12."
-                            ),
+                            _("JSON schemas must declare $schema as Draft 2020-12."),
                         )
         return cleaned
         return cleaned
@@ -904,6 +940,14 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
 
 
 class WorkflowPublicInfoForm(forms.ModelForm):
+    make_info_public = forms.BooleanField(
+        label=_("Make info public"),
+        required=False,
+        help_text=_(
+            "When enabled, anyone with the link can view the workflow’s info page.",
+        ),
+    )
+
     class Meta:
         model = WorkflowPublicInfo
         fields = ["title", "content_md"]
@@ -933,12 +977,20 @@ class WorkflowPublicInfoForm(forms.ModelForm):
         self.fields["title"].widget.attrs.setdefault("class", "form-control")
         self.fields["content_md"].widget.attrs.setdefault("class", "form-control")
         self.fields["title"].required = False
+        self.fields["make_info_public"].initial = bool(workflow.make_info_public)
+        self.fields["make_info_public"].widget.attrs.setdefault(
+            "class",
+            "form-check-input",
+        )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Field("title"),
             Field("content_md"),
+            Field("make_info_public"),
         )
+
+
 class BasicStepConfigForm(BaseStepConfigForm):
     """Minimal form for manual assertion steps (name/description/notes only)."""
 

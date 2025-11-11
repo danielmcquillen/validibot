@@ -22,6 +22,8 @@ TEXTUAL_CT = {
     "application/xml",
     "text/plain",
     "text/x-idf",
+    "application/yaml",
+    "text/yaml",
 }
 
 

@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 from rest_framework.response import Response
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import JSONSchemaVersion
@@ -101,7 +102,7 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
     response = client.post(
         reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
         data={
-            "content_type": "application/json",
+            "file_type": SubmissionFileType.JSON,
             "payload": "{}",
         },
         HTTP_HX_REQUEST="true",
@@ -123,7 +124,7 @@ def test_launch_start_requires_executor_role(client):
     response = client.post(
         reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
         data={
-            "content_type": "application/json",
+            "file_type": SubmissionFileType.JSON,
             "payload": "{}",
         },
         HTTP_HX_REQUEST="true",
@@ -185,6 +186,66 @@ def test_public_info_view_accessible_when_enabled(client):
 
     # Validation we can find the id "workflow-public-view" of the div that holds info
     assert 'id="workflow-public-view"' in body
+
+
+def test_public_info_form_updates_visibility(client):
+    workflow = WorkflowFactory(make_info_public=False)
+    WorkflowStepFactory(workflow=workflow)
+    _force_login_for_workflow(client, workflow)
+
+    response = client.post(
+        reverse("workflows:workflow_public_info_edit", kwargs={"pk": workflow.pk}),
+        data={
+            "title": "Public doc",
+            "content_md": "## Overview\nDetails here.",
+            "make_info_public": "on",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    workflow.refresh_from_db()
+    assert workflow.make_info_public is True
+
+
+def test_public_visibility_toggle_updates_card(client):
+    workflow = WorkflowFactory(make_info_public=False)
+    WorkflowStepFactory(workflow=workflow)
+    _force_login_for_workflow(client, workflow)
+
+    response = client.post(
+        reverse("workflows:workflow_public_visibility", kwargs={"pk": workflow.pk}),
+        data={"make_info_public": "true"},
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    workflow.refresh_from_db()
+    assert workflow.make_info_public is True
+    assert "Visible" in response.content.decode()
+
+
+def test_launch_start_rejects_incompatible_file_type(client):
+    workflow = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.JSON, SubmissionFileType.XML],
+    )
+    WorkflowStepFactory(workflow=workflow)
+    user = workflow.user
+    user.set_current_org(workflow.org)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.XML,
+            "payload": "<data/>",
+        },
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    body = response.content.decode()
+    assert "does not support" in body
 
 
 def test_public_info_view_hides_schema_when_not_shared(client):

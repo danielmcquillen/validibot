@@ -143,6 +143,12 @@ to launch the workflow.
                     <dd class="col-sm-7">
                       <code>{{ workflow.slug }}</code>
                     </dd>
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">
+                      {% trans "Accepted file types" %}
+                    </dt>
+                    <dd class="col-sm-7">
+                      {{ workflow.allowed_file_type_labels|join:", " }}
+                    </dd>
 
                   </dl>
                 </div>

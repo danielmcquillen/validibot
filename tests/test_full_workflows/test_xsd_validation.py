@@ -12,6 +12,7 @@ from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -108,7 +109,11 @@ def workflow_context(load_xsd_asset, api_client):
         },
     )
 
-    workflow = WorkflowFactory(org=org, user=user)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        allowed_file_types=[SubmissionFileType.XML],
+    )
     step = WorkflowStepFactory(
         workflow=workflow,
         validator=validator,

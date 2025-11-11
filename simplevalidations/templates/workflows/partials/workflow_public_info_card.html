@@ -1,0 +1,87 @@
+{% load i18n core_tags %}
+
+<div id="workflow-public-info-card" class="card app-card mb-3">
+  <div class="card-header">
+    <div class="card-title">
+      {% trans "Public Info" %}
+    </div>
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-4 ps-4">
+        {% trans "Status" %}
+      </dt>
+      <dd class="col-sm-8">
+        <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
+          {% if workflow.make_info_public %}
+            <span class="badge text-bg-primary py-2">
+              {% trans "Visible" %}
+            </span>
+          {% else %}
+            <span class="badge text-bg-dark py-2">
+              {% trans "Private" %}
+            </span>
+          {% endif %}
+          {% if can_manage_public_info %}
+            <form method="post"
+                  class="d-inline-flex"
+                  hx-post="{% org_url 'workflows:workflow_public_visibility' pk=workflow.pk %}"
+                  hx-target="#workflow-public-info-card"
+                  hx-swap="outerHTML">
+              {% csrf_token %}
+              {% if workflow.make_info_public %}
+                <input type="hidden" name="make_info_public" value="false" />
+                <button type="submit"
+                        class="btn btn-warning btn-sm"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
+                        title="{% trans 'Hide public info page' %}">
+                  <i class="bi-eye-slash"></i>
+                </button>
+              {% else %}
+                <input type="hidden" name="make_info_public" value="true" />
+                <button type="submit"
+                        class="btn btn-success btn-sm"
+                        data-bs-toggle="tooltip"
+                        data-bs-placement="top"
+                        title="{% trans 'Publish workflow info' %}">
+                  <i class="bi-eye"></i>
+                </button>
+              {% endif %}
+            </form>
+          {% endif %}
+          {% if public_info_url %}
+            <div class="ms-auto">
+              <a href="{{ public_info_url }}"
+                 target="_blank"
+                 rel="noopener"
+                 class="px-0">
+                <i class="bi-box-arrow-up-right me-1"></i>{% trans "View public info" %}
+              </a>
+            </div>
+          {% endif %}
+        </div>
+        <small class="text-muted d-block mt-2">
+          {% if workflow.make_info_public %}
+            {% trans "Anyone with the link can currently view<br />the workflow info page." %}
+          {% else %}
+            {% trans "Only teammates with access can currently view<br />the workflow info page." %}
+          {% endif %}
+        </small>
+      </dd>
+
+      <dt class="col-sm-4 ps-4">
+        {% trans "Edit" %}
+      </dt>
+      <dd class="col-sm-8">
+        <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
+          <a class="btn btn-sm btn-outline-primary"
+             href="{% org_url 'workflows:workflow_public_info_edit' pk=workflow.pk %}">
+            <i class="bi-pencil me-1"></i>
+            {% trans "Edit public info" %}
+          </a>
+        </div>
+      </dd>
+    </dl>
+  </div>
+</div>

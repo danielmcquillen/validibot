@@ -408,16 +408,20 @@ def detect_file_type(
     text: str | None = None,
 ) -> str:
     name = (filename or "").lower()
-    if name.endswith(".json"):
+    if name.endswith((".json", ".epjson")):
         return SubmissionFileType.JSON
     if name.endswith(".xml"):
         return SubmissionFileType.XML
+    if name.endswith((".yaml", ".yml")):
+        return SubmissionFileType.YAML
     if name.endswith(".idf") or "energyplus" in name:
-        return SubmissionFileType.ENERGYPLUS_IDF
+        return SubmissionFileType.TEXT
     if text:
         s = text.lstrip()
         if s.startswith(("{", "[")):
             return SubmissionFileType.JSON
         if s.startswith("<"):
             return SubmissionFileType.XML
+        if s.startswith(("---", "- ")):
+            return SubmissionFileType.YAML
     return SubmissionFileType.UNKNOWN  # default fallback

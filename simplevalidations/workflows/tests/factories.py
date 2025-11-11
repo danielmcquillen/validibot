@@ -2,6 +2,7 @@ import factory
 from factory.django import DjangoModelFactory
 
 from simplevalidations.projects.tests.factories import ProjectFactory
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -23,6 +24,9 @@ class WorkflowFactory(DjangoModelFactory):
     version = "1"
     is_locked = False
     is_active = True
+    allowed_file_types = factory.LazyFunction(
+        lambda: [SubmissionFileType.JSON],
+    )
 
     @factory.post_generation
     def link_user(self, create, extracted, **kwargs):  # noqa: FBT001

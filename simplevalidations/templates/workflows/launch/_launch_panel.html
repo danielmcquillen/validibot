@@ -74,10 +74,17 @@
             <div class="row g-3">
               <div class="col-12 col-lg-6">
                 <label class="form-label fw-semibold">
-                  {{ launch_form.content_type.label }}
+                  {{ launch_form.file_type.label }}
                 </label>
-                {{ launch_form.content_type }}
-                {{ launch_form.content_type.errors }}
+                {% if launch_form.single_file_type_label %}
+                  <div class="form-control-plaintext">
+                    {{ launch_form.single_file_type_label }}
+                  </div>
+                  {{ launch_form.file_type }}
+                {% else %}
+                  {{ launch_form.file_type }}
+                {% endif %}
+                {{ launch_form.file_type.errors }}
               </div>
             </div>
             <div>

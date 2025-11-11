@@ -28,6 +28,9 @@ from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.models import ValidatorCatalogEntry
+from simplevalidations.validations.models import (
+    default_supported_file_types_for_validation,
+)
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -80,6 +83,9 @@ class ValidatorFactory(DjangoModelFactory):
     org = None
     is_system = True
     allow_custom_assertion_targets = False
+    supported_file_types = factory.LazyAttribute(
+        lambda obj: default_supported_file_types_for_validation(obj.validation_type),
+    )
 
     @factory.post_generation
     def ensure_defaults(self, create, extracted, **kwargs):  # noqa: D401

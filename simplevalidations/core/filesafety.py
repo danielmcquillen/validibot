@@ -10,8 +10,9 @@ SAFE_EXT_FOR_TYPE = {
     "application/xml": ".xml",
     "text/plain": ".txt",
     "text/x-idf": ".idf",
-    # "application/yaml": ".yaml",   # uncomment when you allow YAML
-    # "text/yaml":        ".yaml",
+    "application/yaml": ".yaml",
+    "text/yaml": ".yaml",
+    "application/octet-stream": ".bin",
 }
 
 SUSPICIOUS_MAGIC_PREFIXES = (

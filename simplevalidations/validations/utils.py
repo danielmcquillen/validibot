@@ -15,7 +15,10 @@ def create_default_validators():
     Create Validator model instances for every type of validator
     we need to have by default.
     """
-    from simplevalidations.validations.models import Validator  # noqa: PLC0415
+    from simplevalidations.validations.models import (  # noqa: PLC0415
+        Validator,
+        default_supported_file_types_for_validation,
+    )
 
     default_validators = [
         {
@@ -68,9 +71,15 @@ def create_default_validators():
     created = 0
     skipped = 0
     for validator_data in default_validators:
+        defaults = {
+            **validator_data,
+            "supported_file_types": default_supported_file_types_for_validation(
+                validator_data["validation_type"],
+            ),
+        }
         validator, was_created = Validator.objects.get_or_create(
             slug=validator_data["slug"],
-            defaults=validator_data,
+            defaults=defaults,
         )
         if was_created:
             created += 1
@@ -82,6 +91,8 @@ def create_default_validators():
         validator.order = validator_data["order"]
         validator.is_system = True
         validator.org = None
+        if not validator.supported_file_types:
+            validator.supported_file_types = defaults["supported_file_types"]
         validator.allow_custom_assertion_targets = validator_data.get(
             "allow_custom_assertion_targets",
             validator.allow_custom_assertion_targets,
@@ -105,8 +116,11 @@ def create_custom_validator(
     notes: str = "",
 ):
     """Create a custom validator and matching CustomValidator wrapper."""
-    from simplevalidations.validations.models import CustomValidator  # noqa: PLC0415
-    from simplevalidations.validations.models import Validator  # noqa: PLC0415
+    from simplevalidations.validations.models import (  # noqa: PLC0415
+        CustomValidator,
+        Validator,
+        default_supported_file_types_for_validation,
+    )
 
     base_validation_type = _custom_type_to_validation_type(custom_type)
     slug = _unique_validator_slug(org, name)
@@ -117,6 +131,9 @@ def create_custom_validator(
         org=org,
         is_system=False,
         slug=slug,
+        supported_file_types=default_supported_file_types_for_validation(
+            base_validation_type,
+        ),
     )
     custom_validator = CustomValidator.objects.create(
         validator=validator,

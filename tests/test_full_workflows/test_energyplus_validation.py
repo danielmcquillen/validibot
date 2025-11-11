@@ -19,6 +19,7 @@ from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
@@ -135,7 +136,14 @@ def energyplus_workflow(api_client):
         metadata={"weather_file": weather_file},
     )
 
-    workflow = WorkflowFactory(org=org, user=user)
+    workflow = WorkflowFactory(
+        org=org,
+        user=user,
+        allowed_file_types=[
+            SubmissionFileType.TEXT,
+            SubmissionFileType.JSON,
+        ],
+    )
     step = WorkflowStepFactory(
         workflow=workflow,
         validator=validator,

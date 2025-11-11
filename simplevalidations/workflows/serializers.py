@@ -15,4 +15,5 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "slug",
             "version",
             "is_active",
+            "allowed_file_types",
         ]

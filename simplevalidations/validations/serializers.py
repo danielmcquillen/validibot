@@ -12,10 +12,9 @@ from rest_framework import serializers
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.relations import SlugRelatedField
 
-from simplevalidations.validations.models import ValidationRun
 from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.validations.models import ValidationRun
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
-
 
 CONTENT_TYPE_BY_FILE_TYPE = {
     file_type: content_type for content_type, file_type in SUPPORTED_CONTENT_TYPES.items()
@@ -313,12 +312,12 @@ class ValidationRunStartSerializer(serializers.Serializer):
         Lightweight heuristics so envelopes can omit content_type when obvious.
         """
         name = (filename or "").lower()
-        if name.endswith(".json"):
+        if name.endswith((".json", ".epjson")):
             return SubmissionFileType.JSON
         if name.endswith(".xml"):
             return SubmissionFileType.XML
         if name.endswith(".idf") or "energyplus" in name:
-            return SubmissionFileType.ENERGYPLUS_IDF
+            return SubmissionFileType.TEXT
 
         if isinstance(raw_content, (dict, list)):
             return SubmissionFileType.JSON

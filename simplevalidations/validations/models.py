@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from functools import cached_property
 
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
@@ -13,6 +14,7 @@ from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
@@ -31,6 +33,40 @@ from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
+
+VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
+    ValidationType.BASIC: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.XML,
+        SubmissionFileType.TEXT,
+        SubmissionFileType.YAML,
+    ],
+    ValidationType.JSON_SCHEMA: [SubmissionFileType.JSON],
+    ValidationType.XML_SCHEMA: [SubmissionFileType.XML],
+    ValidationType.ENERGYPLUS: [
+        SubmissionFileType.TEXT,
+        SubmissionFileType.JSON,
+    ],
+    ValidationType.CUSTOM_RULES: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ],
+    ValidationType.AI_ASSIST: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ],
+}
+
+
+def default_supported_file_types_for_validation(
+    validation_type: str,
+) -> list[str]:
+    return list(
+        VALIDATION_TYPE_FILE_TYPE_DEFAULTS.get(
+            validation_type,
+            [SubmissionFileType.JSON],
+        ),
+    )
 
 
 class Ruleset(TimeStampedModel):
@@ -303,7 +339,8 @@ class RulesetAssertion(TimeStampedModel):
         default=dict,
         blank=True,
         help_text=_(
-            "Operator options (inclusive bounds, tolerance metadata, case folding, etc.).",
+            "Operator options (inclusive bounds, tolerance "
+            "metadata, case folding, etc.).",
         ),
     )
 
@@ -341,7 +378,9 @@ class RulesetAssertion(TimeStampedModel):
         ]
 
     def __str__(self):
-        target = self.target_catalog.slug if self.target_catalog_id else self.target_field
+        target = (
+            self.target_catalog.slug if self.target_catalog_id else self.target_field
+        )
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
     @property
@@ -358,7 +397,8 @@ class RulesetAssertion(TimeStampedModel):
             raise ValidationError(
                 {
                     "target_field": _(
-                        "Provide either a catalog target or a custom path (but not both).",
+                        "Provide either a catalog target or a "
+                        "custom path (but not both).",
                     ),
                 },
             )
@@ -403,7 +443,9 @@ class RulesetAssertion(TimeStampedModel):
         if op in {AssertionOperator.IN, AssertionOperator.NOT_IN}:
             values = ", ".join(formatter(v) for v in rhs.get("values", []))
             return (
-                _("One of %(values)s") if op == AssertionOperator.IN else _("Not in %(values)s")
+                _("One of %(values)s")
+                if op == AssertionOperator.IN
+                else _("Not in %(values)s")
             ) % {"values": values}
         if op == AssertionOperator.MATCHES:
             return _("Matches %(pattern)s") % {"pattern": formatter(rhs.get("pattern"))}
@@ -438,14 +480,18 @@ class RulesetAssertion(TimeStampedModel):
 
 @dataclass(frozen=True)
 class CatalogDisplay:
-    entries: list["ValidatorCatalogEntry"]
-    inputs: list["ValidatorCatalogEntry"]
-    outputs: list["ValidatorCatalogEntry"]
-    input_derivations: list["ValidatorCatalogEntry"]
-    output_derivations: list["ValidatorCatalogEntry"]
+    entries: list[ValidatorCatalogEntry]
+    inputs: list[ValidatorCatalogEntry]
+    outputs: list[ValidatorCatalogEntry]
+    input_derivations: list[ValidatorCatalogEntry]
+    output_derivations: list[ValidatorCatalogEntry]
     input_total: int
     output_total: int
     uses_tabs: bool
+
+
+def _default_validator_file_types() -> list[str]:
+    return [SubmissionFileType.JSON]
 
 
 class Validator(TimeStampedModel):
@@ -501,7 +547,7 @@ class Validator(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="validators",
         help_text=_(
-            "Owning organization for custom validators (null for system validators)."
+            "Owning organization for custom validators (null for system validators).",
         ),
     )
 
@@ -531,7 +577,9 @@ class Validator(TimeStampedModel):
         max_length=200,
         blank=True,
         default="",
-        help_text=_("The name of the process that generates output signals from input signals."),
+        help_text=_(
+            "The name of the process that generates output signals from input signals.",
+        ),
     )
 
     order = models.PositiveIntegerField(
@@ -551,6 +599,17 @@ class Validator(TimeStampedModel):
         ),
     )
 
+    supported_file_types = ArrayField(
+        base_field=models.CharField(
+            max_length=32,
+            choices=SubmissionFileType.choices,
+        ),
+        default=_default_validator_file_types,
+        help_text=_(
+            "Logical file types this validator can process (JSON, XML, text, etc.).",
+        ),
+    )
+
     @property
     def display_icon(self) -> str:
         bi_icon_class = {
@@ -567,7 +626,30 @@ class Validator(TimeStampedModel):
             prefix = f"{self.org.name} · {self.validation_type}"
         return f"{prefix} {self.slug} v{self.version}".strip()
 
+    def clean(self):
+        super().clean()
+        options = [value for value in (self.supported_file_types or []) if value]
+        if not options:
+            options = default_supported_file_types_for_validation(
+                self.validation_type,
+            )
+        normalized: list[str] = []
+        for value in options:
+            if value not in SubmissionFileType.values:
+                raise ValidationError(
+                    {
+                        "supported_file_types": _(
+                            "'%(value)s' is not a supported submission file type.",
+                        )
+                        % {"value": value},
+                    },
+                )
+            if value not in normalized:
+                normalized.append(value)
+        self.supported_file_types = normalized
+
     def save(self, *args, **kwargs):
+        self.full_clean()
         if not self.slug:
             base_slug = slugify(f"{self.name}")
             if self.org_id:
@@ -581,8 +663,8 @@ class Validator(TimeStampedModel):
     def is_custom(self) -> bool:
         return bool(self.org_id and not self.is_system)
 
-    def catalog_entries_by_type(self) -> dict[str, list["ValidatorCatalogEntry"]]:
-        grouped: dict[str, list["ValidatorCatalogEntry"]] = {
+    def catalog_entries_by_type(self) -> dict[str, list[ValidatorCatalogEntry]]:
+        grouped: dict[str, list[ValidatorCatalogEntry]] = {
             CatalogEntryType.SIGNAL: [],
             CatalogEntryType.DERIVATION: [],
         }
@@ -590,18 +672,38 @@ class Validator(TimeStampedModel):
             grouped.setdefault(entry.entry_type, []).append(entry)
         return grouped
 
-    def catalog_entries_by_stage(self) -> dict[str, list["ValidatorCatalogEntry"]]:
-        grouped: dict[str, list["ValidatorCatalogEntry"]] = {
+    def catalog_entries_by_stage(self) -> dict[str, list[ValidatorCatalogEntry]]:
+        grouped: dict[str, list[ValidatorCatalogEntry]] = {
             CatalogRunStage.INPUT: [],
             CatalogRunStage.OUTPUT: [],
         }
-        qs = (
-            self.catalog_entries.filter(entry_type=CatalogEntryType.SIGNAL)
-            .order_by("run_stage", "order", "slug")
+        qs = self.catalog_entries.filter(entry_type=CatalogEntryType.SIGNAL).order_by(
+            "run_stage",
+            "order",
+            "slug",
         )
         for entry in qs:
             grouped.setdefault(entry.run_stage, []).append(entry)
         return grouped
+
+    def supports_file_type(self, file_type: str) -> bool:
+        normalized = (file_type or "").lower()
+        allowed = {value.lower() for value in (self.supported_file_types or [])}
+        return normalized in allowed
+
+    def supports_any_file_type(self, file_types: list[str]) -> bool:
+        allowed = {value.lower() for value in (self.supported_file_types or [])}
+        incoming = {value.lower() for value in file_types}
+        return bool(allowed & incoming)
+
+    def supported_file_type_labels(self) -> list[str]:
+        labels: list[str] = []
+        for value in self.supported_file_types or []:
+            try:
+                labels.append(str(SubmissionFileType(value).label))
+            except Exception:
+                labels.append(str(value))
+        return labels
 
     def has_signal_stage(self, stage: CatalogRunStage) -> bool:
         return self.catalog_entries.filter(
@@ -667,7 +769,7 @@ class Validator(TimeStampedModel):
         self,
         *,
         entry_type: CatalogEntryType | None = None,
-    ) -> models.QuerySet["ValidatorCatalogEntry"]:
+    ) -> models.QuerySet[ValidatorCatalogEntry]:
         qs = self.catalog_entries.all()
         if entry_type:
             qs = qs.filter(entry_type=entry_type)
@@ -793,7 +895,8 @@ class CustomValidator(TimeStampedModel):
             raise ValidationError(
                 {
                     "base_validation_type": _(
-                        "Base validation type must match the linked Validator validation_type.",
+                        "Base validation type must match the linked "
+                        "Validator validation_type.",
                     ),
                 },
             )

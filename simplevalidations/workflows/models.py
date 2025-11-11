@@ -6,6 +6,7 @@ import uuid
 from decimal import Decimal
 from decimal import InvalidOperation
 
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db import transaction
@@ -20,6 +21,7 @@ from simplevalidations.actions.models import Action
 from simplevalidations.core.mixins import FeaturedImageMixin
 from simplevalidations.core.utils import render_markdown_safe
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import Organization
@@ -76,6 +78,10 @@ class WorkflowManager(models.Manager):
 
     def for_user(self, user: User, required_role_code: RoleCode | None = None):
         return self.get_queryset().for_user(user, required_role_code=required_role_code)
+
+
+def _default_workflow_file_types() -> list[str]:
+    return [SubmissionFileType.JSON]
 
 
 class Workflow(FeaturedImageMixin, TimeStampedModel):
@@ -179,6 +185,17 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
     featured_image_alt_candidates = ("name",)
 
+    allowed_file_types = ArrayField(
+        base_field=models.CharField(
+            max_length=32,
+            choices=SubmissionFileType.choices,
+        ),
+        default=_default_workflow_file_types,
+        help_text=_(
+            "Logical file types (JSON, XML, text, etc.) this workflow can accept.",
+        ),
+    )
+
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -189,6 +206,29 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             raise ValidationError(
                 {"project": _("Project must belong to the workflow's organization.")},
             )
+        allowed = [value for value in (self.allowed_file_types or []) if value]
+        if not allowed:
+            raise ValidationError(
+                {
+                    "allowed_file_types": _(
+                        "Select at least one submission file type.",
+                    ),
+                },
+            )
+        normalized: list[str] = []
+        for value in allowed:
+            if value not in SubmissionFileType.values:
+                raise ValidationError(
+                    {
+                        "allowed_file_types": _(
+                            "'%(value)s' is not a supported submission file type.",
+                        )
+                        % {"value": value},
+                    },
+                )
+            if value not in normalized:
+                normalized.append(value)
+        self.allowed_file_types = normalized
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -217,6 +257,43 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         return can_execute
 
+    def allowed_file_type_labels(self) -> list[str]:
+        labels: list[str] = []
+        for value in self.allowed_file_types or []:
+            try:
+                labels.append(str(SubmissionFileType(value).label))
+            except Exception:
+                labels.append(str(value))
+        return labels
+
+    def supports_file_type(self, file_type: str) -> bool:
+        normalized = (file_type or "").lower()
+        return normalized in {ft.lower() for ft in (self.allowed_file_types or [])}
+
+    def validator_is_compatible(self, validator) -> bool:
+        if not validator:
+            return True
+        validator_types = set(
+            getattr(validator, "supported_file_types", []) or [],
+        )
+        workflow_types = set(self.allowed_file_types or [])
+        return bool(
+            {ft.lower() for ft in workflow_types}
+            & {ft.lower() for ft in validator_types}
+        )
+
+    def first_incompatible_step(self, file_type: str):
+        if not file_type:
+            return None
+        normalized = file_type.lower()
+        steps = self.steps.select_related("validator").all()
+        for step in steps:
+            validator = step.validator
+            if validator and hasattr(validator, "supports_file_type"):
+                if not validator.supports_file_type(normalized):
+                    return step
+        return None
+
     @transaction.atomic
     def clone_to_new_version(self, user) -> Workflow:
         """
@@ -240,6 +317,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             version=next_version,
             is_locked=False,
             is_active=self.is_active,
+            allowed_file_types=list(self.allowed_file_types or []),
         )
         steps = []
         for step in self.steps.all().order_by("order"):

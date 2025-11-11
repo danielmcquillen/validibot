@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from simplevalidations.projects.tests.factories import ProjectFactory
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -108,8 +109,8 @@ def test_create_workflow_with_basic_step_and_assertion(client):
             "slug": "price-check",
             "version": "1.0",
             "is_active": "on",
-            "make_info_public": "",
             "project": str(project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
         },
     )
     assert response.status_code == 302

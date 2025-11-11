@@ -339,6 +339,16 @@ The system automatically detects content types using multiple strategies:
 3. **Content Sniffing**: Analyzing content structure for JSON, XML, CSV, etc.
 4. **Magic Bytes**: Binary file type detection for non-text formats
 
+#### Submission File Types
+
+Deterministic MIME headers are not enough for authoring decisions, so we classify every submission into a small set of logical **SubmissionFileType** values (JSON, XML, TEXT, YAML, BINARY, etc.). Those values power three complementary contracts:
+
+- **Workflows** store an `allowed_file_types` array. Authors decide whether a workflow accepts a single format or multiple formats (for example, an EnergyPlus workflow can allow both TEXT/IDF and JSON/epJSON inputs). The workflow builder surfaces only validators that intersect with the selected file types.
+- **Validators** declare `supported_file_types`. System validators receive defaults (JSON Schema → JSON, XML Schema → XML, EnergyPlus → TEXT + JSON, and so on) and custom validators must be explicit.
+- **Launch-time enforcement** verifies that the selected payload type is included in the workflow allow-list and that every validator in the run can process it. When something doesn’t align, the UI form surfaces a validation error and the API returns `FILE_TYPE_UNSUPPORTED` along with the offending step name.
+
+Incoming requests still provide concrete MIME types (`Content-Type` headers, multipart metadata, etc.) so storage helpers can pick safe extensions. After we ingest the payload we re-run lightweight detection; if the actual content clearly differs from the transport hint, we update the stored `SubmissionFileType` so downstream automation, reporting, and billing all see the canonical format.
+
 ### Error Handling and Recovery
 
 The system implements robust error handling:

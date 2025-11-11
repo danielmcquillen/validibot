@@ -98,6 +98,14 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    .card-body {
+      background: var(--bs-primary-bg-subtle);
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+      .tab-content {
+        flex-grow: 1;
+      }
+    }
   }
-
 }

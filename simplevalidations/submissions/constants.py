@@ -3,9 +3,13 @@ from django.utils.translation import gettext_lazy as _
 
 
 class SubmissionFileType(models.TextChoices):
-    JSON = "application/json", _("JSON")
-    XML = "application/xml", _("XML")
-    TEXT = "text/plain", _("Plain Text")
-    ENERGYPLUS_IDF = "text/x-idf", _("EnergyPlus IDF File")
+    """
+    The type of submission file supported by a workflow or validator.
+    """
+
+    JSON = "json", _("JSON")
+    XML = "xml", _("XML")
+    TEXT = "text", _("Plain Text")
+    YAML = "yaml", _("YAML")
+    BINARY = "binary", _("Binary")
     UNKNOWN = "UNKNOWN", _("Unknown")
-    # YAML = "application/yaml", _("YAML")

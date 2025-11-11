@@ -21,6 +21,7 @@ from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.workflows.constants import WorkflowStartErrorCode
@@ -56,17 +57,33 @@ def user(db):
 @pytest.fixture
 def workflow(db, org, user):
     if WorkflowFactory:
-        wf = WorkflowFactory(org=org, user=user)
+        wf = WorkflowFactory(
+            org=org,
+            user=user,
+            allowed_file_types=[
+                SubmissionFileType.JSON,
+                SubmissionFileType.XML,
+                SubmissionFileType.TEXT,
+            ],
+        )
     else:
         wf = Workflow.objects.create(
             org=org,
             user=user,
             name=f"WF {uuid4().hex}",
+            allowed_file_types=[
+                SubmissionFileType.JSON,
+                SubmissionFileType.XML,
+                SubmissionFileType.TEXT,
+            ],
         )
     if WorkflowStepFactory:
-        WorkflowStepFactory(workflow=wf)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+        )
+        WorkflowStepFactory(workflow=wf, validator=validator)
     else:
-        validator = ValidatorFactory(org=org)
+        validator = ValidatorFactory(org=org, validation_type=ValidationType.BASIC)
         WorkflowStep.objects.create(workflow=wf, order=10, validator=validator)
     return wf
 
@@ -74,11 +91,16 @@ def workflow(db, org, user):
 @pytest.fixture
 def workflow_without_steps(db, org, user):
     if WorkflowFactory:
-        return WorkflowFactory(org=org, user=user)
+        return WorkflowFactory(
+            org=org,
+            user=user,
+            allowed_file_types=[SubmissionFileType.JSON],
+        )
     return Workflow.objects.create(
         org=org,
         user=user,
         name=f"WF-no-steps-{uuid4().hex}",
+        allowed_file_types=[SubmissionFileType.JSON],
     )
 
 
@@ -230,6 +252,60 @@ class TestWorkflowStartAPI:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert resp.data["code"] == WorkflowStartErrorCode.INVALID_PAYLOAD
         assert "Unsupported Content-Type" in resp.data["errors"][0]["message"]
+
+    def test_start_rejects_disallowed_file_type_even_with_valid_content_type(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        workflow.allowed_file_types = [SubmissionFileType.JSON]
+        workflow.save(update_fields=["allowed_file_types"])
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.post(
+            start_url(workflow),
+            data="<root/>",
+            content_type="application/xml",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.FILE_TYPE_UNSUPPORTED
+        assert "accepts" in resp.data["detail"]
+
+    def test_start_rejects_when_step_cannot_process_selected_file_type(
+        self,
+        api_client: APIClient,
+        org,
+        user,
+        workflow,
+        mock_validation_service_success,
+    ):
+        workflow.allowed_file_types = [
+            SubmissionFileType.JSON,
+            SubmissionFileType.XML,
+        ]
+        workflow.save(update_fields=["allowed_file_types"])
+        step = workflow.steps.first()
+        step.validator = ValidatorFactory(
+            validation_type=ValidationType.JSON_SCHEMA,
+        )
+        step.save(update_fields=["validator"])
+        api_client.force_authenticate(user=user)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        resp = api_client.post(
+            start_url(workflow),
+            data="<root/>",
+            content_type="application/xml",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == WorkflowStartErrorCode.FILE_TYPE_UNSUPPORTED
+        assert "does not support" in resp.data["detail"]
 
     def test_start_with_missing_content_type_returns_error(
         self,

@@ -85,6 +85,14 @@ Multipart requests are parsed the same way as JSON envelopes after upload comple
 | JSON Envelope    | Apps that need metadata or cannot send custom headers | Wrap everything in JSON and include `content_type` so the service knows how to parse the payload.          |
 | Multipart Upload | Browser forms, SDKs that already support multipart    | Keep the `metadata` part as a JSON string (use single quotes around the shell argument to avoid escaping). |
 
+## Workflow File Types
+
+Each workflow advertises an `allowed_file_types` array (JSON, XML, TEXT, YAML, etc.) in both the in-app detail page and the `/api/workflows/` responses. Pick one of those logical types when launching from the UI—the dropdown disappears when there is only a single option—or set your HTTP `Content-Type` header accordingly when you call the API.
+
+Validators also declare their `supported_file_types`, so a workflow that allows JSON *and* XML might still block an XML run if one of its steps only speaks JSON. In that situation (or when you send a format the workflow never accepted) the API returns `FILE_TYPE_UNSUPPORTED` with a detail that names the blocking step. The UI shows the same text at the top of the launch form.
+
+The service re-sniffs inline content after ingesting it. If you POST `text/plain` but the payload is obviously JSON, the stored Submission is marked as JSON so downstream automation has the right classification.
+
 ## Responses and Errors
 
 Successful requests return `201 Created` with a completed run when validation finishes immediately, or `202 Accepted` with a `Location` header you can poll while the run executes. Error responses follow a consistent structure:
@@ -104,6 +112,7 @@ Log both `detail` and `code` so client applications can react appropriately. Val
 
 - **409 workflow_inactive**: Re-enable the workflow from the UI before retrying.
 - **400 no_workflow_steps**: Add at least one active step to the workflow.
+- **400 file_type_unsupported**: Check the workflow's `allowed_file_types` (UI or API) and make sure every validator in the workflow supports the format you are sending.
 - **415 unsupported_media_type**: Double-check the `content_type` you sent; it must match one of the supported formats listed in the workflow launch form.
 
 If a request looks correct but still fails, capture the response headers and body, then share them with support along with the workflow ID and timestamp.

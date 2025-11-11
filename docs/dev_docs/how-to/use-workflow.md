@@ -96,6 +96,7 @@ Poll the Location until status is SUCCEEDED or FAILED.
 
 - 409 Conflict with `code: "WORKFLOW_INACTIVE"` (empty detail) when the target workflow is inactive.
 - 400 Bad Request with `code: "NO_WORKFLOW_STEPS"` when no validation steps are configured for the workflow.
+- 400 Bad Request with `code: "FILE_TYPE_UNSUPPORTED"` when the submission's logical file type is not accepted by the workflow or by at least one step.
 - Other validation errors reuse HTTP status codes (400/413) without custom `code` values; rely on the standard `detail` message.
 
 ## Which Mode Should I Use?
@@ -119,3 +120,11 @@ Run tab. If you enable the *Make info public* flag, the Info tab is also
 available without authentication at `/workflows/<workflow uuid>/info`.
 
 All modes end up identical after ingestion: a Submission plus a queued ValidationRun.
+
+## File type expectations
+
+- Every workflow stores an `allowed_file_types` array (JSON, XML, TEXT, YAML, etc.). Authors select these options on the workflow form; the launch UI now renders a dropdown only when there is more than one choice.
+- Every validator has a `supported_file_types` list. System validators get sane defaults, and custom validators must be explicit. The step builder only offers validators that overlap with the workflow's current allow list.
+- During launch we re-inspect the payload. If we can prove the content is JSON even though it was submitted as `text/plain`, we store the Submission as JSON so downstream tooling has the right classification.
+- If a client sends a format the workflow doesn't allow—or one of the validators can't consume—the API returns `FILE_TYPE_UNSUPPORTED` with a detail that names the blocking step. The UI sticks the same message at the top of the launch form.
+- Use the `allowed_file_types` field exposed by `GET /api/workflows/` (and in the in-app workflow detail) to inform your integrations about the acceptable formats.

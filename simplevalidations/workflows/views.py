@@ -21,6 +21,7 @@ from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.functional import Promise
 from django.utils.translation import gettext_lazy as _
@@ -51,9 +52,11 @@ from simplevalidations.core.utils import pretty_json
 from simplevalidations.core.utils import pretty_xml
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.ingest import prepare_inline_text
 from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
+from simplevalidations.submissions.models import detect_file_type
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import User
@@ -73,6 +76,7 @@ from simplevalidations.validations.serializers import ValidationRunStartSerializ
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 from simplevalidations.workflows.constants import WorkflowStartErrorCode
+from simplevalidations.workflows.constants import preferred_content_type_for_file
 from simplevalidations.workflows.forms import AiAssistStepConfigForm
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
@@ -97,13 +101,92 @@ logger = logging.getLogger(__name__)
 MAX_STEP_COUNT = 5
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.BASIC,
-    ValidationType.ENERGYPLUS,
+   ValidationType.ENERGYPLUS,
     ValidationType.CUSTOM_RULES,
 }
 
 
+def _file_type_label(value: str) -> str:
+    try:
+        return SubmissionFileType(value).label
+    except Exception:
+        return value
+
+
+def describe_workflow_file_type_violation(
+    workflow: Workflow,
+    file_type: str,
+) -> str | None:
+    if not file_type:
+        return _("Select a file type before launching the workflow.")
+    if not workflow.supports_file_type(file_type):
+        allowed = workflow.allowed_file_type_labels()
+        allowed_display = ", ".join(allowed) if allowed else _("no file types")
+        return _(
+            "This workflow accepts %(allowed)s submissions."
+        ) % {"allowed": allowed_display}
+    blocking_step = workflow.first_incompatible_step(file_type)
+    if blocking_step:
+        validator_name = getattr(blocking_step.validator, "name", "")
+        label = _file_type_label(file_type)
+        if validator_name:
+            return _(
+                "Step %(step)s (%(validator)s) does not support %(file_type)s files."
+            ) % {
+                "step": blocking_step.step_number_display,
+                "validator": validator_name,
+                "file_type": label,
+            }
+        return _(
+            "Step %(step)s does not support %(file_type)s files."
+        ) % {
+            "step": blocking_step.step_number_display,
+            "file_type": label,
+        }
+    return None
+
+
+def resolve_submission_file_type(
+    *,
+    requested: str,
+    filename: str,
+    inline_text: str | None = None,
+) -> str:
+    detected = detect_file_type(
+        filename=filename or None,
+        text=inline_text if inline_text else None,
+    )
+    if detected and detected != SubmissionFileType.UNKNOWN:
+        return detected
+    return requested
+
+
+def build_public_info_url(request, workflow: Workflow) -> str | None:
+    if not workflow.make_info_public:
+        return None
+    return request.build_absolute_uri(
+        reverse(
+            "workflow_public_info",
+            kwargs={"workflow_uuid": workflow.uuid},
+        ),
+    )
+
+
+def public_info_card_context(
+    request,
+    workflow: Workflow,
+    *,
+    can_manage: bool,
+) -> dict[str, object]:
+    return {
+        "workflow": workflow,
+        "public_info_url": build_public_info_url(request, workflow),
+        "can_manage_public_info": can_manage,
+    }
+
+
 # API Views
-# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------ 
 
 
 class WorkflowViewSet(viewsets.ModelViewSet):
@@ -323,10 +406,28 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             # last resort
             text_content = raw.decode("utf-8", errors="replace")
 
+        resolved_file_type = resolve_submission_file_type(
+            requested=file_type,
+            filename=filename,
+            inline_text=text_content,
+        )
+        violation = describe_workflow_file_type_violation(
+            workflow=workflow,
+            file_type=resolved_file_type,
+        )
+        if violation:
+            return self._file_type_error_response(violation)
+        ingest_content_type = ct_norm
+        if resolved_file_type != file_type:
+            ingest_content_type = preferred_content_type_for_file(
+                resolved_file_type,
+                filename=filename,
+            )
+
         safe_filename, ingest = prepare_inline_text(
             text=text_content,
             filename=filename,
-            content_type=ct_norm,  # use normalized CT
+            content_type=ingest_content_type,
             deny_magic_on_text=True,
         )
 
@@ -342,7 +443,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         submission.set_content(
             inline_text=text_content,
             filename=safe_filename,
-            file_type=file_type,
+            file_type=resolved_file_type,
         )
 
         with transaction.atomic():
@@ -442,10 +543,26 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if vd.get("file") is not None:
             file_obj = vd["file"]
             ct = vd["content_type"]  # already normalized by serializer
+            filename_value = vd.get("filename") or getattr(file_obj, "name", "") or ""
+            resolved_file_type = resolve_submission_file_type(
+                requested=vd["file_type"],
+                filename=filename_value,
+            )
+            violation = describe_workflow_file_type_violation(
+                workflow=workflow,
+                file_type=resolved_file_type,
+            )
+            if violation:
+                return self._file_type_error_response(violation)
+            if resolved_file_type != vd["file_type"]:
+                ct = preferred_content_type_for_file(
+                    resolved_file_type,
+                    filename=filename_value,
+                )
             max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
             ingest = prepare_uploaded_file(
                 uploaded_file=file_obj,
-                filename=vd.get("filename") or getattr(file_obj, "name", "") or "",
+                filename=filename_value,
                 content_type=ct,
                 max_bytes=max_file,
             )
@@ -463,14 +580,31 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             submission.set_content(
                 uploaded_file=file_obj,
                 filename=safe_filename,
-                file_type=vd["file_type"],
+                file_type=resolved_file_type,
             )
 
         elif vd.get("normalized_content") is not None:
             ct = vd["content_type"]
+            filename_value = vd.get("filename") or ""
+            resolved_file_type = resolve_submission_file_type(
+                requested=vd["file_type"],
+                filename=filename_value,
+                inline_text=vd["normalized_content"],
+            )
+            violation = describe_workflow_file_type_violation(
+                workflow=workflow,
+                file_type=resolved_file_type,
+            )
+            if violation:
+                return self._file_type_error_response(violation)
+            if resolved_file_type != vd["file_type"]:
+                ct = preferred_content_type_for_file(
+                    resolved_file_type,
+                    filename=filename_value,
+                )
             safe_filename, ingest = prepare_inline_text(
                 text=vd["normalized_content"],
-                filename=vd.get("filename") or "",
+                filename=filename_value,
                 content_type=ct,
                 deny_magic_on_text=True,
             )
@@ -491,7 +625,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             submission.set_content(
                 inline_text=vd["normalized_content"],
                 filename=safe_filename,
-                file_type=vd["file_type"],
+                file_type=resolved_file_type,
             )
         else:
             return Response(
@@ -528,6 +662,20 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 ],
             },
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def _file_type_error_response(
+        self,
+        message: str,
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> Response:
+        return Response(
+            {
+                "detail": message,
+                "code": WorkflowStartErrorCode.FILE_TYPE_UNSUPPORTED,
+                "errors": [],
+            },
+            status=status_code,
         )
 
     # ---------------------- Launch Helper ----------------------
@@ -1106,6 +1254,12 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
         context = super().get_context_data(**kwargs)
         workflow = context["workflow"]
         recent_runs = workflow.validation_runs.all().order_by("-created")[:5]
+        can_manage_public_info = self.user_can_manage_workflow()
+        public_info_context = public_info_card_context(
+            self.request,
+            workflow,
+            can_manage=can_manage_public_info,
+        )
         context.update(
             {
                 "related_validations_url": reverse_with_org(
@@ -1117,16 +1271,8 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 "max_step_count": MAX_STEP_COUNT,
                 "can_manage_activation": self.user_can_manage_workflow(),
                 "show_private_notes": self.user_can_manage_workflow(),
-                "public_info_url": (
-                    self.request.build_absolute_uri(
-                        reverse(
-                            "workflow_public_info",
-                            kwargs={"workflow_uuid": workflow.uuid},
-                        ),
-                    )
-                    if workflow.make_info_public
-                    else None
-                ),
+                "public_info_url": public_info_context["public_info_url"],
+                "can_manage_public_info": can_manage_public_info,
             },
         )
         return context
@@ -1437,10 +1583,26 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
         cleaned = form.cleaned_data
         payload = cleaned.get("payload")
         attachment = cleaned.get("attachment")
-        content_type = cleaned["content_type"]
+        requested_file_type = cleaned["file_type"]
         filename = cleaned.get("filename") or ""
         metadata = cleaned.get("metadata") or {}
-        file_type = SUPPORTED_CONTENT_TYPES[content_type]
+        attachment_name = getattr(attachment, "name", "") if attachment else ""
+        detection_input_name = filename or attachment_name or "document"
+        final_file_type = resolve_submission_file_type(
+            requested=requested_file_type,
+            filename=detection_input_name,
+            inline_text=payload,
+        )
+        violation = describe_workflow_file_type_violation(
+            workflow=workflow,
+            file_type=final_file_type,
+        )
+        if violation:
+            raise ValidationError(violation)
+        content_type = preferred_content_type_for_file(
+            final_file_type,
+            filename=detection_input_name,
+        )
 
         submission = Submission(
             org=workflow.org,
@@ -1468,7 +1630,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             submission.set_content(
                 uploaded_file=attachment,
                 filename=safe_filename,
-                file_type=file_type,
+                file_type=final_file_type,
             )
         else:
             safe_filename, ingest = prepare_inline_text(
@@ -1482,7 +1644,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             submission.set_content(
                 inline_text=payload,
                 filename=safe_filename,
-                file_type=file_type,
+                file_type=final_file_type,
             )
 
         with transaction.atomic():
@@ -2013,6 +2175,11 @@ class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
+        workflow = self.get_workflow()
+        desired_visibility = bool(form.cleaned_data.get("make_info_public"))
+        if workflow.make_info_public != desired_visibility:
+            workflow.make_info_public = desired_visibility
+            workflow.save(update_fields=["make_info_public"])
         messages.success(self.request, _("Public workflow info updated."))
         return response
 
@@ -2026,7 +2193,12 @@ class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
-        context.update({"workflow": workflow})
+        context.update(
+            {
+                "workflow": workflow,
+                "can_manage_public_info": self.user_can_manage_workflow(),
+            },
+        )
         return context
 
     def get_breadcrumbs(self):
@@ -2108,6 +2280,38 @@ class WorkflowActivationUpdateView(WorkflowObjectMixin, View):
             return response
 
         return HttpResponseRedirect(redirect_url)
+
+
+class WorkflowPublicVisibilityUpdateView(WorkflowObjectMixin, View):
+    """Toggle whether the workflow's public info page is visible."""
+
+    def post(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=403)
+        workflow = self.get_workflow()
+        raw_state = (request.POST.get("make_info_public") or "").strip().lower()
+        if raw_state in {"true", "1", "on"}:
+            new_state = True
+        elif raw_state in {"false", "0", "off"}:
+            new_state = False
+        else:
+            new_state = not workflow.make_info_public
+
+        if workflow.make_info_public != new_state:
+            workflow.make_info_public = new_state
+            workflow.save(update_fields=["make_info_public"])
+
+        context = public_info_card_context(
+            request,
+            workflow,
+            can_manage=self.user_can_manage_workflow(),
+        )
+        html = render_to_string(
+            "workflows/partials/workflow_public_info_card.html",
+            context,
+            request=request,
+        )
+        return HttpResponse(html)
 
 
 class WorkflowStepListView(WorkflowObjectMixin, View):
@@ -2297,9 +2501,11 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         qs = Validator.objects.filter(
             models.Q(org__isnull=True) | models.Q(org=workflow.org),
         )
-        return list(
-            qs.order_by("validation_type", "name", "pk"),
-        )
+        validators: list[Validator] = []
+        for validator in qs.order_by("validation_type", "name", "pk"):
+            if workflow.validator_is_compatible(validator):
+                validators.append(validator)
+        return validators
 
     def _available_action_definitions(self) -> list[ActionDefinition]:
         return list(
@@ -2582,6 +2788,20 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             )
         else:
             validator = self.get_validator()
+            if not workflow.validator_is_compatible(validator):
+                allowed = ", ".join(workflow.allowed_file_type_labels())
+                form.add_error(
+                    None,
+                    _(
+                        "%(validator)s cannot be added because this workflow only "
+                        "accepts %(allowed)s submissions."
+                    )
+                    % {
+                        "validator": validator.name,
+                        "allowed": allowed or _("the selected"),
+                    },
+                )
+                return self.form_invalid(form)
             saved_step = save_workflow_step(
                 workflow,
                 validator,

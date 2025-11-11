@@ -13283,6 +13283,15 @@ h4 {
   display: flex;
   flex-direction: column;
 }
+#validator-detail .catalog-entries-card .card-body {
+  background: var(--bs-primary-bg-subtle);
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+#validator-detail .catalog-entries-card .card-body .tab-content {
+  flex-grow: 1;
+}
 
 .project-color-widget {
   display: flex;

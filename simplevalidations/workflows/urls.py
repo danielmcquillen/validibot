@@ -38,6 +38,11 @@ urlpatterns = [
         name="workflow_activation",
     ),
     path(
+        "<int:pk>/public-info/visibility/",
+        views.WorkflowPublicVisibilityUpdateView.as_view(),
+        name="workflow_public_visibility",
+    ),
+    path(
         "<int:pk>/edit/",
         views.WorkflowUpdateView.as_view(),
         name="workflow_update",

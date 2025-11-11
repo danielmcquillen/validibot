@@ -7,6 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from simplevalidations.projects.models import Project
 from simplevalidations.projects.tests.factories import ProjectFactory
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.models import ensure_default_project
 from simplevalidations.users.tests.factories import (
     MembershipFactory,
@@ -62,6 +63,7 @@ def test_workflow_form_saves_selected_project():
             "name": "Compliance checks",
             "slug": "compliance-checks",
             "project": str(default_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
             "version": "1.0",
             "is_active": "on",
         },
@@ -88,6 +90,7 @@ def test_workflow_form_allows_switching_projects_within_org():
             "name": workflow.name,
             "slug": workflow.slug,
             "project": str(second_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
             "version": workflow.version,
             "is_active": "on",
         },
@@ -109,6 +112,7 @@ def test_workflow_form_rejects_project_from_other_org():
             "name": workflow.name,
             "slug": workflow.slug,
             "project": str(other_project.pk),
+            "allowed_file_types": [SubmissionFileType.JSON],
             "version": workflow.version,
             "is_active": "on",
         },
@@ -129,7 +133,7 @@ def test_workflow_launch_form_accepts_inline_payload():
 
     form = WorkflowLaunchForm(
         data={
-            "content_type": "application/json",
+            "file_type": SubmissionFileType.JSON,
             "payload": '{"hello": "world"}',
             "metadata": '{"source": "ui"}',
         },
@@ -151,7 +155,7 @@ def test_workflow_launch_form_accepts_file_upload():
         content_type="application/json",
     )
     form = WorkflowLaunchForm(
-        data={"content_type": "application/json"},
+        data={"file_type": SubmissionFileType.JSON},
         files={"attachment": uploaded},
         workflow=workflow,
         user=workflow.user,
@@ -171,7 +175,7 @@ def test_workflow_launch_form_rejects_both_inputs():
     )
     form = WorkflowLaunchForm(
         data={
-            "content_type": "application/json",
+            "file_type": SubmissionFileType.JSON,
             "payload": "{}",
         },
         files={"attachment": uploaded},
@@ -191,7 +195,7 @@ def test_workflow_launch_form_rejects_invalid_metadata():
 
     form = WorkflowLaunchForm(
         data={
-            "content_type": "application/json",
+            "file_type": SubmissionFileType.JSON,
             "payload": "{}",
             "metadata": "not-json",
         },
@@ -209,7 +213,7 @@ def test_workflow_launch_form_rejects_unsupported_content_type():
 
     form = WorkflowLaunchForm(
         data={
-            "content_type": "application/pdf",
+            "file_type": "application/pdf",
             "payload": "{}",
         },
         workflow=workflow,
@@ -217,7 +221,27 @@ def test_workflow_launch_form_rejects_unsupported_content_type():
     )
 
     assert not form.is_valid()
-    assert any("Select a supported content type." in error for error in form.errors["__all__"])
+    assert any("Select a supported file type." in error for error in form.errors["__all__"])
+
+
+def test_workflow_launch_form_hides_selector_when_single_file_type():
+    workflow = WorkflowFactory(
+        allowed_file_types=[SubmissionFileType.JSON],
+    )
+    workflow.user.set_current_org(workflow.org)
+
+    form = WorkflowLaunchForm(
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "payload": "{}",
+        },
+        workflow=workflow,
+        user=workflow.user,
+    )
+
+    assert form.is_valid()
+    assert form.single_file_type_label == SubmissionFileType.JSON.label
+    assert form.fields["file_type"].widget.__class__.__name__ == "HiddenInput"
 
 
 def test_json_schema_form_rejects_large_upload():

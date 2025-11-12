@@ -48,6 +48,7 @@ function initializeCharts(root: ParentNode | Document = document): void {
 }
 
 const LEFT_NAV_STORAGE_KEY = 'simplevalidations:leftNavCollapsed'; // Persist the user's collapse preference across pages.
+const LEFT_NAV_PREF_ATTRIBUTE = 'data-left-nav-prefers-collapsed';
 
 function initAppLeftNavToggle(): void {
     const nav = document.getElementById('app-left-nav');
@@ -66,6 +67,11 @@ function initAppLeftNavToggle(): void {
         nav.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
         toggle.setAttribute('aria-expanded', (!collapsed).toString());
         toggle.setAttribute('aria-label', collapsed ? collapsedLabel : expandedLabel);
+        if (collapsed) {
+            document.documentElement?.setAttribute(LEFT_NAV_PREF_ATTRIBUTE, 'true');
+        } else {
+            document.documentElement?.removeAttribute(LEFT_NAV_PREF_ATTRIBUTE);
+        }
     };
 
     let startCollapsed = false;

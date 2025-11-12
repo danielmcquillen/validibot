@@ -4,14 +4,13 @@ from django.contrib import admin
 from django.contrib.auth import admin as auth_admin
 from django.utils.translation import gettext_lazy as _
 
-from simplevalidations.users.forms import UserAdminChangeForm, UserAdminCreationForm
-from simplevalidations.users.models import (
-    Membership,
-    MembershipRole,
-    Organization,
-    Role,
-    User,
-)
+from simplevalidations.users.forms import UserAdminChangeForm
+from simplevalidations.users.forms import UserAdminCreationForm
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import MembershipRole
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import Role
+from simplevalidations.users.models import User
 
 if settings.DJANGO_ADMIN_FORCE_ALLAUTH:
     # Force the `admin` sign in process to go through the `django-allauth` workflow:
@@ -80,7 +79,12 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(MembershipRole)
 class MembershipRoleAdmin(admin.ModelAdmin):
-    list_display = ["membership", "role"]
+    list_display = [
+        "membership__user__username",
+        "membership__org__name",
+        "role__name",
+        "role__code",
+    ]
     search_fields = [
         "membership__user__username",
         "membership__org__name",

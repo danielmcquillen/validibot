@@ -61,8 +61,7 @@ def test_launch_page_renders_for_org_member(client):
     body = response.content.decode()
     assert response.status_code == HTTPStatus.OK
     assert "Start Validation" in body
-    assert 'data-run-disabled="false"' in body
-    assert 'data-run-active="false"' in body
+    assert "workflow-launch-status-area" not in body
 
 
 def test_launch_page_disables_form_without_steps(client):
@@ -80,7 +79,7 @@ def test_launch_page_disables_form_without_steps(client):
     assert "Start Validation" not in body
 
 
-def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
+def test_launch_post_creates_run_and_redirects(client, monkeypatch):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
@@ -106,23 +105,19 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
     )
 
     response = client.post(
-        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
         data={
             "file_type": SubmissionFileType.JSON,
             "payload": "{}",
         },
-        HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == HTTPStatus.ACCEPTED
-    body = response.content.decode()
-    assert "Run in progress" in body
+    assert response.status_code == HTTPStatus.FOUND
+    location = response.headers.get("Location")
+    assert location and "/launch/run/" in location
     assert ValidationRun.objects.filter(workflow=workflow).count() == 1
-    hx_trigger = response.headers.get("HX-Trigger")
-    assert hx_trigger and "Validation run started" in hx_trigger
     session = client.session
     assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "paste"
-    assert 'data-run-active="true"' in body
 
 
 def test_launch_start_records_upload_preference(client, monkeypatch):
@@ -153,33 +148,30 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
     upload = SimpleUploadedFile("test.json", b"{}", content_type="application/json")
 
     response = client.post(
-        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
         data={
             "file_type": SubmissionFileType.JSON,
             "attachment": upload,
         },
-        HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == HTTPStatus.ACCEPTED
+    assert response.status_code == HTTPStatus.FOUND
     session = client.session
     assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
 
 
-def test_launch_start_invalid_form_returns_panel_fragment(client):
+def test_launch_post_invalid_form_rerenders_page(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
     response = client.post(
-        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
         data={"file_type": SubmissionFileType.JSON},
-        HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == HTTPStatus.BAD_REQUEST
-    assert response.headers.get("HX-Retarget") == "#workflow-launch-panel"
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Add content inline or upload a file" in body
 
@@ -190,18 +182,15 @@ def test_launch_start_requires_executor_role(client):
     _force_login_for_workflow(client, workflow)
 
     response = client.post(
-        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
         data={
             "file_type": SubmissionFileType.JSON,
             "payload": "{}",
         },
-        HTTP_HX_REQUEST="true",
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    assert (
-        "You do not have permission to run this workflow" in response.content.decode()
-    )
+    assert "You cannot run this workflow" in response.content.decode()
 
 
 def test_cancel_run_updates_status(client):
@@ -279,6 +268,84 @@ def test_cancel_run_requires_executor_role(client):
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+def test_run_detail_page_shows_status_area(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.RUNNING,
+    )
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "workflow-launch-status-area" in body
+    assert "Cancel workflow" in body
+
+
+def test_run_detail_page_shows_cancelled_actions(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.CANCELED,
+    )
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Back to launch" in body
+    assert "View previous runs" in body
+
+
+def test_run_detail_page_shows_completion_actions(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+
+    response = client.get(
+        reverse(
+            "workflows:workflow_run_detail",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "Launch again" in body
+    assert "View full run" in body
 
 
 def test_public_info_view_accessible_when_enabled(client):
@@ -380,12 +447,11 @@ def test_launch_start_rejects_incompatible_file_type(client):
     client.force_login(user)
 
     response = client.post(
-        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
         data={
             "file_type": SubmissionFileType.XML,
             "payload": "<data/>",
         },
-        HTTP_HX_REQUEST="true",
     )
 
     assert response.status_code == HTTPStatus.BAD_REQUEST

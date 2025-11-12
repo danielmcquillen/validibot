@@ -111,9 +111,9 @@ When teammates need to test a workflow without writing code, send them to
 `/app/workflows/<workflow id>/launch/`. The page shows two tabs:
 
 - **Info** – read-only metadata about the workflow, steps, and recent runs.
-- **Run** – an inline form that accepts either pasted content or an uploaded
-  file. As soon as they submit, the page streams run status updates until the
-  run succeeds or fails.
+- **Run** – a submission form that accepts either pasted content or an uploaded
+  file. Successful submissions redirect to `/app/workflows/<workflow id>/launch/run/<run id>/`,
+  where the run status panel polls via HTMX until the run succeeds, fails, or is cancelled.
 
 Users still need the EXECUTOR role in the workflow’s organization to access the
 Run tab. If you enable the *Make info public* flag, the Info tab is also

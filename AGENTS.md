@@ -109,6 +109,9 @@ The typical structure for a REST API error reponse is explained in the following
 Always create tests that can ensure added features work correctly. Don't create _too many_ tests, just
 a few key ones that make sure things work correctly.
 
+Note that integration tests should go in the top-level tests/ folder. Integration tests want the system to behave
+as closely as possible to the runtime system. These tests often span multiple pages or steps.
+
 # Documentation
 
 Make sure to always add code documentation to the top of all classes. Explain clearly what the class is for

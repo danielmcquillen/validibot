@@ -38,6 +38,14 @@ class ValidationType(TextChoices):
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
+# 'advanced' validation types that may require more resources or have special handling
+ADVANCED_VALIDATION_TYPES = {
+    ValidationType.BASIC,
+    ValidationType.ENERGYPLUS,
+    ValidationType.CUSTOM_RULES,
+}
+
+
 class CustomValidatorType(TextChoices):
     SIMPLE = "SIMPLE", _("Simple")
     MODELICA = "MODELICA", _("Modelica")

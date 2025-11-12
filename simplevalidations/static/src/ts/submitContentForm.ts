@@ -7,9 +7,9 @@ function isContentMode(value: string | null): value is ContentMode {
 }
 
 /**
- * Manages the workflow launch form, ensuring the upload/paste modes behave like tabs,
- * the dropzone mirrors the real file input, and the submit button stays disabled until
- * the user has provided either inline content or an attachment.
+ * Lightweight controller for the workflow launch form.
+ * Handles input-mode toggles, mirrors the dropzone state,
+ * and keeps the submit button disabled until content is ready.
  */
 class WorkflowLaunchFormController {
   private modeButtons: NodeListOf<HTMLButtonElement>;
@@ -23,10 +23,6 @@ class WorkflowLaunchFormController {
   private submitButton: HTMLButtonElement | null;
   private readonly emptyFileLabel: string;
   private readonly initialMode: ContentMode;
-  private runStateHandler: ((event: Event) => void) | null = null;
-  private submitHandler: ((event: Event) => void) | null = null;
-  private errorHandler: ((event: Event) => void) | null = null;
-  private nativeSubmitHandler: ((event: Event) => void) | null = null;
 
   constructor(private form: HTMLFormElement) {
     this.modeButtons = form.querySelectorAll<HTMLButtonElement>('[data-content-mode]');
@@ -51,9 +47,7 @@ class WorkflowLaunchFormController {
     this.setMode(this.initialMode);
     this.updateFileLabel();
     this.setSubmitState();
-    this.syncDisabledState();
-    this.bindRunStateWatcher();
-    this.bindSubmissionWatcher();
+    this.bindSubmitDisabler();
   }
 
   private bindModeButtons(): void {
@@ -135,11 +129,9 @@ class WorkflowLaunchFormController {
     if (mode === 'upload' && this.payloadField) {
       this.payloadField.value = '';
     }
-
     if (mode === 'paste' && this.fileInput) {
       this.fileInput.value = '';
     }
-
     if (mode === 'paste') {
       this.updateFileLabel();
     }
@@ -177,87 +169,23 @@ class WorkflowLaunchFormController {
     this.submitButton.setAttribute('aria-disabled', String(!isReady));
   }
 
-  private syncDisabledState(): void {
-    const disabled = this.form.dataset.runDisabled === 'true';
-    this.toggleFormDisabled(disabled);
-  }
-
-  private toggleFormDisabled(disabled: boolean): void {
-    this.form.dataset.runDisabled = String(disabled);
-    const interactiveElements = this.form.querySelectorAll<HTMLElement>('input, textarea, select, button, .workflow-dropzone');
-    interactiveElements.forEach((element) => {
-      if ('disabled' in element) {
-        (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled = disabled;
-      }
-      element.classList.toggle('is-disabled', disabled);
-      if (element.matches('.workflow-dropzone')) {
-        element.setAttribute('aria-disabled', String(disabled));
+  private bindSubmitDisabler(): void {
+    this.form.addEventListener('submit', () => {
+      const interactiveElements = this.form.querySelectorAll<HTMLElement>('input, textarea, select, button, .workflow-dropzone');
+      interactiveElements.forEach((element) => {
+        if ('disabled' in element) {
+          (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled = true;
+        }
+        if (element.matches('.workflow-dropzone')) {
+          element.setAttribute('aria-disabled', 'true');
+          element.classList.add('is-disabled');
+        }
+      });
+      if (this.submitButton) {
+        this.submitButton.textContent = this.submitButton.dataset.submittingLabel ?? this.submitButton.textContent;
       }
     });
   }
-
-  private getStatusAreaElement(): HTMLElement | null {
-    return this.form.ownerDocument?.getElementById('workflow-launch-status-area');
-  }
-
-  private syncRunStateFromStatusArea(): void {
-    const statusArea = this.getStatusAreaElement();
-    if (!statusArea) {
-      return;
-    }
-    const runActive = statusArea.dataset.runActive === 'true';
-    this.toggleFormDisabled(runActive);
-  }
-
-  private bindRunStateWatcher(): void {
-    if (!window.htmx) {
-      return;
-    }
-
-    this.runStateHandler = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const target = customEvent.detail?.target as HTMLElement | undefined;
-      if (!target || target.id !== 'workflow-launch-status-area') {
-        return;
-      }
-      this.syncRunStateFromStatusArea();
-    };
-
-    window.htmx.on('htmx:afterSwap', this.runStateHandler);
-  }
-
-  private bindSubmissionWatcher(): void {
-    if (!window.htmx) {
-      return;
-    }
-
-    this.submitHandler = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      const sourceElement = detail?.elt as HTMLElement | undefined;
-      if (!sourceElement || (sourceElement !== this.form && !this.form.contains(sourceElement))) {
-        return;
-      }
-      this.toggleFormDisabled(true);
-    };
-
-    this.errorHandler = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      const sourceElement = detail?.elt as HTMLElement | undefined;
-      if (!sourceElement || (sourceElement !== this.form && !this.form.contains(sourceElement))) {
-        return;
-      }
-      this.toggleFormDisabled(false);
-    };
-
-    this.nativeSubmitHandler = () => {
-      this.toggleFormDisabled(true);
-    };
-
-    window.htmx.on('htmx:beforeRequest', this.submitHandler);
-    window.htmx.on('htmx:responseError', this.errorHandler);
-    this.form.addEventListener('submit', this.nativeSubmitHandler);
-  }
-
 }
 
 export function initWorkflowLaunchForms(root: ParentNode | Document = document): void {

@@ -34,29 +34,49 @@
 
   {% endif %}
 
-  <div class="card-footer text-muted small d-flex flex-row justify-content-between align-items-center">
+  <div class="card-footer text-muted small">
     {% if is_polling %}
-      <div class="text-muted small">
-        {% trans "Refreshing automatically…" %}
-      </div>
-      {% if cancel_url %}
-        <div>
-          <button class="btn btn-danger"
-                  type="button"
-                  hx-post="{{ cancel_url }}"
-                  hx-target="#workflow-launch-status-area"
-                  hx-swap="outerHTML"
-                  hx-confirm="{% trans 'Cancel this workflow run?' %}"
-                  hx-disabled-elt="this">
-            {% trans "Cancel workflow" %}
-          </button>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-muted small">
+          {% trans "Refreshing automatically…" %}
         </div>
-      {% endif %}
+        {% if cancel_url %}
+          <div>
+            <button class="btn btn-danger"
+                    type="button"
+                    hx-post="{{ cancel_url }}"
+                    hx-target="#workflow-launch-status-area"
+                    hx-swap="outerHTML"
+                    hx-confirm="{% trans 'Cancel this workflow run?' %}"
+                    hx-disabled-elt="this">
+              {% trans "Cancel workflow" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
+    {% elif run.status == "CANCELED" %}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-muted small">
+          {% trans "This run was canceled." %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-secondary btn-sm"
+             href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
+            {% trans "Back to launch" %}
+          </a>
+          <a class="btn btn-outline-secondary btn-sm"
+             href="{% if previous_runs_url %}{{ previous_runs_url }}{% else %}{% org_url 'workflows:workflow_validation_list' pk=workflow.pk %}{% endif %}">
+            {% trans "View previous runs" %}
+          </a>
+        </div>
+      </div>
     {% else %}
-      <div class="ms-auto">
-        <a class="btn btn-secondary"
-           hx-disable="true"
-           target="_blank"
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+        <a class="btn btn-success btn-sm text-white"
+           href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
+          {% trans "Launch again" %}
+        </a>
+        <a class="btn btn-outline-secondary btn-sm"
            href="{% if detail_url %}{{ detail_url }}{% else %}{% org_url 'validations:validation_detail' pk=run.pk %}{% endif %}">
           <i class="bi-box-arrow-up-right me-1"></i>
           {% trans "View full run" %}

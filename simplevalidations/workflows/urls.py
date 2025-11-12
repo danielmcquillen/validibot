@@ -13,9 +13,9 @@ urlpatterns = [
         name="workflow_launch",
     ),
     path(
-        "<int:pk>/launch/start/",
-        views.WorkflowLaunchStartView.as_view(),
-        name="workflow_launch_start",
+        "<int:pk>/launch/run/<uuid:run_id>/",
+        views.WorkflowRunDetailView.as_view(),
+        name="workflow_run_detail",
     ),
     path(
         "<int:pk>/launch/run/<uuid:run_id>/status/",

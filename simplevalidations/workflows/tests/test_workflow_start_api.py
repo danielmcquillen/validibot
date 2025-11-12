@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIClient
 
 import simplevalidations.workflows.views as views_mod
+import simplevalidations.workflows.views_launch_helpers as launch_helpers_mod
 from simplevalidations.core.models import SiteSettings
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.projects.tests.factories import ProjectFactory
@@ -170,6 +171,12 @@ def mock_validation_service_success(monkeypatch):
     # Patch where the view LOOKS UP the class
     monkeypatch.setattr(
         views_mod,
+        "ValidationRunService",
+        lambda: fake_service,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        launch_helpers_mod,
         "ValidationRunService",
         lambda: fake_service,
         raising=True,
@@ -690,6 +697,12 @@ class TestWorkflowStartAPI:
         fake_service = SimpleNamespace(launch=pending_side_effect)
         monkeypatch.setattr(
             views_mod, "ValidationRunService", lambda: fake_service, raising=True
+        )
+        monkeypatch.setattr(
+            launch_helpers_mod,
+            "ValidationRunService",
+            lambda: fake_service,
+            raising=True,
         )
 
         # auth + role

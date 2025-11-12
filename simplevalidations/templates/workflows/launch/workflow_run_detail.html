@@ -1,0 +1,37 @@
+{% extends "app_base.html" %}
+
+{% load i18n humanize core_tags %}
+
+{% block title %}
+  {{ workflow.name }} · {% trans "Workflow Run" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="workflow-run-detail">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-2 mb-lg-0">
+        <div>
+          <h1 class="app-page-title mb-1">
+            <i class="bi bi-activity me-2"></i>{% trans "Workflow run status" %}
+          </h1>
+          <p class="text-muted mb-0">
+            {% blocktrans trimmed with workflow_name=workflow.name %}
+              Tracking run for workflow "{{ workflow_name }}".
+            {% endblocktrans %}
+          </p>
+        </div>
+        <div class="text-muted small">
+          {% trans "Run started" %} {{ active_run.created|naturaltime }}
+        </div>
+      </div>
+    </div>
+
+    <div id="workflow-launch-panel">
+      {% include "workflows/launch/partials/launch_panel.html" with workflow=workflow launch_form=None can_execute=can_execute has_steps=has_steps panel_mode=panel_mode %}
+    </div>
+  </div>
+{% endblock app_content %}

@@ -29,8 +29,9 @@ class WorkflowStartErrorCode(models.TextChoices):
     NO_WORKFLOW_STEPS = "NO_WORKFLOW_STEPS", _("Workflow has no steps to execute")
     WORKFLOW_INACTIVE = "WORKFLOW_INACTIVE", _("Workflow is inactive")
     INVALID_PAYLOAD = "INVALID_PAYLOAD", _("Invalid request payload")
-    FILE_TYPE_UNSUPPORTED = "FILE_TYPE_UNSUPPORTED", _(
-        "Workflow cannot accept the submitted file type"
+    FILE_TYPE_UNSUPPORTED = (
+        "FILE_TYPE_UNSUPPORTED",
+        _("Workflow cannot accept the submitted file type"),
     )
 
 

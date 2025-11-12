@@ -1,16 +1,8 @@
-import base64
 import json
 import logging
-import uuid
-from dataclasses import asdict
-from typing import TYPE_CHECKING
-from typing import Any
-from uuid import uuid4
+from http import HTTPStatus
 
-from django import forms
-from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -23,7 +15,6 @@ from django.shortcuts import get_object_or_404
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.functional import Promise
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import DetailView
@@ -34,10 +25,8 @@ from django.views.generic.edit import CreateView
 from django.views.generic.edit import DeleteView
 from django.views.generic.edit import FormView
 from rest_framework import permissions
-from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.request import Request
 from rest_framework.response import Response
 
 from simplevalidations.actions.constants import ActionCategoryType
@@ -45,143 +34,55 @@ from simplevalidations.actions.models import ActionDefinition
 from simplevalidations.actions.models import SignedCertificateAction
 from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.actions.registry import get_action_form
-from simplevalidations.core.mixins import BreadcrumbMixin
-from simplevalidations.core.site_settings import MetadataPolicyError
-from simplevalidations.core.site_settings import get_site_settings
 from simplevalidations.core.utils import pretty_json
 from simplevalidations.core.utils import pretty_xml
 from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.core.view_helpers import hx_redirect_response
+from simplevalidations.core.view_helpers import hx_trigger_response
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.submissions.ingest import prepare_inline_text
-from simplevalidations.submissions.ingest import prepare_uploaded_file
-from simplevalidations.submissions.models import Submission
-from simplevalidations.submissions.models import detect_file_type
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Organization
-from simplevalidations.users.models import User
-from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import ADVANCED_VALIDATION_TYPES
 from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.forms import RulesetAssertionForm
-from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import RulesetAssertion
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
-from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
-from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
-from simplevalidations.workflows.constants import WorkflowStartErrorCode
-from simplevalidations.workflows.constants import preferred_content_type_for_file
-from simplevalidations.workflows.forms import AiAssistStepConfigForm
-from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
-from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
-from simplevalidations.workflows.forms import WorkflowForm
-from simplevalidations.workflows.forms import WorkflowLaunchForm
 from simplevalidations.workflows.forms import WorkflowPublicInfoForm
 from simplevalidations.workflows.forms import WorkflowStepTypeForm
-from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.forms import get_config_form_class
+from simplevalidations.workflows.mixins import WorkflowAccessMixin
+from simplevalidations.workflows.mixins import WorkflowFormViewMixin
+from simplevalidations.workflows.mixins import WorkflowLaunchContextMixin
+from simplevalidations.workflows.mixins import WorkflowObjectMixin
+from simplevalidations.workflows.mixins import WorkflowStepAssertionsMixin
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
-from simplevalidations.workflows.request_utils import SubmissionRequestMode
-from simplevalidations.workflows.request_utils import detect_mode
 from simplevalidations.workflows.request_utils import extract_request_basics
 from simplevalidations.workflows.serializers import WorkflowSerializer
-
-if TYPE_CHECKING:
-    from simplevalidations.workflows.request_utils import ModeDetectionResult
+from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
+from simplevalidations.workflows.views_helpers import public_info_card_context
+from simplevalidations.workflows.views_helpers import resequence_workflow_steps
+from simplevalidations.workflows.views_helpers import resolve_project
+from simplevalidations.workflows.views_helpers import save_workflow_action_step
+from simplevalidations.workflows.views_helpers import save_workflow_step
+from simplevalidations.workflows.views_helpers import user_has_executor_role
+from simplevalidations.workflows.views_launch_helpers import (
+    LaunchValidationError,
+)
+from simplevalidations.workflows.views_launch_helpers import SubmissionBuild
+from simplevalidations.workflows.views_launch_helpers import launch_validation_run
+from simplevalidations.workflows.views_launch_helpers import (
+    start_validation_run_for_workflow,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_STEP_COUNT = 5
-ADVANCED_VALIDATION_TYPES = {
-    ValidationType.BASIC,
-    ValidationType.ENERGYPLUS,
-    ValidationType.CUSTOM_RULES,
-}
-
-
-def _file_type_label(value: str) -> str:
-    try:
-        return SubmissionFileType(value).label
-    except Exception:
-        return value
-
-
-def describe_workflow_file_type_violation(
-    workflow: Workflow,
-    file_type: str,
-) -> str | None:
-    if not file_type:
-        return _("Select a file type before launching the workflow.")
-    if not workflow.supports_file_type(file_type):
-        allowed = workflow.allowed_file_type_labels()
-        allowed_display = ", ".join(allowed) if allowed else _("no file types")
-        return _("This workflow accepts %(allowed)s submissions.") % {
-            "allowed": allowed_display
-        }
-    blocking_step = workflow.first_incompatible_step(file_type)
-    if blocking_step:
-        validator_name = getattr(blocking_step.validator, "name", "")
-        label = _file_type_label(file_type)
-        if validator_name:
-            return _(
-                "Step %(step)s (%(validator)s) does not support %(file_type)s files."
-            ) % {
-                "step": blocking_step.step_number_display,
-                "validator": validator_name,
-                "file_type": label,
-            }
-        return _("Step %(step)s does not support %(file_type)s files.") % {
-            "step": blocking_step.step_number_display,
-            "file_type": label,
-        }
-    return None
-
-
-def resolve_submission_file_type(
-    *,
-    requested: str,
-    filename: str,
-    inline_text: str | None = None,
-) -> str:
-    detected = detect_file_type(
-        filename=filename or None,
-        text=inline_text if inline_text else None,
-    )
-    if detected and detected != SubmissionFileType.UNKNOWN:
-        return detected
-    return requested
-
-
-def build_public_info_url(request, workflow: Workflow) -> str | None:
-    if not workflow.make_info_public:
-        return None
-    return request.build_absolute_uri(
-        reverse(
-            "workflow_public_info",
-            kwargs={"workflow_uuid": workflow.uuid},
-        ),
-    )
-
-
-def public_info_card_context(
-    request,
-    workflow: Workflow,
-    *,
-    can_manage: bool,
-) -> dict[str, object]:
-    return {
-        "workflow": workflow,
-        "public_info_url": build_public_info_url(request, workflow),
-        "can_manage_public_info": can_manage,
-    }
 
 
 # API Views
@@ -204,530 +105,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return ValidationRunStartSerializer
         return super().get_serializer_class()
 
-    def _start_validation_run_for_workflow(
-        self,
-        request,
-        workflow: Workflow,
-    ) -> Response:
-        """
-        Helper to start a validation run for a given workflow.
-
-        This method is called regardless of how the workflow was
-        started. It centralizes the logic to handle the request
-        and create the validation run.
-
-        Args:
-            request (Request):
-            workflow (Workflow):
-
-        Returns:
-            Response
-        """
-        user = request.user
-
-        project = self._resolve_project(workflow=workflow, request=request)
-
-        executor_qs = Workflow.objects.for_user(
-            user,
-            required_role_code=RoleCode.EXECUTOR,
-        )
-        has_executor_role = executor_qs.filter(pk=workflow.pk).exists()
-        if not has_executor_role:
-            # Return 404 to avoid leaking workflow existence when user lacks access.
-            raise Http404
-
-        if not workflow.is_active:
-            return Response(
-                {
-                    "detail": "",
-                    "code": WorkflowStartErrorCode.WORKFLOW_INACTIVE,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        if not workflow.steps.exists():
-            return Response(
-                {
-                    "detail": _(
-                        "This workflow has no steps defined and cannot be executed.",
-                    ),
-                    "code": WorkflowStartErrorCode.NO_WORKFLOW_STEPS,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        content_type_header, body_bytes = extract_request_basics(request)
-
-        # Have a look at the incoming request and
-        # decide which submission mode applies. Report errors
-        # back to the API caller if we can't make sense of it.
-        detection_result: ModeDetectionResult = detect_mode(
-            request=request,
-            content_type_header=content_type_header,
-            body_bytes=body_bytes,
-        )
-        if detection_result.has_error:
-            error_message = detection_result.error or _("Invalid request payload.")
-            logger.warning(
-                "Submission mode detection failed",
-                extra={
-                    "workflow_id": workflow.pk,
-                    "content_type": detection_result.content_type,
-                    "error": detection_result.error,
-                },
-            )
-            return Response(
-                {
-                    "detail": _("Invalid request payload."),
-                    "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
-                    "errors": [
-                        {
-                            "field": "content",
-                            "message": error_message,
-                        },
-                    ],
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if detection_result.mode == SubmissionRequestMode.RAW_BODY:
-            return self._handle_raw_body_mode(
-                request=request,
-                workflow=workflow,
-                user=user,
-                content_type_header=content_type_header,
-                body_bytes=body_bytes,
-                project=project,
-            )
-
-        if detection_result.mode == SubmissionRequestMode.JSON_ENVELOPE:
-            submission_settings = get_site_settings().api_submission
-            return self._handle_json_envelope(
-                request=request,
-                workflow=workflow,
-                user=user,
-                project=project,
-                envelope=detection_result.parsed_envelope or {},
-                submission_settings=submission_settings,
-            )
-
-        if detection_result.mode == SubmissionRequestMode.MULTIPART:
-            submission_settings = get_site_settings().api_submission
-            return self._handle_multipart_mode(
-                request=request,
-                workflow=workflow,
-                user=user,
-                project=project,
-                submission_settings=submission_settings,
-            )
-
-        logger.warning(
-            "Unsupported submission mode detected",
-            extra={
-                "workflow_id": workflow.pk,
-                "content_type": detection_result.content_type,
-            },
-        )
-        return Response(
-            {
-                "detail": _("Unsupported request content type."),
-                "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # ---------------------- Raw Body Mode ----------------------
-
-    def _handle_raw_body_mode(
-        self,
-        request: Request,
-        workflow: Workflow,
-        user: User,
-        content_type_header: str,
-        body_bytes: bytes,
-        project: Project | None,
-    ) -> Response:
-        """
-        Process Mode 1 (raw body) submission.
-        """
-        encoding = request.headers.get("Content-Encoding")
-        # keep full header for charset extraction
-        full_ct = request.headers.get("Content-Type", "")
-        filename = request.headers.get("X-Filename") or ""
-        raw = body_bytes
-        max_inline = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
-        if len(raw) > max_inline:
-            return Response(
-                {
-                    "detail": _("Payload too large."),  # noqa:F823
-                },
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-
-        if encoding:
-            if encoding.lower() != "base64":
-                return Response(
-                    {"detail": _("Unsupported Content-Encoding (only base64).")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            try:
-                raw = base64.b64decode(raw, validate=True)
-            except Exception:
-                return Response(
-                    {"detail": _("Invalid base64 payload.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        # normalize content-type (no params) and map to file_type
-        ct_norm = (content_type_header or "").split(";")[0].strip().lower()
-        file_type = SUPPORTED_CONTENT_TYPES.get(ct_norm)
-        if not file_type:
-            err_msg = _("Unsupported Content-Type '%s'. ") % full_ct
-            err_msg += _("Supported : %s") % ", ".join(SUPPORTED_CONTENT_TYPES.keys())
-            return Response(
-                {
-                    "detail": err_msg,
-                },
-                status=400,
-            )
-
-        # try charset from full header first
-        charset = "utf-8"
-        if ";" in full_ct:
-            for part in full_ct.split(";")[1:]:
-                k, _, v = part.partition("=")
-                if k.strip().lower() == "charset" and v.strip():
-                    charset = v.strip()
-                    break
-        try:
-            text_content = raw.decode(charset)
-        except UnicodeDecodeError:
-            # last resort
-            text_content = raw.decode("utf-8", errors="replace")
-
-        resolved_file_type = resolve_submission_file_type(
-            requested=file_type,
-            filename=filename,
-            inline_text=text_content,
-        )
-        violation = describe_workflow_file_type_violation(
-            workflow=workflow,
-            file_type=resolved_file_type,
-        )
-        if violation:
-            return self._file_type_error_response(violation)
-        ingest_content_type = ct_norm
-        if resolved_file_type != file_type:
-            ingest_content_type = preferred_content_type_for_file(
-                resolved_file_type,
-                filename=filename,
-            )
-
-        safe_filename, ingest = prepare_inline_text(
-            text=text_content,
-            filename=filename,
-            content_type=ingest_content_type,
-            deny_magic_on_text=True,
-        )
-
-        submission = Submission(
-            org=workflow.org,
-            workflow=workflow,
-            user=user,
-            project=project,
-            name=safe_filename,
-            checksum_sha256=ingest.sha256,
-            metadata={},
-        )
-        submission.set_content(
-            inline_text=text_content,
-            filename=safe_filename,
-            file_type=resolved_file_type,
-        )
-
-        with transaction.atomic():
-            submission.full_clean()
-            submission.save()
-            return self._launch_validation_run(
-                request=request,
-                workflow=workflow,
-                submission=submission,
-                metadata={},
-                user_id=getattr(user, "id", None),
-            )
-
-    # ---------------------- Envelope / Multipart Modes ----------------------
-
-    def _handle_json_envelope(
-        self,
-        request: Request,
-        workflow: Workflow,
-        user: User,
-        project: Project | None,
-        envelope: dict[str, Any],
-        submission_settings,
-    ) -> Response:
-        """
-        Process Mode 2 (JSON envelope).
-        """
-        payload = dict(envelope or {})
-        return self._process_structured_payload(
-            request=request,
-            workflow=workflow,
-            user=user,
-            project=project,
-            payload=payload,
-            submission_settings=submission_settings,
-        )
-
-    def _handle_multipart_mode(
-        self,
-        request: Request,
-        workflow: Workflow,
-        user: User,
-        project: Project | None,
-        submission_settings,
-    ) -> Response:
-        """
-        Process Mode 3 (multipart).
-        """
-        payload = request.data.copy()
-        return self._process_structured_payload(
-            request=request,
-            workflow=workflow,
-            user=user,
-            project=project,
-            payload=payload,
-            submission_settings=submission_settings,
-        )
-
-    def _process_structured_payload(
-        self,
-        request: Request,
-        workflow: Workflow,
-        user: User,
-        project: Project | None,
-        payload: dict[str, Any],
-        submission_settings=None,
-    ) -> Response:
-        """
-        Shared serializer handling for JSON envelope and multipart submissions.
-        """
-        payload = payload.copy()
-        payload["workflow"] = workflow.pk
-        serializer = self.get_serializer(data=payload)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except Exception as e:
-            logger.info(
-                "ValidationRunStartSerializer invalid: %s",
-                getattr(e, "detail", str(e)),
-            )
-            raise e  # noqa: TRY201
-
-        vd = serializer.validated_data
-        file_obj = vd.get("file", None)
-        if file_obj is not None:
-            max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
-            if getattr(file_obj, "size", 0) > max_file:
-                return Response({"detail": _("File too large.")}, status=413)
-
-        submission_settings = submission_settings or get_site_settings().api_submission
-        metadata = vd.get("metadata") or {}
-        try:
-            metadata = self._enforce_metadata_policy(metadata, submission_settings)
-        except MetadataPolicyError as exc:
-            return self._metadata_policy_error_response(str(exc))
-
-        if vd.get("file") is not None:
-            file_obj = vd["file"]
-            ct = vd["content_type"]  # already normalized by serializer
-            filename_value = vd.get("filename") or getattr(file_obj, "name", "") or ""
-            resolved_file_type = resolve_submission_file_type(
-                requested=vd["file_type"],
-                filename=filename_value,
-            )
-            violation = describe_workflow_file_type_violation(
-                workflow=workflow,
-                file_type=resolved_file_type,
-            )
-            if violation:
-                return self._file_type_error_response(violation)
-            if resolved_file_type != vd["file_type"]:
-                ct = preferred_content_type_for_file(
-                    resolved_file_type,
-                    filename=filename_value,
-                )
-            max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
-            ingest = prepare_uploaded_file(
-                uploaded_file=file_obj,
-                filename=filename_value,
-                content_type=ct,
-                max_bytes=max_file,
-            )
-            safe_filename = ingest.filename
-
-            submission = Submission(
-                org=workflow.org,
-                workflow=workflow,
-                user=user if getattr(user, "is_authenticated", False) else None,
-                project=project,
-                name=safe_filename,
-                metadata={},
-                checksum_sha256=ingest.sha256,
-            )
-            submission.set_content(
-                uploaded_file=file_obj,
-                filename=safe_filename,
-                file_type=resolved_file_type,
-            )
-
-        elif vd.get("normalized_content") is not None:
-            ct = vd["content_type"]
-            filename_value = vd.get("filename") or ""
-            resolved_file_type = resolve_submission_file_type(
-                requested=vd["file_type"],
-                filename=filename_value,
-                inline_text=vd["normalized_content"],
-            )
-            violation = describe_workflow_file_type_violation(
-                workflow=workflow,
-                file_type=resolved_file_type,
-            )
-            if violation:
-                return self._file_type_error_response(violation)
-            if resolved_file_type != vd["file_type"]:
-                ct = preferred_content_type_for_file(
-                    resolved_file_type,
-                    filename=filename_value,
-                )
-            safe_filename, ingest = prepare_inline_text(
-                text=vd["normalized_content"],
-                filename=filename_value,
-                content_type=ct,
-                deny_magic_on_text=True,
-            )
-            metadata = {**metadata, "sha256": ingest.sha256}
-            try:
-                metadata = self._enforce_metadata_policy(metadata, submission_settings)
-            except MetadataPolicyError as exc:
-                return self._metadata_policy_error_response(str(exc))
-
-            submission = Submission(
-                org=workflow.org,
-                workflow=workflow,
-                user=user if getattr(user, "is_authenticated", False) else None,
-                project=project,
-                name=safe_filename,
-                metadata=metadata,
-            )
-            submission.set_content(
-                inline_text=vd["normalized_content"],
-                filename=safe_filename,
-                file_type=resolved_file_type,
-            )
-        else:
-            return Response(
-                {"detail": _("No content provided.")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        with transaction.atomic():
-            submission.full_clean()
-            submission.save()
-            return self._launch_validation_run(
-                request=request,
-                workflow=workflow,
-                submission=submission,
-                metadata=metadata,
-                user_id=getattr(user, "id", None),
-            )
-
-    def _enforce_metadata_policy(self, metadata, submission_settings):
-        metadata = dict(metadata or {})
-        submission_settings.enforce_metadata_policy(metadata)
-        return metadata
-
-    def _metadata_policy_error_response(self, message: str) -> Response:
-        return Response(
-            {
-                "detail": _("Invalid request payload."),
-                "code": WorkflowStartErrorCode.INVALID_PAYLOAD,
-                "errors": [
-                    {
-                        "field": "metadata",
-                        "message": str(message),
-                    },
-                ],
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    def _file_type_error_response(
-        self,
-        message: str,
-        status_code: int = status.HTTP_400_BAD_REQUEST,
-    ) -> Response:
-        return Response(
-            {
-                "detail": message,
-                "code": WorkflowStartErrorCode.FILE_TYPE_UNSUPPORTED,
-                "errors": [],
-            },
-            status=status_code,
-        )
-
-    # ---------------------- Launch Helper ----------------------
-
-    def _launch_validation_run(
-        self,
-        request: Request,
-        workflow: Workflow,
-        submission: Submission,
-        metadata: dict,
-        user_id: int | None = None,
-    ) -> Response:
-        """
-        Thin wrapper over ValidationRunService.launch to centralize call site.
-        """
-        service = ValidationRunService()
-        response = service.launch(
-            request=request,
-            org=workflow.org,
-            workflow=workflow,
-            submission=submission,
-            metadata=metadata,
-            user_id=user_id,
-        )
-
-        response_data = getattr(response, "data", None)
-        run_id = None
-        run_status = None
-        if isinstance(response_data, dict):
-            run_id = response_data.get("id")
-            run_status = response_data.get("status")
-            logger.info("Started ValidationRun %s with status %s", run_id, run_status)
-
-        extra_payload: dict[str, object] = {}
-        if run_status is not None:
-            extra_payload["validation_run_status"] = run_status
-        status_code = getattr(response, "status_code", None)
-        if status_code is not None:
-            extra_payload["response_status_code"] = status_code
-        if metadata:
-            extra_payload["metadata_keys"] = sorted(metadata.keys())
-
-        return response
-
-    def _resolve_project(self, workflow: Workflow, request: Request) -> Project | None:
-        project_id = request.query_params.get("project") or request.GET.get("project")
-        if project_id:
-            try:
-                return Project.objects.get(pk=project_id, org=workflow.org)
-            except Project.DoesNotExist as exc:  # pragma: no cover
-                raise Http404 from exc
-        return workflow.project
-
     # Public action remains unchanged
     @action(
         detail=True,
@@ -737,753 +114,54 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     )
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
-        return self._start_validation_run_for_workflow(request, workflow)
+        project = resolve_project(workflow=workflow, request=request)
+        content_type_header, body_bytes = extract_request_basics(request)
+        headers = {key: value for key, value in request.headers.items()}
+        try:
+            submission_build = start_validation_run_for_workflow(
+                workflow=workflow,
+                user=request.user,
+                project=project,
+                headers=headers,
+                content_type_header=content_type_header,
+                body_bytes=body_bytes,
+                serializer_factory=self.get_serializer,
+                multipart_payload=lambda: request.data,
+            )
+        except LaunchValidationError as exc:
+            status_code = exc.status_code
+            if status_code == HTTPStatus.FORBIDDEN:
+                status_code = HTTPStatus.NOT_FOUND
+            return Response(exc.payload, status=status_code)
+
+        try:
+            result = launch_validation_run(
+                request=request,
+                workflow=workflow,
+                submission=submission_build.submission,
+                metadata=submission_build.metadata,
+                user_id=getattr(request.user, "id", None),
+            )
+        except PermissionError:
+            payload = {"detail": _("You do not have permission to run this workflow.")}
+            return Response(payload, status=HTTPStatus.FORBIDDEN)
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Run service errored for workflow %s", workflow.pk)
+            payload = {"detail": _("Could not run the workflow. Please try again.")}
+            return Response(payload, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        response = Response(result.payload, status=result.status_code)
+        if result.headers:
+            for key, value in result.headers.items():
+                response[key] = value
+        return response
 
 
 # UI Views
 # ------------------------------------------------------------------------------
 
 
-class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
-    """
-    Reusable helpers for workflow UI views.
-    """
-
-    manager_role_codes = {
-        RoleCode.OWNER,
-        RoleCode.ADMIN,
-        RoleCode.AUTHOR,
-    }
-
-    def get_workflow_queryset(self):
-        user = self.request.user
-        queryset = (
-            Workflow.objects.for_user(user)
-            .select_related("org", "user", "project")
-            .prefetch_related("validation_runs")
-            .order_by("name", "-version")
-        )
-        current_org = None
-        if hasattr(user, "get_current_org"):
-            current_org = user.get_current_org()
-        if current_org:
-            return queryset.filter(org=current_org)
-        return queryset.none()
-
-    def get_queryset(self):
-        return self.get_workflow_queryset()
-
-    def user_can_manage_workflow(self, *, user: User | None = None) -> bool:
-        user = user or self.request.user
-        if not getattr(user, "is_authenticated", False):
-            return False
-        membership = user.membership_for_current_org()
-        if membership is None or not membership.is_active:
-            return False
-        return any(membership.has_role(code) for code in self.manager_role_codes)
-
-
-class WorkflowObjectMixin(WorkflowAccessMixin):
-    workflow_url_kwarg = "pk"
-
-    def get_workflow(self) -> Workflow:
-        if not hasattr(self, "_workflow"):
-            queryset = (
-                self.get_workflow_queryset()
-                .select_related("org", "user", "project")
-                .prefetch_related("steps")
-            )
-            workflow_id = self.kwargs.get(self.workflow_url_kwarg)
-            self._workflow = get_object_or_404(queryset, pk=workflow_id)
-        return self._workflow
-
-
-def _resequence_workflow_steps(workflow: Workflow) -> None:
-    ordered = list(workflow.steps.all().order_by("order", "pk"))
-    changed = False
-    for index, step in enumerate(ordered, start=1):
-        desired = index * 10
-        if step.order != desired:
-            step.order = desired
-            changed = True
-    if changed:
-        WorkflowStep.objects.bulk_update(ordered, ["order"])
-
-
-def _hx_trigger_response(
-    message: str | None = None,
-    level: str = "success",
-    *,
-    status_code: int = 204,
-    close_modal: str | None = "workflowStepModal",
-    extra_payload: dict[str, object] | None = None,
-) -> HttpResponse:
-    response = HttpResponse(status=status_code)
-    payload: dict[str, object] = {"steps-changed": True}
-    if extra_payload:
-        payload.update(extra_payload)
-    if message:
-        payload["toast"] = {"level": level, "message": str(message)}
-    if close_modal:
-        payload["close-modal"] = close_modal
-    response["HX-Trigger"] = json.dumps(payload)
-    return response
-
-
-def _hx_redirect_response(url: str) -> HttpResponse:
-    response = HttpResponse(status=204)
-    response["HX-Redirect"] = url
-    return response
-
-
-def _ensure_ruleset(
-    *,
-    workflow: Workflow,
-    step: WorkflowStep | None,
-    ruleset_type: str,
-) -> Ruleset:
-    """
-    Ensure a ruleset exists for the given workflow step and type.
-    """
-
-    if step and step.ruleset and step.ruleset.ruleset_type == ruleset_type:
-        ruleset = step.ruleset
-    else:
-        ruleset = Ruleset(org=workflow.org, user=workflow.user)
-    ruleset.org = workflow.org
-    ruleset.user = workflow.user
-    ruleset.ruleset_type = ruleset_type
-    ruleset.name = ruleset.name or f"ruleset-{uuid4().hex[:8]}"
-    ruleset.version = ruleset.version or "1"
-    return ruleset
-
-
-def _ensure_advanced_ruleset(
-    workflow: Workflow,
-    step: WorkflowStep | None,
-    validator: Validator,
-) -> Ruleset:
-    """Guarantee a ruleset exists for validators requiring assertions."""
-    ruleset = getattr(step, "ruleset", None)
-    if ruleset is None:
-        base_name = f"{validator.slug}-ruleset"
-        ruleset_name = _unique_ruleset_name(
-            org=workflow.org,
-            ruleset_type=validator.validation_type,
-            base_name=base_name,
-            version="1",
-        )
-        ruleset = Ruleset(
-            org=workflow.org,
-            user=workflow.user,
-            name=ruleset_name,
-            ruleset_type=validator.validation_type,
-            version="1",
-        )
-        ruleset.save()
-        if step:
-            step.ruleset = ruleset
-            if step.pk:
-                step.save(update_fields=["ruleset", "modified"])
-    return ruleset
-
-
-def _unique_ruleset_name(
-    *,
-    org: Organization,
-    ruleset_type: str,
-    base_name: str,
-    version: str,
-) -> str:
-    name = base_name
-    suffix = 2
-    while Ruleset.objects.filter(
-        org=org,
-        ruleset_type=ruleset_type,
-        name=name,
-        version=version,
-    ).exists():
-        truncated_base = base_name[: max(0, 240)]
-        name = f"{truncated_base}-{suffix}"
-        suffix += 1
-    return name
-
-
-def _build_json_schema_config(
-    workflow: Workflow,
-    form: JsonSchemaStepConfigForm,
-    step: WorkflowStep | None,
-) -> tuple[dict[str, Any], Ruleset | None]:
-    source = form.cleaned_data.get("schema_source")
-    text = (form.cleaned_data.get("schema_text") or "").strip()
-    uploaded = form.cleaned_data.get("schema_file")
-    schema_type = form.cleaned_data.get("schema_type")
-
-    if schema_type not in JSONSchemaVersion.values:
-        raise ValidationError(_("Select a valid JSON Schema draft."))
-
-    if source == "keep" and step and step.ruleset_id:
-        preview = step.config.get("schema_text_preview", "")
-        ruleset = step.ruleset
-        metadata = dict(ruleset.metadata or {})
-        metadata["schema_type"] = schema_type
-        metadata.pop("schema", None)
-        ruleset.metadata = metadata
-        ruleset.full_clean()
-        ruleset.save(update_fields=["metadata"])
-        config = {
-            "schema_source": "keep",
-            "schema_text_preview": preview,
-            "schema_type": schema_type,
-            "schema_type_label": str(JSONSchemaVersion(schema_type).label),
-        }
-        return config, ruleset
-
-    ruleset = _ensure_ruleset(
-        workflow=workflow,
-        step=step,
-        ruleset_type=RulesetType.JSON_SCHEMA,
-    )
-
-    schema_payload: str | None = None
-
-    if source == "text":
-        ruleset.rules_text = text
-        if ruleset.rules_file:
-            ruleset.rules_file.delete(save=False)
-        ruleset.rules_file = None
-        schema_payload = text
-        preview = text[:1200]
-    else:
-        if uploaded is None:
-            raise ValidationError(_("Upload a JSON schema file."))
-        uploaded.seek(0)
-        raw_bytes = uploaded.read()
-        uploaded.seek(0)
-        if ruleset.rules_file:
-            ruleset.rules_file.delete(save=False)
-        ruleset.rules_file.save(uploaded.name, uploaded, save=False)
-        ruleset.rules_text = ""
-        schema_payload = (
-            raw_bytes.decode("utf-8", errors="replace")
-            if isinstance(raw_bytes, bytes)
-            else str(raw_bytes or "")
-        )
-        preview = schema_payload[:1200]
-
-    metadata = dict(ruleset.metadata or {})
-    metadata["schema_type"] = schema_type
-    metadata.pop("schema", None)
-    ruleset.metadata = metadata
-    ruleset.full_clean()
-    ruleset.save()
-
-    config = {
-        "schema_source": source,
-        "schema_text_preview": preview,
-        "schema_type": schema_type,
-        "schema_type_label": str(JSONSchemaVersion(schema_type).label),
-    }
-    return config, ruleset
-
-
-def _build_xml_schema_config(
-    workflow: Workflow,
-    form: XmlSchemaStepConfigForm,
-    step: WorkflowStep | None,
-) -> tuple[dict[str, Any], Ruleset | None]:
-    source = form.cleaned_data.get("schema_source")
-    text = (form.cleaned_data.get("schema_text") or "").strip()
-    uploaded = form.cleaned_data.get("schema_file")
-    schema_type = form.cleaned_data.get("schema_type")
-
-    if schema_type not in XMLSchemaType.values:
-        raise ValidationError(_("Select a valid XML schema type."))
-
-    if source == "keep" and step and step.ruleset_id:
-        preview = step.config.get("schema_text_preview", "")
-        ruleset = step.ruleset
-        metadata = dict(ruleset.metadata or {})
-        metadata["schema_type"] = schema_type
-        metadata.pop("schema", None)
-        ruleset.metadata = metadata
-        ruleset.full_clean()
-        ruleset.save(update_fields=["metadata"])
-        config = {
-            "schema_source": "keep",
-            "schema_type": schema_type,
-            "schema_text_preview": preview,
-            "schema_type_label": str(XMLSchemaType(schema_type).label),
-        }
-        return config, ruleset
-
-    ruleset = _ensure_ruleset(
-        workflow=workflow,
-        step=step,
-        ruleset_type=RulesetType.XML_SCHEMA,
-    )
-
-    if source == "text":
-        ruleset.rules_text = text
-        if ruleset.rules_file:
-            ruleset.rules_file.delete(save=False)
-        ruleset.rules_file = None
-        preview = text[:1200]
-    else:
-        if uploaded is None:
-            raise ValidationError(_("Upload an XML schema file."))
-        uploaded.seek(0)
-        raw_bytes = uploaded.read()
-        uploaded.seek(0)
-        if ruleset.rules_file:
-            ruleset.rules_file.delete(save=False)
-        ruleset.rules_file.save(uploaded.name, uploaded, save=False)
-        ruleset.rules_text = ""
-        schema_payload = (
-            raw_bytes.decode("utf-8", errors="replace")
-            if isinstance(raw_bytes, bytes)
-            else str(raw_bytes or "")
-        )
-        preview = schema_payload[:1200]
-
-    metadata = dict(ruleset.metadata or {})
-    metadata["schema_type"] = schema_type
-    metadata.pop("schema", None)
-    ruleset.metadata = metadata
-    ruleset.full_clean()
-    ruleset.save()
-
-    config = {
-        "schema_source": source,
-        "schema_type": schema_type,
-        "schema_text_preview": preview,
-        "schema_type_label": str(XMLSchemaType(schema_type).label),
-    }
-    return config, ruleset
-
-
-def _build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
-    eui_min = form.cleaned_data.get("eui_min")
-    eui_max = form.cleaned_data.get("eui_max")
-    eui_band = {
-        "min": float(eui_min) if eui_min is not None else None,
-        "max": float(eui_max) if eui_max is not None else None,
-    }
-    return {
-        "run_simulation": form.cleaned_data.get("run_simulation", False),
-        "idf_checks": form.cleaned_data.get("idf_checks", []),
-        "simulation_checks": form.cleaned_data.get("simulation_checks", []),
-        "eui_band": eui_band,
-        "notes": form.cleaned_data.get("energyplus_notes", ""),
-    }
-
-
-def _build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
-    selectors = form.cleaned_data.get("selectors", [])
-    policy_rules = form.cleaned_data.get("policy_rules", [])
-    return {
-        "template": form.cleaned_data.get("template"),
-        "mode": form.cleaned_data.get("mode"),
-        "cost_cap_cents": form.cleaned_data.get("cost_cap_cents"),
-        "selectors": selectors,
-        "policy_rules": [asdict(rule) for rule in policy_rules],
-    }
-
-
-def save_workflow_step(
-    workflow: Workflow,
-    validator: Validator,
-    form: forms.Form,
-    *,
-    step: WorkflowStep | None = None,
-) -> WorkflowStep:
-    """
-    Persist a workflow step using the supplied form data and validator.
-    """
-    is_new = step is None
-    step = step or WorkflowStep(workflow=workflow)
-    step.validator = validator
-    step.action = None
-    step.name = form.cleaned_data.get("name", "").strip() or validator.name
-    step.description = (form.cleaned_data.get("description") or "").strip()
-    step.notes = (form.cleaned_data.get("notes") or "").strip()
-    if "display_schema" in form.cleaned_data:
-        step.display_schema = form.cleaned_data.get("display_schema", False)
-
-    config: dict[str, Any]
-    ruleset: Ruleset | None = None
-    vtype = validator.validation_type
-
-    if vtype == ValidationType.JSON_SCHEMA:
-        config, ruleset = _build_json_schema_config(workflow, form, step)
-    elif vtype == ValidationType.XML_SCHEMA:
-        config, ruleset = _build_xml_schema_config(workflow, form, step)
-    elif vtype == ValidationType.ENERGYPLUS:
-        config = _build_energyplus_config(form)
-    elif vtype == ValidationType.AI_ASSIST:
-        config = _build_ai_config(form)
-    else:
-        config = {}
-
-    if ruleset is not None:
-        step.ruleset = ruleset
-    elif vtype in ADVANCED_VALIDATION_TYPES:
-        step.ruleset = _ensure_advanced_ruleset(workflow, step, validator)
-    elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
-        step.ruleset = None
-
-    step.config = config
-
-    if is_new:
-        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
-        step.order = (max_order or 0) + 10
-
-    step.save()
-    return step
-
-
-def save_workflow_action_step(
-    workflow: Workflow,
-    definition: ActionDefinition,
-    form: forms.Form,
-    *,
-    step: WorkflowStep | None = None,
-) -> WorkflowStep:
-    """Persist a workflow step that references an action definition."""
-
-    is_new = step is None
-    step = step or WorkflowStep(workflow=workflow)
-    action = getattr(step, "action", None)
-
-    if not hasattr(form, "save_action"):
-        raise ValueError("Action forms must implement save_action().")
-
-    action = form.save_action(
-        definition,
-        current_action=action,
-    )
-
-    step.validator = None
-    step.ruleset = None
-    step.action = action
-    step.name = action.name
-    step.description = action.description
-    step.notes = (form.cleaned_data.get("notes") or "").strip()
-    step.display_schema = False
-    summary = {}
-    if hasattr(form, "build_step_summary"):
-        summary = form.build_step_summary(action) or {}
-    step.config = summary
-
-    if is_new:
-        max_order = workflow.steps.aggregate(max_order=models.Max("order"))["max_order"]
-        step.order = (max_order or 0) + 10
-
-    step.save()
-    return step
-
-
-class WorkflowListView(WorkflowAccessMixin, ListView):
-    template_name = "workflows/workflow_list.html"
-    context_object_name = "workflows"
-    breadcrumbs = [
-        {"name": _("Workflows"), "url": ""},
-    ]
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        search = self.request.GET.get("q", "").strip()
-        if search:
-            qs = qs.filter(name__icontains=search)
-        return qs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        workflows = list(context["workflows"])
-        context["workflows"] = workflows
-        context["object_list"] = workflows
-        user = self.request.user
-        for wf in workflows:
-            wf.can_execute_cached = wf.can_execute(user=user)
-
-        context.update(
-            {
-                "search_query": self.request.GET.get("q", ""),
-                "create_url": reverse_with_org(
-                    "workflows:workflow_create",
-                    request=self.request,
-                ),
-            },
-        )
-        return context
-
-
-class WorkflowDetailView(WorkflowAccessMixin, DetailView):
-    template_name = "workflows/workflow_detail.html"
-    context_object_name = "workflow"
-
-    def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .prefetch_related(
-                "steps__validator",
-                "steps__ruleset",
-                "steps__action",
-                "steps__action__definition",
-            )
-        )
-
-    def get_breadcrumbs(self):
-        workflow = getattr(self, "object", None) or self.get_object()
-        breadcrumbs = super().get_breadcrumbs()
-        breadcrumbs.append(
-            {
-                "name": _("Workflows"),
-                "url": reverse_with_org(
-                    "workflows:workflow_list",
-                    request=self.request,
-                ),
-            },
-        )
-        breadcrumbs.append({"name": workflow.name, "url": ""})
-        return breadcrumbs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        workflow = context["workflow"]
-        recent_runs = workflow.validation_runs.all().order_by("-created")[:5]
-        can_manage_public_info = self.user_can_manage_workflow()
-        public_info_context = public_info_card_context(
-            self.request,
-            workflow,
-            can_manage=can_manage_public_info,
-        )
-        context.update(
-            {
-                "related_validations_url": reverse_with_org(
-                    "workflows:workflow_validation_list",
-                    request=self.request,
-                    kwargs={"pk": workflow.pk},
-                ),
-                "recent_runs": recent_runs,
-                "max_step_count": MAX_STEP_COUNT,
-                "can_manage_activation": self.user_can_manage_workflow(),
-                "show_private_notes": self.user_can_manage_workflow(),
-                "public_info_url": public_info_context["public_info_url"],
-                "can_manage_public_info": can_manage_public_info,
-            },
-        )
-        return context
-
-
-class WorkflowLaunchContextMixin(WorkflowObjectMixin):
-    """
-    This mixin provides helper methods to build context for launching workflows
-    via the UI. It also provides methods to get recent runs and load a specific run
-    for display.
-
-    Args:
-        WorkflowObjectMixin (_type_): _description_
-
-    Returns:
-        _type_: _description_
-    """
-
-    launch_panel_template_name = "workflows/launch/partials/launch_panel.html"
-
-    run_status_template_name = "workflows/launch/partials/run_status.html"
-
-    status_area_template_name = "workflows/launch/partials/status_area.html"
-
-    polling_statuses = {
-        ValidationRunStatus.PENDING,
-        ValidationRunStatus.RUNNING,
-    }
-
-    def get_poll_interval_seconds(self) -> int:
-        return int(getattr(settings, "WORKFLOW_RUN_POLL_INTERVAL_SECONDS", 3))
-
-    def _collect_run_display_data(
-        self,
-        run: ValidationRun | None,
-    ) -> tuple[list[Any], list[Any], bool]:
-        if not run:
-            return [], [], False
-        step_runs = list(run.step_runs.order_by("step_order"))
-        findings = list(run.findings.order_by("severity", "-created")[:10])
-        run_in_progress = run.status in self.polling_statuses
-        return step_runs, findings, run_in_progress
-
-    def build_status_area_context(
-        self,
-        *,
-        workflow: Workflow,
-        active_run: ValidationRun | None,
-    ) -> dict[str, object]:
-        step_runs, findings, run_in_progress = self._collect_run_display_data(
-            active_run,
-        )
-        poll_interval = self.get_poll_interval_seconds()
-        status_url = None
-        detail_url = None
-        cancel_url = None
-        if active_run:
-            status_url = reverse_with_org(
-                "workflows:workflow_launch_status",
-                request=self.request,
-                kwargs={"pk": workflow.pk, "run_id": active_run.pk},
-            )
-            detail_url = reverse_with_org(
-                "validations:validation_detail",
-                request=self.request,
-                kwargs={"pk": active_run.pk},
-            )
-            if run_in_progress:
-                cancel_url = reverse_with_org(
-                    "workflows:workflow_launch_cancel",
-                    request=self.request,
-                    kwargs={"pk": workflow.pk, "run_id": active_run.pk},
-                )
-        return {
-            "active_run": active_run,
-            "active_run_step_runs": step_runs,
-            "active_run_findings": findings,
-            "run_in_progress": run_in_progress,
-            "polling_statuses": self.polling_statuses,
-            "poll_interval_seconds": poll_interval,
-            "status_url": status_url,
-            "detail_url": detail_url,
-            "cancel_url": cancel_url,
-        }
-
-    def get_recent_runs(self, workflow: Workflow, limit: int = 5):
-        return list(
-            ValidationRun.objects.filter(workflow=workflow)
-            .select_related("submission", "user")
-            .order_by("-created")[:limit],
-        )
-
-    def _remember_launch_input_mode(self, request, payload: str | None) -> None:
-        mode = "paste" if (payload or "").strip() else "upload"
-        try:
-            request.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] = mode
-            request.session.modified = True
-        except Exception:  # pragma: no cover - defensive
-            logger.exception("Unable to persist workflow launch input mode preference.")
-
-    def get_launch_form(
-        self,
-        *,
-        workflow: Workflow,
-        data=None,
-        files=None,
-    ) -> WorkflowLaunchForm:
-        return WorkflowLaunchForm(
-            data=data,
-            files=files,
-            workflow=workflow,
-            user=self.request.user,
-        )
-
-    def load_run_for_display(
-        self,
-        *,
-        workflow: Workflow,
-        run_id,
-    ) -> ValidationRun | None:
-        if not run_id:
-            return None
-        try:
-            uuid_val = (
-                run_id if isinstance(run_id, uuid.UUID) else uuid.UUID(str(run_id))
-            )
-        except (TypeError, ValueError):
-            return None
-        return (
-            ValidationRun.objects.filter(pk=uuid_val, workflow=workflow)
-            .select_related("submission", "user")
-            .prefetch_related("step_runs", "step_runs__workflow_step", "findings")
-            .first()
-        )
-
-    def build_launch_context(
-        self,
-        *,
-        workflow: Workflow,
-        form: WorkflowLaunchForm,
-        active_run: ValidationRun | None,
-    ) -> dict[str, object]:
-        has_steps = workflow.steps.exists()
-        status_context = self.build_status_area_context(
-            workflow=workflow,
-            active_run=active_run,
-        )
-        context = {
-            "workflow": workflow,
-            "launch_form": form,
-            "can_execute": workflow.can_execute(user=self.request.user),
-            "has_steps": has_steps,
-            "recent_runs": self.get_recent_runs(workflow),
-        }
-        context.update(status_context)
-        return context
-
-    def _launch_response(
-        self,
-        request,
-        *,
-        workflow: Workflow,
-        form: WorkflowLaunchForm | None,
-        active_run: ValidationRun | None,
-        status_code: int,
-        toast: dict[str, str] | None = None,
-        fragment: str = "panel",
-    ):
-        is_htmx = request.headers.get("HX-Request") == "true"
-        current_fragment = fragment
-        if fragment == "status" and not is_htmx:
-            current_fragment = "panel"
-
-        if current_fragment == "status":
-            context = {"workflow": workflow}
-            context.update(
-                self.build_status_area_context(
-                    workflow=workflow,
-                    active_run=active_run,
-                ),
-            )
-            template_name = self.status_area_template_name
-        else:
-            form = form or self.get_launch_form(workflow=workflow)
-            context = self.build_launch_context(
-                workflow=workflow,
-                form=form,
-                active_run=active_run,
-            )
-            template_name = (
-                self.launch_panel_template_name
-                if is_htmx
-                else "workflows/launch/workflow_launch.html"
-            )
-
-        response = render(
-            request,
-            template_name,
-            context=context,
-            status=status_code,
-        )
-
-        if is_htmx and current_fragment == "panel":
-            response["HX-Retarget"] = "#workflow-launch-panel"
-
-        if toast:
-            sanitized_toast = {
-                key: str(value) if isinstance(value, Promise) else value
-                for key, value in toast.items()
-            }
-            response["HX-Trigger"] = json.dumps({"toast": sanitized_toast})
-        return response
+# UIs for launching and viewing in-process workflows...
+# ..............................................................................
 
 
 class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
@@ -1517,13 +195,11 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
-        can_execute = workflow.can_execute(user=self.request.user)
+        can_execute = user_has_executor_role(self.request.user, workflow)
         has_steps = workflow.steps.exists()
-        form = (
-            self.get_launch_form(workflow=workflow)
-            if can_execute and has_steps
-            else None
-        )
+        form = kwargs.get("launch_form")
+        if form is None and can_execute and has_steps:
+            form = self.get_launch_form(workflow=workflow)
         context.update(
             {
                 "workflow": workflow,
@@ -1531,59 +207,22 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 "can_execute": can_execute,
                 "has_steps": has_steps,
                 "launch_form": form,
+                "panel_mode": "form",
             },
-        )
-        context.update(
-            self.build_status_area_context(
-                workflow=workflow,
-                active_run=None,
-            ),
         )
         return context
 
-
-class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
-    """
-    Handle POST to start a workflow run from an HTML-based form.
-    This view is meant to be used in conjunction with WorkflowLaunchDetailView.
-
-    For API calls to start a workflow run, use the WorkflowViewSet.start_validation
-    action.
-
-    """
-
-    http_method_names = ["post"]
-
     def post(self, request, *args, **kwargs):
         workflow = self.get_workflow()
-        can_execute = workflow.can_execute(user=request.user)
-        if not can_execute:
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=None,
-                active_run=None,
-                status_code=403,
-                toast={
-                    "level": "danger",
-                    "message": str(_("You cannot run this workflow.")),
-                },
+        if not user_has_executor_role(request.user, workflow):
+            return HttpResponse(
+                _("You cannot run this workflow."),
+                status=HTTPStatus.FORBIDDEN,
             )
 
         if not workflow.steps.exists():
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=None,
-                active_run=None,
-                status_code=400,
-                toast={
-                    "level": "warning",
-                    "message": str(
-                        _("This workflow has no steps defined and cannot be executed."),
-                    ),
-                },
-            )
+            context = self.get_context_data(launch_form=None)
+            return self.render_to_response(context, status=HTTPStatus.BAD_REQUEST)
 
         form = self.get_launch_form(
             workflow=workflow,
@@ -1592,13 +231,8 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
         )
 
         if not form.is_valid():
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=form,
-                active_run=None,
-                status_code=400,
-            )
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=HTTPStatus.OK)
 
         self._remember_launch_input_mode(
             request,
@@ -1613,13 +247,8 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             )
         except ValidationError as exc:
             form.add_error(None, exc.message if hasattr(exc, "message") else str(exc))
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=form,
-                active_run=None,
-                status_code=400,
-            )
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
                 "Failed to prepare submission for workflow run.",
@@ -1629,35 +258,41 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 None,
                 _("Something went wrong while preparing the submission."),
             )
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=form,
-                active_run=None,
-                status_code=500,
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(
+                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+        metadata = form.cleaned_data.get("metadata") or {}
+        submission_build = SubmissionBuild(submission=submission, metadata=metadata)
         try:
-            service = ValidationRunService()
-            response = service.launch(
-                request,
-                org=workflow.org,
+            start_validation_run_for_workflow(
+                workflow=workflow,
+                user=request.user,
+                project=workflow.project,
+                submission_build=submission_build,
+            )
+        except LaunchValidationError as exc:
+            error_detail = exc.payload.get("detail") or _(
+                "Could not run the workflow. Please try again.",
+            )
+            form.add_error(None, error_detail)
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=exc.status_code)
+
+        try:
+            result = launch_validation_run(
+                request=request,
                 workflow=workflow,
                 submission=submission,
+                metadata=metadata,
                 user_id=getattr(request.user, "id", None),
-                metadata=form.cleaned_data.get("metadata"),
-                wait_for_completion=False,
             )
         except PermissionError as exc:
             logger.info("Permission denied running workflow %s: %s", workflow.pk, exc)
             form.add_error(None, _("You do not have permission to run this workflow."))
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=form,
-                active_run=None,
-                status_code=403,
-            )
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=HTTPStatus.FORBIDDEN)
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
                 "Run service errored for workflow %s",
@@ -1665,114 +300,35 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 exc_info=exc,
             )
             form.add_error(None, _("Could not run the workflow. Please try again."))
-            return self._launch_response(
-                request,
-                workflow=workflow,
-                form=form,
-                active_run=None,
-                status_code=500,
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(
+                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
+        if result.status_code >= 400:
+            error_message = result.payload.get("detail") or _(
+                "Could not run the workflow. Please try again.",
+            )
+            form.add_error(None, error_message)
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=result.status_code)
 
-        run_id = None
-        response_data = getattr(response, "data", None)
-        if isinstance(response_data, dict):
-            run_id = response_data.get("id")
+        run_id = result.payload.get("id")
 
         active_run = self.load_run_for_display(workflow=workflow, run_id=run_id)
-
-        toast_payload = {
-            "level": "success",
-            "message": str(_("Validation run started.")),
-        }
-
-        return self._launch_response(
-            request,
-            workflow=workflow,
-            form=self.get_launch_form(workflow=workflow),
-            active_run=active_run,
-            status_code=getattr(response, "status_code", 200),
-            toast=toast_payload,
-            fragment="status",
-        )
-
-    def _create_submission(
-        self,
-        *,
-        request,
-        workflow: Workflow,
-        form: WorkflowLaunchForm,
-    ) -> Submission:
-        cleaned = form.cleaned_data
-        payload = cleaned.get("payload")
-        attachment = cleaned.get("attachment")
-        requested_file_type = cleaned["file_type"]
-        filename = cleaned.get("filename") or ""
-        metadata = cleaned.get("metadata") or {}
-        attachment_name = getattr(attachment, "name", "") if attachment else ""
-        detection_input_name = filename or attachment_name or "document"
-        final_file_type = resolve_submission_file_type(
-            requested=requested_file_type,
-            filename=detection_input_name,
-            inline_text=payload,
-        )
-        violation = describe_workflow_file_type_violation(
-            workflow=workflow,
-            file_type=final_file_type,
-        )
-        if violation:
-            raise ValidationError(violation)
-        content_type = preferred_content_type_for_file(
-            final_file_type,
-            filename=detection_input_name,
-        )
-
-        submission = Submission(
-            org=workflow.org,
-            workflow=workflow,
-            user=request.user
-            if getattr(request.user, "is_authenticated", False)
-            else None,
-            project=workflow.project,
-            name="",
-            metadata=metadata,
-            checksum_sha256="",
-        )
-
-        if attachment:
-            max_file = int(settings.SUBMISSION_FILE_MAX_BYTES)
-            ingest = prepare_uploaded_file(
-                uploaded_file=attachment,
-                filename=filename,
-                content_type=content_type,
-                max_bytes=max_file,
-            )
-            safe_filename = ingest.filename
-            submission.name = safe_filename
-            submission.checksum_sha256 = ingest.sha256
-            submission.set_content(
-                uploaded_file=attachment,
-                filename=safe_filename,
-                file_type=final_file_type,
-            )
-        else:
-            safe_filename, ingest = prepare_inline_text(
-                text=payload,
-                filename=filename,
-                content_type=content_type,
-                deny_magic_on_text=True,
-            )
-            submission.name = safe_filename
-            submission.checksum_sha256 = ingest.sha256
-            submission.set_content(
-                inline_text=payload,
-                filename=safe_filename,
-                file_type=final_file_type,
+        if not active_run:
+            form.add_error(None, _("Unable to load the new run."))
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(
+                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
-        with transaction.atomic():
-            submission.full_clean()
-            submission.save()
-        return submission
+        run_detail_url = reverse_with_org(
+            "workflows:workflow_run_detail",
+            request=request,
+            kwargs={"pk": workflow.pk, "run_id": active_run.pk},
+        )
+        return HttpResponseRedirect(run_detail_url)
+
 
 class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
     http_method_names = ["get"]
@@ -1843,6 +399,10 @@ class WorkflowLaunchCancelView(WorkflowLaunchContextMixin, View):
             toast=toast_payload,
             fragment="status",
         )
+
+
+# UIs for public views of workflows...
+# ..............................................................................
 
 
 class PublicWorkflowListView(ListView):
@@ -1946,7 +506,7 @@ class PublicWorkflowListView(ListView):
         return f"?{query}" if query else "?"
 
 
-class WorkflowPublicInfoView(DetailView):
+class PublicWorkflowInfoView(DetailView):
     """
     Handles public display of workflow information for visitors.
     This is a read-only view showing workflow details and recent runs,
@@ -2103,23 +663,133 @@ class WorkflowPublicInfoView(DetailView):
         return schema_text, None
 
 
-class WorkflowFormViewMixin(WorkflowAccessMixin):
-    form_class = WorkflowForm
+# UIs for authoring and managing workflows...
+# ..............................................................................
 
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        kwargs["user"] = self.request.user
-        return kwargs
 
-    def _default_project_for_org(self) -> Project | None:
-        user = getattr(self.request, "user", None)
-        org = getattr(user, "get_current_org", lambda: None)() if user else None
-        if not org:
-            return None
-        project = Project.objects.filter(org=org, is_default=True).first()
-        if project:
-            return project
-        return Project.objects.filter(org=org).order_by("name").first()
+class WorkflowListView(WorkflowAccessMixin, ListView):
+    template_name = "workflows/workflow_list.html"
+    context_object_name = "workflows"
+    breadcrumbs = [
+        {"name": _("Workflows"), "url": ""},
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        search = self.request.GET.get("q", "").strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflows = list(context["workflows"])
+        context["workflows"] = workflows
+        context["object_list"] = workflows
+        user = self.request.user
+        for wf in workflows:
+            wf.can_execute_cached = wf.can_execute(user=user)
+
+        context.update(
+            {
+                "search_query": self.request.GET.get("q", ""),
+                "create_url": reverse_with_org(
+                    "workflows:workflow_create",
+                    request=self.request,
+                ),
+            },
+        )
+        return context
+
+
+class WorkflowDetailView(WorkflowAccessMixin, DetailView):
+    template_name = "workflows/workflow_detail.html"
+    context_object_name = "workflow"
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .prefetch_related(
+                "steps__validator",
+                "steps__ruleset",
+                "steps__action",
+                "steps__action__definition",
+            )
+        )
+
+    def get_breadcrumbs(self):
+        workflow = getattr(self, "object", None) or self.get_object()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append({"name": workflow.name, "url": ""})
+        return breadcrumbs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = context["workflow"]
+        recent_runs = workflow.validation_runs.all().order_by("-created")[:5]
+        can_manage_public_info = self.user_can_manage_workflow()
+        public_info_context = public_info_card_context(
+            self.request,
+            workflow,
+            can_manage=can_manage_public_info,
+        )
+        context.update(
+            {
+                "related_validations_url": reverse_with_org(
+                    "workflows:workflow_validation_list",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+                "recent_runs": recent_runs,
+                "max_step_count": MAX_STEP_COUNT,
+                "can_manage_activation": self.user_can_manage_workflow(),
+                "show_private_notes": self.user_can_manage_workflow(),
+                "public_info_url": public_info_context["public_info_url"],
+                "can_manage_public_info": can_manage_public_info,
+            },
+        )
+        return context
+
+
+class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
+    template_name = "workflows/launch/workflow_run_detail.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+        run = self.load_run_for_display(
+            workflow=workflow,
+            run_id=self.kwargs.get("run_id"),
+        )
+        if run is None:
+            raise Http404
+        context.update(
+            {
+                "workflow": workflow,
+                "active_run": run,
+                "panel_mode": "status",
+                "can_execute": workflow.can_execute(user=self.request.user),
+                "has_steps": workflow.steps.exists(),
+                "recent_runs": self.get_recent_runs(workflow),
+            },
+        )
+        context.update(
+            self.build_status_area_context(
+                workflow=workflow,
+                active_run=run,
+            ),
+        )
+        return context
 
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
@@ -2577,7 +1247,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 message = _("You can add up to %(count)s steps per workflow.") % {
                     "count": MAX_STEP_COUNT,
                 }
-                return _hx_trigger_response(message, level="warning", status_code=409)
+                return hx_trigger_response(message, level="warning", status_code=409)
             selection = form.get_selection()
             if selection["kind"] == "validator":
                 validator = selection["object"]
@@ -2926,7 +1596,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 form,
                 step=self.get_step(),
             )
-        _resequence_workflow_steps(workflow)
+        resequence_workflow_steps(workflow)
         self.saved_step = saved_step
         if self.mode == "create":
             message = _("Workflow step added.")
@@ -3109,7 +1779,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             validator and validator.validation_type in ADVANCED_VALIDATION_TYPES
         )
         if allow_assertions:
-            ruleset = self.step.ruleset or _ensure_advanced_ruleset(
+            ruleset = self.step.ruleset or ensure_advanced_ruleset(
                 workflow,
                 self.step,
                 validator,
@@ -3218,9 +1888,9 @@ class WorkflowStepDeleteView(WorkflowObjectMixin, View):
             pk=self.kwargs.get("step_id"),
         )
         step.delete()
-        _resequence_workflow_steps(workflow)
+        resequence_workflow_steps(workflow)
         message = _("Workflow step removed.")
-        return _hx_trigger_response(message, close_modal=None)
+        return hx_trigger_response(message, close_modal=None)
 
 
 class WorkflowStepMoveView(WorkflowObjectMixin, View):
@@ -3238,7 +1908,7 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
         try:
             index = steps.index(step)
         except ValueError:
-            return _hx_trigger_response(
+            return hx_trigger_response(
                 status_code=400,
                 message=_("Step not found."),
                 level="warning",
@@ -3248,13 +1918,13 @@ class WorkflowStepMoveView(WorkflowObjectMixin, View):
         elif direction == "down" and index < len(steps) - 1:
             steps[index], steps[index + 1] = steps[index + 1], steps[index]
         else:
-            return _hx_trigger_response(status_code=204)
+            return hx_trigger_response(status_code=204)
         with transaction.atomic():
             for pos, item in enumerate(steps, start=1):
                 WorkflowStep.objects.filter(pk=item.pk).update(order=1000 + pos)
-            _resequence_workflow_steps(workflow)
+            resequence_workflow_steps(workflow)
         message = _("Workflow step order updated.")
-        return _hx_trigger_response(message, close_modal=None)
+        return hx_trigger_response(message, close_modal=None)
 
 
 class WorkflowValidationListView(WorkflowAccessMixin, ListView):
@@ -3306,95 +1976,6 @@ class WorkflowValidationListView(WorkflowAccessMixin, ListView):
             },
         )
         breadcrumbs.append({"name": _("Validations"), "url": ""})
-        return breadcrumbs
-
-
-class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
-    """Shared helpers for assertion management views."""
-
-    def dispatch(self, request, *args, **kwargs):
-        self.step = get_object_or_404(
-            WorkflowStep,
-            workflow=self.get_workflow(),
-            pk=self.kwargs.get("step_id"),
-        )
-        if not self._supports_assertions():
-            messages.error(
-                request,
-                _("Assertions are only available for advanced validators."),
-            )
-            return HttpResponseRedirect(
-                reverse_with_org(
-                    "workflows:workflow_detail",
-                    request=request,
-                    kwargs={"pk": self.get_workflow().pk},
-                ),
-            )
-        return super().dispatch(request, *args, **kwargs)
-
-    def _supports_assertions(self) -> bool:
-        validator = getattr(self.step, "validator", None)
-        if not validator:
-            return False
-        return validator.validation_type in ADVANCED_VALIDATION_TYPES
-
-    def get_ruleset(self) -> Ruleset:
-        validator = self.step.validator
-        ruleset = getattr(self.step, "ruleset", None)
-        if ruleset is None and validator is not None:
-            ruleset = _ensure_advanced_ruleset(
-                self.get_workflow(),
-                self.step,
-                validator,
-            )
-        return ruleset
-
-    def get_catalog_choices(self):
-        if hasattr(self, "_catalog_choice_cache"):
-            return self._catalog_choice_cache
-        validator = self.step.validator
-        choices: list[tuple[str, str]] = []
-        entries = []
-        if validator:
-            entries = list(validator.catalog_entries.order_by("order", "slug"))
-            for entry in entries:
-                label = f"{entry.label} ({entry.slug})"
-                choices.append((entry.slug, label))
-        self._catalog_entries_cache = entries
-        self._catalog_choice_cache = choices
-        return choices
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        workflow = self.get_workflow()
-        context.update(
-            {
-                "workflow": workflow,
-                "step": self.step,
-                "validator": self.step.validator,
-                "ruleset": self.get_ruleset(),
-                "assertions": self.get_ruleset()
-                .assertions.all()
-                .order_by("order", "pk"),
-                "can_manage_assertions": self.user_can_manage_workflow(),
-            },
-        )
-        return context
-
-    def get_breadcrumbs(self):
-        breadcrumbs = super().get_breadcrumbs()
-        workflow = self.get_workflow()
-        breadcrumbs.append(
-            {
-                "name": workflow.name,
-                "url": reverse_with_org(
-                    "workflows:workflow_detail",
-                    request=self.request,
-                    kwargs={"pk": workflow.pk},
-                ),
-            },
-        )
-        breadcrumbs.append({"name": _("Assertions"), "url": ""})
         return breadcrumbs
 
 
@@ -3506,7 +2087,7 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion added."))
-        return _hx_trigger_response(
+        return hx_trigger_response(
             message=_("Assertion added."),
             close_modal="workflowAssertionModal",
             extra_payload={
@@ -3553,7 +2134,7 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion updated."))
-        return _hx_trigger_response(
+        return hx_trigger_response(
             message=_("Assertion updated."),
             close_modal="workflowAssertionModal",
             extra_payload={
@@ -3577,7 +2158,7 @@ class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
         assertion.delete()
         messages.success(request, _("Assertion removed."))
         if request.headers.get("HX-Request"):
-            return _hx_trigger_response(
+            return hx_trigger_response(
                 message=_("Assertion removed."),
                 close_modal="workflowAssertionModal",
                 extra_payload={"assertions-changed": True},
@@ -3609,7 +2190,7 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
         try:
             index = assertions.index(assertion)
         except ValueError:
-            return _hx_trigger_response(
+            return hx_trigger_response(
                 status_code=400,
                 message=_("Assertion not found."),
             )
@@ -3624,11 +2205,11 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
                 assertions[index],
             )
         else:
-            return _hx_trigger_response(status_code=204)
+            return hx_trigger_response(status_code=204)
         with transaction.atomic():
             for pos, item in enumerate(assertions, start=1):
                 RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)
-        return _hx_redirect_response(
+        return hx_redirect_response(
             reverse_with_org(
                 "workflows:workflow_step_edit",
                 request=request,

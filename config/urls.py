@@ -52,7 +52,7 @@ urlpatterns = [
     ),
     path(
         "workflows/<uuid:workflow_uuid>/info/",
-        workflow_views.WorkflowPublicInfoView.as_view(),
+        workflow_views.PublicWorkflowInfoView.as_view(),
         name="workflow_public_info",
     ),
     # Admin URLs...

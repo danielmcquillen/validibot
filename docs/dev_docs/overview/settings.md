@@ -9,7 +9,7 @@ This page collects the environment variables that live under the `# SimpleValida
 | `POSTMARK_SERVER_TOKEN` | `None` | API token used by Postmark to send transactional email. Leave unset to disable outbound mail in lower environments. |
 | `POSTMARK_WEBHOOK_ALLOWED_IPS` | Postmark CIDR list | Hardens the inbound webhook endpoint by only trusting requests from the documented Postmark ranges. |
 | `GITHUB_APP_ID`, `GITHUB_CLIENT_ID`, `GITHUB_NAME`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | _required when GitHub App is enabled_ | Configure the GitHub App integration that provisions workflow runs from pull requests. The private key value may include literal `\n` characters that we normalize in settings. |
-| `WORKFLOW_RUN_POLL_INTERVAL_SECONDS` | `3` | Controls how frequently the launch page polls HTMX for run-status updates. Increasing the value lowers UI churn at the expense of slower refresh cycles. |
+| `WORKFLOW_RUN_POLL_INTERVAL_SECONDS` | `3` | Controls how frequently the run-detail page polls HTMX for run-status updates. Increasing the value lowers UI churn at the expense of slower refresh cycles. |
 | `DJANGO_ACCOUNT_ALLOW_LOGIN` | `True` | Set to `False` to temporarily freeze interactive login (used during security incidents). |
 | `ENABLE_APP`, `ENABLE_API` | `True` | Feature gates for the entire application shell and the public API. |
 | `ENABLE_FREE_TRIAL_SIGNUP`, `ENABLE_SYSTEM_STATUS_PAGE` | `True` | Toggles for sitewide marketing modules. |

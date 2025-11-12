@@ -22,7 +22,7 @@
     </div>
 
     <div id="workflow-launch-panel">
-      {% include "workflows/launch/partials/launch_panel.html" with workflow=workflow launch_form=launch_form can_execute=can_execute active_run=active_run recent_runs=recent_runs polling_statuses=polling_statuses %}
+      {% include "workflows/launch/partials/launch_panel.html" with workflow=workflow launch_form=launch_form can_execute=can_execute has_steps=has_steps panel_mode=panel_mode %}
     </div>
   </div>
 {% endblock app_content %}

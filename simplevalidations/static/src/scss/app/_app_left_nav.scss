@@ -1,3 +1,13 @@
+html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
+  width: 0;
+  min-width: 0;
+  flex-basis: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
 #app-left-nav {
   display: flex;
   flex-direction: column;

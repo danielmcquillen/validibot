@@ -5,6 +5,21 @@
 <html lang="{{ LANGUAGE_CODE }}">
 
   <head>
+    <script>
+      (function applyInitialLeftNavState() {
+        const storageKey = 'simplevalidations:leftNavCollapsed';
+        try {
+          if (window.localStorage.getItem(storageKey) === '1') {
+            document.documentElement.setAttribute(
+              'data-left-nav-prefers-collapsed',
+              'true',
+            );
+          }
+        } catch (error) {
+          console.debug('Unable to prime left-nav preference', error);
+        }
+      })();
+    </script>
 
     <title>
       {% block title %}

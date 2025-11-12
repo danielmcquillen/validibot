@@ -340,6 +340,9 @@ class Membership(TimeStampedModel):
 
     is_active = models.BooleanField(default=True)
 
+    def __str__(self):
+        return f"user '{self.user.username}' in org '{self.org.name}'"
+
     @property
     def joined_at(self):
         """Get the date when the user joined the organization."""

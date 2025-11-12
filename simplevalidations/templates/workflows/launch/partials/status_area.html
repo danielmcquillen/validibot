@@ -8,7 +8,7 @@
      {% endif %}>
   {% if active_run %}
     <div id="workflow-launch-run-status">
-      {% include "workflows/launch/partials/run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=run_in_progress polling_statuses=polling_statuses status_url=status_url detail_url=detail_url cancel_url=cancel_url %}
+      {% include "workflows/launch/partials/run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=run_in_progress polling_statuses=polling_statuses status_url=status_url detail_url=detail_url cancel_url=cancel_url launch_url=launch_url previous_runs_url=previous_runs_url %}
     </div>
   {% else %}
     <div class="card app-card launch-status-card">

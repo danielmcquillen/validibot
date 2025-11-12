@@ -3,16 +3,12 @@
 {% workflow_launch_preferred_mode as workflow_launch_mode %}
 
 <form method="post"
-      action="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
+      action="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
       enctype="multipart/form-data"
       class="card app-card submit-content-card"
       id="workflow-launch-form"
       data-workflow-launch-form="true"
-      data-run-disabled="{{ run_in_progress|yesno:'true,false' }}"
-      data-default-mode="{{ workflow_launch_mode }}"
-      hx-post="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
-      hx-target="#workflow-launch-status-area"
-      hx-swap="outerHTML">
+      data-default-mode="{{ workflow_launch_mode }}">
     {% csrf_token %}
 
     {% comment %}
@@ -202,10 +198,13 @@
         <div class="card-footer d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center justify-content-between">
             <small class="text-muted">
                 {% blocktrans trimmed %}
-                    The workflow runs asynchronously. Progress is reported in the adjacent panel.
+                    The workflow runs asynchronously. After submission you'll be redirected to the run status page.
                 {% endblocktrans %}
             </small>
-            <button type="submit" class="btn btn-success ms-md-auto text-white" data-launch-submit>
+            <button type="submit"
+                    class="btn btn-success ms-md-auto text-white"
+                    data-launch-submit
+                    data-submitting-label="{% trans 'Submitting...' %}">
                 {% trans "Start Validation" %}
             </button>
         </div>

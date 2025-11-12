@@ -12789,6 +12789,7 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   min-height: 0;
   background: none;
   border: 0;
+  margin-bottom: 1rem;
 }
 #workflow-launch .card-body {
   display: flex;
@@ -12816,7 +12817,9 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   height: 100%;
 }
 #workflow-launch .submit-content-card {
-  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
 }
 #workflow-launch .submit-content-card .tab-content {
   background: #fff;

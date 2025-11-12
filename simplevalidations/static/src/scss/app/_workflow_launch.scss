@@ -10,6 +10,7 @@
     min-height: 0;
     background: none;
     border: 0;
+    margin-bottom: 1rem;
   }
   .card-body {
     display: flex;
@@ -41,7 +42,9 @@
   }
 
   .submit-content-card {
-    min-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
     .tab-content {
       background: #fff;
       padding: 1rem;

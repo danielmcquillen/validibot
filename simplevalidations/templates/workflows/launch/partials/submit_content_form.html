@@ -1,15 +1,18 @@
 {% load i18n core_tags %}
 
+{% workflow_launch_preferred_mode as workflow_launch_mode %}
+
 <form method="post"
       action="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
       enctype="multipart/form-data"
       class="card app-card submit-content-card"
       id="workflow-launch-form"
       data-workflow-launch-form="true"
+      data-run-disabled="{{ run_in_progress|yesno:'true,false' }}"
+      data-default-mode="{{ workflow_launch_mode }}"
       hx-post="{% org_url 'workflows:workflow_launch_start' pk=workflow.pk %}"
-      hx-target="#workflow-launch-panel"
-      hx-swap="innerHTML"
-      hx-indicator="#workflow-launch-submit-indicator">
+      hx-target="#workflow-launch-status-area"
+      hx-swap="outerHTML">
     {% csrf_token %}
 
     {% comment %}
@@ -91,12 +94,18 @@
                         <div class="btn-group btn-group-sm"
                              role="group"
                              aria-label="{% trans 'Select input mode' %}">
-                            <button class="btn btn-outline-primary active"
+                            <button class="btn btn-outline-primary
+                                           {% if workflow_launch_mode != 'paste' %}
+                                               active
+                                           {% endif %}"
                                     type="button"
                                     data-content-mode="upload">
                                 <i class="bi-cloud-upload me-1"></i>{% trans "Upload file" %}
                             </button>
-                            <button class="btn btn-outline-primary"
+                            <button class="btn btn-outline-primary
+                                           {% if workflow_launch_mode == 'paste' %}
+                                               active
+                                           {% endif %}"
                                     type="button"
                                     data-content-mode="paste">
                                 <i class="bi-file-text me-1"></i>{% trans "Paste text" %}
@@ -104,7 +113,11 @@
                         </div>
                     </div>
 
-                    <div class="workflow-drop-wrapper" data-upload-section>
+                    <div class="workflow-drop-wrapper
+                                {% if workflow_launch_mode == 'paste' %}
+                                    d-none
+                                {% endif %}"
+                         data-upload-section>
                         <div class="workflow-dropzone"
                              data-dropzone
                              role="button"
@@ -134,7 +147,11 @@
                         {{ launch_form.attachment.errors }}
                     </div>
 
-                    <div class="workflow-paste-wrapper mb-3 d-none" data-paste-section>
+                    <div class="workflow-paste-wrapper mb-3
+                                {% if workflow_launch_mode != 'paste' %}
+                                    d-none
+                                {% endif %}"
+                         data-paste-section>
                         <label class="form-label fw-semibold"
                                for="{{ launch_form.payload.id_for_label }}">
                             {{ launch_form.payload.label }}
@@ -185,14 +202,10 @@
         <div class="card-footer d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center justify-content-between">
             <small class="text-muted">
                 {% blocktrans trimmed %}
-                    The workflow runs asynchronously. Leave this tab open to watch progress.
+                    The workflow runs asynchronously. Progress is reported in the adjacent panel.
                 {% endblocktrans %}
             </small>
-            <button type="submit" class="btn btn-success ms-md-auto" data-launch-submit>
-                <span id="workflow-launch-submit-indicator"
-                      class="spinner-border spinner-border-sm me-2 htmx-indicator"
-                      role="status"
-                      aria-hidden="true"></span>
+            <button type="submit" class="btn btn-success ms-md-auto text-white" data-launch-submit>
                 {% trans "Start Validation" %}
             </button>
         </div>

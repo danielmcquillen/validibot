@@ -5,6 +5,7 @@ import json
 from http import HTTPStatus
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework.response import Response
 
@@ -18,7 +19,9 @@ from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
@@ -55,8 +58,11 @@ def test_launch_page_renders_for_org_member(client):
         reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
     )
 
+    body = response.content.decode()
     assert response.status_code == HTTPStatus.OK
-    assert "Start Validation" in response.content.decode()
+    assert "Start Validation" in body
+    assert 'data-run-disabled="false"' in body
+    assert 'data-run-active="false"' in body
 
 
 def test_launch_page_disables_form_without_steps(client):
@@ -80,7 +86,7 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
-    def fake_launch(self, request, org, workflow, submission, user_id, metadata):  # noqa: ANN001
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
         run = ValidationRun.objects.create(
             org=org,
             workflow=workflow,
@@ -114,6 +120,68 @@ def test_launch_start_creates_run_and_returns_partial(client, monkeypatch):
     assert ValidationRun.objects.filter(workflow=workflow).count() == 1
     hx_trigger = response.headers.get("HX-Trigger")
     assert hx_trigger and "Validation run started" in hx_trigger
+    session = client.session
+    assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "paste"
+    assert 'data-run-active="true"' in body
+
+
+def test_launch_start_records_upload_preference(client, monkeypatch):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+        run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=workflow.project,
+            user=request.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        return Response(
+            {"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=202,
+        )
+
+    monkeypatch.setattr(
+        "simplevalidations.workflows.views.ValidationRunService.launch",
+        fake_launch,
+    )
+
+    upload = SimpleUploadedFile("test.json", b"{}", content_type="application/json")
+
+    response = client.post(
+        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "attachment": upload,
+        },
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    session = client.session
+    assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
+
+
+def test_launch_start_invalid_form_returns_panel_fragment(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+
+    response = client.post(
+        reverse("workflows:workflow_launch_start", kwargs={"pk": workflow.pk}),
+        data={"file_type": SubmissionFileType.JSON},
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.headers.get("HX-Retarget") == "#workflow-launch-panel"
+    body = response.content.decode()
+    assert "Add content inline or upload a file" in body
 
 
 def test_launch_start_requires_executor_role(client):
@@ -134,6 +202,83 @@ def test_launch_start_requires_executor_role(client):
     assert (
         "You do not have permission to run this workflow" in response.content.decode()
     )
+
+
+def test_cancel_run_updates_status(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.RUNNING,
+    )
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_cancel",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+        HTTP_HX_REQUEST="true",
+    )
+
+    run.refresh_from_db()
+    assert response.status_code == HTTPStatus.OK
+    assert run.status == ValidationRunStatus.CANCELED
+    hx_trigger = response.headers.get("HX-Trigger")
+    assert hx_trigger and "Workflow validation canceled" in hx_trigger
+
+
+def test_cancel_run_reports_completed_before_cancel(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_cancel",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    hx_trigger = response.headers.get("HX-Trigger")
+    assert hx_trigger and "Process completed before it could be cancelled" in hx_trigger
+
+
+def test_cancel_run_requires_executor_role(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    _force_login_for_workflow(client, workflow)
+    run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.RUNNING,
+    )
+
+    response = client.post(
+        reverse(
+            "workflows:workflow_launch_cancel",
+            kwargs={"pk": workflow.pk, "run_id": run.pk},
+        ),
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == HTTPStatus.FORBIDDEN
 
 
 def test_public_info_view_accessible_when_enabled(client):

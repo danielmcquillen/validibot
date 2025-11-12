@@ -23,6 +23,7 @@ This site describes the core concepts, data model, and API for working with vali
 
 - [Platform Overview](overview/platform_overview.md) - What SimpleValidations is and why it exists
 - [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
+- [Settings Reference](overview/settings.md) - Environment and feature flags that shape behaviour locally and in prod
 - [Working Agreements](overview/platform_overview.md#working-agreements-for-developers) - How we keep the project understandable
 - [Submission Modes](overview/request_modes.md) - How API payload shapes are detected
 - [Dashboard](dashboard.md) - Architecture and extension points for the dashboard module

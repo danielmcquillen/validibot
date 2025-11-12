@@ -23380,6 +23380,10 @@
   var WorkflowLaunchFormController = class {
     constructor(form) {
       this.form = form;
+      this.runStateHandler = null;
+      this.submitHandler = null;
+      this.errorHandler = null;
+      this.nativeSubmitHandler = null;
       this.modeButtons = form.querySelectorAll("[data-content-mode]");
       this.uploadSection = form.querySelector("[data-upload-section]");
       this.pasteSection = form.querySelector("[data-paste-section]");
@@ -23391,14 +23395,19 @@
       this.submitButton = form.querySelector("[data-launch-submit]");
       const labelValue = this.dropzoneLabel?.dataset.emptyLabel?.trim();
       this.emptyFileLabel = labelValue && labelValue.length > 0 ? labelValue : "No file selected yet.";
+      const preferredMode = this.form.dataset.defaultMode ?? "";
+      this.initialMode = isContentMode(preferredMode) ? preferredMode : "upload";
     }
     init() {
       this.bindModeButtons();
       this.bindDropzone();
       this.payloadField?.addEventListener("input", () => this.setSubmitState());
-      this.setMode("upload");
+      this.setMode(this.initialMode);
       this.updateFileLabel();
       this.setSubmitState();
+      this.syncDisabledState();
+      this.bindRunStateWatcher();
+      this.bindSubmissionWatcher();
     }
     bindModeButtons() {
       this.modeButtons.forEach((button) => {
@@ -23503,6 +23512,75 @@
       const isReady2 = hasPayload || hasAttachment;
       this.submitButton.disabled = !isReady2;
       this.submitButton.setAttribute("aria-disabled", String(!isReady2));
+    }
+    syncDisabledState() {
+      const disabled = this.form.dataset.runDisabled === "true";
+      this.toggleFormDisabled(disabled);
+    }
+    toggleFormDisabled(disabled) {
+      this.form.dataset.runDisabled = String(disabled);
+      const interactiveElements = this.form.querySelectorAll("input, textarea, select, button, .workflow-dropzone");
+      interactiveElements.forEach((element) => {
+        if ("disabled" in element) {
+          element.disabled = disabled;
+        }
+        element.classList.toggle("is-disabled", disabled);
+        if (element.matches(".workflow-dropzone")) {
+          element.setAttribute("aria-disabled", String(disabled));
+        }
+      });
+    }
+    getStatusAreaElement() {
+      return this.form.ownerDocument?.getElementById("workflow-launch-status-area");
+    }
+    syncRunStateFromStatusArea() {
+      const statusArea = this.getStatusAreaElement();
+      if (!statusArea) {
+        return;
+      }
+      const runActive = statusArea.dataset.runActive === "true";
+      this.toggleFormDisabled(runActive);
+    }
+    bindRunStateWatcher() {
+      if (!window.htmx) {
+        return;
+      }
+      this.runStateHandler = (event) => {
+        const customEvent = event;
+        const target = customEvent.detail?.target;
+        if (!target || target.id !== "workflow-launch-status-area") {
+          return;
+        }
+        this.syncRunStateFromStatusArea();
+      };
+      window.htmx.on("htmx:afterSwap", this.runStateHandler);
+    }
+    bindSubmissionWatcher() {
+      if (!window.htmx) {
+        return;
+      }
+      this.submitHandler = (event) => {
+        const detail = event.detail;
+        const sourceElement = detail?.elt;
+        if (!sourceElement || sourceElement !== this.form && !this.form.contains(sourceElement)) {
+          return;
+        }
+        this.toggleFormDisabled(true);
+      };
+      this.errorHandler = (event) => {
+        const detail = event.detail;
+        const sourceElement = detail?.elt;
+        if (!sourceElement || sourceElement !== this.form && !this.form.contains(sourceElement)) {
+          return;
+        }
+        this.toggleFormDisabled(false);
+      };
+      this.nativeSubmitHandler = () => {
+        this.toggleFormDisabled(true);
+      };
+      window.htmx.on("htmx:beforeRequest", this.submitHandler);
+      window.htmx.on("htmx:responseError", this.errorHandler);
+      this.form.addEventListener("submit", this.nativeSubmitHandler);
     }
   };
   function initWorkflowLaunchForms(root = document) {

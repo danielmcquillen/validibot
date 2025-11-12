@@ -23,6 +23,11 @@ urlpatterns = [
         name="workflow_launch_status",
     ),
     path(
+        "<int:pk>/launch/run/<uuid:run_id>/cancel/",
+        views.WorkflowLaunchCancelView.as_view(),
+        name="workflow_launch_cancel",
+    ),
+    path(
         "<int:pk>/public-info/",
         views.WorkflowPublicInfoUpdateView.as_view(),
         name="workflow_public_info_edit",

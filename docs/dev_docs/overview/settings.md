@@ -1,0 +1,35 @@
+# Configuration Settings
+
+This page collects the environment variables that live under the `# SimpleValidations settings` blocks in `config/settings/base.py` and `config/settings/local.py`. Keep it close at hand when you need to toggle product features or smoke-test workflow execution.
+
+## Core settings (`config/settings/base.py`)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `POSTMARK_SERVER_TOKEN` | `None` | API token used by Postmark to send transactional email. Leave unset to disable outbound mail in lower environments. |
+| `POSTMARK_WEBHOOK_ALLOWED_IPS` | Postmark CIDR list | Hardens the inbound webhook endpoint by only trusting requests from the documented Postmark ranges. |
+| `GITHUB_APP_ID`, `GITHUB_CLIENT_ID`, `GITHUB_NAME`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | _required when GitHub App is enabled_ | Configure the GitHub App integration that provisions workflow runs from pull requests. The private key value may include literal `\n` characters that we normalize in settings. |
+| `WORKFLOW_RUN_POLL_INTERVAL_SECONDS` | `3` | Controls how frequently the launch page polls HTMX for run-status updates. Increasing the value lowers UI churn at the expense of slower refresh cycles. |
+| `DJANGO_ACCOUNT_ALLOW_LOGIN` | `True` | Set to `False` to temporarily freeze interactive login (used during security incidents). |
+| `ENABLE_APP`, `ENABLE_API` | `True` | Feature gates for the entire application shell and the public API. |
+| `ENABLE_FREE_TRIAL_SIGNUP`, `ENABLE_SYSTEM_STATUS_PAGE` | `True` | Toggles for sitewide marketing modules. |
+| `ENABLE_FEATURES_SECTION`, `ENABLE_PRICING_SECTION`, `ENABLE_RESOURCES_SECTION`, `ENABLE_DOCS_SECTION`, `ENABLE_BLOG`, `ENABLE_HELP_CENTER`, `ENABLE_SYSTEM_STATUS`, `ENABLE_AI_VALIDATIONS` | `True`/`False` as defined in `base.py` | Individually hide or reveal navigation sections without redeploying templates. Each flag maps 1:1 with a top-level marketing feature. |
+| `TEST_ENERGYPLUS_WEATHER_FILE` | `USA_CA_SF.epw` | Default weather file used when exercising EnergyPlus validators outside production. |
+| `TRACKER_INCLUDE_SUPERUSER` | `False` | When `True`, superuser traffic is included in analytics events. Keep it `False` locally to avoid noisy metrics. |
+| `KMS_KEY_ID`, `AWS_DEFAULT_REGION`, `SV_JWKS_ALG`, `SV_JWKS_KEYS` | `alias/sv-badge-signing-prod`, `us-west-1`, `ES256`, `[KMS_KEY_ID]` | Configure signed badge issuance. `SV_JWKS_KEYS` is a rotation-friendly list so we can publish multiple active key IDs. |
+| `DJANGO_DEFAULT_FROM_EMAIL` | `SimpleValidations <daniel@simplevalidations.com>` | Human-friendly From header for transactional email. |
+| `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` | `""` | Credentials passed through to Modal when exporting signed certificates. Leave blank if Modal is disabled. |
+| `TEST_ENERGYPLUS_LIVE_MODAL` | `False` | Enables the "live" Modal integration path when running EnergyPlus in staging. |
+
+The submission-size constants that sit in the same section (`SUBMISSION_INLINE_MAX_BYTES`, `SUBMISSION_FILE_MAX_BYTES`, etc.) are not env-driven today; adjust them directly in `base.py` if we ever need new limits.
+
+## Local development settings (`config/settings/local.py`)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SUPERUSER_USERNAME`, `SUPERUSER_PASSWORD`, `SUPERUSER_EMAIL`, `SUPERUSER_NAME` | `admin`, `someadminpwchangeforrealz`, `""`, `Admin User` | Seed credentials used by the `create_local_superuser` helper so every teammate can bootstrap a superuser quickly. |
+| `TEST_ENERGYPLUS_LIVE_MODAL` | `False` | Mirrors the base setting but is handy to override locally if you need to point the UI at Modal during development. |
+| `SIMULATE_LONG_TASKS` | `True` | When set, every Celery task incurs a synthetic delay so we can preview loading states (for example, the workflow run progress bar). |
+| `LONG_TASK_DELAY_SECONDS` | `20` | Duration of the synthetic delay applied while `SIMULATE_LONG_TASKS` is enabled. Lower it if you simply need a quick manual test of the polling UI. |
+
+Both Celery knobs affect every task only when the local settings module is active. Production workers ignore them entirely, so you are safe to leave the defaults in your `.env` file for day-to-day development.

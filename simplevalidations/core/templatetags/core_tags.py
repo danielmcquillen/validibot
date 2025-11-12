@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 
 from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +119,7 @@ def active_link_views(context, *view_names):
     if not (current_view_name or current_url_name):
         return ""
 
-    normalized = {
-        (name or "").strip()
-        for name in view_names
-        if (name or "").strip()
-    }
+    normalized = {(name or "").strip() for name in view_names if (name or "").strip()}
     if current_view_name in normalized or current_url_name in normalized:
         return "active"
     return ""
@@ -192,3 +189,19 @@ def marketing_waitlist_form(origin: str = "hero"):
     if value not in BetaWaitlistForm.ALLOWED_ORIGINS:
         value = BetaWaitlistForm.ORIGIN_HERO
     return BetaWaitlistForm(origin=value)
+
+
+@register.simple_tag(takes_context=True)
+def workflow_launch_preferred_mode(context) -> str:
+    default_mode = "upload"
+    request = context.get("request")
+    if not request:
+        return default_mode
+    try:
+        preferred = request.session.get(WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to read workflow launch preference from session.")
+        return default_mode
+    if preferred in {"upload", "paste"}:
+        return preferred
+    return default_mode

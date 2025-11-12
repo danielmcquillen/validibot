@@ -5,6 +5,8 @@ from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.submissions.constants import SubmissionFileType
 
+WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY = "workflow_launch_input_mode"
+
 
 class AccessScope(models.TextChoices):
     ORG_ALL = "ORG_ALL", _("All members of the workflow's organization")

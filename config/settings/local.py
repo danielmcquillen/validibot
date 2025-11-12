@@ -73,7 +73,7 @@ CELERY_TASK_ALWAYS_EAGER = env("CELERY_TASK_ALWAYS_EAGER", default=True)
 CELERY_TASK_EAGER_PROPAGATES = env("CELERY_TASK_EAGER_PROPAGATES", default=True)
 
 
-# Your stuff...
+# SimpleValidations settings for local development
 # ------------------------------------------------------------------------------
 
 
@@ -84,3 +84,7 @@ SUPERUSER_NAME = env("SUPERUSER_NAME", default="Admin User")
 
 
 TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=False)
+
+
+SIMULATE_LONG_TASKS = env.bool("SIMULATE_LONG_TASKS", default=True)
+LONG_TASK_DELAY_SECONDS = env.int("LONG_TASK_DELAY_SECONDS", default=4)

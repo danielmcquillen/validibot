@@ -75,6 +75,7 @@ from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from simplevalidations.workflows.constants import WorkflowStartErrorCode
 from simplevalidations.workflows.constants import preferred_content_type_for_file
 from simplevalidations.workflows.forms import AiAssistStepConfigForm
@@ -101,7 +102,7 @@ logger = logging.getLogger(__name__)
 MAX_STEP_COUNT = 5
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.BASIC,
-   ValidationType.ENERGYPLUS,
+    ValidationType.ENERGYPLUS,
     ValidationType.CUSTOM_RULES,
 }
 
@@ -122,9 +123,9 @@ def describe_workflow_file_type_violation(
     if not workflow.supports_file_type(file_type):
         allowed = workflow.allowed_file_type_labels()
         allowed_display = ", ".join(allowed) if allowed else _("no file types")
-        return _(
-            "This workflow accepts %(allowed)s submissions."
-        ) % {"allowed": allowed_display}
+        return _("This workflow accepts %(allowed)s submissions.") % {
+            "allowed": allowed_display
+        }
     blocking_step = workflow.first_incompatible_step(file_type)
     if blocking_step:
         validator_name = getattr(blocking_step.validator, "name", "")
@@ -137,9 +138,7 @@ def describe_workflow_file_type_violation(
                 "validator": validator_name,
                 "file_type": label,
             }
-        return _(
-            "Step %(step)s does not support %(file_type)s files."
-        ) % {
+        return _("Step %(step)s does not support %(file_type)s files.") % {
             "step": blocking_step.step_number_display,
             "file_type": label,
         }
@@ -186,7 +185,7 @@ def public_info_card_context(
 
 
 # API Views
-# ------------------------------------------------------------------------------ 
+# ------------------------------------------------------------------------------
 
 
 class WorkflowViewSet(viewsets.ModelViewSet):
@@ -214,7 +213,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         Helper to start a validation run for a given workflow.
 
         This method is called regardless of how the workflow was
-        started. It centralizes the logic to handle the request 
+        started. It centralizes the logic to handle the request
         and create the validation run.
 
         Args:
@@ -1295,10 +1294,68 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
 
     run_status_template_name = "workflows/launch/partials/run_status.html"
 
+    status_area_template_name = "workflows/launch/partials/status_area.html"
+
     polling_statuses = {
         ValidationRunStatus.PENDING,
         ValidationRunStatus.RUNNING,
     }
+
+    def get_poll_interval_seconds(self) -> int:
+        return int(getattr(settings, "WORKFLOW_RUN_POLL_INTERVAL_SECONDS", 3))
+
+    def _collect_run_display_data(
+        self,
+        run: ValidationRun | None,
+    ) -> tuple[list[Any], list[Any], bool]:
+        if not run:
+            return [], [], False
+        step_runs = list(run.step_runs.order_by("step_order"))
+        findings = list(run.findings.order_by("severity", "-created")[:10])
+        run_in_progress = run.status in self.polling_statuses
+        return step_runs, findings, run_in_progress
+
+    def build_status_area_context(
+        self,
+        *,
+        workflow: Workflow,
+        active_run: ValidationRun | None,
+    ) -> dict[str, object]:
+        step_runs, findings, run_in_progress = self._collect_run_display_data(
+            active_run,
+        )
+        poll_interval = self.get_poll_interval_seconds()
+        status_url = None
+        detail_url = None
+        cancel_url = None
+        if active_run:
+            status_url = reverse_with_org(
+                "workflows:workflow_launch_status",
+                request=self.request,
+                kwargs={"pk": workflow.pk, "run_id": active_run.pk},
+            )
+            detail_url = reverse_with_org(
+                "validations:validation_detail",
+                request=self.request,
+                kwargs={"pk": active_run.pk},
+            )
+            if run_in_progress:
+                cancel_url = reverse_with_org(
+                    "workflows:workflow_launch_cancel",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk, "run_id": active_run.pk},
+                )
+        return {
+            "active_run": active_run,
+            "active_run_step_runs": step_runs,
+            "active_run_findings": findings,
+            "run_in_progress": run_in_progress,
+            "polling_statuses": self.polling_statuses,
+            "poll_interval_seconds": poll_interval,
+            "status_url": status_url,
+            "detail_url": detail_url,
+            "cancel_url": cancel_url,
+        }
 
     def get_recent_runs(self, workflow: Workflow, limit: int = 5):
         return list(
@@ -1306,6 +1363,14 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             .select_related("submission", "user")
             .order_by("-created")[:limit],
         )
+
+    def _remember_launch_input_mode(self, request, payload: str | None) -> None:
+        mode = "paste" if (payload or "").strip() else "upload"
+        try:
+            request.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] = mode
+            request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Unable to persist workflow launch input mode preference.")
 
     def get_launch_form(
         self,
@@ -1350,26 +1415,75 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         active_run: ValidationRun | None,
     ) -> dict[str, object]:
         has_steps = workflow.steps.exists()
-        if active_run:
-            step_runs = list(active_run.step_runs.order_by("step_order"))
-            findings = list(active_run.findings.order_by("severity", "-created")[:10])
-            polling = active_run.status in self.polling_statuses
-        else:
-            step_runs = []
-            findings = []
-            polling = False
-        return {
+        status_context = self.build_status_area_context(
+            workflow=workflow,
+            active_run=active_run,
+        )
+        context = {
             "workflow": workflow,
             "launch_form": form,
             "can_execute": workflow.can_execute(user=self.request.user),
             "has_steps": has_steps,
             "recent_runs": self.get_recent_runs(workflow),
-            "active_run": active_run,
-            "active_run_step_runs": step_runs,
-            "active_run_findings": findings,
-            "active_run_is_polling": polling,
-            "polling_statuses": self.polling_statuses,
         }
+        context.update(status_context)
+        return context
+
+    def _launch_response(
+        self,
+        request,
+        *,
+        workflow: Workflow,
+        form: WorkflowLaunchForm | None,
+        active_run: ValidationRun | None,
+        status_code: int,
+        toast: dict[str, str] | None = None,
+        fragment: str = "panel",
+    ):
+        is_htmx = request.headers.get("HX-Request") == "true"
+        current_fragment = fragment
+        if fragment == "status" and not is_htmx:
+            current_fragment = "panel"
+
+        if current_fragment == "status":
+            context = {"workflow": workflow}
+            context.update(
+                self.build_status_area_context(
+                    workflow=workflow,
+                    active_run=active_run,
+                ),
+            )
+            template_name = self.status_area_template_name
+        else:
+            form = form or self.get_launch_form(workflow=workflow)
+            context = self.build_launch_context(
+                workflow=workflow,
+                form=form,
+                active_run=active_run,
+            )
+            template_name = (
+                self.launch_panel_template_name
+                if is_htmx
+                else "workflows/launch/workflow_launch.html"
+            )
+
+        response = render(
+            request,
+            template_name,
+            context=context,
+            status=status_code,
+        )
+
+        if is_htmx and current_fragment == "panel":
+            response["HX-Retarget"] = "#workflow-launch-panel"
+
+        if toast:
+            sanitized_toast = {
+                key: str(value) if isinstance(value, Promise) else value
+                for key, value in toast.items()
+            }
+            response["HX-Trigger"] = json.dumps({"toast": sanitized_toast})
+        return response
 
 
 class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
@@ -1417,12 +1531,13 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 "can_execute": can_execute,
                 "has_steps": has_steps,
                 "launch_form": form,
-                "active_run": None,
-                "active_run_step_runs": [],
-                "active_run_findings": [],
-                "active_run_is_polling": False,
-                "polling_statuses": self.polling_statuses,
             },
+        )
+        context.update(
+            self.build_status_area_context(
+                workflow=workflow,
+                active_run=None,
+            ),
         )
         return context
 
@@ -1485,6 +1600,11 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 status_code=400,
             )
 
+        self._remember_launch_input_mode(
+            request,
+            form.cleaned_data.get("payload"),
+        )
+
         try:
             submission = self._create_submission(
                 request=request,
@@ -1526,6 +1646,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
                 submission=submission,
                 user_id=getattr(request.user, "id", None),
                 metadata=form.cleaned_data.get("metadata"),
+                wait_for_completion=False,
             )
         except PermissionError as exc:
             logger.info("Permission denied running workflow %s: %s", workflow.pk, exc)
@@ -1571,6 +1692,7 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             active_run=active_run,
             status_code=getattr(response, "status_code", 200),
             toast=toast_payload,
+            fragment="status",
         )
 
     def _create_submission(
@@ -1652,46 +1774,6 @@ class WorkflowLaunchStartView(WorkflowLaunchContextMixin, View):
             submission.save()
         return submission
 
-    def _launch_response(
-        self,
-        request,
-        *,
-        workflow: Workflow,
-        form: WorkflowLaunchForm | None,
-        active_run: ValidationRun | None,
-        status_code: int,
-        toast: dict[str, str] | None = None,
-    ):
-        form = form or self.get_launch_form(workflow=workflow)
-        context = self.build_launch_context(
-            workflow=workflow,
-            form=form,
-            active_run=active_run,
-        )
-        template_name = self.launch_panel_template_name
-        if request.headers.get("HX-Request") == "true":
-            response = render(
-                request,
-                template_name,
-                context=context,
-                status=status_code,
-            )
-        else:
-            response = render(
-                request,
-                "workflows/launch/workflow_launch.html",
-                context=context,
-                status=status_code,
-            )
-        if toast:
-            sanitized_toast = {
-                key: str(value) if isinstance(value, Promise) else value
-                for key, value in toast.items()
-            }
-            response["HX-Trigger"] = json.dumps({"toast": sanitized_toast})
-        return response
-
-
 class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
     http_method_names = ["get"]
 
@@ -1701,29 +1783,65 @@ class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
         run = self.load_run_for_display(workflow=workflow, run_id=run_id)
         if run is None:
             raise Http404
-
-        context = {
-            "workflow": workflow,
-            "run": run,
-            "step_runs": run.step_runs.order_by("step_order"),
-            "findings": run.findings.order_by("severity", "-created")[:10],
-            "is_polling": run.status in self.polling_statuses,
-            "polling_statuses": self.polling_statuses,
-            "status_url": reverse_with_org(
-                "workflows:workflow_launch_status",
-                request=request,
-                kwargs={"pk": workflow.pk, "run_id": run.pk},
+        context = {"workflow": workflow}
+        context.update(
+            self.build_status_area_context(
+                workflow=workflow,
+                active_run=run,
             ),
-            "detail_url": reverse_with_org(
-                "validations:validation_detail",
-                request=request,
-                kwargs={"pk": run.pk},
-            ),
-        }
+        )
         return render(
             request,
-            self.run_status_template_name,
+            self.status_area_template_name,
             context=context,
+        )
+
+
+class WorkflowLaunchCancelView(WorkflowLaunchContextMixin, View):
+    http_method_names = ["post"]
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        if not workflow.can_execute(user=request.user):
+            raise PermissionDenied
+
+        run_id = kwargs.get("run_id")
+        run = self.load_run_for_display(workflow=workflow, run_id=run_id)
+        if run is None:
+            raise Http404
+
+        service = ValidationRunService()
+        updated_run, cancelled = service.cancel_run(run=run, actor=request.user)
+
+        if cancelled:
+            toast_message = _("Workflow validation canceled.")
+            toast_level = "success"
+        else:
+            if updated_run.status == ValidationRunStatus.SUCCEEDED:
+                toast_message = _(
+                    "Process completed before it could be cancelled.",
+                )
+            elif updated_run.status == ValidationRunStatus.FAILED:
+                toast_message = _(
+                    "Process failed before it could be cancelled.",
+                )
+            else:
+                toast_message = _("Unable to cancel this run.")
+            toast_level = "info"
+
+        toast_payload = {
+            "level": toast_level,
+            "message": str(toast_message),
+        }
+
+        return self._launch_response(
+            request,
+            workflow=workflow,
+            form=None,
+            active_run=updated_run,
+            status_code=200,
+            toast=toast_payload,
+            fragment="status",
         )
 
 
@@ -2794,7 +2912,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     None,
                     _(
                         "%(validator)s cannot be added because this workflow only "
-                        "accepts %(allowed)s submissions."
+                        "accepts %(allowed)s submissions.",
                     )
                     % {
                         "validator": validator.name,
@@ -3015,7 +3133,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             key = "input" if stage == CatalogRunStage.INPUT else "output"
             grouped_assertions[key].append(assertion)
         uses_signal_stages = bool(
-            validator and validator.has_signal_stages() and allow_assertions
+            validator and validator.has_signal_stages() and allow_assertions,
         )
         context.update(
             {
@@ -3330,10 +3448,12 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
                 "catalog_choices": self.get_catalog_choices(),
                 "allow_custom_targets": bool(
                     getattr(
-                        self.step.validator, "allow_custom_assertion_targets", False
-                    )
+                        self.step.validator,
+                        "allow_custom_assertion_targets",
+                        False,
+                    ),
                 ),
-            }
+            },
         )
         return context
 
@@ -3348,7 +3468,7 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
             return Q(target_catalog__run_stage=CatalogRunStage.INPUT)
         return Q(
             Q(target_catalog__run_stage=CatalogRunStage.OUTPUT)
-            | Q(target_catalog__isnull=True)
+            | Q(target_catalog__isnull=True),
         )
 
 
@@ -3470,7 +3590,7 @@ class WorkflowStepAssertionDeleteView(WorkflowStepAssertionsMixin, View):
                     "pk": self.get_workflow().pk,
                     "step_id": self.step.pk,
                 },
-            )
+            ),
         )
 
 

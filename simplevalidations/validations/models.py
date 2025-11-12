@@ -1023,6 +1023,15 @@ class ValidationRun(TimeStampedModel):
             ValidationRunStatus.CANCELED: "bg-warning text-dark",
         }.get(self.status, "bg-secondary")
 
+    @property
+    def computed_duration_ms(self) -> int | None:
+        if self.duration_ms:
+            return int(self.duration_ms)
+        if not self.started_at or not self.ended_at:
+            return None
+        delta = self.ended_at - self.started_at
+        return max(int(delta.total_seconds() * 1000), 0)
+
 
 class ValidationStepRun(TimeStampedModel):
     """

@@ -28,12 +28,15 @@ from simplevalidations.validations.services.models import ValidationStepSummary
 logger = logging.getLogger(__name__)
 
 GENERIC_EXECUTION_ERROR = _(
-    "This validation run could not be completed. Please try again later."
+    "This validation run could not be completed. Please try again later.",
 )
+
+RUN_CANCELED_MESSAGE = _("Run canceled by user.")
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
     from simplevalidations.users.models import Organization
+    from simplevalidations.users.models import User
     from simplevalidations.validations.engines.base import BaseValidatorEngine
     from simplevalidations.validations.engines.base import ValidationResult
     from simplevalidations.validations.models import Ruleset
@@ -54,7 +57,7 @@ class ValidationRunService:
 
     # ---------- Launch (views call this) ----------
 
-    def launch(  # noqa: PLR0912 PLR0915
+    def launch(
         self,
         request,
         org: Organization,
@@ -62,6 +65,8 @@ class ValidationRunService:
         submission: Submission,
         user_id: int,
         metadata: dict | None = None,
+        *,
+        wait_for_completion: bool = True,
     ) -> Response:
         """
         Creates a validation run for a given workflow and a user request.
@@ -166,7 +171,8 @@ class ValidationRunService:
         async_result = async_result_box[0] if async_result_box else None
         if async_result is None:  # pragma: no cover - defensive fallback
             logger.warning(
-                "ValidationRun %s task was not scheduled via on_commit; scheduling immediately.",
+                "ValidationRun %s task was not scheduled via on_commit; "
+                "scheduling immediately.",
                 validation_run.id,
             )
             async_result = execute_validation_run.apply_async(
@@ -188,12 +194,13 @@ class ValidationRunService:
             ValidationRunStatus.TIMED_OUT,
         ]
 
-        for _index in range(attempts):
-            with contextlib.suppress(CeleryTimeout):
-                async_result.get(timeout=per_attempt, propagate=False)
-            validation_run.refresh_from_db()
-            if validation_run.status in terminal_statuses:
-                break
+        if wait_for_completion and async_result is not None:
+            for _index in range(attempts):
+                with contextlib.suppress(CeleryTimeout):
+                    async_result.get(timeout=per_attempt, propagate=False)
+                validation_run.refresh_from_db()
+                if validation_run.status in terminal_statuses:
+                    break
 
         location = request.build_absolute_uri(
             reverse(
@@ -224,6 +231,42 @@ class ValidationRunService:
 
         return response
 
+    def cancel_run(
+        self,
+        *,
+        run: ValidationRun,
+        actor: User | None = None,
+    ) -> tuple[ValidationRun, bool]:
+        """Attempt to cancel a validation run if it has not finished yet."""
+
+        if run is None:
+            raise ValueError("run is required to cancel a validation")
+
+        run.refresh_from_db()
+        if run.status == ValidationRunStatus.CANCELED:
+            return run, True
+
+        if run.status not in (ValidationRunStatus.PENDING, ValidationRunStatus.RUNNING):
+            return run, False
+
+        run.status = ValidationRunStatus.CANCELED
+        if not run.ended_at:
+            run.ended_at = timezone.now()
+        if not run.error:
+            run.error = RUN_CANCELED_MESSAGE
+        run.save(update_fields=["status", "ended_at", "error"])
+
+        tracking_service = TrackingEventService()
+        extra = {"duration_ms": run.computed_duration_ms}
+        tracking_service.log_validation_run_status(
+            run=run,
+            status=ValidationRunStatus.CANCELED,
+            actor=actor,
+            extra_data=extra,
+        )
+
+        return run, True
+
     # ---------- Execute (Celery tasks call this) ----------
 
     def execute(
@@ -252,7 +295,7 @@ class ValidationRunService:
                 "submission",
             ).get(id=validation_run_id)
         except ValidationRun.DoesNotExist:
-            logger.error(
+            logger.exception(
                 "ValidationRun %s missing when execution task started.",
                 validation_run_id,
             )
@@ -276,6 +319,10 @@ class ValidationRunService:
         tracking_service = TrackingEventService()
         actor = self._resolve_run_actor(validation_run, user_id)
 
+        def _was_cancelled() -> bool:
+            validation_run.refresh_from_db(fields=["status"])
+            return validation_run.status == ValidationRunStatus.CANCELED
+
         # Mark running
         validation_run.status = ValidationRunStatus.RUNNING
         if not validation_run.started_at:
@@ -294,9 +341,13 @@ class ValidationRunService:
         overall_failed = False
         step_summaries = []
         failing_step_id = None
+        cancelled = False
         try:
             workflow_steps = workflow.steps.all().order_by("order")
             for wf_step in workflow_steps:
+                if _was_cancelled():
+                    cancelled = True
+                    break
                 validation_result: ValidationResult = self.execute_workflow_step(
                     step=wf_step,
                     validation_run=validation_run,
@@ -317,7 +368,10 @@ class ValidationRunService:
                     failing_step_id = wf_step.id
                     # For now we stop on first failure
                     break
-        except Exception as exc:  # noqa: BLE001
+                if _was_cancelled():
+                    cancelled = True
+                    break
+        except Exception as exc:
             logger.exception("Validation run execution failed")
             validation_run.status = ValidationRunStatus.FAILED
             if hasattr(validation_run, "ended_at"):
@@ -341,6 +395,18 @@ class ValidationRunService:
             overview=f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}.",  # noqa: E501
             steps=step_summaries,
         )
+
+        if cancelled or _was_cancelled():
+            validation_run.summary = asdict(validation_run_summary)
+            if not validation_run.ended_at:
+                validation_run.ended_at = timezone.now()
+            validation_run.save(update_fields=["summary", "ended_at"])
+            return ValidationRunTaskResult(
+                run_id=validation_run.id,
+                status=ValidationRunStatus.CANCELED,
+                summary=validation_run_summary,
+                error=validation_run.error or RUN_CANCELED_MESSAGE,
+            )
 
         # Update the ValidationRun instance...
         if overall_failed:
@@ -378,11 +444,15 @@ class ValidationRunService:
             "step_count": len(step_summaries),
             "failing_step_id": failing_step_id,
         }
+        extra_payload = {
+            **{k: v for k, v in completion_extra.items() if v is not None},
+            "duration_ms": validation_run.computed_duration_ms,
+        }
         tracking_service.log_validation_run_status(
             run=validation_run,
             status=validation_run.status,
             actor=actor,
-            extra_data={k: v for k, v in completion_extra.items() if v is not None},
+            extra_data=extra_payload,
         )
 
         return result

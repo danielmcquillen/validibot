@@ -67,7 +67,7 @@ ROOT_URLCONF = "config.urls"
 # https://docs.djangoproject.com/en/dev/ref/settings/#wsgi-application
 WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/dev/ref/settings/#asgi-application
-#ASGI_APPLICATION = "config.asgi.application"
+# ASGI_APPLICATION = "config.asgi.application"
 
 GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
 
@@ -393,7 +393,8 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
 }
-# Your stuff...
+
+# SimpleValidations settings
 # ------------------------------------------------------------------------------
 
 POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default=None)
@@ -426,6 +427,13 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
+
+# Workflow validation run settings
+WORKFLOW_RUN_POLL_INTERVAL_SECONDS = env(
+    "WORKFLOW_RUN_POLL_INTERVAL_SECONDS",
+    default=3,
+)
+
 # Site features
 ACCOUNT_ALLOW_LOGIN = env.bool("DJANGO_ACCOUNT_ALLOW_LOGIN", True)
 
@@ -445,11 +453,13 @@ ENABLE_HELP_CENTER = env.bool("ENABLE_HELP_CENTER", False)
 ENABLE_SYSTEM_STATUS = env.bool("ENABLE_SYSTEM_STATUS", False)
 ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
 
-TEST_ENERGYPLUS_WEATHER_FILE = env("TEST_ENERGYPLUS_WEATHER_FILE", default="USA_CA_SF.epw")
+TEST_ENERGYPLUS_WEATHER_FILE = env(
+    "TEST_ENERGYPLUS_WEATHER_FILE",
+    default="USA_CA_SF.epw",
+)
 
 # PostHog (or other) tracker settings
 TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)
-
 
 # AWS / KMS
 KMS_KEY_ID = env("KMS_KEY_ID", default="alias/sv-badge-signing-prod")

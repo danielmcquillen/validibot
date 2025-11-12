@@ -1,0 +1,23 @@
+{% load i18n core_tags %}
+
+<div id="workflow-launch-status-area"
+     class="workflow-status-column"
+     data-run-active="{{ run_in_progress|yesno:'true,false' }}"
+     {% if active_run and run_in_progress and status_url %}
+       hx-get="{{ status_url }}" hx-target="#workflow-launch-status-area" hx-trigger="every {{ poll_interval_seconds|default:3 }}s" hx-swap="outerHTML"
+     {% endif %}>
+  {% if active_run %}
+    <div id="workflow-launch-run-status">
+      {% include "workflows/launch/partials/run_status.html" with workflow=workflow run=active_run step_runs=active_run_step_runs findings=active_run_findings is_polling=run_in_progress polling_statuses=polling_statuses status_url=status_url detail_url=detail_url cancel_url=cancel_url %}
+    </div>
+  {% else %}
+    <div class="card app-card launch-status-card">
+      <div class="card-body d-flex flex-column justify-content-center align-items-center text-center text-muted p-5">
+        <i class="bi-rocket text-secondary display-5 mb-3"></i>
+        <p class="mb-0">
+          {% trans "Submit content to monitor the validation run here." %}
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</div>

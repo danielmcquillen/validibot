@@ -3,81 +3,78 @@ import logging
 from http import HTTPStatus
 
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
-from django.core.exceptions import ValidationError
-from django.db import models
-from django.db import transaction
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import models, transaction
 from django.db.models import Q
-from django.http import Http404
-from django.http import HttpResponse
-from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404
-from django.shortcuts import render
+from django.http import Http404, HttpResponse, HttpResponseRedirect
+from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from django.views.generic import DetailView
-from django.views.generic import ListView
-from django.views.generic import TemplateView
-from django.views.generic import UpdateView
-from django.views.generic.edit import CreateView
-from django.views.generic.edit import DeleteView
-from django.views.generic.edit import FormView
-from rest_framework import permissions
-from rest_framework import viewsets
+from django.views.generic import DetailView, ListView, TemplateView, UpdateView
+from django.views.generic.edit import CreateView, DeleteView, FormView
+from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
+from rest_framework.response import Response as APIResponse
 
 from simplevalidations.actions.constants import ActionCategoryType
-from simplevalidations.actions.models import ActionDefinition
-from simplevalidations.actions.models import SignedCertificateAction
-from simplevalidations.actions.models import SlackMessageAction
+from simplevalidations.actions.models import (
+    ActionDefinition,
+    SignedCertificateAction,
+    SlackMessageAction,
+)
 from simplevalidations.actions.registry import get_action_form
-from simplevalidations.core.utils import pretty_json
-from simplevalidations.core.utils import pretty_xml
-from simplevalidations.core.utils import reverse_with_org
-from simplevalidations.core.view_helpers import hx_redirect_response
-from simplevalidations.core.view_helpers import hx_trigger_response
+from simplevalidations.core.utils import pretty_json, pretty_xml, reverse_with_org
+from simplevalidations.core.view_helpers import (
+    hx_redirect_response,
+    hx_trigger_response,
+)
 from simplevalidations.projects.models import Project
-from simplevalidations.validations.constants import ADVANCED_VALIDATION_TYPES
-from simplevalidations.validations.constants import CatalogRunStage
-from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.validations.constants import (
+    ADVANCED_VALIDATION_TYPES,
+    CatalogRunStage,
+    JSONSchemaVersion,
+    ValidationRunStatus,
+    ValidationType,
+    XMLSchemaType,
+)
 from simplevalidations.validations.forms import RulesetAssertionForm
-from simplevalidations.validations.models import RulesetAssertion
-from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import (
+    RulesetAssertion,
+    ValidationRun,
+    Validator,
+)
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
-from simplevalidations.workflows.forms import WorkflowPublicInfoForm
-from simplevalidations.workflows.forms import WorkflowStepTypeForm
-from simplevalidations.workflows.forms import get_config_form_class
-from simplevalidations.workflows.mixins import WorkflowAccessMixin
-from simplevalidations.workflows.mixins import WorkflowFormViewMixin
-from simplevalidations.workflows.mixins import WorkflowLaunchContextMixin
-from simplevalidations.workflows.mixins import WorkflowObjectMixin
-from simplevalidations.workflows.mixins import WorkflowStepAssertionsMixin
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowStep
-from simplevalidations.workflows.request_utils import extract_request_basics
+from simplevalidations.workflows.forms import (
+    WorkflowPublicInfoForm,
+    WorkflowStepTypeForm,
+    get_config_form_class,
+)
+from simplevalidations.workflows.mixins import (
+    WorkflowAccessMixin,
+    WorkflowFormViewMixin,
+    WorkflowLaunchContextMixin,
+    WorkflowObjectMixin,
+    WorkflowStepAssertionsMixin,
+)
+from simplevalidations.workflows.models import Workflow, WorkflowStep
 from simplevalidations.workflows.serializers import WorkflowSerializer
-from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
-from simplevalidations.workflows.views_helpers import public_info_card_context
-from simplevalidations.workflows.views_helpers import resequence_workflow_steps
-from simplevalidations.workflows.views_helpers import resolve_project
-from simplevalidations.workflows.views_helpers import save_workflow_action_step
-from simplevalidations.workflows.views_helpers import save_workflow_step
-from simplevalidations.workflows.views_helpers import user_has_executor_role
+from simplevalidations.workflows.views_helpers import (
+    ensure_advanced_ruleset,
+    public_info_card_context,
+    resequence_workflow_steps,
+    resolve_project,
+    save_workflow_action_step,
+    save_workflow_step,
+    user_has_executor_role,
+)
 from simplevalidations.workflows.views_launch_helpers import (
     LaunchValidationError,
-)
-from simplevalidations.workflows.views_launch_helpers import SubmissionBuild
-from simplevalidations.workflows.views_launch_helpers import launch_validation_run
-from simplevalidations.workflows.views_launch_helpers import (
-    start_validation_run_for_workflow,
+    SubmissionBuild,
+    launch_api_validation_run,
+    launch_web_validation_run,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,45 +112,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)
-        content_type_header, body_bytes = extract_request_basics(request)
-        headers = {key: value for key, value in request.headers.items()}
-        try:
-            submission_build = start_validation_run_for_workflow(
-                workflow=workflow,
-                user=request.user,
-                project=project,
-                headers=headers,
-                content_type_header=content_type_header,
-                body_bytes=body_bytes,
-                serializer_factory=self.get_serializer,
-                multipart_payload=lambda: request.data,
-            )
-        except LaunchValidationError as exc:
-            status_code = exc.status_code
-            if status_code == HTTPStatus.FORBIDDEN:
-                status_code = HTTPStatus.NOT_FOUND
-            return Response(exc.payload, status=status_code)
-
-        try:
-            result = launch_validation_run(
-                request=request,
-                workflow=workflow,
-                submission=submission_build.submission,
-                metadata=submission_build.metadata,
-                user_id=getattr(request.user, "id", None),
-            )
-        except PermissionError:
-            payload = {"detail": _("You do not have permission to run this workflow.")}
-            return Response(payload, status=HTTPStatus.FORBIDDEN)
-        except Exception:  # pragma: no cover - defensive
-            logger.exception("Run service errored for workflow %s", workflow.pk)
-            payload = {"detail": _("Could not run the workflow. Please try again.")}
-            return Response(payload, status=HTTPStatus.INTERNAL_SERVER_ERROR)
-        response = Response(result.payload, status=result.status_code)
-        if result.headers:
-            for key, value in result.headers.items():
-                response[key] = value
-        return response
+        return launch_api_validation_run(
+            request=request,
+            workflow=workflow,
+            project=project,
+            serializer_factory=self.get_serializer,
+        )
 
 
 # UI Views
@@ -165,6 +129,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
 
 class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
+    """Renders and processes the workflow launch form in the web UI."""
+
     template_name = "workflows/launch/workflow_launch.html"
 
     def get_breadcrumbs(self):
@@ -213,34 +179,37 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
+        """
+        Handles submission of the launch form.
+        Note that we have to process the form before we call our helper
+        to create the submission.
+
+        Args:
+            request (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        
+        
         workflow = self.get_workflow()
-        if not user_has_executor_role(request.user, workflow):
-            return HttpResponse(
-                _("You cannot run this workflow."),
-                status=HTTPStatus.FORBIDDEN,
-            )
-
-        if not workflow.steps.exists():
-            context = self.get_context_data(launch_form=None)
-            return self.render_to_response(context, status=HTTPStatus.BAD_REQUEST)
-
         form = self.get_launch_form(
             workflow=workflow,
             data=request.POST,
             files=request.FILES,
         )
 
-        if not form.is_valid():
-            context = self.get_context_data(launch_form=form)
-            return self.render_to_response(context, status=HTTPStatus.OK)
-
         self._remember_launch_input_mode(
             request,
             form.cleaned_data.get("payload"),
         )
 
+        if not form.is_valid():
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=HTTPStatus.OK)
+
         try:
-            submission = self._create_submission(
+            submission_build: SubmissionBuild = self._create_submission_from_form(
                 request=request,
                 workflow=workflow,
                 form=form,
@@ -263,15 +232,13 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
-        metadata = form.cleaned_data.get("metadata") or {}
-        submission_build = SubmissionBuild(submission=submission, metadata=metadata)
         try:
-            start_validation_run_for_workflow(
-                workflow=workflow,
-                user=request.user,
-                project=workflow.project,
+            response: HttpResponseRedirect = launch_web_validation_run(
                 submission_build=submission_build,
+                request=request,
+                workflow=workflow,
             )
+            return response
         except LaunchValidationError as exc:
             error_detail = exc.payload.get("detail") or _(
                 "Could not run the workflow. Please try again.",
@@ -279,55 +246,17 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
             form.add_error(None, error_detail)
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(context, status=exc.status_code)
-
-        try:
-            result = launch_validation_run(
-                request=request,
-                workflow=workflow,
-                submission=submission,
-                metadata=metadata,
-                user_id=getattr(request.user, "id", None),
-            )
-        except PermissionError as exc:
-            logger.info("Permission denied running workflow %s: %s", workflow.pk, exc)
+        except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(context, status=HTTPStatus.FORBIDDEN)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception(
-                "Run service errored for workflow %s",
-                workflow.pk,
-                exc_info=exc,
-            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Run service errored for workflow %s", workflow.pk)
             form.add_error(None, _("Could not run the workflow. Please try again."))
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(
                 context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
-        if result.status_code >= 400:
-            error_message = result.payload.get("detail") or _(
-                "Could not run the workflow. Please try again.",
-            )
-            form.add_error(None, error_message)
-            context = self.get_context_data(launch_form=form)
-            return self.render_to_response(context, status=result.status_code)
-
-        run_id = result.payload.get("id")
-
-        active_run = self.load_run_for_display(workflow=workflow, run_id=run_id)
-        if not active_run:
-            form.add_error(None, _("Unable to load the new run."))
-            context = self.get_context_data(launch_form=form)
-            return self.render_to_response(
-                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
-            )
-
-        run_detail_url = reverse_with_org(
-            "workflows:workflow_run_detail",
-            request=request,
-            kwargs={"pk": workflow.pk, "run_id": active_run.pk},
-        )
-        return HttpResponseRedirect(run_detail_url)
 
 
 class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):

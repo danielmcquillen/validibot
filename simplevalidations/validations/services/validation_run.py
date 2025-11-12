@@ -3,27 +3,29 @@ from __future__ import annotations
 import contextlib
 import logging
 from dataclasses import asdict
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from attr import dataclass
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
 from django.db import transaction
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
-from rest_framework.response import Response
 
 from simplevalidations.tracking.services import TrackingEventService
-from simplevalidations.validations.constants import StepStatus
-from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import (
+    VALIDATION_RUN_TERMINAL_STATUSES,
+    StepStatus,
+    ValidationRunStatus,
+)
 from simplevalidations.validations.engines.registry import get as get_validator_class
 from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.serializers import ValidationRunSerializer
-from simplevalidations.validations.services.models import ValidationRunSummary
-from simplevalidations.validations.services.models import ValidationRunTaskResult
-from simplevalidations.validations.services.models import ValidationStepSummary
+from simplevalidations.validations.services.models import (
+    ValidationRunSummary,
+    ValidationRunTaskResult,
+    ValidationStepSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +37,20 @@ RUN_CANCELED_MESSAGE = _("Run canceled by user.")
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
-    from simplevalidations.users.models import Organization
-    from simplevalidations.users.models import User
-    from simplevalidations.validations.engines.base import BaseValidatorEngine
-    from simplevalidations.validations.engines.base import ValidationResult
-    from simplevalidations.validations.models import Ruleset
-    from simplevalidations.validations.models import Validator
-    from simplevalidations.workflows.models import Workflow
-    from simplevalidations.workflows.models import WorkflowStep
+    from simplevalidations.users.models import Organization, User
+    from simplevalidations.validations.engines.base import (
+        BaseValidatorEngine,
+        ValidationResult,
+    )
+    from simplevalidations.validations.models import Ruleset, Validator
+    from simplevalidations.workflows.models import Workflow, WorkflowStep
+
+
+@dataclass
+class ValidationRunLaunchResults:
+    validation_run: ValidationRun
+    data: dict[str, Any]
+    status: int | None = None
 
 
 class ValidationRunService:
@@ -67,7 +75,7 @@ class ValidationRunService:
         metadata: dict | None = None,
         *,
         wait_for_completion: bool = True,
-    ) -> Response:
+    ) -> ValidationRunLaunchResults:
         """
         Creates a validation run for a given workflow and a user request.
         The user should have provided us with a 'submission' as part of their request.
@@ -89,7 +97,7 @@ class ValidationRunService:
             metadata:       Optional metadata to be associated with the run.
 
         Returns:
-            Response: DRF Response object with appropriate status and data.
+            ValidationRunLaunchResults: Instance of this dataclass with results of launch.
 
         """
         # local import to avoid cycles
@@ -187,49 +195,27 @@ class ValidationRunService:
         per_attempt = int(getattr(settings, "VALIDATION_START_ATTEMPT_TIMEOUT", 5))
         attempts = int(getattr(settings, "VALIDATION_START_ATTEMPTS", 4))
 
-        terminal_statuses = [
-            ValidationRunStatus.SUCCEEDED,
-            ValidationRunStatus.FAILED,
-            ValidationRunStatus.CANCELED,
-            ValidationRunStatus.TIMED_OUT,
-        ]
-
         if wait_for_completion and async_result is not None:
             for _index in range(attempts):
                 with contextlib.suppress(CeleryTimeout):
                     async_result.get(timeout=per_attempt, propagate=False)
                 validation_run.refresh_from_db()
-                if validation_run.status in terminal_statuses:
+                if validation_run.status in VALIDATION_RUN_TERMINAL_STATUSES:
                     break
 
-        location = request.build_absolute_uri(
-            reverse(
-                "api:validation-runs-detail",
-                kwargs={"pk": validation_run.id},
-            ),
+        results: ValidationRunLaunchResults = ValidationRunLaunchResults(
+            validation_run=validation_run,
         )
 
-        data = ValidationRunSerializer(validation_run).data
-        if validation_run.status in terminal_statuses:
+        if validation_run.status in VALIDATION_RUN_TERMINAL_STATUSES:
             # Finished (either success or failure)
-            response = Response(
-                data,
-                status=status.HTTP_201_CREATED,
-                headers={"Location": location},
-            )
+            results.status = status.HTTP_201_CREATED
         else:
             # Still running or pending
             # Add the URL to poll for status
-            data["url"] = location
-            data["poll"] = location
-            headers = {"Location": location, "Retry-After": str(per_attempt)}
-            response = Response(
-                data,
-                status=status.HTTP_202_ACCEPTED,
-                headers=headers,
-            )
+            results.status = status.HTTP_202_ACCEPTED
 
-        return response
+        return results
 
     def cancel_run(
         self,

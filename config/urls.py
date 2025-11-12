@@ -79,6 +79,10 @@ if settings.ENABLE_APP:
             include("simplevalidations.projects.urls", namespace="projects"),
         ),
         path(
+            "app/members/",
+            include("simplevalidations.members.urls", namespace="members"),
+        ),
+        path(
             "app/workflows/",
             include("simplevalidations.workflows.urls", namespace="workflows"),
         ),

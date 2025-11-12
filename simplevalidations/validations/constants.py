@@ -13,6 +13,14 @@ class ValidationRunStatus(TextChoices):
     TIMED_OUT = "TIMED_OUT", _("Timed Out")
 
 
+VALIDATION_RUN_TERMINAL_STATUSES = [
+    ValidationRunStatus.SUCCEEDED,
+    ValidationRunStatus.FAILED,
+    ValidationRunStatus.CANCELED,
+    ValidationRunStatus.TIMED_OUT,
+]
+
+
 class StepStatus(TextChoices):
     PENDING = "PENDING", _("Pending")
     RUNNING = "RUNNING", _("Running")

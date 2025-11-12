@@ -28,7 +28,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
     to the user about an existing, in-progress or completed run.
     """
 
-    workflow = SlugRelatedField(
+    workflow = PrimaryKeyRelatedField(read_only=True)
+
+    workflow_slug = SlugRelatedField(
+        source="workflow",
         read_only=True,
         slug_field="slug",
     )
@@ -66,6 +69,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "status",
             "org",
             "workflow",
+            "workflow_slug",
             # "project", # Not implemented yet...
             "submission",
             "started_at",

@@ -9,34 +9,36 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.utils.functional import Promise
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.ingest import prepare_inline_text
-from simplevalidations.submissions.ingest import prepare_uploaded_file
+from simplevalidations.submissions.ingest import (
+    prepare_inline_text,
+    prepare_uploaded_file,
+)
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import ADVANCED_VALIDATION_TYPES
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.models import Ruleset
-from simplevalidations.validations.models import ValidationRun
-from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
-from simplevalidations.workflows.constants import preferred_content_type_for_file
-from simplevalidations.workflows.forms import WorkflowForm
-from simplevalidations.workflows.forms import WorkflowLaunchForm
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.validations.constants import (
+    ADVANCED_VALIDATION_TYPES,
+    ValidationRunStatus,
+)
+from simplevalidations.validations.models import Ruleset, ValidationRun
+from simplevalidations.workflows.constants import (
+    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
+    preferred_content_type_for_file,
+)
+from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
+from simplevalidations.workflows.models import Workflow, WorkflowStep
 from simplevalidations.workflows.views_helpers import (
     describe_workflow_file_type_violation,
+    ensure_advanced_ruleset,
+    resolve_submission_file_type,
 )
-from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
-from simplevalidations.workflows.views_helpers import resolve_submission_file_type
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +278,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "previous_runs_url": previous_runs_url,
         }
 
-    def _create_submission(
+    def _create_submission_from_form(
         self,
         *,
         request,

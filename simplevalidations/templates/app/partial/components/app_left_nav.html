@@ -79,6 +79,14 @@
           <span>{% trans "Manage projects" %}</span>
         </a>
       </li>
+      <li class="nav-item" role="none">
+        <a href="{% org_url 'members:member_list' %}"
+           class="nav-link text-white {% active_link 'members' %}"
+           role="menuitem">
+          <i class="bi bi-people"></i>
+          <span>{% trans "Manage members" %}</span>
+        </a>
+      </li>
     {% endif %}
   </ul>
 

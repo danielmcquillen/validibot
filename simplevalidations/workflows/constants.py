@@ -33,6 +33,10 @@ class WorkflowStartErrorCode(models.TextChoices):
         "FILE_TYPE_UNSUPPORTED",
         _("Workflow cannot accept the submitted file type"),
     )
+    PERMISSION_DENIED = (
+        "PERMISSION_DENIED",
+        _("You do not have permission to run this workflow"),
+    )
 
 
 SUPPORTED_CONTENT_TYPES = {

@@ -6,7 +6,6 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.response import Response
 from rest_framework.test import APIClient
 
 import simplevalidations.workflows.views as views_mod
@@ -25,10 +24,13 @@ from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.validations.services.validation_run import (
+    ValidationRunLaunchResults,
+)
 from simplevalidations.workflows.constants import WorkflowStartErrorCode
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
-from simplevalidations.validations.tests.factories import ValidatorFactory
 
 try:
     from simplevalidations.workflows.tests.factories import (
@@ -140,6 +142,10 @@ def mock_validation_service_success(monkeypatch):
         )
 
     def launch_side_effect(*_, **kwargs):
+        request = kwargs.get("request")
+        actor = getattr(request, "user", None)
+        if not kwargs["workflow"].can_execute(user=actor):
+            raise PermissionError("User lacks executor role")
         run = make_run(
             org=kwargs["org"],
             workflow=kwargs["workflow"],
@@ -147,8 +153,6 @@ def mock_validation_service_success(monkeypatch):
             status=ValidationRunStatus.SUCCEEDED,
         )
         tracking_service = TrackingEventService()
-        request = kwargs.get("request")
-        actor = getattr(request, "user", None)
         tracking_service.log_validation_run_created(
             run=run,
             user=actor,
@@ -165,7 +169,11 @@ def mock_validation_service_success(monkeypatch):
             "submission": run.submission_id,
             "status": run.status,
         }
-        return Response(data, status=201)
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data=data,
+            status=status.HTTP_201_CREATED,
+        )
 
     fake_service = SimpleNamespace(launch=launch_side_effect)
     # Patch where the view LOOKS UP the class
@@ -684,15 +692,21 @@ class TestWorkflowStartAPI:
 
         # Override the autouse 201 stub with a 202 stub for THIS test only
         def pending_side_effect(*_, **kwargs):
+            request = kwargs.get("request")
+            actor = getattr(request, "user", None)
+            if not kwargs["workflow"].can_execute(user=actor):
+                raise PermissionError("User lacks executor role")
             run = make_run(
                 org=kwargs["org"],
                 workflow=kwargs["workflow"],
                 submission=kwargs["submission"],
                 status=ValidationRunStatus.PENDING,
             )
-            resp = Response({"id": run.id, "status": run.status}, status=202)
-            resp["Location"] = f"/api/v1/validation-runs/{run.id}/"
-            return resp
+            return ValidationRunLaunchResults(
+                validation_run=run,
+                data={"id": run.id, "status": run.status},
+                status=status.HTTP_202_ACCEPTED,
+            )
 
         fake_service = SimpleNamespace(launch=pending_side_effect)
         monkeypatch.setattr(

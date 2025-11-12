@@ -7,7 +7,6 @@ from http import HTTPStatus
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
-from rest_framework.response import Response
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
@@ -19,6 +18,9 @@ from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.services.validation_run import (
+    ValidationRunLaunchResults,
+)
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
@@ -94,9 +96,10 @@ def test_launch_post_creates_run_and_redirects(client, monkeypatch):
             user=request.user,
             status=ValidationRunStatus.PENDING,
         )
-        return Response(
-            {"id": str(run.pk), "status": ValidationRunStatus.PENDING},
-            status=202,
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
         )
 
     monkeypatch.setattr(
@@ -135,9 +138,10 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
             user=request.user,
             status=ValidationRunStatus.PENDING,
         )
-        return Response(
-            {"id": str(run.pk), "status": ValidationRunStatus.PENDING},
-            status=202,
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
         )
 
     monkeypatch.setattr(
@@ -190,7 +194,7 @@ def test_launch_start_requires_executor_role(client):
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    assert "You cannot run this workflow" in response.content.decode()
+    assert "You do not have permission to run this workflow." in response.content.decode()
 
 
 def test_cancel_run_updates_status(client):

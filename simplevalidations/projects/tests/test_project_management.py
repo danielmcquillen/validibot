@@ -1,22 +1,23 @@
-import pytest
-from django.urls import reverse
-
 from datetime import timedelta
 
+import pytest
 from django.core.management import call_command
+from django.urls import reverse
 from django.utils import timezone
 
+from simplevalidations.integrations.models import OutboundEvent
 from simplevalidations.projects.models import Project
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.models import Submission
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.tracking.tests.factories import TrackingEventFactory
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import ValidationRunFactory
-from simplevalidations.integrations.models import OutboundEvent
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory, grant_role
 
 
 @pytest.fixture

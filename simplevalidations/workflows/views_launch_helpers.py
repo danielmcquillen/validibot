@@ -6,6 +6,7 @@ from http import HTTPStatus
 from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import reverse
@@ -109,14 +110,6 @@ def launch_web_validation_run(
         PermissionError: If the user is not allowed to execute the workflow.
     """
 
-    submission_build: SubmissionBuild = build_submission_for_workflow_launch(
-        workflow=workflow,
-        user=request.user,
-        project=workflow.project,
-        submission_build=submission_build,
-        skip_prechecks=True,
-    )
-
     service = ValidationRunService()
     launch_result = service.launch(
         request=request,
@@ -139,35 +132,18 @@ def launch_api_validation_run(
     *,
     request: HttpRequest,
     workflow: Workflow,
-    project: Project | None,
-    serializer_factory: Callable[..., Any],
+    submission_build: SubmissionBuild,
 ) -> APIResponse:
     """Launches a workflow run initiated by the REST API.
 
     Args:
         request: DRF/Django request received by the API endpoint.
         workflow: Workflow requested by the caller.
-        project: Optional project context derived from request parameters.
-        serializer_factory: Factory returning ValidationRunStartSerializer.
+        submission_build: Submission and metadata prepared for launch.
 
     Returns:
         APIResponse: Serializer payload, headers, and status for the run request.
     """
-
-    try:
-        submission_build: SubmissionBuild = build_submission_for_workflow_launch(
-            request=request,
-            workflow=workflow,
-            user=request.user,
-            project=project,
-            serializer_factory=serializer_factory,
-            multipart_payload=lambda: request.data,
-        )
-    except LaunchValidationError as exc:
-        status_code = exc.status_code
-        if status_code == HTTPStatus.FORBIDDEN:
-            status_code = HTTPStatus.NOT_FOUND
-        return APIResponse(exc.payload, status=status_code)
 
     service = ValidationRunService()
     try:
@@ -542,55 +518,117 @@ def handle_multipart_mode(
     )
 
 
-def build_submission_for_workflow_launch(
+def build_submission_from_form(
+    *,
+    request: HttpRequest,
+    workflow: Workflow,
+    cleaned_data: dict[str, Any],
+) -> SubmissionBuild:
+    """Persist a submission from validated WorkflowLaunchForm data."""
+
+    ensure_launch_preconditions(workflow=workflow, user=request.user)
+
+    payload = cleaned_data.get("payload")
+    attachment = cleaned_data.get("attachment")
+    requested_file_type = cleaned_data["file_type"]
+    filename = cleaned_data.get("filename") or ""
+    metadata = cleaned_data.get("metadata") or {}
+    attachment_name = getattr(attachment, "name", "") if attachment else ""
+    detection_input_name = filename or attachment_name or "document"
+    final_file_type = resolve_submission_file_type(
+        requested=requested_file_type,
+        filename=detection_input_name,
+        inline_text=payload,
+    )
+    violation = describe_workflow_file_type_violation(
+        workflow=workflow,
+        file_type=final_file_type,
+    )
+    if violation:
+        raise ValidationError(violation)
+    content_type = preferred_content_type_for_file(
+        final_file_type,
+        filename=detection_input_name,
+    )
+
+    submission = Submission(
+        org=workflow.org,
+        workflow=workflow,
+        user=request.user if getattr(request.user, "is_authenticated", False) else None,
+        project=workflow.project,
+        name="",
+        metadata=metadata,
+        checksum_sha256="",
+    )
+
+    if attachment:
+        max_file = int(settings.SUBMISSION_FILE_MAX_BYTES)
+        ingest = prepare_uploaded_file(
+            uploaded_file=attachment,
+            filename=filename,
+            content_type=content_type,
+            max_bytes=max_file,
+        )
+        safe_filename = ingest.filename
+        submission.name = safe_filename
+        submission.checksum_sha256 = ingest.sha256
+        submission.set_content(
+            uploaded_file=attachment,
+            filename=safe_filename,
+            file_type=final_file_type,
+        )
+    else:
+        safe_filename, ingest = prepare_inline_text(
+            text=payload,
+            filename=filename,
+            content_type=content_type,
+            deny_magic_on_text=True,
+        )
+        submission.name = safe_filename
+        submission.checksum_sha256 = ingest.sha256
+        submission.set_content(
+            inline_text=payload,
+            filename=safe_filename,
+            file_type=final_file_type,
+        )
+
+    with transaction.atomic():
+        submission.full_clean()
+        submission.save()
+    return SubmissionBuild(submission=submission, metadata=metadata)
+
+
+def build_submission_from_api(
     *,
     workflow: Workflow,
     user: User,
     project: Project | None,
-    request: HttpRequest | None = None,
-    serializer_factory: Callable[..., Any] | None = None,
+    request: HttpRequest,
+    serializer_factory: Callable[..., Any],
     multipart_payload=None,
     submission_settings=None,
-    submission_build: SubmissionBuild | None = None,
-    skip_prechecks: bool = False,
 ) -> SubmissionBuild:
-    """Builds a Submission object for a workflow run request.
+    """Builds a Submission object for API-driven workflow launches.
 
     The helper normalizes the incoming payload (raw body, JSON envelope, or
-    multipart) and persists the resulting Submission. It is invoked by both
-    `launch_api_validation_run` and `launch_web_validation_run` so that every
-    entry point enforces the same workflow pre-checks before attempting to
-    launch a run.
+    multipart) and persists the resulting Submission for the launch service.
 
     Args:
         workflow: Workflow targeted by the request.
         user: User initiating the run.
         project: Project context resolved for the workflow.
-        request: HTTP request carrying the submission payload (API only).
+        request: DRF/Django request carrying the submission payload.
         serializer_factory: Factory that yields the DRF serializer used to
             validate structured payloads (required for API invocations).
         multipart_payload: Callable returning multipart data when request is not
             available (mainly for tests).
         submission_settings: Optional overrides for metadata policy enforcement.
-        submission_build: Pre-built submission metadata (web form code path).
 
     Returns:
         SubmissionBuild: Saved submission and metadata ready for launch.
     """
 
-    if not skip_prechecks:
-        ensure_launch_preconditions(workflow=workflow, user=user)
-
-    if submission_build is not None:
-        return submission_build
-
-    if serializer_factory is None:
-        raise ValueError(
-            _("serializer_factory is required when parsing submission data.")
-        )
-
-    if request is None:
-        raise ValueError(_("request is required when parsing API submissions."))
+    ensure_launch_preconditions(workflow=workflow, user=user)
 
     headers = {key: value for key, value in request.headers.items()}
     content_type_header, body_bytes = extract_request_basics(request)

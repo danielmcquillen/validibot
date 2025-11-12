@@ -72,7 +72,8 @@ from simplevalidations.workflows.views_helpers import (
 )
 from simplevalidations.workflows.views_launch_helpers import (
     LaunchValidationError,
-    SubmissionBuild,
+    build_submission_from_api,
+    build_submission_from_form,
     launch_api_validation_run,
     launch_web_validation_run,
 )
@@ -112,11 +113,25 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)
+        try:
+            submission_build = build_submission_from_api(
+                request=request,
+                workflow=workflow,
+                user=request.user,
+                project=project,
+                serializer_factory=self.get_serializer,
+                multipart_payload=lambda: request.data,
+            )
+        except LaunchValidationError as exc:
+            status_code = exc.status_code
+            if status_code == HTTPStatus.FORBIDDEN:
+                status_code = HTTPStatus.NOT_FOUND
+            return APIResponse(exc.payload, status=status_code)
+
         return launch_api_validation_run(
             request=request,
             workflow=workflow,
-            project=project,
-            serializer_factory=self.get_serializer,
+            submission_build=submission_build,
         )
 
 
@@ -179,19 +194,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
-        """
-        Handles submission of the launch form.
-        Note that we have to process the form before we call our helper
-        to create the submission.
-
-        Args:
-            request (_type_): _description_
-
-        Returns:
-            _type_: _description_
-        """
-        
-        
+        """Handle submission of the workflow launch form."""
         workflow = self.get_workflow()
         form = self.get_launch_form(
             workflow=workflow,
@@ -199,25 +202,36 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
             files=request.FILES,
         )
 
+        form_valid = form.is_valid()
+        payload_source = form.cleaned_data if form_valid else form.data
         self._remember_launch_input_mode(
             request,
-            form.cleaned_data.get("payload"),
+            payload_source.get("payload"),
         )
 
-        if not form.is_valid():
+        if not form_valid:
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(context, status=HTTPStatus.OK)
 
+        # Build the submision ...
+
         try:
-            submission_build: SubmissionBuild = self._create_submission_from_form(
+            submission_build = build_submission_from_form(
                 request=request,
                 workflow=workflow,
-                form=form,
+                cleaned_data=form.cleaned_data,
             )
         except ValidationError as exc:
             form.add_error(None, exc.message if hasattr(exc, "message") else str(exc))
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(context, status=HTTPStatus.BAD_REQUEST)
+        except LaunchValidationError as exc:
+            error_detail = exc.payload.get("detail") or _(
+                "Could not run the workflow. Please try again.",
+            )
+            form.add_error(None, error_detail)
+            context = self.get_context_data(launch_form=form)
+            return self.render_to_response(context, status=exc.status_code)
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception(
                 "Failed to prepare submission for workflow run.",
@@ -232,6 +246,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 context, status=HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+        # Launch the validation run ...
         try:
             response: HttpResponseRedirect = launch_web_validation_run(
                 submission_build=submission_build,
@@ -239,13 +254,6 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 workflow=workflow,
             )
             return response
-        except LaunchValidationError as exc:
-            error_detail = exc.payload.get("detail") or _(
-                "Could not run the workflow. Please try again.",
-            )
-            form.add_error(None, error_detail)
-            context = self.get_context_data(launch_form=form)
-            return self.render_to_response(context, status=exc.status_code)
         except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)

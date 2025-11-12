@@ -40,6 +40,10 @@ SimpleValidations lets you run validations on submitted content through configur
 - Listing Workflows shows only those you can access across your orgs.
 - Starting a run requires the EXECUTOR role in the workflow's organization.
 
+### Developer Notes
+
+- Both the HTML launch view and the REST API use the same submission builders: `build_submission_from_form()` handles `WorkflowLaunchForm` payloads and `build_submission_from_api()` processes raw/JSON/multipart HTTP bodies. Each returns a `SubmissionBuild` that is then passed to `launch_web_validation_run()` or `launch_api_validation_run()` so every entry point enforces identical guards and launch behavior.
+
 ## Related Documentation
 
 - **Detailed Architecture**: [How It Works](overview/how_it_works.md)

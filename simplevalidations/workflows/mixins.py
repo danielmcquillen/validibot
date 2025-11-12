@@ -6,8 +6,6 @@ from typing import Any
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.utils.functional import Promise
@@ -16,11 +14,6 @@ from django.utils.translation import gettext_lazy as _
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.ingest import (
-    prepare_inline_text,
-    prepare_uploaded_file,
-)
-from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import (
@@ -28,17 +21,10 @@ from simplevalidations.validations.constants import (
     ValidationRunStatus,
 )
 from simplevalidations.validations.models import Ruleset, ValidationRun
-from simplevalidations.workflows.constants import (
-    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
-    preferred_content_type_for_file,
-)
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
 from simplevalidations.workflows.models import Workflow, WorkflowStep
-from simplevalidations.workflows.views_helpers import (
-    describe_workflow_file_type_violation,
-    ensure_advanced_ruleset,
-    resolve_submission_file_type,
-)
+from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
 
 logger = logging.getLogger(__name__)
 
@@ -277,85 +263,6 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "launch_url": launch_url,
             "previous_runs_url": previous_runs_url,
         }
-
-    def _create_submission_from_form(
-        self,
-        *,
-        request,
-        workflow: Workflow,
-        form: WorkflowLaunchForm,
-    ) -> Submission:
-        cleaned = form.cleaned_data
-        payload = cleaned.get("payload")
-        attachment = cleaned.get("attachment")
-        requested_file_type = cleaned["file_type"]
-        filename = cleaned.get("filename") or ""
-        metadata = cleaned.get("metadata") or {}
-        attachment_name = getattr(attachment, "name", "") if attachment else ""
-        detection_input_name = filename or attachment_name or "document"
-        final_file_type = resolve_submission_file_type(
-            requested=requested_file_type,
-            filename=detection_input_name,
-            inline_text=payload,
-        )
-        violation = describe_workflow_file_type_violation(
-            workflow=workflow,
-            file_type=final_file_type,
-        )
-        if violation:
-            raise ValidationError(violation)
-        content_type = preferred_content_type_for_file(
-            final_file_type,
-            filename=detection_input_name,
-        )
-
-        submission = Submission(
-            org=workflow.org,
-            workflow=workflow,
-            user=request.user
-            if getattr(request.user, "is_authenticated", False)
-            else None,
-            project=workflow.project,
-            name="",
-            metadata=metadata,
-            checksum_sha256="",
-        )
-
-        if attachment:
-            max_file = int(settings.SUBMISSION_FILE_MAX_BYTES)
-            ingest = prepare_uploaded_file(
-                uploaded_file=attachment,
-                filename=filename,
-                content_type=content_type,
-                max_bytes=max_file,
-            )
-            safe_filename = ingest.filename
-            submission.name = safe_filename
-            submission.checksum_sha256 = ingest.sha256
-            submission.set_content(
-                uploaded_file=attachment,
-                filename=safe_filename,
-                file_type=final_file_type,
-            )
-        else:
-            safe_filename, ingest = prepare_inline_text(
-                text=payload,
-                filename=filename,
-                content_type=content_type,
-                deny_magic_on_text=True,
-            )
-            submission.name = safe_filename
-            submission.checksum_sha256 = ingest.sha256
-            submission.set_content(
-                inline_text=payload,
-                filename=safe_filename,
-                file_type=final_file_type,
-            )
-
-        with transaction.atomic():
-            submission.full_clean()
-            submission.save()
-        return submission
 
     def get_recent_runs(self, workflow: Workflow, limit: int = 5):
         return list(

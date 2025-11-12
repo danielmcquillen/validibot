@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from http import HTTPStatus
 from typing import Any
 
 from django.conf import settings
@@ -187,9 +188,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
 
     launch_panel_template_name = "workflows/launch/partials/launch_panel.html"
 
-    run_status_template_name = "workflows/launch/partials/run_status.html"
-
-    status_area_template_name = "workflows/launch/partials/status_area.html"
+    run_detail_template_name = "workflows/launch/workflow_run_detail.html"
+    run_detail_panel_template_name = "workflows/launch/partials/run_status_card.html"
 
     polling_statuses = {
         ValidationRunStatus.PENDING,
@@ -220,12 +220,12 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             active_run,
         )
         poll_interval = self.get_poll_interval_seconds()
-        status_url = None
+        run_detail_url = None
         detail_url = None
         cancel_url = None
         if active_run:
-            status_url = reverse_with_org(
-                "workflows:workflow_launch_status",
+            run_detail_url = reverse_with_org(
+                "workflows:workflow_run_detail",
                 request=self.request,
                 kwargs={"pk": workflow.pk, "run_id": active_run.pk},
             )
@@ -257,7 +257,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "run_in_progress": run_in_progress,
             "polling_statuses": self.polling_statuses,
             "poll_interval_seconds": poll_interval,
-            "status_url": status_url,
+            "status_url": run_detail_url,
+            "run_detail_refresh_url": run_detail_url,
             "detail_url": detail_url,
             "cancel_url": cancel_url,
             "launch_url": launch_url,
@@ -314,75 +315,52 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             .first()
         )
 
-    def build_launch_context(
+    def build_run_detail_context(
         self,
         *,
         workflow: Workflow,
-        form: WorkflowLaunchForm,
-        active_run: ValidationRun | None,
+        run: ValidationRun,
     ) -> dict[str, object]:
-        has_steps = workflow.steps.exists()
         status_context = self.build_status_area_context(
             workflow=workflow,
-            active_run=active_run,
+            active_run=run,
         )
         context = {
             "workflow": workflow,
-            "launch_form": form,
+            "run": run,
+            "active_run": run,
+            "panel_mode": "status",
             "can_execute": workflow.can_execute(user=self.request.user),
-            "has_steps": has_steps,
+            "has_steps": workflow.steps.exists(),
             "recent_runs": self.get_recent_runs(workflow),
         }
         context.update(status_context)
         return context
 
-    def _launch_response(
+    def render_run_detail_panel(
         self,
         request,
         *,
         workflow: Workflow,
-        form: WorkflowLaunchForm | None,
-        active_run: ValidationRun | None,
+        run: ValidationRun,
         status_code: int,
         toast: dict[str, str] | None = None,
-        fragment: str = "panel",
     ):
         is_htmx = request.headers.get("HX-Request") == "true"
-        current_fragment = fragment
-        if fragment == "status" and not is_htmx:
-            current_fragment = "panel"
-
-        if current_fragment == "status":
-            context = {"workflow": workflow}
-            context.update(
-                self.build_status_area_context(
-                    workflow=workflow,
-                    active_run=active_run,
-                ),
-            )
-            template_name = self.status_area_template_name
-        else:
-            form = form or self.get_launch_form(workflow=workflow)
-            context = self.build_launch_context(
-                workflow=workflow,
-                form=form,
-                active_run=active_run,
-            )
-            template_name = (
-                self.launch_panel_template_name
-                if is_htmx
-                else "workflows/launch/workflow_launch.html"
-            )
-
+        context = self.build_run_detail_context(workflow=workflow, run=run)
+        template_name = (
+            self.run_detail_panel_template_name
+            if is_htmx
+            else self.run_detail_template_name
+        )
         response = render(
             request,
             template_name,
             context=context,
             status=status_code,
         )
-
-        if is_htmx and current_fragment == "panel":
-            response["HX-Retarget"] = "#workflow-launch-panel"
+        if is_htmx:
+            response["HX-Retarget"] = "#workflow-run-detail-panel"
 
         if toast:
             sanitized_toast = {

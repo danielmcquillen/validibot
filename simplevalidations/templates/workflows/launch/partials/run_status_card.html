@@ -1,7 +1,12 @@
 {% load i18n humanize core_tags %}
 
 <div id="workflow-launch-run-status-card"
+     {% if active_run and run_in_progress and run_detail_refresh_url %}
+       hx-get="{{ run_detail_refresh_url }}" hx-trigger="every {{ poll_interval_seconds|default:3 }}s" hx-target="#workflow-run-detail-panel" hx-swap="innerHTML"
+     {% endif %}
      class="card app-card launch-status-card">
+
+  {# CARD HEADER #}
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
       <span class="fw-semibold">
@@ -24,16 +29,15 @@
       </div>
     {% endif %}
   </div>
+
+  {# CARD BODY #}
   {% if is_polling %}
-
     {% include "workflows/launch/partials/run_status_card_body_polling.html" %}
-
   {% else %}
-
-    {% include "workflows/launch/partials/run_status_card_body.html" %}
-
+    {% include "workflows/launch/partials/run_status_card_body_complete.html" %}
   {% endif %}
 
+  {# CARD FOOTER #}
   <div class="card-footer text-muted small">
     {% if is_polling %}
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">

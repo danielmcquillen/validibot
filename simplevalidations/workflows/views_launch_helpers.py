@@ -8,7 +8,7 @@ from typing import Any
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from rest_framework.response import Response as APIResponse
@@ -17,7 +17,6 @@ from simplevalidations.core.site_settings import (
     MetadataPolicyError,
     get_site_settings,
 )
-from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.ingest import (
     prepare_inline_text,
@@ -94,7 +93,7 @@ def launch_web_validation_run(
     submission_build: SubmissionBuild,
     request: HttpRequest,
     workflow: Workflow,
-) -> HttpResponseRedirect:
+) -> ValidationRunLaunchResults:
     """Launches a workflow run initiated through the HTML form.
 
     Args:
@@ -103,15 +102,11 @@ def launch_web_validation_run(
         submission_build: Pre-built submission and metadata for the run.
 
     Returns:
-        HttpResponseRedirect: Redirect to the run detail template for the new run.
-
-    Raises:
-        LaunchValidationError: If the workflow cannot accept new submissions.
-        PermissionError: If the user is not allowed to execute the workflow.
+        ValidationRunLaunchResults: Launch metadata, including the ValidationRun.
     """
 
     service = ValidationRunService()
-    launch_result = service.launch(
+    return service.launch(
         request=request,
         org=workflow.org,
         workflow=workflow,
@@ -119,13 +114,6 @@ def launch_web_validation_run(
         metadata=submission_build.metadata,
         user_id=getattr(request.user, "id", None),
     )
-    validation_run = launch_result.validation_run
-    run_detail_url = reverse_with_org(
-        "workflows:workflow_run_detail",
-        request=request,
-        kwargs={"pk": workflow.pk, "run_id": validation_run.pk},
-    )
-    return HttpResponseRedirect(run_detail_url)
 
 
 def launch_api_validation_run(

@@ -180,7 +180,9 @@ class ValidationRunViewSetTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["workflow"], self.workflow.slug)
+        first_result = response.data["results"][0]
+        self.assertEqual(first_result["workflow"], self.workflow.id)
+        self.assertEqual(first_result["workflow_slug"], self.workflow.slug)
 
     def test_filter_by_date_range(self):
         """Test filtering runs by date range."""

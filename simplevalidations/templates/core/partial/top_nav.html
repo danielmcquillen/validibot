@@ -56,7 +56,7 @@
                 {% block right_nav_items %}
                     {% if request.user.is_authenticated and ENABLE_APP %}
                         <li class="nav-item app-nav-item">
-                            <a class="nav-link {% active_link 'app' %} btn btn-light"
+                            <a class="nav-link {% active_link 'app' %} btn btn-outline-secondary"
                                href="{% org_url 'dashboard:my_dashboard' %}">
                                 <img class="robot-head-icon"
                                      src="{% static 'images/robot_head_bw.png' %}"

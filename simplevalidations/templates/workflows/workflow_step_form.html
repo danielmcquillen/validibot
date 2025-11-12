@@ -90,13 +90,13 @@
             </div>
             <div class="d-flex flex-wrap gap-2 ms-lg-auto">
               {% if previous_step %}
-                <a class="btn btn-light"
+                <a class="btn btn-outline-secondary"
                    href="{% url 'workflows:workflow_step_edit' workflow.pk previous_step.pk %}">
                   <i class="bi-arrow-left me-1"></i>{% trans "Previous step" %}
                 </a>
               {% endif %}
               {% if next_step %}
-                <a class="btn btn-light"
+                <a class="btn btn-outline-secondary"
                    href="{% url 'workflows:workflow_step_edit' workflow.pk next_step.pk %}">
                   {% trans "Next step" %}<i class="bi-arrow-right ms-1"></i>
                 </a>

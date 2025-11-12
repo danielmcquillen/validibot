@@ -226,7 +226,8 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
     assert run_resp.status_code == status.HTTP_201_CREATED
     body = run_resp.json()
     assert body["status"] == ValidationRunStatus.FAILED
-    assert body["workflow"] == workflow.slug
+    assert body["workflow"] == workflow.id
+    assert body["workflow_slug"] == workflow.slug
     assert body["error"]
     assert body["steps"], body
     price_step = body["steps"][0]

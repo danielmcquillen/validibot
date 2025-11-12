@@ -248,12 +248,17 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
 
         # Launch the validation run ...
         try:
-            response: HttpResponseRedirect = launch_web_validation_run(
+            launch_result = launch_web_validation_run(
                 submission_build=submission_build,
                 request=request,
                 workflow=workflow,
             )
-            return response
+            return self.render_run_detail_panel(
+                request,
+                workflow=workflow,
+                run=launch_result.validation_run,
+                status_code=launch_result.status or HTTPStatus.CREATED,
+            )
         except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)
@@ -701,8 +706,7 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
 class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
     template_name = "workflows/launch/workflow_run_detail.html"
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+    def get(self, request, *args, **kwargs):
         workflow = self.get_workflow()
         run = self.load_run_for_display(
             workflow=workflow,
@@ -710,23 +714,12 @@ class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
         )
         if run is None:
             raise Http404
-        context.update(
-            {
-                "workflow": workflow,
-                "active_run": run,
-                "panel_mode": "status",
-                "can_execute": workflow.can_execute(user=self.request.user),
-                "has_steps": workflow.steps.exists(),
-                "recent_runs": self.get_recent_runs(workflow),
-            },
+        return self.render_run_detail_panel(
+            request,
+            workflow=workflow,
+            run=run,
+            status_code=HTTPStatus.OK,
         )
-        context.update(
-            self.build_status_area_context(
-                workflow=workflow,
-                active_run=run,
-            ),
-        )
-        return context
 
 
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):

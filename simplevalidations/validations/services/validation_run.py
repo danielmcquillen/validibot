@@ -5,7 +5,7 @@ import logging
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
-from attr import dataclass
+from attr import dataclass, field
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
 from django.db import transaction
@@ -49,8 +49,16 @@ if TYPE_CHECKING:
 @dataclass
 class ValidationRunLaunchResults:
     validation_run: ValidationRun
-    data: dict[str, Any]
+    data: dict[str, Any] = field(factory=dict)
     status: int | None = None
+
+    @property
+    def status_code(self) -> int | None:  # Backwards compatibility for legacy callers
+        return self.status
+
+    @status_code.setter
+    def status_code(self, value: int | None) -> None:
+        self.status = value
 
 
 class ValidationRunService:

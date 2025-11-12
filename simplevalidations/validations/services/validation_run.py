@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
@@ -82,7 +83,7 @@ class ValidationRunService:
         user_id: int,
         metadata: dict | None = None,
         *,
-        wait_for_completion: bool = True,
+        wait_for_completion: bool = False,
     ) -> ValidationRunLaunchResults:
         """
         Creates a validation run for a given workflow and a user request.
@@ -90,24 +91,27 @@ class ValidationRunService:
         The submission is the content (json, xml, whatever) that the workflow will
         validate.
 
-        We want to try to finish the validation run synchronously if possible,
-        so we optimistically wait for a short period of time for the Celery task
-        to complete. If it does, we return a 201 Created response with the run
-        details. If it doesn't, we return a 202 Accepted response with a link
-        to check the status of the run later.
+        When ``wait_for_completion`` is True we optimistically wait for a short
+        period of time for the Celery task to complete. If it does, we return a
+        201 Created response with the finished run; otherwise the caller gets a
+        202 Accepted response plus a link to check status later. The default
+        behaviour for UI launches is to skip the synchronous wait so the browser
+        can transition to the in-progress page immediately.
 
         Args:
-            request:        The HTTP request object.
-            org:            The organization under which the validation run is created.
-            workflow:       The workflow to be executed.
-            submission:     The submission associated with the validation run.
-            user_id:        The ID of the user initiating the run.
-            metadata:       Optional metadata to be associated with the run.
+            request:                The HTTP request object.
+            org:                    The organization under which the validation run is created.
+            workflow:               The workflow to be executed.
+            submission:             The submission associated with the validation run.
+            user_id:                The ID of the user initiating the run.
+            metadata:               Optional metadata to be associated with the run.
+            wait_for_completion:    Whether to wait synchronously for the run to complete.
 
         Returns:
             ValidationRunLaunchResults: Instance of this dataclass with results of launch.
 
         """
+        start_time = time.perf_counter()
         # local import to avoid cycles
         from simplevalidations.validations.tasks import (  # noqa:PLC0415
             execute_validation_run,
@@ -139,6 +143,7 @@ class ValidationRunService:
 
         def _enqueue_task(run_id: int):
             def _enqueue():
+                enqueue_started = time.perf_counter()
                 async_result = execute_validation_run.apply_async(
                     kwargs={
                         "validation_run_id": run_id,
@@ -146,6 +151,11 @@ class ValidationRunService:
                         "metadata": metadata or {},
                     },
                     countdown=2,
+                )
+                logger.debug(
+                    "Validation run %s enqueued (%.2f ms after commit)",
+                    run_id,
+                    (time.perf_counter() - enqueue_started) * 1000,
                 )
                 async_result_box.append(async_result)
 
@@ -204,11 +214,22 @@ class ValidationRunService:
         attempts = int(getattr(settings, "VALIDATION_START_ATTEMPTS", 4))
 
         if wait_for_completion and async_result is not None:
+            logger.debug(
+                "Waiting synchronously for validation run %s (attempts=%s, timeout=%ss)",
+                validation_run.id,
+                attempts,
+                per_attempt,
+            )
             for _index in range(attempts):
                 with contextlib.suppress(CeleryTimeout):
                     async_result.get(timeout=per_attempt, propagate=False)
                 validation_run.refresh_from_db()
                 if validation_run.status in VALIDATION_RUN_TERMINAL_STATUSES:
+                    logger.debug(
+                        "Validation run %s finished during synchronous wait (%s)",
+                        validation_run.id,
+                        validation_run.status,
+                    )
                     break
 
         results: ValidationRunLaunchResults = ValidationRunLaunchResults(
@@ -223,6 +244,12 @@ class ValidationRunService:
             # Add the URL to poll for status
             results.status = status.HTTP_202_ACCEPTED
 
+        logger.info(
+            "Validation run %s launch completed in %.2f ms (status=%s)",
+            validation_run.id,
+            (time.perf_counter() - start_time) * 1000,
+            validation_run.status,
+        )
         return results
 
     def cancel_run(

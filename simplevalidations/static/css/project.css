@@ -12933,6 +12933,23 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   flex: 1 1 auto;
 }
 
+#workflow-run-detail {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+#workflow-run-detail #workflow-run-detail-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 1rem;
+}
+#workflow-run-detail #workflow-launch-run-status-card {
+  flex: 1 1 auto;
+  min-height: 80vh;
+}
+
 #workflow-step-editor-card {
   height: 100%;
   margin-bottom: 1rem;

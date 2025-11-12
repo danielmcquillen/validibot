@@ -333,6 +333,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "can_execute": workflow.can_execute(user=self.request.user),
             "has_steps": workflow.steps.exists(),
             "recent_runs": self.get_recent_runs(workflow),
+            "is_polling": run.status in self.polling_statuses,
         }
         context.update(status_context)
         return context

@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from http import HTTPStatus
 
 from django.contrib import messages
@@ -195,6 +196,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
 
     def post(self, request, *args, **kwargs):
         """Handle submission of the workflow launch form."""
+        start_time = time.perf_counter()
         workflow = self.get_workflow()
         form = self.get_launch_form(
             workflow=workflow,
@@ -220,6 +222,11 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 request=request,
                 workflow=workflow,
                 cleaned_data=form.cleaned_data,
+            )
+            logger.debug(
+                "Workflow %s submission built in %.2f ms",
+                workflow.pk,
+                (time.perf_counter() - start_time) * 1000,
             )
         except ValidationError as exc:
             form.add_error(None, exc.message if hasattr(exc, "message") else str(exc))
@@ -253,12 +260,18 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 request=request,
                 workflow=workflow,
             )
-            return self.render_run_detail_panel(
+            response = self.render_run_detail_panel(
                 request,
                 workflow=workflow,
                 run=launch_result.validation_run,
                 status_code=launch_result.status or HTTPStatus.CREATED,
             )
+            logger.info(
+                "Workflow %s launch POST completed in %.2f ms",
+                workflow.pk,
+                (time.perf_counter() - start_time) * 1000,
+            )
+            return response
         except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)
@@ -332,14 +345,12 @@ class WorkflowLaunchCancelView(WorkflowLaunchContextMixin, View):
             "message": str(toast_message),
         }
 
-        return self._launch_response(
+        return self.render_run_detail_panel(
             request,
             workflow=workflow,
-            form=None,
-            active_run=updated_run,
-            status_code=200,
+            run=updated_run,
+            status_code=HTTPStatus.OK,
             toast=toast_payload,
-            fragment="status",
         )
 
 

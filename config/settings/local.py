@@ -86,3 +86,14 @@ TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=Fals
 
 SIMULATE_LONG_TASKS = env.bool("SIMULATE_LONG_TASKS", default=True)
 LONG_TASK_DELAY_SECONDS = env.int("LONG_TASK_DELAY_SECONDS", default=25)
+
+
+# Logging
+# ------------------------------------------------------------------------------
+# Make local development chatty so timing diagnostics show up immediately.
+LOGGING["root"]["level"] = "DEBUG"  # noqa: F405
+LOGGING["loggers"]["simplevalidations"] = {  # noqa: F405
+    "handlers": ["console"],
+    "level": "DEBUG",
+    "propagate": False,
+}

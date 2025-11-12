@@ -85,7 +85,6 @@
     flex: 1 1 auto;
   }
 
-
   .workflow-input-mode .btn.active {
     color: #fff;
     background-color: var(--bs-primary);
@@ -171,4 +170,23 @@
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+}
+
+#workflow-run-detail {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+
+  #workflow-run-detail-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 1rem;
+  }
+
+  #workflow-launch-run-status-card {
+    flex: 1 1 auto;
+    min-height: 80vh;
+  }
 }

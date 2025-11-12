@@ -40,24 +40,28 @@
   {# CARD FOOTER #}
   <div class="card-footer text-muted small">
     {% if is_polling %}
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="text-muted small">
-          {% trans "Refreshing automatically…" %}
-        </div>
-        {% if cancel_url %}
+      {% if cancel_url %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="text-muted small">
+            {% trans "Refreshing automatically…" %}
+          </div>
           <div>
             <button class="btn btn-danger"
                     type="button"
                     hx-post="{{ cancel_url }}"
-                    hx-target="#workflow-launch-status-area"
-                    hx-swap="outerHTML"
+                    hx-target="#workflow-run-detail-panel"
+                    hx-swap="innerHTML"
                     hx-confirm="{% trans 'Cancel this workflow run?' %}"
                     hx-disabled-elt="this">
               {% trans "Cancel workflow" %}
             </button>
           </div>
-        {% endif %}
-      </div>
+        </div>
+      {% else %}
+        <div class="text-muted small">
+          {% trans "Refreshing automatically…" %}
+        </div>
+      {% endif %}
     {% elif run.status == "CANCELED" %}
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="text-muted small">
@@ -76,11 +80,11 @@
       </div>
     {% else %}
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-        <a class="btn btn-success btn-sm text-white"
+        <a class="btn btn-outline-success btn-sm text-white"
            href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
           {% trans "Launch again" %}
         </a>
-        <a class="btn btn-outline-secondary btn-sm"
+        <a class="btn btn-secondary btn-sm"
            href="{% if detail_url %}{{ detail_url }}{% else %}{% org_url 'validations:validation_detail' pk=run.pk %}{% endif %}">
           <i class="bi-box-arrow-up-right me-1"></i>
           {% trans "View full run" %}

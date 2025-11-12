@@ -115,9 +115,9 @@ def test_launch_post_creates_run_and_redirects(client, monkeypatch):
         },
     )
 
-    assert response.status_code == HTTPStatus.FOUND
-    location = response.headers.get("Location")
-    assert location and "/launch/run/" in location
+    assert response.status_code == HTTPStatus.ACCEPTED
+    body = response.content.decode()
+    assert "workflow-run-detail-panel" in body
     assert ValidationRun.objects.filter(workflow=workflow).count() == 1
     session = client.session
     assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "paste"
@@ -159,7 +159,7 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
         },
     )
 
-    assert response.status_code == HTTPStatus.FOUND
+    assert response.status_code == HTTPStatus.ACCEPTED
     session = client.session
     assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
 
@@ -296,7 +296,7 @@ def test_run_detail_page_shows_status_area(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    assert "workflow-launch-status-area" in body
+    assert "workflow-run-detail-panel" in body
     assert "Cancel workflow" in body
 
 

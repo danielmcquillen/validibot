@@ -1,5 +1,5 @@
 {% extends "app_base.html" %}
-{% load i18n crispy_forms_tags %}
+{% load i18n %}
 
 {% block title %}
   {% trans "Edit member roles" %} · SimpleValidations
@@ -18,7 +18,24 @@
             <h1 class="h5 mb-3">{% trans "Edit member roles" %}</h1>
             <form method="post" novalidate>
               {% csrf_token %}
-              {{ form|crispy }}
+              {% if form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.non_field_errors %}{{ error }}<br />{% endfor %}
+                </div>
+              {% endif %}
+              {% if form.roles.errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.roles.errors %}{{ error }}<br />{% endfor %}
+                </div>
+              {% endif %}
+              {% if form.owner_locked %}
+                <div class="alert alert-info" role="status">
+                  {% trans "This member is the organization owner and already has every permission. Ownership changes require SimpleValidations support." %}
+                </div>
+              {% endif %}
+              <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
+              {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
+              <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
               <div class="d-flex justify-content-end gap-2">
                 <a href="{% url 'users:organization-detail' organization.pk %}" class="btn btn-outline-secondary">
                   {% trans "Cancel" %}

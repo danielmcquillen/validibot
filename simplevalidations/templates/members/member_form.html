@@ -1,5 +1,6 @@
 {% extends "app_base.html" %}
-{% load i18n core_tags crispy_forms_tags %}
+
+{% load i18n core_tags %}
 
 {% block title %}
   {% trans "Edit member" %} · SimpleValidations
@@ -22,21 +23,44 @@
       </div>
     </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <form method="post" novalidate>
+    <form method="post" novalidate>
+      <div class="card app-card">
+        <div class="card-header">
+          {% trans "User Properties" %}
+        </div>
+        <div class="card-body">
           {% csrf_token %}
-          {{ form|crispy }}
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {% for error in form.non_field_errors %}{{ error }}<br />{% endfor %}
+            </div>
+          {% endif %}
+          {% if form.roles.errors %}
+            <div class="alert alert-danger" role="alert">
+              {% for error in form.roles.errors %}{{ error }}<br />{% endfor %}
+            </div>
+          {% endif %}
+          {% if form.owner_locked %}
+            <div class="alert alert-info" role="status">
+              {% trans "This member is the organization owner and already has every permission. Ownership changes require SimpleValidations support." %}
+            </div>
+          {% endif %}
+          <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
+          {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
+          <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
+        </div>
+        <div class="card-footer">
           <div class="d-flex justify-content-end gap-2">
-            <a class="btn btn-outline-secondary" href="{% org_url 'members:member_list' %}">
+            <a class="btn btn-outline-secondary"
+               href="{% org_url 'members:member_list' %}">
               {% trans "Cancel" %}
             </a>
             <button type="submit" class="btn btn-primary">
               {% trans "Save" %}
             </button>
           </div>
-        </form>
+        </div>
       </div>
-    </div>
+    </form>
   </div>
 {% endblock app_content %}

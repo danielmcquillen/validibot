@@ -9,6 +9,8 @@ from django.utils import timezone
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.tracking.tests.factories import TrackingEventFactory
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.tests.factories import MembershipFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.tests.factories import ValidationFindingFactory
@@ -23,6 +25,11 @@ class DashboardViewTests(TestCase):
         self.user = UserFactory()
         self.org = self.user.orgs.first()
         self.user.set_current_org(self.org)
+        self.membership = self.user.memberships.first()
+        self.membership.add_role(RoleCode.ADMIN)
+        session = self.client.session
+        session["active_org_id"] = self.org.id
+        session.save()
         self.client.force_login(self.user)
 
     def test_dashboard_page_renders_with_widgets(self):
@@ -31,6 +38,36 @@ class DashboardViewTests(TestCase):
         self.assertTemplateUsed(response, "dashboard/my_dashboard.html")
         widget_definitions = response.context["widget_definitions"]
         self.assertGreater(len(list(widget_definitions)), 0)
+
+    def test_dashboard_requires_author_admin_owner(self):
+        viewer_membership = MembershipFactory()
+        viewer_membership.set_roles({RoleCode.VIEWER})
+        viewer = viewer_membership.user
+        viewer.set_current_org(viewer_membership.org)
+        self.client.force_login(viewer)
+        session = self.client.session
+        session["active_org_id"] = viewer_membership.org.id
+        session.save()
+
+        response = self.client.get(reverse("dashboard:my_dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("workflows", response["Location"])
+
+    def test_widget_detail_requires_author_admin_owner(self):
+        viewer_membership = MembershipFactory()
+        viewer_membership.set_roles({RoleCode.EXECUTOR})
+        viewer = viewer_membership.user
+        viewer.set_current_org(viewer_membership.org)
+        self.client.force_login(viewer)
+        session = self.client.session
+        session["active_org_id"] = viewer_membership.org.id
+        session.save()
+
+        response = self.client.get(
+            reverse("dashboard:widget-detail", kwargs={"slug": "total-validations"})
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("workflows", response["Location"])
 
     def _create_run_for_org(self, *, hours_ago: int = 1):
         submission = SubmissionFactory(

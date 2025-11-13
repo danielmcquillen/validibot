@@ -359,11 +359,25 @@ class Membership(TimeStampedModel):
     def is_admin(self) -> bool:
         from simplevalidations.users.constants import RoleCode
 
-        return self.has_role(RoleCode.ADMIN)
+        return self.has_role(RoleCode.ADMIN) or self.has_role(RoleCode.OWNER)
 
     @property
     def role_labels(self) -> list[str]:
         return list(self.roles.values_list("name", flat=True))
+
+    @property
+    def has_author_admin_owner_privileges(self) -> bool:
+        """
+        Return True when the membership can access author/admin experiences.
+        """
+
+        from simplevalidations.users.constants import RoleCode
+
+        return bool(
+            self.is_admin
+            or self.has_role(RoleCode.AUTHOR)
+            or self.has_role(RoleCode.OWNER)
+        )
 
     def _demote_other_owners(self):
         if not self.org_id:
@@ -387,34 +401,30 @@ class Membership(TimeStampedModel):
     def add_role(self, role_code: str):
         if role_code not in RoleCode.values:
             raise ValueError(f"Invalid role code: {role_code}")
-        role, _ = Role.objects.get_or_create(
-            code=role_code,
-            defaults={
-                "name": role_code.title(),
-            },
-        )
-        if role_code == RoleCode.OWNER:
-            self._demote_other_owners()
-        MembershipRole.objects.get_or_create(membership=self, role=role)
-        if role_code == RoleCode.OWNER:
-            admin_role, _ = Role.objects.get_or_create(
-                code=RoleCode.ADMIN,
-                defaults={"name": RoleCode.ADMIN.label},
-            )
-            MembershipRole.objects.get_or_create(membership=self, role=admin_role)
+        updated_codes = set(self.role_codes)
+        updated_codes.add(role_code)
+        self.set_roles(updated_codes)
 
     def set_roles(self, role_codes: list[str] | set[str]):
         normalized_codes = {code for code in role_codes if code in RoleCode.values}
-        if RoleCode.OWNER in normalized_codes:
-            normalized_codes.add(RoleCode.ADMIN)
+        if not normalized_codes:
+            normalized_codes = {RoleCode.VIEWER}
+        requested_owner = RoleCode.OWNER in normalized_codes
+        if requested_owner:
+            normalized_codes = set(RoleCode.values)
+        if requested_owner:
             self._demote_other_owners()
         roles = list(Role.objects.filter(code__in=normalized_codes))
         if len(normalized_codes) != len(roles):
-            missing = normalized_codes - set(role.code for role in roles)
+            missing = normalized_codes - {role.code for role in roles}
             for code in missing:
                 role, _ = Role.objects.get_or_create(
                     code=code,
-                    defaults={"name": getattr(RoleCode, code).label if hasattr(RoleCode, code) else code.title()},
+                    defaults={
+                        "name": getattr(RoleCode, code).label
+                        if hasattr(RoleCode, code)
+                        else code.title(),
+                    },
                 )
                 roles.append(role)
 

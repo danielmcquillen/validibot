@@ -59,6 +59,12 @@ class TestValidationLibraryViews:
         assert response.status_code == HTTPStatus.OK
         assert response.context["active_tab"] == "system"
 
+    def test_library_page_requires_author_admin_owner(self, client):
+        self._setup_user(client, RoleCode.VIEWER)
+        response = client.get(reverse("validations:validation_library"))
+        assert response.status_code == HTTPStatus.FOUND
+        assert "workflows" in response.headers["Location"]
+
     def test_create_custom_validator(self, client):
         user, org = self._setup_user(client, RoleCode.AUTHOR)
         response = client.post(
@@ -137,6 +143,24 @@ class TestValidationLibraryViews:
 
         assert response.status_code == HTTPStatus.OK
         assert response.context["return_tab"] == "system"
+
+    def test_validator_detail_requires_author_admin_owner(self, client):
+        self._setup_user(client, RoleCode.EXECUTOR)
+        validator = Validator.objects.create(
+            name="System Check",
+            slug="system-check",
+            validation_type="ENERGYPLUS",
+            description="System validator",
+            is_system=True,
+        )
+        response = client.get(
+            reverse(
+                "validations:validator_detail",
+                kwargs={"slug": validator.slug},
+            )
+        )
+        assert response.status_code == HTTPStatus.FOUND
+        assert "workflows" in response.headers["Location"]
 
     def test_htmx_delete_custom_validator_succeeds(self, client):
         user, org = self._setup_user(client, RoleCode.AUTHOR)

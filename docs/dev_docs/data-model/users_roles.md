@@ -81,5 +81,6 @@ inspect roles without additional queries.
 - The `Role` table is intentionally short; feel free to extend it with display
   names or descriptions to power better UI messaging.
 - Remember that organization management views look specifically for the `ADMIN`
-  role (`OrganizationAdminRequiredMixin`), so Owners should also hold Admin when they need those capabilities.
+  role (`OrganizationAdminRequiredMixin`), and the Owner role now automatically
+  grants it (along with every other role) so owners always meet those checks.
 - If you promote someone else to Owner, the system will automatically drop the role from the previous Owner so the uniqueness guarantee holds.

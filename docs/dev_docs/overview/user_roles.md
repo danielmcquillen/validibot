@@ -18,11 +18,13 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 | Role | Code | Primary scope | Key capabilities |
 | ---- | ---- | ------------- | ---------------- |
-| Owner | `OWNER` | Strategic control | Signals ultimate responsibility for the organization; expected to pair with `ADMIN`. |
+| Owner | `OWNER` | Strategic control | Signals ultimate responsibility for the organization and automatically inherits every other role. |
 | Admin | `ADMIN` | Operational management | Manage organization settings, members, and lifecycle (including deletion safeguards). |
 | Author | `AUTHOR` | Workflow design | Create, edit, and retire workflows across the organization. |
 | Executor | `EXECUTOR` | Validation operations | Launch runs and inspect detailed results. |
 | Viewer | `VIEWER` | Transparency | Read-only access to workflows, runs, and documentation. |
+
+Only Owners, Admins, and Authors can open the Designer-facing navigation (Dashboard, Validator Library, Analytics headings). Executors and Viewers without those roles see a compact menu limited to Workflows and Validation Runs.
 
 ### Owner (`OWNER`)
 
@@ -30,17 +32,16 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 **Permissions in practice:**
 
-- Inherits all capabilities from Author, Executor, and Viewer when combined with those roles.
-- Owner alone does *not* unlock organization-admin views; pair with `ADMIN` when provisioning.
-- Used for auditing, billing flows, and future enterprise features.
+- Automatically inherits Admin, Author, Executor, and Viewer capabilities (UI surfaces all related controls).
+- Primary contact for billing, contractual, and audit workflows; doubles as the escalation path for support.
 
 **Typical holders:** Executive sponsor, procurement lead, customer of record.
 
 **Notes:**
 
-- Exactly one member holds the Owner role at any time; assigning Owner to someone else automatically revokes it from the previous holder (they remain Admin).
-- Personal workspaces create a membership flagged as Owner and also grant `ADMIN` and `EXECUTOR` so the user can operate immediately.
-- Track at least one Owner for each organization even though enforcement currently focuses on keeping at least one Admin.
+- Exactly one member holds the Owner role at any time; transfers require platform support and automatically demote the previous owner.
+- Personal workspaces create a membership flagged as Owner which immediately unlocks every other role.
+- Owner memberships cannot be removed or reassigned within the UI to protect billing continuity.
 
 ### Admin (`ADMIN`)
 
@@ -60,6 +61,7 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 - Keep at least two admins per organization; the deletion flow enforces this.
 - Grant Admin to any Owner who needs to manage people or settings.
+- Access to the Dashboard and Validator Library is included via the admin privilege set.
 
 ### Author (`AUTHOR`)
 
@@ -77,6 +79,7 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 - Authors cannot change organization membership or settings unless they are also Admins.
 - Workflow UI treats Owner, Admin, and Author memberships as managers (`WorkflowAccessMixin.manager_role_codes`).
+- Authors automatically see the Dashboard, Designer nav sections, and the Validator Library.
 
 ### Executor (`EXECUTOR`)
 
@@ -95,6 +98,7 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 - Minimum role required for active validation work (`Workflow.can_execute` checks this role specifically).
 - Executors cannot alter workflow configuration or organization settings.
+- Without an Author/Admin/Owner role, Executors only see the Workflows and Validation Runs links in the app navigation.
 
 ### Viewer (`VIEWER`)
 
@@ -112,6 +116,7 @@ SimpleValidations defines five organization-scoped roles. Permissions are cumula
 
 - Default role for new invitees when no role is specified.
 - Cannot run workflows or upload content.
+- Nav is restricted to Workflows and Validation Runs unless the Viewer is also an Author, Admin, or Owner.
 
 ## Organization Model
 
@@ -145,8 +150,7 @@ Each membership tracks:
 - **Active Status**: Whether the membership is currently active
 - **Role History**: Audit trail of role changes over time
 
-Only members with the `ADMIN` role (Owners must also hold `ADMIN`) can perform invitations, role changes, or other organization-level management tasks in the UI and API.
-When a new Owner is assigned, the previous Owner is automatically downgraded (usually to Admin) to maintain the single-owner rule.
+Only members with the `ADMIN` role (Owners automatically satisfy this requirement) can perform invitations, role changes, or other organization-level management tasks in the UI and API. The UI does not permit assigning or removing the Owner role; ownership transfers remain a support task and continue to demote the previous Owner automatically to keep the single-owner rule intact.
 
 ## Workflow Access Control
 
@@ -269,7 +273,7 @@ Service Account: "production-validator"
 - Start with Viewer role for new users
 - Promote to higher roles as responsibilities increase
 - Regularly audit role assignments for appropriateness
-- Pair strategic Owners with the Admin role so they can act on their authority
+- Owners automatically receive every other role, so no additional pairing is required
 
 ### Separation of Duties
 
@@ -279,7 +283,7 @@ Service Account: "production-validator"
 
 ### Emergency Access
 
-- Maintain multiple Admins (and, where appropriate, multiple Owners) per organization
+- Maintain multiple Admins per organization; ownership stays unique and transfers happen through support
 - Document emergency access procedures
 - Consider temporary role escalation for incident response
 
@@ -311,10 +315,10 @@ Service Account: "production-validator"
 
 ### Role Assignment Problems
 
-1. Confirm the acting user holds the `ADMIN` role—Owner-only memberships cannot update roles.
+1. Confirm the acting user holds the `ADMIN` role—Owners automatically satisfy this requirement but cannot alter their own ownership status through the UI.
 2. The UI blocks removing the final Admin; promote another member before demoting the last admin.
 3. New role grants may require the user to reselect the organization or refresh the session.
-4. Double-check invitations include every role the user needs (Owners typically need `ADMIN` and `EXECUTOR` as well).
+4. Double-check invitations include every role the user needs (Owners are excluded from invitations and already include all other roles).
 
 ### Access Control Debugging
 

@@ -89,73 +89,13 @@ def test_organization_delete_requires_another_admin(client_logged_in):
 
 
 @pytest.mark.django_db
-def test_add_member_to_organization(client_logged_in):
+def test_organization_detail_shows_summary(client_logged_in):
     client, user, org = client_logged_in
-    invitee = UserFactory()
-    response = client.post(
-        reverse("users:organization-detail", args=[org.pk]),
-        data={"email": invitee.email, "roles": [RoleCode.EXECUTOR]},
-        follow=True,
-    )
+    response = client.get(reverse("users:organization-detail", args=[org.pk]))
     assert response.status_code == 200
-    membership = Membership.objects.filter(user=invitee, org=org).first()
-    assert membership is not None
-    assert RoleCode.EXECUTOR in membership.role_codes
-    assert RoleCode.ADMIN not in membership.role_codes
-
-
-@pytest.mark.django_db
-def test_add_owner_member_also_gets_admin(client_logged_in):
-    client, user, org = client_logged_in
-    invitee = UserFactory()
-    response = client.post(
-        reverse("users:organization-detail", args=[org.pk]),
-        data={"email": invitee.email, "roles": [RoleCode.OWNER]},
-        follow=True,
-    )
-    assert response.status_code == 200
-    membership = Membership.objects.get(user=invitee, org=org)
-    assert RoleCode.OWNER in membership.role_codes
-    assert RoleCode.ADMIN in membership.role_codes
-    original = Membership.objects.get(user=user, org=org)
-    assert RoleCode.OWNER not in original.role_codes
-
-
-@pytest.mark.django_db
-def test_assigning_owner_moves_role_from_previous_holder(client_logged_in):
-    client, user, org = client_logged_in
-    other = UserFactory(orgs=[org])
-    grant_role(other, org, RoleCode.EXECUTOR)
-
-    response = client.post(
-        reverse("users:organization-member-update", args=[org.pk, Membership.objects.get(user=other, org=org).pk]),
-        data={"roles": [RoleCode.OWNER]},
-        follow=True,
-    )
-    assert response.status_code == 200
-    refreshed_other = Membership.objects.get(user=other, org=org)
-    refreshed_original = Membership.objects.get(user=user, org=org)
-    assert RoleCode.OWNER in refreshed_other.role_codes
-    assert RoleCode.ADMIN in refreshed_other.role_codes
-    assert RoleCode.OWNER not in refreshed_original.role_codes
-
-
-@pytest.mark.django_db
-def test_update_member_roles_adds_admin_when_owner_selected(client_logged_in):
-    client, user, org = client_logged_in
-    other = UserFactory(orgs=[org])
-    grant_role(other, org, RoleCode.VIEWER)
-
-    membership = Membership.objects.get(user=other, org=org)
-    response = client.post(
-        reverse("users:organization-member-update", args=[org.pk, membership.pk]),
-        data={"roles": [RoleCode.OWNER]},
-        follow=True,
-    )
-    assert response.status_code == 200
-    membership.refresh_from_db()
-    assert RoleCode.OWNER in membership.role_codes
-    assert RoleCode.ADMIN in membership.role_codes
+    content = response.content.decode()
+    assert org.name in content
+    assert "Manage members" in content
 
 
 @pytest.mark.django_db

@@ -10,6 +10,63 @@ from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, Organization, User
 
 
+ROLE_HELP_TEXT: dict[str, str] = {
+    RoleCode.OWNER: _(
+        "Sole organization authority. Controls billing, integrations, and deletion. This role is assigned during setup and cannot be changed here."
+    ),
+    RoleCode.ADMIN: _(
+        "Full administrative access to members, projects, workflows, and most organization settings."
+    ),
+    RoleCode.AUTHOR: _(
+        "Create and edit workflows, validators, and rulesets."
+    ),
+    RoleCode.EXECUTOR: _(
+        "Launch workflows, monitor progress, and review run results."
+    ),
+    RoleCode.VIEWER: _(
+        "Read-only access to workflows and validation history."
+    ),
+}
+
+
+def _build_role_options(
+    selected_roles: set[str],
+    *,
+    owner_locked: bool = False,
+    disable_owner_checkbox: bool = True,
+) -> list[dict[str, str | bool]]:
+    """
+    Prepare a template-friendly list describing each role option.
+    """
+
+    options: list[dict[str, str | bool]] = []
+    for code, label in RoleCode.choices:
+        option = {
+            "value": code,
+            "label": label,
+            "help": ROLE_HELP_TEXT.get(code, ""),
+            "checked": code in selected_roles,
+            "disabled": owner_locked or (disable_owner_checkbox and code == RoleCode.OWNER),
+        }
+        options.append(option)
+    return options
+
+
+def _extract_role_values(source, key: str) -> list[str]:
+    """
+    Normalize bound data access so tests and QueryDict behave the same.
+    """
+
+    if hasattr(source, "getlist"):
+        return list(source.getlist(key))
+    value = source.get(key)
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return [value]
+
+
 class UserProfileForm(forms.ModelForm):
     """Form used for the user profile settings page."""
 
@@ -120,12 +177,37 @@ class OrganizationMemberForm(forms.Form):
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False
+        self.assignable_role_codes = {
+            code for code, _ in RoleCode.choices if code != RoleCode.OWNER
+        }
+        assignable_choices = [
+            (code, label)
+            for code, label in RoleCode.choices
+            if code in self.assignable_role_codes
+        ]
+        self.fields["roles"].choices = assignable_choices
+        self.fields["roles"].help_text = _(
+            "Invitees may become Admins, Authors, Executors, or Viewers. The Owner role is fixed and cannot be granted through this form."
+        )
+        self.fields["email"].widget.attrs.setdefault("class", "form-control")
+
         if self.organization:
             self.fields["email"].help_text = _(
                 "Enter the email address of an existing user to add them to %(org)s."
             ) % {"org": self.organization.name}
-        self.fields["roles"].help_text = _(
-            "Selecting Owner transfers the role from the current owner and keeps them as an Admin."
+
+        if self.is_bound:
+            selected_roles = set(_extract_role_values(self.data, "roles"))
+        else:
+            selected_roles = self.initial.get("roles", self.fields["roles"].initial) or []
+            if isinstance(selected_roles, str):
+                selected_roles = [selected_roles]
+            selected_roles = set(selected_roles)
+        selected_roles &= self.assignable_role_codes
+        self.role_options = _build_role_options(
+            selected_roles,
+            owner_locked=False,
+            disable_owner_checkbox=True,
         )
 
     def clean_email(self):
@@ -154,6 +236,10 @@ class OrganizationMemberForm(forms.Form):
                 )
         return cleaned
 
+    def clean_roles(self):
+        roles = self.cleaned_data.get("roles") or []
+        return [role for role in roles if role in self.assignable_role_codes]
+
     def save(self) -> Membership:
         roles = self.cleaned_data.get("roles") or [RoleCode.VIEWER]
         membership = Membership.objects.create(
@@ -176,18 +262,51 @@ class OrganizationMemberRolesForm(forms.Form):
     def __init__(self, *args, **kwargs):
         self.membership: Membership = kwargs.pop("membership")
         super().__init__(*args, **kwargs)
-        self.fields["roles"].initial = list(self.membership.role_codes)
-        self.fields["roles"].help_text = _(
-            "Only one member can be Owner; choosing it here will move the role from the current owner."
+        current_roles = set(self.membership.role_codes)
+        owner_locked = RoleCode.OWNER in current_roles
+        if owner_locked:
+            current_roles = set(RoleCode.values)
+        if self.is_bound and not owner_locked:
+            bound_roles = set(_extract_role_values(self.data, "roles"))
+            valid_codes = {code for code, _ in RoleCode.choices}
+            current_roles = bound_roles & valid_codes
+        self.fields["roles"].choices = RoleCode.choices
+        self.fields["roles"].initial = list(current_roles)
+        self.role_options = _build_role_options(
+            current_roles,
+            owner_locked=owner_locked,
+            disable_owner_checkbox=True,
         )
+        self.owner_locked = owner_locked
+        self.fields["roles"].help_text = _(
+            "Owners permanently hold every permission. Contact support to transfer ownership."
+        )
+        self.disable_all_roles = owner_locked
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False
 
-    def save(self) -> Membership:
+    def clean_roles(self):
         roles = self.cleaned_data.get("roles") or []
+        valid_codes = {code for code, _ in RoleCode.choices}
+        normalized = [role for role in roles if role in valid_codes]
+        if RoleCode.OWNER in normalized and not self.owner_locked:
+            raise forms.ValidationError(
+                _("The Owner role cannot be assigned through this screen."),
+            )
+        if self.owner_locked and RoleCode.OWNER not in normalized:
+            raise forms.ValidationError(
+                _("The Owner role cannot be removed. Contact support to transfer ownership."),
+            )
+        return normalized
+
+    def save(self) -> Membership:
+        roles = set(self.cleaned_data.get("roles") or [])
         if not roles:
-            roles = [RoleCode.VIEWER]
+            roles = {RoleCode.VIEWER}
+        if self.owner_locked:
+            roles.update(RoleCode.values)
+            roles.add(RoleCode.OWNER)
         self.membership.set_roles(roles)
         return self.membership
 

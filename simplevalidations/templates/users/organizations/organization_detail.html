@@ -1,8 +1,8 @@
 {% extends "app_base.html" %}
-{% load i18n crispy_forms_tags %}
+{% load i18n core_tags %}
 
 {% block title %}
-  {% blocktrans with name=organization.name %}{{ name }} · Organizations{% endblocktrans %}
+  {{ organization.name }} · {% trans "Organizations" %}
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -13,92 +13,84 @@
   <div class="container-fluid" id="organization-detail">
     <div class="app-content-header-bar row align-items-center mb-3">
       <div class="col-12 col-lg-8">
-        <h1 class="app-page-title mb-2">
+        <h1 class="app-page-title mb-1">
           {{ organization.name }}
         </h1>
-        <p class="text-muted small mb-0">{% trans "Manage members and settings." %}</p>
+        <p class="text-muted mb-0">
+          {% trans "Organization overview" %}
+        </p>
       </div>
-      <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2">
-        <a class="btn btn-outline-secondary" href="{% url 'users:organization-update' organization.pk %}">
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
+        <a class="btn btn-outline-secondary"
+           href="{% url 'users:organization-update' organization.pk %}">
           <i class="bi bi-pencil-square me-1"></i>
-          {% trans "Edit" %}
+          {% trans "Edit organization" %}
         </a>
-        <a class="btn btn-outline-danger" href="{% url 'users:organization-delete' organization.pk %}">
-          <i class="bi bi-trash me-1"></i>
-          {% trans "Delete" %}
-        </a>
+        {% if not organization.is_personal %}
+          <a class="btn btn-outline-danger"
+             href="{% url 'users:organization-delete' organization.pk %}">
+            <i class="bi bi-trash me-1"></i>
+            {% trans "Delete" %}
+          </a>
+        {% endif %}
       </div>
     </div>
 
     <div class="row g-4">
-      <div class="col-12 col-xl-5">
+      <div class="col-12 col-xl-8">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h2 class="h5 mb-3">{% trans "Add member" %}</h2>
-            <form method="post" novalidate>
-              {% csrf_token %}
-              {{ member_form|crispy }}
-              <div class="d-flex justify-content-end">
-                <button type="submit" class="btn btn-primary">
-                  {% trans "Add" %}
-                </button>
-              </div>
-            </form>
+            <h2 class="h5 mb-4">{% trans "Details" %}</h2>
+            <dl class="row mb-0">
+              <dt class="col-sm-4 text-muted">{% trans "Slug" %}</dt>
+              <dd class="col-sm-8">{{ organization.slug }}</dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Members" %}</dt>
+              <dd class="col-sm-8">
+                {{ member_count }}
+              </dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Workspace type" %}</dt>
+              <dd class="col-sm-8">
+                {% if organization.is_personal %}
+                  {% trans "Personal workspace" %}
+                {% else %}
+                  {% trans "Team workspace" %}
+                {% endif %}
+              </dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Created" %}</dt>
+              <dd class="col-sm-8">
+                {{ organization.created|date:"M j, Y g:i a" }}
+              </dd>
+            </dl>
+          </div>
+          <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+            <a class="btn btn-outline-primary"
+               href="{% org_url 'members:member_list' %}">
+              <i class="bi bi-people me-1"></i>
+              {% trans "Manage members" %}
+            </a>
+            <a class="btn btn-outline-secondary"
+               href="{% org_url 'projects:project-list' %}">
+              <i class="bi bi-collection me-1"></i>
+              {% trans "Manage projects" %}
+            </a>
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-7">
-        <div class="card shadow-sm h-100">
-          <div class="card-body">
-            <h2 class="h5 mb-3">{% trans "Members" %}</h2>
-            {% if memberships %}
-              <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th scope="col">{% trans "User" %}</th>
-                      <th scope="col">{% trans "Roles" %}</th>
-                      <th scope="col" class="text-end">{% trans "Actions" %}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for membership in memberships %}
-                      <tr>
-                        <td>
-                          <div class="fw-semibold">{{ membership.user.name|default:membership.user.username }}</div>
-                          <div class="text-muted small">{{ membership.user.email }}</div>
-                        </td>
-                        <td>
-                          {% for role in membership.role_labels %}
-                            <span class="badge text-bg-light me-1">{{ role }}</span>
-                          {% empty %}
-                            <span class="text-muted">{% trans "No roles assigned" %}</span>
-                          {% endfor %}
-                        </td>
-                        <td class="text-end">
-                          <div class="btn-group" role="group">
-                            <a class="btn btn-sm btn-outline-secondary"
-                               href="{% url 'users:organization-member-update' organization.pk membership.pk %}">
-                              {% trans "Edit roles" %}
-                            </a>
-                            <form method="post"
-                                  action="{% url 'users:organization-member-delete' organization.pk membership.pk %}"
-                                  class="d-inline">
-                              {% csrf_token %}
-                              <button type="submit" class="btn btn-sm btn-outline-danger">
-                                {% trans "Remove" %}
-                              </button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <p class="text-muted mb-0">{% trans "No members yet." %}</p>
-            {% endif %}
+      <div class="col-12 col-xl-4">
+        <div class="alert alert-info h-100 mb-0" role="status">
+          <div class="d-flex flex-column gap-2">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-info-circle-fill"></i>
+              <span class="fw-semibold">
+                {% trans "Need to invite or remove people?" %}
+              </span>
+            </div>
+            <p class="mb-0">
+              {% trans "Use the Manage members page to invite teammates, adjust roles, or remove access. Return here anytime to review organization metadata." %}
+            </p>
           </div>
         </div>
       </div>

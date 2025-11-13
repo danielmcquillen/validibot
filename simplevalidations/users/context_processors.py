@@ -57,15 +57,11 @@ def _apply_organization_context(request):
         request,
         memberships_qs,
     )
-    is_org_admin = bool(active_membership and active_membership.is_admin)
-    can_manage_validators = bool(
-        active_membership
-        and (
-            active_membership.is_admin
-            or active_membership.has_role(RoleCode.AUTHOR)
-            or active_membership.has_role(RoleCode.OWNER)
-        )
+    has_author_admin_owner = bool(
+        active_membership and active_membership.has_author_admin_owner_privileges
     )
+    is_org_admin = bool(active_membership and active_membership.is_admin)
+    can_manage_validators = has_author_admin_owner
 
     return {
         "org_memberships": memberships,
@@ -73,6 +69,7 @@ def _apply_organization_context(request):
         "active_membership": active_membership,
         "is_org_admin": is_org_admin,
         "can_manage_validators": can_manage_validators,
+        "has_author_admin_owner": has_author_admin_owner,
     }
 
 

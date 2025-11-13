@@ -1,6 +1,9 @@
+import pytest
+
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import User
+from simplevalidations.users.tests.factories import MembershipFactory
 
 
 def test_user_get_absolute_url(user: User):
@@ -20,3 +23,13 @@ def test_personal_org_assigns_executor_role(db):
     default_project = org.projects.first()
     assert default_project is not None
     assert default_project.is_default
+
+
+@pytest.mark.django_db
+def test_owner_role_assigns_all_permissions():
+    membership = MembershipFactory()
+    membership.set_roles({RoleCode.OWNER})
+
+    assert set(membership.role_codes) == set(RoleCode.values)
+    assert membership.is_admin
+    assert membership.has_author_admin_owner_privileges

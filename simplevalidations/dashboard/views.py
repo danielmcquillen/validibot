@@ -1,14 +1,25 @@
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
 from django.shortcuts import render
+from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.views import View
+from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.core.mixins import BreadcrumbMixin
+from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.dashboard.time_ranges import iter_time_range_options
 from simplevalidations.dashboard.time_ranges import resolve_time_range
 from simplevalidations.dashboard.widgets import registry
 from simplevalidations.dashboard.widgets.base import WidgetRegistrationError
+
+
+def _has_dashboard_access(request) -> bool:
+    membership = getattr(request, "active_membership", None)
+    if not membership and hasattr(request.user, "membership_for_current_org"):
+        membership = request.user.membership_for_current_org()
+    return bool(membership and membership.has_author_admin_owner_privileges)
 
 
 class MyDashboardView(LoginRequiredMixin, BreadcrumbMixin, View):
@@ -18,6 +29,15 @@ class MyDashboardView(LoginRequiredMixin, BreadcrumbMixin, View):
             "url": "",
         },
     ]
+
+    def dispatch(self, request, *args, **kwargs):
+        if not _has_dashboard_access(request):
+            messages.error(
+                request,
+                _("Dashboard insights are available to organization owners, admins, and authors."),
+            )
+            return redirect(reverse_with_org("workflows:workflow_list", request=request))
+        return super().dispatch(request, *args, **kwargs)
 
     def get(self, request):
         breadcrumbs = self.get_breadcrumbs()
@@ -37,6 +57,11 @@ class WidgetDetailView(LoginRequiredMixin, BreadcrumbMixin, View):
     """
     HTMX endpoint that renders a single widget body.
     """
+
+    def dispatch(self, request, *args, **kwargs):
+        if not _has_dashboard_access(request):
+            return redirect(reverse_with_org("workflows:workflow_list", request=request))
+        return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, slug: str):
         time_range_slug = request.GET.get("time_range")

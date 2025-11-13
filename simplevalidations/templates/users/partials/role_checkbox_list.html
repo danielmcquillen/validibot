@@ -1,0 +1,32 @@
+{% comment %}
+Reusable checkbox list for organization role selection.
+Expected context:
+  role_options: iterable of dicts with value/label/help/checked/disabled
+  field_name: optional (defaults to "roles")
+{% endcomment %}
+{% with field_name=field_name|default:"roles" %}
+  <div class="organization-role-list">
+    {% for option in role_options %}
+      <div class="form-check organization-role-option">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          name="{{ field_name }}"
+          id="{{ field_name }}_{{ forloop.counter0 }}"
+          value="{{ option.value }}"
+          {% if option.checked %}checked{% endif %}
+          {% if option.disabled %}disabled{% endif %}
+        />
+        <label class="form-check-label fw-semibold" for="{{ field_name }}_{{ forloop.counter0 }}">
+          {{ option.label }}
+        </label>
+        {% if option.help %}
+          <div class="form-text">{{ option.help }}</div>
+        {% endif %}
+        {% if option.disabled and option.checked %}
+          <input type="hidden" name="{{ field_name }}" value="{{ option.value }}" />
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% endwith %}

@@ -100,6 +100,28 @@ def test_member_delete_removes_viewer(admin_client):
 
 
 @pytest.mark.django_db
+def test_member_delete_htmx_updates_list(admin_client):
+    client, org, admin = admin_client
+    viewer = UserFactory()
+    viewer_membership = Membership.objects.create(user=viewer, org=org, is_active=True)
+    viewer_membership.set_roles({RoleCode.VIEWER})
+
+    client.get(reverse("members:member_list"))
+    csrf_token = client.cookies["csrftoken"].value
+
+    response = client.delete(
+        reverse("members:member_delete", kwargs={"member_id": viewer_membership.pk}),
+        HTTP_HX_REQUEST="true",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+
+    assert response.status_code == 200
+    assert "member-list-card" in response.content.decode()
+    assert "success" in (response.headers.get("HX-Trigger") or "")
+    assert not Membership.objects.filter(pk=viewer_membership.pk).exists()
+
+
+@pytest.mark.django_db
 def test_member_delete_prevents_removing_last_admin(admin_client):
     client, org, admin = admin_client
     membership = Membership.objects.get(user=admin, org=org)

@@ -70,7 +70,6 @@ html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
     flex-direction: row;
     align-items: center;
     padding-left: 1rem;
-    margin-bottom: 0.25rem;
 
     .navbar-brand {
       display: inline-flex;
@@ -88,6 +87,10 @@ html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
     }
   }
 
+  .workspace-selector-wrapper {
+    min-height: 28px;
+  }
+
   .workspace-label {
     margin-left: 0.5rem;
     margin-bottom: 0.25rem;
@@ -98,6 +101,7 @@ html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
   }
 
   #workspace-selector {
+    margin-top: 25px;
     position: relative;
 
     .workspace-selector-btn {

@@ -27,7 +27,6 @@ from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.forms import OrganizationForm
-from simplevalidations.users.forms import OrganizationMemberForm
 from simplevalidations.users.forms import OrganizationMemberRolesForm
 from simplevalidations.users.forms import UserProfileForm
 from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
@@ -466,40 +465,17 @@ class OrganizationDetailView(
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         organization = getattr(self, "organization")
-        memberships = (
-            Membership.objects.filter(org=organization, is_active=True)
-            .select_related("user")
-            .prefetch_related("membership_roles__role")
-            .order_by("user__username")
-        )
+        member_count = Membership.objects.filter(
+            org=organization,
+            is_active=True,
+        ).count()
         context.update(
             {
                 "organization": organization,
-                "memberships": memberships,
-                "member_form": kwargs.get(
-                    "member_form",
-                    OrganizationMemberForm(organization=organization),
-                ),
+                "member_count": member_count,
             }
         )
         return context
-
-    def post(self, request, *args, **kwargs):
-        organization = getattr(self, "organization")
-        form = OrganizationMemberForm(request.POST, organization=organization)
-        if form.is_valid():
-            form.save()
-            messages.success(request, _("Member added."))
-            return redirect(
-                reverse_with_org(
-                    "users:organization-detail",
-                    request=request,
-                    kwargs={"pk": organization.pk},
-                )
-            )
-
-        context = self.get_context_data(member_form=form)
-        return self.render_to_response(context, status=400)
 
 
 class OrganizationMemberRolesUpdateView(OrganizationAdminRequiredMixin, FormView):
@@ -593,6 +569,19 @@ class OrganizationMemberDeleteView(OrganizationAdminRequiredMixin, View):
 
         if membership.user_id == request.user.id:
             messages.error(request, _("You cannot remove yourself."))
+            return redirect(
+                reverse_with_org(
+                    "users:organization-detail",
+                    request=request,
+                    kwargs={"pk": organization.pk},
+                )
+            )
+
+        if membership.has_role(RoleCode.OWNER):
+            messages.error(
+                request,
+                _("The organization owner cannot be removed. Contact support to transfer ownership."),
+            )
             return redirect(
                 reverse_with_org(
                     "users:organization-detail",

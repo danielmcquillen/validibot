@@ -296,15 +296,14 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             return self.request.user.membership_for_current_org()
         return None
 
-    def can_manage_validators(self) -> bool:
+    def has_library_access(self) -> bool:
         membership = self.get_active_membership()
         if not membership:
             return False
-        return bool(
-            membership.is_admin
-            or membership.has_role(RoleCode.AUTHOR)
-            or membership.has_role(RoleCode.OWNER)
-        )
+        return membership.has_author_admin_owner_privileges
+
+    def can_manage_validators(self) -> bool:
+        return self.has_library_access()
 
     def require_manage_permission(self):
         if not self.can_manage_validators():
@@ -317,6 +316,15 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             messages.error(
                 self.request,
                 _("Select an organization before modifying validators."),
+            )
+            return False
+        return True
+
+    def require_library_access(self) -> bool:
+        if not self.has_library_access():
+            messages.error(
+                self.request,
+                _("Validator Library is limited to organization owners, admins, and authors."),
             )
             return False
         return True
@@ -339,6 +347,16 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     template_name = "validations/library/library.html"
     default_tab = "custom"
     allowed_tabs = ("custom", "system")
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org(
+                    "workflows:workflow_list",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
 
     def get_breadcrumbs(self):
         return [
@@ -378,6 +396,16 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     context_object_name = "validator"
     slug_field = "slug"
     slug_url_kwarg = "slug"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org(
+                    "workflows:workflow_list",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
         org = self.get_active_org()

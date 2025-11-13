@@ -1,5 +1,6 @@
 {% extends "app_base.html" %}
-{% load i18n core_tags crispy_forms_tags %}
+
+{% load i18n core_tags %}
 
 {% block title %}
   {% trans "Members" %} · SimpleValidations
@@ -22,66 +23,7 @@
 
     <div class="row g-4">
       <div class="col-12 col-xl-7">
-        <div class="card shadow-sm h-100">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span class="fw-semibold">{% trans "Organization members" %}</span>
-            <span class="badge text-bg-light">{{ memberships|length }}</span>
-          </div>
-          <div class="card-body p-0">
-            {% if memberships %}
-              <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                  <thead class="table-light">
-                    <tr>
-                      <th scope="col">{% trans "Member" %}</th>
-                      <th scope="col" class="text-center">{% trans "Roles" %}</th>
-                      <th scope="col" class="text-end">{% trans "Actions" %}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for membership in memberships %}
-                      <tr>
-                        <td class="fw-semibold">
-                          {{ membership.user.name|default:membership.user.username }}
-                          <div class="text-muted small">{{ membership.user.email }}</div>
-                        </td>
-                        <td class="text-center">
-                          {% for role in membership.role_codes %}
-                            <span class="badge text-bg-secondary me-1 text-uppercase">{{ role }}</span>
-                          {% empty %}
-                            <span class="text-muted small">{% trans "Viewer" %}</span>
-                          {% endfor %}
-                        </td>
-                        <td class="text-end">
-                          <div class="btn-group btn-group-sm" role="group">
-                            <a class="btn btn-outline-secondary"
-                               href="{% org_url 'members:member_edit' member_id=membership.pk %}">
-                              {% trans "Edit" %}
-                            </a>
-                            <form method="post"
-                                  action="{% org_url 'members:member_delete' member_id=membership.pk %}"
-                                  class="d-inline">
-                              {% csrf_token %}
-                              <button type="submit"
-                                      class="btn btn-outline-danger"
-                                      onclick="return confirm('{% trans "Remove this member?" %}')">
-                                {% trans "Remove" %}
-                              </button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <div class="p-4 text-center text-muted">
-                {% trans "No members yet." %}
-              </div>
-            {% endif %}
-          </div>
-        </div>
+        {% include "members/partials/member_table.html" %}
       </div>
       <div class="col-12 col-xl-5">
         <div class="card shadow-sm h-100">
@@ -91,7 +33,49 @@
           <div class="card-body">
             <form method="post" novalidate>
               {% csrf_token %}
-              {{ add_form|crispy }}
+              {% if add_form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in add_form.non_field_errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
+                </div>
+              {% endif %}
+              <div class="mb-3">
+                <label class="form-label fw-semibold"
+                       for="{{ add_form.email.id_for_label }}">
+                  {{ add_form.email.label }}
+                </label>
+                {{ add_form.email }}
+                {% if add_form.email.help_text %}
+                  <div class="form-text">
+                    {{ add_form.email.help_text }}
+                  </div>
+                {% endif %}
+                {% if add_form.email.errors %}
+                  <div class="text-danger small mt-1">
+                    {% for error in add_form.email.errors %}
+                      {{ error }}
+                      <br />
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+              <div class="mb-3">
+                <span class="form-label fw-semibold d-block mb-2">{{ add_form.fields.roles.label }}</span>
+                {% if add_form.roles.errors %}
+                  <div class="text-danger small mb-2">
+                    {% for error in add_form.roles.errors %}
+                      {{ error }}
+                      <br />
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                {% include "users/partials/role_checkbox_list.html" with role_options=add_form.role_options field_name="roles" %}
+                <p class="form-text small text-muted mt-2">
+                  {{ add_form.fields.roles.help_text }}
+                </p>
+              </div>
               <div class="d-flex justify-content-end">
                 <button type="submit" class="btn btn-primary">
                   <i class="bi bi-person-plus me-1"></i>

@@ -18,3 +18,18 @@
     }
   }
 }
+.organization-role-list {
+  .organization-role-option {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    &:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+  }
+  .form-text {
+    margin-left: 1.5rem;
+  }
+}

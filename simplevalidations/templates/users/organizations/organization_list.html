@@ -65,10 +65,15 @@
                       </td>
                       <td class="text-end">
                         <div class="btn-group" role="group">
-                          <a class="btn btn-sm btn-outline-primary"
-                             href="{% url 'users:organization-detail' membership.org.pk %}">
-                            {% trans "Manage" %}
-                          </a>
+                          <form method="post"
+                                action="{% url 'users:organization-switch' membership.org.pk %}"
+                                class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% org_url 'members:member_list' %}" />
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                              {% trans "Manage members" %}
+                            </button>
+                          </form>
                           <a class="btn btn-sm btn-outline-secondary"
                              href="{% url 'users:organization-update' membership.org.pk %}">
                             {% trans "Edit" %}

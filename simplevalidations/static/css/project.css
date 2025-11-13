@@ -13372,7 +13372,6 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   flex-direction: row;
   align-items: center;
   padding-left: 1rem;
-  margin-bottom: 0.25rem;
 }
 #app-left-nav .left-nav-title .navbar-brand {
   display: inline-flex;
@@ -13388,6 +13387,9 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 #app-left-nav .left-nav-title .navbar-brand .brand-mark {
   margin-top: -5px;
 }
+#app-left-nav .workspace-selector-wrapper {
+  min-height: 28px;
+}
 #app-left-nav .workspace-label {
   margin-left: 0.5rem;
   margin-bottom: 0.25rem;
@@ -13397,6 +13399,7 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   text-transform: uppercase;
 }
 #app-left-nav #workspace-selector {
+  margin-top: 25px;
   position: relative;
 }
 #app-left-nav #workspace-selector .workspace-selector-btn {
@@ -14306,6 +14309,20 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 #validation-run-results .validation-info-card th {
   background-color: #f1f1f1;
   border: #ccc;
+}
+
+.organization-role-list .organization-role-option {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.organization-role-list .organization-role-option:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.organization-role-list .form-text {
+  margin-left: 1.5rem;
 }
 
 h1,

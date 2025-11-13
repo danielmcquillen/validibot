@@ -7,6 +7,17 @@
 @use "app/assertion_builder";
 @use "app/validator_library";
 @use "app/project_form";
+@use "app/validation_results";
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
 
 #main-content {
   min-height: 100vh;

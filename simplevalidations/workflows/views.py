@@ -733,6 +733,39 @@ class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
         )
 
 
+class WorkflowLastRunStatusView(WorkflowLaunchContextMixin, TemplateView):
+    template_name = "workflows/launch/workflow_run_detail.html"
+
+    def get(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        latest_run_id = (
+            workflow.validation_runs.order_by("-created")
+            .values_list("pk", flat=True)
+            .first()
+        )
+        if not latest_run_id:
+            messages.info(
+                request,
+                _("This workflow has not run yet. Launch it to see run details."),
+            )
+            return HttpResponseRedirect(
+                reverse_with_org(
+                    "workflows:workflow_launch",
+                    request=request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            )
+        run = self.load_run_for_display(workflow=workflow, run_id=latest_run_id)
+        if run is None:
+            raise Http404
+        return self.render_run_detail_panel(
+            request,
+            workflow=workflow,
+            run=run,
+            status_code=HTTPStatus.OK,
+        )
+
+
 class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
     template_name = "workflows/workflow_form.html"
 

@@ -32,15 +32,24 @@ if TYPE_CHECKING:
 @dataclass
 class ValidationIssue:
     """
-    Represents a single validation problem.
-    path: JSONPointer-like path (e.g., zones/0/area_m2) or XPath for XML, etc.
-    message: human-readable description of the problem.
-    severity: INFO/WARNING/ERROR (default ERROR).
+    Represents a single validation problem emitted by an engine.
+
+    Attributes:
+        path: JSON Pointer / XPath / dotted path for the failing value.
+        message: Human readable description of the problem.
+        severity: INFO/WARNING/ERROR (default ERROR).
+        code: Optional machine-readable string for grouping (e.g. "json.required").
+        meta: Optional loose metadata used to enrich ValidationFinding rows.
+        assertion_id: Optional RulesetAssertion PK when the issue was produced
+            by a structured assertion.
     """
 
     path: str
     message: str
     severity: Severity = Severity.ERROR
+    code: str = ""
+    meta: dict[str, Any] | None = None
+    assertion_id: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

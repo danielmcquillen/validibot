@@ -45,22 +45,37 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
-    # Map steps to summary["steps"], defaulting to []
     steps = serializers.SerializerMethodField()
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
-        summary = getattr(obj, "summary", None)
-        if not summary:
+        step_runs = list(obj.step_runs.all())
+        if not step_runs:
             return []
-        if isinstance(summary, str):
-            try:
-                summary = json.loads(summary)
-            except Exception:
-                return []
-        if isinstance(summary, dict):
-            steps = summary.get("steps")
-            return steps if isinstance(steps, list) else []
-        return []
+        step_runs.sort(key=lambda sr: (sr.step_order or 0, sr.pk))
+        payload: list[dict] = []
+        for step_run in step_runs:
+            workflow_step = getattr(step_run, "workflow_step", None)
+            findings = list(step_run.findings.all())
+            payload.append(
+                {
+                    "step_id": step_run.workflow_step_id or step_run.pk,
+                    "name": getattr(workflow_step, "name", _("Step")),
+                    "status": step_run.status,
+                    "issues": [
+                        {
+                            "id": finding.id,
+                            "message": finding.message,
+                            "path": finding.path,
+                            "severity": finding.severity,
+                            "code": finding.code,
+                            "assertion_id": finding.ruleset_assertion_id,
+                        }
+                        for finding in findings
+                    ],
+                    "error": step_run.error,
+                },
+            )
+        return payload
 
     class Meta:
         model = ValidationRun

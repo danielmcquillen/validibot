@@ -1,0 +1,66 @@
+{% load i18n core_tags %}
+
+<div class="card validation-info-card">
+    <div class="card-header">
+        {% trans "Findings" %}
+    </div>
+    <div class="card-body">
+
+        {% for step_run in step_runs %}
+            <div>
+                <h3>
+                   Step: {{ step_run.workflow_step.name|default:_("Step") }}
+                </h3>
+            </div>
+            {% with findings=step_run.findings.all %}
+                {% if findings %}
+                    {% regroup findings by get_severity_display as grouped %}
+                    <table class="table table-sm table-bordered mb-5">
+                        <thead>
+                            <tr>
+                                <th>
+                                    {% trans "Severity" %}
+                                </th>
+                                <th>
+                                    {% trans "Path" %}
+                                </th>
+                                <th>
+                                    {% trans "Message" %}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in grouped %}
+                                <tr>
+                                    <td colspan="3" class="fw-semibold">
+                                        {{ group.grouper }}
+                                    </td>
+                                </tr>
+                                {% for finding in group.list %}
+                                    <tr>
+                                        <td class="align-middle">
+                                            {% finding_badge_class finding as badge_class %}
+                                            <span class="badge text-uppercase {{ badge_class }}">
+                                                {{ finding.get_severity_display }}
+                                            </span>
+                                        </td>
+                                        <td class="align-middle">
+                                            {{ finding.path|default:"–" }}
+                                        </td>
+                                        <td class="align-middle">
+                                            {{ finding.message }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted small mb-0">
+                        {% trans "No findings were detected for this step." %}
+                    </p>
+                {% endif %}
+            {% endwith %}
+        {% endfor %}
+    </div>
+</div>

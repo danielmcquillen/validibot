@@ -11,9 +11,10 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
 class DummyResult:
-    def __init__(self, passed: bool, issues=None):
+    def __init__(self, passed: bool, issues=None, stats=None):
         self.passed = passed
         self.issues = issues or []
+        self.stats = stats or {}
 
 
 @pytest.mark.django_db

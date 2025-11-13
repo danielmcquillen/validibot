@@ -86,11 +86,11 @@
                    href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
-                   title="{% trans "Run workflow" %}"
+                   title="{% trans "Launch workflow" %}"
                    aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
-                                   Run {{ workflow_name }}
+                                   Launch {{ workflow_name }}
                                {% endblocktrans %}">
-                    <i class="bi bi-play-fill"></i>
+                    <i class="bi bi-rocket"></i>
                 </a>
             {% else %}
                 <span class="btn btn-sm btn-outline-secondary disabled"
@@ -101,7 +101,7 @@
                       title="{% trans "Executor access required to run this workflow" %}">
                     <i class="bi bi-play-fill"></i>
                     <span class="visually-hidden">
-                        {% trans "Run workflow" %}
+                        {% trans "Launch workflow" %}
                     </span>
                 </span>
             {% endif %}

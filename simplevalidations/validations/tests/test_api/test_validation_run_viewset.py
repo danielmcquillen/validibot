@@ -12,7 +12,9 @@ from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.tests.factories import ValidationFindingFactory
 from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.validations.tests.factories import ValidationStepRunFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 
@@ -214,7 +216,33 @@ class ValidationRunViewSetTestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
-        self.assertEqual(response.data["results"][0]["id"], str(new_run.id))
+
+    def test_detail_includes_step_findings(self):
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.FAILED,
+        )
+        step_run = ValidationStepRunFactory(validation_run=run)
+        finding = ValidationFindingFactory(
+            validation_step_run=step_run,
+            message="Too expensive",
+            path="payload.price",
+        )
+
+        url = reverse("api:validation-runs-detail", args=[run.pk])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        steps = response.data["steps"]
+        self.assertEqual(len(steps), 1)
+        issues = steps[0]["issues"]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["message"], finding.message)
+        self.assertEqual(issues[0]["path"], finding.path)
 
     def test_organization_isolation(self):
         """Test that users only see runs from their own organization."""

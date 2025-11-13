@@ -40,7 +40,7 @@
     </div>
 
     <div class="row g-4">
-      <div class="col-12 col-lg-6">
+      <div class="col-12 col-lg-6 d-flex flex-column gap-4">
         <div class="card shadow-sm">
           <div class="card-header">
             <span class="fw-semibold">{% trans "Run Details" %}</span>
@@ -95,20 +95,68 @@
             </dl>
           </div>
         </div>
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <span class="fw-semibold">{% trans "Step Status" %}</span>
+          </div>
+          <div class="card-body">
+            {% include "workflows/results/partials/block_validation_run_summary.html" with run=validation step_runs=step_runs %}
+          </div>
+        </div>
       </div>
-      <div class="col-12 col-lg-6">
-        <div class="card shadow-sm h-100">
+      <div class="col-12 col-lg-6 d-flex flex-column gap-4">
+        <div class="card shadow-sm">
           <div class="card-header">
             <span class="fw-semibold">{% trans "Summary" %}</span>
           </div>
           <div class="card-body">
-            {% if validation.summary %}
-              <pre class="bg-body-tertiary rounded p-3 mb-0">{{ validation.summary|pprint }}</pre>
+            {% if summary_record %}
+              <dl class="row mb-0">
+                <dt class="col-sm-6 text-uppercase small text-muted">
+                  {% trans "Errors" %}
+                </dt>
+                <dd class="col-sm-6">
+                  <span class="badge text-bg-danger">{{ summary_record.error_count }}</span>
+                </dd>
+                <dt class="col-sm-6 text-uppercase small text-muted">
+                  {% trans "Warnings" %}
+                </dt>
+                <dd class="col-sm-6">
+                  <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count }}</span>
+                </dd>
+                <dt class="col-sm-6 text-uppercase small text-muted">
+                  {% trans "Info" %}
+                </dt>
+                <dd class="col-sm-6">
+                  <span class="badge text-bg-info text-dark">{{ summary_record.info_count }}</span>
+                </dd>
+                <dt class="col-sm-6 text-uppercase small text-muted">
+                  {% trans "Assertion failures" %}
+                </dt>
+                <dd class="col-sm-6">
+                  {{ summary_record.assertion_failure_count }} /
+                  {{ summary_record.assertion_total_count }}
+                </dd>
+                <dt class="col-sm-6 text-uppercase small text-muted">
+                  {% trans "Total findings" %}
+                </dt>
+                <dd class="col-sm-6">
+                  {{ summary_record.total_findings }}
+                </dd>
+              </dl>
             {% else %}
               <p class="text-muted mb-0">
                 {% trans "Summary data will appear once the validation completes." %}
               </p>
             {% endif %}
+          </div>
+        </div>
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <span class="fw-semibold">{% trans "Findings" %}</span>
+          </div>
+          <div class="card-body">
+            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs %}
           </div>
         </div>
       </div>

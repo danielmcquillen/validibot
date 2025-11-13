@@ -352,6 +352,43 @@ def test_run_detail_page_shows_completion_actions(client):
     assert "View full run" in body
 
 
+def test_latest_run_view_loads_most_recent_run(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    recent_run = ValidationRunFactory(
+        submission__workflow=workflow,
+        submission__org=workflow.org,
+        workflow=workflow,
+        org=workflow.org,
+        status=ValidationRunStatus.SUCCEEDED,
+    )
+
+    response = client.get(
+        reverse("workflows:workflow_last_run", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    body = response.content.decode()
+    assert "workflow-run-detail-panel" in body
+    assert "Launch again" in body
+
+
+def test_latest_run_view_redirects_when_no_runs_exist(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+
+    response = client.get(
+        reverse("workflows:workflow_last_run", kwargs={"pk": workflow.pk}),
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}) in response.url
+
+
 def test_public_info_view_accessible_when_enabled(client):
     workflow = WorkflowFactory(make_info_public=True)
     validator = ValidatorFactory(

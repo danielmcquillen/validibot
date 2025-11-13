@@ -5,6 +5,7 @@ import django_filters
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import models
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -33,7 +34,9 @@ from simplevalidations.validations.forms import CustomValidatorCreateForm
 from simplevalidations.validations.forms import CustomValidatorUpdateForm
 from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.models import CustomValidator
+from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.utils import create_custom_validator
@@ -77,7 +80,12 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
                 "org_id",
                 flat=True,
             )
-            qs = super().get_queryset().filter(org__in=org_ids)
+            qs = (
+                super()
+                .get_queryset()
+                .filter(org__in=org_ids)
+                .select_related("workflow", "org", "submission")
+            )
 
         else:
             qs = ValidationRun.objects.none()
@@ -91,7 +99,21 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
             cutoff = timezone.now() - timedelta(days=30)
             qs = qs.filter(created__gte=cutoff)
 
-        return qs
+        step_run_prefetch = Prefetch(
+            "step_runs",
+            queryset=ValidationStepRun.objects.select_related("workflow_step")
+            .prefetch_related("findings", "findings__ruleset_assertion")
+            .order_by("step_order", "pk"),
+        )
+        findings_prefetch = Prefetch(
+            "findings",
+            queryset=ValidationFinding.objects.select_related(
+                "validation_step_run",
+                "validation_step_run__workflow_step",
+                "ruleset_assertion",
+            ).order_by("severity", "-created"),
+        )
+        return qs.prefetch_related(step_run_prefetch, findings_prefetch)
 
 
 # UI Views
@@ -117,9 +139,24 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         org_ids = user.memberships.filter(is_active=True).values_list(
             "org_id", flat=True
         )
+        step_run_prefetch = Prefetch(
+            "step_runs",
+            queryset=ValidationStepRun.objects.select_related("workflow_step")
+            .prefetch_related("findings", "findings__ruleset_assertion")
+            .order_by("step_order", "pk"),
+        )
+        findings_prefetch = Prefetch(
+            "findings",
+            queryset=ValidationFinding.objects.select_related(
+                "validation_step_run",
+                "validation_step_run__workflow_step",
+                "ruleset_assertion",
+            ).order_by("severity", "-created"),
+        )
         return (
             ValidationRun.objects.filter(org_id__in=org_ids)
             .select_related("workflow", "submission", "org")
+            .prefetch_related(step_run_prefetch, findings_prefetch)
             .order_by("-created")
         )
 
@@ -201,6 +238,20 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
 
     def get_queryset(self):
         return self.get_base_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validation: ValidationRun = context["validation"]
+        step_runs = list(validation.step_runs.all())
+        findings = list(validation.findings.all())
+        context.update(
+            {
+                "step_runs": step_runs,
+                "all_findings": findings,
+                "summary_record": getattr(validation, "summary_record", None),
+            },
+        )
+        return context
 
     def get_breadcrumbs(self):
         validation = getattr(self, "object", None) or self.get_object()

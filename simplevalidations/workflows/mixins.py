@@ -205,9 +205,20 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
     ) -> tuple[list[Any], list[Any], bool]:
         if not run:
             return [], [], False
-        step_runs = list(run.step_runs.order_by("step_order"))
-        findings = list(run.findings.order_by("severity", "-created")[:10])
+        step_runs = list(
+            run.step_runs.select_related("workflow_step")
+            .prefetch_related("findings", "findings__ruleset_assertion")
+            .order_by("step_order")
+        )
         run_in_progress = run.status in self.polling_statuses
+        findings: list[Any] = []
+        if not run_in_progress:
+            findings = list(
+                run.findings.select_related(
+                    "validation_step_run",
+                    "validation_step_run__workflow_step",
+                ).order_by("severity", "-created")[:10]
+            )
         return step_runs, findings, run_in_progress
 
     def build_status_area_context(
@@ -252,8 +263,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         )
         return {
             "active_run": active_run,
-            "active_run_step_runs": step_runs,
-            "active_run_findings": findings,
+            "step_runs": step_runs,
+            "findings": findings,
             "run_in_progress": run_in_progress,
             "polling_statuses": self.polling_statuses,
             "poll_interval_seconds": poll_interval,
@@ -311,7 +322,13 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         return (
             ValidationRun.objects.filter(pk=uuid_val, workflow=workflow)
             .select_related("submission", "user")
-            .prefetch_related("step_runs", "step_runs__workflow_step", "findings")
+            .prefetch_related(
+                "step_runs",
+                "step_runs__workflow_step",
+                "step_runs__findings",
+                "findings",
+                "findings__ruleset_assertion",
+            )
             .first()
         )
 

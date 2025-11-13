@@ -75,10 +75,12 @@ class BasicValidatorEngine(BaseValidatorEngine):
         for assertion in assertions:
             if assertion.assertion_type == AssertionType.CEL_EXPRESSION:
                 issues.append(
-                    ValidationIssue(
+                    self._issue_from_assertion(
+                        assertion,
                         path="",
-                        message=_("CEL expressions are not supported for BASIC validators."),
-                        severity=assertion.severity,
+                        message=_(
+                            "CEL expressions are not supported for BASIC validators."
+                        ),
                     ),
                 )
                 continue
@@ -89,10 +91,10 @@ class BasicValidatorEngine(BaseValidatorEngine):
 
             if not found and not options.get("treat_missing_as_null"):
                 issues.append(
-                    ValidationIssue(
+                    self._issue_from_assertion(
+                        assertion,
                         path or "",
-                        message=_("Value for '%(path)s' was not found.") % {"path": path},
-                        severity=assertion.severity,
+                        _("Value for '%(path)s' was not found.") % {"path": path},
                     ),
                 )
                 continue
@@ -113,10 +115,10 @@ class BasicValidatorEngine(BaseValidatorEngine):
             if not passed:
                 message = self._render_message(assertion, template_context, failure_message, actual)
                 issues.append(
-                    ValidationIssue(
+                    self._issue_from_assertion(
+                        assertion,
                         path or "",
-                        message=message,
-                        severity=assertion.severity,
+                        message,
                     ),
                 )
 
@@ -131,6 +133,21 @@ class BasicValidatorEngine(BaseValidatorEngine):
         )
 
     # ------------------------------------------------------------------ Helpers
+
+    def _issue_from_assertion(
+        self,
+        assertion,
+        path: str,
+        message: str,
+    ) -> ValidationIssue:
+        return ValidationIssue(
+            path=path,
+            message=message,
+            severity=assertion.severity,
+            code=assertion.operator,
+            meta={"ruleset_id": assertion.ruleset_id},
+            assertion_id=getattr(assertion, "id", None),
+        )
 
     def _assertion_path(self, assertion) -> str:
         if assertion.target_catalog_id and assertion.target_catalog:

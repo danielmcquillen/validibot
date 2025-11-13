@@ -1,0 +1,20 @@
+#validation-run-results {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  .validation-info-card {
+    height: 100%;
+    .card-header {
+      background: #fff;
+      border-bottom: 1px dotted #999;
+    }
+    .card-body {
+      height: 100%;
+    }
+    th {
+      background-color: #f1f1f1;
+      border: #ccc;
+    }
+  }
+}

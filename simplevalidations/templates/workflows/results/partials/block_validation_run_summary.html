@@ -1,0 +1,91 @@
+{% load i18n %}
+
+{% comment %}
+This template lists out the summary results of the validation workflow run.
+(It doesn't show step-by-step findings; those are in a different block.)
+{% endcomment %}
+
+<div class="card validation-info-card">
+    <div class="card-header">
+        {% trans "Run Summary" %}
+    </div>
+    <div class="card-body">
+
+        {% if run.error %}
+            <div class="alert alert-danger small w-100 text-center" role="alert">
+                <i class="bi-exclamation-octagon me-2"></i>{{ run.error }}
+            </div>
+        {% endif %}
+
+        <dl class="row mb-3 small">
+
+            {% with summary_record=run.summary_record %}
+                {% if summary_record %}
+
+                    <dt class="col-5 col-lg-4">
+                        {% trans "Errors" %}
+                    </dt>
+                    <dd class="col-7 col-lg-8">
+                        {{ summary_record.error_count }}
+                    </dd>
+
+                    <dt class="col-5 col-lg-4">
+                        {% trans "warnings" %}
+                    </dt>
+                    <dd class="col-7 col-lg-8">
+                        {{ summary_record.warnings_count|default:"0" }}
+                    </dd>
+
+                    <dt class="col-5 col-lg-4">
+                        {% trans "info" %}
+                    </dt>
+                    <dd class="col-7 col-lg-8">
+                        {{ summary_record.info_count|default:"0" }}
+                    </dd>
+
+                    <dt class="col-5 col-lg-4">
+                        {% trans "failure" %}
+                    </dt>
+                    <dd class="col-7 col-lg-8">
+                        {{ summary_record.failure_count|default:"0" }}
+                    </dd>
+
+                {% endif %}
+            {% endwith %}
+        </dl>
+
+        <hr />
+        <dl class="row mb-3 small">
+
+            <dt class="col-5 col-lg-4 ">
+                {% trans "Started" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+                {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
+            </dd>
+
+            <dt class="col-5 col-lg-4">
+                {% trans "Completed" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+                {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
+            </dd>
+
+            <dt class="col-5 col-lg-4">
+                {% trans "Duration" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+                {% with duration=run.computed_duration_ms %}
+                    {% if duration %}
+                        {{ duration|floatformat:0 }} ms
+                    {% elif is_polling %}
+                        <span class="text-muted">{% trans "Running…" %}</span>
+                    {% else %}
+                        <span class="text-muted">{% trans "Not captured" %}</span>
+                    {% endif %}
+                {% endwith %}
+            </dd>
+        </dl>
+
+    </div>
+</div>

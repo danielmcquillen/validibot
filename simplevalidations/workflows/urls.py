@@ -18,6 +18,11 @@ urlpatterns = [
         name="workflow_run_detail",
     ),
     path(
+        "<int:pk>/launch/run/latest/",
+        views.WorkflowLastRunStatusView.as_view(),
+        name="workflow_last_run",
+    ),
+    path(
         "<int:pk>/launch/run/<uuid:run_id>/status/",
         views.WorkflowLaunchStatusView.as_view(),
         name="workflow_launch_status",

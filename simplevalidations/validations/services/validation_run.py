@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-from dataclasses import asdict
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from attr import dataclass, field
@@ -17,16 +17,20 @@ from rest_framework import status
 from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.validations.constants import (
     VALIDATION_RUN_TERMINAL_STATUSES,
+    Severity,
     StepStatus,
     ValidationRunStatus,
 )
+from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.registry import get as get_validator_class
-from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.services.models import (
+from simplevalidations.validations.models import (
+    ValidationFinding,
+    ValidationRun,
     ValidationRunSummary,
-    ValidationRunTaskResult,
-    ValidationStepSummary,
+    ValidationStepRun,
+    ValidationStepRunSummary,
 )
+from simplevalidations.validations.services.models import ValidationRunTaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +236,8 @@ class ValidationRunService:
                     )
                     break
 
+        validation_run.refresh_from_db()
+
         results: ValidationRunLaunchResults = ValidationRunLaunchResults(
             validation_run=validation_run,
         )
@@ -297,16 +303,7 @@ class ValidationRunService:
         metadata: dict | None = None,
     ) -> ValidationRunTaskResult:
         """
-        This method executes a validation run given its ID and optional payload.
-        It is meant to be called within a Celery task.
-
-        Args:
-            validation_run_id (int): The ID of the ValidationRun to execute.
-            user_id (int): The ID of the user initiating the run.
-            metadata (dict, optional): Additional metadata for the run.
-
-        Returns:
-            ValidationRunSummary: The result of the validation run execution.
+        Execute a ValidationRun within the Celery worker context.
         """
         try:
             validation_run: ValidationRun = ValidationRun.objects.select_related(
@@ -330,12 +327,11 @@ class ValidationRunService:
             ValidationRunStatus.PENDING,
             ValidationRunStatus.RUNNING,
         ):
-            result = ValidationRunSummary(
+            return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
-                error="Validation run is not in a state that allows execution.",
+                error=_("Validation run is not in a state that allows execution."),
             )
-            return result
 
         tracking_service = TrackingEventService()
         actor = self._resolve_run_actor(validation_run, user_id)
@@ -344,7 +340,6 @@ class ValidationRunService:
             validation_run.refresh_from_db(fields=["status"])
             return validation_run.status == ValidationRunStatus.CANCELED
 
-        # Mark running
         validation_run.status = ValidationRunStatus.RUNNING
         if not validation_run.started_at:
             validation_run.started_at = timezone.now()
@@ -356,38 +351,54 @@ class ValidationRunService:
             extra_data={"status": ValidationRunStatus.RUNNING},
         )
 
-        # Try to run each step in the workflow
-        # We don't need an execution plan we can just run the steps in order.
         workflow: Workflow = validation_run.workflow
         overall_failed = False
-        step_summaries = []
         failing_step_id = None
         cancelled = False
+        step_metrics: list[dict[str, Any]] = []
+
         try:
             workflow_steps = workflow.steps.all().order_by("order")
             for wf_step in workflow_steps:
                 if _was_cancelled():
                     cancelled = True
                     break
-                validation_result: ValidationResult = self.execute_workflow_step(
-                    step=wf_step,
+                step_run = self._start_step_run(
                     validation_run=validation_run,
+                    workflow_step=wf_step,
                 )
-                step_summary: ValidationStepSummary = ValidationStepSummary(
-                    step_id=wf_step.id,
-                    name=wf_step.name,
-                    status=(
-                        StepStatus.PASSED
-                        if validation_result.passed
-                        else StepStatus.FAILED
-                    ),
-                    issues=validation_result.issues or [],
+                try:
+                    validation_result: ValidationResult = self.execute_workflow_step(
+                        step=wf_step,
+                        validation_run=validation_run,
+                    )
+                except Exception as exc:
+                    self._finalize_step_run(
+                        step_run=step_run,
+                        status=StepStatus.FAILED,
+                        stats=None,
+                        error=str(exc),
+                    )
+                    step_metrics.append(
+                        {
+                            "step_run": step_run,
+                            "severity_counts": Counter(),
+                            "total_findings": 0,
+                            "assertion_failures": 0,
+                            "assertion_total": 0,
+                        },
+                    )
+                    raise
+                metrics = self._record_step_result(
+                    validation_run=validation_run,
+                    step_run=step_run,
+                    validation_result=validation_result,
                 )
-                step_summaries.append(step_summary)
+                step_metrics.append(metrics)
                 if not validation_result.passed:
                     overall_failed = True
                     failing_step_id = wf_step.id
-                    # For now we stop on first failure
+                    # For now we stop on first failure.
                     break
                 if _was_cancelled():
                     cancelled = True
@@ -395,16 +406,21 @@ class ValidationRunService:
         except Exception as exc:
             logger.exception("Validation run execution failed")
             validation_run.status = ValidationRunStatus.FAILED
-            if hasattr(validation_run, "ended_at"):
-                validation_run.ended_at = timezone.now()
-            if hasattr(validation_run, "error"):
-                validation_run.error = GENERIC_EXECUTION_ERROR
-            validation_run.save()
+            validation_run.ended_at = timezone.now()
+            validation_run.error = GENERIC_EXECUTION_ERROR
+            validation_run.summary = {}
+            validation_run.save(
+                update_fields=["status", "ended_at", "error", "summary"],
+            )
             tracking_service.log_validation_run_status(
                 run=validation_run,
                 status=ValidationRunStatus.FAILED,
                 actor=actor,
                 extra_data={"exception": str(exc)},
+            )
+            self._build_run_summary_record(
+                validation_run=validation_run,
+                step_metrics=step_metrics,
             )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
@@ -412,24 +428,36 @@ class ValidationRunService:
                 error=GENERIC_EXECUTION_ERROR,
             )
 
-        validation_run_summary: ValidationRunSummary = ValidationRunSummary(
-            overview=f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}.",  # noqa: E501
-            steps=step_summaries,
-        )
-
         if cancelled or _was_cancelled():
-            validation_run.summary = asdict(validation_run_summary)
+            validation_run.status = ValidationRunStatus.CANCELED
+            validation_run.error = validation_run.error or RUN_CANCELED_MESSAGE
             if not validation_run.ended_at:
                 validation_run.ended_at = timezone.now()
-            validation_run.save(update_fields=["summary", "ended_at"])
+            validation_run.summary = {}
+            validation_run.save(
+                update_fields=["status", "error", "ended_at", "summary"],
+            )
+            summary_record = self._build_run_summary_record(
+                validation_run=validation_run,
+                step_metrics=step_metrics,
+            )
+            extra_payload = {
+                "step_count": len(step_metrics),
+                "finding_count": summary_record.total_findings if summary_record else 0,
+                "duration_ms": validation_run.computed_duration_ms,
+            }
+            tracking_service.log_validation_run_status(
+                run=validation_run,
+                status=ValidationRunStatus.CANCELED,
+                actor=actor,
+                extra_data=extra_payload,
+            )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=ValidationRunStatus.CANCELED,
-                summary=validation_run_summary,
-                error=validation_run.error or RUN_CANCELED_MESSAGE,
+                error=validation_run.error,
             )
 
-        # Update the ValidationRun instance...
         if overall_failed:
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.error = _("One or more validation steps failed.")
@@ -437,33 +465,25 @@ class ValidationRunService:
             validation_run.status = ValidationRunStatus.SUCCEEDED
             validation_run.error = ""
         validation_run.ended_at = timezone.now()
-        # This will be redundant in the future because we will store information
-        # at the step level later, but for now we are only logging step information
-        # so we store the entire summary on the run here.
-        validation_run.summary = asdict(validation_run_summary)
+        validation_run.summary = {}
         validation_run.save(
-            update_fields=[
-                "status",
-                "error",
-                "ended_at",
-                "summary",
-            ],
+            update_fields=["status", "error", "ended_at", "summary"],
         )
 
-        # Create a ValidationRunTaskResult to return
-        # to whoever called this execute() method.
-        # Note that the real data we're concerned about is stored in the
-        # ValidationRun DB record; this result is just a convenience.
-        # The user of an API will get the data from the DB record.
+        summary_record = self._build_run_summary_record(
+            validation_run=validation_run,
+            step_metrics=step_metrics,
+        )
+
         result = ValidationRunTaskResult(
             run_id=validation_run.id,
             status=validation_run.status,
-            summary=validation_run_summary,
             error=validation_run.error,
         )
         completion_extra: dict[str, Any] = {
-            "step_count": len(step_summaries),
+            "step_count": len(step_metrics),
             "failing_step_id": failing_step_id,
+            "finding_count": summary_record.total_findings if summary_record else 0,
         }
         extra_payload = {
             **{k: v for k, v in completion_extra.items() if v is not None},
@@ -477,6 +497,226 @@ class ValidationRunService:
         )
 
         return result
+
+    def _start_step_run(
+        self,
+        *,
+        validation_run: ValidationRun,
+        workflow_step: WorkflowStep,
+    ) -> ValidationStepRun:
+        """Create a ValidationStepRun entry marking the step as in progress."""
+        return ValidationStepRun.objects.create(
+            validation_run=validation_run,
+            workflow_step=workflow_step,
+            step_order=workflow_step.order or 0,
+            status=StepStatus.RUNNING,
+            started_at=timezone.now(),
+        )
+
+    def _finalize_step_run(
+        self,
+        *,
+        step_run: ValidationStepRun,
+        status: StepStatus,
+        stats: dict[str, Any] | None,
+        error: str | None = None,
+    ) -> ValidationStepRun:
+        """Persist final status, duration, and diagnostics on a step run."""
+        ended_at = timezone.now()
+        step_run.status = status
+        step_run.ended_at = ended_at
+        if step_run.started_at:
+            step_run.duration_ms = max(
+                int((ended_at - step_run.started_at).total_seconds() * 1000),
+                0,
+            )
+        else:
+            step_run.duration_ms = 0
+        step_run.output = stats or {}
+        step_run.error = error or ""
+        step_run.save(
+            update_fields=[
+                "status",
+                "ended_at",
+                "duration_ms",
+                "output",
+                "error",
+            ],
+        )
+        return step_run
+
+    def _normalize_issue(self, issue: Any) -> ValidationIssue:
+        """Ensure every issue is a ValidationIssue dataclass."""
+        if isinstance(issue, ValidationIssue):
+            return issue
+        if isinstance(issue, dict):
+            severity = self._coerce_severity(issue.get("severity"))
+            return ValidationIssue(
+                path=str(issue.get("path", "") or ""),
+                message=str(issue.get("message", "") or ""),
+                severity=severity,
+                code=str(issue.get("code", "") or ""),
+                meta=issue.get("meta"),
+                assertion_id=issue.get("assertion_id"),
+            )
+        return ValidationIssue(
+            path="",
+            message=str(issue),
+            severity=Severity.ERROR,
+        )
+
+    def _coerce_severity(self, value: Any) -> Severity:
+        """Convert arbitrary severity input to a Severity choice."""
+        if isinstance(value, Severity):
+            return value
+        if isinstance(value, str):
+            try:
+                return Severity(value)
+            except ValueError:
+                pass
+        return Severity.ERROR
+
+    def _severity_value(self, value: Severity | str | None) -> str:
+        """Return the string value that should be stored on ValidationFinding."""
+        if isinstance(value, Severity):
+            return value.value
+        if isinstance(value, str) and value in Severity.values:
+            return value
+        return Severity.ERROR
+
+    def _persist_findings(
+        self,
+        *,
+        validation_run: ValidationRun,
+        step_run: ValidationStepRun,
+        issues: list[ValidationIssue],
+    ) -> tuple[Counter, int]:
+        severity_counts: Counter = Counter()
+        assertion_failures = 0
+        findings: list[ValidationFinding] = []
+        for issue in issues:
+            severity_value = self._severity_value(issue.severity)
+            severity_counts[severity_value] += 1
+            if issue.assertion_id:
+                assertion_failures += 1
+            meta = issue.meta or {}
+            if meta and not isinstance(meta, dict):
+                meta = {"detail": meta}
+            findings.append(
+                ValidationFinding(
+                    validation_run=validation_run,
+                    validation_step_run=step_run,
+                    severity=severity_value,
+                    code=issue.code or "",
+                    message=issue.message or "",
+                    path=issue.path or "",
+                    meta=meta,
+                    ruleset_assertion_id=issue.assertion_id,
+                ),
+            )
+        if findings:
+            ValidationFinding.objects.bulk_create(findings, batch_size=500)
+        return severity_counts, assertion_failures
+
+    def _record_step_result(
+        self,
+        *,
+        validation_run: ValidationRun,
+        step_run: ValidationStepRun,
+        validation_result: ValidationResult,
+    ) -> dict[str, Any]:
+        issues = [
+            self._normalize_issue(issue)
+            for issue in (validation_result.issues or [])
+        ]
+        severity_counts, assertion_failures = self._persist_findings(
+            validation_run=validation_run,
+            step_run=step_run,
+            issues=issues,
+        )
+        stats = validation_result.stats or {}
+        status = StepStatus.PASSED if validation_result.passed else StepStatus.FAILED
+        finalized_step = self._finalize_step_run(
+            step_run=step_run,
+            status=status,
+            stats=stats,
+            error=None,
+        )
+        return {
+            "step_run": finalized_step,
+            "severity_counts": severity_counts,
+            "total_findings": sum(severity_counts.values()),
+            "assertion_failures": assertion_failures,
+            "assertion_total": self._extract_assertion_total(stats),
+        }
+
+    def _extract_assertion_total(self, stats: dict[str, Any] | None) -> int:
+        if not isinstance(stats, dict):
+            return 0
+        for key in ("assertion_count", "assertions_evaluated"):
+            value = stats.get(key)
+            if isinstance(value, int) and value >= 0:
+                return value
+        return 0
+
+    def _build_run_summary_record(
+        self,
+        *,
+        validation_run: ValidationRun,
+        step_metrics: list[dict[str, Any]],
+    ) -> ValidationRunSummary:
+        severity_totals: Counter = Counter()
+        total_findings = 0
+        for metrics in step_metrics:
+            severity_totals.update(metrics.get("severity_counts", {}))
+            total_findings += metrics.get("total_findings", 0)
+
+        summary_record, _ = ValidationRunSummary.objects.update_or_create(
+            run=validation_run,
+            defaults={
+                "status": validation_run.status,
+                "completed_at": validation_run.ended_at,
+                "total_findings": total_findings,
+                "error_count": severity_totals.get(Severity.ERROR, 0),
+                "warning_count": severity_totals.get(Severity.WARNING, 0),
+                "info_count": severity_totals.get(Severity.INFO, 0),
+                "assertion_failure_count": sum(
+                    metrics.get("assertion_failures", 0) for metrics in step_metrics
+                ),
+                "assertion_total_count": sum(
+                    metrics.get("assertion_total", 0) for metrics in step_metrics
+                ),
+                "extras": {},
+            },
+        )
+
+        summary_record.step_summaries.all().delete()
+        step_summary_objects: list[ValidationStepRunSummary] = []
+        for metrics in step_metrics:
+            step_run = metrics.get("step_run")
+            if not step_run:
+                continue
+            severity_counts: Counter = metrics.get("severity_counts", Counter())
+            step_summary_objects.append(
+                ValidationStepRunSummary(
+                    summary=summary_record,
+                    step_run=step_run,
+                    step_name=getattr(
+                        step_run.workflow_step,
+                        "name",
+                        "",
+                    ),
+                    step_order=step_run.step_order or 0,
+                    status=step_run.status,
+                    error_count=severity_counts.get(Severity.ERROR, 0),
+                    warning_count=severity_counts.get(Severity.WARNING, 0),
+                    info_count=severity_counts.get(Severity.INFO, 0),
+                ),
+            )
+        if step_summary_objects:
+            ValidationStepRunSummary.objects.bulk_create(step_summary_objects)
+
+        return summary_record
 
     def execute_workflow_step(
         self,

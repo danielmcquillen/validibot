@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 
 from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.validations.constants import Severity
 from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
 logger = logging.getLogger(__name__)
@@ -205,3 +206,25 @@ def workflow_launch_preferred_mode(context) -> str:
     if preferred in {"upload", "paste"}:
         return preferred
     return default_mode
+
+
+@register.simple_tag
+def finding_badge_class(finding) -> str:
+    """
+    Return the bootstrap badge class appropriate for a finding's severity.
+    """
+
+    severity = getattr(finding, "severity", "") or ""
+    if isinstance(severity, Severity):
+        severity_value = severity.value
+    else:
+        severity_value = str(severity).upper()
+    mapping = {
+        Severity.ERROR: "text-bg-danger",
+        Severity.WARNING: "text-bg-warning text-dark",
+        Severity.INFO: "text-bg-secondary",
+        "ERROR": "text-bg-danger",
+        "WARNING": "text-bg-warning text-dark",
+        "INFO": "text-bg-secondary",
+    }
+    return mapping.get(severity_value, "text-bg-secondary")

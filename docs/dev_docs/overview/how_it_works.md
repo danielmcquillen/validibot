@@ -152,6 +152,19 @@ For each workflow step, the `ValidationRunService.execute_workflow_step()` metho
    - `issues`: List of ValidationIssue objects with details
    - `stats`: Optional performance and diagnostic information
 
+#### How Findings Are Persisted
+
+Every issue emitted by an engine becomes a `ValidationFinding` row. The model links to
+both the `ValidationStepRun` that produced the issue and the parent `ValidationRun`.
+The direct run foreign key is intentionally denormalized so dashboards and APIs can
+aggregate findings by run or organization without an extra join through step runs.
+To keep the duplication safe, the model copies the run from the step run during save
+and raises a `ValidationError` if someone attempts to associate a finding with a
+different run. This keeps the ORM focused on read performance while guaranteeing
+relational integrity. After the run completes we roll these rows up into the
+`ValidationRunSummary`/`ValidationStepRunSummary` tables so long-term reporting
+remains possible even if old findings are purged.
+
 ##### What happens inside `execute_workflow_step()`
 
 The high‑level summary above hides a few practical details that are worth knowing when you add or debug workflow steps:
@@ -237,26 +250,43 @@ sequenceDiagram
 
 ### Phase 4: Result Aggregation
 
-After all workflow steps complete:
+After all workflow steps complete we capture both the detailed findings and a durable summary:
 
 #### 4.1 Summary Generation
 
-The system creates a comprehensive summary:
+Each `ValidationIssue` emitted by an engine becomes a `ValidationFinding` row tied to the current `ValidationStepRun` and `ValidationRun`. Once all steps finish we aggregate those rows into two lightweight tables:
 
 ```python
-validation_run_summary = ValidationRunSummary(
-    overview=f"Executed {len(step_summaries)} step(s) for workflow {workflow.id}",
-    steps=[
-        ValidationStepSummary(
-            step_id=step.id,
-            name=step.name,
-            status=StepStatus.PASSED if result.passed else StepStatus.FAILED,
-            issues=result.issues or []
-        )
-        for step, result in zip(workflow_steps, step_results)
-    ]
+summary_record, _ = ValidationRunSummary.objects.update_or_create(
+    run=validation_run,
+    defaults={
+        "status": validation_run.status,
+        "completed_at": validation_run.ended_at,
+        "total_findings": total_findings,
+        "error_count": severity_totals.get(Severity.ERROR, 0),
+        "warning_count": severity_totals.get(Severity.WARNING, 0),
+        "info_count": severity_totals.get(Severity.INFO, 0),
+        "assertion_failure_count": total_assertion_failures,
+        "assertion_total_count": total_assertions_evaluated,
+    },
+)
+
+ValidationStepRunSummary.objects.bulk_create(
+    ValidationStepRunSummary(
+        summary=summary_record,
+        step_run=step_run,
+        step_name=step_run.workflow_step.name,
+        step_order=step_run.step_order,
+        status=step_run.status,
+        error_count=severity_counts.get(Severity.ERROR, 0),
+        warning_count=severity_counts.get(Severity.WARNING, 0),
+        info_count=severity_counts.get(Severity.INFO, 0),
+    )
+    for step_run, severity_counts in per_step_metrics
 )
 ```
+
+These summary tables keep severity totals, assertion hit rates, and per-step health available even after old `ValidationFinding` rows are purged for retention.
 
 #### 4.2 Run Status Updates
 
@@ -265,7 +295,7 @@ The ValidationRun is updated with final results:
 - **Status**: SUCCEEDED if all steps passed, FAILED if any step failed
 - **End Timestamp**: When execution completed
 - **Duration**: Total execution time in milliseconds
-- **Summary**: The aggregated ValidationRunSummary as JSON
+- **Summary Record**: One-to-one link to `ValidationRunSummary` (accessed via `run.summary_record`)
 - **Error**: Empty string for success, error message for terminal failures
 
 #### 4.3 Artifact Storage
@@ -296,17 +326,14 @@ If validation completes within the timeout window, the API returns immediately:
     "name": "product.json",
     "checksum_sha256": "abc123..."
   },
-  "summary": {
-    "overview": "Executed 1 step(s) for workflow 42",
-    "steps": [
-      {
-        "step_id": 1,
-        "name": "Schema Validation",
-        "status": "PASSED",
-        "issues": []
-      }
-    ]
-  },
+  "steps": [
+    {
+      "step_id": 1,
+      "name": "Schema Validation",
+      "status": "PASSED",
+      "issues": []
+    }
+  ],
   "started_at": "2023-10-05T14:30:00Z",
   "ended_at": "2023-10-05T14:30:02Z",
   "duration_ms": 2000

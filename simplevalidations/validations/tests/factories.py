@@ -145,7 +145,10 @@ class ValidationStepRunFactory(DjangoModelFactory):
         model = ValidationStepRun
 
     validation_run = factory.SubFactory(ValidationRunFactory)
-    workflow_step = factory.SubFactory(WorkflowStepFactory)
+    workflow_step = factory.SubFactory(
+        WorkflowStepFactory,
+        workflow=factory.SelfAttribute("..validation_run.workflow"),
+    )
     step_order = factory.Sequence(lambda n: n * 10)
     status = StepStatus.PENDING
     output = factory.Dict({})
@@ -165,6 +168,7 @@ class ValidationFindingFactory(DjangoModelFactory):
     message = factory.Faker("sentence")
     path = factory.Faker("file_path", depth=3)
     meta = factory.Dict({})
+    ruleset_assertion = None
 
 
 class ArtifactFactory(DjangoModelFactory):

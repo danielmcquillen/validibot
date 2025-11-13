@@ -8,7 +8,7 @@ from functools import cached_property
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Value, When
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 from slugify import slugify
@@ -16,23 +16,23 @@ from slugify import slugify
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.models import Organization
-from simplevalidations.users.models import User
-from simplevalidations.validations.constants import AssertionOperator
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import CatalogEntryType
-from simplevalidations.validations.constants import CatalogRunStage
-from simplevalidations.validations.constants import CatalogValueType
-from simplevalidations.validations.constants import CustomValidatorType
-from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import RulesetType
-from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.constants import StepStatus
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.users.models import Organization, User
+from simplevalidations.validations.constants import (
+    AssertionOperator,
+    AssertionType,
+    CatalogEntryType,
+    CatalogRunStage,
+    CatalogValueType,
+    CustomValidatorType,
+    JSONSchemaVersion,
+    RulesetType,
+    Severity,
+    StepStatus,
+    ValidationRunStatus,
+    ValidationType,
+    XMLSchemaType,
+)
+from simplevalidations.workflows.models import Workflow, WorkflowStep
 
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [
@@ -1033,13 +1033,58 @@ class ValidationRun(TimeStampedModel):
         return max(int(delta.total_seconds() * 1000), 0)
 
 
-class ValidationStepRun(TimeStampedModel):
+class ValidationRunSummary(TimeStampedModel):
     """
-    Execution of a single WorkflowStep within a ValidationRun.
+    Durable aggregate snapshot of a ValidationRun.
+
+    Retains severity totals and per-step metadata even after findings are purged.
     """
 
     class Meta:
-        indexes = [models.Index(fields=["validation_run", "status"])]
+        ordering = ["-created"]
+
+    run = models.OneToOneField(
+        ValidationRun,
+        on_delete=models.CASCADE,
+        related_name="summary_record",
+        primary_key=True,
+    )
+
+    status = models.CharField(
+        max_length=16,
+        choices=ValidationRunStatus.choices,
+        default=ValidationRunStatus.PENDING,
+    )
+
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    total_findings = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    warning_count = models.PositiveIntegerField(default=0)
+    info_count = models.PositiveIntegerField(default=0)
+
+    assertion_failure_count = models.PositiveIntegerField(default=0)
+    assertion_total_count = models.PositiveIntegerField(default=0)
+
+    extras = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Optional metadata for reporting (for example exemplar messages)."),
+    )
+
+
+class ValidationStepRun(TimeStampedModel):
+    """
+    Execution of a single WorkflowStep within a ValidationRun.
+
+    Results of the step run are stored as ValidationFindings linked to this model.
+
+    """
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["validation_run", "status"]),
+        ]
         constraints = [
             # Prefer UniqueConstraint to future-proof
             models.UniqueConstraint(
@@ -1101,6 +1146,12 @@ class ValidationStepRun(TimeStampedModel):
 
     error = models.TextField(blank=True, default="")
 
+    def __str__(self) -> str:
+        if self.workflow_step:
+            name = f"Results from Step {self.workflow_step.step_number} : {self.workflow_step.name}"
+            return name
+        return super().__str__()
+
     def clean(self):
         super().clean()
 
@@ -1123,6 +1174,45 @@ class ValidationStepRun(TimeStampedModel):
             raise ValidationError({"step_order": _("Must equal WorkflowStep.order.")})
 
 
+class ValidationStepRunSummary(TimeStampedModel):
+    """
+    Lightweight per-step snapshot tied to ValidationRunSummary.
+    """
+
+    class Meta:
+        ordering = ["step_order", "id"]
+        indexes = [
+            models.Index(fields=["summary", "status"]),
+        ]
+
+    summary = models.ForeignKey(
+        ValidationRunSummary,
+        on_delete=models.CASCADE,
+        related_name="step_summaries",
+    )
+
+    step_run = models.OneToOneField(
+        ValidationStepRun,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="step_summary",
+    )
+
+    step_name = models.CharField(max_length=255, blank=True, default="")
+    step_order = models.PositiveIntegerField(default=0)
+
+    status = models.CharField(
+        max_length=16,
+        choices=StepStatus.choices,
+        default=StepStatus.PENDING,
+    )
+
+    error_count = models.PositiveIntegerField(default=0)
+    warning_count = models.PositiveIntegerField(default=0)
+    info_count = models.PositiveIntegerField(default=0)
+
+
 class ValidationFinding(TimeStampedModel):
     """
     Normalized issues produced by step runs for efficient filtering/pagination.
@@ -1130,9 +1220,25 @@ class ValidationFinding(TimeStampedModel):
 
     class Meta:
         indexes = [
+            models.Index(fields=["validation_run", "severity"]),
             models.Index(fields=["validation_step_run", "severity"]),
             models.Index(fields=["validation_step_run", "code"]),
         ]
+        ordering = [
+            models.Case(
+                models.When(severity=Severity.ERROR, then=Value(0)),
+                models.When(severity=Severity.WARNING, then=Value(1)),
+                default=Value(2),
+                output_field=models.IntegerField(),
+            ),
+            "-created",
+        ]
+
+    # We keep a link to both the run and the step run for easier querying.
+    # This is a bit of denormalization but improves performance.
+    # (Theroetically we could get the run via step_run.validation_run.)
+    # To mitigate any issues we define _ensure_run_alignment below and
+    # call it in clean().
 
     validation_run = models.ForeignKey(
         ValidationRun,
@@ -1143,6 +1249,14 @@ class ValidationFinding(TimeStampedModel):
     validation_step_run = models.ForeignKey(
         ValidationStepRun,
         on_delete=models.CASCADE,
+        related_name="findings",
+    )
+
+    ruleset_assertion = models.ForeignKey(
+        "validations.RulesetAssertion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="findings",
     )
 
@@ -1163,6 +1277,43 @@ class ValidationFinding(TimeStampedModel):
     )  # JSON Pointer/XPath/etc.
 
     meta = models.JSONField(default=dict, blank=True)
+
+    def _ensure_run_alignment(self) -> None:
+        """
+        Guarantee validation_run mirrors the parent run from validation_step_run.
+        """
+
+        if not self.validation_step_run_id:
+            return
+
+        step_run = self.validation_step_run
+        if not step_run:
+            return
+
+        parent_run_id = step_run.validation_run_id
+        if not parent_run_id:
+            return
+
+        if not self.validation_run_id:
+            self.validation_run_id = parent_run_id
+            return
+
+        if self.validation_run_id != parent_run_id:
+            raise ValidationError(
+                {
+                    "validation_run": _(
+                        "Validation run must match the step run's parent run.",
+                    ),
+                },
+            )
+
+    def clean(self):
+        super().clean()
+        self._ensure_run_alignment()
+
+    def save(self, *args, **kwargs):
+        self._ensure_run_alignment()
+        super().save(*args, **kwargs)
 
 
 def artifact_upload_to(instance, filename: str) -> str:

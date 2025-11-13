@@ -44,21 +44,16 @@ def run_validation_tasks_inline(monkeypatch):
 
     def immediate_apply_async(*_, **kwargs):
         task_kwargs = kwargs.get("kwargs") or {}
+        service = ValidationRunService()
+        execution_result = service.execute(
+            validation_run_id=task_kwargs.get("validation_run_id"),
+            user_id=task_kwargs.get("user_id"),
+            metadata=task_kwargs.get("metadata"),
+        )
 
         class ImmediateResult:
-            def __init__(self):
-                self._executed = False
-
             def get(self, timeout=None, propagate=False):
-                if self._executed:
-                    return None
-                self._executed = True
-                service = ValidationRunService()
-                return service.execute(
-                    validation_run_id=task_kwargs.get("validation_run_id"),
-                    user_id=task_kwargs.get("user_id"),
-                    metadata=task_kwargs.get("metadata"),
-                )
+                return execution_result
 
         return ImmediateResult()
 

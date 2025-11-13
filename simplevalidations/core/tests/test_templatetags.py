@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from django.test import RequestFactory
 
 from simplevalidations.core.templatetags import core_tags
+from simplevalidations.validations.constants import Severity
 
 
 def _build_context(path="/app/validations/library/", view_name="validations:validation_library"):
@@ -51,3 +52,15 @@ def test_active_link_views_handles_plain_url_names():
     )
 
     assert result == "active"
+
+
+def test_finding_badge_class_returns_expected_mappings():
+    error = SimpleNamespace(severity=Severity.ERROR)
+    warning = SimpleNamespace(severity=Severity.WARNING)
+    info = SimpleNamespace(severity=Severity.INFO)
+    unknown = SimpleNamespace(severity="OTHER")
+
+    assert core_tags.finding_badge_class(error) == "text-bg-danger"
+    assert core_tags.finding_badge_class(warning) == "text-bg-warning text-dark"
+    assert core_tags.finding_badge_class(info) == "text-bg-secondary"
+    assert core_tags.finding_badge_class(unknown) == "text-bg-secondary"

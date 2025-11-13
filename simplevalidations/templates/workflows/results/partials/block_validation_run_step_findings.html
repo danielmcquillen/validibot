@@ -9,7 +9,7 @@
         {% for step_run in step_runs %}
             <div>
                 <h3>
-                   Step: {{ step_run.workflow_step.name|default:_("Step") }}
+                    Step: {{ step_run.workflow_step.name|default:_("Step") }}
                 </h3>
             </div>
             {% with findings=step_run.findings.all %}

@@ -19,6 +19,7 @@ from simplevalidations.validations.constants import (
     RulesetType,
     Severity,
     StepStatus,
+    ValidationRunSource,
     ValidationRunStatus,
     ValidationType,
 )
@@ -288,6 +289,7 @@ class Command(BaseCommand):
             duration_ms=int((end_time - start_time).total_seconds() * 1000),
             error=f"{total_assertions} assertions failed for the example payload.",
             summary=EXAMPLE_RUN_SUMMARY_MARKER,
+            source=ValidationRunSource.LAUNCH_PAGE,
         )
         submission.latest_run = run
         submission.save(update_fields=["latest_run"])

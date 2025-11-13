@@ -121,6 +121,9 @@
               {% trans "Submission" %}
             </th>
             <th scope="col">
+              {% trans "Source" %}
+            </th>
+            <th scope="col">
               {% trans "Status" %}
             </th>
             <th scope="col" class="text-nowrap">
@@ -148,6 +151,9 @@
                 {% endif %}
               </td>
               <td>
+                {{ validation.get_source_display }}
+              </td>
+              <td>
                 <span class="badge text-bg-secondary text-white {{ validation.status_pill_class }}">{{ validation.get_status_display }}</span>
               </td>
               <td>
@@ -170,7 +176,7 @@
             </tr>
           {% empty %}
             <tr>
-              <td colspan="6" class="text-center py-5 text-muted">
+              <td colspan="7" class="text-center py-5 text-muted">
                 {% trans "No validation runs match your filters yet." %}
               </td>
             </tr>

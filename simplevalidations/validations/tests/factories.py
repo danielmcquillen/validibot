@@ -16,6 +16,7 @@ from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunSource
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -138,6 +139,7 @@ class ValidationRunFactory(DjangoModelFactory):
     project = factory.LazyAttribute(lambda o: o.submission.project)
     user = factory.LazyAttribute(lambda o: o.submission.user)
     status = ValidationRunStatus.PENDING
+    source = ValidationRunSource.LAUNCH_PAGE
 
 
 class ValidationStepRunFactory(DjangoModelFactory):

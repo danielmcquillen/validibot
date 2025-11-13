@@ -168,6 +168,7 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     assert finding.message == "Price exceeds limit"
     assert finding.ruleset_assertion_id == assertion.id
     assert finding.validation_step_run.workflow_step == step
+    assert finding.path == "price"
 
     summary_record = ValidationRunSummary.objects.get(run=validation_run)
     assert summary_record.error_count == 1

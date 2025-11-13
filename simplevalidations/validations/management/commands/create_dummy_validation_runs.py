@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from simplevalidations.submissions.models import Submission
+from simplevalidations.validations.constants import ValidationRunSource
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.workflows.models import Workflow
@@ -130,6 +131,7 @@ class Command(BaseCommand):
                 error=self._create_error_message(status)
                 if status == ValidationRunStatus.FAILED
                 else None,
+                source=ValidationRunSource.LAUNCH_PAGE,
             )
 
             created_runs.append(run)

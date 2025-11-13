@@ -66,6 +66,11 @@ class Severity(TextChoices):
     ERROR = "ERROR", _("Error")
 
 
+class ValidationRunSource(TextChoices):
+    LAUNCH_PAGE = "LAUNCH_PAGE", _("Launch Page")
+    API = "API", _("API")
+
+
 class XMLSchemaType(TextChoices):
     DTD = "DTD", _("Document Type Definition (DTD)")
     XSD = "XSD", _("XML Schema Definition (XSD)")

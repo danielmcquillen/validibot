@@ -82,6 +82,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "source",
             "org",
             "workflow",
             "workflow_slug",

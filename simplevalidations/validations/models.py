@@ -28,6 +28,7 @@ from simplevalidations.validations.constants import (
     RulesetType,
     Severity,
     StepStatus,
+    ValidationRunSource,
     ValidationRunStatus,
     ValidationType,
     XMLSchemaType,
@@ -1007,6 +1008,13 @@ class ValidationRun(TimeStampedModel):
         blank=True,
     )  # effective per-run config snapshot
 
+    source = models.CharField(
+        max_length=32,
+        choices=ValidationRunSource.choices,
+        default=ValidationRunSource.LAUNCH_PAGE,
+        help_text=_("Where this run was initiated (web launch page, API, etc.)."),
+    )
+
     def clean(self):
         super().clean()
         # Optional but helpful: ensure org consistency with submission
@@ -1307,12 +1315,36 @@ class ValidationFinding(TimeStampedModel):
                 },
             )
 
+    def _strip_payload_prefix(self) -> None:
+        """Remove the synthetic 'payload' prefix for JSON submissions."""
+
+        path = (self.path or "").strip()
+        if not path:
+            return
+        run = getattr(self, "validation_run", None)
+        submission = getattr(run, "submission", None)
+        if not submission or submission.file_type != SubmissionFileType.JSON:
+            return
+        lower = path.lower()
+        prefix = "payload"
+        if not lower.startswith(prefix):
+            return
+        remainder = path[len(prefix):]
+        if remainder and remainder[0] not in {".", "/", "["}:
+            return
+        remainder = remainder.lstrip("./")
+        while remainder.startswith("["):
+            remainder = remainder[1:]
+        self.path = remainder
+
     def clean(self):
         super().clean()
         self._ensure_run_alignment()
+        self._strip_payload_prefix()
 
     def save(self, *args, **kwargs):
         self._ensure_run_alignment()
+        self._strip_payload_prefix()
         super().save(*args, **kwargs)
 
 

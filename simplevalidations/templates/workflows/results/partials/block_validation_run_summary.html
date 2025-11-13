@@ -11,13 +11,22 @@ This template lists out the summary results of the validation workflow run.
     </div>
     <div class="card-body">
 
+        {% comment %}
         {% if run.error %}
             <div class="alert alert-danger small w-100 text-center" role="alert">
                 <i class="bi-exclamation-octagon me-2"></i>{{ run.error }}
             </div>
         {% endif %}
+        {% endcomment %}
 
         <dl class="row mb-3 small">
+
+            <dt class="col-5 col-lg-4">
+                {% trans "Source" %}
+            </dt>
+            <dd class="col-7 col-lg-8">
+                {{ run.get_source_display }}
+            </dd>
 
             {% with summary_record=run.summary_record %}
                 {% if summary_record %}
@@ -26,28 +35,42 @@ This template lists out the summary results of the validation workflow run.
                         {% trans "Errors" %}
                     </dt>
                     <dd class="col-7 col-lg-8">
-                        {{ summary_record.error_count }}
+                        <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
                     </dd>
 
                     <dt class="col-5 col-lg-4">
                         {% trans "warnings" %}
                     </dt>
                     <dd class="col-7 col-lg-8">
-                        {{ summary_record.warnings_count|default:"0" }}
+                        <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
                     </dd>
 
                     <dt class="col-5 col-lg-4">
                         {% trans "info" %}
                     </dt>
                     <dd class="col-7 col-lg-8">
-                        {{ summary_record.info_count|default:"0" }}
+                        <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
                     </dd>
 
                     <dt class="col-5 col-lg-4">
-                        {% trans "failure" %}
+                        {% trans "Total findings" %}
                     </dt>
                     <dd class="col-7 col-lg-8">
-                        {{ summary_record.failure_count|default:"0" }}
+                        {{ summary_record.total_findings }}
+                    </dd>
+
+                    <dt class="col-sm-4">
+                        {% trans "Submission" %}
+                    </dt>
+                    <dd class="col-sm-8">
+                        {{ validation.submission.name|default:validation.submission.pk }}
+                    </dd>
+
+                    <dt class="col-sm-4">
+                        {% trans "Organization" %}
+                    </dt>
+                    <dd class="col-sm-8">
+                        {{ validation.org.name }}
                     </dd>
 
                 {% endif %}

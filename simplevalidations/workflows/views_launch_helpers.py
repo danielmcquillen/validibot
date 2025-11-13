@@ -26,6 +26,7 @@ from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import (
     VALIDATION_RUN_TERMINAL_STATUSES,
+    ValidationRunSource,
 )
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.serializers import ValidationRunSerializer
@@ -113,6 +114,7 @@ def launch_web_validation_run(
         submission=submission_build.submission,
         metadata=submission_build.metadata,
         user_id=getattr(request.user, "id", None),
+        source=ValidationRunSource.LAUNCH_PAGE,
     )
 
 
@@ -142,6 +144,7 @@ def launch_api_validation_run(
             submission=submission_build.submission,
             metadata=submission_build.metadata,
             user_id=getattr(request.user, "id", None),
+            source=ValidationRunSource.API,
         )
     except PermissionError:
         payload = {"detail": _("You do not have permission to run this workflow.")}

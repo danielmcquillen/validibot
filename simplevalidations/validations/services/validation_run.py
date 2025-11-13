@@ -19,6 +19,7 @@ from simplevalidations.validations.constants import (
     VALIDATION_RUN_TERMINAL_STATUSES,
     Severity,
     StepStatus,
+    ValidationRunSource,
     ValidationRunStatus,
 )
 from simplevalidations.validations.engines.base import ValidationIssue
@@ -87,6 +88,7 @@ class ValidationRunService:
         user_id: int,
         metadata: dict | None = None,
         *,
+        source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
         wait_for_completion: bool = False,
     ) -> ValidationRunLaunchResults:
         """
@@ -110,6 +112,7 @@ class ValidationRunService:
             user_id:                The ID of the user initiating the run.
             metadata:               Optional metadata to be associated with the run.
             wait_for_completion:    Whether to wait synchronously for the run to complete.
+            source:                 Origin of the run (launch page, API, etc.).
 
         Returns:
             ValidationRunLaunchResults: Instance of this dataclass with results of launch.
@@ -174,6 +177,7 @@ class ValidationRunService:
                 or getattr(workflow, "project", None),
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
+                source=source,
             )
             try:
                 if hasattr(submission, "latest_run_id"):
@@ -602,18 +606,19 @@ class ValidationRunService:
             meta = issue.meta or {}
             if meta and not isinstance(meta, dict):
                 meta = {"detail": meta}
-            findings.append(
-                ValidationFinding(
-                    validation_run=validation_run,
-                    validation_step_run=step_run,
-                    severity=severity_value,
-                    code=issue.code or "",
-                    message=issue.message or "",
-                    path=issue.path or "",
-                    meta=meta,
-                    ruleset_assertion_id=issue.assertion_id,
-                ),
+            finding = ValidationFinding(
+                validation_run=validation_run,
+                validation_step_run=step_run,
+                severity=severity_value,
+                code=issue.code or "",
+                message=issue.message or "",
+                path=issue.path or "",
+                meta=meta,
+                ruleset_assertion_id=issue.assertion_id,
             )
+            finding._ensure_run_alignment()
+            finding._strip_payload_prefix()
+            findings.append(finding)
         if findings:
             ValidationFinding.objects.bulk_create(findings, batch_size=500)
         return severity_counts, assertion_failures

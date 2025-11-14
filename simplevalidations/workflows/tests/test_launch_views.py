@@ -10,6 +10,7 @@ from django.urls import reverse
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import RulesetType
@@ -30,8 +31,14 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 pytestmark = pytest.mark.django_db
 
 
-def _force_login_for_workflow(client, workflow):
-    user = workflow.user
+def _force_login_for_workflow(client, workflow, *, user=None):
+    user = user or workflow.user
+    has_membership = user.memberships.filter(
+        org=workflow.org,
+        is_active=True,
+    ).exists()
+    if not has_membership:
+        grant_role(user, workflow.org, RoleCode.VIEWER)
     user.set_current_org(workflow.org)
     client.force_login(user)
     session = client.session
@@ -183,7 +190,8 @@ def test_launch_post_invalid_form_rerenders_page(client):
 def test_launch_start_requires_executor_role(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
-    _force_login_for_workflow(client, workflow)
+    viewer = UserFactory()
+    _force_login_for_workflow(client, workflow, user=viewer)
 
     response = client.post(
         reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
@@ -254,7 +262,8 @@ def test_cancel_run_reports_completed_before_cancel(client):
 def test_cancel_run_requires_executor_role(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
-    _force_login_for_workflow(client, workflow)
+    viewer = UserFactory()
+    _force_login_for_workflow(client, workflow, user=viewer)
     run = ValidationRunFactory(
         submission__workflow=workflow,
         submission__org=workflow.org,

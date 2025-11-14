@@ -746,11 +746,14 @@ class TestWorkflowStartAPI:
         assert poll.status_code == 200
         assert poll.json()["status"] == ValidationRunStatus.SUCCEEDED
 
-    def test_requires_executor_role(self, api_client: APIClient, org, user, workflow):
+    def test_requires_executor_role(self, api_client: APIClient, org, workflow):
         """
         Without EXECUTOR role we respond with 404 to avoid leaking existence.
         """
-        api_client.force_authenticate(user=user)
+        viewer = UserFactory()
+        grant_role(viewer, org, RoleCode.VIEWER)
+        viewer.set_current_org(org)
+        api_client.force_authenticate(user=viewer)
         envelope = {
             "content": json.dumps({"x": 1}),
             "content_type": "application/json",

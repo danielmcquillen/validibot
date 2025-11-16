@@ -70,6 +70,10 @@ inspect roles without additional queries.
 3. Role checks are evaluated using `has_role(RoleCode.EXECUTOR)` etc.
 4. Shared helpers (for example `grant_role` in the test factories) use the same
    primitives so business logic stays consistent.
+5. The Workflow API now mirrors the UI guards:
+   - creating/updating/deleting workflows requires an `OWNER`, `ADMIN`, or `AUTHOR` role in the workflow’s org,
+   - starting a workflow run requires `EXECUTOR`,
+   - deleting a validation run requires `ADMIN` or `OWNER`.
 
 ### Tips
 

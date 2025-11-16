@@ -15,13 +15,13 @@ from django.utils.translation import gettext_lazy as _
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
     ValidationRunStatus,
 )
 from simplevalidations.validations.models import Ruleset, ValidationRun
+from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
 from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
 from simplevalidations.workflows.models import Workflow, WorkflowStep
@@ -34,12 +34,6 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """
     Reusable helpers for workflow UI views.
     """
-
-    manager_role_codes = {
-        RoleCode.OWNER,
-        RoleCode.ADMIN,
-        RoleCode.AUTHOR,
-    }
 
     def get_workflow_queryset(self):
         user = self.request.user
@@ -66,7 +60,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        return any(membership.has_role(code) for code in self.manager_role_codes)
+        return membership.has_any_role(WORKFLOW_MANAGER_ROLES)
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):

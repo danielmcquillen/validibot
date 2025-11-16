@@ -4,8 +4,21 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.users.constants import RoleCode
 
 WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY = "workflow_launch_input_mode"
+
+# Role groups shared by UI mixins and API permissions
+WORKFLOW_MANAGER_ROLES = {
+    RoleCode.OWNER,
+    RoleCode.ADMIN,
+    RoleCode.AUTHOR,
+}
+WORKFLOW_EXECUTOR_ROLES = {
+    RoleCode.EXECUTOR,
+    RoleCode.ADMIN,
+    RoleCode.OWNER,
+}
 
 
 class AccessScope(models.TextChoices):

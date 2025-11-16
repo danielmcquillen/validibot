@@ -17,6 +17,8 @@ from django.views.generic import DetailView, ListView, TemplateView, UpdateView
 from django.views.generic.edit import CreateView, DeleteView, FormView
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response as APIResponse
 
 from simplevalidations.actions.constants import ActionCategoryType
@@ -32,6 +34,7 @@ from simplevalidations.core.view_helpers import (
     hx_trigger_response,
 )
 from simplevalidations.projects.models import Project
+from simplevalidations.users.models import Organization
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
     CatalogRunStage,
@@ -48,6 +51,7 @@ from simplevalidations.validations.models import (
 )
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
+from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
 from simplevalidations.workflows.forms import (
     WorkflowPublicInfoForm,
     WorkflowStepTypeForm,
@@ -61,6 +65,7 @@ from simplevalidations.workflows.mixins import (
     WorkflowStepAssertionsMixin,
 )
 from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.workflows.permissions import WorkflowPermission
 from simplevalidations.workflows.serializers import WorkflowSerializer
 from simplevalidations.workflows.views_helpers import (
     ensure_advanced_ruleset,
@@ -91,7 +96,7 @@ MAX_STEP_COUNT = 5
 class WorkflowViewSet(viewsets.ModelViewSet):
     queryset = Workflow.objects.all()
     serializer_class = WorkflowSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WorkflowPermission]
 
     def get_queryset(self):
         # List all workflows the user can access (in any of their orgs)
@@ -103,6 +108,52 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         ]:
             return ValidationRunStartSerializer
         return super().get_serializer_class()
+
+    def perform_create(self, serializer):
+        org = self._resolve_target_org()
+        if not self.request.user.has_org_roles(org, WORKFLOW_MANAGER_ROLES):
+            raise DRFPermissionDenied(
+                detail=_("You do not have permission to create workflows for this organization."),
+            )
+        serializer.save(org=org, user=self.request.user)
+
+    def perform_update(self, serializer):
+        workflow: Workflow = self.get_object()
+        if not self.request.user.has_org_roles(workflow.org, WORKFLOW_MANAGER_ROLES):
+            raise DRFPermissionDenied(
+                detail=_("You do not have permission to update this workflow."),
+            )
+        requested_org = serializer.validated_data.get("org")
+        requested_org_id = self.request.data.get("org")
+        if requested_org and requested_org != workflow.org:
+            raise DRFValidationError(
+                {"org": _("Cannot move a workflow to another organization.")},
+            )
+        if requested_org_id and str(requested_org_id) != str(workflow.org_id):
+            raise DRFValidationError(
+                {"org": _("Cannot move a workflow to another organization.")},
+            )
+        serializer.save(org=workflow.org, user=workflow.user)
+
+    def perform_destroy(self, instance: Workflow):
+        if not self.request.user.has_org_roles(instance.org, WORKFLOW_MANAGER_ROLES):
+            raise DRFPermissionDenied(
+                detail=_("You do not have permission to delete this workflow."),
+            )
+        return super().perform_destroy(instance)
+
+    def _resolve_target_org(self) -> Organization:
+        org_id = self.request.data.get("org") or getattr(
+            self.request.user,
+            "current_org_id",
+            None,
+        )
+        if not org_id:
+            raise DRFValidationError({"org": _("Organization is required.")})
+        try:
+            return Organization.objects.get(pk=org_id)
+        except Organization.DoesNotExist as exc:
+            raise DRFValidationError({"org": _("Organization not found.")}) from exc
 
     # Public action remains unchanged
     @action(

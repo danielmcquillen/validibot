@@ -4,6 +4,7 @@ import json
 import django_filters
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.db import models
 from django.db.models import Prefetch
 from django.http import HttpResponse
@@ -701,6 +702,11 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
         success_url = self.get_success_url()
+        if not request.user.has_org_roles(
+            self.object.org,
+            {RoleCode.ADMIN, RoleCode.OWNER},
+        ):
+            raise PermissionDenied("You do not have permission to delete this validation run.")
         self.object.delete()
         messages.success(request, "Validation run removed.")
         if request.headers.get("HX-Request"):

@@ -27,6 +27,7 @@ from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.models import Validator
+from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
 from simplevalidations.workflows.forms import AiAssistStepConfigForm
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
@@ -46,6 +47,16 @@ def user_has_executor_role(user: User, workflow: Workflow) -> bool:
         required_role_code=RoleCode.EXECUTOR,
     )
     return executor_qs.filter(pk=workflow.pk).exists()
+
+
+def user_has_workflow_manager_role(user: User, workflow: Workflow) -> bool:
+    """
+    Return True when the user can manage the workflow (author/admin/owner).
+    """
+
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return user.has_org_roles(workflow.org, WORKFLOW_MANAGER_ROLES)
 
 
 def resolve_project(

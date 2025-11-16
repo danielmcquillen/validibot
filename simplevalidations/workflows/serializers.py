@@ -17,3 +17,9 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "is_active",
             "allowed_file_types",
         ]
+        read_only_fields = [
+            "id",
+            "org",
+            "user",
+            "uuid",
+        ]

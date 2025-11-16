@@ -5,8 +5,20 @@ from django.db import migrations
 
 def grant_all_roles_to_owners(apps, schema_editor):
     Membership = apps.get_model("users", "Membership")
+    Role = apps.get_model("users", "Role")
+    MembershipRole = apps.get_model("users", "MembershipRole")
     # Ensure related managers are available before iterating
     from simplevalidations.users.constants import RoleCode
+
+    roles_by_code = {}
+    for role in RoleCode:
+        db_role, _ = Role.objects.get_or_create(
+            code=role.value,
+            defaults={
+                "name": role.label,
+            },
+        )
+        roles_by_code[role.value] = db_role
 
     owner_memberships = (
         Membership.objects.filter(
@@ -15,12 +27,12 @@ def grant_all_roles_to_owners(apps, schema_editor):
         )
         .distinct()
     )
-    for membership in owner_memberships:
-        membership.refresh_from_db()
-        if not membership.membership_roles.filter(role__code=RoleCode.OWNER).exists():
-            continue
-        # Reuse the runtime helper to normalize role assignments.
-        membership.set_roles({RoleCode.OWNER})
+    for membership in owner_memberships.iterator():
+        for role in roles_by_code.values():
+            MembershipRole.objects.get_or_create(
+                membership=membership,
+                role=role,
+            )
 
 
 def noop(apps, schema_editor):

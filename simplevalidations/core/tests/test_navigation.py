@@ -44,3 +44,18 @@ def test_author_nav_shows_design_sections(client):
     assert "Dashboard" in html
     assert "Validator Library" in html
     assert "group-label" in html
+
+
+@pytest.mark.django_db
+def test_zero_role_nav_shows_no_app_links(client):
+    membership = MembershipFactory()
+    membership.set_roles(set())
+    _login_with_membership(client, membership)
+
+    response = client.get(reverse("workflows:workflow_list"))
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Dashboard" not in html
+    assert "Validator Library" not in html
+    assert "Workflows" not in html
+    assert "Validation Runs" not in html

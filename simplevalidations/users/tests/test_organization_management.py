@@ -37,6 +37,25 @@ def test_organization_list_requires_admin(client):
 
 
 @pytest.mark.django_db
+def test_roles_can_be_cleared(client_logged_in):
+    client, admin, org = client_logged_in
+    member = UserFactory()
+    membership = Membership.objects.create(user=member, org=org, is_active=True)
+    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
+
+    url = reverse("members:member_edit", kwargs={"member_id": membership.pk})
+    client.force_login(admin)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.post(url, data={"roles": []}, follow=True)
+    assert response.status_code == 200
+    membership.refresh_from_db()
+    assert membership.role_codes == set()
+
+
+@pytest.mark.django_db
 def test_organization_list_shows_admin_orgs(client_logged_in):
     client, user, org = client_logged_in
 

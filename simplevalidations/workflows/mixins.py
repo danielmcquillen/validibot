@@ -73,8 +73,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
-        return can_view
+        return membership.has_any_role(WORKFLOW_VIEWER_ROLES)
 
     def user_can_create_workflow(self, *, user: User | None = None) -> bool:
         user = user or self.request.user

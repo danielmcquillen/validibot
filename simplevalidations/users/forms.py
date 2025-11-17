@@ -11,22 +11,22 @@ from simplevalidations.users.models import Membership, Organization, User
 
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
-        "Sole organization authority. Controls billing, integrations, and deletion. This role is assigned during setup and cannot be changed here."
+        "Sole org authority. All admin rights plus billing/subscription control. Assigned at setup and cannot be changed here."
     ),
     RoleCode.ADMIN: _(
-        "Full administrative access to members, projects, workflows, and most organization settings."
+        "All author capabilities plus member/org management, projects, and settings."
     ),
     RoleCode.AUTHOR: _(
-        "Create and edit workflows, validators, and rulesets."
+        "All executor capabilities plus creating and editing workflows, validators, and rulesets."
     ),
     RoleCode.EXECUTOR: _(
-        "Launch workflow validation run for any workflow in the organization. Monitor run progress and review the validation run results of that workflow."
+        "Read-only workflow access plus launch workflows, monitor progress, and review the runs they launch."
     ),
     RoleCode.RESULTS_VIEWER: _(
         "Read-only access to all validation runs in organization."
     ),
     RoleCode.WORKFLOW_VIEWER: _(
-        "Read-only access to workflows in the organization."
+        "Read-only access to workflows and org reports (no edit or execution permissions)."
     ),
 }
 
@@ -304,8 +304,6 @@ class OrganizationMemberRolesForm(forms.Form):
 
     def save(self) -> Membership:
         roles = set(self.cleaned_data.get("roles") or [])
-        if not roles:
-            roles = {RoleCode.WORKFLOW_VIEWER}
         if self.owner_locked:
             roles.update(RoleCode.values)
             roles.add(RoleCode.OWNER)

@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytest
-
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -11,16 +10,15 @@ from rest_framework.test import APIClient
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership
-from simplevalidations.users.models import MembershipRole
-from simplevalidations.users.models import Role
-from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.models import Membership, MembershipRole, Role
+from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.tests.factories import ValidationFindingFactory
-from simplevalidations.validations.tests.factories import ValidationRunFactory
-from simplevalidations.validations.tests.factories import ValidationStepRunFactory
+from simplevalidations.validations.tests.factories import (
+    ValidationFindingFactory,
+    ValidationRunFactory,
+    ValidationStepRunFactory,
+)
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 
@@ -383,6 +381,7 @@ class ValidationRunViewSetTestCase(TestCase):
             org=self.org,
             is_active=True,
         )
+        executor.set_current_org(self.org)
         exec_role, _ = Role.objects.get_or_create(
             code=RoleCode.EXECUTOR,
             defaults={"name": RoleCode.EXECUTOR.label},
@@ -394,7 +393,9 @@ class ValidationRunViewSetTestCase(TestCase):
             {RoleCode.EXECUTOR},
         )
         own_submission = SubmissionFactory(
-            org=self.org, project=self.project, user=executor
+            org=self.org,
+            project=self.project,
+            user=executor,
         )
         own_run = ValidationRunFactory(
             submission=own_submission,
@@ -418,9 +419,15 @@ class ValidationRunViewSetTestCase(TestCase):
         response = self.client.get(url, {"all": "1"})
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        ids = {item["id"] for item in response.data["results"]}
-        user_ids = {item.get("user") for item in response.data["results"]}
+        results = (
+            response.data.get("results", response.data)
+            if isinstance(response.data, dict)
+            else response.data
+        )
+        ids = {item["id"] for item in results}
+        user_ids = {item.get("user") for item in results}
         self.assertIn(str(own_run.id), ids)
+        self.assertEqual(user_ids, {executor.id})
         self.assertNotIn(str(other_run.id), ids)
         self.assertEqual(user_ids, {executor.id})
 

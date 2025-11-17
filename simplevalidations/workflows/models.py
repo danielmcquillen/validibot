@@ -57,13 +57,7 @@ class WorkflowQuerySet(models.QuerySet):
         if not getattr(user, "is_authenticated", False):
             return self.none()
 
-        allowed_view_roles = {
-            RoleCode.WORKFLOW_VIEWER,
-            RoleCode.ADMIN,
-            RoleCode.OWNER,
-            RoleCode.AUTHOR,
-            RoleCode.EXECUTOR,
-        }
+        allowed_view_roles = WORKFLOW_VIEWER_ROLES
         subq = Membership.objects.filter(
             org=OuterRef("org_id"),
             user=user,
@@ -76,8 +70,7 @@ class WorkflowQuerySet(models.QuerySet):
 
         return (
             self.annotate(
-                _has_access=Exists(subq)
-                | Q(user_id=user.id),
+                _has_access=Exists(subq) | Q(user_id=user.id),
             )
             .filter(_has_access=True)
             .distinct()

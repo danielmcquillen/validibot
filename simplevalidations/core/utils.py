@@ -155,3 +155,7 @@ def pretty_json(text: str) -> str:
         # If invalid JSON, just return the raw text
         formatted = str(text).strip()
     return formatted
+
+
+def truthy(value: str | None) -> bool:
+    return str(value).lower() in {"1", "true", "yes", "on"}

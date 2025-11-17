@@ -112,6 +112,8 @@ a few key ones that make sure things work correctly.
 Note that integration tests should go in the top-level tests/ folder. Integration tests want the system to behave
 as closely as possible to the runtime system. These tests often span multiple pages or steps.
 
+Please try to always use proper Django TestCase classes with good cleanup and tear down structure.
+
 # Documentation
 
 Make sure to always add code documentation to the top of all classes. Explain clearly what the class is for

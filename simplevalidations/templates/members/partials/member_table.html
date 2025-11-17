@@ -36,7 +36,7 @@
                     {% for role in membership.role_codes %}
                       <span class="badge text-bg-secondary me-1 text-uppercase">{{ role }}</span>
                     {% empty %}
-                      <span class="text-muted small">{% trans "Viewer" %}</span>
+                      <span class="text-muted small">( {% trans "No roles assigned " %} )</span>
                     {% endfor %}
                   </td>
                   <td class="text-end">

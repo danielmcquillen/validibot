@@ -44,6 +44,12 @@ We introduce a new Validator step type, conceptually:
 - **Name:** `FMIValidatorStep`
 - **Purpose:** run a configured FMU with bound inputs, obtain outputs, and make them available as signals for CEL checks.
 
+**Data model alignment**
+
+- We will add a new `ValidationType` value (for example `FMI`) and model instances of `Validator`/`Ruleset` using the existing tables. The workflow author experience should look like adding any other validator step.
+- `FMIModel` objects are scoped to a `Project` (in the same org) and referenced by the validator config; WorkflowSteps remain the linking table between the workflow and the validator.
+- Role requirements follow the platform rules: `OWNER/ADMIN/AUTHOR` can upload/manage FMUs and configure the validator; `EXECUTOR` can run workflows but only see their own run results; `RESULTS_VIEWER` can read results across the org.
+
 Key configuration fields (stored as JSON/config model):
 
 - `fmi_model_id` – reference to the uploaded FMU (`FMIModel`).
@@ -284,9 +290,9 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
 1. **Data model**
 
-   - Add `FMIModel` and `FMIVariable` models.
+   - Add `FMIModel` and `FMIVariable` models (scoped to `Project`/`Org`).
    - Add optional relationships to `CatalogEntry`.
-   - Add `FMIValidatorStep` config model/type.
+   - Add `FMIValidatorStep` config model/type using the existing `Validator`/`WorkflowStep` pattern and a new `ValidationType` enum value.
 
 2. **Upload & introspection**
 

@@ -62,6 +62,7 @@ class WorkflowQuerySet(models.QuerySet):
             RoleCode.ADMIN,
             RoleCode.OWNER,
             RoleCode.AUTHOR,
+            RoleCode.EXECUTOR,
         }
         subq = Membership.objects.filter(
             org=OuterRef("org_id"),

@@ -1,4 +1,4 @@
-# ADR-00XX: Introduce FMI-Based Validator and Modal.com Execution
+# ADR-2015-11-17-FMI-Validator: Introduce FMI-Based Validator and Modal.com Execution
 
 ## Status
 
@@ -34,10 +34,10 @@ We will:
 2. **Store FMUs as versioned assets (e.g., in S3) and never execute them on the web/app servers.**
 3. **Introspect FMUs automatically** (via `modelDescription.xml`) to detect variables and wire them into the Validator Catalog.
 4. **Execute FMUs only in a sandboxed Modal.com container** with strict limits (CPU, memory, runtime) and no access to core infra or secrets.
-5. **Apply safety checks** (size, metadata, short “probe run”) before marking FMUs as approved for use in workflows.
+5. **Apply safety checks** (size, metadata, short “probe run”) before marking FMUs as approved for use in workflows. This will be part of the validator creation process.
 6. **Constrain the usage semantics** to short, one-shot simulations that behave like pure-ish functions `(inputs, config) → outputs`.
 
-### 1. FMI Validator Step Type
+### 1. FMI Validator Step Type and Authoring Flow
 
 We introduce a new Validator step type, conceptually:
 
@@ -46,52 +46,46 @@ We introduce a new Validator step type, conceptually:
 
 **Data model alignment**
 
-- We will add a new `ValidationType` value (for example `FMI`) and model instances of `Validator`/`Ruleset` using the existing tables. The workflow author experience should look like adding any other validator step.
-- `FMIModel` objects are scoped to a `Project` (in the same org) and referenced by the validator config; WorkflowSteps remain the linking table between the workflow and the validator.
-- Role requirements follow the platform rules: `OWNER/ADMIN/AUTHOR` can upload/manage FMUs and configure the validator; `EXECUTOR` can run workflows but only see their own run results; `RESULTS_VIEWER` can read results across the org.
+- Add `ValidationType.FMI`; reuse existing `Validator`/`WorkflowStep`/`Ruleset` tables.
+- Use `FMUModel` (not “FMIModel”), scoped to `Project`/org and referenced by the FMI validator. Typically 1:1, but reuse is allowed if we want multiple validators with different assertions/bindings over the same FMU.
+- IO is exposed via `ValidatorCatalogEntry` rows tied to the FMI validator. We use existing fields (`entry_type` SIGNAL/DERIVATION, `run_stage` INPUT/OUTPUT, `is_required`). Add a `hidden` flag (default False) to allow the validator author to hide specific signals; for hidden signals, allow an optional `default_value` constrained by the data type. Store FMU variable names as-is (sanitized, no renaming).
+- Catalog entries define the FMU variable-to-signal mapping. Workflow step bindings (where to source input values) are per-step: the step config maps submission fields/other signals → input catalog entry slugs. The Ruleset continues to hold assertions only and references catalog entry slugs; signals are not stored in Ruleset content.
+- Role requirements: only `OWNER/ADMIN/AUTHOR` in the current org can create/manage FMI validators and FMUs; `EXECUTOR` can run workflows; `RESULTS_VIEWER` can read results org-wide.
 
-Key configuration fields (stored as JSON/config model):
+**UI authoring flow (UI-only, full-page wizard)**
 
-- `fmi_model_id` – reference to the uploaded FMU (`FMIModel`).
-- `input_bindings` – mapping from FMU input variable names to source expressions, e.g.:
+1. Create draft validator + upload FMU
 
-  ```json
-  {
-    "T_amb": "payload.weather.outdoor_temp",
-    "T_set": "signal:desired_setpoint"
-  }
-  ```
+- Fields: name/slug/description/project/org; FMU upload.
+- Enforce limits (`MAX_FMU_SIZE`, supported FMI versions/kinds).
+- Persist draft `Validator` (type=FMI, is_approved=False) + `FMUModel` and enqueue async introspection/probe job. Show read-only state with a Cancel button (deletes validator, FMUModel, catalog drafts, probe task).
 
-- `output_bindings` – list or mapping of FMU output names to Catalog/Signal identifiers, e.g.:
+2. Introspection & IO selection
 
-  ```json
-  {
-    "T_zone": "fmi_result.T_zone",
-    "P_heating": "fmi_result.P_heating"
-  }
-  ```
+- Parse `modelDescription.xml`, collect variables, persist `FMIVariable`.
+- Enforce `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`.
+- Present detected inputs/outputs; author selects which to expose and which inputs are required. Create/update `ValidatorCatalogEntry` rows (no renaming; use sanitized FMU variable names).
 
-- `simulation_config` – basic numeric settings:
+3. Test case (probe)
 
-  ```json
-  {
-    "start_time": 0.0,
-    "stop_time": 3600.0,
-    "max_step_size": 60.0
-  }
-  ```
+- Collect test input JSON and expected output JSON.
+- Kick off async Modal probe (HTMX progress like validation runs). While running, validator remains read-only; author may browse elsewhere. Cancel stops job and deletes draft objects.
+- On success (outputs match expected with defined tolerance), mark validator/FMUModule approved, keep catalog entries.
+- On failure, surface errors and allow retry on the same screen.
 
-At runtime, the workflow engine will:
+Cancellation at any point deletes the draft validator, FMUModel, catalog entries, probe records; no relic data is left behind.
 
-1. Resolve `input_bindings` against the current submission/context.
-2. Call the Modal function with: `(fmu_storage_key, inputs, simulation_config, output_variable_names)`.
-3. Receive a dict of outputs.
-4. Register outputs as signals using the configured `output_bindings`.
-5. Continue to downstream CEL-based validations that can reference those signals.
+**Runtime**
+
+1. Resolve per-step bindings (submission/context → catalog entry slugs) to produce FMU inputs.
+2. Call Modal with `(fmu_storage_key, inputs, simulation_config, output_variable_names)`.
+3. Receive outputs.
+4. Register outputs as signals via the catalog entries for downstream CEL.
+5. Continue workflow execution.
 
 ### 2. FMU Storage and Metadata
 
-We introduce an `FMIModel` entity:
+We introduce an `FMUModel` entity:
 
 - Stores metadata about the FMU and where it lives (e.g., S3 key).
 - Tracks whether it is approved for workflow use.
@@ -120,7 +114,7 @@ Upon upload (or via a background task), we will:
    - `valueReference`
    - type information (Real, Integer, Boolean, String, Enumeration)
    - units (for Real variables)
-3. Persist this in an `FMIVariable` model tied to `FMIModel`.
+3. Persist this in an `FMIVariable` model tied to `FMUModel`.
 
 Example `FMIVariable` fields:
 
@@ -290,30 +284,42 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
 1. **Data model**
 
-   - Add `FMIModel` and `FMIVariable` models (scoped to `Project`/`Org`).
-   - Add optional relationships to `CatalogEntry`.
-   - Add `FMIValidatorStep` config model/type using the existing `Validator`/`WorkflowStep` pattern and a new `ValidationType` enum value.
+   - Add `FMUModel` (scoped to `Project`/`Org`), FK from `Validator` (FMI type) to `FMUModel`, and store a full parsed IO snapshot (JSON) on `FMUModel` for auditing/re-rendering.
+   - Add `ValidationType.FMI`.
+   - Extend `ValidatorCatalogEntry` to capture FMU IO metadata using existing fields (`entry_type` SIGNAL/DERIVATION, `run_stage` INPUT/OUTPUT, `is_required`) plus a new `hidden` flag and optional `default_value` (constrained by data type) for hidden signals, and store FMI specifics (value_reference, causality, variability, value_type, unit). Use sanitized FMU variable names as-is. Catalog entries define signals; Rulesets remain for assertions only.
+   - Keep per-step bindings (submission/signal → catalog entry slug) in step config, not Ruleset content.
+   - Add a probe/test status record (e.g., `ValidatorProbeResult`) on the draft validator to store probe state/errors, and provide a Pydantic schema plus a model getter to return the FMU variable snapshot as a strongly typed object.
 
-2. **Upload & introspection**
+2. **Authoring flow (UI-only, full-page wizard)**
 
-   - Implement FMU upload API + UI.
-   - Implement introspection job to parse `modelDescription.xml`.
-   - Implement author UI to select which variables become Catalog entries.
+   - Step 1: Create FMI Validator (name/slug/description/project/org). Upload FMU file. Enqueue async probe/introspection. Show read-only state and allow “Cancel” to delete Validator, FMUModel, catalog drafts, and any queued/running Celery job.
+   - Step 2: After introspection, present detected inputs/outputs. Author selects which to expose and which inputs are required. Create/update `ValidatorCatalogEntry` rows accordingly (no renaming; sanitized FMU variable names).
+   - Step 3: Collect test input JSON and expected output JSON. Kick off async FMU probe on Modal (HTMX progress like validation runs). For MVP, compare outputs exactly (no tolerance); we can iterate to add numeric tolerance later. If outputs match, mark Validator/FMUModule approved and keep catalog entries; otherwise surface errors and allow retry on the same step.
+   - Cancellation at any point deletes the draft Validator, FMUModel, catalog entries, and probe records; no relic data remains.
+   - Org scoping/permissions: only OWNER/ADMIN/AUTHOR in the current org can run this wizard; all lookups are org-scoped.
 
-3. **Modal integration**
+3. **Upload & introspection**
 
-   - Create Modal image with FMI runtime (`fmpy`).
-   - Implement `probe_fmu` and `run_fmu_validation` functions.
-   - Add timeouts and resource limits.
+   - Validate FMU: size/type check, presence of `modelDescription.xml`, supported FMI version/kind (MVP: FMI 2.0/3.0 Co-Simulation only).
+   - Parse variables, store full parsed IO set as JSON on `FMUModel` (Pydantic-backed getter), and synthesize proposed catalog entries (inputs/outputs).
+   - Apply limits: `MAX_FMU_SIZE`, `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`.
 
-4. **Workflow engine integration**
+4. **Probe/test execution service (Modal + Celery)**
 
-   - Implement `FMIValidatorStep.run()` that:
-     - Resolves inputs.
-     - Calls Modal.
-     - Registers outputs as signals.
-   - Add logging and error handling.
+   - Add a dedicated service class to run probes on Modal (separate from the validation-run executor, but with similar task/status shape for clarity).
+   - Inputs: FMU storage key, selected variables, test input JSON, simulation config (t_start/t_end/step), timeout (`MAX_MODAL_COMPUTE_TIME`), expected outputs.
+   - Behavior: download FMU, run short simulation, return outputs; compare to expected (exact match for MVP); set probe status (pending/running/succeeded/failed) on the draft validator.
+   - Errors/violations: fail the probe, surface clear messages via an HTMX-poll status endpoint.
 
-5. **Documentation & UX**
-   - Document FMI support, limitations, and best practices.
-   - Explain approval flow and error messages for “unsuitable” FMUs.
+5. **Step authoring (approved validator)**
+
+   - Add FMI to the validator type selector. When selected, list the validator’s catalog entries (with flags).
+   - Store per-step bindings (submission fields/other signals → input entry slugs; optionally output mapping) in the step config; assertions remain in Rulesets and reference the same catalog entry slugs.
+   - Ensure executors can run steps only when the validator is approved.
+
+6. **Constants**
+
+   - Define in settings/constants: `MAX_FMU_SIZE`, `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`, `MAX_MODAL_COMPUTE_TIME`, default probe horizon/step size, Modal CPU/memory limits, and per-FMU simulation horizon settings (`t_start`, `t_end_default`, `max_t_end`). Enforce on upload/probe and reject author configs that exceed FMU limits.
+
+7. **Documentation & UX**
+   - Document supported FMI versions/kinds, limits, as-is naming (no renaming), probe flow, and required roles/org scoping.

@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import timedelta
 
 import django_filters
@@ -40,6 +41,8 @@ from simplevalidations.validations.utils import (
     update_custom_validator,
 )
 from simplevalidations.workflows.models import Workflow, WorkflowStep
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationRunFilter(django_filters.FilterSet):
@@ -101,14 +104,24 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.RESULTS_VIEWER,
+                RoleCode.AUTHOR,
             }
         )
 
+        scoped = queryset
         if has_full_access:
-            scoped = queryset.filter(org_id=active_org_id)
+            scoped = scoped.filter(org_id=active_org_id)
         else:
-            scoped = queryset.filter(org_id=active_org_id, user_id=user.id)
+            scoped = scoped.filter(org_id=active_org_id, user_id=user.id)
 
+        logger.debug(
+            "ValidationRunViewSet.filter_queryset user=%s org=%s roles=%s full_access=%s filtered_ids=%s",
+            user.id,
+            active_org_id,
+            role_codes,
+            has_full_access,
+            list(scoped.values_list("id", flat=True)),
+        )
         return super().filter_queryset(scoped)
 
     def get_queryset(self):
@@ -143,7 +156,15 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.RESULTS_VIEWER,
+                RoleCode.AUTHOR,
             }
+        )
+        logger.debug(
+            "ValidationRunViewSet.get_queryset user=%s org=%s roles=%s full_access=%s",
+            user.id,
+            active_org_id,
+            role_codes,
+            has_full_access,
         )
 
         base_qs = (

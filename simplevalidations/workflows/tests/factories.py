@@ -4,6 +4,7 @@ from factory.django import DjangoModelFactory
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.models import Membership
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
@@ -14,6 +15,9 @@ from simplevalidations.workflows.models import WorkflowStep
 class WorkflowFactory(DjangoModelFactory):
     class Meta:
         model = Workflow
+
+    class Params:
+        with_owner = False  # opt-in helper for tests that need owner permissions
 
     org = factory.SubFactory(OrganizationFactory)
     user = factory.SubFactory(UserFactory)
@@ -35,7 +39,14 @@ class WorkflowFactory(DjangoModelFactory):
     def link_user(self, create, extracted, **kwargs):  # noqa: FBT001
         if not create:
             return
-        grant_role(self.user, self.org, RoleCode.OWNER)
+        # Ensure the workflow's user has an active membership in the workflow org
+        Membership.objects.get_or_create(
+            user=self.user,
+            org=self.org,
+            defaults={"is_active": True},
+        )
+        if getattr(self, "with_owner", False):
+            grant_role(self.user, self.org, RoleCode.OWNER)
         try:
             self.user.set_current_org(self.org)
         except ValueError:

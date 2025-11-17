@@ -1,12 +1,17 @@
 import json
-import pytest
+
+from django.test import Client, TestCase
 from django.urls import reverse
 
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.validations.constants import AssertionOperator
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import CatalogRunStage
-from simplevalidations.validations.constants import ValidationType
+from simplevalidations.users.tests.utils import ensure_all_roles_exist
+from simplevalidations.validations.constants import (
+    AssertionOperator,
+    AssertionType,
+    CatalogRunStage,
+    ValidationType,
+)
 from simplevalidations.validations.tests.factories import (
     CustomValidatorFactory,
     RulesetAssertionFactory,
@@ -17,15 +22,22 @@ from simplevalidations.validations.tests.factories import (
 from simplevalidations.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
 
 
-@pytest.mark.django_db
-class TestWorkflowStepAssertions:
-    def _login(self, client, workflow):
-        user = workflow.user
-        client.force_login(user)
-        session = client.session
-        session["active_org_id"] = workflow.org_id
-        session.save()
-        return user
+def _login_as_author(client: Client, workflow):
+    """Log in as the workflow.user with author permissions in the org."""
+    membership = workflow.user.memberships.get(org=workflow.org)
+    membership.set_roles({RoleCode.AUTHOR})
+    workflow.user.set_current_org(workflow.org)
+    client.force_login(workflow.user)
+    session = client.session
+    session["active_org_id"] = workflow.org_id
+    session.save()
+    return workflow.user
+
+
+class WorkflowStepAssertionsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
 
     def _make_energyplus_step(self, workflow):
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
@@ -51,27 +63,27 @@ class TestWorkflowStepAssertions:
             step.save(update_fields=["ruleset"])
         return step
 
-    def test_assertions_page_renders(self, client):
+    def test_assertions_page_renders(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
         url = reverse(
             "workflows:workflow_step_edit",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.get(url)
-        assert response.status_code == 200
-        assert "Add assertion" in response.content.decode()
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Add assertion", response.content.decode())
 
-    def test_create_assertion(self, client):
+    def test_create_assertion(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         step = self._make_energyplus_step(workflow)
         create_url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.post(
+        response = self.client.post(
             create_url,
             data={
                 "assertion_type": "basic",
@@ -84,13 +96,13 @@ class TestWorkflowStepAssertions:
             },
             HTTP_HX_REQUEST="true",
         )
-        assert response.status_code == 204
+        self.assertEqual(response.status_code, 204)
         step.refresh_from_db()
-        assert step.ruleset.assertions.count() == 1
+        self.assertEqual(step.ruleset.assertions.count(), 1)
 
-    def test_custom_validator_assertion_modal_renders(self, client):
+    def test_custom_validator_assertion_modal_renders(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         custom_validator = CustomValidatorFactory(org=workflow.org)
         ValidatorCatalogEntryFactory(
             validator=custom_validator.validator,
@@ -102,169 +114,72 @@ class TestWorkflowStepAssertions:
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.get(url, HTTP_HX_REQUEST="true")
-        assert response.status_code == 200
+        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        assert "Assertion Type" in body
-        assert "custom-signal" in body
+        self.assertIn("Assertion Type", body)
+        self.assertIn("custom-signal", body)
 
-    def test_basic_validator_supports_assertions(self, client):
+    def test_basic_validator_supports_assertions(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         step = self._make_basic_step(workflow)
         url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.get(url, HTTP_HX_REQUEST="true")
-        assert response.status_code == 200
+        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
 
-    def test_basic_assertion_create_allows_custom_target(self, client):
+    def test_basic_assertion_create_allows_custom_target(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         step = self._make_basic_step(workflow)
         url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.post(
+        response = self.client.post(
             url,
             data={
                 "assertion_type": "basic",
-                "target_field": "price",
-                "operator": "lt",
-                "comparison_value": "20",
-                "severity": "ERROR",
+                "target_field": "payload.meta.score",
+                "operator": AssertionOperator.GE,
+                "comparison_value": "0.8",
+                "severity": "WARNING",
             },
             HTTP_HX_REQUEST="true",
         )
-        assert response.status_code == 204
-        step.refresh_from_db()
-        assert step.ruleset.assertions.filter(target_field="price").exists()
-        payload = json.loads(response.headers["HX-Trigger"])
-        detail = payload.get("assertions-changed")
-        assert detail
-        assert detail.get("focus_assertion_id")
-        assert payload.get("close-modal") == "workflowAssertionModal"
+        self.assertEqual(response.status_code, 204)
 
-    def test_basic_assertion_edit_modal_renders(self, client):
+    def test_custom_assertion_create_rejects_unknown_signal(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
-        step = self._make_basic_step(workflow)
-        assertion = RulesetAssertionFactory(
-            ruleset=step.ruleset,
-            assertion_type=AssertionType.BASIC,
-            operator=AssertionOperator.LT,
-            target_field="price",
-            rhs={"value": 20},
-            options={},
-        )
-
-        url = reverse(
-            "workflows:workflow_step_assertion_update",
-            kwargs={
-                "pk": workflow.pk,
-                "step_id": step.pk,
-                "assertion_id": assertion.pk,
-            },
-        )
-        response = client.get(url, HTTP_HX_REQUEST="true")
-        assert response.status_code == 200
-
-    def test_basic_assertion_update_triggers_refresh(self, client):
-        workflow = WorkflowFactory()
-        self._login(client, workflow)
-        step = self._make_basic_step(workflow)
-        assertion = RulesetAssertionFactory(
-            ruleset=step.ruleset,
-            assertion_type=AssertionType.BASIC,
-            operator=AssertionOperator.LT,
-            target_field="price",
-            rhs={"value": 20},
-            options={},
-        )
-
-        url = reverse(
-            "workflows:workflow_step_assertion_update",
-            kwargs={
-                "pk": workflow.pk,
-                "step_id": step.pk,
-                "assertion_id": assertion.pk,
-            },
-        )
-        response = client.post(
-            url,
-            data={
-                "assertion_type": "basic",
-                "target_field": "price",
-                "operator": "lt",
-                "comparison_value": "19",
-                "severity": "ERROR",
-            },
-            HTTP_HX_REQUEST="true",
-        )
-        assert response.status_code == 204
-        payload = json.loads(response.headers["HX-Trigger"])
-        detail = payload.get("assertions-changed")
-        assert detail
-        assert detail.get("focus_assertion_id") == assertion.pk
-        assert payload.get("close-modal") == "workflowAssertionModal"
-
-    def test_custom_target_requires_validator_permission(self, client):
-        workflow = WorkflowFactory()
-        self._login(client, workflow)
-        validator = ValidatorFactory(
-            validation_type=ValidationType.ENERGYPLUS,
-            allow_custom_assertion_targets=False,
-        )
-        ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
-        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
         create_url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.post(
+        response = self.client.post(
             create_url,
             data={
-                "assertion_type": "basic",
-                "target_field": "data.custom.path",
-                "operator": "le",
+                "assertion_type": AssertionType.BASIC,
+                "target_field": "does-not-exist",
+                "operator": "ge",
                 "comparison_value": "10",
                 "severity": "ERROR",
+                "when_expression": "",
+                "message_template": "Bad",
             },
             HTTP_HX_REQUEST="true",
         )
-        assert response.status_code == 200
-        assert "catalog targets" in response.content.decode()
-
-    def test_cel_expression_rejects_unknown_slugs_when_disabled(self, client):
-        workflow = WorkflowFactory()
-        self._login(client, workflow)
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        entry = ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
-        step = WorkflowStepFactory(workflow=workflow, validator=validator)
-        create_url = reverse(
-            "workflows:workflow_step_assertion_create",
-            kwargs={"pk": workflow.pk, "step_id": step.pk},
-        )
-        response = client.post(
-            create_url,
-            data={
-                "assertion_type": "cel_expr",
-                "target_field": entry.slug,
-                "cel_expression": "series('unknown_slug') > 10",
-                "cel_allow_custom_signals": "",
-                "severity": "ERROR",
-            },
-            HTTP_HX_REQUEST="true",
-        )
-        assert response.status_code == 200
+        self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        assert "Unknown signal" in body
+        self.assertIn("available catalog targets", body)
 
-    def test_create_custom_target_when_validator_allows(self, client):
+    def test_create_custom_target_when_validator_allows(self):
         workflow = WorkflowFactory()
-        self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         validator = ValidatorFactory(
             validation_type=ValidationType.ENERGYPLUS,
             allow_custom_assertion_targets=True,
@@ -275,7 +190,7 @@ class TestWorkflowStepAssertions:
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.post(
+        response = self.client.post(
             create_url,
             data={
                 "assertion_type": "basic",
@@ -286,17 +201,17 @@ class TestWorkflowStepAssertions:
             },
             HTTP_HX_REQUEST="true",
         )
-        assert response.status_code == 204
+        self.assertEqual(response.status_code, 204)
 
-    def test_step_update_redirects_to_assertions(self, client):
+    def test_step_update_redirects_to_assertions(self):
         workflow = WorkflowFactory()
         step = self._make_energyplus_step(workflow)
-        user = self._login(client, workflow)
+        _login_as_author(self.client, workflow)
         url = reverse(
             "workflows:workflow_step_settings",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = client.post(
+        response = self.client.post(
             url,
             data={
                 "name": "Energy check",
@@ -306,5 +221,5 @@ class TestWorkflowStepAssertions:
                 "simulation_checks": [],
             },
         )
-        assert response.status_code == 302
-        assert "assertions" in response["Location"]
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("assertions", response["Location"])

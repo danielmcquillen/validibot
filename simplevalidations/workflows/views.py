@@ -957,6 +957,11 @@ class WorkflowCreateView(WorkflowFormViewMixin, CreateView):
 class WorkflowUpdateView(WorkflowFormViewMixin, UpdateView):
     template_name = "workflows/workflow_form.html"
 
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
     def get_breadcrumbs(self):
         workflow = getattr(self, "object", None) or self.get_object()
         breadcrumbs = super().get_breadcrumbs()

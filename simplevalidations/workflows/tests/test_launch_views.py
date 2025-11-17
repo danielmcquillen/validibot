@@ -620,7 +620,8 @@ def test_public_info_view_accessible_when_enabled(client):
 def test_public_info_form_updates_visibility(client):
     workflow = WorkflowFactory(make_info_public=False)
     WorkflowStepFactory(workflow=workflow)
-    _force_login_for_workflow(client, workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.AUTHOR)
 
     response = client.post(
         reverse("workflows:workflow_public_info_edit", kwargs={"pk": workflow.pk}),
@@ -639,7 +640,8 @@ def test_public_info_form_updates_visibility(client):
 def test_public_visibility_toggle_updates_card(client):
     workflow = WorkflowFactory(make_info_public=False)
     WorkflowStepFactory(workflow=workflow)
-    _force_login_for_workflow(client, workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.AUTHOR)
 
     response = client.post(
         reverse("workflows:workflow_public_visibility", kwargs={"pk": workflow.pk}),

@@ -1,11 +1,12 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
@@ -19,10 +20,30 @@ from simplevalidations.validations.tests.factories import (
     ValidationRunFactory,
     ValidationStepRunFactory,
 )
+from simplevalidations.validations.views import ValidationRunViewSet
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 
 class ValidationRunViewSetTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        # Ensure Role objects exist for every RoleCode so per-test role
+        # assignments use real Role instances, not ad-hoc creations.
+        Role.objects.all().delete()
+        created_codes = set()
+        for code in RoleCode.values:
+            role, _ = Role.objects.get_or_create(
+                code=code,
+                defaults={
+                    "name": getattr(RoleCode, code).label
+                    if hasattr(RoleCode, code)
+                    else code.title()
+                },
+            )
+            created_codes.add(role.code)
+        assert created_codes == set(RoleCode.values)
+        assert Role.objects.count() == len(RoleCode.values)
+
     def setUp(self):
         self.client = APIClient()
 
@@ -263,7 +284,8 @@ class ValidationRunViewSetTestCase(TestCase):
         membership = executor.memberships.get(org=self.org)
         membership.set_roles({RoleCode.EXECUTOR})
 
-        self.client.force_authenticate(user=executor)
+        # Use session-based auth to ensure request.user resolves to this executor.
+        self.client.force_login(executor)
         url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -281,6 +303,7 @@ class ValidationRunViewSetTestCase(TestCase):
         reviewer = UserFactory(orgs=[self.org])
         reviewer_membership = reviewer.memberships.get(org=self.org)
         reviewer_membership.set_roles({RoleCode.RESULTS_VIEWER})
+        reviewer.set_current_org(self.org)
 
         self.client.force_authenticate(user=reviewer)
         url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
@@ -335,7 +358,9 @@ class ValidationRunViewSetTestCase(TestCase):
     def test_results_viewer_sees_all_runs_in_org(self):
         """RESULTS_VIEWER can see all runs for their org."""
         reviewer = UserFactory(orgs=[self.org])
-        reviewer.memberships.get(org=self.org).set_roles({RoleCode.RESULTS_VIEWER})
+        reviewer_membership = reviewer.memberships.get(org=self.org)
+        reviewer_membership.set_roles({RoleCode.RESULTS_VIEWER})
+        reviewer.set_current_org(self.org)
         self.client.force_authenticate(user=reviewer)
 
         run1 = ValidationRunFactory(
@@ -375,27 +400,20 @@ class ValidationRunViewSetTestCase(TestCase):
         )
         owner_membership.set_roles({RoleCode.OWNER})
 
-        executor = UserFactory()
-        membership = Membership.objects.create(
-            user=executor,
-            org=self.org,
-            is_active=True,
-        )
+        executor = UserFactory(orgs=[self.org])
+        membership = executor.memberships.get(org=self.org)
         executor.set_current_org(self.org)
-        exec_role, _ = Role.objects.get_or_create(
-            code=RoleCode.EXECUTOR,
-            defaults={"name": RoleCode.EXECUTOR.label},
-        )
-        membership.roles.set([exec_role])
-        executor.memberships.exclude(org=self.org).delete()
+        membership.set_roles({RoleCode.EXECUTOR})
         self.assertEqual(
             set(membership.membership_roles.values_list("role__code", flat=True)),
             {RoleCode.EXECUTOR},
         )
+        print("target org", self.org.id, "roles before request", membership.role_codes)
         own_submission = SubmissionFactory(
             org=self.org,
             project=self.project,
             user=executor,
+            workflow=self.workflow,
         )
         own_run = ValidationRunFactory(
             submission=own_submission,
@@ -413,21 +431,34 @@ class ValidationRunViewSetTestCase(TestCase):
         )
         self.assertEqual(other_run.user_id, self.user.id)
         self.assertEqual(own_run.user_id, executor.id)
+        self.assertEqual(executor.current_org_id, self.org.id)
 
-        self.client.force_authenticate(user=executor)
-        url = reverse("api:validation-runs-list")
-        response = self.client.get(url, {"all": "1"})
+        factory = APIRequestFactory()
+        request = factory.get(reverse("api:validation-runs-list"), {"all": "1"})
+        force_authenticate(request, user=executor)
+        with patch.object(
+            Membership,
+            "set_roles",
+            wraps=Membership.set_roles,
+        ) as mock_set_roles:
+            response = ValidationRunViewSet.as_view({"get": "list"})(request)
+            response.render()
+        membership.refresh_from_db()
+        print(
+            "membership org",
+            membership.org_id,
+            "roles after request",
+            membership.role_codes,
+            "set_roles calls",
+            [(args[0].id, args[1]) for args, _ in mock_set_roles.call_args_list],
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        results = (
-            response.data.get("results", response.data)
-            if isinstance(response.data, dict)
-            else response.data
-        )
+        results = response.data["results"]
         ids = {item["id"] for item in results}
         user_ids = {item.get("user") for item in results}
+
         self.assertIn(str(own_run.id), ids)
-        self.assertEqual(user_ids, {executor.id})
         self.assertNotIn(str(other_run.id), ids)
         self.assertEqual(user_ids, {executor.id})
 

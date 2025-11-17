@@ -41,6 +41,8 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         slug_field="slug",
     )
 
+    user = PrimaryKeyRelatedField(read_only=True)
+
     submission = PrimaryKeyRelatedField(
         read_only=True,
     )
@@ -84,6 +86,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "status",
             "source",
             "org",
+            "user",
             "workflow",
             "workflow_slug",
             # "project", # Not implemented yet...

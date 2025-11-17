@@ -19,6 +19,7 @@ from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.users.tests.utils import ensure_all_roles_exist
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import ValidationType
@@ -30,6 +31,12 @@ from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def seed_roles(db):
+    ensure_all_roles_exist()
+    return None
 
 
 def ensure_validator(validation_type: str, slug: str, name: str) -> Validator:
@@ -71,6 +78,8 @@ def make_action_definition(
 
 def _login_for_workflow(client, workflow):
     user = workflow.user
+    membership = user.memberships.get(org=workflow.org)
+    membership.set_roles({RoleCode.AUTHOR})
     user.set_current_org(workflow.org)
     user.refresh_from_db()
     client.force_login(user)

@@ -72,7 +72,7 @@
           </a>
         </li>
       </ul>
-    {% else %}
+    {% elif has_any_org_roles %}
       <ul class="nav nav-pills flex-column" role="menu">
         <li class="nav-item" role="none">
           <a href="{% org_url 'workflows:workflow_list' %}"

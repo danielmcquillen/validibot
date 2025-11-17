@@ -1,11 +1,12 @@
-import pytest
+from django.test import Client, TestCase
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import MembershipFactory
+from simplevalidations.users.tests.utils import ensure_all_roles_exist
 
 
-def _login_with_membership(client, membership):
+def _login_with_membership(client: Client, membership):
     user = membership.user
     user.set_current_org(membership.org)
     client.force_login(user)
@@ -14,48 +15,48 @@ def _login_with_membership(client, membership):
     session.save()
 
 
-@pytest.mark.django_db
-def test_viewer_nav_shows_limited_links(client):
-    membership = MembershipFactory()
-    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
-    _login_with_membership(client, membership)
+class NavigationVisibilityTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        ensure_all_roles_exist()
 
-    response = client.get(reverse("workflows:workflow_list"))
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert "Dashboard" not in html
-    assert "Validator Library" not in html
-    assert 'group-label mt-4">\n        Design' not in html
-    assert 'group-label mt-4">\n        Analytics' not in html
-    assert 'group-label mt-4">\n        Admin' not in html
-    assert "Workflows" in html
-    assert "Validation Runs" in html
+    def test_viewer_nav_shows_limited_links(self):
+        membership = MembershipFactory()
+        membership.set_roles({RoleCode.WORKFLOW_VIEWER})
+        _login_with_membership(self.client, membership)
 
+        response = self.client.get(reverse("workflows:workflow_list"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertNotIn("Dashboard", html)
+        self.assertNotIn("Validator Library", html)
+        self.assertNotIn('group-label mt-4">\n        Design', html)
+        self.assertNotIn('group-label mt-4">\n        Analytics', html)
+        self.assertNotIn('group-label mt-4">\n        Admin', html)
+        self.assertIn("Workflows", html)
+        self.assertIn("Validation Runs", html)
 
-@pytest.mark.django_db
-def test_author_nav_shows_design_sections(client):
-    membership = MembershipFactory()
-    membership.set_roles({RoleCode.AUTHOR})
-    _login_with_membership(client, membership)
+    def test_author_nav_shows_design_sections(self):
+        membership = MembershipFactory()
+        membership.set_roles({RoleCode.AUTHOR})
+        _login_with_membership(self.client, membership)
 
-    response = client.get(reverse("workflows:workflow_list"))
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert "Dashboard" in html
-    assert "Validator Library" in html
-    assert "group-label" in html
+        response = self.client.get(reverse("workflows:workflow_list"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Dashboard", html)
+        self.assertIn("Validator Library", html)
+        self.assertIn("group-label", html)
 
+    def test_zero_role_nav_shows_no_app_links(self):
+        membership = MembershipFactory()
+        membership.set_roles(set())
+        _login_with_membership(self.client, membership)
 
-@pytest.mark.django_db
-def test_zero_role_nav_shows_no_app_links(client):
-    membership = MembershipFactory()
-    membership.set_roles(set())
-    _login_with_membership(client, membership)
-
-    response = client.get(reverse("workflows:workflow_list"))
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert "Dashboard" not in html
-    assert "Validator Library" not in html
-    assert "Workflows" not in html
-    assert "Validation Runs" not in html
+        response = self.client.get(reverse("workflows:workflow_list"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertNotIn("Dashboard", html)
+        self.assertNotIn("Validator Library", html)
+        self.assertNotIn("Validation Runs", html)
+        self.assertNotIn("nav-link text-white", html)

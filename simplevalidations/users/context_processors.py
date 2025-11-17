@@ -57,6 +57,7 @@ def _apply_organization_context(request):
         request,
         memberships_qs,
     )
+    active_role_codes = set(active_membership.role_codes) if active_membership else set()
     has_author_admin_owner = bool(
         active_membership and active_membership.has_author_admin_owner_privileges
     )
@@ -70,6 +71,8 @@ def _apply_organization_context(request):
         "is_org_admin": is_org_admin,
         "can_manage_validators": can_manage_validators,
         "has_author_admin_owner": has_author_admin_owner,
+        "active_role_codes": active_role_codes,
+        "has_any_org_roles": bool(active_role_codes),
     }
 
 

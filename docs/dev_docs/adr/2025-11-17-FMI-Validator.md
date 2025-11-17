@@ -286,7 +286,7 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
    - Add `FMUModel` (scoped to `Project`/`Org`), FK from `Validator` (FMI type) to `FMUModel`, and store a full parsed IO snapshot (JSON) on `FMUModel` for auditing/re-rendering.
    - Add `ValidationType.FMI`.
-   - Extend `ValidatorCatalogEntry` to capture FMU IO metadata using existing fields (`entry_type` SIGNAL/DERIVATION, `run_stage` INPUT/OUTPUT, `is_required`) plus a new `hidden` flag and optional `default_value` (constrained by data type) for hidden signals, and store FMI specifics (value_reference, causality, variability, value_type, unit). Use sanitized FMU variable names as-is. Catalog entries define signals; Rulesets remain for assertions only.
+   - Extend `ValidatorCatalogEntry` to capture FMU IO metadata using existing fields (`entry_type` SIGNAL/DERIVATION, `run_stage` INPUT/OUTPUT, `is_required`) plus a new `hidden` flag and optional `default_value` (constrained by data type) for hidden signals, and store FMI specifics (value_reference, causality, variability, value_type, unit). Use sanitized FMU variable names as-is. Catalog entries define signals; Rulesets remain for assertions only. Type metadata on catalog entries will be used by the CEL evaluator for casting and validation.
    - Keep per-step bindings (submission/signal → catalog entry slug) in step config, not Ruleset content.
    - Add a probe/test status record (e.g., `ValidatorProbeResult`) on the draft validator to store probe state/errors, and provide a Pydantic schema plus a model getter to return the FMU variable snapshot as a strongly typed object.
 
@@ -323,3 +323,4 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
 7. **Documentation & UX**
    - Document supported FMI versions/kinds, limits, as-is naming (no renaming), probe flow, and required roles/org scoping.
+   - Treat documentation as part of the deliverable: developer docs and user-facing docs with background, usage, and detailed examples. Follow AGENTS.md guidance, Google Python coding standards, and add clear code comments where they aid comprehension.

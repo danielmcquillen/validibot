@@ -71,6 +71,11 @@ However, since SimpleValidations is still an MVP, we can keep things simple for 
      - `CEL_MAX_EVAL_TIMEOUT_MS` (e.g., 100 ms per assertion for MVP).
      - `CEL_MAX_AST_NODES` / `CEL_MAX_AST_DEPTH` (bounded to prevent resource abuse).
      - `CEL_MAX_CONTEXT_SIZE` (optional guard on number of symbols).
+   - Implementation note: engines should route stage-specific evaluation through
+     the shared helper on `BaseValidatorEngine` (for example,
+     `run_cel_assertions_for_stages`) so the two-pass pattern (inputs, then
+     outputs) remains consistent. Engines may override payload-building helpers
+     if they need to shape input/output data before evaluation.
 
 ## What to build first, relative to FMU work
 

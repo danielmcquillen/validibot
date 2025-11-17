@@ -135,6 +135,16 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         weather_file = self._resolve_weather_file(ruleset)
         stats["weather_file"] = weather_file
 
+        issues.extend(
+            self.run_cel_assertions_for_stages(
+                ruleset=ruleset,
+                validator=validator,
+                input_payload=json.loads(energyplus_payload)
+                if stripped_payload.startswith("{")
+                else {},
+            ),
+        )
+
         idf_checks = config.get("idf_checks") or []
         simulation_checks = config.get("simulation_checks") or []
         stats["requested_idf_checks"] = idf_checks
@@ -266,6 +276,19 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                 simulation_checks=simulation_checks,
                 eui_band=config.get("eui_band") or {},
                 metrics=typed_result.metrics,
+            ),
+        )
+
+        # Evaluate CEL assertions (if any) against simulation outputs.
+        cel_context = typed_result.outputs.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
+        issues.extend(
+            self.run_cel_assertions_for_stages(
+                ruleset=ruleset,
+                validator=validator,
+                output_payload=cel_context,
             ),
         )
 

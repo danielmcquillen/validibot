@@ -12,8 +12,12 @@ from django.utils.translation import gettext as _
 
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import (
+    CEL_MAX_EVAL_TIMEOUT_MS,
+)
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.cel_eval import evaluate_cel_expression
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
@@ -66,25 +70,24 @@ class BasicValidatorEngine(BaseValidatorEngine):
             )
             return ValidationResult(passed=False, issues=issues, stats={"exception": type(exc).__name__})
 
+        # Evaluate CEL assertions (if any) once using the full payload context.
+        issues.extend(
+            self.evaluate_cel_assertions(
+                ruleset=ruleset,
+                validator=validator,
+                payload=payload,
+                target_stage="input",
+            ),
+        )
+
         assertions = list(
             ruleset.assertions.all()
+            .exclude(assertion_type=AssertionType.CEL_EXPRESSION)
             .select_related("target_catalog")
             .order_by("order", "pk")
         )
 
         for assertion in assertions:
-            if assertion.assertion_type == AssertionType.CEL_EXPRESSION:
-                issues.append(
-                    self._issue_from_assertion(
-                        assertion,
-                        path="",
-                        message=_(
-                            "CEL expressions are not supported for BASIC validators."
-                        ),
-                    ),
-                )
-                continue
-
             path = self._assertion_path(assertion)
             actual, found = self._resolve_path(payload, path)
             options = assertion.options or {}
@@ -113,7 +116,12 @@ class BasicValidatorEngine(BaseValidatorEngine):
                 options=options,
             )
             if not passed:
-                message = self._render_message(assertion, template_context, failure_message, actual)
+                message = self._render_message(
+                    assertion,
+                    template_context,
+                    failure_message,
+                    actual,
+                )
                 issues.append(
                     self._issue_from_assertion(
                         assertion,
@@ -230,6 +238,69 @@ class BasicValidatorEngine(BaseValidatorEngine):
             return self._evaluate_set_relation(op, actual, rhs)
 
         return False, _("Operator '%(operator)s' is not supported yet.") % {"operator": operator}
+
+    def _build_cel_context(self, payload: Any, validator: Validator) -> dict[str, Any]:
+        """
+        Build a context mapping catalog entry slugs to values resolved from payload.
+        Include the raw payload so expressions can reference it directly if needed.
+        """
+        context: dict[str, Any] = {"payload": payload}
+        entries = list(
+            validator.catalog_entries.all().only(
+                "slug",
+                "is_required",
+            ),
+        )
+        for entry in entries:
+            value, found = self._resolve_path(payload, entry.slug)
+            if found:
+                context[entry.slug] = value
+            elif entry.is_required:
+                context[entry.slug] = None
+        return context
+
+    def _evaluate_cel(self, assertion, payload: Any, validator: Validator):
+        """
+        Evaluate a CEL assertion and return a ValidationIssue when it fails,
+        otherwise None.
+        """
+        context = self._build_cel_context(payload, validator)
+        expr = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
+
+        when_expr = (assertion.when_expression or "").strip()
+        if when_expr:
+            guard_result = evaluate_cel_expression(
+                expression=when_expr,
+                context=context,
+                timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
+            )
+            if not guard_result.success:
+                return self._issue_from_assertion(
+                    assertion,
+                    path="",
+                    message=_("CEL 'when' failed: %(err)s") % {"err": guard_result.error},
+                )
+            if not guard_result.value:
+                return None
+
+        result = evaluate_cel_expression(
+            expression=expr,
+            context=context,
+            timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
+        )
+        if not result.success:
+            return self._issue_from_assertion(
+                assertion,
+                path="",
+                message=_("CEL evaluation failed: %(err)s") % {"err": result.error},
+            )
+        if bool(result.value):
+            return None
+        return self._issue_from_assertion(
+            assertion,
+            path="",
+            message=_("CEL assertion evaluated to false."),
+        )
 
     # --------------------------- Individual operator evaluators
 

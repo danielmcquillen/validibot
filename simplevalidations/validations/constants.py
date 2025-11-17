@@ -166,3 +166,9 @@ class AssertionOperator(TextChoices):
     ALL = "all", _("All elements satisfy")
     NONE = "none", _("No element satisfies")
     CEL_EXPR = "cel_expr", _("CEL expression")
+
+
+# CEL evaluation limits (adjust as needed)
+CEL_MAX_EVAL_TIMEOUT_MS = 100  # per assertion
+CEL_MAX_EXPRESSION_CHARS = 2000
+CEL_MAX_CONTEXT_SYMBOLS = 200

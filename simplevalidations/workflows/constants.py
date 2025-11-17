@@ -7,6 +7,13 @@ from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 
 WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY = "workflow_launch_input_mode"
+WORKFLOW_LIST_LAYOUT_SESSION_KEY = "workflow_list_layout"
+
+
+class WorkflowListLayout(models.TextChoices):
+    GRID = "grid", _("Grid")
+    TABLE = "table", _("Table")
+
 
 # Role groups shared by UI mixins and API permissions
 WORKFLOW_MANAGER_ROLES = {
@@ -19,6 +26,11 @@ WORKFLOW_EXECUTOR_ROLES = {
     RoleCode.ADMIN,
     RoleCode.OWNER,
 }
+WORKFLOW_VIEWER_ROLES = WORKFLOW_MANAGER_ROLES.union(
+    {
+        RoleCode.WORKFLOW_VIEWER,
+    }
+)
 
 
 class AccessScope(models.TextChoices):

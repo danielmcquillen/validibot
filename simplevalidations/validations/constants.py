@@ -21,6 +21,14 @@ VALIDATION_RUN_TERMINAL_STATUSES = [
 ]
 
 
+class LibraryLayout(TextChoices):
+    GRID = "grid", _("Grid")
+    LIST = "list", _("List")
+
+
+VALIDATION_LIBRARY_LAYOUT_SESSION_KEY = "validation_library_layout"
+
+
 class StepStatus(TextChoices):
     PENDING = "PENDING", _("Pending")
     RUNNING = "RUNNING", _("Running")

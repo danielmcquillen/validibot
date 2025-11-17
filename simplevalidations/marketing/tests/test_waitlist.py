@@ -112,6 +112,7 @@ def test_postmark_delivery_webhook_marks_prospect_verified(client):
         data=json.dumps({"RecordType": "Delivery", "Recipient": "person@company.com"}),
         content_type="application/json",
         HTTP_X_FORWARDED_FOR="3.134.147.250",
+        REMOTE_ADDR="3.134.147.250",
     )
 
     assert response.status_code == 200
@@ -140,6 +141,7 @@ def test_postmark_bounce_webhook_marks_prospect_invalid(client):
         ),
         content_type="application/json",
         HTTP_X_FORWARDED_FOR="3.134.147.250",
+        REMOTE_ADDR="3.134.147.250",
     )
 
     assert response.status_code == 200
@@ -162,6 +164,7 @@ def test_postmark_webhook_rejects_unknown_ip(client):
         data=json.dumps({"RecordType": "Delivery", "Recipient": "person@company.com"}),
         content_type="application/json",
         HTTP_X_FORWARDED_FOR="1.1.1.1",
+        REMOTE_ADDR="1.1.1.1",
     )
 
     assert response.status_code == 403

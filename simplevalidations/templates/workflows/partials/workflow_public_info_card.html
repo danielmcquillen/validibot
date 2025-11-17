@@ -69,19 +69,20 @@
           {% endif %}
         </small>
       </dd>
-
-      <dt class="col-sm-4 ps-4">
-        {% trans "Edit" %}
-      </dt>
-      <dd class="col-sm-8">
-        <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
-          <a class="btn btn-sm btn-outline-primary"
-             href="{% org_url 'workflows:workflow_public_info_edit' pk=workflow.pk %}">
-            <i class="bi-pencil me-1"></i>
-            {% trans "Edit public info" %}
-          </a>
-        </div>
-      </dd>
+      {% if can_manage_workflow %}
+        <dt class="col-sm-4 ps-4">
+          {% trans "Edit" %}
+        </dt>
+        <dd class="col-sm-8">
+          <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
+            <a class="btn btn-sm btn-outline-primary"
+               href="{% org_url 'workflows:workflow_public_info_edit' pk=workflow.pk %}">
+              <i class="bi-pencil me-1"></i>
+              {% trans "Edit public info" %}
+            </a>
+          </div>
+        </dd>
+      {% endif %}
     </dl>
   </div>
 </div>

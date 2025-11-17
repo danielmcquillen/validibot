@@ -87,6 +87,10 @@
                         <label class="fw-semibold">
                             {% trans "Input mode" %}
                         </label>
+                        <input type="hidden"
+                               name="input_mode"
+                               value="{{ workflow_launch_mode }}"
+                               data-input-mode-field>
                         <div class="btn-group btn-group-sm"
                              role="group"
                              aria-label="{% trans 'Select input mode' %}">
@@ -128,11 +132,12 @@
                                     {% trans "or click to browse" %}
                                 </span>
                             </div>
-                            <button type="button"
-                                    class="btn btn-secondary btn-sm mt-2"
-                                    data-dropzone-browse>
+                            <label class="btn btn-secondary btn-sm mt-2 mb-0"
+                                   data-dropzone-browse
+                                   for="{{ launch_form.attachment.id_for_label }}"
+                                   role="button">
                                 {% trans "Browse files" %}
-                            </button>
+                            </label>
                             <div class="workflow-dropzone__file text-muted small mt-2"
                                  data-dropzone-file
                                  data-empty-label="{% trans 'No file selected yet.' %}">
@@ -166,32 +171,51 @@
                      id="workflow-launch-meta-pane"
                      role="tabpanel"
                      aria-labelledby="workflow-launch-meta-tab">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"
-                               for="{{ launch_form.filename.id_for_label }}">
-                            {{ launch_form.filename.label }}
-                        </label>
-                        {{ launch_form.filename }}
-                        {% if launch_form.filename.help_text %}
-                            <div class="form-text">
-                                {{ launch_form.filename.help_text }}
-                            </div>
-                        {% endif %}
-                        {{ launch_form.filename.errors }}
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold"
-                               for="{{ launch_form.metadata.id_for_label }}">
-                            {{ launch_form.metadata.label }}
-                        </label>
-                        {{ launch_form.metadata }}
-                        {% if launch_form.metadata.help_text %}
-                            <div class="form-text">
-                                {{ launch_form.metadata.help_text }}
-                            </div>
-                        {% endif %}
-                        {{ launch_form.metadata.errors }}
-                    </div>
+                    {% if workflow.allow_submission_name %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"
+                                   for="{{ launch_form.filename.id_for_label }}">
+                                {{ launch_form.filename.label }}
+                            </label>
+                            {{ launch_form.filename }}
+                            {% if launch_form.filename.help_text %}
+                                <div class="form-text">
+                                    {{ launch_form.filename.help_text }}
+                                </div>
+                            {% endif %}
+                            {{ launch_form.filename.errors }}
+                        </div>
+                    {% endif %}
+                    {% if workflow.allow_submission_short_description %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"
+                                   for="{{ launch_form.short_description.id_for_label }}">
+                                {{ launch_form.short_description.label }}
+                            </label>
+                            {{ launch_form.short_description }}
+                            {% if launch_form.short_description.help_text %}
+                                <div class="form-text">
+                                    {{ launch_form.short_description.help_text }}
+                                </div>
+                            {% endif %}
+                            {{ launch_form.short_description.errors }}
+                        </div>
+                    {% endif %}
+                    {% if workflow.allow_submission_meta_data %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"
+                                   for="{{ launch_form.metadata.id_for_label }}">
+                                {{ launch_form.metadata.label }}
+                            </label>
+                            {{ launch_form.metadata }}
+                            {% if launch_form.metadata.help_text %}
+                                <div class="form-text">
+                                    {{ launch_form.metadata.help_text }}
+                                </div>
+                            {% endif %}
+                            {{ launch_form.metadata.errors }}
+                        </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -205,7 +229,7 @@
                     class="btn btn-success ms-md-auto text-white"
                     data-launch-submit
                     data-submitting-label="{% trans 'Submitting...' %}">
-                {% trans "Start Validation" %}
+                {% trans "Launch Validation" %}
             </button>
         </div>
     </div>

@@ -21,8 +21,11 @@ from simplevalidations.validations.constants import (
     ValidationRunStatus,
 )
 from simplevalidations.validations.models import Ruleset, ValidationRun
-from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
-from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
+from simplevalidations.workflows.constants import (
+    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
+    WORKFLOW_MANAGER_ROLES,
+    WORKFLOW_VIEWER_ROLES,
+)
 from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
 from simplevalidations.workflows.models import Workflow, WorkflowStep
 from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
@@ -60,7 +63,28 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        return membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+        can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+        return can_manage
+
+    def user_can_view_workflow(self, *, user: User | None = None) -> bool:
+        user = user or self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        membership = user.membership_for_current_org()
+        if membership is None or not membership.is_active:
+            return False
+        can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
+        return can_view
+
+    def user_can_create_workflow(self, *, user: User | None = None) -> bool:
+        user = user or self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        membership = user.membership_for_current_org()
+        if membership is None or not membership.is_active:
+            return False
+        can_create = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+        return can_create
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):
@@ -277,10 +301,17 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             .order_by("-created")[:limit],
         )
 
-    def _remember_launch_input_mode(self, request, payload: str | None) -> None:
-        mode = "paste" if (payload or "").strip() else "upload"
+    def _remember_launch_input_mode(
+        self,
+        request,
+        payload: str | None,
+        mode: str | None = None,
+    ) -> None:
+        selected_mode = mode if mode in {"upload", "paste"} else None
+        if not selected_mode:
+            selected_mode = "paste" if (payload or "").strip() else "upload"
         try:
-            request.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] = mode
+            request.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] = selected_mode
             request.session.modified = True
         except Exception:  # pragma: no cover - defensive
             logger.exception("Unable to persist workflow launch input mode preference.")

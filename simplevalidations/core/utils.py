@@ -137,19 +137,21 @@ def pretty_json(text: str) -> str:
     Safely pretty-print user-supplied JSON for display.
     Returns a string that is ready to be escaped in the template.
     """
-    if not text:
+    if text in (None, "", {}):
         return ""
     try:
-        # Parse JSON — this will raise if malformed
-        obj = json.loads(text)
-        # Pretty-print with 2-space indentation and sorted keys for consistency
+        # Already structured? Just pretty dump it.
+        if not isinstance(text, (str, bytes, bytearray)):
+            obj = text
+        else:
+            obj = json.loads(text)
         formatted = json.dumps(
             obj,
             indent=2,
             sort_keys=True,
             ensure_ascii=False,
         )
-    except json.JSONDecodeError:
+    except Exception:
         # If invalid JSON, just return the raw text
-        formatted = text.strip()
+        formatted = str(text).strip()
     return formatted

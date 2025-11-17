@@ -19,5 +19,13 @@ class RoleCode(models.TextChoices):
     # Executor role with permissions to run validations within the org.
     EXECUTOR = "EXECUTOR", _("Executor")
 
-    # Viewer role with read-only access to workflows and reports within the org.
-    VIEWER = "VIEWER", _("Viewer")
+    # Reviewer role with permissions to review validation results within the org.
+    RESULTS_VIEWER = (
+        "RESULTS_VIEWER",
+        _("Validation Results Viewer"),
+    )
+
+    # Viewer role with read-only access to workflow view and reports within the org.
+    # This provides a more detailed view of the workflow...more than what is shown
+    # in the public view. But no edit or execution permissions are granted.
+    WORKFLOW_VIEWER = "WORKFLOW_VIEWER", _("Workflow Viewer")

@@ -17,7 +17,7 @@ def _login_with_membership(client, membership):
 @pytest.mark.django_db
 def test_viewer_nav_shows_limited_links(client):
     membership = MembershipFactory()
-    membership.set_roles({RoleCode.VIEWER})
+    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
     _login_with_membership(client, membership)
 
     response = client.get(reverse("workflows:workflow_list"))

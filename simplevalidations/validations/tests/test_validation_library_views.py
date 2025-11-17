@@ -8,6 +8,9 @@ from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import MembershipFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.validations.constants import (
+    VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
+)
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.utils import create_custom_validator
 from simplevalidations.workflows.tests.factories import WorkflowFactory
@@ -59,8 +62,20 @@ class TestValidationLibraryViews:
         assert response.status_code == HTTPStatus.OK
         assert response.context["active_tab"] == "system"
 
+    def test_library_layout_persists_in_session(self, client):
+        self._setup_user(client, RoleCode.OWNER)
+        url = reverse("validations:validation_library")
+
+        response = client.get(f"{url}?layout=list")
+        assert response.status_code == HTTPStatus.OK
+        assert response.context["current_layout"] == "list"
+        assert client.session[VALIDATION_LIBRARY_LAYOUT_SESSION_KEY] == "list"
+
+        response = client.get(url)
+        assert response.context["current_layout"] == "list"
+
     def test_library_page_requires_author_admin_owner(self, client):
-        self._setup_user(client, RoleCode.VIEWER)
+        self._setup_user(client, RoleCode.WORKFLOW_VIEWER)
         response = client.get(reverse("validations:validation_library"))
         assert response.status_code == HTTPStatus.FOUND
         assert "workflows" in response.headers["Location"]
@@ -85,7 +100,7 @@ class TestValidationLibraryViews:
         ).exists()
 
     def test_create_requires_permission(self, client):
-        self._setup_user(client, RoleCode.VIEWER)
+        self._setup_user(client, RoleCode.WORKFLOW_VIEWER)
         response = client.post(
             reverse("validations:custom_validator_create"),
             data={

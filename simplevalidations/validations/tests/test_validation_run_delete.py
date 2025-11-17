@@ -22,14 +22,14 @@ def test_viewer_cannot_delete_validation_run(client, db):
     )
 
     viewer = UserFactory()
-    grant_role(viewer, org, RoleCode.VIEWER)
+    grant_role(viewer, org, RoleCode.WORKFLOW_VIEWER)
     viewer.set_current_org(org)
     client.force_login(viewer)
 
     url = reverse("validations:validation_delete", kwargs={"pk": run.pk})
     resp = client.post(url)
 
-    assert resp.status_code == 403
+    assert resp.status_code == 404
     assert run.__class__.objects.filter(pk=run.pk).exists()
 
 
@@ -52,3 +52,28 @@ def test_admin_can_delete_validation_run(client, db):
 
     assert resp.status_code in {302, 204}
     assert not run.__class__.objects.filter(pk=run.pk).exists()
+
+
+def test_results_viewer_cannot_delete_validation_run(client, db):
+    org = OrganizationFactory()
+    owner = UserFactory()
+    grant_role(owner, org, RoleCode.OWNER)
+    owner.set_current_org(org)
+    workflow = WorkflowFactory(org=org, user=owner)
+    run = ValidationRunFactory(
+        submission__org=org,
+        submission__workflow=workflow,
+        submission__project=workflow.project,
+        user=owner,
+    )
+
+    reviewer = UserFactory()
+    grant_role(reviewer, org, RoleCode.RESULTS_VIEWER)
+    reviewer.set_current_org(org)
+    client.force_login(reviewer)
+
+    url = reverse("validations:validation_delete", kwargs={"pk": run.pk})
+    resp = client.post(url)
+
+    assert resp.status_code == 403
+    assert run.__class__.objects.filter(pk=run.pk).exists()

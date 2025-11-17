@@ -990,6 +990,13 @@ class ValidationRun(TimeStampedModel):
         default=ValidationRunStatus.PENDING,
     )
 
+    short_description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Optional short description of this validation run."),
+    )
+
     started_at = models.DateTimeField(null=True, blank=True)
 
     ended_at = models.DateTimeField(null=True, blank=True)
@@ -1329,7 +1336,7 @@ class ValidationFinding(TimeStampedModel):
         prefix = "payload"
         if not lower.startswith(prefix):
             return
-        remainder = path[len(prefix):]
+        remainder = path[len(prefix) :]
         if remainder and remainder[0] not in {".", "/", "["}:
             return
         remainder = remainder.lstrip("./")

@@ -4,23 +4,22 @@ import io
 import json
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Field
-from crispy_forms.layout import Layout
+from crispy_forms.layout import Field, Layout
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowPublicInfo
+from simplevalidations.validations.constants import (
+    JSONSchemaVersion,
+    ValidationType,
+    XMLSchemaType,
+)
+from simplevalidations.workflows.models import Workflow, WorkflowPublicInfo
 
 if TYPE_CHECKING:
     from simplevalidations.users.models import User
@@ -194,6 +193,9 @@ class WorkflowForm(forms.ModelForm):
             "slug",
             "project",
             "allowed_file_types",
+            "allow_submission_name",
+            "allow_submission_meta_data",
+            "allow_submission_short_description",
             "featured_image",
             "version",
             "is_active",
@@ -219,6 +221,9 @@ class WorkflowForm(forms.ModelForm):
             Field("slug", placeholder=""),
             Field("project"),
             Field("allowed_file_types"),
+            Field("allow_submission_name"),
+            Field("allow_submission_meta_data"),
+            Field("allow_submission_short_description"),
             Field("featured_image"),
             Field("version", placeholder="e.g. 1.0"),
             Field("is_active"),
@@ -359,6 +364,17 @@ class WorkflowLaunchForm(forms.Form):
         ),
         help_text=_("Optional JSON payload stored with the submission."),
     )
+    short_description = forms.CharField(
+        label=_("Short description"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": _("Brief context for this submission"),
+            },
+        ),
+        help_text=_("Optional short description stored with the submission."),
+    )
 
     def __init__(self, *args, workflow: Workflow, user: User | None = None, **kwargs):
         self.workflow = workflow
@@ -367,6 +383,7 @@ class WorkflowLaunchForm(forms.Form):
         self._apply_bootstrap_styles()
         self.single_file_type_label: str | None = None
         self._configure_file_type_field()
+        self._configure_optional_fields()
 
     def _configure_file_type_field(self) -> None:
         file_type_field = self.fields["file_type"]
@@ -404,6 +421,8 @@ class WorkflowLaunchForm(forms.Form):
                         "class": f"{widget.attrs.get('class', '')} visually-hidden".strip(),
                     },
                 )
+            if name in {"filename", "metadata", "short_description"}:
+                widget.attrs["data-launch-extra-field"] = name
 
     def clean(self):
         cleaned = super().clean()
@@ -416,7 +435,7 @@ class WorkflowLaunchForm(forms.Form):
             raise forms.ValidationError(both_msg)
         if not payload and not attachment:
             missing_msg = _(
-                "Add content inline or upload a file before starting the validation.",
+                "Paste in content or upload a file before starting the validation.",
             )
             self.add_error("payload", missing_msg)
             self.add_error("attachment", missing_msg)
@@ -431,17 +450,40 @@ class WorkflowLaunchForm(forms.Form):
         cleaned["payload"] = payload
 
         metadata = cleaned.get("metadata")
-        if metadata:
-            try:
-                cleaned["metadata"] = json.loads(metadata)
-            except json.JSONDecodeError as exc:
-                raise forms.ValidationError(
-                    _("Metadata must be valid JSON."),
-                ) from exc
+        if self.workflow.allow_submission_meta_data:
+            if metadata:
+                try:
+                    cleaned["metadata"] = json.loads(metadata)
+                except json.JSONDecodeError as exc:
+                    raise forms.ValidationError(
+                        _("Metadata must be valid JSON."),
+                    ) from exc
+            else:
+                cleaned["metadata"] = {}
         else:
             cleaned["metadata"] = {}
 
+        short_description = (cleaned.get("short_description") or "").strip()
+        cleaned["short_description"] = (
+            short_description if self.workflow.allow_submission_short_description else ""
+        )
+
+        if not self.workflow.allow_submission_name:
+            cleaned["filename"] = ""
+
         return cleaned
+
+    def _configure_optional_fields(self) -> None:
+        """Hide optional fields based on workflow configuration."""
+
+        if not self.workflow.allow_submission_name:
+            self.fields["filename"].widget = forms.HiddenInput()
+
+        if not self.workflow.allow_submission_meta_data:
+            self.fields["metadata"].widget = forms.HiddenInput()
+
+        if not self.workflow.allow_submission_short_description:
+            self.fields["short_description"].widget = forms.HiddenInput()
 
 
 class WorkflowStepTypeForm(forms.Form):

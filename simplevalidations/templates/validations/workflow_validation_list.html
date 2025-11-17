@@ -70,7 +70,7 @@
                      href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
                   <button type="button"
                           class="btn btn-outline-danger"
-                          hx-delete="{% url 'validations:validation_delete' validation.pk %}"
+                          hx-delete="{% url 'validations:validation_delete' run.pk %}"
                           hx-target="#validation-row-{{ validation.pk }}"
                           hx-swap="outerHTML"
                           hx-confirm="{% trans "Delete this validation run?" %}">

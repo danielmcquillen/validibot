@@ -14,17 +14,18 @@ Users can belong to multiple organizations with different roles in each, providi
 
 ## Role Catalogue
 
-SimpleValidations defines five organization-scoped roles. Permissions are cumulative unless otherwise noted, and organization management actions currently hinge on the **Admin** role. Use the table below as a quick reference.
+SimpleValidations defines six organization-scoped roles. Permissions are cumulative unless otherwise noted, and organization management actions currently hinge on the **Admin** role. Use the table below as a quick reference.
 
 | Role | Code | Primary scope | Key capabilities |
 | ---- | ---- | ------------- | ---------------- |
 | Owner | `OWNER` | Strategic control | Signals ultimate responsibility for the organization and automatically inherits every other role. |
 | Admin | `ADMIN` | Operational management | Manage organization settings, members, and lifecycle (including deletion safeguards). |
 | Author | `AUTHOR` | Workflow design | Create, edit, and retire workflows across the organization. |
-| Executor | `EXECUTOR` | Validation operations | Launch runs and inspect detailed results. |
-| Viewer | `VIEWER` | Transparency | Read-only access to workflows, runs, and documentation. |
+| Executor | `EXECUTOR` | Validation operations | Launch runs and inspect detailed results for their own runs. |
+| Results Viewer | `RESULTS_VIEWER` | Validation review | Read-only access to validation run details and findings across the current organization. |
+| Workflow Viewer | `WORKFLOW_VIEWER` | Transparency | Read-only access to workflows and public details (no validation results access). |
 
-Only Owners, Admins, and Authors can open the Designer-facing navigation (Dashboard, Validator Library, Analytics headings). Executors and Viewers without those roles see a compact menu limited to Workflows and Validation Runs.
+Only Owners, Admins, Authors, and Results Viewers can open validation results. Executors without those roles only see the runs they launched. Workflow Viewers without additional roles see a compact menu limited to Workflows and Validation Runs.
 
 ### Owner (`OWNER`)
 
@@ -32,7 +33,7 @@ Only Owners, Admins, and Authors can open the Designer-facing navigation (Dashbo
 
 **Permissions in practice:**
 
-- Automatically inherits Admin, Author, Executor, and Viewer capabilities (UI surfaces all related controls).
+- Automatically inherits every other role (Admin, Author, Executor, Results Viewer, Workflow Viewer) so the UI surfaces all related controls.
 - Primary contact for billing, contractual, and audit workflows; doubles as the escalation path for support.
 
 **Typical holders:** Executive sponsor, procurement lead, customer of record.
@@ -49,7 +50,7 @@ Only Owners, Admins, and Authors can open the Designer-facing navigation (Dashbo
 
 **Permissions:**
 
-- All Author, Executor, and Viewer permissions (if those roles are also assigned).
+- All Author, Executor, Results Viewer, and Workflow Viewer permissions (if those roles are also assigned).
 - Access to organization management UI/API (`OrganizationAdminRequiredMixin` checks this role explicitly).
 - Invite or remove members, edit organization metadata, and reassign roles.
 - Delete non-personal organizations (guarded so at least one other active admin remains).
@@ -98,25 +99,40 @@ Only Owners, Admins, and Authors can open the Designer-facing navigation (Dashbo
 
 - Minimum role required for active validation work (`Workflow.can_execute` checks this role specifically).
 - Executors cannot alter workflow configuration or organization settings.
-- Without an Author/Admin/Owner role, Executors only see the Workflows and Validation Runs links in the app navigation.
+- Without an Author/Admin/Owner/Results Viewer role, Executors only see the Workflows and Validation Runs links in the app navigation and only the runs they launched.
 
-### Viewer (`VIEWER`)
+### Results Viewer (`RESULTS_VIEWER`)
+
+**What it represents:** Read-only reviewer focused on validation outcomes.
+
+**Permissions:**
+
+- Browse validation runs and inspect findings across the current organization.
+- No ability to launch workflows or edit configuration.
+
+**Typical holders:** Product stakeholders, compliance reviewers, QA leads.
+
+**Notes:**
+
+- Pair with Executor when a user needs to both launch and review runs.
+- Does not grant workflow editing rights; combine with Author/Admin as needed.
+
+### Workflow Viewer (`WORKFLOW_VIEWER`)
 
 **What it represents:** Read-only participant who needs visibility without edit rights.
 
 **Permissions:**
 
 - Browse workflow catalog and step configuration.
-- Review run summaries, statuses, and documentation.
-- Access public workflow info pages when permitted.
+- Review public workflow info pages when permitted.
 
 **Typical holders:** Product stakeholders, compliance reviewers, onboarding teammates.
 
 **Notes:**
 
 - Default role for new invitees when no role is specified.
-- Cannot run workflows or upload content.
-- Nav is restricted to Workflows and Validation Runs unless the Viewer is also an Author, Admin, or Owner.
+- Cannot run workflows, upload content, or view detailed validation results unless combined with Results Viewer.
+- Nav is restricted to Workflows and Validation Runs unless the Workflow Viewer is also an Author, Admin, or Owner.
 
 ## Organization Model
 
@@ -164,7 +180,7 @@ By default, workflows inherit organization-level permissions:
 - **Admins**: See all workflows in the organization
 - **Authors**: See all workflows in the organization
 - **Executors**: See workflows they have access to execute
-- **Viewers**: See workflows they have permission to view
+- **Workflow Viewers**: See workflows they have permission to view
 
 ### Fine-Grained Workflow Permissions
 
@@ -212,10 +228,10 @@ def get_queryset(self):
 
 Templates and forms adapt based on user roles:
 
-    - Admins (often also Owners) see organization management options
+- Admins (often also Owners) see organization management options
 - Authors see workflow creation buttons
 - Executors see validation execution controls
-- Viewers see read-only interfaces
+- Workflow Viewers see read-only interfaces
 
 ## Security Features
 
@@ -246,7 +262,7 @@ Organization: "Acme Corp Data Team"
 ├── Owner: Alice (Head of Data)
 ├── Authors: Bob (Senior Engineer), Carol (Data Architect)
 ├── Executors: Dave (Developer), Eve (QA Engineer)
-└── Viewers: Frank (Product Manager), Grace (Compliance)
+└── Workflow Viewers: Frank (Product Manager), Grace (Compliance)
 ```
 
 ### Multi-Project Environment
@@ -255,7 +271,7 @@ Organization: "Acme Corp Data Team"
 User: John Smith
 ├── Personal Org: "John's Workspace" (Owner)
 ├── Work Org: "Tech Corp" (Executor)
-└── Client Org: "Customer Inc" (Viewer)
+└── Client Org: "Customer Inc" (Workflow Viewer)
 ```
 
 ### API Integration Pattern
@@ -270,7 +286,7 @@ Service Account: "production-validator"
 
 ### Principle of Least Privilege
 
-- Start with Viewer role for new users
+- Start with Workflow Viewer role for new users
 - Promote to higher roles as responsibilities increase
 - Regularly audit role assignments for appropriateness
 - Owners automatically receive every other role, so no additional pairing is required
@@ -279,7 +295,7 @@ Service Account: "production-validator"
 
 - Authors design workflows but may not execute them in production
 - Executors run validations but cannot modify workflow logic
-- Viewers provide oversight without operational access
+- Workflow or Results Viewers provide oversight without operational access
 
 ### Emergency Access
 

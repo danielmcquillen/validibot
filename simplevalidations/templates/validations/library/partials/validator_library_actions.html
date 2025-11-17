@@ -1,0 +1,28 @@
+{% load i18n core_tags %}
+
+{% with target_id=target_id|default:"validator-card-"|add:validator.pk %}
+  <a class="btn btn-sm btn-outline-primary"
+     href="{% org_url 'validations:validator_detail' slug=validator.slug %}{% if validator.is_system %}?tab=system{% else %}?tab=custom{% endif %}">
+    {% trans "View" %}
+  </a>
+  {% if not validator.is_system and can_manage_validators %}
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+       aria-label="{% blocktrans trimmed with validator_name=validator.name %}
+                       Edit {{ validator_name }}
+                   {% endblocktrans %}">
+      <i class="bi bi-pencil"></i>
+    </a>
+    <button type="button"
+            class="btn btn-sm btn-outline-danger"
+            hx-delete="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}"
+            hx-target="#{{ target_id }}"
+            hx-swap="outerHTML"
+            hx-confirm="{% blocktrans trimmed with validator_name=validator.name %}
+                            Delete '{{ validator_name }}'?
+                        {% endblocktrans %}">
+      <i class="bi bi-trash"></i>
+      <span class="visually-hidden">{% trans "Delete validator" %}</span>
+    </button>
+  {% endif %}
+{% endwith %}

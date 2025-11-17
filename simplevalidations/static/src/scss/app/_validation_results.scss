@@ -3,21 +3,33 @@
   flex-direction: column;
   justify-content: flex-start;
   align-items: flex-start;
-  .validation-info-card {
+}
+.validation-info-card {
+  height: 100%;
+
+  section {
+    border-bottom: 1px dotted #aaa;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  dl {
+    margin-bottom: 0;
+  }
+
+  .card-header {
+    background: #fff;
+    border-bottom: 1px dotted #999;
+  }
+  .card-body {
     height: 100%;
-    .card-header {
-      background: #fff;
-      border-bottom: 1px dotted #999;
-    }
-    .card-body {
-      height: 100%;
-    }
-    th {
-      background-color: #f1f1f1;
-      border: #ccc;
-    }
+  }
+  th {
+    background-color: #f1f1f1;
+    border: #ccc;
   }
 }
+
 .organization-role-list {
   .organization-role-option {
     margin-bottom: 0.75rem;

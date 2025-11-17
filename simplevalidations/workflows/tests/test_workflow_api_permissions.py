@@ -34,7 +34,7 @@ def manager(db, org):
 @pytest.fixture
 def viewer(db, org):
     user = UserFactory()
-    grant_role(user, org, RoleCode.VIEWER)
+    grant_role(user, org, RoleCode.WORKFLOW_VIEWER)
     user.set_current_org(org)
     return user
 

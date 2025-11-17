@@ -34,6 +34,7 @@ from simplevalidations.core.view_helpers import (
     hx_trigger_response,
 )
 from simplevalidations.projects.models import Project
+from simplevalidations.users.mixins import SuperuserRequiredMixin
 from simplevalidations.users.models import Organization
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
@@ -51,7 +52,13 @@ from simplevalidations.validations.models import (
 )
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
-from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
+from simplevalidations.workflows.constants import (
+    WORKFLOW_EXECUTOR_ROLES,
+    WORKFLOW_LIST_LAYOUT_SESSION_KEY,
+    WORKFLOW_MANAGER_ROLES,
+    WORKFLOW_VIEWER_ROLES,
+    WorkflowListLayout,
+)
 from simplevalidations.workflows.forms import (
     WorkflowPublicInfoForm,
     WorkflowStepTypeForm,
@@ -113,7 +120,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         org = self._resolve_target_org()
         if not self.request.user.has_org_roles(org, WORKFLOW_MANAGER_ROLES):
             raise DRFPermissionDenied(
-                detail=_("You do not have permission to create workflows for this organization."),
+                detail=_(
+                    "You do not have permission to create workflows for this organization."
+                ),
             )
         serializer.save(org=org, user=self.request.user)
 
@@ -260,6 +269,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
         self._remember_launch_input_mode(
             request,
             payload_source.get("payload"),
+            mode=request.POST.get("input_mode"),
         )
 
         if not form_valid:
@@ -677,6 +687,10 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
     breadcrumbs = [
         {"name": _("Workflows"), "url": ""},
     ]
+    layout_param = "layout"
+    default_layout = WorkflowListLayout.GRID
+    allowed_layouts = set(WorkflowListLayout.values)
+    layout_session_key = WORKFLOW_LIST_LAYOUT_SESSION_KEY
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -687,16 +701,36 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        workflows = list(context["workflows"])
+        workflows: list[Workflow] = list(context["workflows"])
         context["workflows"] = workflows
         context["object_list"] = workflows
         user = self.request.user
-        for wf in workflows:
-            wf.can_execute_cached = wf.can_execute(user=user)
+        membership = getattr(user, "membership_for_current_org", lambda: None)()
+        can_manage = False
+        can_execute = False
+        can_view = False
+        if membership:
+            can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+            can_execute = membership.has_any_role(WORKFLOW_EXECUTOR_ROLES)
+            can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
 
+        # Attach information about what user can do with each workflow
+        # so we don't need to check multiple times in the template
+        for wf in workflows:
+            wf.curr_user_can_execute = wf.is_active and can_execute
+            wf.curr_user_can_delete = can_manage
+            wf.curr_user_can_edit = can_manage
+            wf.curr_user_can_view = can_view
+
+        layout = str(self._get_layout())
         context.update(
             {
                 "search_query": self.request.GET.get("q", ""),
+                "current_layout": layout,
+                "layout_urls": self._build_layout_urls(),
+                "can_create_workflow": self.user_can_create_workflow(),
+                "can_manage_workflow": self.user_can_manage_workflow(),
+                "can_view_workflow": self.user_can_view_workflow(),
                 "create_url": reverse_with_org(
                     "workflows:workflow_create",
                     request=self.request,
@@ -704,6 +738,41 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
             },
         )
         return context
+
+    def _get_layout(self) -> str:
+        requested = (self.request.GET.get(self.layout_param) or "").lower()
+        if requested in self.allowed_layouts:
+            self._remember_layout(requested)
+            return requested
+        persisted = self.request.session.get(self.layout_session_key)
+        if persisted in self.allowed_layouts:
+            return persisted
+        return self.default_layout
+
+    def _remember_layout(self, layout: str) -> None:
+        try:
+            self.request.session[self.layout_session_key] = layout
+            self.request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            return
+
+    def _build_query_params(self, **overrides) -> str:
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        for key, value in overrides.items():
+            if value is None:
+                params.pop(key, None)
+            else:
+                params[key] = value
+        return params.urlencode()
+
+    def _build_layout_urls(self) -> dict[str, str]:
+        grid_query = self._build_query_params(layout=WorkflowListLayout.GRID)
+        table_query = self._build_query_params(layout=WorkflowListLayout.TABLE)
+        return {
+            "grid": f"?{grid_query}" if grid_query else "?",
+            "table": f"?{table_query}" if table_query else "?",
+        }
 
 
 class WorkflowDetailView(WorkflowAccessMixin, DetailView):
@@ -760,6 +829,9 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 "show_private_notes": self.user_can_manage_workflow(),
                 "public_info_url": public_info_context["public_info_url"],
                 "can_manage_public_info": can_manage_public_info,
+                "can_launch_workflow": workflow.can_execute(user=self.request.user),
+                "can_manage_workflow": self.user_can_manage_workflow(),
+                "can_view_workflow": self.user_can_view_workflow(),
             },
         )
         return context
@@ -784,7 +856,13 @@ class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
         )
 
 
-class WorkflowLastRunStatusView(WorkflowLaunchContextMixin, TemplateView):
+class WorkflowLastRunStatusView(
+    SuperuserRequiredMixin, WorkflowLaunchContextMixin, TemplateView
+):
+    """
+    Displays the most recent run of the workflow. ONLY FOR SUPERUSERS.
+    """
+
     template_name = "workflows/launch/workflow_run_detail.html"
 
     def get(self, request, *args, **kwargs):
@@ -1203,6 +1281,9 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             "steps": steps,
             "max_step_count": MAX_STEP_COUNT,
             "show_private_notes": show_private_notes,
+            "can_view_workflow": self.user_can_view_workflow(),
+            "can_manage_workflow": self.user_can_manage_workflow(),
+            "can_launch_workflow": workflow.can_execute(user=request.user),
         }
         return render(request, self.template_name, context)
 

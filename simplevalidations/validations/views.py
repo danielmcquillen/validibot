@@ -30,6 +30,10 @@ from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import LibraryLayout
+from simplevalidations.validations.constants import (
+    VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
+)
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.forms import CustomValidatorCreateForm
 from simplevalidations.validations.forms import CustomValidatorUpdateForm
@@ -73,23 +77,82 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["-created", "-id"]
     http_method_names = ["get", "head", "options"]
 
-    def get_queryset(self):
-        if self.request and self.request.user:
-            user = self.request.user
-            # Only active memberships (avoid showing runs from inactive/disabled org links)
-            org_ids = user.memberships.filter(is_active=True).values_list(
-                "org_id",
-                flat=True,
+    def filter_queryset(self, queryset):
+        """
+        Enforce role-based visibility:
+        - ADMIN/OWNER/RESULTS_VIEWER: can see all runs in their orgs.
+        - Otherwise: only runs they launched in orgs where they have membership.
+        """
+
+        scoped = super().filter_queryset(queryset)
+        user = self.request.user
+        if not user.is_authenticated:
+            return ValidationRun.objects.none()
+
+        memberships = (
+            user.memberships.filter(is_active=True)
+            .select_related("org")
+            .prefetch_related("membership_roles__role")
+        )
+        full_access_org_ids: set[int] = set()
+        membership_org_ids: set[int] = set()
+        for membership in memberships:
+            membership_org_ids.add(membership.org_id)
+            roles = set(
+                membership.membership_roles.values_list("role__code", flat=True)
             )
-            qs = (
-                super()
-                .get_queryset()
-                .filter(org__in=org_ids)
-                .select_related("workflow", "org", "submission")
+            if roles & {
+                RoleCode.ADMIN,
+                RoleCode.OWNER,
+                RoleCode.RESULTS_VIEWER,
+            }:
+                full_access_org_ids.add(membership.org_id)
+
+        if not membership_org_ids and not full_access_org_ids:
+            return ValidationRun.objects.none()
+
+        allowed_org_ids = membership_org_ids | full_access_org_ids
+        if full_access_org_ids:
+            return scoped.filter(
+                models.Q(org_id__in=full_access_org_ids)
+                | models.Q(org_id__in=allowed_org_ids, user_id=user.id)
             )
 
-        else:
-            qs = ValidationRun.objects.none()
+        return scoped.filter(org_id__in=allowed_org_ids, user_id=user.id)
+
+    def get_queryset(self):
+        qs = ValidationRun.objects.none()
+        if self.request and self.request.user:
+            user = self.request.user
+            memberships = (
+                user.memberships.filter(is_active=True)
+                .select_related("org")
+                .prefetch_related("membership_roles__role")
+            )
+            full_access_org_ids: set[int] = set()
+            membership_org_ids: set[int] = set()
+            for membership in memberships:
+                membership_org_ids.add(membership.org_id)
+                roles = set(
+                    membership.membership_roles.values_list("role__code", flat=True)
+                )
+                if roles & {
+                    RoleCode.ADMIN,
+                    RoleCode.OWNER,
+                    RoleCode.RESULTS_VIEWER,
+                }:
+                    full_access_org_ids.add(membership.org_id)
+
+            if membership_org_ids or full_access_org_ids:
+                base_qs = (
+                    super()
+                    .get_queryset()
+                    .select_related("workflow", "org", "submission")
+                )
+                if full_access_org_ids:
+                    qs = base_qs.filter(org_id__in=full_access_org_ids)
+                else:
+                    qs = base_qs.filter(user_id=user.id)
 
         # Default recent-only (last 30 days) unless:
         # - ?all=1 provided, or
@@ -137,9 +200,38 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         user = self.request.user
         if not user.is_authenticated:
             return ValidationRun.objects.none()
-        org_ids = user.memberships.filter(is_active=True).values_list(
-            "org_id", flat=True
+        active_org = getattr(self.request, "active_org", None)
+        active_org_id = (
+            active_org.id
+            if active_org
+            else getattr(user, "current_org_id", None)
         )
+        full_access_org_ids: set[int] = set()
+        restricted_org_ids: set[int] = set()
+        memberships = (
+            user.memberships.filter(is_active=True)
+            .select_related("org")
+            .prefetch_related("roles")
+        )
+        for membership in memberships:
+            if active_org_id and membership.org_id != active_org_id:
+                continue
+            roles = membership.role_codes
+            if roles & {
+                RoleCode.ADMIN,
+                RoleCode.OWNER,
+                RoleCode.RESULTS_VIEWER,
+            }:
+                full_access_org_ids.add(membership.org_id)
+            elif RoleCode.EXECUTOR in roles:
+                restricted_org_ids.add(membership.org_id)
+        filters = models.Q()
+        if full_access_org_ids:
+            filters |= models.Q(org_id__in=full_access_org_ids)
+        if restricted_org_ids:
+            filters |= models.Q(org_id__in=restricted_org_ids, user_id=user.id)
+        if not filters:
+            return ValidationRun.objects.none()
         step_run_prefetch = Prefetch(
             "step_runs",
             queryset=ValidationStepRun.objects.select_related("workflow_step")
@@ -155,7 +247,7 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             ).order_by("severity", "-created"),
         )
         return (
-            ValidationRun.objects.filter(org_id__in=org_ids)
+            ValidationRun.objects.filter(filters)
             .select_related("workflow", "submission", "org")
             .prefetch_related(step_run_prefetch, findings_prefetch)
             .order_by("-created")
@@ -214,6 +306,53 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        user = self.request.user
+        active_org = getattr(self.request, "active_org", None)
+        active_org_id = (
+            active_org.id
+            if active_org
+            else getattr(user, "current_org_id", None)
+        )
+        memberships = {
+            membership.org_id: membership
+            for membership in user.memberships.filter(is_active=True)
+            .select_related("org")
+            .prefetch_related("membership_roles__role")
+            if not active_org_id or membership.org_id == active_org_id
+        }
+        for validation in context.get("validations", []):
+            membership = memberships.get(validation.org_id)
+            role_codes = (
+                set(
+                    membership.membership_roles.values_list("role__code", flat=True)
+                )
+                if membership
+                else set()
+            )
+            validation.curr_user_can_view = bool(
+                membership
+                and (
+                    role_codes
+                    & {
+                        RoleCode.ADMIN,
+                        RoleCode.OWNER,
+                        RoleCode.RESULTS_VIEWER,
+                    }
+                    or (
+                        RoleCode.EXECUTOR in role_codes
+                        and validation.user_id == user.id
+                    )
+                )
+            )
+            validation.curr_user_can_delete = bool(
+                membership
+                and membership.has_any_role(
+                    {
+                        RoleCode.ADMIN,
+                        RoleCode.OWNER,
+                    },
+                )
+            )
         context.update(
             {
                 "current_sort": self.request.GET.get("sort", "-created"),
@@ -235,21 +374,21 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
 
 class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
     template_name = "validations/validation_detail.html"
-    context_object_name = "validation"
+    context_object_name = "run"
 
     def get_queryset(self):
         return self.get_base_queryset()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        validation: ValidationRun = context["validation"]
-        step_runs = list(validation.step_runs.all())
-        findings = list(validation.findings.all())
+        run: ValidationRun = context["run"]
+        step_runs = list(run.step_runs.all())
+        findings = list(run.findings.all())
         context.update(
             {
                 "step_runs": step_runs,
                 "all_findings": findings,
-                "summary_record": getattr(validation, "summary_record", None),
+                "summary_record": getattr(run, "summary_record", None),
             },
         )
         return context
@@ -348,6 +487,10 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     template_name = "validations/library/library.html"
     default_tab = "custom"
     allowed_tabs = ("custom", "system")
+    layout_param = "layout"
+    default_layout = LibraryLayout.GRID
+    allowed_layouts = set(LibraryLayout.values)
+    layout_session_key = VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 
     def dispatch(self, request, *args, **kwargs):
         if not self.require_library_access():
@@ -377,9 +520,12 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         org = self.get_active_org()
         active_tab = self.get_active_tab()
+        layout = str(self._get_layout())
         context.update(
             {
                 "active_tab": active_tab,
+                "current_layout": layout,
+                "layout_urls": self._build_layout_urls(),
                 "can_manage_validators": self.can_manage_validators(),
                 "system_validators": Validator.objects.filter(is_system=True)
                 .order_by("order", "validation_type", "name")
@@ -387,9 +533,56 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "custom_validators": Validator.objects.filter(org=org)
                 .order_by("name")
                 .select_related("custom_validator"),
+                "custom_validator_create_url": reverse_with_org(
+                    "validations:custom_validator_create",
+                    request=self.request,
+                ),
+                "custom_validators_empty_cta_url": (
+                    reverse_with_org(
+                        "validations:custom_validator_create",
+                        request=self.request,
+                    )
+                    if self.can_manage_validators()
+                    else None
+                ),
+                "custom_validators_empty_cta_label": _("Create the first custom validator"),
             }
         )
         return context
+
+    def _get_layout(self) -> str:
+        requested = (self.request.GET.get(self.layout_param) or "").lower()
+        if requested in self.allowed_layouts:
+            self._remember_layout(requested)
+            return requested
+        persisted = self.request.session.get(self.layout_session_key)
+        if persisted in self.allowed_layouts:
+            return persisted
+        return self.default_layout
+
+    def _remember_layout(self, layout: str) -> None:
+        try:
+            self.request.session[self.layout_session_key] = layout
+            self.request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            return
+
+    def _build_query_params(self, **overrides) -> str:
+        params = self.request.GET.copy()
+        for key, value in overrides.items():
+            if value is None:
+                params.pop(key, None)
+            else:
+                params[key] = value
+        return params.urlencode()
+
+    def _build_layout_urls(self) -> dict[str, str]:
+        grid_query = self._build_query_params(layout=LibraryLayout.GRID)
+        list_query = self._build_query_params(layout=LibraryLayout.LIST)
+        return {
+            "grid": f"?{grid_query}" if grid_query else "?",
+            "list": f"?{list_query}" if list_query else "?",
+        }
 
 
 class ValidatorDetailView(ValidatorLibraryMixin, DetailView):

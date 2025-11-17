@@ -159,45 +159,48 @@
                     {% endif %}
                   {% endwith %}
                 </div>
-                <div class="btn-group btn-group-sm"
-                     role="group"
-                     aria-label="{% trans 'Step actions' %}">
-                  <a class="btn btn-outline-secondary"
-                     href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
-                    <i class="bi-pencil-square"></i>
-                    <span class="visually-hidden">{% trans "Edit" %}</span>
-                  </a>
-                  <button class="btn btn-outline-secondary"
-                          hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
-                          hx-target="this"
-                          hx-swap="none"
-                          hx-vals='{"direction": "up"}'
-                          {% if forloop.first %}
-                            disabled
-                          {% endif %}>
-                    <i class="bi-arrow-up"></i>
-                    <span class="visually-hidden">{% trans "Move up" %}</span>
-                  </button>
-                  <button class="btn btn-outline-secondary"
-                          hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
-                          hx-target="this"
-                          hx-swap="none"
-                          hx-vals='{"direction": "down"}'
-                          {% if forloop.last %}
-                            disabled
-                          {% endif %}>
-                    <i class="bi-arrow-down"></i>
-                    <span class="visually-hidden">{% trans "Move down" %}</span>
-                  </button>
-                  <button class="btn btn-outline-danger"
-                          hx-post="{% url 'workflows:workflow_step_delete' workflow.pk step.id %}"
-                          hx-confirm="{% trans 'Remove this step?' %}"
-                          hx-target="this"
-                          hx-swap="none">
-                    <i class="bi-trash"></i>
-                    <span class="visually-hidden">{% trans "Delete" %}</span>
-                  </button>
-                </div>
+
+                {% if can_manage_workflow %}
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Step actions' %}">
+                    <a class="btn btn-outline-secondary"
+                       href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
+                      <i class="bi-pencil-square"></i>
+                      <span class="visually-hidden">{% trans "Edit" %}</span>
+                    </a>
+                    <button class="btn btn-outline-secondary"
+                            hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
+                            hx-target="this"
+                            hx-swap="none"
+                            hx-vals='{"direction": "up"}'
+                            {% if forloop.first %}
+                              disabled
+                            {% endif %}>
+                      <i class="bi-arrow-up"></i>
+                      <span class="visually-hidden">{% trans "Move up" %}</span>
+                    </button>
+                    <button class="btn btn-outline-secondary"
+                            hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
+                            hx-target="this"
+                            hx-swap="none"
+                            hx-vals='{"direction": "down"}'
+                            {% if forloop.last %}
+                              disabled
+                            {% endif %}>
+                      <i class="bi-arrow-down"></i>
+                      <span class="visually-hidden">{% trans "Move down" %}</span>
+                    </button>
+                    <button class="btn btn-outline-danger"
+                            hx-post="{% url 'workflows:workflow_step_delete' workflow.pk step.id %}"
+                            hx-confirm="{% trans 'Remove this step?' %}"
+                            hx-target="this"
+                            hx-swap="none">
+                      <i class="bi-trash"></i>
+                      <span class="visually-hidden">{% trans "Delete" %}</span>
+                    </button>
+                  </div>
+                {% endif %}
               </div>
               {% if config.policy_rules and config.template == 'policy_check' %}
                 <div class="mt-3">
@@ -244,20 +247,22 @@
               </div>
             </div>
           {% elif steps|length < max_step_count %}
-            <div class="workflow-step-connector workflow-step-connector--terminal"
-                 aria-hidden="true">
-              <div class="workflow-step-dotted-line">
+            {% if can_manage_workflow %}
+              <div class="workflow-step-connector workflow-step-connector--terminal"
+                   aria-hidden="true">
+                <div class="workflow-step-dotted-line">
+                </div>
+                <button class="workflow-step-add-terminal"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowStepModal"
+                        hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                        hx-target="#workflow-step-modal-content"
+                        hx-swap="innerHTML">
+                  <i class="bi-plus-lg"></i>
+                </button>
               </div>
-              <button class="workflow-step-add-terminal"
-                      type="button"
-                      data-bs-toggle="modal"
-                      data-bs-target="#workflowStepModal"
-                      hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
-                      hx-target="#workflow-step-modal-content"
-                      hx-swap="innerHTML">
-                <i class="bi-plus-lg"></i>
-              </button>
-            </div>
+            {% endif %}
           {% endif %}
         </div>
       {% endwith %}
@@ -271,17 +276,20 @@
         <p class="text-muted mb-0">
           {% trans "Add workflow steps to build your validation workflow." %}
         </p>
-        {# add your first step button #}
-        <button class="btn btn-primary mt-4"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#workflowStepModal"
-                hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
-                hx-target="#workflow-step-modal-content"
-                hx-swap="innerHTML">
-          <i class="bi-plus-lg me-2"></i>
-          {% trans "Add your first step" %}
-        </button>
+
+        {% if can_manage_workflow %}
+          {# add your first step button #}
+          <button class="btn btn-primary mt-4"
+                  type="button"
+                  data-bs-toggle="modal"
+                  data-bs-target="#workflowStepModal"
+                  hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                  hx-target="#workflow-step-modal-content"
+                  hx-swap="innerHTML">
+            <i class="bi-plus-lg me-2"></i>
+            {% trans "Add your first step" %}
+          </button>
+        {% endif %}
       </div>
     </div>
   {% endif %}

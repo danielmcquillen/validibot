@@ -60,6 +60,7 @@ class SubmissionBuild:
 
     submission: Submission
     metadata: dict[str, Any]
+    extra: dict[str, Any] | None = None
 
 
 class LaunchValidationError(Exception):
@@ -113,6 +114,7 @@ def launch_web_validation_run(
         workflow=workflow,
         submission=submission_build.submission,
         metadata=submission_build.metadata,
+        extra=submission_build.extra,
         user_id=getattr(request.user, "id", None),
         source=ValidationRunSource.LAUNCH_PAGE,
     )
@@ -524,6 +526,7 @@ def build_submission_from_form(
     requested_file_type = cleaned_data["file_type"]
     filename = cleaned_data.get("filename") or ""
     metadata = cleaned_data.get("metadata") or {}
+    short_description = cleaned_data.get("short_description") or ""
     attachment_name = getattr(attachment, "name", "") if attachment else ""
     detection_input_name = filename or attachment_name or "document"
     final_file_type = resolve_submission_file_type(
@@ -551,6 +554,10 @@ def build_submission_from_form(
         metadata=metadata,
         checksum_sha256="",
     )
+
+    run_kwargs: dict[str, Any] = {}
+    if workflow.allow_submission_short_description and short_description:
+        run_kwargs["short_description"] = short_description
 
     if attachment:
         max_file = int(settings.SUBMISSION_FILE_MAX_BYTES)
@@ -586,7 +593,7 @@ def build_submission_from_form(
     with transaction.atomic():
         submission.full_clean()
         submission.save()
-    return SubmissionBuild(submission=submission, metadata=metadata)
+    return SubmissionBuild(submission=submission, metadata=metadata, extra=run_kwargs)
 
 
 def build_submission_from_api(

@@ -70,7 +70,7 @@ def test_member_roles_can_be_updated(admin_client):
     client, org, admin = admin_client
     member = UserFactory()
     membership = Membership.objects.create(user=member, org=org, is_active=True)
-    membership.set_roles({RoleCode.VIEWER})
+    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
 
     response = client.post(
         reverse("members:member_edit", kwargs={"member_id": membership.pk}),
@@ -88,7 +88,7 @@ def test_member_delete_removes_viewer(admin_client):
     client, org, admin = admin_client
     viewer = UserFactory()
     viewer_membership = Membership.objects.create(user=viewer, org=org, is_active=True)
-    viewer_membership.set_roles({RoleCode.VIEWER})
+    viewer_membership.set_roles({RoleCode.WORKFLOW_VIEWER})
 
     response = client.post(
         reverse("members:member_delete", kwargs={"member_id": viewer_membership.pk}),
@@ -104,7 +104,7 @@ def test_member_delete_htmx_updates_list(admin_client):
     client, org, admin = admin_client
     viewer = UserFactory()
     viewer_membership = Membership.objects.create(user=viewer, org=org, is_active=True)
-    viewer_membership.set_roles({RoleCode.VIEWER})
+    viewer_membership.set_roles({RoleCode.WORKFLOW_VIEWER})
 
     client.get(reverse("members:member_list"))
     csrf_token = client.cookies["csrftoken"].value

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.conf import settings
+from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 
-from simplevalidations.users.models import Membership, Organization
+from simplevalidations.users.models import Organization
 from simplevalidations.users.scoping import ensure_active_org_scope
 
 
@@ -25,7 +26,9 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
             None,
         )
         if not membership or not membership.is_admin:
-            raise PermissionDenied("You do not have administrator access to this organization.")
+            raise PermissionDenied(
+                "You do not have administrator access to this organization."
+            )
 
         setattr(self, self.organization_context_attr, organization)
         self.organization_membership = membership
@@ -54,3 +57,17 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
                 return active
             return getattr(self.request.user, "current_org", None)
         return get_object_or_404(Organization, pk=pk)
+
+
+class SuperuserRequiredMixin(AccessMixin):
+    """Verify that the current user is logged in and is a superuser."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            # Redirect to login if not logged in
+            return self.handle_no_permission()
+
+        if not request.user.is_superuser:
+            raise PermissionDenied("You do not have access to this page.")
+
+        return super().dispatch(request, *args, **kwargs)

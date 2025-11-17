@@ -3,12 +3,15 @@ from __future__ import annotations
 import html
 import json
 from http import HTTPStatus
+from pathlib import Path
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from lxml import html as lxml_html
 
 from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
@@ -24,7 +27,9 @@ from simplevalidations.validations.services.validation_run import (
 )
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
-from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
+from simplevalidations.workflows.constants import (
+    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
+)
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
@@ -38,7 +43,7 @@ def _force_login_for_workflow(client, workflow, *, user=None):
         is_active=True,
     ).exists()
     if not has_membership:
-        grant_role(user, workflow.org, RoleCode.VIEWER)
+        grant_role(user, workflow.org, RoleCode.WORKFLOW_VIEWER)
     user.set_current_org(workflow.org)
     client.force_login(user)
     session = client.session
@@ -69,7 +74,7 @@ def test_launch_page_renders_for_org_member(client):
 
     body = response.content.decode()
     assert response.status_code == HTTPStatus.OK
-    assert "Start Validation" in body
+    assert "Launch Validation" in body
     assert "workflow-launch-status-area" not in body
 
 
@@ -171,6 +176,111 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
     assert session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
 
 
+def test_launch_upload_flow_accepts_file_and_creates_submission(client, monkeypatch):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    asset_path = Path("tests/assets/json/example_product.json")
+    payload_bytes = asset_path.read_bytes()
+    uploaded = SimpleUploadedFile(
+        asset_path.name,
+        payload_bytes,
+        content_type="application/json",
+    )
+    captured = {}
+
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+        captured["submission"] = submission
+        run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=workflow.project,
+            user=request.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
+        )
+
+    monkeypatch.setattr(
+        "simplevalidations.workflows.views.ValidationRunService.launch",
+        fake_launch,
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "attachment": uploaded,
+            "filename": asset_path.name,
+        },
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    assert "submission" in captured
+    submission: Submission = captured["submission"]
+    submission.refresh_from_db()
+    assert submission.original_filename == asset_path.name
+    assert submission.file_type == SubmissionFileType.JSON
+    assert submission.input_file and submission.input_file.name
+    assert '"name"' in submission.get_content()
+    assert ValidationRun.objects.filter(submission=submission).count() == 1
+    assert client.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
+
+
+def test_launch_inline_flow_accepts_json_payload(client, monkeypatch):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    payload = Path("tests/assets/json/example_product.json").read_text()
+    captured = {}
+
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+        captured["submission"] = submission
+        run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=workflow.project,
+            user=request.user,
+            status=ValidationRunStatus.PENDING,
+        )
+        return ValidationRunLaunchResults(
+            validation_run=run,
+            data={"id": str(run.pk), "status": ValidationRunStatus.PENDING},
+            status=HTTPStatus.ACCEPTED,
+        )
+
+    monkeypatch.setattr(
+        "simplevalidations.workflows.views.ValidationRunService.launch",
+        fake_launch,
+    )
+
+    response = client.post(
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
+        data={
+            "file_type": SubmissionFileType.JSON,
+            "payload": payload,
+            "filename": "inline.json",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.ACCEPTED
+    assert "submission" in captured
+    submission: Submission = captured["submission"]
+    submission.refresh_from_db()
+    assert not submission.input_file.name
+    assert submission.file_type == SubmissionFileType.JSON
+    assert '"name"' in submission.get_content()
+    assert ValidationRun.objects.filter(submission=submission).count() == 1
+    assert client.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "paste"
+
+
 def test_launch_post_invalid_form_rerenders_page(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
@@ -184,7 +294,7 @@ def test_launch_post_invalid_form_rerenders_page(client):
 
     assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
-    assert "Add content inline or upload a file" in body
+    assert "Launch Validation" in body
 
 
 def test_launch_start_requires_executor_role(client):
@@ -203,6 +313,59 @@ def test_launch_start_requires_executor_role(client):
 
     assert response.status_code == HTTPStatus.FORBIDDEN
     assert "You do not have permission to run this workflow." in response.content.decode()
+
+
+def test_launch_toggle_sections_follow_session_preference(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    url = reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+
+    response = client.get(url)
+    document = lxml_html.fromstring(response.content.decode())
+    upload_section = document.xpath("//*[@data-upload-section]")[0]
+    paste_section = document.xpath("//*[@data-paste-section]")[0]
+    upload_button = document.xpath('//*[@data-content-mode="upload"]')[0]
+    paste_button = document.xpath('//*[@data-content-mode="paste"]')[0]
+
+    assert "d-none" not in (upload_section.classes or set())
+    assert "d-none" in (paste_section.classes or set())
+    assert "active" in (upload_button.classes or set())
+    assert "active" not in (paste_button.classes or set())
+
+    session = client.session
+    session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] = "paste"
+    session.save()
+
+    response = client.get(url)
+    document = lxml_html.fromstring(response.content.decode())
+    upload_section = document.xpath("//*[@data-upload-section]")[0]
+    paste_section = document.xpath("//*[@data-paste-section]")[0]
+    upload_button = document.xpath('//*[@data-content-mode="upload"]')[0]
+    paste_button = document.xpath('//*[@data-content-mode="paste"]')[0]
+
+    assert "d-none" in (upload_section.classes or set())
+    assert "d-none" not in (paste_section.classes or set())
+    assert "active" not in (upload_button.classes or set())
+    assert "active" in (paste_button.classes or set())
+
+
+def test_browse_files_button_targets_attachment_input(client):
+    workflow = WorkflowFactory()
+    WorkflowStepFactory(workflow=workflow)
+    user = _force_login_for_workflow(client, workflow)
+    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    url = reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+
+    response = client.get(url)
+    document = lxml_html.fromstring(response.content.decode())
+    browse_label = document.xpath('//*[@data-dropzone-browse]')[0]
+    attachment_input = document.xpath('//input[@name="attachment"]')[0]
+
+    assert browse_label.tag == "label"
+    assert browse_label.get("for") == attachment_input.get("id")
+    assert "btn" in (browse_label.classes or set())
 
 
 def test_cancel_run_updates_status(client):
@@ -364,8 +527,10 @@ def test_run_detail_page_shows_completion_actions(client):
 def test_latest_run_view_loads_most_recent_run(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
-    user = _force_login_for_workflow(client, workflow)
-    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    superuser = UserFactory(is_superuser=True, is_staff=True)
+    grant_role(superuser, workflow.org, RoleCode.ADMIN)
+    superuser.set_current_org(workflow.org)
+    client.force_login(superuser)
     recent_run = ValidationRunFactory(
         submission__workflow=workflow,
         submission__org=workflow.org,
@@ -387,8 +552,10 @@ def test_latest_run_view_loads_most_recent_run(client):
 def test_latest_run_view_redirects_when_no_runs_exist(client):
     workflow = WorkflowFactory()
     WorkflowStepFactory(workflow=workflow)
-    user = _force_login_for_workflow(client, workflow)
-    grant_role(user, workflow.org, RoleCode.EXECUTOR)
+    superuser = UserFactory(is_superuser=True, is_staff=True)
+    grant_role(superuser, workflow.org, RoleCode.ADMIN)
+    superuser.set_current_org(workflow.org)
+    client.force_login(superuser)
 
     response = client.get(
         reverse("workflows:workflow_last_run", kwargs={"pk": workflow.pk}),

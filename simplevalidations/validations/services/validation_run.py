@@ -88,6 +88,7 @@ class ValidationRunService:
         user_id: int,
         metadata: dict | None = None,
         *,
+        extra: dict | None = None,
         source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
         wait_for_completion: bool = False,
     ) -> ValidationRunLaunchResults:
@@ -178,6 +179,7 @@ class ValidationRunService:
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
                 source=source,
+                **(extra or {}),
             )
             try:
                 if hasattr(submission, "latest_run_id"):

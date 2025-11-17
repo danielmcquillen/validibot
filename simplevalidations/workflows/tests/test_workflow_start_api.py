@@ -751,7 +751,7 @@ class TestWorkflowStartAPI:
         Without EXECUTOR role we respond with 404 to avoid leaking existence.
         """
         viewer = UserFactory()
-        grant_role(viewer, org, RoleCode.VIEWER)
+        grant_role(viewer, org, RoleCode.WORKFLOW_VIEWER)
         viewer.set_current_org(org)
         api_client.force_authenticate(user=viewer)
         envelope = {

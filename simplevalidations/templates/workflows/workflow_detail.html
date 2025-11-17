@@ -35,30 +35,34 @@
         <div class="d-flex flex-wrap gap-2 justify-content-end">
 
           {# link to launch #}
-          <a class="btn btn-success bg-success-subtle"
-             data-bs-toggle="tooltip"
-             data-bs-placement="top"
-             title="{% trans "Start a new validation run with this workflow" %}"
-             href="{% url 'workflows:workflow_launch' workflow.pk %}">
-            <i class="bi-rocket me-1"></i>{% trans "Launch" %}
-          </a>
+          {% if can_launch_workflow %}
+            <a class="btn btn-success bg-success-subtle"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "Start a new validation run with this workflow" %}"
+               href="{% url 'workflows:workflow_launch' workflow.pk %}">
+              <i class="bi-rocket me-1"></i>{% trans "Launch" %}
+            </a>
+          {% endif %}
 
-          <a class="btn btn-outline-secondary"
-             data-bs-toggle="tooltip"
-             data-bs-placement="top"
-             title="{% trans "View Validations" %}"
-             href="{{ related_validations_url }}">
-            <i class="bi-diagram-3"></i>
-          </a>
-          <a class="btn btn-danger"
-             hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
-             hx-target="body"
-             data-bs-toggle="tooltip"
-             data-bs-placement="top"
-             title="{% trans "Delete this workflow" %}"
-             hx-confirm="{% trans "Delete this workflow?" %}">
-            <i class="bi-trash"></i>
-          </a>
+          {% if can_manage_workflow %}
+            <a class="btn btn-outline-secondary"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "View Validations" %}"
+               href="{{ related_validations_url }}">
+              <i class="bi-diagram-3"></i>
+            </a>
+            <a class="btn btn-danger"
+               hx-delete="{% url 'workflows:workflow_delete' workflow.pk %}"
+               hx-target="body"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
+               title="{% trans "Delete this workflow" %}"
+               hx-confirm="{% trans "Delete this workflow?" %}">
+              <i class="bi-trash"></i>
+            </a>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -72,14 +76,16 @@
               <span class="text-muted small ms-2">{% trans "Design the sequence of validations and actions." %}</span>
             </div>
             <div class="card-header-buttons">
-              <button class="btn btn-primary btn-sm"
-                      data-bs-toggle="modal"
-                      data-bs-target="#workflowStepModal"
-                      hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
-                      hx-target="#workflow-step-modal-content"
-                      hx-swap="innerHTML">
-                <i class="bi-plus-lg me-1"></i>{% trans "Add step" %}
-              </button>
+              {% if can_manage_workflow %}
+                <button class="btn btn-primary btn-sm"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowStepModal"
+                        hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                        hx-target="#workflow-step-modal-content"
+                        hx-swap="innerHTML">
+                  <i class="bi-plus-lg me-1"></i>{% trans "Add step" %}
+                </button>
+              {% endif %}
             </div>
           </div>
           <div class="card-body editor-workspace d-flex flex-column flex-grow-1">
@@ -105,14 +111,16 @@
               {% endif %}
             </div>
             <div class="card-header-buttons">
-              <a class="btn btn-sm btn-outline-secondary ms-2"
-                 href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
-                 aria-label="{% trans "Edit workflow details" %}"
-                 data-bs-toggle="tooltip"
-                 data-bs-placement="top"
-                 title="{% trans "Workflow settings" %}">
-                <i class="bi bi-gear-fill"></i>
-              </a>
+              {% if can_manage_workflow %}
+                <a class="btn btn-sm btn-outline-secondary ms-2"
+                   href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
+                   aria-label="{% trans "Edit workflow details" %}"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="top"
+                   title="{% trans "Workflow settings" %}">
+                  <i class="bi bi-gear-fill"></i>
+                </a>
+              {% endif %}
             </div>
           </div>
           {% if workflow.has_featured_image %}
@@ -199,7 +207,7 @@
               </dd>
 
               <dt class="col-sm-4">
-                {% trans "Fle types" %}
+                {% trans "File types" %}
               </dt>
               <dd class="col-sm-8">
                 {{ workflow.allowed_file_type_labels|join:", " }}

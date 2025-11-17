@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -8,6 +10,10 @@ from rest_framework.test import APIClient
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import MembershipRole
+from simplevalidations.users.models import Role
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import ValidationRunStatus
@@ -244,6 +250,46 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
 
+    def test_executor_cannot_retrieve_other_users_run(self):
+        """Executor scoped to org cannot fetch runs they didn't launch."""
+        owner = UserFactory(orgs=[self.org])
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=owner,
+        )
+        executor = UserFactory(orgs=[self.org])
+        Membership.objects.filter(user=executor, org=self.org).update(is_active=True)
+        membership = executor.memberships.get(org=self.org)
+        membership.set_roles({RoleCode.EXECUTOR})
+
+        self.client.force_authenticate(user=executor)
+        url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_results_viewer_can_retrieve_any_run(self):
+        """RESULTS_VIEWER can fetch any run in their org."""
+        owner = UserFactory(orgs=[self.org])
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=owner,
+        )
+        reviewer = UserFactory(orgs=[self.org])
+        reviewer_membership = reviewer.memberships.get(org=self.org)
+        reviewer_membership.set_roles({RoleCode.RESULTS_VIEWER})
+
+        self.client.force_authenticate(user=reviewer)
+        url = reverse("api:validation-runs-detail", kwargs={"pk": run.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(run.id))
+
     def test_organization_isolation(self):
         """Test that users only see runs from their own organization."""
         # Create run for user's org
@@ -287,6 +333,96 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["results"]), 1)
         self.assertEqual(response.data["results"][0]["id"], str(other_run.id))
+
+    def test_results_viewer_sees_all_runs_in_org(self):
+        """RESULTS_VIEWER can see all runs for their org."""
+        reviewer = UserFactory(orgs=[self.org])
+        reviewer.memberships.get(org=self.org).set_roles({RoleCode.RESULTS_VIEWER})
+        self.client.force_authenticate(user=reviewer)
+
+        run1 = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
+        other_user = UserFactory(orgs=[self.org])
+        other_submission = SubmissionFactory(
+            org=self.org, project=self.project, user=other_user
+        )
+        run2 = ValidationRunFactory(
+            submission=other_submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=other_user,
+        )
+
+        url = reverse("api:validation-runs-list")
+        response = self.client.get(url, {"all": "1"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item["id"] for item in response.data["results"]}
+        self.assertEqual(ids, {str(run1.id), str(run2.id)})
+
+    def test_executor_sees_only_their_own_runs(self):
+        """EXECUTOR without results rights only sees runs they launched."""
+        # Ensure the org already has an owner so the executor isn't promoted.
+        owner = UserFactory()
+        owner_membership = Membership.objects.create(
+            user=owner,
+            org=self.org,
+            is_active=True,
+        )
+        owner_membership.set_roles({RoleCode.OWNER})
+
+        executor = UserFactory()
+        membership = Membership.objects.create(
+            user=executor,
+            org=self.org,
+            is_active=True,
+        )
+        exec_role, _ = Role.objects.get_or_create(
+            code=RoleCode.EXECUTOR,
+            defaults={"name": RoleCode.EXECUTOR.label},
+        )
+        membership.roles.set([exec_role])
+        executor.memberships.exclude(org=self.org).delete()
+        self.assertEqual(
+            set(membership.membership_roles.values_list("role__code", flat=True)),
+            {RoleCode.EXECUTOR},
+        )
+        own_submission = SubmissionFactory(
+            org=self.org, project=self.project, user=executor
+        )
+        own_run = ValidationRunFactory(
+            submission=own_submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=executor,
+        )
+        other_run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            user=self.user,
+        )
+        self.assertEqual(other_run.user_id, self.user.id)
+        self.assertEqual(own_run.user_id, executor.id)
+
+        self.client.force_authenticate(user=executor)
+        url = reverse("api:validation-runs-list")
+        response = self.client.get(url, {"all": "1"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item["id"] for item in response.data["results"]}
+        user_ids = {item.get("user") for item in response.data["results"]}
+        self.assertIn(str(own_run.id), ids)
+        self.assertNotIn(str(other_run.id), ids)
+        self.assertEqual(user_ids, {executor.id})
 
     def test_retrieve_validation_run(self):
         """Test retrieving a specific validation run."""

@@ -9,7 +9,6 @@ from django.utils.translation import gettext_lazy as _
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, Organization, User
 
-
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
         "Sole organization authority. Controls billing, integrations, and deletion. This role is assigned during setup and cannot be changed here."
@@ -21,10 +20,13 @@ ROLE_HELP_TEXT: dict[str, str] = {
         "Create and edit workflows, validators, and rulesets."
     ),
     RoleCode.EXECUTOR: _(
-        "Launch workflows, monitor progress, and review run results."
+        "Launch workflow validation run for any workflow in the organization. Monitor run progress and review the validation run results of that workflow."
     ),
-    RoleCode.VIEWER: _(
-        "Read-only access to workflows and validation history."
+    RoleCode.RESULTS_VIEWER: _(
+        "Read-only access to all validation runs in organization."
+    ),
+    RoleCode.WORKFLOW_VIEWER: _(
+        "Read-only access to workflows in the organization."
     ),
 }
 
@@ -168,7 +170,7 @@ class OrganizationMemberForm(forms.Form):
         required=False,
         choices=RoleCode.choices,
         widget=forms.CheckboxSelectMultiple,
-        initial=[RoleCode.VIEWER],
+        initial=[RoleCode.WORKFLOW_VIEWER],
     )
 
     def __init__(self, *args, **kwargs):
@@ -241,7 +243,7 @@ class OrganizationMemberForm(forms.Form):
         return [role for role in roles if role in self.assignable_role_codes]
 
     def save(self) -> Membership:
-        roles = self.cleaned_data.get("roles") or [RoleCode.VIEWER]
+        roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
         membership = Membership.objects.create(
             user=self.user,
             org=self.organization,
@@ -303,7 +305,7 @@ class OrganizationMemberRolesForm(forms.Form):
     def save(self) -> Membership:
         roles = set(self.cleaned_data.get("roles") or [])
         if not roles:
-            roles = {RoleCode.VIEWER}
+            roles = {RoleCode.WORKFLOW_VIEWER}
         if self.owner_locked:
             roles.update(RoleCode.values)
             roles.add(RoleCode.OWNER)

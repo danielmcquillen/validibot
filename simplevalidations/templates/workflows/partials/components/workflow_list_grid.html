@@ -1,0 +1,10 @@
+{% load i18n core_tags %}
+
+<div class="row h-100 row-cols-1 row-cols-md-2 row-cols-xl-3"
+     id="workflow-grid">
+  {% for workflow in workflows %}
+    <div class="col" id="workflow-card-wrapper-{{ workflow.pk }}">
+      {% include "workflows/partials/components/workflow_card.html" %}
+    </div>
+  {% endfor %}
+</div>

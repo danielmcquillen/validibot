@@ -27,7 +27,7 @@ def client_logged_in(client, admin_user):
 def test_organization_list_requires_admin(client):
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
-    grant_role(user, org, RoleCode.VIEWER)
+    grant_role(user, org, RoleCode.WORKFLOW_VIEWER)
     client.force_login(user)
 
     response = client.get(reverse("users:organization-list"))

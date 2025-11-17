@@ -1,0 +1,71 @@
+{% load i18n core_tags %}
+
+{% with target_id=target_id|default:"workflow-card-wrapper-"|add:workflow.pk %}
+
+  <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center">
+    {% if workflow.curr_user_can_execute %}
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
+         data-bs-toggle="tooltip"
+         data-bs-placement="top"
+         title="{% trans "Launch workflow" %}"
+         aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                       Launch {{ workflow_name }}
+                     {% endblocktrans %}">
+        <i class="bi bi-rocket"></i>
+        {% trans "Launch" %}
+      </a>
+    {% else %}
+      <span class="btn btn-sm btn-outline-secondary disabled"
+            role="button"
+            aria-disabled="true"
+            data-bs-toggle="tooltip"
+            data-bs-placement="top"
+            title="{% trans "Executor access required to run this workflow" %}">
+        <i class="bi bi-play-fill"></i>
+        <span class="visually-hidden">
+          {% trans "Launch workflow" %}
+        </span>
+      </span>
+    {% endif %}
+
+    {% if workflow.curr_user_can_edit %}
+      <a class="btn btn-sm btn-outline-secondary"
+         data-bs-toggle="tooltip"
+         data-bs-placement="top"
+         title="{% trans "Edit workflow" %}"
+         aria-label="{% trans "Edit workflow" %}"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        <i class="bi bi-pencil-square"></i> {% trans "Edit" %}
+      </a>
+    {% elif workflow.curr_user_can_view %}
+      {# if user can execute we allow them to see detail in read-only mode #}
+      <a class="btn btn-sm btn-outline-secondary"
+         data-bs-toggle="tooltip"
+         data-bs-placement="top"
+         title="{% trans "View workflow" %}"
+         aria-label="{% trans "View workflow" %}"
+         href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+        <i class="bi bi-eye"></i> {% trans "View" %}
+      </a>
+    {% endif %}
+
+    {% if workflow.curr_user_can_delete %}
+      <button type="button"
+              class="btn btn-sm btn-outline-danger ms-3"
+              hx-delete="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
+              hx-target="#{{ target_id }}"
+              hx-swap="outerHTML"
+              data-bs-toggle="tooltip"
+              data-bs-placement="top"
+              title="{% trans "Delete workflow" %}"
+              aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                            Delete {{ workflow_name }}
+                          {% endblocktrans %}"
+              hx-confirm="{% trans "Delete this workflow?" %}">
+        <i class="bi-trash"></i>
+      </button>
+    {% endif %}
+
+  </div>
+{% endwith %}

@@ -4,7 +4,7 @@ from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 
-from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.core.utils import pretty_json, reverse_with_org
 from simplevalidations.validations.constants import Severity
 from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
@@ -63,6 +63,12 @@ def contrast_color(hex_color: str) -> str:
 @register.filter
 def get_item(mapping, key):
     return mapping.get(key)
+
+
+@register.filter(name="pretty_json")
+def pretty_json_filter(value):
+    """Pretty-print JSON/dicts for safe template display."""
+    return pretty_json(value)
 
 
 # SIMPLE TAGS

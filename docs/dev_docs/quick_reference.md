@@ -43,6 +43,7 @@ SimpleValidations lets you run validations on submitted content through configur
 ### Developer Notes
 
 - Both the HTML launch view and the REST API use the same submission builders: `build_submission_from_form()` handles `WorkflowLaunchForm` payloads and `build_submission_from_api()` processes raw/JSON/multipart HTTP bodies. Each returns a `SubmissionBuild` that is then passed to `launch_web_validation_run()` or `launch_api_validation_run()` so every entry point enforces identical guards and launch behavior.
+- The workflow launch page toggles between upload/paste modes and updates the dropzone filename display with the `workflowLaunch` helper (targets `[data-workflow-launch-form]` + `[data-dropzone-*]` hooks). Keep those data attributes in place when editing the template so the JS continues to work.
 
 ## Related Documentation
 

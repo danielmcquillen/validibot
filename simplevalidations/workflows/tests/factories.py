@@ -24,6 +24,9 @@ class WorkflowFactory(DjangoModelFactory):
     version = "1"
     is_locked = False
     is_active = True
+    allow_submission_meta_data = True
+    allow_submission_short_description = True
+    allow_submission_name = True
     allowed_file_types = factory.LazyFunction(
         lambda: [SubmissionFileType.JSON],
     )

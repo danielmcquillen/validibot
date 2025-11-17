@@ -1,0 +1,27 @@
+{% load i18n %}
+{% if validators %}
+  {% if layout == "list" %}
+    {% include "validations/library/partials/validator_library_table.html" with validators=validators can_manage_validators=can_manage_validators %}
+  {% else %}
+    <div class="row g-3">
+      {% for validator in validators %}
+        <div class="col-12 col-md-6 col-xl-4">
+          {% include 'validations/library/partials/validator_library_card.html' with validator=validator can_manage_validators=can_manage_validators %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% else %}
+  <div class="text-center py-4">
+    <p class="text-muted mb-2">
+      {{ empty_message }}
+    </p>
+    {% if empty_cta_url %}
+      <a href="{{ empty_cta_url }}"
+         class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-plus me-1"></i>
+        {{ empty_cta_label }}
+      </a>
+    {% endif %}
+  </div>
+{% endif %}

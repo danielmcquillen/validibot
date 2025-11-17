@@ -72,7 +72,7 @@ def test_viewer_lacks_author_admin_owner_flag():
     _attach_session(request)
 
     membership = MembershipFactory()
-    membership.set_roles({RoleCode.VIEWER})
+    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
     user = membership.user
     user.set_current_org(membership.org)
     request.user = user

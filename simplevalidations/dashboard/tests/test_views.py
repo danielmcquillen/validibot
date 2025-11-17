@@ -41,7 +41,7 @@ class DashboardViewTests(TestCase):
 
     def test_dashboard_requires_author_admin_owner(self):
         viewer_membership = MembershipFactory()
-        viewer_membership.set_roles({RoleCode.VIEWER})
+        viewer_membership.set_roles({RoleCode.WORKFLOW_VIEWER})
         viewer = viewer_membership.user
         viewer.set_current_org(viewer_membership.org)
         self.client.force_login(viewer)

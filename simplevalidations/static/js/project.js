@@ -23372,10 +23372,108 @@
     });
   }
 
+  // simplevalidations/static/src/ts/workflowLaunch.ts
+  var WorkflowLaunchController = class {
+    constructor(form) {
+      this.form = form;
+      this.browseButtons = null;
+    }
+    init(defaultMode) {
+      this.uploadButton = this.form.querySelector(
+        '[data-content-mode="upload"]'
+      );
+      this.pasteButton = this.form.querySelector(
+        '[data-content-mode="paste"]'
+      );
+      this.uploadSection = this.form.querySelector("[data-upload-section]");
+      this.pasteSection = this.form.querySelector("[data-paste-section]");
+      this.modeInput = this.form.querySelector("[data-input-mode-field]");
+      this.fileInput = this.form.querySelector("[data-dropzone-input]");
+      this.fileLabel = this.form.querySelector("[data-dropzone-file]");
+      this.dropzone = this.form.querySelector("[data-dropzone]");
+      this.browseButtons = this.form.querySelectorAll("[data-dropzone-browse]");
+      if (!this.uploadButton || !this.pasteButton || !this.uploadSection || !this.pasteSection) {
+        return;
+      }
+      this.uploadButton.addEventListener("click", () => this.setMode("upload"));
+      this.pasteButton.addEventListener("click", () => this.setMode("paste"));
+      this.bindDropzone();
+      this.setMode(defaultMode);
+      this.renderSelectedFile();
+    }
+    setMode(mode) {
+      const isPaste = mode === "paste";
+      this.uploadButton?.classList.toggle("active", !isPaste);
+      this.pasteButton?.classList.toggle("active", isPaste);
+      this.uploadButton?.setAttribute("aria-pressed", String(!isPaste));
+      this.pasteButton?.setAttribute("aria-pressed", String(isPaste));
+      this.uploadSection?.classList.toggle("d-none", isPaste);
+      this.pasteSection?.classList.toggle("d-none", !isPaste);
+      if (this.modeInput) {
+        this.modeInput.value = mode;
+      }
+    }
+    bindDropzone() {
+      if (!this.fileInput || !this.fileLabel) {
+        return;
+      }
+      const resetDragState = () => this.dropzone?.classList.remove("is-dragover");
+      const setFileFromList = (files) => {
+        if (!files || !files.length) {
+          return;
+        }
+        this.fileInput.files = files;
+        this.fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      this.fileInput.addEventListener("change", () => {
+        this.setMode("upload");
+        this.renderSelectedFile();
+      });
+      this.browseButtons?.forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.fileInput?.click();
+        });
+      });
+      this.dropzone?.addEventListener("click", () => this.fileInput.click());
+      this.dropzone?.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        this.dropzone?.classList.add("is-dragover");
+      });
+      this.dropzone?.addEventListener("dragleave", resetDragState);
+      this.dropzone?.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const files = event.dataTransfer?.files;
+        setFileFromList(files);
+        resetDragState();
+      });
+    }
+    renderSelectedFile() {
+      if (!this.fileInput || !this.fileLabel) {
+        return;
+      }
+      const emptyLabel = this.fileLabel.dataset.emptyLabel || "";
+      const selected = this.fileInput.files && this.fileInput.files[0];
+      this.fileLabel.textContent = selected ? selected.name : emptyLabel;
+    }
+  };
+  function initWorkflowLaunch(root = document) {
+    const forms = Array.from(
+      root.querySelectorAll('[data-workflow-launch-form="true"]')
+    );
+    forms.forEach((form) => {
+      const controller = new WorkflowLaunchController(form);
+      const defaultMode = form.getAttribute("data-default-mode") === "paste" ? "paste" : "upload";
+      controller.init(defaultMode);
+    });
+  }
+
   // simplevalidations/static/src/ts/app.ts
   function initAppFeatures(root = document) {
     initCatalogFilters(root);
     initAssertionForms(root);
+    initWorkflowLaunch(root);
   }
 
   // simplevalidations/static/src/ts/project.ts

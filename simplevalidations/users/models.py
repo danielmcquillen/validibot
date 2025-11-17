@@ -95,7 +95,7 @@ class Role(models.Model):
     code = models.CharField(
         max_length=32,
         choices=RoleCode.choices,
-        default=RoleCode.VIEWER,
+        default=RoleCode.WORKFLOW_VIEWER,
     )
 
     name = models.CharField(max_length=64)  # display name
@@ -435,7 +435,7 @@ class Membership(TimeStampedModel):
     def set_roles(self, role_codes: list[str] | set[str]):
         normalized_codes = {code for code in role_codes if code in RoleCode.values}
         if not normalized_codes:
-            normalized_codes = {RoleCode.VIEWER}
+            normalized_codes = {RoleCode.WORKFLOW_VIEWER}
         requested_owner = RoleCode.OWNER in normalized_codes
         if requested_owner:
             normalized_codes = set(RoleCode.values)

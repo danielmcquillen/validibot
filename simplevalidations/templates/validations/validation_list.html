@@ -95,16 +95,15 @@
         </select>
       </div>
       <div class="col-sm-6 col-md-4 col-lg-2">
-        <button type="submit" class="btn btn-primary w-100">
-          {% trans "Apply" %}
+        <button type="submit" class="btn btn-primary">
+          {% trans "Filter" %}
         </button>
-      </div>
-      {% if request.GET %}
-        <div class="col-12 col-md-auto">
+        {% if request.GET %}
           <a class="btn btn-link text-decoration-none"
              href="{% url 'validations:validation_list' %}">{% trans "Reset filters" %}</a>
-        </div>
-      {% endif %}
+        {% endif %}
+      </div>
+
     </form>
 
     <div class="table-responsive shadow-sm rounded">
@@ -161,16 +160,20 @@
               </td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
+
                   <a class="btn btn-outline-primary"
                      href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
-                  <button type="button"
-                          class="btn btn-outline-danger"
-                          hx-delete="{% url 'validations:validation_delete' validation.pk %}"
-                          hx-target="#validation-row-{{ validation.pk }}"
-                          hx-swap="outerHTML"
-                          hx-confirm="{% trans "Delete this validation run?" %}">
-                    {% trans "Delete" %}
-                  </button>
+
+                  {% if validation.curr_user_can_delete %}
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            hx-delete="{% url 'validations:validation_delete' validation.pk %}"
+                            hx-target="#validation-row-{{ validation.pk }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="{% trans "Delete this validation run?" %}">
+                      {% trans "Delete" %}
+                    </button>
+                  {% endif %}
                 </div>
               </td>
             </tr>

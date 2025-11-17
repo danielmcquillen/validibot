@@ -76,3 +76,17 @@ h6 {
   .app-content-header-actions {
   }
 }
+
+.validation-success-alert {
+  margin-right: 30px;
+  .green-check {
+    width: 3rem;
+    height: 3rem;
+  }
+  .robot-image {
+    width: 3rem;
+    height: auto;
+    margin-right: -40px;
+    margin-top: -5px;
+  }
+}

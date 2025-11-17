@@ -17,6 +17,8 @@ urlpatterns = [
         views.WorkflowRunDetailView.as_view(),
         name="workflow_run_detail",
     ),
+    # This route allows you to reload the results of a validation run
+    # without having to redo the entire workflow launch.
     path(
         "<int:pk>/launch/run/latest/",
         views.WorkflowLastRunStatusView.as_view(),

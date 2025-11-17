@@ -66,22 +66,65 @@
         </form>
       </div>
 
-      <!-- New button -->
-      <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0">
-        <a class="btn btn-primary" href="{{ create_url }}">
-          <i class="bi-plus-lg me-1"></i>
-          {% trans "New Workflow" %}
-        </a>
+      <!-- Action buttons -->
+      <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0 pe-1">
+
+        <!-- toggle grid/table -->
+        <div class="btn-group me-1"
+             role="group"
+             aria-label="{% trans 'Toggle layout' %}">
+          <a class="btn
+                    {% if current_layout == 'table' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
+             href="{{ layout_urls.table }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'table' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
+             title="{% trans 'List view' %}">
+            <i class="bi bi-list"></i>
+          </a>
+          <a class="btn
+                    {% if current_layout == 'grid' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
+             href="{{ layout_urls.grid }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'grid' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
+             title="{% trans 'Grid view' %}">
+            <i class="bi bi-grid-fill"></i>
+          </a>
+        </div>
+        {% if can_create_workflow %}
+          <a class="btn btn-primary ms-2" href="{{ create_url }}">
+            <i class="bi-plus-lg"></i>
+            {% trans "New Workflow" %}
+          </a>
+        {% endif %}
       </div>
     </div>
 
-    <div class="row h-100 row-cols-1 row-cols-md-2 row-cols-xl-3"
-         id="workflow-grid">
-      {% for workflow in workflows %}
-        <div class="col" id="workflow-card-wrapper-{{ workflow.pk }}">
-          {% include "workflows/partials/components/workflow_card.html" %}
-        </div>
-      {% empty %}
+    {% if workflows %}
+      {% if current_layout == 'table' %}
+        {% include "workflows/partials/components/workflow_list_table.html" %}
+      {% else %}
+        {% include "workflows/partials/components/workflow_list_grid.html" %}
+      {% endif %}
+    {% else %}
+      <div class="row">
         <div class="col-12 d-flex flex-row justify-content-center align-items-center h-100">
           <div class="text-center p-5 border rounded bg-body-tertiary mt-5">
             <h2 class="h5">
@@ -96,7 +139,7 @@
             </a>
           </div>
         </div>
-      {% endfor %}
-    </div>
+      </div>
+    {% endif %}
   </div>
 {% endblock app_content %}

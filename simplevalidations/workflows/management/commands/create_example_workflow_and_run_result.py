@@ -46,7 +46,7 @@ class Command(BaseCommand):
 
     workflow_slug = "example-custom-validation-workflow"
     validator_slug = "example-custom-validator"
-    ruleset_name = "Example Custom Rules"
+    ruleset_name = "Example Custom Validator Ruleset"
 
     def handle(self, *args, **options):
         with transaction.atomic():
@@ -141,13 +141,13 @@ class Command(BaseCommand):
             defaults={
                 "name": f"Example Custom Validator {index}",
                 "description": "Demonstration validator used by the example command.",
-                "validation_type": ValidationType.CUSTOM_RULES,
+                "validation_type": ValidationType.CUSTOM_VALIDATOR,
                 "version": "1.0",
                 "supported_file_types": [SubmissionFileType.JSON],
                 "is_system": False,
             },
         )
-        validator.validation_type = ValidationType.CUSTOM_RULES
+        validator.validation_type = ValidationType.CUSTOM_VALIDATOR
         validator.supported_file_types = [SubmissionFileType.JSON]
         validator.is_system = False
         validator.save()
@@ -158,11 +158,11 @@ class Command(BaseCommand):
             user=user,
             name=ruleset_name,
             defaults={
-                "ruleset_type": RulesetType.CUSTOM_RULES,
+                "ruleset_type": RulesetType.CUSTOM_VALIDATOR,
                 "version": "1.0",
             },
         )
-        ruleset.ruleset_type = RulesetType.CUSTOM_RULES
+        ruleset.ruleset_type = RulesetType.CUSTOM_VALIDATOR
         ruleset.user = user
         ruleset.save()
 

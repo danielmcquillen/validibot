@@ -14,7 +14,11 @@ from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.submissions.constants import (
+    SubmissionDataFormat,
+    SubmissionFileType,
+    data_format_allowed_file_types,
+)
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import Organization, User
 from simplevalidations.validations.constants import (
@@ -38,9 +42,6 @@ from simplevalidations.workflows.models import Workflow, WorkflowStep
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionFileType.JSON,
-        SubmissionFileType.XML,
-        SubmissionFileType.TEXT,
-        SubmissionFileType.YAML,
     ],
     ValidationType.JSON_SCHEMA: [SubmissionFileType.JSON],
     ValidationType.XML_SCHEMA: [SubmissionFileType.XML],
@@ -48,13 +49,25 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
         SubmissionFileType.TEXT,
         SubmissionFileType.JSON,
     ],
-    ValidationType.CUSTOM_RULES: [
-        SubmissionFileType.JSON,
-        SubmissionFileType.TEXT,
+    ValidationType.CUSTOM_VALIDATOR: [SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    ValidationType.AI_ASSIST: [SubmissionFileType.JSON, SubmissionFileType.TEXT],
+}
+
+
+VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
+    ValidationType.BASIC: [SubmissionDataFormat.JSON],
+    ValidationType.JSON_SCHEMA: [SubmissionDataFormat.JSON],
+    ValidationType.XML_SCHEMA: [SubmissionDataFormat.XML],
+    ValidationType.ENERGYPLUS: [
+        SubmissionDataFormat.ENERGYPLUS_IDF,
+        SubmissionDataFormat.ENERGYPLUS_EPJSON,
+    ],
+    ValidationType.CUSTOM_VALIDATOR: [
+        SubmissionDataFormat.JSON,
     ],
     ValidationType.AI_ASSIST: [
-        SubmissionFileType.JSON,
-        SubmissionFileType.TEXT,
+        SubmissionDataFormat.JSON,
+        SubmissionDataFormat.TEXT,
     ],
 }
 
@@ -62,12 +75,30 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
 def default_supported_file_types_for_validation(
     validation_type: str,
 ) -> list[str]:
+    derived_formats = default_supported_data_formats_for_validation(validation_type)
+    derived = supported_file_types_for_data_formats(derived_formats)
+    return derived or [SubmissionFileType.JSON]
+
+
+def default_supported_data_formats_for_validation(validation_type: str) -> list[str]:
     return list(
-        VALIDATION_TYPE_FILE_TYPE_DEFAULTS.get(
+        VALIDATION_TYPE_DATA_FORMAT_DEFAULTS.get(
             validation_type,
-            [SubmissionFileType.JSON],
+            [SubmissionDataFormat.JSON],
         ),
     )
+
+
+def supported_file_types_for_data_formats(data_formats: list[str]) -> list[str]:
+    """
+    Expand data formats to the submission file types that can carry them.
+    """
+    collected: list[str] = []
+    for fmt in data_formats or []:
+        for ft in data_format_allowed_file_types(fmt):
+            if ft not in collected:
+                collected.append(ft)
+    return collected
 
 
 class Ruleset(TimeStampedModel):
@@ -495,6 +526,10 @@ def _default_validator_file_types() -> list[str]:
     return [SubmissionFileType.JSON]
 
 
+def _default_validator_data_formats() -> list[str]:
+    return [SubmissionDataFormat.JSON]
+
+
 class Validator(TimeStampedModel):
     """
     A pluggable validator 'type' and version.
@@ -600,6 +635,23 @@ class Validator(TimeStampedModel):
         ),
     )
 
+    # Custom validators should only select a single data format from the allowed set
+    CUSTOM_VALIDATOR_ALLOWED_DATA_FORMATS = {
+        SubmissionDataFormat.JSON,
+        SubmissionDataFormat.YAML,
+    }
+
+    supported_data_formats = ArrayField(
+        base_field=models.CharField(
+            max_length=32,
+            choices=SubmissionDataFormat.choices,
+        ),
+        default=_default_validator_data_formats,
+        help_text=_(
+            "Data formats this validator can parse (e.g., JSON, EnergyPlus IDF).",
+        ),
+    )
+
     supported_file_types = ArrayField(
         base_field=models.CharField(
             max_length=32,
@@ -629,13 +681,58 @@ class Validator(TimeStampedModel):
 
     def clean(self):
         super().clean()
-        options = [value for value in (self.supported_file_types or []) if value]
-        if not options:
-            options = default_supported_file_types_for_validation(
+        data_formats = [value for value in (self.supported_data_formats or []) if value]
+        if not data_formats:
+            data_formats = default_supported_data_formats_for_validation(
                 self.validation_type,
             )
-        normalized: list[str] = []
-        for value in options:
+        normalized_formats: list[str] = []
+        for value in data_formats:
+            if value not in SubmissionDataFormat.values:
+                raise ValidationError(
+                    {
+                        "supported_data_formats": _(
+                            "'%(value)s' is not a supported submission data format.",
+                        )
+                        % {"value": value},
+                    },
+                )
+            if value not in normalized_formats:
+                normalized_formats.append(value)
+        if self.validation_type == ValidationType.CUSTOM_VALIDATOR:
+            invalid = [
+                value
+                for value in normalized_formats
+                if value not in self.CUSTOM_VALIDATOR_ALLOWED_DATA_FORMATS
+            ]
+            if invalid:
+                raise ValidationError(
+                    {
+                        "supported_data_formats": _(
+                            "Custom validators support only JSON or YAML."
+                        ),
+                    },
+                )
+            if len(normalized_formats) != 1:
+                raise ValidationError(
+                    {
+                        "supported_data_formats": _(
+                            "Select exactly one data format for a custom validator."
+                        ),
+                    },
+                )
+        self.supported_data_formats = normalized_formats
+
+        derived_file_types = supported_file_types_for_data_formats(
+            self.supported_data_formats,
+        )
+        file_types = [value for value in (self.supported_file_types or []) if value]
+        if not file_types:
+            file_types = default_supported_file_types_for_validation(
+                self.validation_type,
+            )
+        normalized_files: list[str] = []
+        for value in file_types:
             if value not in SubmissionFileType.values:
                 raise ValidationError(
                     {
@@ -645,9 +742,12 @@ class Validator(TimeStampedModel):
                         % {"value": value},
                     },
                 )
-            if value not in normalized:
-                normalized.append(value)
-        self.supported_file_types = normalized
+            if value not in normalized_files:
+                normalized_files.append(value)
+        for derived in derived_file_types:
+            if derived not in normalized_files:
+                normalized_files.append(derived)
+        self.supported_file_types = normalized_files
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -692,6 +792,11 @@ class Validator(TimeStampedModel):
         allowed = {value.lower() for value in (self.supported_file_types or [])}
         return normalized in allowed
 
+    def supports_data_format(self, data_format: str) -> bool:
+        normalized = (data_format or "").lower()
+        allowed = {value.lower() for value in (self.supported_data_formats or [])}
+        return normalized in allowed
+
     def supports_any_file_type(self, file_types: list[str]) -> bool:
         allowed = {value.lower() for value in (self.supported_file_types or [])}
         incoming = {value.lower() for value in file_types}
@@ -702,6 +807,15 @@ class Validator(TimeStampedModel):
         for value in self.supported_file_types or []:
             try:
                 labels.append(str(SubmissionFileType(value).label))
+            except Exception:
+                labels.append(str(value))
+        return labels
+
+    def supported_data_format_labels(self) -> list[str]:
+        labels: list[str] = []
+        for value in self.supported_data_formats or []:
+            try:
+                labels.append(str(SubmissionDataFormat(value).label))
             except Exception:
                 labels.append(str(value))
         return labels

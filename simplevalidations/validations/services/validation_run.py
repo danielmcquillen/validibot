@@ -23,6 +23,7 @@ from simplevalidations.validations.constants import (
     ValidationRunStatus,
 )
 from simplevalidations.validations.engines.base import ValidationIssue
+from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.registry import get as get_validator_class
 from simplevalidations.validations.models import (
     ValidationFinding,
@@ -766,6 +767,21 @@ class ValidationRunService:
 
         # 2) Materialize submission content as text
         submission: Submission = validation_run.submission
+        if submission and not validator.supports_file_type(submission.file_type):
+            issue = ValidationIssue(
+                path="",
+                message=_(
+                    "Submission file type '%(ft)s' is not supported by this validator."
+                )
+                % {"ft": submission.file_type},
+                severity=Severity.ERROR,
+                code="unsupported_file_type",
+            )
+            return ValidationResult(
+                passed=False,
+                issues=[issue],
+                stats={"file_type": submission.file_type},
+            )
 
         # 3) Run the validator (registry resolves the concrete class by type/variant)
         step_config = getattr(step, "config", {}) or {}

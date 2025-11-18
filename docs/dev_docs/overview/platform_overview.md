@@ -86,7 +86,7 @@ Rulesets contain the actual validation rules that define what constitutes valid 
 
 - **JSON Schema**: For validating JSON structure and content
 - **XML Schema (XSD)**: For validating XML documents
-- **Custom Rules**: Organization-specific validation logic
+- **Custom Validator**: Organization-specific validation logic
 - **Shared vs Private**: Rulesets can be shared across the organization or kept private to specific workflows
 
 ### Validation Findings

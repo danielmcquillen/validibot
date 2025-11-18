@@ -3,7 +3,10 @@ from celery.exceptions import TimeoutError as CeleryTimeout
 from rest_framework import status
 from rest_framework.test import APIRequestFactory
 
+from simplevalidations.submissions.constants import SubmissionDataFormat
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.tests.factories import SubmissionFactory
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -78,7 +81,7 @@ def test_execute_sets_generic_error_when_engine_missing():
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
     validator = ValidatorFactory(
         org=org,
-        validation_type=ValidationType.CUSTOM_RULES,
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
         is_system=False,
     )
     WorkflowStepFactory(workflow=workflow, validator=validator)
@@ -103,6 +106,49 @@ def test_execute_sets_generic_error_when_engine_missing():
     assert validation_run.status == ValidationRunStatus.FAILED
     assert validation_run.error == GENERIC_EXECUTION_ERROR
     assert result.error == GENERIC_EXECUTION_ERROR
+
+
+@pytest.mark.django_db
+def test_execute_rejects_incompatible_file_type():
+    org = OrganizationFactory()
+    user = UserFactory()
+    workflow = WorkflowFactory(org=org, user=user, is_active=True)
+    validator = ValidatorFactory(
+        org=org,
+        validation_type=ValidationType.JSON_SCHEMA,
+        is_system=False,
+        supported_data_formats=[SubmissionDataFormat.JSON],
+        supported_file_types=["json"],
+    )
+    ruleset = RulesetFactory(
+        org=org,
+        user=user,
+        ruleset_type=RulesetType.JSON_SCHEMA,
+    )
+    step = WorkflowStepFactory(workflow=workflow, validator=validator, ruleset=ruleset)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+        file_type=SubmissionFileType.XML,
+        content="<root />",
+    )
+    validation_run = ValidationRun.objects.create(
+        org=org,
+        workflow=workflow,
+        submission=submission,
+        project=submission.project,
+        user=user,
+        status=ValidationRunStatus.PENDING,
+    )
+
+    service = ValidationRunService()
+    result = service.execute_workflow_step(step=step, validation_run=validation_run)
+
+    assert result.passed is False
+    assert result.issues
+    assert "not supported" in result.issues[0].message
 
 
 @pytest.mark.django_db

@@ -53,11 +53,11 @@
             </p>
             <div class="mb-4">
               <h3 class="h6 text-uppercase text-muted fw-semibold">
-                {% trans "Supported file types" %}
+                {% trans "Supported data formats" %}
               </h3>
-              {% if validator.supported_file_type_labels %}
+              {% if validator.supported_data_format_labels %}
                 <div class="d-flex flex-wrap gap-2">
-                  {% for label in validator.supported_file_type_labels %}
+                  {% for label in validator.supported_data_format_labels %}
                     <span class="badge bg-light text-dark border">
                       {{ label }}
                     </span>
@@ -65,7 +65,7 @@
                 </div>
               {% else %}
                 <p class="text-muted small mb-0">
-                  {% trans "No file types configured." %}
+                  {% trans "No data formats configured." %}
                 </p>
               {% endif %}
             </div>

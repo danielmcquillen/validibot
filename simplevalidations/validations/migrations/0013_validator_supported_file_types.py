@@ -21,7 +21,7 @@ FILE_TYPE_DEFAULTS = {
         SubmissionFileType.TEXT,
         SubmissionFileType.JSON,
     ],
-    ValidationType.CUSTOM_RULES: [
+    ValidationType.CUSTOM_VALIDATOR: [
         SubmissionFileType.JSON,
         SubmissionFileType.TEXT,
     ],

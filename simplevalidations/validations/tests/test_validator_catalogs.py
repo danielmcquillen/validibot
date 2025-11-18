@@ -18,7 +18,7 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 @pytest.mark.django_db
 def test_validator_catalog_entries_grouped():
-    validator = ValidatorFactory(validation_type=ValidationType.CUSTOM_RULES)
+    validator = ValidatorFactory(validation_type=ValidationType.CUSTOM_VALIDATOR)
     ValidatorCatalogEntryFactory(
         validator=validator,
         entry_type=CatalogEntryType.SIGNAL,
@@ -43,7 +43,7 @@ def test_validator_catalog_entries_grouped():
 def test_custom_validator_sets_org_on_validator():
     org = OrganizationFactory()
     validator = ValidatorFactory(
-        validation_type=ValidationType.CUSTOM_RULES,
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
         org=None,
         is_system=False,
     )

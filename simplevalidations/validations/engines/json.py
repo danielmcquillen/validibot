@@ -10,6 +10,7 @@ from jsonschema import FormatChecker
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
@@ -37,6 +38,18 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
         submission: Submission,
         ruleset: Ruleset,
     ) -> ValidationResult:
+        if submission.file_type != SubmissionFileType.JSON:
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        path="",
+                        message=_("This validator only accepts JSON submissions."),
+                        severity=Severity.ERROR,
+                    ),
+                ],
+                stats={"file_type": submission.file_type},
+            )
         # Load the schema we'll be using...
         try:
             schema = self._load_schema(validator=validator, ruleset=ruleset)

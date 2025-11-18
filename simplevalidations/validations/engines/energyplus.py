@@ -25,6 +25,7 @@ from django.utils.translation import gettext as _
 from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
 from sv_shared.energyplus.models import EnergyPlusSimulationResult
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
@@ -120,6 +121,25 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                 ),
             )
             return ValidationResult(passed=False, issues=issues, stats=stats)
+
+        if submission.file_type not in (
+            SubmissionFileType.JSON,
+            SubmissionFileType.TEXT,
+        ):
+            issues.append(
+                ValidationIssue(
+                    path="",
+                    message=_(
+                        "EnergyPlus validators accept epJSON (JSON) or IDF (text) submissions."
+                    ),
+                    severity=Severity.ERROR,
+                ),
+            )
+            return ValidationResult(
+                passed=False,
+                issues=issues,
+                stats={"file_type": submission.file_type},
+            )
 
         stripped_payload = energyplus_payload.strip()
         if not stripped_payload:

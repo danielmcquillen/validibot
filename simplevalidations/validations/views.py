@@ -719,6 +719,14 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
             description=form.cleaned_data.get("description") or "",
             custom_type=form.cleaned_data["custom_type"],
             notes=form.cleaned_data.get("notes") or "",
+            version=form.cleaned_data.get("version") or "",
+            allow_custom_assertion_targets=form.cleaned_data.get(
+                "allow_custom_assertion_targets",
+                False,
+            ),
+            supported_data_formats=[form.cleaned_data.get("supported_data_formats")]
+            if form.cleaned_data.get("supported_data_formats")
+            else [],
         )
         messages.success(
             self.request,
@@ -753,7 +761,11 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             "description": validator.description,
             "version": validator.version,
             "allow_custom_assertion_targets": validator.allow_custom_assertion_targets,
-            "supported_file_types": validator.supported_file_types,
+            "supported_data_formats": (
+                validator.supported_data_formats[0]
+                if validator.supported_data_formats
+                else ""
+            ),
             "notes": self.custom_validator.notes,
         }
 
@@ -791,7 +803,9 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             allow_custom_assertion_targets=form.cleaned_data.get(
                 "allow_custom_assertion_targets",
             ),
-            supported_file_types=form.cleaned_data.get("supported_file_types") or [],
+            supported_data_formats=[form.cleaned_data.get("supported_data_formats")]
+            if form.cleaned_data.get("supported_data_formats")
+            else [],
         )
         messages.success(
             self.request,

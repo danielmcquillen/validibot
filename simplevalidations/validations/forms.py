@@ -14,7 +14,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
-from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CustomValidatorType
@@ -38,6 +38,26 @@ class CustomValidatorCreateForm(forms.Form):
         label=_("Validator Type"),
         choices=CustomValidatorType.choices,
     )
+    version = forms.CharField(
+        label=_("Version"),
+        max_length=40,
+        required=False,
+        help_text=_("Version label (e.g. '1.0', '2025-01')."),
+    )
+    allow_custom_assertion_targets = forms.BooleanField(
+        label=_("Allow custom assertion targets"),
+        required=False,
+        help_text=_("Permit authors to reference assertion targets not in the catalog."),
+    )
+    supported_data_formats = forms.ChoiceField(
+        label=_("Supported data format"),
+        choices=[
+            (SubmissionDataFormat.JSON, SubmissionDataFormat.JSON.label),
+            (SubmissionDataFormat.YAML, SubmissionDataFormat.YAML.label),
+        ],
+        required=True,
+        help_text=_("Pick the single data format this validator will parse."),
+    )
     notes = forms.CharField(
         label=_("Notes"),
         required=False,
@@ -55,6 +75,11 @@ class CustomValidatorCreateForm(forms.Form):
                 Column("custom_type", css_class="col-12 col-xl-5"),
             ),
             "description",
+            "version",
+            Row(
+                Column("allow_custom_assertion_targets", css_class="col-12 col-xl-6"),
+                Column("supported_data_formats", css_class="col-12 col-xl-6"),
+            ),
             "notes",
         )
 
@@ -82,11 +107,14 @@ class CustomValidatorUpdateForm(forms.Form):
         required=False,
         help_text=_("Permit authors to reference assertion targets not in the catalog."),
     )
-    supported_file_types = forms.MultipleChoiceField(
-        label=_("Supported file types"),
-        choices=SubmissionFileType.choices,
-        required=False,
-        help_text=_("Logical file types this validator can process."),
+    supported_data_formats = forms.ChoiceField(
+        label=_("Supported data format"),
+        choices=[
+            (SubmissionDataFormat.JSON, SubmissionDataFormat.JSON.label),
+            (SubmissionDataFormat.YAML, SubmissionDataFormat.YAML.label),
+        ],
+        required=True,
+        help_text=_("Pick the single data format this validator will parse."),
     )
     notes = forms.CharField(
         label=_("Notes"),
@@ -104,7 +132,7 @@ class CustomValidatorUpdateForm(forms.Form):
             "version",
             Row(
                 Column("allow_custom_assertion_targets", css_class="col-12 col-md-6"),
-                Column("supported_file_types", css_class="col-12 col-md-6"),
+                Column("supported_data_formats", css_class="col-12 col-md-6"),
             ),
             "notes",
         )

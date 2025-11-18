@@ -17,6 +17,7 @@ from simplevalidations.validations.constants import (
 )
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.cel_eval import evaluate_cel_expression
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
@@ -56,6 +57,18 @@ class BasicValidatorEngine(BaseValidatorEngine):
         submission: Submission,
         ruleset: Ruleset,
     ) -> ValidationResult:
+        if submission.file_type != SubmissionFileType.JSON:
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        path="",
+                        message=_("This validator only accepts JSON submissions."),
+                        severity=Severity.ERROR,
+                    ),
+                ],
+                stats={"file_type": submission.file_type},
+            )
         raw_content = submission.get_content()
         issues: list[ValidationIssue] = []
 

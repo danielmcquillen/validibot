@@ -28,6 +28,10 @@ from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import (
+    default_supported_data_formats_for_validation,
+    default_supported_file_types_for_validation,
+)
 from simplevalidations.validations.models import ValidatorCatalogEntry
 from simplevalidations.validations.models import (
     default_supported_file_types_for_validation,
@@ -84,6 +88,9 @@ class ValidatorFactory(DjangoModelFactory):
     org = None
     is_system = True
     allow_custom_assertion_targets = False
+    supported_data_formats = factory.LazyAttribute(
+        lambda obj: default_supported_data_formats_for_validation(obj.validation_type),
+    )
     supported_file_types = factory.LazyAttribute(
         lambda obj: default_supported_file_types_for_validation(obj.validation_type),
     )
@@ -119,12 +126,12 @@ class CustomValidatorFactory(DjangoModelFactory):
 
     validator = factory.SubFactory(
         ValidatorFactory,
-        validation_type=ValidationType.CUSTOM_RULES,
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
         is_system=False,
     )
     org = factory.SubFactory(OrganizationFactory)
     custom_type = CustomValidatorType.MODELICA
-    base_validation_type = ValidationType.CUSTOM_RULES
+    base_validation_type = ValidationType.CUSTOM_VALIDATOR
     notes = "Custom validator for tests."
     created_by = factory.SubFactory(UserFactory)
 

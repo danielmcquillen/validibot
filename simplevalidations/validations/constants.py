@@ -42,7 +42,7 @@ class RulesetType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    CUSTOM_RULES = "CUSTOM_RULES", _("Custom Rules")
+    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Validator")
 
 
 class ValidationType(TextChoices):
@@ -50,7 +50,7 @@ class ValidationType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    CUSTOM_RULES = "CUSTOM_RULES", _("Custom Rules")
+    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
@@ -58,7 +58,7 @@ class ValidationType(TextChoices):
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.BASIC,
     ValidationType.ENERGYPLUS,
-    ValidationType.CUSTOM_RULES,
+    ValidationType.CUSTOM_VALIDATOR,
 }
 
 

@@ -17,6 +17,7 @@ def create_default_validators():
     """
     from simplevalidations.validations.models import (  # noqa: PLC0415
         Validator,
+        default_supported_data_formats_for_validation,
         default_supported_file_types_for_validation,
     )
 
@@ -73,8 +74,11 @@ def create_default_validators():
     for validator_data in default_validators:
         defaults = {
             **validator_data,
+            "supported_data_formats": default_supported_data_formats_for_validation(
+                validator_data["validation_type"]
+            ),
             "supported_file_types": default_supported_file_types_for_validation(
-                validator_data["validation_type"],
+                validator_data["validation_type"]
             ),
         }
         validator, was_created = Validator.objects.get_or_create(
@@ -93,6 +97,8 @@ def create_default_validators():
         validator.org = None
         if not validator.supported_file_types:
             validator.supported_file_types = defaults["supported_file_types"]
+        if not validator.supported_data_formats:
+            validator.supported_data_formats = defaults["supported_data_formats"]
         validator.allow_custom_assertion_targets = validator_data.get(
             "allow_custom_assertion_targets",
             validator.allow_custom_assertion_targets,
@@ -114,16 +120,29 @@ def create_custom_validator(
     description: str,
     custom_type: str,
     notes: str = "",
+    version: str | None = "",
+    allow_custom_assertion_targets: bool = False,
+    supported_data_formats: list[str] | None = None,
 ):
     """Create a custom validator and matching CustomValidator wrapper."""
     from simplevalidations.validations.models import (  # noqa: PLC0415
         CustomValidator,
         Validator,
+        default_supported_data_formats_for_validation,
         default_supported_file_types_for_validation,
+        supported_file_types_for_data_formats,
     )
 
     base_validation_type = _custom_type_to_validation_type(custom_type)
     slug = _unique_validator_slug(org, name)
+    data_formats = (
+        list(supported_data_formats)
+        if supported_data_formats
+        else default_supported_data_formats_for_validation(base_validation_type)
+    )
+    file_types = supported_file_types_for_data_formats(data_formats) or (
+        default_supported_file_types_for_validation(base_validation_type)
+    )
     validator = Validator.objects.create(
         name=name,
         description=description,
@@ -131,9 +150,10 @@ def create_custom_validator(
         org=org,
         is_system=False,
         slug=slug,
-        supported_file_types=default_supported_file_types_for_validation(
-            base_validation_type,
-        ),
+        supported_data_formats=data_formats,
+        supported_file_types=file_types,
+        allow_custom_assertion_targets=allow_custom_assertion_targets,
+        version=version or "",
     )
     custom_validator = CustomValidator.objects.create(
         validator=validator,
@@ -154,9 +174,13 @@ def update_custom_validator(
     notes: str,
     version: str | None = "",
     allow_custom_assertion_targets: bool | None = None,
-    supported_file_types: list[str] | None = None,
+    supported_data_formats: list[str] | None = None,
 ):
     """Update validator + custom metadata."""
+    from simplevalidations.validations.models import (  # noqa: PLC0415
+        supported_file_types_for_data_formats,
+    )
+
     validator = custom_validator.validator
     validator.name = name
     validator.description = description
@@ -164,14 +188,18 @@ def update_custom_validator(
         validator.version = version
     if allow_custom_assertion_targets is not None:
         validator.allow_custom_assertion_targets = allow_custom_assertion_targets
-    if supported_file_types:
-        validator.supported_file_types = supported_file_types
+    if supported_data_formats:
+        validator.supported_data_formats = list(supported_data_formats)
+        validator.supported_file_types = supported_file_types_for_data_formats(
+            validator.supported_data_formats,
+        )
     validator.save(
         update_fields=[
             "name",
             "description",
             "version",
             "allow_custom_assertion_targets",
+            "supported_data_formats",
             "supported_file_types",
             "modified",
         ],
@@ -184,10 +212,10 @@ def update_custom_validator(
 def _custom_type_to_validation_type(custom_type: str) -> ValidationType:
     """Map CustomValidatorType to the corresponding ValidationType."""
     mapping = {
-        CustomValidatorType.MODELICA: ValidationType.CUSTOM_RULES,
-        CustomValidatorType.KERML: ValidationType.CUSTOM_RULES,
+        CustomValidatorType.MODELICA: ValidationType.CUSTOM_VALIDATOR,
+        CustomValidatorType.KERML: ValidationType.CUSTOM_VALIDATOR,
     }
-    return mapping.get(custom_type, ValidationType.CUSTOM_RULES)
+    return mapping.get(custom_type, ValidationType.CUSTOM_VALIDATOR)
 
 
 def _unique_validator_slug(org, name: str) -> str:

@@ -10,7 +10,7 @@ validation types:
 - **JSON_SCHEMA / XML_SCHEMA** — schema validations that require uploading or pasting schema content.
 - **ENERGYPLUS** — advanced simulation validators with IDF/simulation options and catalog entries.
 - **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
-- **CUSTOM_RULES** — organization-defined validators registered via the custom validator UI.
+- **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI.
 
 Validators are stored in the `validators` table. Each row records the following:
 

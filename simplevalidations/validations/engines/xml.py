@@ -6,6 +6,7 @@ from typing import Any
 
 from django.utils.translation import gettext as _
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -44,6 +45,18 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         Validate the provided XML against the configured schema (XSD or Relax NG).
         Returns a ValidationResult with ERROR issues for any schema violations.
         """
+        if submission.file_type != SubmissionFileType.XML:
+            return ValidationResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        "",
+                        _("This validator only accepts XML submissions."),
+                        Severity.ERROR,
+                    ),
+                ],
+                stats={"file_type": submission.file_type},
+            )
         # lxml optional (import lazily)
         try:
             from lxml import etree  # noqa: PLC0415

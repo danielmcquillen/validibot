@@ -88,7 +88,15 @@ class TestExampleProductWithCEL(TestCase):
         self.assertIn(self.error_message, issues[0].message)
 
     def test_missing_catalog_entry_reports_identifier(self):
-        validator = ValidatorFactory(validation_type=ValidationType.BASIC, is_system=False)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+            allow_custom_assertion_targets=False,
+        )
+        validator.allow_custom_assertion_targets = False
+        validator.save(update_fields=["allow_custom_assertion_targets"])
+        validator.refresh_from_db()
+        self.assertFalse(validator.allow_custom_assertion_targets)
         ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         RulesetAssertionFactory(
             ruleset=ruleset,

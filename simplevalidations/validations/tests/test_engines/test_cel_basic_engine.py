@@ -128,7 +128,7 @@ class CelBasicEngineTests(TestCase):
 
         self.assertFalse(result.passed)
         self.assertEqual(len(result.issues), 1)
-        self.assertIn("CEL assertion evaluated to false", result.issues[0].message)
+        self.assertIn("Peak too high", result.issues[0].message)
 
     def test_when_guard_skips_expression(self):
         RulesetAssertionFactory(

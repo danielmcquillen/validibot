@@ -2,7 +2,7 @@
 {% load i18n core_tags %}
 
 {% block title %}
-  {% trans "Delete Custom Validator" %} · SimpleValidations
+  {% trans "Delete Custom Basic Validator" %} · SimpleValidations
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -14,7 +14,7 @@
     <div class="app-content-header-bar">
       <h1 class="app-page-title text-danger">
         <i class="bi bi-exclamation-triangle me-2"></i>
-        {% trans "Delete Custom Validator" %}
+        {% trans "Delete Custom Basic Validator" %}
       </h1>
       <p class="text-muted">
         {% blocktrans with name=validator.name %}
@@ -31,7 +31,7 @@
         </p>
       </div>
       <div class="card-footer d-flex justify-content-between">
-        <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+        <a href="{% org_url 'validations:validator_detail' pk=validator.pk %}"
            class="btn btn-secondary">
           {% trans "Cancel" %}
         </a>

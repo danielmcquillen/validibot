@@ -42,7 +42,7 @@ class RulesetType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Validator")
+    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
 
 
 class ValidationType(TextChoices):
@@ -50,7 +50,7 @@ class ValidationType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Validator")
+    CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
@@ -113,6 +113,10 @@ class CatalogValueType(TextChoices):
 
 class AssertionType(TextChoices):
     BASIC = "basic", _("Basic Assertion")
+    CEL_EXPRESSION = "cel_expr", _("CEL expression")
+
+
+class ValidatorRuleType(TextChoices):
     CEL_EXPRESSION = "cel_expr", _("CEL expression")
 
 

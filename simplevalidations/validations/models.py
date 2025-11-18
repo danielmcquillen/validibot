@@ -32,6 +32,7 @@ from simplevalidations.validations.constants import (
     RulesetType,
     Severity,
     StepStatus,
+    ValidatorRuleType,
     ValidationRunSource,
     ValidationRunStatus,
     ValidationType,
@@ -945,6 +946,17 @@ class ValidatorCatalogEntry(TimeStampedModel):
     )
     order = models.PositiveIntegerField(default=0)
 
+    def delete(self, *args, **kwargs):
+        if self.referencing_rules.exists():
+            raise ValidationError(
+                {
+                    "catalog_entry": _(
+                        "Cannot delete a signal/derivation referenced by rules.",
+                    ),
+                },
+            )
+        return super().delete(*args, **kwargs)
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -1467,6 +1479,94 @@ class ValidationFinding(TimeStampedModel):
         self._ensure_run_alignment()
         self._strip_payload_prefix()
         super().save(*args, **kwargs)
+
+
+class ValidatorCatalogRule(TimeStampedModel):
+    """
+    Rule defined at the validator level (e.g., default CEL expressions).
+
+    Rules can reference one or more catalog entries; the exact meaning of the
+    rule is driven by ``rule_type`` and the stored ``expression``/``metadata``.
+    """
+
+    class Meta:
+        ordering = ["order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["validator", "name"],
+                name="uq_validator_rule_name",
+            ),
+            models.CheckConstraint(
+                name="ck_validator_rule_order_nonnegative",
+                condition=models.Q(order__gte=0),
+            ),
+        ]
+
+    validator = models.ForeignKey(
+        "Validator",
+        on_delete=models.CASCADE,
+        related_name="rules",
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    rule_type = models.CharField(
+        max_length=32,
+        choices=ValidatorRuleType.choices,
+        default=ValidatorRuleType.CEL_EXPRESSION,
+    )
+    expression = models.TextField(
+        help_text=_("Rule definition (e.g., CEL expression)."),
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Additional structured data for this rule."),
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text=_("Relative ordering for evaluation/display."),
+    )
+
+    def clean(self):
+        super().clean()
+        if not self.name or not self.name.strip():
+            raise ValidationError({"name": _("Rule name is required.")})
+        if not self.expression or not str(self.expression).strip():
+            raise ValidationError({"expression": _("Rule expression is required.")})
+
+    def __str__(self):
+        return f"{self.validator.slug}:{self.name}"
+
+
+class ValidatorCatalogRuleEntry(models.Model):
+    """
+    Join table linking rules to catalog entries they reference.
+    """
+
+    class Meta:
+        unique_together = (
+            "rule",
+            "catalog_entry",
+        )
+        indexes = [
+            models.Index(
+                fields=[
+                    "rule",
+                    "catalog_entry",
+                ],
+            ),
+        ]
+
+    rule = models.ForeignKey(
+        ValidatorCatalogRule,
+        on_delete=models.CASCADE,
+        related_name="rule_entries",
+    )
+    catalog_entry = models.ForeignKey(
+        ValidatorCatalogEntry,
+        on_delete=models.PROTECT,
+        related_name="referencing_rules",
+    )
 
 
 def artifact_upload_to(instance, filename: str) -> str:

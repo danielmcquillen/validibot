@@ -67,7 +67,7 @@
           <a href="{% org_url 'validations:custom_validator_create' %}"
              class="btn btn-primary">
             <i class="bi bi-plus me-2"></i>
-            {% trans "New Custom Validator" %}
+            {% trans "New Custom Basic Validator" %}
           </a>
         {% endif %}
       </div>
@@ -133,7 +133,7 @@
                 <div class="d-flex align-items-center gap-2 mb-4">
                   <i class="bi bi-person-gear text-muted"></i>
                   <div class="h6 mb-0">
-                    {% trans "Your Custom Validators" %}
+                    {% trans "Your Custom Basic Validators" %}
                   </div>
                 </div>
                 {% include "validations/library/partials/validator_library_list.html" with validators=custom_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("You have not created any custom validators yet.") empty_cta_url=custom_validators_empty_cta_url empty_cta_label=custom_validators_empty_cta_label %}

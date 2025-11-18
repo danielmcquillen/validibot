@@ -26,7 +26,7 @@ urlpatterns = [
         name="custom_validator_delete",
     ),
     path(
-        "library/<slug:slug>/",
+        "library/custom/<int:pk>/",
         views.ValidatorDetailView.as_view(),
         name="validator_detail",
     ),

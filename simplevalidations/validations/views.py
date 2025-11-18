@@ -695,7 +695,7 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["form_title"] = _("Create Custom Validator")
+        context["form_title"] = _("Create Custom Basic Validator")
         context["can_manage_validators"] = True
         context["validator"] = None
         return context
@@ -774,10 +774,10 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         validator = self.custom_validator.validator
         context.update(
             {
-                "form_title": _("Edit %(name)s") % {"name": validator.name},
-                "validator": validator,
-                "can_manage_validators": True,
-            }
+            "form_title": _("Edit %(name)s Settings") % {"name": validator.name},
+            "validator": validator,
+            "can_manage_validators": True,
+        }
         )
         return context
 

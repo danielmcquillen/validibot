@@ -10,7 +10,7 @@ validation types:
 - **JSON_SCHEMA / XML_SCHEMA** — schema validations that require uploading or pasting schema content.
 - **ENERGYPLUS** — advanced simulation validators with IDF/simulation options and catalog entries.
 - **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
-- **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI.
+- **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI (displayed as “Custom Basic Validator”).
 
 Validators are stored in the `validators` table. Each row records the following:
 
@@ -41,6 +41,13 @@ computed metrics, and their `run_stage` flag indicates whether they enrich input
 validator outputs. By centralising these definitions on the validator we let every ruleset reuse them without duplicating structure inside each rule. Workflow step authors can still define as many assertions as necessary by referencing the catalog slugs stored on the validator; see [Ruleset Assertions](assertions.md) for how those references are persisted and executed.
 Basic validators intentionally skip catalog management; every assertion directly references the custom
 target path the author entered.
+
+## Validator rules (vs. workflow assertions)
+
+- **Rules**: logic defined on a validator itself (for example, default CEL expressions). Stored on `validator_catalog_rules` and can reference one or more catalog entries via `validator_catalog_rule_entries`. Rules are evaluated according to the validator’s engine and ordering; deleting a rule cleans up its links.
+- **Assertions**: logic defined on workflow steps against a ruleset. Stored separately and evaluated in workflow runs. Assertions are the only logic workflow authors manage today.
+
+Catalog entries cannot be deleted while referenced by rules; rules can be deleted at any time (links are removed).
 
 ## Custom validators
 

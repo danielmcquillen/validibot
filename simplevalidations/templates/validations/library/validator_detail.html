@@ -37,7 +37,40 @@
     </div>
 
     <div class="row g-4 d-flex flex-row flex-grow-1 h-100">
-      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+      <div class="col-12 col-xl-8 d-flex flex-column flex-grow-1">
+        <div class="card app-card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-title mb-0">
+              {% trans "Signals" %}
+            </div>
+            {% if can_manage_validators %}
+              <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modal-signal-create">
+                <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+              </button>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix %}
+          </div>
+        </div>
+
+        <div class="card app-card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-title mb-0">
+              {% trans "Rules" %}
+            </div>
+            {% if can_manage_validators %}
+              <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modal-rule-create">
+                <i class="bi bi-plus me-1"></i>{% trans "Add rule" %}
+              </button>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% include 'validations/library/partials/validator_rules_card.html' with rules=validator_rules %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4 d-flex flex-column flex-grow-1">
         <div class="card app-card h-100">
           <div class="card-header">
             <div class="card-title">
@@ -86,10 +119,13 @@
               </dl>
             {% endif %}
           </div>
+          <div class="card-footer">
+            <a class="btn btn-outline-secondary w-100" href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}">
+              <i class="bi bi-pencil me-1"></i>
+              {% trans "Edit Validator Settings" %}
+            </a>
+          </div>
         </div>
-      </div>
-      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
-        {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix %}
       </div>
     </div>
 

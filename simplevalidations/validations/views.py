@@ -24,16 +24,22 @@ from simplevalidations.validations.constants import (
     VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
     LibraryLayout,
     ValidationRunStatus,
+    ValidatorRuleType,
 )
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
     CustomValidatorUpdateForm,
+    ValidatorCatalogEntryForm,
+    ValidatorRuleForm,
 )
 from simplevalidations.validations.models import (
     ValidationFinding,
     ValidationRun,
     ValidationStepRun,
     Validator,
+    ValidatorCatalogEntry,
+    ValidatorCatalogRule,
+    ValidatorCatalogRuleEntry,
 )
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.utils import (
@@ -613,8 +619,11 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
 class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     template_name = "validations/library/validator_detail.html"
     context_object_name = "validator"
-    slug_field = "slug"
-    slug_url_kwarg = "slug"
+    pk_url_kwarg = "pk"
+
+    def get_object(self, queryset=None):
+        qs = self.get_queryset()
+        return get_object_or_404(qs, pk=self.kwargs.get(self.pk_url_kwarg))
 
     def dispatch(self, request, *args, **kwargs):
         if not self.require_library_access():
@@ -630,7 +639,7 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         org = self.get_active_org()
         qs = (
             Validator.objects.select_related("custom_validator", "org")
-            .prefetch_related("catalog_entries")
+            .prefetch_related("catalog_entries", "rules", "rules__rule_entries")
             .order_by("validation_type", "name")
         )
         if org:
@@ -643,6 +652,36 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
         display = validator.catalog_display
+        rules = validator.rules.order_by("order", "name").prefetch_related(
+            "rule_entries",
+            "rule_entries__catalog_entry",
+        )
+        signal_choices = [
+            (entry.id, f"{entry.slug}")
+            for entry in validator.catalog_entries.order_by("slug").all()
+        ]
+        context["signal_create_form"] = ValidatorCatalogEntryForm()
+        context["signal_edit_forms"] = {
+            entry.id: ValidatorCatalogEntryForm(instance=entry)
+            for entry in validator.catalog_entries.all()
+        }
+        context["rule_create_form"] = ValidatorRuleForm(signal_choices=signal_choices)
+        context["rule_edit_forms"] = {
+            rule.id: ValidatorRuleForm(
+                initial={
+                    "name": rule.name,
+                    "description": rule.description,
+                    "rule_type": rule.rule_type,
+                    "cel_expression": rule.expression,
+                    "order": rule.order,
+                    "signals": [
+                        link.catalog_entry_id for link in rule.rule_entries.all()
+                    ],
+                },
+                signal_choices=signal_choices,
+            )
+            for rule in rules
+        }
         context.update(
             {
                 "can_manage_validators": self.can_manage_validators(),
@@ -650,6 +689,7 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 "catalog_display": display,
                 "catalog_entries": display.entries,
                 "catalog_tab_prefix": "validator-detail",
+                "validator_rules": rules,
             },
         )
         return context
@@ -685,7 +725,7 @@ class CustomValidatorManageMixin(ValidatorLibraryMixin):
         return reverse_with_org(
             "validations:validator_detail",
             request=self.request,
-            kwargs={"slug": validator.slug},
+            kwargs={"pk": validator.pk},
         )
 
 
@@ -887,7 +927,7 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
             reverse_with_org(
                 "validations:validator_detail",
                 request=request,
-                kwargs={"slug": self.custom_validator.validator.slug},
+                kwargs={"pk": self.custom_validator.validator.pk},
             ),
         )
 

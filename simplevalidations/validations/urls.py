@@ -31,6 +31,46 @@ urlpatterns = [
         name="validator_detail",
     ),
     path(
+        "library/custom/<int:pk>/signals/",
+        views.ValidatorSignalListView.as_view(),
+        name="validator_signals",
+    ),
+    path(
+        "library/custom/<int:pk>/signals/new/",
+        views.ValidatorSignalCreateView.as_view(),
+        name="validator_signal_create",
+    ),
+    path(
+        "library/custom/<int:pk>/signals/<int:entry_pk>/edit/",
+        views.ValidatorSignalUpdateView.as_view(),
+        name="validator_signal_update",
+    ),
+    path(
+        "library/custom/<int:pk>/signals/<int:entry_pk>/delete/",
+        views.ValidatorSignalDeleteView.as_view(),
+        name="validator_signal_delete",
+    ),
+    path(
+        "library/custom/<int:pk>/rules/",
+        views.ValidatorRuleListView.as_view(),
+        name="validator_rules",
+    ),
+    path(
+        "library/custom/<int:pk>/rules/new/",
+        views.ValidatorRuleCreateView.as_view(),
+        name="validator_rule_create",
+    ),
+    path(
+        "library/custom/<int:pk>/rules/<int:rule_pk>/edit/",
+        views.ValidatorRuleUpdateView.as_view(),
+        name="validator_rule_update",
+    ),
+    path(
+        "library/custom/<int:pk>/rules/<int:rule_pk>/delete/",
+        views.ValidatorRuleDeleteView.as_view(),
+        name="validator_rule_delete",
+    ),
+    path(
         "",
         views.ValidationRunListView.as_view(),
         name="validation_list",

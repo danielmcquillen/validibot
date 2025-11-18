@@ -79,7 +79,7 @@
         </div>
         <div class="row g-4 g-lg-5">
           {% for related in related_posts %}
-            <div class="col-12 col-lg-8">
+            <div class="col-12 col-md-6 col-lg-4">
               <article class="h-100">
                 <a class="card feature-link-card blog-card h-100 text-decoration-none text-reset"
                    href="{% url 'marketing:blog:blog_post_detail' related.slug %}">

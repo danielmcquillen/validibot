@@ -152,12 +152,30 @@ def update_custom_validator(
     name: str,
     description: str,
     notes: str,
+    version: str | None = "",
+    allow_custom_assertion_targets: bool | None = None,
+    supported_file_types: list[str] | None = None,
 ):
     """Update validator + custom metadata."""
     validator = custom_validator.validator
     validator.name = name
     validator.description = description
-    validator.save(update_fields=["name", "description", "modified"])
+    if version is not None:
+        validator.version = version
+    if allow_custom_assertion_targets is not None:
+        validator.allow_custom_assertion_targets = allow_custom_assertion_targets
+    if supported_file_types:
+        validator.supported_file_types = supported_file_types
+    validator.save(
+        update_fields=[
+            "name",
+            "description",
+            "version",
+            "allow_custom_assertion_targets",
+            "supported_file_types",
+            "modified",
+        ],
+    )
     custom_validator.notes = notes
     custom_validator.save(update_fields=["notes", "modified"])
     return custom_validator

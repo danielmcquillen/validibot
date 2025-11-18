@@ -14,6 +14,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import CustomValidatorType
@@ -70,6 +71,23 @@ class CustomValidatorUpdateForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
         required=False,
     )
+    version = forms.CharField(
+        label=_("Version"),
+        max_length=40,
+        required=False,
+        help_text=_("Version label (e.g. '1.0', '2025-01')."),
+    )
+    allow_custom_assertion_targets = forms.BooleanField(
+        label=_("Allow custom assertion targets"),
+        required=False,
+        help_text=_("Permit authors to reference assertion targets not in the catalog."),
+    )
+    supported_file_types = forms.MultipleChoiceField(
+        label=_("Supported file types"),
+        choices=SubmissionFileType.choices,
+        required=False,
+        help_text=_("Logical file types this validator can process."),
+    )
     notes = forms.CharField(
         label=_("Notes"),
         required=False,
@@ -83,6 +101,11 @@ class CustomValidatorUpdateForm(forms.Form):
         self.helper.layout = Layout(
             Row(Column("name", css_class="col-12")),
             "description",
+            "version",
+            Row(
+                Column("allow_custom_assertion_targets", css_class="col-12 col-md-6"),
+                Column("supported_file_types", css_class="col-12 col-md-6"),
+            ),
             "notes",
         )
 
@@ -247,11 +270,6 @@ class RulesetAssertionForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 4}),
     )
-    cel_allow_custom_signals = forms.BooleanField(
-        label=_("Allow custom signal names"),
-        required=False,
-        initial=True,
-    )
 
     def __init__(
         self,
@@ -321,7 +339,6 @@ class RulesetAssertionForm(forms.Form):
                 Column("collection_value", css_class="col-12 col-lg-3"),
             ),
             "cel_expression",
-            "cel_allow_custom_signals",
             Row(
                 Column("severity", css_class="col-12 col-lg-4"),
                 Column("when_expression", css_class="col-12 col-lg-8"),
@@ -351,9 +368,7 @@ class RulesetAssertionForm(forms.Form):
         else:
             expression = self._clean_cel_expression()
             cleaned["rhs_payload"] = {"expr": expression}
-            cleaned["options_payload"] = {
-                "allow_custom_signal_names": self._cel_allows_custom_signals(),
-            }
+            cleaned["options_payload"] = {}
             cleaned["resolved_operator"] = AssertionOperator.CEL_EXPR
             cleaned["cel_cache"] = expression
         return cleaned
@@ -396,11 +411,7 @@ class RulesetAssertionForm(forms.Form):
         self.cleaned_data["target_field_value"] = value
 
     def _validator_allows_custom_targets(self) -> bool:
-        if getattr(self.validator, "validation_type", "") == ValidationType.BASIC:
-            return True
-        return bool(
-            getattr(self.validator, "allow_custom_assertion_targets", False),
-        )
+        return bool(getattr(self.validator, "allow_custom_assertion_targets", False))
 
     def _build_basic_payload(
         self,
@@ -586,10 +597,6 @@ class RulesetAssertionForm(forms.Form):
                 return _LiteralValue(None, value)
             return _LiteralValue(value, value)
 
-    def _cel_allows_custom_signals(self) -> bool:
-        checkbox_enabled = bool(self.cleaned_data.get("cel_allow_custom_signals"))
-        return checkbox_enabled and self._validator_allows_custom_targets()
-
     def _clean_cel_expression(self) -> str:
         expression = (self.cleaned_data.get("cel_expression") or "").strip()
         if not expression:
@@ -604,7 +611,7 @@ class RulesetAssertionForm(forms.Form):
                     ),
                 },
             )
-        if not self._cel_allows_custom_signals():
+        if not self._validator_allows_custom_targets():
             unknown = self._find_unknown_cel_slugs(expression)
             if unknown:
                 raise ValidationError(
@@ -629,18 +636,17 @@ class RulesetAssertionForm(forms.Form):
         return not stack
 
     def _find_unknown_cel_slugs(self, expression: str) -> set[str]:
-        unknown: set[str] = set()
-        allowed = self.catalog_slugs
-        for func in CEL_SIGNAL_FUNCTIONS:
-            pattern = re.compile(
-                rf"{func}\(\s*['\"](?P<slug>[^'\"]+)['\"]\s*\)",
-                re.IGNORECASE,
-            )
-            for match in pattern.finditer(expression):
-                slug = match.group("slug")
-                if slug not in allowed:
-                    unknown.add(slug)
-        return unknown
+        allowed = set(self.catalog_slugs) | {"payload"}
+        target = (self.cleaned_data.get("target_field") or "").strip()
+        if target:
+            allowed.add(target)
+        if self._validator_allows_custom_targets():
+            return set()
+        identifiers = {
+            match.group(0)
+            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)
+        }
+        return {ident for ident in identifiers if ident not in allowed}
 
     def _build_cel_preview(
         self,
@@ -723,9 +729,6 @@ class RulesetAssertionForm(forms.Form):
             cls._apply_operator_initial(initial, assertion.operator, rhs, options)
         else:
             initial["cel_expression"] = (assertion.rhs or {}).get("expr", "")
-            initial["cel_allow_custom_signals"] = (
-                assertion.options or {}
-            ).get("allow_custom_signal_names", True)
         return initial
 
     @staticmethod

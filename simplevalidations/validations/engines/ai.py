@@ -548,13 +548,14 @@ class AiAssistEngine(BaseValidatorEngine):
 
         issues.extend(_heuristic_critiques(parsed))
 
-        issues.extend(
-            self.run_cel_assertions_for_stages(
-                ruleset=ruleset,
-                validator=validator,
-                input_payload=parsed,
-            ),
-        )
+        if ruleset is not None:
+            issues.extend(
+                self.run_cel_assertions_for_stages(
+                    ruleset=ruleset,
+                    validator=validator,
+                    input_payload=parsed,
+                ),
+            )
 
         if rules_raw:
             for rule_data in rules_raw:

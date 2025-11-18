@@ -53,7 +53,8 @@
     {% if workflow.curr_user_can_delete %}
       <button type="button"
               class="btn btn-sm btn-outline-danger ms-3"
-              hx-delete="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
+              hx-post="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
+              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
               hx-target="#{{ target_id }}"
               hx-swap="outerHTML"
               data-bs-toggle="tooltip"

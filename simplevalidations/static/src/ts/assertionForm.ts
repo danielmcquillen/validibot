@@ -23,7 +23,6 @@ const CONDITIONAL_FIELDS = [
   'collection_operator',
   'collection_value',
   'cel_expression',
-  'cel_allow_custom_signals',
 ] as const;
 
 type ConditionalFieldName = (typeof CONDITIONAL_FIELDS)[number];

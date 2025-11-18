@@ -23209,8 +23209,7 @@
     "datetime_value",
     "collection_operator",
     "collection_value",
-    "cel_expression",
-    "cel_allow_custom_signals"
+    "cel_expression"
   ];
   var GENERAL_BASIC_FIELDS = ["coerce_types", "treat_missing_as_null"];
   var STRING_OPTION_FIELDS = ["case_insensitive", "unicode_fold"];

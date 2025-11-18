@@ -13,6 +13,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from gettext import gettext as _
+import re
 from typing import TYPE_CHECKING, Any
 
 from simplevalidations.validations.cel import DEFAULT_HELPERS, CelHelper
@@ -168,6 +169,33 @@ class BaseValidatorEngine(ABC):
                 context[entry.slug] = value
             elif entry.is_required:
                 context[entry.slug] = None
+
+        def _collect_matches(data: Any, key: str) -> list[Any]:
+            matches: list[Any] = []
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if k == key:
+                        matches.append(v)
+                    matches.extend(_collect_matches(v, key))
+            elif isinstance(data, list):
+                for item in data:
+                    matches.extend(_collect_matches(item, key))
+            return matches
+
+        if getattr(validator, "allow_custom_assertion_targets", False):
+            if isinstance(payload, dict):
+                for k, v in payload.items():
+                    context.setdefault(k, v)
+            # support lightweight partial path matches: if an identifier appears
+            # exactly once anywhere in the payload tree, expose it directly.
+            identifiers = set(context.keys())
+            if isinstance(payload, (dict, list)):
+                for key in list(payload.keys()) if isinstance(payload, dict) else []:
+                    identifiers.add(key)
+                for ident in identifiers:
+                    matches = _collect_matches(payload, ident)
+                    if len(matches) == 1 and ident not in context:
+                        context[ident] = matches[0]
         return context
 
     def _issue_from_assertion(
@@ -326,21 +354,40 @@ class BaseValidatorEngine(ABC):
                 timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
             )
             if not result.success:
+                raw_error = str(result.error)
+                msg = raw_error
+                missing_ref = re.search(
+                    r"undeclared reference to ['\"](?P<ident>[^'\"]+)['\"]",
+                    raw_error,
+                )
+                identifier = None
+                if missing_ref:
+                    identifier = missing_ref.group("ident")
+                elif "undeclared reference to" in raw_error:
+                    tail = raw_error.split("undeclared reference to", 1)[1]
+                    identifier = tail.strip().split()[0].strip(" '\"()\\")
+                if identifier:
+                    msg = _(
+                        "CEL references undefined identifier '%(identifier)s'. "
+                        "Ensure a matching validator catalog entry exists."
+                    ) % {"identifier": identifier}
                 issues.append(
                     self._issue_from_assertion(
                         assertion,
                         path="",
-                        message=_("CEL evaluation failed: %(err)s")
-                        % {"err": result.error},
+                        message=_("CEL evaluation failed: %(err)s") % {"err": msg},
                     ),
                 )
                 continue
             if not bool(result.value):
+                failure_message = assertion.message_template or _(
+                    "CEL assertion evaluated to false.",
+                )
                 issues.append(
                     self._issue_from_assertion(
                         assertion,
                         path="",
-                        message=_("CEL assertion evaluated to false."),
+                        message=failure_message,
                     ),
                 )
         return issues

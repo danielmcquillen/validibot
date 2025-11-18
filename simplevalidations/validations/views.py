@@ -751,6 +751,9 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         return {
             "name": validator.name,
             "description": validator.description,
+            "version": validator.version,
+            "allow_custom_assertion_targets": validator.allow_custom_assertion_targets,
+            "supported_file_types": validator.supported_file_types,
             "notes": self.custom_validator.notes,
         }
 
@@ -784,6 +787,11 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             name=form.cleaned_data["name"],
             description=form.cleaned_data.get("description") or "",
             notes=form.cleaned_data.get("notes") or "",
+            version=form.cleaned_data.get("version") or "",
+            allow_custom_assertion_targets=form.cleaned_data.get(
+                "allow_custom_assertion_targets",
+            ),
+            supported_file_types=form.cleaned_data.get("supported_file_types") or [],
         )
         messages.success(
             self.request,

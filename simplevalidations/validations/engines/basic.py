@@ -244,20 +244,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
         Build a context mapping catalog entry slugs to values resolved from payload.
         Include the raw payload so expressions can reference it directly if needed.
         """
-        context: dict[str, Any] = {"payload": payload}
-        entries = list(
-            validator.catalog_entries.all().only(
-                "slug",
-                "is_required",
-            ),
-        )
-        for entry in entries:
-            value, found = self._resolve_path(payload, entry.slug)
-            if found:
-                context[entry.slug] = value
-            elif entry.is_required:
-                context[entry.slug] = None
-        return context
+        return super()._build_cel_context(payload, validator)
 
     def _evaluate_cel(self, assertion, payload: Any, validator: Validator):
         """

@@ -26,14 +26,9 @@ urlpatterns = [
         name="custom_validator_delete",
     ),
     path(
-        "library/custom/<int:pk>/",
+        "library/custom/<slug:slug>/",
         views.ValidatorDetailView.as_view(),
         name="validator_detail",
-    ),
-    path(
-        "library/custom/<int:pk>/signals/",
-        views.ValidatorSignalListView.as_view(),
-        name="validator_signals",
     ),
     path(
         "library/custom/<int:pk>/signals/new/",

@@ -13,7 +13,7 @@
       <p class="text-muted mb-0 small">
         {{ validator.description|default:_("No description provided.") }}
       </p>
-      <a href="{% org_url 'validations:validator_detail' pk=validator.pk %}"
+      <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
          class="stretched-link">
         <span class="visually-hidden">
           {% blocktrans trimmed with name=validator.name %}

@@ -2,24 +2,24 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Column
-from crispy_forms.layout import Layout
-from crispy_forms.layout import Row
+from crispy_forms.layout import Column, Layout, Row
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.submissions.constants import SubmissionDataFormat
-from simplevalidations.validations.constants import AssertionOperator
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import CustomValidatorType
-from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import (
+    AssertionOperator,
+    AssertionType,
+    CustomValidatorType,
+    Severity,
+    ValidatorRuleType,
+)
+from simplevalidations.validations.models import ValidatorCatalogEntry
 
 
 class CustomValidatorCreateForm(forms.Form):
@@ -47,7 +47,9 @@ class CustomValidatorCreateForm(forms.Form):
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom assertion targets"),
         required=False,
-        help_text=_("Permit authors to reference assertion targets not in the catalog."),
+        help_text=_(
+            "Permit authors to reference assertion targets not in the catalog."
+        ),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -55,7 +57,8 @@ class CustomValidatorCreateForm(forms.Form):
             (SubmissionDataFormat.JSON, SubmissionDataFormat.JSON.label),
             (SubmissionDataFormat.YAML, SubmissionDataFormat.YAML.label),
         ],
-        required=True,
+        required=False,
+        initial=SubmissionDataFormat.JSON,
         help_text=_("Pick the single data format this validator will parse."),
     )
     notes = forms.CharField(
@@ -105,7 +108,9 @@ class CustomValidatorUpdateForm(forms.Form):
     allow_custom_assertion_targets = forms.BooleanField(
         label=_("Allow custom assertion targets"),
         required=False,
-        help_text=_("Permit authors to reference assertion targets not in the catalog."),
+        help_text=_(
+            "Permit authors to reference assertion targets not in the catalog."
+        ),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -113,7 +118,7 @@ class CustomValidatorUpdateForm(forms.Form):
             (SubmissionDataFormat.JSON, SubmissionDataFormat.JSON.label),
             (SubmissionDataFormat.YAML, SubmissionDataFormat.YAML.label),
         ],
-        required=True,
+        required=False,
         help_text=_("Pick the single data format this validator will parse."),
     )
     notes = forms.CharField(
@@ -312,7 +317,9 @@ class RulesetAssertionForm(forms.Form):
         self.catalog_choices = list(catalog_choices or [])
         self.catalog_entries = list(catalog_entries or [])
         self.catalog_entry_map = {
-            entry.slug: entry for entry in self.catalog_entries if getattr(entry, "slug", None)
+            entry.slug: entry
+            for entry in self.catalog_entries
+            if getattr(entry, "slug", None)
         }
         self.catalog_slugs = set(self.catalog_entry_map.keys())
         self.validator = validator
@@ -609,9 +616,7 @@ class RulesetAssertionForm(forms.Form):
             raise ValidationError(
                 {"list_values": _("Provide at least one value (one per line).")},
             )
-        normalized = [
-            self._require_literal_for_list(value).value for value in values
-        ]
+        normalized = [self._require_literal_for_list(value).value for value in values]
         return normalized
 
     def _require_literal_for_list(self, value: str) -> _LiteralValue:
@@ -662,6 +667,19 @@ class RulesetAssertionForm(forms.Form):
                 if not stack or stack.pop() != char:
                     return False
         return not stack
+
+    def _find_unknown_cel_slugs(self, expression: str) -> set[str]:
+        allowed = set(self.catalog_slugs) | {"payload"}
+        target = (self.cleaned_data.get("target_field") or "").strip()
+        if target:
+            allowed.add(target)
+        if self._validator_allows_custom_targets():
+            return set()
+        identifiers = {
+            match.group(0)
+            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)
+        }
+        return {ident for ident in identifiers if ident not in allowed}
 
 
 class ValidatorRuleForm(forms.Form):
@@ -768,19 +786,6 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
                 Column("is_required", css_class="col-12 col-md-6"),
             ),
         )
-
-    def _find_unknown_cel_slugs(self, expression: str) -> set[str]:
-        allowed = set(self.catalog_slugs) | {"payload"}
-        target = (self.cleaned_data.get("target_field") or "").strip()
-        if target:
-            allowed.add(target)
-        if self._validator_allows_custom_targets():
-            return set()
-        identifiers = {
-            match.group(0)
-            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\.]*", expression)
-        }
-        return {ident for ident in identifiers if ident not in allowed}
 
     def _build_cel_preview(
         self,

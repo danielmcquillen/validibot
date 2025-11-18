@@ -1,0 +1,29 @@
+{% load i18n crispy_forms_tags core_tags %}
+
+<div class="modal fade" id="modal-signal-create" tabindex="-1" aria-labelledby="modalSignalCreateLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalSignalCreateLabel">{% trans "Add signal" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <form hx-post="{% org_url 'validations:validator_signal_create' pk=validator.id %}"
+            hx-target="#modal-signal-create"
+            hx-swap="outerHTML"
+            novalidate>
+        <div class="modal-body">
+          {% csrf_token %}
+          {{ signal_create_form|crispy }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="submit" class="btn btn-primary">
+            {% trans "Save signal" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

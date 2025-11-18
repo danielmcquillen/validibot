@@ -1,0 +1,29 @@
+{% load i18n crispy_forms_tags core_tags %}
+
+<div class="modal fade" id="modal-rule-edit-{{ rule_id }}" tabindex="-1" aria-labelledby="modalRuleEditLabel-{{ rule_id }}" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalRuleEditLabel-{{ rule_id }}">{% trans "Edit rule" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <form hx-post="{% org_url 'validations:validator_rule_update' pk=validator.id rule_pk=rule_id %}"
+            hx-target="#modal-rule-edit-{{ rule_id }}"
+            hx-swap="outerHTML"
+            novalidate>
+        <div class="modal-body">
+          {% csrf_token %}
+          {{ form|crispy }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            {% trans "Cancel" %}
+          </button>
+          <button type="submit" class="btn btn-primary">
+            {% trans "Save rule" %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

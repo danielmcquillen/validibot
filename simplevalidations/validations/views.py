@@ -1,15 +1,16 @@
 import json
 import logging
+import re
 from datetime import timedelta
 
 import django_filters
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView, TemplateView
@@ -25,6 +26,7 @@ from simplevalidations.validations.constants import (
     LibraryLayout,
     ValidationRunStatus,
     ValidatorRuleType,
+    ValidationType,
 )
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
@@ -40,6 +42,7 @@ from simplevalidations.validations.models import (
     ValidatorCatalogEntry,
     ValidatorCatalogRule,
     ValidatorCatalogRuleEntry,
+    default_supported_data_formats_for_validation,
 )
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.utils import (
@@ -623,7 +626,15 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
 
     def get_object(self, queryset=None):
         qs = self.get_queryset()
-        return get_object_or_404(qs, pk=self.kwargs.get(self.pk_url_kwarg))
+        pk = self.kwargs.get("pk")
+        slug_val = self.kwargs.get("slug")
+        if pk:
+            return get_object_or_404(qs, pk=pk)
+        if slug_val:
+            if str(slug_val).isdigit():
+                return get_object_or_404(qs, pk=slug_val)
+            return get_object_or_404(qs, slug=slug_val)
+        return super().get_object(queryset)
 
     def dispatch(self, request, *args, **kwargs):
         if not self.require_library_access():
@@ -725,7 +736,7 @@ class CustomValidatorManageMixin(ValidatorLibraryMixin):
         return reverse_with_org(
             "validations:validator_detail",
             request=self.request,
-            kwargs={"pk": validator.pk},
+            kwargs={"slug": validator.slug},
         )
 
 
@@ -764,9 +775,12 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
                 "allow_custom_assertion_targets",
                 False,
             ),
-            supported_data_formats=[form.cleaned_data.get("supported_data_formats")]
-            if form.cleaned_data.get("supported_data_formats")
-            else [],
+            supported_data_formats=[
+                form.cleaned_data.get("supported_data_formats")
+                or default_supported_data_formats_for_validation(
+                    ValidationType.CUSTOM_VALIDATOR,
+                )[0]
+            ],
         )
         messages.success(
             self.request,
@@ -843,9 +857,12 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             allow_custom_assertion_targets=form.cleaned_data.get(
                 "allow_custom_assertion_targets",
             ),
-            supported_data_formats=[form.cleaned_data.get("supported_data_formats")]
-            if form.cleaned_data.get("supported_data_formats")
-            else [],
+            supported_data_formats=[
+                form.cleaned_data.get("supported_data_formats")
+                or default_supported_data_formats_for_validation(
+                    ValidationType.CUSTOM_VALIDATOR,
+                )[0]
+            ],
         )
         messages.success(
             self.request,
@@ -944,6 +961,326 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         if reswap:
             response["HX-Reswap"] = reswap
         return response
+
+
+class ValidatorSignalMixin(CustomValidatorManageMixin):
+    """Common helpers for validator signal CRUD."""
+
+    validator: Validator
+
+    def dispatch(self, request, *args, **kwargs):
+        self.validator = get_object_or_404(
+            Validator,
+            pk=self.kwargs.get("pk"),
+            is_system=False,
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def _hx_redirect(self):
+        url = reverse_with_org(
+            "validations:validator_detail",
+            request=self.request,
+            kwargs={"slug": self.validator.slug},
+        )
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = url
+        return response
+
+    def _redirect(self):
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=self.request,
+                kwargs={"slug": self.validator.slug},
+            ),
+        )
+
+
+class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
+    form_class = ValidatorCatalogEntryForm
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(request.POST)
+        if form.is_valid():
+            entry = form.save(commit=False)
+            entry.validator = self.validator
+            entry.save()
+            messages.success(request, _("Signal created."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect()
+            return self._redirect()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_signal_create.html",
+                {
+                    "validator": self.validator,
+                    "signal_create_form": form,
+                },
+                status=400,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect()
+
+
+class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
+    form_class = ValidatorCatalogEntryForm
+
+    def post(self, request, *args, **kwargs):
+        entry = get_object_or_404(
+            ValidatorCatalogEntry,
+            pk=self.kwargs.get("entry_pk"),
+            validator=self.validator,
+        )
+        form = self.form_class(request.POST, instance=entry)
+        if form.is_valid():
+            form.save()
+            messages.success(request, _("Signal updated."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect()
+            return self._redirect()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_signal_edit.html",
+                {
+                    "validator": self.validator,
+                    "entry_id": entry.id,
+                    "form": form,
+                },
+                status=400,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect()
+
+
+class ValidatorSignalDeleteView(ValidatorSignalMixin, TemplateView):
+    def post(self, request, *args, **kwargs):
+        entry = get_object_or_404(
+            ValidatorCatalogEntry,
+            pk=self.kwargs.get("entry_pk"),
+            validator=self.validator,
+        )
+        try:
+            entry.delete()
+            messages.success(request, _("Signal deleted."))
+        except ValidationError as exc:
+            messages.error(request, " ".join(exc.messages))
+        if request.headers.get("HX-Request"):
+            return self._hx_redirect()
+        return self._redirect()
+
+
+class ValidatorSignalListView(ValidatorSignalMixin, TemplateView):
+    """Legacy list route redirects to the validator detail page."""
+
+    def get(self, request, *args, **kwargs):
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=request,
+                kwargs={"pk": self.validator.pk},
+            ),
+        )
+
+
+class ValidatorRuleMixin(CustomValidatorManageMixin):
+    """Common helpers for validator rule CRUD."""
+
+    validator: Validator
+
+    def dispatch(self, request, *args, **kwargs):
+        self.validator = get_object_or_404(
+            Validator,
+            pk=self.kwargs.get("pk"),
+            is_system=False,
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def _hx_redirect(self):
+        url = reverse_with_org(
+            "validations:validator_detail",
+            request=self.request,
+            kwargs={"slug": self.validator.slug},
+        )
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = url
+        return response
+
+    def _redirect(self):
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=self.request,
+                kwargs={"slug": self.validator.slug},
+            ),
+        )
+
+    def _resolve_selected_entries(self, signals: list[str]) -> list[ValidatorCatalogEntry]:
+        ids = [int(pk) for pk in signals or [] if str(pk).isdigit()]
+        return list(
+            self.validator.catalog_entries.filter(pk__in=ids).order_by("slug"),
+        )
+
+    def _validate_cel_expression(self, expr: str, entries: list[ValidatorCatalogEntry]) -> None:
+        expr = (expr or "").strip()
+        if not expr:
+            raise ValidationError(_("CEL expression is required."))
+        if not self._delimiters_balanced(expr):
+            raise ValidationError(_("Parentheses and brackets must be balanced."))
+        identifiers = {
+            match.group(0)
+            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expr)
+        }
+        allowed = {entry.slug for entry in entries} | {"payload"}
+        unknown = {ident for ident in identifiers if ident not in allowed}
+        if unknown:
+            raise ValidationError(
+                _("Unknown signal(s) referenced: %(names)s")
+                % {"names": ", ".join(sorted(unknown))}
+            )
+
+    @staticmethod
+    def _delimiters_balanced(expression: str) -> bool:
+        pairs = {"(": ")", "[": "]", "{": "}"}
+        stack: list[str] = []
+        for char in expression:
+            if char in pairs:
+                stack.append(pairs[char])
+            elif char in pairs.values():
+                if not stack or stack.pop() != char:
+                    return False
+        return not stack
+
+
+class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
+    form_class = ValidatorRuleForm
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(
+            request.POST,
+            signal_choices=[
+                (entry.id, entry.slug)
+                for entry in self.validator.catalog_entries.order_by("slug")
+            ],
+        )
+        if form.is_valid():
+            signals = form.cleaned_data.get("signals") or []
+            entries = self._resolve_selected_entries(signals)
+            self._validate_cel_expression(
+                form.cleaned_data["cel_expression"],
+                entries,
+            )
+            rule = ValidatorCatalogRule.objects.create(
+                validator=self.validator,
+                name=form.cleaned_data["name"],
+                description=form.cleaned_data.get("description") or "",
+                rule_type=form.cleaned_data["rule_type"],
+                expression=form.cleaned_data["cel_expression"],
+                order=form.cleaned_data.get("order") or 0,
+            )
+            for entry in entries:
+                ValidatorCatalogRuleEntry.objects.create(
+                    rule=rule,
+                    catalog_entry=entry,
+                )
+            messages.success(request, _("Rule created."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect()
+            return self._redirect()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_rule_create.html",
+                {
+                    "validator": self.validator,
+                    "rule_create_form": form,
+                },
+                status=400,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect()
+
+
+class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
+    form_class = ValidatorRuleForm
+
+    def post(self, request, *args, **kwargs):
+        rule = get_object_or_404(
+            ValidatorCatalogRule,
+            pk=self.kwargs.get("rule_pk"),
+            validator=self.validator,
+        )
+        form = self.form_class(
+            request.POST,
+            signal_choices=[
+                (entry.id, entry.slug)
+                for entry in self.validator.catalog_entries.order_by("slug")
+            ],
+        )
+        if form.is_valid():
+            signals = form.cleaned_data.get("signals") or []
+            entries = self._resolve_selected_entries(signals)
+            self._validate_cel_expression(
+                form.cleaned_data["cel_expression"],
+                entries,
+            )
+            rule.name = form.cleaned_data["name"]
+            rule.description = form.cleaned_data.get("description") or ""
+            rule.rule_type = form.cleaned_data["rule_type"]
+            rule.expression = form.cleaned_data["cel_expression"]
+            rule.order = form.cleaned_data.get("order") or 0
+            rule.save()
+            rule.rule_entries.all().delete()
+            for entry in entries:
+                ValidatorCatalogRuleEntry.objects.create(
+                    rule=rule,
+                    catalog_entry=entry,
+                )
+            messages.success(request, _("Rule updated."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect()
+            return self._redirect()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_rule_edit.html",
+                {
+                    "validator": self.validator,
+                    "rule_id": rule.id,
+                    "form": form,
+                },
+                status=400,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect()
+
+
+class ValidatorRuleDeleteView(ValidatorRuleMixin, TemplateView):
+    def post(self, request, *args, **kwargs):
+        rule = get_object_or_404(
+            ValidatorCatalogRule,
+            pk=self.kwargs.get("rule_pk"),
+            validator=self.validator,
+        )
+        rule.delete()
+        messages.success(request, _("Rule deleted."))
+        if request.headers.get("HX-Request"):
+            return self._hx_redirect()
+        return self._redirect()
+
+
+class ValidatorRuleListView(ValidatorRuleMixin, TemplateView):
+    """Legacy list route redirects to the validator detail page."""
+
+    def get(self, request, *args, **kwargs):
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=request,
+                kwargs={"pk": self.validator.pk},
+            ),
+        )
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):

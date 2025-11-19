@@ -47,13 +47,13 @@ cryptography==46.0.3
 authlib==1.6.5
 
 # For AWS interaction, mainly KMS
-boto3==1.40.67
+boto3==1.41.0
 
 # For typing and such
 pydantic==2.12.4
 
 # For running tasks in Modal
-modal==1.2.1
+modal==1.2.2
 
 # For modal.com communication
 sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main

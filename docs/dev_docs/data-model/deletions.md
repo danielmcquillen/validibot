@@ -18,6 +18,27 @@ detached by setting the project foreign key to `NULL`.
 
 We treat Project / Workflow / WorkflowStep as definitions, and Validation / ValidationStep as immutable execution history. When a project (or workflow) is deleted, we keep all Validations and ValidationSteps for auditability, traceability, and support—just detach them from the deleted definitions.
 
+### Why Projects Track `deleted_at`
+
+Projects are the only definition model with both `is_active` **and** `deleted_at`
+(`simplevalidations/projects/models.py:92-186`) because organizations reshuffle
+project boundaries frequently. We need to:
+
+- Hide inactive projects immediately (`is_active=False`) so workflows stop
+  accepting new runs under that namespace.
+- Keep the row around until the `purge_projects` command removes it, ensuring
+  auditability for submissions/runs that still reference the project slug in
+  storage paths.
+
+Workflows and workflow steps, by contrast, are already versioned objects. They
+use an `is_active` flag (`simplevalidations/workflows/models.py:92-205`) plus
+`is_locked` to prevent edits but are never physically deleted; version history
+is part of the product. Validators follow the same pattern. If we ever need to
+retire a workflow entirely we mark it inactive (so it cannot execute) and rely
+on the parent project deletion flow to eventually detach or purge it. This keeps
+the soft-delete complexity limited to the project boundary where cross-tenant
+references live.
+
 ## Why do we keep execution history?
 
 - Audit & compliance: we want to prove "what rules ran on which inputs" even if teams reorganise or delete a project.

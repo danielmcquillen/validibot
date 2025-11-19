@@ -57,7 +57,8 @@ both `Submission` and `ValidationRun` is what lets us:
 The request pipeline resolves the project before we touch serializers:
 
 1. The workflow or launch UI determines the base project (usually
-   `workflow.project`).
+   `workflow.project`). Leaving it blank is allowed for orgs that have not
+   adopted projects yet.
 2. Callers may supply an override (query string or form input). We ensure
    the override belongs to the same org.
 3. `_process_structured_payload` attaches the resolved project to the

@@ -489,7 +489,14 @@ class WorkflowPublicInfo(TimeStampedModel):
 
 class WorkflowStep(TimeStampedModel):
     """
-    One step in a workflow, ordered. Linear for MVP.
+    Ordered unit of work within a workflow.
+
+    Each step is either a validator execution or an action (never both). Validator
+    steps may optionally link a `Ruleset` to override the validator's default
+    assertions; action steps skip rulesets and instead reference a concrete
+    `Action` subclass (Slack message, signed certificate, etc.) that performs a
+    side effect. `config` stores per-step JSON tweaks consumed by the validator or
+    action at runtime such as severity thresholds or templated text.
     """
 
     class Meta:

@@ -1467,6 +1467,13 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                     ValidationType.ENERGYPLUS,
                 },
             ),
+            (
+                "custom",
+                str(_("Custom Validators")),
+                {
+                    ValidationType.CUSTOM_VALIDATOR,
+                },
+            ),
         ]
 
         handled: list[Validator] = []

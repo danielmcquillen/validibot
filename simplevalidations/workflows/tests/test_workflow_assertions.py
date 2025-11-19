@@ -87,7 +87,7 @@ class WorkflowStepAssertionsTests(TestCase):
             create_url,
             data={
                 "assertion_type": "basic",
-                "target_field": "facility_electric_demand_w",
+                "target_catalog_entry": "facility_electric_demand_w",
                 "operator": "le",
                 "comparison_value": "1000",
                 "severity": "ERROR",
@@ -164,7 +164,7 @@ class WorkflowStepAssertionsTests(TestCase):
             create_url,
             data={
                 "assertion_type": AssertionType.BASIC,
-                "target_field": "does-not-exist",
+                "target_catalog_entry": "does-not-exist",
                 "operator": "ge",
                 "comparison_value": "10",
                 "severity": "ERROR",
@@ -175,7 +175,7 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("available catalog targets", body)
+        self.assertIn("Unknown signal(s) referenced", body)
 
     def test_create_custom_target_when_validator_allows(self):
         workflow = WorkflowFactory()

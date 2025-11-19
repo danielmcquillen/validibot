@@ -2190,7 +2190,7 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             order=max_order + 10,
             assertion_type=form.cleaned_data["assertion_type"],
             operator=form.cleaned_data["resolved_operator"],
-            target_catalog=form.cleaned_data.get("target_catalog_entry"),
+            target_catalog_entry=form.cleaned_data.get("target_catalog_entry"),
             target_field=form.cleaned_data.get("target_field_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",
@@ -2237,7 +2237,7 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
         RulesetAssertion.objects.filter(pk=assertion.pk).update(
             assertion_type=form.cleaned_data["assertion_type"],
             operator=form.cleaned_data["resolved_operator"],
-            target_catalog=form.cleaned_data.get("target_catalog_entry"),
+            target_catalog_entry=form.cleaned_data.get("target_catalog_entry"),
             target_field=form.cleaned_data.get("target_field_value") or "",
             severity=form.cleaned_data["severity"],
             when_expression=form.cleaned_data.get("when_expression") or "",

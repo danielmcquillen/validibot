@@ -194,11 +194,17 @@ class RulesetAssertionForm(forms.Form):
     )
     target_field = forms.CharField(
         label=_("Target Field"),
+        required=False,
         widget=forms.TextInput(
             attrs={
                 "autocomplete": "off",
             },
         ),
+    )
+    target_catalog_entry = forms.ChoiceField(
+        label=_("Signal"),
+        required=False,
+        choices=[],
     )
     operator = forms.ChoiceField(
         label=_("Condition"),
@@ -310,7 +316,6 @@ class RulesetAssertionForm(forms.Form):
         catalog_choices=None,
         catalog_entries=None,
         validator=None,
-        target_slug_datalist_id="assertion-target-slug-options",
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -323,7 +328,15 @@ class RulesetAssertionForm(forms.Form):
         }
         self.catalog_slugs = set(self.catalog_entry_map.keys())
         self.validator = validator
-        self.target_slug_datalist_id = target_slug_datalist_id
+        signal_choices = []
+        for entry in self.catalog_entries:
+            role = _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
+            kind = entry.get_entry_type_display()
+            label = entry.label or entry.slug
+            signal_choices.append(
+                (entry.slug, f"{label} : {role} : {kind}")
+            )
+        self.fields["target_catalog_entry"].choices = [("", _("Select a signal"))] + signal_choices
 
         target_field = self.fields["target_field"]
         target_field.help_text = _(
@@ -333,7 +346,6 @@ class RulesetAssertionForm(forms.Form):
         target_attrs = target_field.widget.attrs
         target_attrs.update(
             {
-                "list": self.target_slug_datalist_id,
                 "placeholder": _("Search or enter a custom path"),
             },
         )
@@ -344,8 +356,9 @@ class RulesetAssertionForm(forms.Form):
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Row(
-                Column("assertion_type", css_class="col-12 col-lg-4"),
-                Column("target_field", css_class="col-12 col-lg-8"),
+                Column("assertion_type", css_class="col-12 col-lg-3"),
+                Column("target_catalog_entry", css_class="col-12 col-lg-5"),
+                Column("target_field", css_class="col-12 col-lg-4"),
             ),
             Row(
                 Column("operator", css_class="col-12"),
@@ -416,34 +429,46 @@ class RulesetAssertionForm(forms.Form):
         ]
 
     def _resolve_target_field(self):
+        catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
         value = (self.cleaned_data.get("target_field") or "").strip()
-        if not value:
-            raise ValidationError({"target_field": _("Provide a target.")})
 
-        if value in self.catalog_slugs:
-            self.cleaned_data["target_catalog_entry"] = self.catalog_entry_map[value]
+        if catalog_choice and value:
+            raise ValidationError(
+                {"target_field": _("Choose a signal OR a custom path, not both.")}
+            )
+
+        if catalog_choice:
+            if catalog_choice not in self.catalog_slugs:
+                raise ValidationError(
+                    {"target_catalog_entry": _("Select one of the available catalog targets.")}
+                )
+            self.cleaned_data["target_catalog_entry"] = self.catalog_entry_map[catalog_choice]
             self.cleaned_data["target_field_value"] = ""
             return
 
-        if not self._validator_allows_custom_targets():
-            raise ValidationError(
-                {
-                    "target_field": _(
-                        "Select one of the available catalog targets.",
-                    ),
-                },
-            )
-        if not CUSTOM_ASSERTION_TARGET_PATTERN.match(value):
-            raise ValidationError(
-                {
-                    "target_field": _(
-                        "Custom targets must use dot notation with optional "
-                        "numeric indexes, e.g. `data.results[0].value`.",
-                    ),
-                },
-            )
-        self.cleaned_data["target_catalog_entry"] = None
-        self.cleaned_data["target_field_value"] = value
+        if value:
+            if not self._validator_allows_custom_targets():
+                raise ValidationError(
+                    {
+                        "target_field": _(
+                            "Select one of the available catalog targets."
+                        ),
+                    },
+                )
+            if not CUSTOM_ASSERTION_TARGET_PATTERN.match(value):
+                raise ValidationError(
+                    {
+                        "target_field": _(
+                            "Custom targets must use dot notation with optional "
+                            "numeric indexes, e.g. `data.results[0].value`.",
+                        ),
+                    },
+                )
+            self.cleaned_data["target_catalog_entry"] = None
+            self.cleaned_data["target_field_value"] = value
+            return
+
+        raise ValidationError({"target_field": _("Provide a signal or a custom path.")})
 
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))
@@ -751,8 +776,9 @@ class RulesetAssertionForm(forms.Form):
             "when_expression": assertion.when_expression,
             "message_template": assertion.message_template,
         }
-        if assertion.target_catalog_id:
-            initial["target_field"] = assertion.target_catalog.slug
+        if assertion.target_catalog_entry_id:
+            initial["target_catalog_entry"] = assertion.target_catalog_entry.slug
+            initial["target_field"] = ""
         else:
             initial["target_field"] = assertion.target_field
         if assertion.assertion_type == AssertionType.BASIC:
@@ -887,6 +913,7 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             "entry_type",
             "run_stage",
             "slug",
+            "target_field",
             "label",
             "data_type",
             "description",
@@ -899,6 +926,15 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["entry_type"].initial = CatalogEntryType.SIGNAL
+        self.fields["entry_type"].empty_label = None
+        self.fields["label"].required = False
+        self.fields["description"].help_text = _(
+            "A short description to help you remember what data this signal represents."
+        )
+        self.fields["is_required"].help_text = _(
+            "Requires the signal to be present in the submission (inputs) or processor output (outputs)."
+        )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
@@ -908,14 +944,23 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             ),
             Row(
                 Column("slug", css_class="col-12 col-md-6"),
-                Column("label", css_class="col-12 col-md-6"),
+                Column("target_field", css_class="col-12 col-md-6"),
             ),
             Row(
+                Column("label", css_class="col-12 col-md-6"),
                 Column("data_type", css_class="col-12 col-md-6"),
-                Column("order", css_class="col-12 col-md-6"),
             ),
             "description",
             Row(
+                Column("order", css_class="col-12 col-md-6"),
                 Column("is_required", css_class="col-12 col-md-6"),
             ),
         )
+
+    def clean(self):
+        cleaned = super().clean()
+        entry_type = cleaned.get("entry_type")
+        if entry_type == CatalogEntryType.DERIVATION:
+            cleaned["is_required"] = False
+            self.cleaned_data["is_required"] = False
+        return cleaned

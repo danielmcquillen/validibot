@@ -1,11 +1,13 @@
 from django.contrib import admin
 
-from simplevalidations.validations.models import CustomValidator
-from simplevalidations.validations.models import Ruleset
-from simplevalidations.validations.models import RulesetAssertion
-from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.models import Validator
-from simplevalidations.validations.models import ValidatorCatalogEntry
+from simplevalidations.validations.models import (
+    CustomValidator,
+    Ruleset,
+    RulesetAssertion,
+    ValidationRun,
+    Validator,
+    ValidatorCatalogEntry,
+)
 
 
 @admin.register(Ruleset)
@@ -31,7 +33,7 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
         "ruleset",
         "assertion_type",
         "operator",
-        "target_catalog",
+        "target_catalog_entry",
         "target_field",
         "severity",
         "order",

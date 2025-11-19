@@ -972,6 +972,10 @@ class ValidatorCatalogEntry(TimeStampedModel):
         default="",
         help_text=_("A short description to help you remember what data this signal represents."),
     )
+    target_field = models.CharField(
+        max_length=255,
+        help_text=_("Path used to locate this signal in the input or processor output."),
+    )
     binding_config = models.JSONField(
         default=dict,
         blank=True,
@@ -1000,6 +1004,11 @@ class ValidatorCatalogEntry(TimeStampedModel):
                 },
             )
         return super().delete(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if self.entry_type == CatalogEntryType.DERIVATION:
+            self.is_required = False
 
     class Meta:
         constraints = [

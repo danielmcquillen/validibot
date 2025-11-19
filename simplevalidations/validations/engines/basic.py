@@ -96,7 +96,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
         assertions = list(
             ruleset.assertions.all()
             .exclude(assertion_type=AssertionType.CEL_EXPRESSION)
-            .select_related("target_catalog")
+            .select_related("target_catalog_entry")
             .order_by("order", "pk")
         )
 
@@ -171,8 +171,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
         )
 
     def _assertion_path(self, assertion) -> str:
-        if assertion.target_catalog_id and assertion.target_catalog:
-            return assertion.target_catalog.slug
+        if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
+            return assertion.target_catalog_entry.slug
         return assertion.target_field
 
     def _resolve_path(self, data: Any, path: str | None) -> tuple[Any, bool]:
@@ -571,8 +571,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
             "field": assertion.target_display or path or "",
             "target": assertion.target_display or path or "",
             "target_field": assertion.target_field,
-            "target_slug": getattr(assertion.target_catalog, "slug", "")
-            if assertion.target_catalog_id
+            "target_slug": getattr(assertion.target_catalog_entry, "slug", "")
+            if assertion.target_catalog_entry_id
             else "",
             "path": path or "",
             "actual": actual,
@@ -594,8 +594,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
 
     def _add_target_alias(self, context: dict[str, Any], assertion, actual: Any) -> None:
         alias = ""
-        if assertion.target_catalog_id and assertion.target_catalog:
-            alias = assertion.target_catalog.slug or ""
+        if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
+            alias = assertion.target_catalog_entry.slug or ""
         elif assertion.target_field:
             alias = assertion.target_field
         alias = alias.strip()

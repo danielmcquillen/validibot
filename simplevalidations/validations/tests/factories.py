@@ -92,6 +92,7 @@ class ValidatorFactory(DjangoModelFactory):
         lambda obj: obj.validation_type
         in (
             ValidationType.ENERGYPLUS,
+            ValidationType.FMI,
         )
     )
     supported_data_formats = factory.LazyAttribute(

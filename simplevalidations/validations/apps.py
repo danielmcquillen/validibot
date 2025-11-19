@@ -9,4 +9,6 @@ class ValidationsConfig(AppConfig):
         from simplevalidations.validations.engines import json  # noqa: F401
         from simplevalidations.validations.engines import xml  # noqa: F401
         from simplevalidations.validations.engines import energyplus  # noqa: F401
+        from simplevalidations.validations.engines import fmi  # noqa: F401
         from simplevalidations.validations.providers import energyplus as provider_energyplus  # noqa: F401
+        from simplevalidations.validations.providers import fmi as provider_fmi  # noqa: F401

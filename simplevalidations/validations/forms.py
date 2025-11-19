@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.submissions.constants import SubmissionDataFormat
+from simplevalidations.projects.models import Project
 from simplevalidations.validations.constants import (
     AssertionOperator,
     AssertionType,
@@ -87,6 +88,57 @@ class CustomValidatorCreateForm(forms.Form):
             ),
             "notes",
         )
+
+
+class FMIValidatorCreateForm(forms.Form):
+    """Upload form used to create an FMI validator backed by an FMU asset."""
+
+    name = forms.CharField(
+        label=_("Name"),
+        max_length=120,
+    )
+    description = forms.CharField(
+        label=_("Description"),
+        widget=forms.Textarea(attrs={"rows": 3}),
+        required=False,
+    )
+    project = forms.ModelChoiceField(
+        label=_("Project"),
+        queryset=Project.objects.none(),
+        required=False,
+        help_text=_("Optional project scope for this validator."),
+    )
+    fmu_file = forms.FileField(
+        label=_("FMU file"),
+        help_text=_("Upload an FMU archive containing modelDescription.xml."),
+    )
+
+    def __init__(self, *args, org=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Project.objects.none()
+        if org:
+            qs = Project.objects.filter(org=org).order_by("name")
+        self.fields["project"].queryset = qs
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("name", css_class="col-12 col-xl-6"),
+                Column("project", css_class="col-12 col-xl-6"),
+            ),
+            "description",
+            "fmu_file",
+        )
+
+    def clean_fmu_file(self):
+        uploaded = self.cleaned_data.get("fmu_file")
+        if not uploaded:
+            raise ValidationError(_("Upload an FMU archive."))
+        if uploaded.size <= 0:
+            raise ValidationError(_("Uploaded file is empty."))
+        if not uploaded.name.lower().endswith(".fmu"):
+            raise ValidationError(_("Expected a .fmu file."))
+        return uploaded
 
 
 class CustomValidatorUpdateForm(forms.Form):
@@ -926,6 +978,8 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             "data_type",
             "description",
             "is_required",
+            "is_hidden",
+            "default_value",
             "order",
         ]
         widgets = {
@@ -963,6 +1017,10 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
                 Column("order", css_class="col-12 col-md-6"),
                 Column("is_required", css_class="col-12 col-md-6"),
             ),
+            Row(
+                Column("is_hidden", css_class="col-12 col-md-6"),
+                Column("default_value", css_class="col-12 col-md-6"),
+            ),
         )
 
     def clean(self):
@@ -971,4 +1029,7 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         if entry_type == CatalogEntryType.DERIVATION:
             cleaned["is_required"] = False
             self.cleaned_data["is_required"] = False
+        if not cleaned.get("is_hidden"):
+            cleaned["default_value"] = None
+            self.cleaned_data["default_value"] = None
         return cleaned

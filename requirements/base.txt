@@ -33,6 +33,7 @@ django-filter==25.2
 
 # For validating XML
 lxml==6.0.2
+defusedxml==0.7.1
 # For validating JSON
 jsonschema==4.25.1
 
@@ -56,9 +57,12 @@ pydantic==2.12.4
 modal==1.2.2
 
 # For modal.com communication
-sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main
+# sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main
+-e ./sv_shared_dev
 
 # For python CEL operations during Validation steps
 # Consider moving to Rust-based CEL implementation if we can determin that it's
 # a better option (it doesn't have many stars) : https://github.com/hardbyte/python-common-expression-language
 cel-python==0.4.0
+
+fmpy==0.3.26

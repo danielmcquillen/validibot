@@ -30,6 +30,7 @@ from simplevalidations.validations.models import Validator
 from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
 from simplevalidations.workflows.forms import AiAssistStepConfigForm
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
+from simplevalidations.workflows.forms import FMIValidatorStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
 from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.models import Workflow
@@ -465,6 +466,8 @@ def save_workflow_step(
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
         config = build_energyplus_config(form)
+    elif vtype == ValidationType.FMI:
+        config = {}
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)
     else:

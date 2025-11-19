@@ -33,6 +33,7 @@ from simplevalidations.validations.constants import (
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
     CustomValidatorUpdateForm,
+    FMIValidatorCreateForm,
     ValidatorCatalogEntryForm,
     ValidatorRuleForm,
 )
@@ -50,6 +51,10 @@ from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.utils import (
     create_custom_validator,
     update_custom_validator,
+)
+from simplevalidations.validations.services.fmi import (
+    FMIIntrospectionError,
+    create_fmi_validator,
 )
 from simplevalidations.workflows.models import Workflow, WorkflowStep
 
@@ -561,6 +566,10 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "current_layout": layout,
                 "layout_urls": self._build_layout_urls(),
                 "can_manage_validators": self.can_manage_validators(),
+                "fmi_validator_create_url": reverse_with_org(
+                    "validations:fmi_validator_create",
+                    request=self.request,
+                ),
                 "system_validators": Validator.objects.filter(is_system=True)
                 .order_by("order", "validation_type", "name")
                 .select_related("custom_validator", "org"),
@@ -771,6 +780,52 @@ class CustomValidatorManageMixin(ValidatorLibraryMixin):
             request=self.request,
             kwargs={"slug": validator.slug},
         )
+
+
+class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
+    template_name = "validations/library/fmi_validator_form.html"
+    form_class = FMIValidatorCreateForm
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["org"] = self.get_active_org()
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_title"] = _("Create FMI Validator")
+        context["can_manage_validators"] = True
+        context["validator"] = None
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Create FMI validator"),
+                "url": "",
+            },
+        )
+        return breadcrumbs
+
+    def form_valid(self, form):
+        org = self.get_active_org()
+        try:
+            validator = create_fmi_validator(
+                org=org,
+                project=form.cleaned_data.get("project"),
+                name=form.cleaned_data["name"],
+                description=form.cleaned_data.get("description") or "",
+                upload=form.cleaned_data["fmu_file"],
+            )
+        except FMIIntrospectionError as exc:
+            form.add_error("fmu_file", str(exc))
+            return self.form_invalid(form)
+        messages.success(
+            self.request,
+            _("Created FMI validator “%(name)s”.") % {"name": validator.name},
+        )
+        return redirect(self.get_success_url(validator))
 
 
 class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):

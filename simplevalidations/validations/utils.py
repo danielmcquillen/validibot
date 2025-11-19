@@ -59,6 +59,17 @@ def create_default_validators():
             "has_processor": True,
         },
         {
+            "name": _("FMI Validation"),
+            "slug": "fmi-validation",
+            "description": _(
+                "Run an FMU in an isolated runtime and expose inputs/outputs to assertions."
+            ),
+            "validation_type": ValidationType.FMI,
+            "version": "1.0",
+            "order": 4,
+            "has_processor": True,
+        },
+        {
             "name": _("AI Assisted Validation"),
             "slug": "ai-assisted-validation",
             "description": _(
@@ -66,7 +77,7 @@ def create_default_validators():
             ),
             "validation_type": ValidationType.AI_ASSIST,
             "version": "1.0",
-            "order": 4,
+            "order": 5,
         },
     ]
 

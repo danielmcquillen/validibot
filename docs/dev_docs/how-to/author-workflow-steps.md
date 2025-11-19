@@ -17,7 +17,7 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 1. Open a workflow (either create a new workflow or open an existing one) and click **Add step**.
 2. A modal displays every available option across four tabs:
    - **Validators** (BASIC, JSON Schema, and XML Schema)
-   - **Advanced validators** (AI Assist and EnergyPlus)
+   - **Advanced validators** (AI Assist, EnergyPlus, and FMI)
    - **Integrations** (action definitions such as Slack notifications)
    - **Certifications** (action definitions that issue certificates or badges)
    Each card shows the item name, category, icon, and description.
@@ -43,6 +43,10 @@ The dedicated editor is specific to the validation type you picked. All forms in
 - Pick initial IDF checks (duplicate names, autosizing, schedule coverage, etc.).
 - Choose post-simulation checks (EUI range, peak load) and define optional EUI minimum/maximum values.
 - Add notes to capture any context for the run.
+
+### FMI (preview)
+- Attach an FMI validator that points to an uploaded FMU asset. The validator enforces that non-system FMI entries include an FMU before they can be saved.
+- Catalog inputs/outputs are generated from the FMU metadata; the current UI surfaces the step and allows assertions to be authored once the FMU has been attached. Execution will dispatch to Modal.com once the FMI runner is wired up.
 
 ### AI Assist
 - Select the template (**AI Critic** or **Policy Check**).

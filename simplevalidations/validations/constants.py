@@ -42,6 +42,7 @@ class RulesetType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
+    FMI = "FMI", _("FMI Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
 
 
@@ -50,6 +51,7 @@ class ValidationType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
+    FMI = "FMI", _("FMI Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
@@ -58,8 +60,16 @@ class ValidationType(TextChoices):
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.BASIC,
     ValidationType.ENERGYPLUS,
+    ValidationType.FMI,
     ValidationType.CUSTOM_VALIDATOR,
 }
+
+
+class FMUProbeStatus(TextChoices):
+    PENDING = "PENDING", _("Pending")
+    RUNNING = "RUNNING", _("Running")
+    SUCCEEDED = "SUCCEEDED", _("Succeeded")
+    FAILED = "FAILED", _("Failed")
 
 
 class CustomValidatorType(TextChoices):

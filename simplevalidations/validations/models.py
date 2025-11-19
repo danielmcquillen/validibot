@@ -28,6 +28,7 @@ from simplevalidations.validations.constants import (
     CatalogRunStage,
     CatalogValueType,
     CustomValidatorType,
+    FMUProbeStatus,
     JSONSchemaVersion,
     RulesetType,
     Severity,
@@ -57,6 +58,9 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
         SubmissionFileType.TEXT,
         SubmissionFileType.JSON,
     ],
+    ValidationType.FMI: [
+        SubmissionFileType.BINARY,
+    ],
     ValidationType.CUSTOM_VALIDATOR: [
         SubmissionFileType.JSON,
         SubmissionFileType.TEXT,
@@ -81,6 +85,9 @@ VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
     ValidationType.ENERGYPLUS: [
         SubmissionDataFormat.ENERGYPLUS_IDF,
         SubmissionDataFormat.ENERGYPLUS_EPJSON,
+    ],
+    ValidationType.FMI: [
+        SubmissionDataFormat.FMU,
     ],
     ValidationType.CUSTOM_VALIDATOR: [
         SubmissionDataFormat.JSON,
@@ -559,6 +566,130 @@ def _default_validator_data_formats() -> list[str]:
     return [SubmissionDataFormat.JSON]
 
 
+def _fmu_upload_path(instance: "FMUModel", filename: str) -> str:
+    org_segment = instance.org_id or "system"
+    return f"fmu/{org_segment}/{uuid.uuid4()}-{filename}"
+
+
+class FMUModel(TimeStampedModel):
+    """
+    Stored FMU artifact plus parsed metadata used by FMI validators.
+    """
+
+    class FMIKind(models.TextChoices):
+        MODEL_EXCHANGE = "ModelExchange", _("Model Exchange")
+        CO_SIMULATION = "CoSimulation", _("Co-Simulation")
+
+    class FMIVersion(models.TextChoices):
+        V2_0 = "2.0", _("FMI 2.0")
+        V3_0 = "3.0", _("FMI 3.0")
+
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="fmu_models",
+        null=True,
+        blank=True,
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        related_name="fmu_models",
+        null=True,
+        blank=True,
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    file = models.FileField(upload_to=_fmu_upload_path)
+    fmi_version = models.CharField(
+        max_length=8,
+        choices=FMIVersion.choices,
+        default=FMIVersion.V2_0,
+    )
+    kind = models.CharField(
+        max_length=32,
+        choices=FMIKind.choices,
+        default=FMIKind.CO_SIMULATION,
+    )
+    is_approved = models.BooleanField(default=False)
+    size_bytes = models.BigIntegerField(default=0)
+    introspection_metadata = models.JSONField(default=dict, blank=True)
+
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"{self.name} ({self.fmi_version}, {self.kind})"
+
+
+class FMIVariable(TimeStampedModel):
+    """
+    Parsed variable metadata from modelDescription.xml attached to an FMUModel.
+    """
+
+    fmu_model = models.ForeignKey(
+        FMUModel,
+        on_delete=models.CASCADE,
+        related_name="variables",
+    )
+    name = models.CharField(max_length=255)
+    causality = models.CharField(max_length=64)
+    variability = models.CharField(max_length=64, blank=True, default="")
+    value_reference = models.BigIntegerField(default=0)
+    value_type = models.CharField(max_length=64)
+    unit = models.CharField(max_length=128, blank=True, default="")
+    catalog_entry = models.ForeignKey(
+        "validations.ValidatorCatalogEntry",
+        on_delete=models.SET_NULL,
+        related_name="fmi_variables",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "fmu_model",
+                    "name",
+                ],
+            ),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - display helper
+        return f"{self.name} ({self.causality})"
+
+
+class FMUProbeResult(TimeStampedModel):
+    """
+    Tracks the latest probe state for an FMU prior to approval.
+    """
+
+    fmu_model = models.OneToOneField(
+        FMUModel,
+        on_delete=models.CASCADE,
+        related_name="probe_result",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=FMUProbeStatus.choices,
+        default=FMUProbeStatus.PENDING,
+    )
+    last_error = models.TextField(blank=True, default="")
+    details = models.JSONField(default=dict, blank=True)
+
+    def mark_failed(self, message: str, details: dict | None = None) -> None:
+        self.status = FMUProbeStatus.FAILED
+        self.last_error = message
+        if details:
+            self.details = details
+        self.save(
+            update_fields=[
+                "status",
+                "last_error",
+                "details",
+                "modified",
+            ],
+        )
+
+
 class Validator(TimeStampedModel):
     """
     A pluggable validator 'type' and version.
@@ -653,6 +784,16 @@ class Validator(TimeStampedModel):
             "True when the validator includes an intermediate processor that produces output signals."
         ),
     )
+    fmu_model = models.ForeignKey(
+        "validations.FMUModel",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="validators",
+        help_text=_(
+            "FMU artifact backing this validator (only used for FMI validators).",
+        ),
+    )
 
     order = models.PositiveIntegerField(
         default=0,
@@ -705,6 +846,7 @@ class Validator(TimeStampedModel):
             ValidationType.JSON_SCHEMA: "bi-filetype-json",
             ValidationType.XML_SCHEMA: "bi-filetype-xml",
             ValidationType.ENERGYPLUS: "bi-lightning-charge-fill",
+            ValidationType.FMI: "bi-cpu",
             ValidationType.AI_ASSIST: "bi-robot",
         }.get(self.validation_type, "bi-journal-bookmark")  # default icon
         return bi_icon_class
@@ -784,6 +926,25 @@ class Validator(TimeStampedModel):
             if derived not in normalized_files:
                 normalized_files.append(derived)
         self.supported_file_types = normalized_files
+
+        if self.validation_type == ValidationType.FMI:
+            if not self.fmu_model_id:
+                if not self.is_system:
+                    raise ValidationError(
+                        {
+                            "fmu_model": _(
+                                "Assign an FMU asset before saving an FMI validator.",
+                            ),
+                        },
+                    )
+            elif self.fmu_model_id:
+                raise ValidationError(
+                    {
+                        "fmu_model": _(
+                            "FMU assets can only be attached to FMI validators.",
+                    ),
+                },
+            )
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -992,6 +1153,18 @@ class ValidatorCatalogEntry(TimeStampedModel):
             "Requires the signal to be present in the submission (inputs) or processor output (outputs)."
         ),
     )
+    is_hidden = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Hidden signals remain available to bindings but are not shown in authoring interfaces.",
+        ),
+    )
+    default_value = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=_("Optional default applied when the signal is hidden."),
+    )
     order = models.PositiveIntegerField(default=0)
 
     def delete(self, *args, **kwargs):
@@ -1009,6 +1182,8 @@ class ValidatorCatalogEntry(TimeStampedModel):
         super().clean()
         if self.entry_type == CatalogEntryType.DERIVATION:
             self.is_required = False
+        if not self.is_hidden:
+            self.default_value = None
 
     class Meta:
         constraints = [

@@ -1,0 +1,49 @@
+{% extends "app_base.html" %}
+{% load i18n crispy_forms_tags core_tags %}
+
+{% block title %}
+  {% trans "Create FMI Validator" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="fmi-validator-create">
+    <div class="app-content-header-bar row align-items-center mb-3">
+      <div class="col-12 col-lg-8">
+        <h1 class="app-page-title">
+          <i class="bi bi-cpu me-2"></i>
+          {% trans "Create FMI Validator" %}
+        </h1>
+      </div>
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0">
+        <a href="{% org_url 'validations:validation_library' %}"
+           class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>
+          {% trans "Back to Library" %}
+        </a>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          {{ form|crispy }}
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <a href="{% org_url 'validations:validation_library' %}"
+               class="btn btn-outline-secondary">
+              {% trans "Cancel" %}
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check2 me-1"></i>
+              {% trans "Create Validator" %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

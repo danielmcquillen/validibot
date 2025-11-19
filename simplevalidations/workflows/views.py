@@ -1465,6 +1465,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 {
                     ValidationType.AI_ASSIST,
                     ValidationType.ENERGYPLUS,
+                    ValidationType.FMI,
                 },
             ),
             (

@@ -11,6 +11,11 @@ urlpatterns = [
         name="validation_library",
     ),
     path(
+        "library/fmi/new/",
+        views.FMIValidatorCreateView.as_view(),
+        name="fmi_validator_create",
+    ),
+    path(
         "library/custom/new/",
         views.CustomValidatorCreateView.as_view(),
         name="custom_validator_create",

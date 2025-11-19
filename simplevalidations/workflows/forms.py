@@ -574,6 +574,12 @@ class BaseStepConfigForm(forms.Form):
             self.fields["notes"].initial = step.notes
 
 
+class FMIValidatorStepConfigForm(BaseStepConfigForm):
+    """Placeholder FMI step configuration. Inputs/outputs bind via the validator catalog."""
+
+    pass
+
+
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
     show_display_schema = True
     schema_type = forms.ChoiceField(
@@ -988,6 +994,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
+        ValidationType.FMI: FMIValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,
     }
     return mapping.get(validation_type, BaseStepConfigForm)

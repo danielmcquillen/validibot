@@ -136,7 +136,8 @@ class TestValidationLibraryViews:
         )
         assert response.status_code == HTTPStatus.OK
         breadcrumbs = response.context["breadcrumbs"]
-        assert breadcrumbs[-1]["name"] == "Edit Room Automation"
+        assert breadcrumbs[-1]["name"] == "Edit Settings"
+        assert "Room Automation" in breadcrumbs[-2]["name"]
 
     def test_system_validator_detail_preserves_tab_query(self, client):
         self._setup_user(client, RoleCode.ADMIN)

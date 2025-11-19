@@ -32,10 +32,10 @@ from simplevalidations.validations.constants import (
     RulesetType,
     Severity,
     StepStatus,
-    ValidatorRuleType,
     ValidationRunSource,
     ValidationRunStatus,
     ValidationType,
+    ValidatorRuleType,
     XMLSchemaType,
 )
 from simplevalidations.workflows.models import Workflow, WorkflowStep
@@ -43,20 +43,39 @@ from simplevalidations.workflows.models import Workflow, WorkflowStep
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionFileType.JSON,
+        SubmissionFileType.XML,
+        SubmissionFileType.TEXT,
+        SubmissionFileType.YAML,
     ],
-    ValidationType.JSON_SCHEMA: [SubmissionFileType.JSON],
-    ValidationType.XML_SCHEMA: [SubmissionFileType.XML],
+    ValidationType.JSON_SCHEMA: [
+        SubmissionFileType.JSON,
+    ],
+    ValidationType.XML_SCHEMA: [
+        SubmissionFileType.XML,
+    ],
     ValidationType.ENERGYPLUS: [
         SubmissionFileType.TEXT,
         SubmissionFileType.JSON,
     ],
-    ValidationType.CUSTOM_VALIDATOR: [SubmissionFileType.JSON, SubmissionFileType.TEXT],
-    ValidationType.AI_ASSIST: [SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    ValidationType.CUSTOM_VALIDATOR: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+        SubmissionFileType.YAML,
+    ],
+    ValidationType.AI_ASSIST: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ],
 }
 
 
 VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
-    ValidationType.BASIC: [SubmissionDataFormat.JSON],
+    ValidationType.BASIC: [
+        SubmissionDataFormat.JSON,
+        SubmissionDataFormat.XML,
+        SubmissionDataFormat.YAML,
+        SubmissionDataFormat.TEXT,
+    ],
     ValidationType.JSON_SCHEMA: [SubmissionDataFormat.JSON],
     ValidationType.XML_SCHEMA: [SubmissionDataFormat.XML],
     ValidationType.ENERGYPLUS: [
@@ -78,7 +97,12 @@ def default_supported_file_types_for_validation(
 ) -> list[str]:
     derived_formats = default_supported_data_formats_for_validation(validation_type)
     derived = supported_file_types_for_data_formats(derived_formats)
-    return derived or [SubmissionFileType.JSON]
+    explicit = VALIDATION_TYPE_FILE_TYPE_DEFAULTS.get(validation_type, [])
+    merged: list[str] = []
+    for value in (derived or []) + list(explicit):
+        if value not in merged:
+            merged.append(value)
+    return merged or [SubmissionFileType.JSON]
 
 
 def default_supported_data_formats_for_validation(validation_type: str) -> list[str]:
@@ -333,7 +357,7 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Structured operator used for BASIC assertions."),
     )
 
-    target_catalog = models.ForeignKey(
+    target_catalog_entry = models.ForeignKey(
         "validations.ValidatorCatalogEntry",
         null=True,
         blank=True,
@@ -400,8 +424,8 @@ class RulesetAssertion(TimeStampedModel):
             models.CheckConstraint(
                 name="ck_ruleset_assertion_target_oneof",
                 check=(
-                    Q(target_catalog__isnull=False, target_field="")
-                    | (Q(target_catalog__isnull=True) & ~Q(target_field=""))
+                    Q(target_catalog_entry__isnull=False, target_field="")
+                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_field=""))
                 ),
             ),
         ]
@@ -412,19 +436,21 @@ class RulesetAssertion(TimeStampedModel):
 
     def __str__(self):
         target = (
-            self.target_catalog.slug if self.target_catalog_id else self.target_field
+            self.target_catalog_entry.slug
+            if self.target_catalog_entry_id
+            else self.target_field
         )
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
     @property
     def resolved_run_stage(self) -> CatalogRunStage:
-        if self.target_catalog_id and self.target_catalog:
-            return CatalogRunStage(self.target_catalog.run_stage)
+        if self.target_catalog_entry_id and self.target_catalog_entry:
+            return CatalogRunStage(self.target_catalog_entry.run_stage)
         return CatalogRunStage.OUTPUT
 
     def clean(self):
         super().clean()
-        catalog_set = bool(self.target_catalog_id)
+        catalog_set = bool(self.target_catalog_entry_id)
         field = (self.target_field or "").strip()
         if catalog_set == bool(field):
             raise ValidationError(
@@ -438,9 +464,11 @@ class RulesetAssertion(TimeStampedModel):
 
     @property
     def target_display(self) -> str:
-        if self.target_catalog_id and self.target_catalog:
-            label = self.target_catalog.label or self.target_catalog.slug
-            return f"{label} ({self.target_catalog.slug})"
+        if self.target_catalog_entry_id and self.target_catalog_entry:
+            label = (
+                self.target_catalog_entry.label or self.target_catalog_entry.slug
+            )
+            return f"{label} ({self.target_catalog_entry.slug})"
         return self.target_field
 
     @property
@@ -619,6 +647,13 @@ class Validator(TimeStampedModel):
         ),
     )
 
+    has_processor = models.BooleanField(
+        default=False,
+        help_text=_(
+            "True when the validator includes an intermediate processor that produces output signals."
+        ),
+    )
+
     order = models.PositiveIntegerField(
         default=0,
         help_text=_("Relative ordering for display purposes."),
@@ -728,7 +763,7 @@ class Validator(TimeStampedModel):
             self.supported_data_formats,
         )
         file_types = [value for value in (self.supported_file_types or []) if value]
-        if not file_types:
+        if not file_types or file_types == _default_validator_file_types():
             file_types = default_supported_file_types_for_validation(
                 self.validation_type,
             )
@@ -915,11 +950,17 @@ class ValidatorCatalogEntry(TimeStampedModel):
     )
     slug = models.SlugField(
         max_length=255,
-        help_text=_("Unique identifier for this catalog entry within the validator."),
+        help_text=_("Unique identifier for this catalog entry within the validator. You can use this slug in rules and CEL templates."),
     )
     label = models.CharField(
         max_length=255,
+        blank=True,
+        default="",
         help_text=_("Human-friendly label shown in editors."),
+    )
+    target_field = models.CharField(
+        max_length=255,
+        help_text=_("Path used to locate this signal in the input or processor output."),
     )
     data_type = models.CharField(
         max_length=32,
@@ -929,6 +970,7 @@ class ValidatorCatalogEntry(TimeStampedModel):
     description = models.TextField(
         blank=True,
         default="",
+        help_text=_("A short description to help you remember what data this signal represents."),
     )
     binding_config = models.JSONField(
         default=dict,
@@ -942,7 +984,9 @@ class ValidatorCatalogEntry(TimeStampedModel):
     )
     is_required = models.BooleanField(
         default=False,
-        help_text=_("Whether this entry must be present for every ruleset."),
+        help_text=_(
+            "Requires the signal to be present in the submission (inputs) or processor output (outputs)."
+        ),
     )
     order = models.PositiveIntegerField(default=0)
 

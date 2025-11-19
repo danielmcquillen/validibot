@@ -1,6 +1,7 @@
 import pytest
 
 from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationType
@@ -51,6 +52,7 @@ def test_custom_validator_sets_org_on_validator():
     validator.refresh_from_db()
     assert validator.org == org
     assert validator.is_custom
+    assert SubmissionFileType.YAML in validator.supported_file_types
 
 
 def test_base_engine_exposes_default_helpers():

@@ -88,6 +88,12 @@ class ValidatorFactory(DjangoModelFactory):
     org = None
     is_system = True
     allow_custom_assertion_targets = False
+    has_processor = factory.LazyAttribute(
+        lambda obj: obj.validation_type
+        in (
+            ValidationType.ENERGYPLUS,
+        )
+    )
     supported_data_formats = factory.LazyAttribute(
         lambda obj: default_supported_data_formats_for_validation(obj.validation_type),
     )

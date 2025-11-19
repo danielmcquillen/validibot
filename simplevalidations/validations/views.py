@@ -4,6 +4,7 @@ import re
 from datetime import timedelta
 
 import django_filters
+from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -27,6 +28,7 @@ from simplevalidations.validations.constants import (
     ValidationRunStatus,
     ValidatorRuleType,
     ValidationType,
+    CatalogRunStage,
 )
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
@@ -671,7 +673,18 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             (entry.id, f"{entry.slug}")
             for entry in validator.catalog_entries.order_by("slug").all()
         ]
-        context["signal_create_form"] = ValidatorCatalogEntryForm()
+        def _build_stage_form(run_stage):
+            form = ValidatorCatalogEntryForm(initial={"run_stage": run_stage})
+            form.fields["run_stage"].widget = forms.HiddenInput()
+            return form
+
+        context["signal_create_form_input"] = _build_stage_form(CatalogRunStage.INPUT)
+        if validator.has_processor:
+            context["signal_create_form_output"] = _build_stage_form(
+                CatalogRunStage.OUTPUT,
+            )
+        else:
+            context["signal_create_form_output"] = None
         context["signal_edit_forms"] = {
             entry.id: ValidatorCatalogEntryForm(instance=entry)
             for entry in validator.catalog_entries.all()
@@ -693,6 +706,14 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             )
             for rule in rules
         }
+        show_output_tab = bool(validator.has_processor)
+        requested_signals_tab = (self.request.GET.get("signals_tab") or "inputs").lower()
+        allowed_signals_tabs = {"inputs"}
+        if show_output_tab:
+            allowed_signals_tabs.add("outputs")
+        active_signals_tab = (
+            requested_signals_tab if requested_signals_tab in allowed_signals_tabs else "inputs"
+        )
         context.update(
             {
                 "can_manage_validators": self.can_manage_validators(),
@@ -701,6 +722,8 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 "catalog_entries": display.entries,
                 "catalog_tab_prefix": "validator-detail",
                 "validator_rules": rules,
+                "show_output_tab": show_output_tab,
+                "active_signals_tab": active_signals_tab,
             },
         )
         return context
@@ -715,7 +738,12 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         breadcrumbs = super().get_breadcrumbs()
         validator = getattr(self, "object", None) or self.get_object()
         label = validator.name or validator.slug
-        breadcrumbs.append({"name": label, "url": ""})
+        breadcrumbs.append(
+            {
+                "name": _("Edit “%(name)s”") % {"name": label},
+                "url": "",
+            },
+        )
         return breadcrumbs
 
 
@@ -828,10 +856,10 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         validator = self.custom_validator.validator
         context.update(
             {
-            "form_title": _("Edit %(name)s Settings") % {"name": validator.name},
-            "validator": validator,
-            "can_manage_validators": True,
-        }
+                "form_title": _("Edit %(name)s Settings") % {"name": validator.name},
+                "validator": validator,
+                "can_manage_validators": True,
+            }
         )
         return context
 
@@ -841,7 +869,17 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         label = validator.name or validator.slug
         breadcrumbs.append(
             {
-                "name": _("Edit %(name)s") % {"name": label},
+                "name": _("Edit “%(name)s”") % {"name": label},
+                "url": reverse_with_org(
+                    "validations:validator_detail",
+                    request=self.request,
+                    kwargs={"slug": validator.slug},
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": _("Edit Settings"),
                 "url": "",
             },
         )
@@ -1000,7 +1038,9 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
     form_class = ValidatorCatalogEntryForm
 
     def post(self, request, *args, **kwargs):
-        form = self.form_class(request.POST)
+        stage = request.POST.get("run_stage") or CatalogRunStage.INPUT
+        form = self.form_class(request.POST, initial={"run_stage": stage})
+        form.fields["run_stage"].widget = forms.HiddenInput()
         if form.is_valid():
             entry = form.save(commit=False)
             entry.validator = self.validator
@@ -1010,12 +1050,24 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
                 return self._hx_redirect()
             return self._redirect()
         if request.headers.get("HX-Request"):
+            modal_id = (
+                "modal-signal-create-output"
+                if stage == CatalogRunStage.OUTPUT
+                else "modal-signal-create-input"
+            )
+            modal_title = (
+                _("Add Output Signal")
+                if stage == CatalogRunStage.OUTPUT
+                else _("Add Input Signal")
+            )
             return render(
                 request,
                 "validations/library/partials/modal_signal_create.html",
                 {
                     "validator": self.validator,
-                    "signal_create_form": form,
+                    "modal_form": form,
+                    "modal_id": modal_id,
+                    "modal_title": modal_title,
                 },
                 status=400,
             )

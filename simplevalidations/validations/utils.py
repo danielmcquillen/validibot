@@ -56,6 +56,7 @@ def create_default_validators():
             "validation_type": ValidationType.ENERGYPLUS,
             "version": "1.0",
             "order": 3,
+            "has_processor": True,
         },
         {
             "name": _("AI Assisted Validation"),
@@ -99,6 +100,10 @@ def create_default_validators():
             validator.supported_file_types = defaults["supported_file_types"]
         if not validator.supported_data_formats:
             validator.supported_data_formats = defaults["supported_data_formats"]
+        validator.has_processor = validator_data.get(
+            "has_processor",
+            validator.has_processor,
+        )
         validator.allow_custom_assertion_targets = validator_data.get(
             "allow_custom_assertion_targets",
             validator.allow_custom_assertion_targets,

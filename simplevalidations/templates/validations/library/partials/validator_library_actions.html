@@ -7,7 +7,7 @@
   </a>
   {% if not validator.is_system and can_manage_validators %}
     <a class="btn btn-sm btn-outline-secondary"
-       href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}"
+       href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
        aria-label="{% blocktrans trimmed with validator_name=validator.name %}
                        Edit {{ validator_name }}
                    {% endblocktrans %}">

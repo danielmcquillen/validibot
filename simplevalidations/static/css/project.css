@@ -14138,15 +14138,18 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   background: linear-gradient(180deg, #eaf1f8 0%, #dfe9f3 100%);
   display: flex;
   flex-direction: row;
-  padding: 0.5rem;
+  padding: 0.5rem !important;
+  margin-left: 0;
 }
 #validator-library .validator-library-card .card-header .validator-type-icon {
   display: flex;
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  padding-left: 0.5rem;
+  padding-left: 0;
+  margin-left: 0;
   padding-right: 0.5rem;
+  width: 3rem;
   height: 100%;
 }
 #validator-library .validator-library-card .card-header .validator-type-icon i {
@@ -14159,6 +14162,7 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   font-size: 1rem;
   font-weight: 600;
   color: #425d7a;
+  width: 100%;
 }
 #validator-library .validator-library-card .card-header .validator-info {
   display: flex;
@@ -14209,6 +14213,22 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 }
 #validator-detail .catalog-entries-card .card-body .tab-content {
   flex-grow: 1;
+}
+#validator-detail .validator-editor-card .card-header {
+  padding-bottom: 0;
+}
+#validator-detail .validator-editor-card .card-header .nav-tabs {
+  border-bottom: none;
+}
+#validator-detail .validator-editor-card .card-header .nav-link {
+  border-bottom: 0;
+}
+#validator-detail .validator-editor-card .card-header .nav-link.active {
+  margin-bottom: -1px;
+}
+#validator-detail .validator-editor-card .tab-content {
+  padding-top: 1.25rem;
+  min-height: 40vh;
 }
 
 .project-color-widget {

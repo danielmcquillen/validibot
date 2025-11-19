@@ -681,112 +681,6 @@ class RulesetAssertionForm(forms.Form):
         }
         return {ident for ident in identifiers if ident not in allowed}
 
-
-class ValidatorRuleForm(forms.Form):
-    """Form for creating/updating validator-level rules (currently CEL only)."""
-
-    name = forms.CharField(
-        label=_("Name"),
-        max_length=200,
-    )
-    description = forms.CharField(
-        label=_("Description"),
-        widget=forms.Textarea(attrs={"rows": 2}),
-        required=False,
-    )
-    rule_type = forms.ChoiceField(
-        label=_("Rule type"),
-        choices=ValidatorRuleType.choices,
-    )
-    cel_expression = forms.CharField(
-        label=_("CEL expression"),
-        widget=forms.Textarea(attrs={"rows": 4}),
-        help_text=_("Enter a CEL expression that references validator signals."),
-    )
-    order = forms.IntegerField(
-        label=_("Order"),
-        min_value=0,
-        required=False,
-        initial=0,
-        help_text=_("Lower numbers run first."),
-    )
-    signals = forms.MultipleChoiceField(
-        label=_("Signals referenced"),
-        required=False,
-    )
-
-    def __init__(self, *args, **kwargs):
-        signal_choices = kwargs.pop("signal_choices", [])
-        super().__init__(*args, **kwargs)
-        self.fields["signals"].choices = signal_choices
-        self.helper = FormHelper()
-        self.helper.form_tag = False
-        self.helper.layout = Layout(
-            Row(
-                Column("name", css_class="col-12 col-xl-8"),
-                Column("order", css_class="col-12 col-xl-4"),
-            ),
-            "description",
-            "rule_type",
-            "signals",
-            "cel_expression",
-        )
-
-    def clean_rule_type(self):
-        value = self.cleaned_data.get("rule_type")
-        if value != ValidatorRuleType.CEL_EXPRESSION:
-            raise ValidationError(_("Unsupported rule type."))
-        return value
-
-    def clean_cel_expression(self):
-        expr = (self.cleaned_data.get("cel_expression") or "").strip()
-        if not expr:
-            raise ValidationError(_("CEL expression is required."))
-        return expr
-
-
-class ValidatorCatalogEntryForm(forms.ModelForm):
-    """Form for creating/updating validator catalog entries (signals/derivations)."""
-
-    class Meta:
-        model = ValidatorCatalogEntry
-        fields = [
-            "entry_type",
-            "run_stage",
-            "slug",
-            "label",
-            "data_type",
-            "description",
-            "is_required",
-            "order",
-        ]
-        widgets = {
-            "description": forms.Textarea(attrs={"rows": 2}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.helper = FormHelper()
-        self.helper.form_tag = False
-        self.helper.layout = Layout(
-            Row(
-                Column("entry_type", css_class="col-12 col-md-6"),
-                Column("run_stage", css_class="col-12 col-md-6"),
-            ),
-            Row(
-                Column("slug", css_class="col-12 col-md-6"),
-                Column("label", css_class="col-12 col-md-6"),
-            ),
-            Row(
-                Column("data_type", css_class="col-12 col-md-6"),
-                Column("order", css_class="col-12 col-md-6"),
-            ),
-            "description",
-            Row(
-                Column("is_required", css_class="col-12 col-md-6"),
-            ),
-        )
-
     def _build_cel_preview(
         self,
         operator: str,
@@ -910,20 +804,118 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         elif operator in {AssertionOperator.BEFORE, AssertionOperator.AFTER}:
             initial["datetime_value"] = rhs.get("value")
         elif operator in {
-            AssertionOperator.CONTAINS,
-            AssertionOperator.NOT_CONTAINS,
-            AssertionOperator.STARTS_WITH,
-            AssertionOperator.ENDS_WITH,
-        }:
-            initial["comparison_value"] = rhs.get("value")
-        elif operator in {
             AssertionOperator.ANY,
             AssertionOperator.ALL,
             AssertionOperator.NONE,
         }:
-            initial["collection_operator"] = rhs.get("operator")
+            initial["collection_operator"] = options.get("collection_operator")
             initial["collection_value"] = rhs.get("value")
-        initial["case_insensitive"] = options.get("case_insensitive", False)
-        initial["unicode_fold"] = options.get("unicode_fold", False)
-        initial["coerce_types"] = options.get("coerce_types", False)
-        initial["treat_missing_as_null"] = options.get("treat_missing_as_null", False)
+        elif operator == AssertionOperator.CEL_EXPR:
+            initial["cel_expression"] = rhs.get("expr", "")
+        return initial
+
+
+class ValidatorRuleForm(forms.Form):
+    """Form for creating/updating validator-level rules (currently CEL only)."""
+
+    name = forms.CharField(
+        label=_("Name"),
+        max_length=200,
+    )
+    description = forms.CharField(
+        label=_("Description"),
+        widget=forms.Textarea(attrs={"rows": 2}),
+        required=False,
+    )
+    rule_type = forms.ChoiceField(
+        label=_("Rule type"),
+        choices=ValidatorRuleType.choices,
+    )
+    cel_expression = forms.CharField(
+        label=_("CEL expression"),
+        widget=forms.Textarea(attrs={"rows": 4}),
+        help_text=_("Enter a CEL expression that references validator signals."),
+    )
+    order = forms.IntegerField(
+        label=_("Order"),
+        min_value=0,
+        required=False,
+        initial=0,
+        help_text=_("Lower numbers run first."),
+    )
+    signals = forms.MultipleChoiceField(
+        label=_("Signals referenced"),
+        required=False,
+    )
+
+    def __init__(self, *args, **kwargs):
+        signal_choices = kwargs.pop("signal_choices", [])
+        super().__init__(*args, **kwargs)
+        self.fields["signals"].choices = signal_choices
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("name", css_class="col-12 col-xl-8"),
+                Column("order", css_class="col-12 col-xl-4"),
+            ),
+            "description",
+            "rule_type",
+            "signals",
+            "cel_expression",
+        )
+
+    def clean_rule_type(self):
+        value = self.cleaned_data.get("rule_type")
+        if value != ValidatorRuleType.CEL_EXPRESSION:
+            raise ValidationError(_("Unsupported rule type."))
+        return value
+
+    def clean_cel_expression(self):
+        expr = (self.cleaned_data.get("cel_expression") or "").strip()
+        if not expr:
+            raise ValidationError(_("CEL expression is required."))
+        return expr
+
+
+class ValidatorCatalogEntryForm(forms.ModelForm):
+    """Form for creating/updating validator catalog entries (signals/derivations)."""
+
+    class Meta:
+        model = ValidatorCatalogEntry
+        fields = [
+            "entry_type",
+            "run_stage",
+            "slug",
+            "label",
+            "data_type",
+            "description",
+            "is_required",
+            "order",
+        ]
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            Row(
+                Column("entry_type", css_class="col-12 col-md-6"),
+                Column("run_stage", css_class="col-12 col-md-6"),
+            ),
+            Row(
+                Column("slug", css_class="col-12 col-md-6"),
+                Column("label", css_class="col-12 col-md-6"),
+            ),
+            Row(
+                Column("data_type", css_class="col-12 col-md-6"),
+                Column("order", css_class="col-12 col-md-6"),
+            ),
+            "description",
+            Row(
+                Column("is_required", css_class="col-12 col-md-6"),
+            ),
+        )

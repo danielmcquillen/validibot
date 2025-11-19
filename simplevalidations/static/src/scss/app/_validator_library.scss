@@ -31,14 +31,18 @@
       background: linear-gradient(180deg, #eaf1f8 0%, #dfe9f3 100%);
       display: flex;
       flex-direction: row;
-      padding: 0.5rem;
+      padding: 0.5rem  !important;
+      margin-left: 0;
+
       .validator-type-icon {
         display: flex;
         flex-direction: row;
         justify-content: center;
         align-items: center;
-        padding-left: 0.5rem;
+        padding-left: 0;
+        margin-left: 0;
         padding-right: 0.5rem;
+        width: 3rem;
         height: 100%;
         i {
           font-size: 2rem;
@@ -51,6 +55,7 @@
         font-size: 1rem;
         font-weight: 600;
         color: #425d7a;
+        width: 100%;
       }
       .validator-info {
         display: flex;
@@ -105,6 +110,25 @@
       .tab-content {
         flex-grow: 1;
       }
+    }
+  }
+
+  .validator-editor-card {
+    .card-header {
+      padding-bottom: 0;
+      .nav-tabs {
+        border-bottom: none;
+      }
+      .nav-link {
+        border-bottom: 0;
+        &.active {
+          margin-bottom: -1px;
+        }
+      }
+    }
+    .tab-content {
+      padding-top: 1.25rem;
+      min-height: 40vh;
     }
   }
 }

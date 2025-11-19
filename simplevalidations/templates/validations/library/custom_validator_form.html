@@ -30,11 +30,21 @@
             {{ form|crispy }}
           </div>
           <div class="card-footer d-flex justify-content-between flex-wrap gap-2">
-            <a href="{% org_url 'validations:validation_library' %}"
-               class="btn btn-outline-secondary">
-              <i class="bi bi-arrow-left me-1"></i>
-              {% trans "Back to Validator Library" %}
-            </a>
+            {% if validator %}
+              <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+                 class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>
+                {% blocktrans trimmed with validator_name=validator.name %}
+                  Back to Edit “{{ validator_name }}”
+                {% endblocktrans %}
+              </a>
+            {% else %}
+              <a href="{% org_url 'validations:validation_library' %}"
+                 class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i>
+                {% trans "Back to Validator Library" %}
+              </a>
+            {% endif %}
             <button type="submit" class="btn btn-primary">
               {% trans "Save validator" %}
             </button>

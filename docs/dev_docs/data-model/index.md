@@ -2,6 +2,8 @@
 
 The core entities in SimpleValidations are:
 
+- **Projects** provide an organization-scoped namespace that tags workflows,
+  submissions, and runs for tenancy and reporting.
 - **Validators** define the engines, signals, and catalogs a workflow step can execute.
 - **Ruleset Assertions** capture the concrete checks that a validator runs once inputs and outputs exist.
 - **Submission** records the original payload to validate.

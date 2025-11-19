@@ -52,6 +52,7 @@ This site describes the core concepts, data model, and API for working with vali
 ### Data Model
 
 - [Data Model Overview](data-model/index.md) - Core entities and relationships
+- [Projects & Context](data-model/projects.md) - Organization-scoped namespaces and propagation rules
 - [Submissions](data-model/submissions.md) - Content submission and storage
 - [Runs](data-model/runs.md) - Validation execution and tracking
 - [Steps](data-model/steps.md) - Individual validation operations

@@ -20,6 +20,7 @@ from simplevalidations.validations.constants import (
     FMUProbeStatus,
     ValidationType,
 )
+from simplevalidations.validations.engines.modal import ModalRunnerMixin
 from simplevalidations.validations.models import (
     FMUModel,
     FMUProbeResult,
@@ -27,6 +28,7 @@ from simplevalidations.validations.models import (
     Validator,
     ValidatorCatalogEntry,
 )
+from sv_shared.fmi import FMIProbeResult
 
 
 class FMIIntrospectionError(ValueError):
@@ -35,6 +37,14 @@ class FMIIntrospectionError(ValueError):
 
 class FMUStorageError(ValueError):
     """Raised when FMU files cannot be stored or accessed."""
+
+
+class _FMIProbeRunner(ModalRunnerMixin):
+    """Modal runner wrapper dedicated to the probe_fmu function."""
+
+    modal_app_name = "fmi-runner"
+    modal_function_name = "probe_fmu"
+    modal_return_logs_default = False
 
 
 def _read_model_description(fmu_file: UploadedFile | io.BufferedIOBase) -> str:
@@ -198,3 +208,77 @@ def _persist_variables(
             fmu_model=fmu_model,
             name=var.name,
         ).update(catalog_entry=entry)
+
+
+def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbeResult:
+    """
+    Invoke the Modal probe function for an FMU and update metadata + catalog.
+    """
+
+    runner = _FMIProbeRunner()
+    storage_key = getattr(fmu_model.file, "path", "") or getattr(
+        fmu_model.file,
+        "name",
+        "",
+    )
+    probe_record, _ = FMUProbeResult.objects.get_or_create(
+        fmu_model=fmu_model,
+        defaults={"status": FMUProbeStatus.PENDING},
+    )
+    probe_record.status = FMUProbeStatus.RUNNING
+    probe_record.last_error = ""
+    probe_record.save(update_fields=["status", "last_error", "modified"])
+
+    try:
+        raw = runner._invoke_modal_runner(  # noqa: SLF001
+            fmu_storage_key=storage_key,
+            return_logs=return_logs,
+        )
+        result = FMIProbeResult.model_validate(raw)
+    except Exception as exc:  # pragma: no cover - defensive
+        probe_record.mark_failed(str(exc))
+        raise
+
+    if result.status == "success":
+        _refresh_variables_from_probe(fmu_model, result.variables)
+        probe_record.status = FMUProbeStatus.SUCCEEDED
+        probe_record.last_error = ""
+        probe_record.details = {"variable_count": len(result.variables)}
+        fmu_model.is_approved = True
+    else:
+        probe_record.status = FMUProbeStatus.FAILED
+        probe_record.last_error = "; ".join(result.errors or [])
+        fmu_model.is_approved = False
+
+    probe_record.save(update_fields=["status", "last_error", "details", "modified"])
+    fmu_model.save(update_fields=["is_approved", "modified"])
+    return result
+
+
+def _refresh_variables_from_probe(
+    fmu_model: FMUModel,
+    variables: list,
+) -> None:
+    """
+    Update FMIVariable rows and refresh catalog entries based on probe output.
+    """
+
+    validator = fmu_model.validators.first()
+    if validator is None:
+        return
+    FMIVariable.objects.filter(fmu_model=fmu_model).delete()
+    entries = ValidatorCatalogEntry.objects.filter(validator=validator)
+    entries.delete()
+    shaped_vars = [
+        FMIVariable(
+            fmu_model=fmu_model,
+            name=var.name,
+            causality=var.causality,
+            variability=var.variability or "",
+            value_reference=getattr(var, "value_reference", 0) or 0,
+            value_type=var.value_type,
+            unit=var.unit or "",
+        )
+        for var in variables
+    ]
+    _persist_variables(fmu_model, validator, shaped_vars)

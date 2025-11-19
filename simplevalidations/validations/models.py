@@ -937,11 +937,11 @@ class Validator(TimeStampedModel):
                             ),
                         },
                     )
-            elif self.fmu_model_id:
-                raise ValidationError(
-                    {
-                        "fmu_model": _(
-                            "FMU assets can only be attached to FMI validators.",
+        elif self.fmu_model_id:
+            raise ValidationError(
+                {
+                    "fmu_model": _(
+                        "FMU assets can only be attached to FMI validators.",
                     ),
                 },
             )

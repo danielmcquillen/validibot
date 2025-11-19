@@ -147,6 +147,7 @@ class TestValidationLibraryViews:
             validation_type="ENERGYPLUS",
             description="System validator",
             is_system=True,
+            has_processor=True,
         )
 
         response = client.get(
@@ -234,3 +235,65 @@ class TestValidationLibraryViews:
         assert Validator.objects.filter(pk=custom_validator.validator.pk).exists()
         trigger = json.loads(response.headers["HX-Trigger"])
         assert trigger["toast"]["level"] == "danger"
+
+    def test_http_delete_custom_validator_blocked_when_in_use(self, client):
+        user, org = self._setup_user(client, RoleCode.AUTHOR)
+        custom_validator = create_custom_validator(
+            org=org,
+            user=user,
+            name="In Use Validator",
+            description="Still referenced",
+            custom_type="MODELICA",
+        )
+        workflow = WorkflowFactory(org=org, user=user)
+        WorkflowStepFactory(workflow=workflow, validator=custom_validator.validator)
+
+        response = client.post(
+            reverse(
+                "validations:custom_validator_delete",
+                kwargs={"slug": custom_validator.validator.slug},
+            ),
+            follow=True,
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        # The validator still exists because of workflow reference.
+        assert Validator.objects.filter(pk=custom_validator.validator.pk).exists()
+        content = response.content.decode()
+        assert "Cannot delete" in content
+        # Error should appear in the delete template (non-HTMX path).
+        assert "alert-danger" in content
+        # Delete button should be disabled when deletion is blocked.
+        assert 'type="submit"' in content
+        assert "disabled" in content
+        # Blockers are listed
+        assert "Workflow step" in content
+        assert "View" in content
+
+    def test_http_delete_custom_validator_blockers_listed_on_get(self, client):
+        user, org = self._setup_user(client, RoleCode.AUTHOR)
+        custom_validator = create_custom_validator(
+            org=org,
+            user=user,
+            name="In Use Validator",
+            description="Still referenced",
+            custom_type="MODELICA",
+        )
+        workflow = WorkflowFactory(org=org, user=user)
+        WorkflowStepFactory(workflow=workflow, validator=custom_validator.validator)
+
+        response = client.get(
+            reverse(
+                "validations:custom_validator_delete",
+                kwargs={"slug": custom_validator.validator.slug},
+            )
+        )
+
+        assert response.status_code == HTTPStatus.OK
+        content = response.content.decode()
+        assert "cannot be deleted" in content
+        assert "Workflow step" in content
+        # Delete button disabled in initial GET when blocked
+        assert "disabled" in content
+        # View link present
+        assert "View" in content

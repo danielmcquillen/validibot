@@ -1,53 +1,82 @@
 {% load i18n core_tags %}
 
 <div class="card app-card h-100">
-  <div class="card-header">
-    <div class="card-title mb-0">
-      {% trans "Signals" %}
-    </div>
-  </div>
-  <div class="card-body">
+  <div class="card-header d-flex align-items-center justify-content-between">
     {% if show_output_tab %}
-      <ul class="nav nav-tabs" role="tablist">
+      <ul class="nav nav-tabs border-0" role="tablist">
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if active_signals_tab == 'inputs' %}active{% endif %}"
+          <button class="nav-link
+                         {% if active_signals_tab == 'inputs' %}
+                           active
+                         {% endif %}"
                   id="{{ catalog_tab_prefix|default:'signals' }}-inputs-tab"
                   data-bs-toggle="tab"
                   data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
                   type="button"
                   role="tab"
                   aria-controls="{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
-                  aria-selected="{% if active_signals_tab == 'inputs' %}true{% else %}false{% endif %}">
+                  aria-selected="{% if active_signals_tab == 'inputs' %}
+                                   true
+                                 {% else %}
+                                   false
+                                 {% endif %}">
             {% trans "Input Signals" %}
           </button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if active_signals_tab == 'outputs' %}active{% endif %}"
+          <button class="nav-link
+                         {% if active_signals_tab == 'outputs' %}
+                           active
+                         {% endif %}"
                   id="{{ catalog_tab_prefix|default:'signals' }}-outputs-tab"
                   data-bs-toggle="tab"
                   data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
                   type="button"
                   role="tab"
                   aria-controls="{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
-                  aria-selected="{% if active_signals_tab == 'outputs' %}true{% else %}false{% endif %}">
+                  aria-selected="{% if active_signals_tab == 'outputs' %}
+                                   true
+                                 {% else %}
+                                   false
+                                 {% endif %}">
             {% trans "Output Signals" %}
           </button>
         </li>
       </ul>
+      <div class="d-flex align-items-center ms-auto">
+        {% if can_manage_validators %}
+          <button class="btn btn-sm btn-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-signal-create-input">
+            <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+          </button>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="card-title mb-0">
+        {% trans "Signals" %}
+      </div>
+      {% if can_manage_validators %}
+        <button class="btn btn-sm btn-primary ms-auto"
+                data-bs-toggle="modal"
+                data-bs-target="#modal-signal-create-input">
+          <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+        </button>
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if show_output_tab %}
       <div class="tab-content pt-3">
-        <div class="tab-pane fade {% if active_signals_tab == 'inputs' %}show active{% endif %}"
+        <div class="tab-pane fade
+                    {% if active_signals_tab == 'inputs' %}
+                      show active
+                    {% endif %}"
              id="{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
              role="tabpanel"
              aria-labelledby="{{ catalog_tab_prefix|default:'signals' }}-inputs-tab">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="h6 mb-0">{% trans "Input Signals" %}</div>
-            {% if can_manage_validators %}
-              <button class="btn btn-sm btn-primary"
-                      data-bs-toggle="modal"
-                      data-bs-target="#modal-signal-create-input">
-                <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
-              </button>
-            {% endif %}
+          <div class="h6 mb-3">
+            {% trans "Input Signals" %}
           </div>
           {% if catalog_display.inputs %}
             <div class="catalog-entry-sublist-header">
@@ -55,7 +84,9 @@
             </div>
             {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.inputs %}
           {% else %}
-            <p class="text-muted small mb-2">{% trans "No input signals." %}</p>
+            <p class="text-muted small mb-2">
+              {% trans "No input signals." %}
+            </p>
           {% endif %}
           {% if catalog_display.input_derivations %}
             <div class="catalog-entry-sublist-header mt-3">
@@ -64,14 +95,19 @@
             {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.input_derivations %}
           {% endif %}
         </div>
-        <div class="tab-pane fade {% if active_signals_tab == 'outputs' %}show active{% endif %}"
+        <div class="tab-pane fade
+                    {% if active_signals_tab == 'outputs' %}
+                      show active
+                    {% endif %}"
              id="{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
              role="tabpanel"
              aria-labelledby="{{ catalog_tab_prefix|default:'signals' }}-outputs-tab">
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="h6 mb-0">{% trans "Output Signals" %}</div>
+            <div class="h6 mb-0">
+              {% trans "Output Signals" %}
+            </div>
             {% if can_manage_validators %}
-              <button class="btn btn-sm btn-primary"
+              <button class="btn btn-sm btn-outline-primary"
                       data-bs-toggle="modal"
                       data-bs-target="#modal-signal-create-output">
                 <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
@@ -84,7 +120,9 @@
             </div>
             {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.outputs %}
           {% else %}
-            <p class="text-muted small mb-2">{% trans "No output signals." %}</p>
+            <p class="text-muted small mb-2">
+              {% trans "No output signals." %}
+            </p>
           {% endif %}
           {% if catalog_display.output_derivations %}
             <div class="catalog-entry-sublist-header mt-3">
@@ -95,23 +133,15 @@
         </div>
       </div>
     {% else %}
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div class="h6 mb-0">{% trans "Signals" %}</div>
-        {% if can_manage_validators %}
-          <button class="btn btn-sm btn-primary"
-                  data-bs-toggle="modal"
-                  data-bs-target="#modal-signal-create-input">
-            <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
-          </button>
-        {% endif %}
-      </div>
       {% if catalog_display.inputs %}
         <div class="catalog-entry-sublist-header">
           {% trans "Input signals" %}
         </div>
         {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.inputs %}
       {% else %}
-        <p class="text-muted small mb-2">{% trans "No input signals." %}</p>
+        <p class="text-muted small mb-2">
+          ( {% trans "(No input signals" %} )
+        </p>
       {% endif %}
       {% if catalog_display.input_derivations %}
         <div class="catalog-entry-sublist-header mt-3">
@@ -119,7 +149,9 @@
         </div>
         {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.input_derivations %}
       {% elif not catalog_display.inputs %}
-        <p class="text-muted small mb-0">{% trans "No catalog entries registered yet." %}</p>
+        <p class="text-muted small mb-0">
+          ( {% trans "No input derivations" %} )
+        </p>
       {% endif %}
     {% endif %}
   </div>

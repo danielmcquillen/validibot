@@ -507,6 +507,7 @@ class WorkflowStepTypeForm(forms.Form):
 
 
 class BaseStepConfigForm(forms.Form):
+    show_display_schema = False
     name = forms.CharField(
         label=_("Step name"),
         max_length=200,
@@ -553,6 +554,8 @@ class BaseStepConfigForm(forms.Form):
     def __init__(self, *args, step=None, **kwargs):
         self.step = step
         super().__init__(*args, **kwargs)
+        if not self.show_display_schema:
+            self.fields.pop("display_schema", None)
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.disable_csrf = True
@@ -572,6 +575,7 @@ class BaseStepConfigForm(forms.Form):
 
 
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
+    show_display_schema = True
     schema_type = forms.ChoiceField(
         label=_("Schema version"),
         choices=[
@@ -686,6 +690,7 @@ class JsonSchemaStepConfigForm(BaseStepConfigForm):
 
 
 class XmlSchemaStepConfigForm(BaseStepConfigForm):
+    show_display_schema = True
     schema_type = forms.ChoiceField(
         label=_("Schema type"),
         choices=XMLSchemaType.choices,

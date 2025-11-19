@@ -12,6 +12,11 @@
         data-sv-assertion-form="1">
     {% csrf_token %}
     {{ form|crispy }}
+    {% if form.no_signal_choices %}
+      <p class="text-muted small my-2">
+        {% trans "(no signals defined in validator)" %}
+      </p>
+    {% endif %}
     <datalist id="{{ target_slug_datalist_id }}">
       {% for value, label in catalog_choices %}
         <option value="{{ value }}" label="{{ label }}"></option>

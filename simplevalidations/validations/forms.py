@@ -15,8 +15,10 @@ from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.validations.constants import (
     AssertionOperator,
     AssertionType,
+    CatalogEntryType,
     CustomValidatorType,
     Severity,
+    CatalogRunStage,
     ValidatorRuleType,
 )
 from simplevalidations.validations.models import ValidatorCatalogEntry
@@ -316,6 +318,7 @@ class RulesetAssertionForm(forms.Form):
         catalog_choices=None,
         catalog_entries=None,
         validator=None,
+        target_slug_datalist_id=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -328,6 +331,7 @@ class RulesetAssertionForm(forms.Form):
         }
         self.catalog_slugs = set(self.catalog_entry_map.keys())
         self.validator = validator
+        self.target_slug_datalist_id = target_slug_datalist_id
         signal_choices = []
         for entry in self.catalog_entries:
             role = _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
@@ -336,7 +340,10 @@ class RulesetAssertionForm(forms.Form):
             signal_choices.append(
                 (entry.slug, f"{label} : {role} : {kind}")
             )
+        self.no_signal_choices = len(signal_choices) == 0
         self.fields["target_catalog_entry"].choices = [("", _("Select a signal"))] + signal_choices
+        if self.no_signal_choices:
+            self.fields["target_catalog_entry"].widget = forms.HiddenInput()
 
         target_field = self.fields["target_field"]
         target_field.help_text = _(
@@ -348,6 +355,12 @@ class RulesetAssertionForm(forms.Form):
             {
                 "placeholder": _("Search or enter a custom path"),
             },
+        )
+        if self.target_slug_datalist_id:
+            target_attrs.update(
+                {
+                    "list": self.target_slug_datalist_id,
+                },
         )
         operator_choices = [("", _("(Select one)"))]
         operator_choices.extend(self._basic_operator_choices())
@@ -432,15 +445,10 @@ class RulesetAssertionForm(forms.Form):
         catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
         value = (self.cleaned_data.get("target_field") or "").strip()
 
-        if catalog_choice and value:
-            raise ValidationError(
-                {"target_field": _("Choose a signal OR a custom path, not both.")}
-            )
-
         if catalog_choice:
             if catalog_choice not in self.catalog_slugs:
                 raise ValidationError(
-                    {"target_catalog_entry": _("Select one of the available catalog targets.")}
+                    {"target_field": _("Unknown signal(s) referenced. Provide a catalog signal or enable custom targets.")}
                 )
             self.cleaned_data["target_catalog_entry"] = self.catalog_entry_map[catalog_choice]
             self.cleaned_data["target_field_value"] = ""
@@ -451,7 +459,7 @@ class RulesetAssertionForm(forms.Form):
                 raise ValidationError(
                     {
                         "target_field": _(
-                            "Select one of the available catalog targets."
+                            "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
                         ),
                     },
                 )
@@ -468,7 +476,7 @@ class RulesetAssertionForm(forms.Form):
             self.cleaned_data["target_field_value"] = value
             return
 
-        raise ValidationError({"target_field": _("Provide a signal or a custom path.")})
+        raise ValidationError({"target_field": _("Unknown signal(s) referenced. Provide a catalog signal or enable custom targets.")})
 
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))

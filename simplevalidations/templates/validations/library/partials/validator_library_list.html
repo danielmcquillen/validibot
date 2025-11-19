@@ -1,4 +1,5 @@
 {% load i18n %}
+
 {% if validators %}
   {% if layout == "list" %}
     {% include "validations/library/partials/validator_library_table.html" with validators=validators can_manage_validators=can_manage_validators %}
@@ -17,8 +18,7 @@
       {{ empty_message }}
     </p>
     {% if empty_cta_url %}
-      <a href="{{ empty_cta_url }}"
-         class="btn btn-outline-primary btn-sm">
+      <a href="{{ empty_cta_url }}" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-plus me-1"></i>
         {{ empty_cta_label }}
       </a>

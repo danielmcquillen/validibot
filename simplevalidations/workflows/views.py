@@ -1916,6 +1916,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and validator.has_signal_stages() and allow_assertions,
         )
+        validator_rules_count = validator.rules.count() if validator else 0
         context.update(
             {
                 "workflow": workflow,
@@ -1931,6 +1932,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_entries": catalog_entries,
                 "catalog_display": catalog_display,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
+                "validator_rules_count": validator_rules_count,
             },
         )
         return context
@@ -2157,10 +2159,10 @@ class WorkflowStepAssertionModalBase(WorkflowStepAssertionsMixin, FormView):
 
     def _stage_filter(self, stage: str) -> Q:
         if stage == CatalogRunStage.INPUT:
-            return Q(target_catalog__run_stage=CatalogRunStage.INPUT)
+            return Q(target_catalog_entry__run_stage=CatalogRunStage.INPUT)
         return Q(
-            Q(target_catalog__run_stage=CatalogRunStage.OUTPUT)
-            | Q(target_catalog__isnull=True),
+            Q(target_catalog_entry__run_stage=CatalogRunStage.OUTPUT)
+            | Q(target_catalog_entry__isnull=True),
         )
 
 

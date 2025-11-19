@@ -42,7 +42,7 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
     list_filter = ("assertion_type", "operator", "severity")
     search_fields = (
         "ruleset__name",
-        "target_catalog__slug",
+        "target_catalog_entry__slug",
         "target_field",
     )
 

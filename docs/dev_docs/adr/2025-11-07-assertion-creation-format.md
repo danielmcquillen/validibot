@@ -36,7 +36,7 @@ in to free-form targets per validator.
   form accepts values outside the catalog.
 - When the flag is off, the server validates that the submitted target must be a
   catalog entry. When the flag is on, the user may either choose an entry
-  (`target_catalog`) or type a free-form JSON-style path (`target_field`;
+  (`target_catalog_entry`) or type a free-form JSON-style path (`target_field`;
   dot-notation with `[index]` arrays). A check constraint ensures exactly one of
   these fields is populated for every assertion.
 - Update `AssertionType` so we only have the coarse modes `BASIC` (structured
@@ -46,7 +46,7 @@ in to free-form targets per validator.
   a different validation engine they should create a new step; this keeps
   existing rulesets, catalogs, and audit history attached to the original
   validator.
-- BASIC assertions always store their target in `target_catalog` or
+- BASIC assertions always store their target in `target_catalog_entry` or
   `target_field`, set `operator`, and persist the operator payload in `rhs`
   (values) plus `options` (inclusive bounds, tolerance, etc.).
 - CEL_EXPRESSION assertions keep the target inputs but remove the operator UI in
@@ -111,7 +111,7 @@ structured form produces.
 Key model changes (summary)
 
 - Store the target in two complementary fields:
-  - `target_catalog` (FK to `ValidatorCatalogEntry`) for curated catalog slugs.
+  - `target_catalog_entry` (FK to `ValidatorCatalogEntry`) for curated catalog slugs.
   - `target_field` (free-text JSON-style path) for user-entered targets.
   - A database constraint ensures exactly one is populated per row.
 - Keep `AssertionType`, but collapse it to two coarse options:
@@ -162,19 +162,19 @@ class RulesetAssertion(models.Model):
     """
     A single assertion bound to a ruleset.
 
-    Either `target_catalog` (FK) or free-text `target_field` must be provided,
+    Either `target_catalog_entry` (FK) or free-text `target_field` must be provided,
     but not both.
     """
     class Meta:
         ordering = ["order", "pk"]
         constraints = [
-            # Exactly one of target_catalog or target_field must be set
+            # Exactly one of target_catalog_entry or target_field must be set
             models.CheckConstraint(
                 name="ck_assertion_target_oneof",
                 condition=(
-                    (Q(target_catalog__isnull=False) & Q(target_field__exact=""))
+                    (Q(target_catalog_entry__isnull=False) & Q(target_field__exact=""))
                     |
-                    (Q(target_catalog__isnull=True) & Q(target_field__gt=""))
+                    (Q(target_catalog_entry__isnull=True) & Q(target_field__gt=""))
                 ),
             ),
             models.Index(fields=["ruleset", "order"]),
@@ -196,7 +196,7 @@ class RulesetAssertion(models.Model):
     )
 
     # Target can be catalog-backed OR arbitrary field
-    target_catalog = models.ForeignKey(
+    target_catalog_entry = models.ForeignKey(
         "ValidatorCatalogEntry",
         null=True,
         blank=True,
@@ -247,7 +247,7 @@ class RulesetAssertion(models.Model):
     spec_version = models.PositiveIntegerField(default=1)
 
     def __str__(self):
-        t = self.target_catalog or self.target_field or "?"
+        t = self.target_catalog_entry or self.target_field or "?"
         return f"{self.ruleset_id}:{self.operator}:{t}"
 
     # Back-compat loader (optional): map old AssertionType to new operator+rhs
@@ -264,7 +264,7 @@ class RulesetAssertion(models.Model):
     def clean(self):
         super().clean()
         # one-of target check is enforced by constraint, but give a friendly error on form save
-        if bool(self.target_catalog) == bool((self.target_field or "").strip()):
+        if bool(self.target_catalog_entry) == bool((self.target_field or "").strip()):
             raise ValidationError(
                 {"target_field": _("Select a catalog entry OR enter a field path, not both.")}
             )
@@ -283,7 +283,7 @@ Keeping catalog + arbitrary fields happy
 - ( ) Catalog → select ValidatorCatalogEntry
 - ( ) Custom field → free-text target_field
 - At evaluation time:
-  - Prefer target_catalog.binding_config/metadata for type hints/units if present.
+  - Prefer target_catalog_entry.binding_config/metadata for type hints/units if present.
   - Else use target_field as a direct path.
 
 Generating CEL (no round-trip)
@@ -299,7 +299,7 @@ def cel_literal(v):
     return str(v)
 
 def to_cel(assertion: RulesetAssertion, *, left_prefix="doc"):
-    left = f"{left_prefix}.{assertion.target_catalog.slug}" if assertion.target_catalog_id else f"{left_prefix}.{assertion.target_field}"
+    left = f"{left_prefix}.{assertion.target_catalog_entry.slug}" if assertion.target_catalog_entry_id else f"{left_prefix}.{assertion.target_field}"
     r = assertion.rhs or {}
     o = assertion.options or {}
     op = assertion.operator

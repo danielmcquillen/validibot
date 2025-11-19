@@ -4,6 +4,12 @@
   // (rather than using bootstrap classes).
   box-shadow: var(--bs-box-shadow-sm) !important;
 
+  &.limit-width-card {
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
   .card-header {
     // card header always has a title but only sometimes has action buttons
     display: flex;

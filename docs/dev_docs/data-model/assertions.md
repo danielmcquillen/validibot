@@ -9,7 +9,7 @@ Each assertion row stores:
 
 - `assertion_type` – coarse mode (`basic` vs. `cel_expr`).
 - `operator` – normalized comparison operator (only meaningful for `basic` assertions).
-- `target_catalog` / `target_field` – FK to a catalog entry or a JSON-style path when the
+- `target_catalog_entry` / `target_field` – FK to a catalog entry or a JSON-style path when the
   validator allows free-form bindings.
 - `severity` – maps to the normalized Finding severity (`error`, `warning`, `info`).
 - `when_expression` – optional CEL guard that determines whether the assertion runs.

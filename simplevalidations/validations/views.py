@@ -24,11 +24,11 @@ from simplevalidations.core.utils import reverse_with_org, truthy
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import (
     VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
+    CatalogRunStage,
     LibraryLayout,
     ValidationRunStatus,
-    ValidatorRuleType,
     ValidationType,
-    CatalogRunStage,
+    ValidatorRuleType,
 )
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
@@ -673,6 +673,7 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             (entry.id, f"{entry.slug}")
             for entry in validator.catalog_entries.order_by("slug").all()
         ]
+
         def _build_stage_form(run_stage):
             form = ValidatorCatalogEntryForm(initial={"run_stage": run_stage})
             form.fields["run_stage"].widget = forms.HiddenInput()
@@ -707,12 +708,16 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             for rule in rules
         }
         show_output_tab = bool(validator.has_processor)
-        requested_signals_tab = (self.request.GET.get("signals_tab") or "inputs").lower()
+        requested_signals_tab = (
+            self.request.GET.get("signals_tab") or "inputs"
+        ).lower()
         allowed_signals_tabs = {"inputs"}
         if show_output_tab:
             allowed_signals_tabs.add("outputs")
         active_signals_tab = (
-            requested_signals_tab if requested_signals_tab in allowed_signals_tabs else "inputs"
+            requested_signals_tab
+            if requested_signals_tab in allowed_signals_tabs
+            else "inputs"
         )
         context.update(
             {
@@ -928,10 +933,14 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        validator = self.custom_validator.validator
+        blockers = self._list_delete_blockers(validator)
         context.update(
             {
-                "validator": self.custom_validator.validator,
+                "validator": validator,
                 "can_manage_validators": True,
+                "delete_blockers": blockers,
+                "can_delete": not blockers,
             }
         )
         return context
@@ -969,6 +978,31 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
             ) % {"name": validator.name}
         return None
 
+    def _list_delete_blockers(self, validator):
+        blockers: list[dict[str, str]] = []
+        steps = WorkflowStep.objects.filter(validator=validator).select_related(
+            "workflow",
+        )
+        for step in steps:
+            workflow_name = step.workflow.name if step.workflow else _("Unknown")
+            blockers.append(
+                {
+                    "label": _("Workflow step “%(step)s” (workflow: %(workflow)s)")
+                    % {
+                        "step": step.name,
+                        "workflow": workflow_name,
+                    },
+                    "url": reverse_with_org(
+                        "workflows:workflow_detail",
+                        request=self.request,
+                        kwargs={"pk": step.workflow_id},
+                    )
+                    if step.workflow_id
+                    else "",
+                }
+            )
+        return blockers
+
     def _delete_blocked_response(self, request, message):
         if request.headers.get("HX-Request"):
             return self._hx_toast_response(
@@ -977,13 +1011,17 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
                 status=400,
                 reswap="none",
             )
-        messages.error(request, message)
-        return redirect(
-            reverse_with_org(
-                "validations:validator_detail",
-                request=request,
-                kwargs={"pk": self.custom_validator.validator.pk},
-            ),
+        form = forms.Form(data={})
+        form.full_clean()
+        form.add_error(None, message)
+        context = self.get_context_data()
+        context["error_message"] = message
+        context["form"] = form
+        return render(
+            request,
+            self.template_name,
+            context,
+            status=200,
         )
 
     def _hx_toast_response(self, message, *, level="success", status=200, reswap=None):
@@ -1168,21 +1206,24 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
             ),
         )
 
-    def _resolve_selected_entries(self, signals: list[str]) -> list[ValidatorCatalogEntry]:
+    def _resolve_selected_entries(
+        self, signals: list[str]
+    ) -> list[ValidatorCatalogEntry]:
         ids = [int(pk) for pk in signals or [] if str(pk).isdigit()]
         return list(
             self.validator.catalog_entries.filter(pk__in=ids).order_by("slug"),
         )
 
-    def _validate_cel_expression(self, expr: str, entries: list[ValidatorCatalogEntry]) -> None:
+    def _validate_cel_expression(
+        self, expr: str, entries: list[ValidatorCatalogEntry]
+    ) -> None:
         expr = (expr or "").strip()
         if not expr:
             raise ValidationError(_("CEL expression is required."))
         if not self._delimiters_balanced(expr):
             raise ValidationError(_("Parentheses and brackets must be balanced."))
         identifiers = {
-            match.group(0)
-            for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expr)
+            match.group(0) for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expr)
         }
         allowed = {entry.slug for entry in entries} | {"payload"}
         unknown = {ident for ident in identifiers if ident not in allowed}

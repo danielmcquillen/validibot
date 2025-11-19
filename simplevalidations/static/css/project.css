@@ -13481,6 +13481,11 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 .app-card {
   box-shadow: var(--bs-box-shadow-sm) !important;
 }
+.app-card.limit-width-card {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
 .app-card .card-header {
   display: flex;
   flex-direction: row;

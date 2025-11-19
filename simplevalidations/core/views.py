@@ -71,7 +71,7 @@ def app_home_redirect(request: HttpRequest) -> HttpResponse:
         messages.error(request, _("You do not belong to any organizations yet."))
         return redirect("marketing:home")
 
-    return redirect(reverse("dashboard:my_dashboard", kwargs={"org_id": org.pk}))
+    return redirect(reverse("dashboard:my_dashboard"))
 
 
 def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:

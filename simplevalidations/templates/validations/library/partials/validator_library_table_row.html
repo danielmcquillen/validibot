@@ -1,26 +1,31 @@
 {% load i18n %}
-{% with row_id="validator-card-"|add:validator.pk %}
-  <tr id="{{ row_id }}">
-    <td class="align-middle">
-      <div class="fw-semibold">{{ validator.name }}</div>
-      <div class="text-muted small">{{ validator.slug }}</div>
-    </td>
-    <td class="align-middle">
-      {% if validator.is_system %}
-        <span class="badge text-bg-secondary text-uppercase">
-          {{ validator.validation_type }}
-        </span>
-      {% else %}
-        <span class="badge text-bg-info text-uppercase">
-          {{ validator.custom_validator.custom_type|default:_("Custom") }}
-        </span>
-      {% endif %}
-    </td>
-    <td class="align-middle text-muted small">
-      {{ validator.description|default:_("No description provided.") }}
-    </td>
-    <td class="align-middle text-end">
-      {% include "validations/library/partials/validator_library_actions.html" with validator=validator can_manage_validators=can_manage_validators target_id=row_id %}
-    </td>
-  </tr>
+
+{% with row_id=row_id|default:"validator-card-"|add:validator.id %}
+<tr id="{{ row_id }}">
+  <td class="align-middle">
+    <div class="fw-semibold">
+      {{ validator.name }}
+    </div>
+    <div class="text-muted small">
+      {{ validator.slug }}
+    </div>
+  </td>
+  <td class="align-middle">
+    {% if validator.is_system %}
+      <span class="badge text-bg-secondary text-uppercase">
+        {{ validator.validation_type }}
+      </span>
+    {% else %}
+      <span class="badge text-bg-info text-uppercase">
+        {{ validator.custom_validator.custom_type|default:_("Custom") }}
+      </span>
+    {% endif %}
+  </td>
+  <td class="align-middle text-muted small">
+    {{ validator.description|default:_("No description provided.") }}
+  </td>
+  <td class="align-middle text-end">
+    {% include "validations/library/partials/validator_library_actions.html" with validator=validator can_manage_validators=can_manage_validators target_id=row_id %}
+  </td>
+</tr>
 {% endwith %}

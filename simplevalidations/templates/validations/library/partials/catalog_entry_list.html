@@ -8,8 +8,10 @@
           data-sv-catalog-label="{{ entry.label|escape }}"
           data-sv-catalog-slug="{{ entry.slug|escape }}">
         <div class="d-flex justify-content-between align-items-start gap-2">
+          {% with display_label=entry.label|default:entry.slug %}
           <span class="fw-semibold catalog-entry-label"
-                data-original-text="{{ entry.label|escape }}">{{ entry.label }}</span>
+                data-original-text="{{ display_label|escape }}">{{ display_label }}</span>
+          {% endwith %}
           <span class="badge text-bg-light text-uppercase">
             {{ entry.get_entry_type_display }}
             {% if entry.entry_type == 'signal' %}
@@ -17,6 +19,11 @@
             {% endif %}
           </span>
         </div>
+        {% if entry.target_field %}
+          <div class="text-muted small mb-1">
+            {% trans "Target" %}: <code>{{ entry.target_field }}</code>
+          </div>
+        {% endif %}
         <p class="small mb-1 text-muted">
           {{ entry.description|default:_("No description.") }}
         </p>

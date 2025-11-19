@@ -219,7 +219,7 @@ class CelBasicEngineTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog=self.output_signal,
+            target_catalog_entry=self.output_signal,
             target_field="",
             rhs={"expr": "result.total == 5"},
         )
@@ -239,7 +239,7 @@ class CelBasicEngineTests(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
-            target_catalog=self.output_status,
+            target_catalog_entry=self.output_status,
             target_field="",
             rhs={"expr": 'result.status.startsWith("OK")'},
         )

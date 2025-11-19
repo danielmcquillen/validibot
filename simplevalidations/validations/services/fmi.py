@@ -59,6 +59,7 @@ def _read_model_description(fmu_file: UploadedFile | io.BufferedIOBase) -> str:
 
 
 def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
+    """Load ScalarVariable entries from modelDescription.xml into FMIVariable shells."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
@@ -124,6 +125,11 @@ def create_fmi_validator(
 ) -> Validator:
     """
     Create an FMI validator, parse the FMU, and seed catalog entries.
+
+    When ``approve_immediately`` is False the FMU will remain unapproved until a
+    probe run is completed. ``storage_backend`` can be supplied to stream the
+    upload to S3 or other storage providers; by default Django's FileField
+    storage is used.
     """
 
     with transaction.atomic():
@@ -213,6 +219,10 @@ def _persist_variables(
 def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbeResult:
     """
     Invoke the Modal probe function for an FMU and update metadata + catalog.
+
+    A probe is a short, safety-first run that parses modelDescription.xml and
+    confirms the FMU can be opened. We use it to populate variables and mark the
+    FMU as approved before allowing workflow authors to attach assertions.
     """
 
     runner = _FMIProbeRunner()
@@ -261,6 +271,9 @@ def _refresh_variables_from_probe(
 ) -> None:
     """
     Update FMIVariable rows and refresh catalog entries based on probe output.
+
+    We rebuild variables from the probe response to make sure the catalog stays
+    aligned with the latest FMU metadata.
     """
 
     validator = fmu_model.validators.first()

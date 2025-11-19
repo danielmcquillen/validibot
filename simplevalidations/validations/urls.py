@@ -16,6 +16,16 @@ urlpatterns = [
         name="fmi_validator_create",
     ),
     path(
+        "library/fmi/<int:pk>/probe/",
+        views.FMIProbeStartView.as_view(),
+        name="fmi_probe_start",
+    ),
+    path(
+        "library/fmi/<int:pk>/probe/status/",
+        views.FMIProbeStatusView.as_view(),
+        name="fmi_probe_status",
+    ),
+    path(
         "library/custom/new/",
         views.CustomValidatorCreateView.as_view(),
         name="custom_validator_create",

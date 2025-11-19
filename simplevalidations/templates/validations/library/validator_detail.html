@@ -36,6 +36,39 @@
       {% endif %}
     </div>
 
+    {% if validator.validation_type == 'FMI' and validator.fmu_model %}
+      <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{% trans "FMU Probe Status" %}:</strong>
+          <span class="badge text-bg-secondary">
+            {{ probe_result.status|default:"PENDING" }}
+          </span>
+          {% if probe_result.last_error %}
+            <span class="ms-2 text-danger">{{ probe_result.last_error }}</span>
+          {% endif %}
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-primary"
+                  hx-post="{% org_url 'validations:fmi_probe_start' pk=validator.pk %}"
+                  hx-trigger="click"
+                  hx-target="#probe-status"
+                  hx-swap="outerHTML">
+            <i class="bi bi-play-circle me-1"></i>
+            {% trans "Run Probe" %}
+          </button>
+          <button class="btn btn-outline-secondary"
+                  hx-get="{% org_url 'validations:fmi_probe_status' pk=validator.pk %}"
+                  hx-trigger="click"
+                  hx-target="#probe-status"
+                  hx-swap="outerHTML">
+            <i class="bi bi-arrow-clockwise me-1"></i>
+            {% trans "Refresh Status" %}
+          </button>
+        </div>
+      </div>
+      <div id="probe-status" class="d-none"></div>
+    {% endif %}
+
     <div class="row g-4">
       <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
         <div class="card app-card h-100">

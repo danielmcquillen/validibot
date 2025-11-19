@@ -13,8 +13,10 @@ from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView, TemplateView
+from django.views.generic import View
 from django.views.generic.edit import DeleteView, FormView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, viewsets
@@ -55,7 +57,9 @@ from simplevalidations.validations.utils import (
 from simplevalidations.validations.services.fmi import (
     FMIIntrospectionError,
     create_fmi_validator,
+    run_fmu_probe,
 )
+from simplevalidations.validations.tasks import run_fmu_probe_task
 from simplevalidations.workflows.models import Workflow, WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -738,6 +742,9 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 "validator_rules": rules,
                 "show_output_tab": show_output_tab,
                 "active_signals_tab": active_signals_tab,
+                "probe_result": getattr(validator.fmu_model, "probe_result", None)
+                if getattr(validator, "fmu_model", None)
+                else None,
             },
         )
         return context
@@ -826,6 +833,46 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
             _("Created FMI validator “%(name)s”.") % {"name": validator.name},
         )
         return redirect(self.get_success_url(validator))
+
+
+class FMIProbeStartView(CustomValidatorManageMixin, View):
+    """HTMX endpoint to kick off an FMU probe via Celery."""
+
+    def post(self, request, *args, **kwargs):
+        validator = get_object_or_404(Validator, pk=kwargs["pk"])
+        fmu = getattr(validator, "fmu_model", None)
+        if not fmu:
+            return JsonResponse(
+                {"status": "error", "message": _("No FMU attached to this validator.")},
+                status=400,
+            )
+        probe = getattr(fmu, "probe_result", None)
+        if probe:
+            probe.status = "PENDING"
+            probe.last_error = ""
+            probe.save(update_fields=["status", "last_error", "modified"])
+        run_fmu_probe_task.delay(fmu.id)
+        return JsonResponse({"status": "queued"})
+
+
+class FMIProbeStatusView(CustomValidatorManageMixin, View):
+    """Return the latest probe status for polling."""
+
+    def get(self, request, *args, **kwargs):
+        validator = get_object_or_404(Validator, pk=kwargs["pk"])
+        fmu = getattr(validator, "fmu_model", None)
+        probe = getattr(fmu, "probe_result", None) if fmu else None
+        if not probe:
+            return JsonResponse(
+                {"status": "missing", "message": _("Probe has not been requested.")},
+                status=404,
+            )
+        data = {
+            "status": probe.status,
+            "last_error": probe.last_error,
+            "details": probe.details,
+        }
+        return JsonResponse(data)
 
 
 class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):

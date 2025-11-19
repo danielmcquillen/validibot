@@ -8,8 +8,10 @@ from celery import shared_task
 from django.conf import settings
 
 from simplevalidations.validations.services.validation_run import ValidationRunService
+from simplevalidations.validations.services.fmi import run_fmu_probe
 
 if TYPE_CHECKING:
+    from simplevalidations.validations.models import FMUModel
     from simplevalidations.validations.services.models import ValidationRunTaskResult
 
 logger = logging.getLogger(__name__)
@@ -52,3 +54,23 @@ def execute_validation_run(
     # We return a result, even though Celery doesn't do anything with it.
     # The way this result gets to the API caller is via the DB record.
     return result.to_payload()
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(),
+    retry_backoff=False,
+)
+def run_fmu_probe_task(self, fmu_model_id: int) -> dict:
+    """
+    Execute a probe run for a stored FMU.
+
+    Probes parse modelDescription.xml and refresh FMU variables/catalog entries
+    without executing arbitrary native code in-process.
+    """
+
+    from simplevalidations.validations.models import FMUModel  # noqa: PLC0415
+
+    fmu: FMUModel = FMUModel.objects.get(pk=fmu_model_id)
+    result = run_fmu_probe(fmu)
+    return result.model_dump(mode="json")

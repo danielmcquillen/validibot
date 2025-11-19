@@ -574,6 +574,9 @@ def _fmu_upload_path(instance: "FMUModel", filename: str) -> str:
 class FMUModel(TimeStampedModel):
     """
     Stored FMU artifact plus parsed metadata used by FMI validators.
+
+    The FMU never executes inside Django; we store it for Modal runners to
+    download and for offline inspection/probe runs.
     """
 
     class FMIKind(models.TextChoices):
@@ -622,6 +625,9 @@ class FMUModel(TimeStampedModel):
 class FMIVariable(TimeStampedModel):
     """
     Parsed variable metadata from modelDescription.xml attached to an FMUModel.
+
+    These rows mirror ScalarVariable definitions so catalog entries can point
+    at stable FMU variable names.
     """
 
     fmu_model = models.ForeignKey(
@@ -660,6 +666,9 @@ class FMIVariable(TimeStampedModel):
 class FMUProbeResult(TimeStampedModel):
     """
     Tracks the latest probe state for an FMU prior to approval.
+
+    Probe runs validate that an FMU can be opened safely and collect a clean
+    variable snapshot for catalog seeding.
     """
 
     fmu_model = models.OneToOneField(

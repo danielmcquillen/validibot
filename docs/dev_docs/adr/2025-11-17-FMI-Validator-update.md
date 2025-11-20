@@ -20,6 +20,8 @@
 - UI and authoring updates:
   - Validator Library now offers “New FMI Validator” with an FMU upload form and probe status panel on validator detail.
   - Workflow authoring guide documents FMI usage and clarifies “probe” as a short safety/metadata run before assertions are allowed.
+- Test assets:
+  - Added a MIT-licensed reference FMU (`Feedthrough.fmu`) under `tests/assets/fmu/` to exercise probes and modal runs in tests.
 - Tests:
   - Added Django `TestCase` suites for FMI services (creation, probe refresh), engine dispatch, and probe HTMX endpoints; all green.
 

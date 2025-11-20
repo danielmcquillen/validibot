@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import io
-import zipfile
-
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
@@ -14,19 +11,13 @@ from sv_shared.fmi import FMIProbeResult, FMIVariableMeta
 
 
 def _make_fake_fmu(name: str = "demo") -> SimpleUploadedFile:
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<fmiModelDescription fmiVersion="2.0" modelName="{name}">
-  <ModelVariables>
-    <ScalarVariable name="u_in" causality="input" valueReference="1"><Real/></ScalarVariable>
-    <ScalarVariable name="y_out" causality="output" valueReference="2"><Real/></ScalarVariable>
-  </ModelVariables>
-</fmiModelDescription>
-"""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as archive:
-        archive.writestr("modelDescription.xml", xml)
-    buf.seek(0)
-    return SimpleUploadedFile(f"{name}.fmu", buf.getvalue(), content_type="application/octet-stream")
+    """Load the canned Feedthrough FMU from test assets."""
+
+    from pathlib import Path
+
+    asset = Path(__file__).resolve().parents[3] / "tests" / "assets" / "fmu" / "Feedthrough.fmu"
+    payload = asset.read_bytes()
+    return SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
 
 
 class FMIServiceTests(TestCase):

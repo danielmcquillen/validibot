@@ -99,3 +99,13 @@ Think of two conveyor belts:
 - **Belt B (Modal runtime):** Given a checksum, mount the volume, run the FMU, return outputs. Minimal state; just compute.
 
 If uploads/cache are failing, look at Belt A (Modal client creds, volumes). If simulation/results are failing, look at Belt B (Modal app deploy, fmpy/runtime logs).
+
+---
+
+## What does “probe” do?
+
+- **Purpose:** A probe is a lightweight, safety-first read of the FMU that parses `modelDescription.xml` and extracts variables. It does **not** run the FMU’s native code or simulation logic.
+- **When:** Right after upload/validation, before assertions are allowed. It’s how we seed/update the catalog so authors see the correct inputs/outputs.
+- **Where:** It runs in Modal (`probe_fmu`), using the same volume-mounted FMU the simulator uses, but it only opens the ZIP and parses XML.
+- **Outcome:** Variable metadata (`name`, `causality`, `type`, etc.) refreshed on the `FMUModel`, catalog entries rebuilt, approval status updated. If probe fails, the FMU remains unapproved.
+- **Why:** Early detection of malformed FMUs, and authoritative variable lists for catalog binding, without executing untrusted native code in Django.

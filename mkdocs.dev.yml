@@ -34,6 +34,8 @@ nav:
   - Quick Reference:
       - Quick Reference: quick_reference.md
       - Related Libraries: related_libraries.md
+  - Cheat Sheets:
+      - Architecture: cheat_sheets/architecture-overview-simplevalidations-modal.md
   - Overview:
       - Platform Overview: overview/platform_overview.md
       - Terminology: overview/terminology.md

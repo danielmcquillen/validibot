@@ -99,6 +99,10 @@ class ModalConnectivityTest(TestCase):
         import modal
         import modal.exception as exc
 
+        # Sanity check credentials are available before calling Modal.
+        if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
+            self.skipTest("Modal credentials not configured; skipping FMU execution test.")
+
         assets_root = Path(__file__).resolve().parent / "assets" / "fmu" / "linux64"
         asset = assets_root / "Feedthrough.fmu"
         payload = asset.read_bytes()

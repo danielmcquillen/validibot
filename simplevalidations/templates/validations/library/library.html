@@ -64,16 +64,12 @@
         </div>
 
         {% if can_manage_validators %}
-          <a href="{{ fmi_validator_create_url }}"
-             class="btn btn-outline-primary me-2">
-            <i class="bi bi-cpu me-2"></i>
-            {% trans "New FMI Validator" %}
-          </a>
-          <a href="{% org_url 'validations:custom_validator_create' %}"
-             class="btn btn-primary">
+          <button class="btn btn-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#validatorCreateModal">
             <i class="bi bi-plus me-2"></i>
-            {% trans "New Custom Validator" %}
-          </a>
+            {% trans "New Validator" %}
+          </button>
         {% endif %}
       </div>
     </div>
@@ -158,3 +154,10 @@
     </div>
   </div>
 {% endblock app_content %}
+
+{% block modal %}
+  {{ block.super }}
+  {% if can_manage_validators %}
+    {% include "validations/library/partials/modal_validator_create.html" %}
+  {% endif %}
+{% endblock modal %}

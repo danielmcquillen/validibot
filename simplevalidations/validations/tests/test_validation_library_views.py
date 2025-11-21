@@ -53,6 +53,10 @@ class TestValidationLibraryViews:
         content = response.content.decode()
         assert "EnergyPlus Validation" in content
         assert "Modelica Validator" in content
+        options = response.context["validator_create_options"]
+        option_values = {opt["value"] for opt in options}
+        assert {"custom-basic", "fmi"} <= option_values
+        assert response.context["validator_create_selected"] == options[0]["value"]
 
     def test_library_page_honors_tab_query_param(self, client):
         self._setup_user(client, RoleCode.OWNER)

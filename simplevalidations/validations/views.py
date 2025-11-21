@@ -564,6 +564,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
         org = self.get_active_org()
         active_tab = self.get_active_tab()
         layout = str(self._get_layout())
+        create_options = self._build_validator_create_options()
+        default_selection = create_options[0]["value"] if create_options else None
         context.update(
             {
                 "active_tab": active_tab,
@@ -574,6 +576,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                     "validations:fmi_validator_create",
                     request=self.request,
                 ),
+                "validator_create_options": create_options,
+                "validator_create_selected": default_selection,
                 "system_validators": Validator.objects.filter(is_system=True)
                 .order_by("order", "validation_type", "name")
                 .select_related("custom_validator", "org"),
@@ -632,6 +636,40 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
             "grid": f"?{grid_query}" if grid_query else "?",
             "list": f"?{list_query}" if list_query else "?",
         }
+
+    def _build_validator_create_options(self) -> list[dict[str, str]]:
+        return [
+            {
+                "value": "custom-basic",
+                "name": str(_("Custom Basic Validator")),
+                "subtitle": str(_("Author-defined")),
+                "description": str(
+                    _(
+                        "Create a validator with custom inputs, outputs, and CEL assertions.",
+                    ),
+                ),
+                "icon": "bi-sliders",
+                "url": reverse_with_org(
+                    "validations:custom_validator_create",
+                    request=self.request,
+                ),
+            },
+            {
+                "value": "fmi",
+                "name": str(_("FMI Validator")),
+                "subtitle": str(_("Simulation")),
+                "description": str(
+                    _(
+                        "Upload an FMU to auto-discover signals and run FMI-backed checks.",
+                    ),
+                ),
+                "icon": "bi-cpu",
+                "url": reverse_with_org(
+                    "validations:fmi_validator_create",
+                    request=self.request,
+                ),
+            },
+        ]
 
 
 class ValidatorDetailView(ValidatorLibraryMixin, DetailView):

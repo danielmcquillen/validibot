@@ -1,51 +1,37 @@
 {% load i18n core_tags %}
 
 <div class="card app-card h-100">
-  <div class="card-header d-flex align-items-center justify-content-between">
+  <div class="card-header">
     {% if show_output_tab %}
-      <ul class="nav nav-tabs border-0" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link
-                         {% if active_signals_tab == 'inputs' %}
-                           active
-                         {% endif %}"
-                  id="{{ catalog_tab_prefix|default:'signals' }}-inputs-tab"
-                  data-bs-toggle="tab"
-                  data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
-                  type="button"
-                  role="tab"
-                  aria-controls="{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
-                  aria-selected="{% if active_signals_tab == 'inputs' %}
-                                   true
-                                 {% else %}
-                                   false
-                                 {% endif %}">
-            {% trans "Input Signals" %}
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link
-                         {% if active_signals_tab == 'outputs' %}
-                           active
-                         {% endif %}"
-                  id="{{ catalog_tab_prefix|default:'signals' }}-outputs-tab"
-                  data-bs-toggle="tab"
-                  data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
-                  type="button"
-                  role="tab"
-                  aria-controls="{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
-                  aria-selected="{% if active_signals_tab == 'outputs' %}
-                                   true
-                                 {% else %}
-                                   false
-                                 {% endif %}">
-            {% trans "Output Signals" %}
-          </button>
-        </li>
-      </ul>
-      <div class="d-flex align-items-center ms-auto">
+      <div class="d-flex align-items-center w-100">
+        <ul class="nav nav-tabs card-header-tabs flex-grow-1" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link{% if active_signals_tab == 'inputs' %} active{% endif %}"
+                    id="{{ catalog_tab_prefix|default:'signals' }}-inputs-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
+                    type="button"
+                    role="tab"
+                    aria-controls="{{ catalog_tab_prefix|default:'signals' }}-inputs-panel"
+                    aria-selected="{% if active_signals_tab == 'inputs' %}true{% else %}false{% endif %}">
+              {% trans "Input Signals" %}
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link{% if active_signals_tab == 'outputs' %} active{% endif %}"
+                    id="{{ catalog_tab_prefix|default:'signals' }}-outputs-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
+                    type="button"
+                    role="tab"
+                    aria-controls="{{ catalog_tab_prefix|default:'signals' }}-outputs-panel"
+                    aria-selected="{% if active_signals_tab == 'outputs' %}true{% else %}false{% endif %}">
+              {% trans "Output Signals" %}
+            </button>
+          </li>
+        </ul>
         {% if can_manage_validators %}
-          <button class="btn btn-sm btn-primary"
+          <button class="btn btn-sm btn-primary ms-3"
                   data-bs-toggle="modal"
                   data-bs-target="#modal-signal-create-input">
             <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
@@ -53,16 +39,18 @@
         {% endif %}
       </div>
     {% else %}
-      <div class="card-title mb-0">
-        {% trans "Signals" %}
+      <div class="d-flex align-items-center w-100">
+        <div class="card-title mb-0">
+          {% trans "Signals" %}
+        </div>
+        {% if can_manage_validators %}
+          <button class="btn btn-sm btn-primary ms-auto"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-signal-create-input">
+            <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+          </button>
+        {% endif %}
       </div>
-      {% if can_manage_validators %}
-        <button class="btn btn-sm btn-primary ms-auto"
-                data-bs-toggle="modal"
-                data-bs-target="#modal-signal-create-input">
-          <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
-        </button>
-      {% endif %}
     {% endif %}
   </div>
   <div class="card-body">

@@ -11,11 +11,11 @@ Flow (what you should picture):
 1. In the Django UI, the author uploads an FMU while creating an FMI validator.
 2. Django immediately sanity-checks the file: it’s a ZIP, has `modelDescription.xml`, no disallowed binaries, and is under size limits.
 3. Django computes a checksum and stores the FMU in canonical storage (S3 in production; filesystem locally). S3 is the source of truth.
-4. Django then uses the **Modal Python client from the control plane** to copy the FMU into a Modal Volume:
+4. Django then uses the **Modal Python client from the control plane** to copy the FMU into a Modal Volume. This keeps uploads authenticated and avoids presigned URLs or worker-to-worker uploads.
    - Volume: `fmi-cache` (or `fmi-cache-test` when `FMI_USE_TEST_VOLUME=1`).
    - Path inside the volume: `/fmus/<checksum>.fmu` (or `/fmus-test/<checksum>.fmu`).
    - Pattern: `Volume.batch_upload(force=True).put_file(...)` so reruns overwrite the same checksum.
-5. Django parses `modelDescription.xml`, seeds catalog entries, and records checksum + volume path on the `FMUModel` so later runs know where to look.
+5. Django parses `modelDescription.xml`, seeds catalog entries, and records checksum + volume path on the `FMUModel` so later runs know where to look. The checksum is the stable identifier across S3 and Modal.
 6. Optional probe: Django calls the Modal `probe_fmu` to re-parse variables inside the Modal container; it updates catalog/approval based on that probe.
 
 Outcome: validator references the FMU by checksum; Modal Volume has the FMU; S3 holds the canonical copy.
@@ -92,3 +92,10 @@ FMIRunResult -> Django -> CEL assertions -> stored run results
 - **Checksum addressing:** The checksum is the stable key across S3 and Modal; it prevents duplicate content and keeps Modal runs deterministic.
 - **Prod/test volumes:** Isolation for local/integration work; no accidental writes to prod volumes when running tests.
 - **Modal runs are short-lived:** The Modal runner only needs to read the cached FMU and produce outputs; all heavy lifting (upload, catalog seeding) happens in Django.
+
+Think of two conveyor belts:
+
+- **Belt A (Django control plane):** Validate, checksum, store (S3), copy to Modal Volume, build catalog. No Modal containers involved.
+- **Belt B (Modal runtime):** Given a checksum, mount the volume, run the FMU, return outputs. Minimal state; just compute.
+
+If uploads/cache are failing, look at Belt A (Modal client creds, volumes). If simulation/results are failing, look at Belt B (Modal app deploy, fmpy/runtime logs).

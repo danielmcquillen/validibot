@@ -29,6 +29,7 @@
 - When you see ambiguity, clarify assumptions with the team before coding.
 - Default to Django Crispy Forms for HTML forms. If a legacy form is not
   using Crispy, capture a TODO in the docs or tracking issue before diverging.
+- Do **not** add/commit/push or otherwise modify git state unless explicitly instructed. Avoid staging files or running git commands that change the repo by default. It's ok to read git history or look at git status to figure out what has changed.
 
 ## Ready-to-Help Checklist
 

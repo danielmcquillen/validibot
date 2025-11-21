@@ -576,7 +576,9 @@ class FMUModel(TimeStampedModel):
     Stored FMU artifact plus parsed metadata used by FMI validators.
 
     The FMU never executes inside Django; we store it for Modal runners to
-    download and for offline inspection/probe runs.
+    download and for offline inspection/probe runs. Each FMU also records a
+    checksum and Modal Volume path so the Modal runtime can reuse a cached
+    copy keyed by checksum.
     """
 
     class FMIKind(models.TextChoices):
@@ -604,6 +606,18 @@ class FMUModel(TimeStampedModel):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
     file = models.FileField(upload_to=_fmu_upload_path)
+    checksum = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text=_("SHA256 checksum used to reference cached FMUs in Modal."),
+    )
+    modal_volume_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Path inside the Modal Volume cache for this FMU."),
+    )
     fmi_version = models.CharField(
         max_length=8,
         choices=FMIVersion.choices,

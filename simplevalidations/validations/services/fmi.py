@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import io
+import os
 import zipfile
+from pathlib import Path
 from typing import Iterable
 
 from defusedxml import ElementTree as ET
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
@@ -28,7 +32,23 @@ from simplevalidations.validations.models import (
     Validator,
     ValidatorCatalogEntry,
 )
-from sv_shared.fmi import FMIProbeResult
+from sv_shared.fmi import (
+    FMIProbeResult,
+    FMUVolumeUploadRequest,
+    FMUVolumeUploadResult,
+)
+
+MAX_FMU_SIZE_BYTES = 50 * 1024 * 1024
+DISALLOWED_EXTENSIONS = {
+    ".exe",
+    ".dll",
+    ".dylib",
+    ".bat",
+    ".sh",
+    ".cmd",
+    ".so",
+}
+_TRUE_STRINGS = {"1", "true", "yes", "on"}
 
 
 class FMIIntrospectionError(ValueError):
@@ -47,15 +67,23 @@ class _FMIProbeRunner(ModalRunnerMixin):
     modal_return_logs_default = False
 
 
-def _read_model_description(fmu_file: UploadedFile | io.BufferedIOBase) -> str:
-    try:
-        with zipfile.ZipFile(fmu_file, "r") as archive:
-            if "modelDescription.xml" not in archive.namelist():
-                raise FMIIntrospectionError("FMU is missing modelDescription.xml.")
-            with archive.open("modelDescription.xml") as handle:
-                return handle.read().decode("utf-8")
-    except zipfile.BadZipFile as exc:
-        raise FMIIntrospectionError("FMU is not a valid zip archive.") from exc
+class _FMUModalCachePublisher(ModalRunnerMixin):
+    """Modal runner used to persist FMUs into a shared Modal Volume cache."""
+
+    modal_app_name = "fmi-runner"
+    modal_function_name = "upload_fmu_to_volume"
+    modal_return_logs_default = False
+
+
+def _use_test_volume() -> bool:
+    """
+    Return True when the environment requests the test Modal Volume.
+
+    This keeps production and test FMUs isolated in separate Modal volumes.
+    """
+
+    raw = os.getenv("FMI_USE_TEST_VOLUME", "")
+    return str(raw).lower() in _TRUE_STRINGS
 
 
 def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
@@ -93,6 +121,58 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
     return model_name, fmi_version, variables
 
 
+def _validate_fmu_bytes(payload: bytes, filename: str) -> tuple[str, str, list[FMIVariable], str]:
+    """
+    Perform structural, safety, and metadata validation on an FMU payload.
+
+    Returns ``(model_name, fmi_version, variables, checksum)`` after verifying
+    the archive is a ZIP, contains modelDescription.xml, and does not include
+    obviously dangerous file types.
+    """
+
+    display_name = filename or "fmu"
+    if len(payload) > MAX_FMU_SIZE_BYTES:
+        raise FMIIntrospectionError(
+            _("FMU %(name)s exceeds the maximum size of %(limit)s bytes.")
+            % {"name": display_name, "limit": MAX_FMU_SIZE_BYTES},
+        )
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
+            names = archive.namelist()
+            if "modelDescription.xml" not in names:
+                raise FMIIntrospectionError(
+                    _("FMU %(name)s is missing modelDescription.xml.")
+                    % {"name": display_name},
+                )
+            for name in names:
+                member = name.lower()
+                suffix = Path(member).suffix
+                if member.startswith("../") or member.startswith("/"):
+                    raise FMIIntrospectionError(
+                        _("FMU %(name)s contains unsafe path entries.")
+                        % {"name": display_name},
+                    )
+                if suffix in DISALLOWED_EXTENSIONS:
+                    raise FMIIntrospectionError(
+                        _("FMU %(name)s contains disallowed file %(file)s.")
+                        % {"name": display_name, "file": name},
+                    )
+            with archive.open("modelDescription.xml") as handle:
+                xml_text = handle.read().decode("utf-8")
+    except zipfile.BadZipFile as exc:
+        raise FMIIntrospectionError(
+            _("FMU %(name)s is not a valid zip archive.") % {"name": display_name}
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise FMIIntrospectionError(
+            _("modelDescription.xml in %(name)s is not UTF-8 text.") % {"name": display_name}
+        ) from exc
+
+    model_name, fmi_version, variables = _parse_variables(xml_text)
+    checksum = hashlib.sha256(payload).hexdigest()
+    return model_name, fmi_version, variables, checksum
+
+
 def _data_type_for_variable(value_type: str) -> str:
     vt = (value_type or "").lower()
     if vt in {"real", "integer", "enumeration"}:
@@ -111,6 +191,39 @@ def _run_stage_for_causality(causality: str) -> CatalogRunStage | None:
     if lowered == "output":
         return CatalogRunStage.OUTPUT
     return None
+
+
+def _cache_fmu_in_modal_volume(
+    *,
+    fmu_model: FMUModel,
+    checksum: str,
+    filename: str,
+    payload: bytes,
+    use_test_volume: bool = False,
+) -> str:
+    """
+    Copy a validated FMU into the Modal Volume cache and return the cached path.
+
+    This avoids presigned URL handling at run time because Modal will read
+    directly from the cached FMU keyed by checksum.
+    """
+
+    publisher = _FMUModalCachePublisher()
+    request = FMUVolumeUploadRequest(
+        checksum=checksum,
+        filename=filename,
+        fmu_bytes=payload,
+        size_bytes=len(payload),
+    )
+    response = publisher._invoke_modal_runner(  # type: ignore[attr-defined]
+        include_logs=False,
+        payload=request.model_dump(mode="json"),
+        use_test_volume=use_test_volume,
+    )
+    result = FMUVolumeUploadResult.model_validate(response)
+    if not result.stored:
+        raise FMUStorageError("Modal volume refused to store FMU.")
+    return result.volume_path
 
 
 def create_fmi_validator(
@@ -133,8 +246,14 @@ def create_fmi_validator(
     """
 
     with transaction.atomic():
+        raw_bytes = upload.read()
+        model_name, fmi_version, variables, checksum = _validate_fmu_bytes(
+            payload=raw_bytes,
+            filename=upload.name,
+        )
+        wrapped_upload = ContentFile(raw_bytes, name=upload.name)
         try:
-            stored_file = upload if storage_backend is None else storage_backend(upload)
+            stored_file = wrapped_upload if storage_backend is None else storage_backend(wrapped_upload)
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
         fmu = FMUModel.objects.create(
@@ -143,10 +262,9 @@ def create_fmi_validator(
             name=name,
             description=description,
             file=stored_file,
-            size_bytes=getattr(upload, "size", 0) or 0,
+            size_bytes=len(raw_bytes),
+            checksum=checksum,
         )
-        model_description = _read_model_description(fmu.file)
-        model_name, fmi_version, variables = _parse_variables(model_description)
         fmu.fmi_version = fmi_version
         fmu.introspection_metadata = {
             "model_name": model_name,
@@ -154,6 +272,18 @@ def create_fmi_validator(
         }
         fmu.is_approved = approve_immediately
         fmu.save()
+
+        try:
+            fmu.modal_volume_path = _cache_fmu_in_modal_volume(
+                fmu_model=fmu,
+                checksum=checksum,
+                filename=upload.name,
+                payload=raw_bytes,
+                use_test_volume=_use_test_volume(),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            raise FMUStorageError(str(exc)) from exc
+        fmu.save(update_fields=["modal_volume_path", "modified"])
 
         validator = Validator.objects.create(
             org=org,
@@ -231,6 +361,7 @@ def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbe
         "name",
         "",
     )
+    fmu_url = getattr(fmu_model.file, "url", None)
     probe_record, _ = FMUProbeResult.objects.get_or_create(
         fmu_model=fmu_model,
         defaults={"status": FMUProbeStatus.PENDING},
@@ -242,6 +373,9 @@ def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbe
     try:
         raw = runner._invoke_modal_runner(  # noqa: SLF001
             fmu_storage_key=storage_key,
+            fmu_url=fmu_url,
+            fmu_checksum=fmu_model.checksum,
+            use_test_volume=_use_test_volume(),
             return_logs=return_logs,
         )
         result = FMIProbeResult.model_validate(raw)

@@ -4,8 +4,12 @@ SimpleValidations collaborates with two sibling projects that live alongside thi
 
 ## Project Layout
 
-- `../sv_shared`: Shared Python package installed into this project as the `sv-shared` dependency. Source lives in the neighbouring repository, but a vendored version is located inside the virtual environment at `.venv/lib/python3.x/site-packages/sv_shared`. Any changes should be made in sv_shared, and then bump the dependency here.
+- `../sv_shared`: Shared Python package installed into this project as the `sv-shared` dependency. Source lives in the neighbouring repository, but a vendored version is located inside the virtual environment at `.venv/lib/python3.x/site-packages/sv_shared`. Any changes should be made in sv_shared directly and it's version incremented.
 - `../sv_modal`: Django + Modal.com orchestration code that runs remote validation jobs. There is no direct Python path import from this project, so use filesystem-relative imports or API contracts when wiring up engines.
+
+sv_modal installs sv_shared via a github reference. Do not change this. When sv_shared is updated, you must reinstall it i the sv_modal project like:
+
+    uv lock --upgrade-package sv-shared && uv sync --dev.
 
 ## sv_shared
 
@@ -25,6 +29,10 @@ SimpleValidations collaborates with two sibling projects that live alongside thi
 
 ## Working Across Repos
 
-- Keep all three repositories checked out in the same parent folder so relative references remain valid.
+- Keep all three repositories checked out in their respective folders.
 - During development, open the relevant modules in `../sv_shared` and `../sv_modal` alongside the Django code to avoid contract drift.
 - When touching integrations, note follow-up actions (tests, dependency bumps, deployment sequencing) in the tracking issue or project board.
+- Make sure to update documentation in both extenal projects and changes are effected while working in this one.
+- When `sv_shared` changes, bump its version, publish/push it, then upgrade both this project and `sv_modal` to that version (do **not** swap `sv_modal` to a local editable reference). In `sv_modal`, run `uv lock --upgrade-package sv-shared && uv sync --dev`.
+- When `sv_modal` changes and you need those changes available to tests, redeploy the Modal apps (for example `modal deploy -m sv_fmi.modal_app` and `modal deploy -m sv_energyplus.modal_app`) and ensure required Modal volumes exist. For isolated runs set `FMI_USE_TEST_VOLUME=1` / `FMI_TEST_VOLUME_NAME` (and the analogous EnergyPlus vars) so test runs do not touch production volumes.
+- Use `sv_modal/update_modal.sh` as a one-stop script: it upgrades `sv_shared`, syncs deps, creates prod/test Modal volumes for FMI and EnergyPlus, and redeploys both Modal apps so Django integration tests hit current runners.

@@ -11,7 +11,7 @@ from simplevalidations.validations.engines.fmi import FMIValidationEngine
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.workflows.tests.factories import WorkflowFactory
-from sv_shared.fmi import FMIRunResult
+from sv_shared.fmi import FMIRunResult, FMUVolumeUploadResult
 
 
 def _fake_fmu() -> SimpleUploadedFile:
@@ -24,11 +24,40 @@ def _fake_fmu() -> SimpleUploadedFile:
     return SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
 
 
+class _FakeModalCacheUploader:
+    """Capture FMU cache uploads without calling Modal."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def __call__(self, **kwargs):
+        self.calls.append(kwargs)
+        return FMUVolumeUploadResult(
+            stored=True,
+            volume_path="/fmus/test-cache.fmu",
+        ).model_dump(mode="json")
+
+
+def _prime_modal_cache_fake():
+    """
+    Inject a fake cache uploader so FMI validator creation avoids real Modal calls.
+    """
+
+    from simplevalidations.validations.services import fmi as fmi_module
+
+    uploader = _FakeModalCacheUploader()
+    fmi_module._FMUModalCachePublisher.configure_modal_runner(uploader)  # type: ignore[attr-defined]
+    return uploader
+
+
 class FMIEngineTests(TestCase):
     """Validate FMI engine Modal dispatch and required configuration."""
 
     def tearDown(self):
         FMIValidationEngine.configure_modal_runner(None)
+        from simplevalidations.validations.services import fmi as fmi_module
+
+        fmi_module._FMUModalCachePublisher.configure_modal_runner(None)  # type: ignore[attr-defined]
 
     def test_fmi_engine_success_path(self):
         org = OrganizationFactory()
@@ -37,6 +66,7 @@ class FMIEngineTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         upload = _fake_fmu()
+        _prime_modal_cache_fake()
         validator = create_fmi_validator(
             org=org,
             project=workflow.project,
@@ -89,6 +119,7 @@ class FMIEngineTests(TestCase):
             org=org,
             allowed_file_types=[SubmissionFileType.BINARY],
         )
+        _prime_modal_cache_fake()
         validator = create_fmi_validator(org=org, project=None, name="has-fmu", upload=_fake_fmu())
         validator.fmu_model = None
         validator.is_system = True

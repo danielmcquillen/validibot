@@ -6,7 +6,10 @@ from django.urls import reverse
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory, grant_role
 from simplevalidations.validations.services.fmi import create_fmi_validator
-from simplevalidations.validations.tests.test_fmi_engine import _fake_fmu  # reuse helper
+from simplevalidations.validations.tests.test_fmi_engine import (
+    _fake_fmu,
+    _prime_modal_cache_fake,
+)  # reuse helper
 
 
 class FMIProbeViewTests(TestCase):
@@ -18,12 +21,18 @@ class FMIProbeViewTests(TestCase):
         grant_role(self.user, self.org, RoleCode.OWNER)
         self.client.force_login(self.user)
         self.user.set_current_org(self.org)
+        _prime_modal_cache_fake()
         self.validator = create_fmi_validator(
             org=self.org,
             project=None,
             name="Probe Validator",
             upload=_fake_fmu(),
         )
+
+    def tearDown(self):
+        from simplevalidations.validations.services import fmi as fmi_module
+
+        fmi_module._FMUModalCachePublisher.configure_modal_runner(None)  # type: ignore[attr-defined]
 
     def test_probe_start_returns_queue_status(self):
         url = reverse("validations:fmi_probe_start", args=[self.validator.pk])

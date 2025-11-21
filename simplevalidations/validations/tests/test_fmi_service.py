@@ -7,6 +7,7 @@ from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.constants import CatalogRunStage, ValidationType
 from simplevalidations.validations.services.fmi import create_fmi_validator, run_fmu_probe
+from simplevalidations.validations.tests.test_fmi_engine import _prime_modal_cache_fake
 from sv_shared.fmi import FMIProbeResult, FMIVariableMeta
 
 
@@ -26,11 +27,13 @@ class FMIServiceTests(TestCase):
     def setUp(self):
         self.org = OrganizationFactory()
         self.project = ProjectFactory(org=self.org)
+        _prime_modal_cache_fake()
 
     def tearDown(self):
         from simplevalidations.validations.services import fmi as fmi_module
 
         fmi_module._FMIProbeRunner.configure_modal_runner(None)  # type: ignore[attr-defined]
+        fmi_module._FMUModalCachePublisher.configure_modal_runner(None)  # type: ignore[attr-defined]
 
     def test_create_fmi_validator_introspects_and_seeds_catalog(self):
         upload = _make_fake_fmu()
@@ -55,6 +58,7 @@ class FMIServiceTests(TestCase):
         self.assertIsNotNone(fmu_model)
         self.assertEqual(fmu_model.variables.count(), 2)
         self.assertTrue(fmu_model.is_approved)
+        self.assertTrue(fmu_model.modal_volume_path)
 
     def test_run_fmu_probe_refreshes_variables(self):
         upload = _make_fake_fmu()

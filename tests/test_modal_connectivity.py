@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+
+from django.conf import settings
+from django.test import TestCase
+
+from sv_shared.fmi import (
+    FMIRunResult,
+    FMIRunStatus,
+    FMUVolumeUploadRequest,
+)
+
+
+class ModalConnectivityTest(TestCase):
+    """
+    Integration checks against Modal using configured credentials.
+
+    These tests confirm that authentication works, that the FMI runner functions
+    exist, and that we can execute a small FMU on Modal using the cached Volume.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        os.environ.setdefault("FMI_USE_TEST_VOLUME", "1")
+        os.environ.setdefault("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
+        self._ensure_modal_env()
+        if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
+            self.skipTest("Modal credentials not configured; skipping connectivity test.")
+        try:
+            import modal  # noqa: F401
+        except ImportError as err:  # pragma: no cover - defensive
+            self.skipTest(f"Modal package not installed: {err}")
+
+    def _ensure_modal_env(self) -> None:
+        """
+        Pull Modal credentials from Django settings into the environment so the
+        Modal client can authenticate without manual sourcing.
+        """
+
+        token_id = getattr(settings, "MODAL_TOKEN_ID", "") or ""
+        token_secret = getattr(settings, "MODAL_TOKEN_SECRET", "") or ""
+        if token_id and token_secret:
+            os.environ.setdefault("MODAL_TOKEN_ID", token_id)
+            os.environ.setdefault("MODAL_TOKEN_SECRET", token_secret)
+
+    def test_modal_can_lookup_fmi_runner(self) -> None:
+        """
+        Verify that we can authenticate to Modal and locate the FMI runner function.
+
+        Passing means credentials are valid and the Modal app "fmi-runner" with
+        function "run_fmi_simulation" exists.
+        """
+
+        import modal
+        import modal.exception as exc
+
+        try:
+            fn = modal.Function.from_name("fmi-runner", "run_fmi_simulation")
+        except exc.AuthError as err:
+            self.fail(f"Modal authentication failed: {err}")
+        except exc.NotFoundError:
+            self.fail(
+                "Modal fmi-runner.run_fmi_simulation not found; deploy the Modal app "
+                "or update the function name."
+            )
+        except Exception as err:  # pragma: no cover - defensive
+            self.fail(f"Modal lookup unexpected error: {err}")
+        else:
+            self.assertIsNotNone(fn)
+
+    def test_modal_has_cache_uploader(self) -> None:
+        """Ensure the cache uploader function is registered and callable."""
+
+        import modal
+        import modal.exception as exc
+
+        try:
+            fn = modal.Function.from_name("fmi-runner", "upload_fmu_to_volume")
+        except exc.AuthError as err:
+            self.fail(f"Modal authentication failed: {err}")
+        except exc.NotFoundError:
+            self.fail(
+                "Modal fmi-runner.upload_fmu_to_volume not found; deploy the Modal app "
+                "or update the function name."
+            )
+        else:
+            self.assertIsNotNone(fn)
+
+    def test_modal_executes_feedthrough_fmu_from_volume(self) -> None:
+        """
+        Upload the linux64 Feedthrough FMU into the Modal Volume and execute it.
+
+        The FMU echoes Int32_input to Int32_output. We assert that output is 5.
+        """
+
+        import modal
+        import modal.exception as exc
+
+        assets_root = Path(__file__).resolve().parent / "assets" / "fmu" / "linux64"
+        asset = assets_root / "Feedthrough.fmu"
+        payload = asset.read_bytes()
+        checksum = hashlib.sha256(payload).hexdigest()
+
+        try:
+            uploader = modal.Function.from_name("fmi-runner", "upload_fmu_to_volume")
+            runner = modal.Function.from_name("fmi-runner", "run_fmi_simulation")
+        except exc.NotFoundError as err:
+            self.fail(f"Modal FMI functions missing: {err}")
+        except exc.AuthError as err:
+            self.fail(f"Modal authentication failed: {err}")
+
+        upload_request = FMUVolumeUploadRequest(
+            checksum=checksum,
+            filename=asset.name,
+            fmu_bytes=payload,
+            size_bytes=len(payload),
+        )
+        upload_kwargs = {
+            "payload": upload_request.model_dump(mode="json"),
+            "use_test_volume": True,
+        }
+        if hasattr(uploader, "call"):
+            uploader.call(**upload_kwargs)
+        elif hasattr(uploader, "remote"):
+            uploader.remote(**upload_kwargs)
+        else:
+            uploader(**upload_kwargs)
+
+        run_kwargs = {
+            "fmu_storage_key": str(asset),
+            "fmu_url": None,
+            "fmu_checksum": checksum,
+            "use_test_volume": True,
+            "inputs": {"Int32_input": 5},
+            "simulation_config": {"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
+            "output_variables": ["Int32_output"],
+            "return_logs": False,
+        }
+        if hasattr(runner, "call"):
+            raw_result = runner.call(**run_kwargs)
+        elif hasattr(runner, "remote"):
+            raw_result = runner.remote(**run_kwargs)
+        else:
+            raw_result = runner(**run_kwargs)
+
+        result = FMIRunResult.model_validate(raw_result)
+        self.assertEqual(result.status, FMIRunStatus.SUCCESS)
+        self.assertEqual(result.outputs.get("Int32_output"), 5.0)

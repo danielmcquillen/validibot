@@ -45,9 +45,9 @@ The dedicated editor is specific to the validation type you picked. All forms in
 - Add notes to capture any context for the run.
 
 ### FMI (preview)
-- Attach an FMI validator that points to an uploaded FMU asset. The validator enforces that non-system FMI entries include an FMU before they can be saved.
-- Catalog inputs/outputs are generated from the FMU metadata. A **probe** is a short, safe-before-fast check that opens the FMU, parses `modelDescription.xml`, and seeds the catalog. We run the probe before allowing workflow authors to bind assertions so the catalog reflects the FMU’s declared IO.
-- Execution will dispatch to Modal.com once the FMI runner is wired up; today the runner validates FMU structure and echoes requested outputs so you can exercise the authoring flow.
+- Attach an FMI validator and upload an FMU. The upload is stored in canonical storage (S3 in production) **and** copied into a Modal Volume cache keyed by the FMU checksum, so Modal runs never need a presigned URL.
+- Catalog inputs/outputs are generated from the FMU metadata. A **probe** is a short, safety-first run that opens the FMU, validates `modelDescription.xml`, checks for suspicious files, and seeds the catalog before assertions can be added.
+- Execution now runs on Modal using the cached FMU: inputs flow to the FMU run, outputs are captured, and CEL assertions evaluate them just like other validators.
 
 ### AI Assist
 - Select the template (**AI Critic** or **Policy Check**).

@@ -8,6 +8,7 @@ errors clearly so authors understand the missing pieces.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any
 
 from django.utils.translation import gettext as _
@@ -157,8 +158,16 @@ class FMIValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             storage_key = getattr(fmu_path, "path", "") or getattr(fmu_path, "name", "")
         if not storage_key:
             raise ValueError("FMU storage key is required for FMI execution.")
+        fmu_checksum = ""
+        if getattr(validator, "fmu_model", None):
+            fmu_checksum = validator.fmu_model.checksum
+        fmu_url = getattr(fmu_path, "url", None)
+        use_test_volume = str(os.getenv("FMI_USE_TEST_VOLUME", "")).lower() in {"1", "true", "yes", "on"}
         return {
             "fmu_storage_key": storage_key,
+            "fmu_url": fmu_url or self.config.get("fmu_url"),
+            "fmu_checksum": fmu_checksum or None,
+            "use_test_volume": use_test_volume,
             "inputs": self.config.get("inputs", {}),
             "simulation_config": self.config.get("simulation_config", {}),
             "output_variables": outputs,

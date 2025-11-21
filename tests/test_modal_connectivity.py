@@ -6,7 +6,6 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import TestCase
-
 from sv_shared.fmi import FMIRunResult, FMIRunStatus
 
 
@@ -87,9 +86,9 @@ class ModalConnectivityTest(TestCase):
             "fmu_url": None,
             "fmu_checksum": checksum,
             "use_test_volume": True,
-            "inputs": {"Int32_input": 5},
+            "inputs": {"int_in": 5},
             "simulation_config": {"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
-            "output_variables": ["Int32_output"],
+            "output_variables": ["int_out"],
             "return_logs": False,
         }
         if hasattr(runner, "call"):
@@ -101,4 +100,4 @@ class ModalConnectivityTest(TestCase):
 
         result = FMIRunResult.model_validate(raw_result)
         self.assertEqual(result.status, FMIRunStatus.SUCCESS)
-        self.assertEqual(result.outputs.get("Int32_output"), 5.0)
+        self.assertEqual(result.outputs.get("int_out"), 5.0)

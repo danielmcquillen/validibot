@@ -37,6 +37,16 @@ How we interact with Modal from SimpleValidations and the sibling `sv_modal` pro
 - The checksum is used as the filename. The Modal runtime reads `/fmus/<checksum>.fmu` (or `/fmus-test/...` for test volume).
 - Remember volume semantics: changes made from the control plane are visible immediately; changes from inside a container require a `commit()` to persist and `reload()` in other containers to see updates (Modal handles background commits, but explicit `reload()` is needed to pick up mid-run writes in long-lived containers).
 
+## Logging and troubleshooting
+
+- Modal captures stdout/stderr from functions. The FMI runner configures `logging.basicConfig(level=logging.INFO)` and emits INFO logs at probe/run entry; add `logger.info(...)` or `print(...)` as needed.
+- In the Modal dashboard, open the function call and click “View all logs” to see output. If you see “Waiting for a container,” the run is queued; ensure the app is deployed and the image builds successfully.
+- The CLI can stream logs: `modal logs fmi-runner run_fmi_simulation --tail`.
+- Common stuck states:
+  - `UNAUTHENTICATED`: tokens missing/invalid; refresh via `modal token new` and set env or `~/.modal.toml`.
+  - “Waiting for a container”: app not deployed or image build failed; rerun `modal deploy -m sv_fmi.modal_app` and check build logs.
+  - Volume issues: ensure `fmi-cache`/`fmi-cache-test` exist and uploads succeed; use `modal volume ls <name>` to inspect and `modal volume put/get/rm` to manage.
+
 ## Runner deployment
 
 - Deploy from `sv_modal_dev`:

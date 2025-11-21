@@ -294,3 +294,4 @@ _envs/*
 sv_shared_dev
 sv_modal_dev
 tests/assets/fmu/*
+modal.toml

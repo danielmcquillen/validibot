@@ -6,11 +6,11 @@ from pathlib import Path
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from sv_shared.fmi import FMIRunResult, FMIRunStatus
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.services.fmi import create_fmi_validator
-from sv_shared.fmi import FMIRunResult, FMIRunStatus
 
 
 class FMIWorkflowIntegrationTest(TestCase):
@@ -18,7 +18,7 @@ class FMIWorkflowIntegrationTest(TestCase):
     End-to-end FMI run against Modal using the Feedthrough FMU and test volume.
 
     This verifies we can upload an FMU, cache it in the Modal test volume, and
-    execute it remotely to echo Int32_input -> Int32_output.
+    execute it remotely to echo int_in -> int_out.
     """
 
     def setUp(self) -> None:
@@ -55,7 +55,7 @@ class FMIWorkflowIntegrationTest(TestCase):
         org = OrganizationFactory()
         project = ProjectFactory(org=org)
 
-        asset = Path(__file__).resolve().parents[1] / "assets" / "fmu" / "linux64" / "Feedthrough.fmu"
+        asset = Path(__file__).resolve().parents[1] / "assets" / "fmu" / "Feedthrough.fmu"
         payload = asset.read_bytes()
         upload = SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
 
@@ -75,17 +75,23 @@ class FMIWorkflowIntegrationTest(TestCase):
         except exc.NotFoundError as err:
             self.fail(f"Modal fmi-runner.run_fmi_simulation not found: {err}")
 
-        raw_result = runner.call(
-            fmu_storage_key=fmu_model.file.path,
-            fmu_url=None,
-            fmu_checksum=fmu_model.checksum,
-            use_test_volume=True,
-            inputs={"Int32_input": 5},
-            simulation_config={"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
-            output_variables=["Int32_output"],
-            return_logs=False,
-        )
+        run_kwargs = {
+            "fmu_storage_key": fmu_model.file.path,
+            "fmu_url": None,
+            "fmu_checksum": fmu_model.checksum,
+            "use_test_volume": True,
+            "inputs": {"int_in": 5},
+            "simulation_config": {"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
+            "output_variables": ["int_out"],
+            "return_logs": False,
+        }
+        if hasattr(runner, "call"):
+            raw_result = runner.call(**run_kwargs)
+        elif hasattr(runner, "remote"):
+            raw_result = runner.remote(**run_kwargs)
+        else:
+            raw_result = runner(**run_kwargs)
 
         result = FMIRunResult.model_validate(raw_result)
         self.assertEqual(result.status, FMIRunStatus.SUCCESS)
-        self.assertAlmostEqual(5.0, float(result.outputs.get("Int32_output", 0)))
+        self.assertAlmostEqual(5.0, float(result.outputs.get("int_out", 0)))

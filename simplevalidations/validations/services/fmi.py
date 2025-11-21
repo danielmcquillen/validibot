@@ -38,12 +38,9 @@ from sv_shared.fmi import FMIProbeResult
 MAX_FMU_SIZE_BYTES = 50 * 1024 * 1024
 DISALLOWED_EXTENSIONS = {
     ".exe",
-    ".dll",
-    ".dylib",
     ".bat",
     ".sh",
     ".cmd",
-    ".so",
 }
 _TRUE_STRINGS = {"1", "true", "yes", "on"}
 
@@ -239,7 +236,7 @@ def _upload_to_modal_volume(
         with tempfile.NamedTemporaryFile(prefix="fmu-upload-", suffix=".fmu", delete=False) as tmp:
             tmp.write(payload)
             tmp.flush()
-            with volume.batch_upload() as batch:
+            with volume.batch_upload(force=True) as batch:  # type: ignore[arg-type]
                 batch.put_file(tmp.name, f"/{remote_name}")
     elif hasattr(volume, "put_file"):
         # Older client without batch_upload but with put_file

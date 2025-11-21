@@ -50,17 +50,19 @@ class FMIServiceTests(TestCase):
         )
 
         self.assertEqual(validator.validation_type, ValidationType.FMI)
+        # Feedthrough FMU declares 4 inputs and 4 outputs in modelDescription.xml.
         self.assertEqual(
             validator.catalog_entries.filter(run_stage=CatalogRunStage.INPUT).count(),
-            1,
+            4,
         )
         self.assertEqual(
             validator.catalog_entries.filter(run_stage=CatalogRunStage.OUTPUT).count(),
-            1,
+            4,
         )
         fmu_model = validator.fmu_model
         self.assertIsNotNone(fmu_model)
-        self.assertEqual(fmu_model.variables.count(), 2)
+        # The Feedthrough FMU defines 11 variables (inputs, outputs, parameters).
+        self.assertEqual(fmu_model.variables.count(), 11)
         self.assertTrue(fmu_model.is_approved)
         self.assertTrue(fmu_model.modal_volume_path)
 

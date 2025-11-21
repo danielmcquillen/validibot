@@ -21,11 +21,13 @@ authors = [{ name = "Daniel McQuillen" }]
 minversion = "6.0"
 addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib"
 python_files = ["tests.py", "test_*.py"]
+testpaths = ["tests", "simplevalidations"]  # exclude sibling dev repos (sv_modal_dev, sv_shared_dev) from discovery
 
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["simplevalidations/**"]
-omit = ["*/migrations/*", "*/tests/*"]
+# We should run tests on sv_modal and sv_shared separately.
+omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "sv_shared_dev"]
 plugins = ["django_coverage_plugin"]
 
 # ==== mypy ====
@@ -145,13 +147,13 @@ ignore = [
   "BLE001",  #We want blind exceptions
   "PLR0912", # Too many branches (13/12)
   "PLR0911", # Too many statements (50/50)
-  "EM101",  # Allow use of 'print' function
-  "W293",  # blank line contains whitespace
-  "W291",  # trailing whitespace
+  "EM101",   # Allow use of 'print' function
+  "W293",    # blank line contains whitespace
+  "W291",    # trailing whitespace
   "PLR0915", # Too many statements in a class (112/100)
-  "RUF059", # Allow use of dataclass with mutable default values
+  "RUF059",  # Allow use of dataclass with mutable default values
   "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
-  "SMI108"
+  "SMI108",
   #"G400", # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require

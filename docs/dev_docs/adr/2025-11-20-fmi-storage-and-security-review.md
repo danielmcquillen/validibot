@@ -33,7 +33,7 @@ We now support creating FMI validators that ingest user-uploaded FMUs. The initi
 - FMI creation flow now computes checksums, stores the FMU in S3, and writes the same bytes to Modal via `upload_fmu_to_volume`. Metadata (`model_name`, `variable_count`, checksum, volume path) is saved for later runs.
 - Modal runner functions (`probe_fmu`, `run_fmi_simulation`) now mount both production and test volumes and resolve FMUs from cache before falling back to URLs. Set `FMI_USE_TEST_VOLUME=1` to isolate test runs.
 - Modal EnergyPlus runner also honors `ENERGYPLUS_USE_TEST_VOLUME`/`ENERGYPLUS_TEST_OUTPUT_VOLUME_NAME` to avoid polluting production volumes during integration tests.
-- Integration test exercises a real linux64 Feedthrough.fmu on Modal (Int32_input → Int32_output) to verify the cache + runner path end to end when credentials are present.
+- Integration test exercises a real linux64 Feedthrough.fmu on Modal (int_input → int_output) to verify the cache + runner path end to end when credentials are present.
 - Documentation updated to clarify the probe concept, S3 + Modal storage flow, and pending security review of FMU lifecycle.
 
 ## Action Items

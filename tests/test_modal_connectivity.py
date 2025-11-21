@@ -45,7 +45,7 @@ class ModalConnectivityTest(TestCase):
         """
         Upload the linux64 Feedthrough FMU into the Modal Volume and execute it.
 
-        The FMU echoes Int32_input to Int32_output. We assert that output is 5.
+        The FMU echoes int_in to int_out. We assert that output is 5.
         """
 
         import modal
@@ -55,7 +55,7 @@ class ModalConnectivityTest(TestCase):
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
             self.skipTest("Modal credentials not configured; skipping FMU execution test.")
 
-        assets_root = Path(__file__).resolve().parent / "assets" / "fmu" / "linux64"
+        assets_root = Path(__file__).resolve().parent / "assets" / "fmu" 
         asset = assets_root / "Feedthrough.fmu"
         payload = asset.read_bytes()
         checksum = hashlib.sha256(payload).hexdigest()

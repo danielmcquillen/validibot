@@ -119,7 +119,9 @@ class ModalConnectivityTest(TestCase):
             size_bytes=len(payload),
         )
         upload_kwargs = {
-            "payload": upload_request.model_dump(mode="json"),
+            # Use pydantic's dump to normalize field names/types for the Modal call.
+            # mode="python" avoids JSON encoding the raw bytes (FMU archives are not UTF-8).
+            "payload": upload_request.model_dump(mode="python"),
             "use_test_volume": True,
         }
         if hasattr(uploader, "call"):

@@ -109,3 +109,14 @@ If uploads/cache are failing, look at Belt A (Modal client creds, volumes). If s
 - **Where:** It runs in Modal (`probe_fmu`), using the same volume-mounted FMU the simulator uses, but it only opens the ZIP and parses XML.
 - **Outcome:** Variable metadata (`name`, `causality`, `type`, etc.) refreshed on the `FMUModel`, catalog entries rebuilt, approval status updated. If probe fails, the FMU remains unapproved.
 - **Why:** Early detection of malformed FMUs, and authoritative variable lists for catalog binding, without executing untrusted native code in Django.
+
+## Why 'probe' on Modal.com instead of directly on production (heroku)?
+
+We probe on Modal instead of Heroku for a few practical and safety reasons:
+
+- Isolation from untrusted FMUs: Even though probe is “read-only” (ZIP + XML parse), it still touches user-supplied archives. Keeping that in the same sandbox where we actually run the FMU prevents any accidental exposure on app dynos.
+- Same environment as execution: The probe runs in the exact Modal image that will run the simulation (with fmpy and native deps), so we catch format/compat issues where they actually matter. Heroku slugs don’t include the FMI toolchain.
+- Keep web dynos lean/secure: Avoids pulling fmpy/native deps into Heroku and avoids tying up limited dyno CPU/memory. Probes are short but still better suited to the compute plane.
+- One consistent path to the FMU: Probe reads from the Modal Volume where the FMU will be executed, so the validator catalog reflects what the runner will see (no drift between S3 copy vs. runtime cache).
+
+In short: run probe where you run the FMU—inside Modal—so you get isolation, correct dependencies, accurate metadata, and zero load/risk on Heroku.

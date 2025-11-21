@@ -65,7 +65,8 @@ class ModalConnectivityTest(TestCase):
         volume = modal.Volume.from_name(target_volume_name, create_if_missing=True)
         remote_name = f"/{checksum}.fmu"
         if hasattr(volume, "batch_upload"):
-            with volume.batch_upload() as batch:
+            # force=True so reruns overwrite the existing FMU, avoiding FileExistsError
+            with volume.batch_upload(force=True) as batch:  # type: ignore[arg-type]
                 batch.put_file(str(asset), remote_name)
         elif hasattr(volume, "put_file"):
             volume.put_file(str(asset), remote_name)

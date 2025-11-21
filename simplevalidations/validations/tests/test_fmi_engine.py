@@ -11,7 +11,7 @@ from simplevalidations.validations.engines.fmi import FMIValidationEngine
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.workflows.tests.factories import WorkflowFactory
-from sv_shared.fmi import FMIRunResult, FMUVolumeUploadResult
+from sv_shared.fmi import FMIRunResult
 
 
 def _fake_fmu() -> SimpleUploadedFile:
@@ -24,20 +24,6 @@ def _fake_fmu() -> SimpleUploadedFile:
     return SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
 
 
-class _FakeModalCacheUploader:
-    """Capture FMU cache uploads without calling Modal."""
-
-    def __init__(self):
-        self.calls: list[dict] = []
-
-    def __call__(self, **kwargs):
-        self.calls.append(kwargs)
-        return FMUVolumeUploadResult(
-            stored=True,
-            volume_path="/fmus/test-cache.fmu",
-        ).model_dump(mode="json")
-
-
 def _prime_modal_cache_fake():
     """
     Inject a fake cache uploader so FMI validator creation avoids real Modal calls.
@@ -45,19 +31,30 @@ def _prime_modal_cache_fake():
 
     from simplevalidations.validations.services import fmi as fmi_module
 
-    uploader = _FakeModalCacheUploader()
-    fmi_module._FMUModalCachePublisher.configure_modal_runner(uploader)  # type: ignore[attr-defined]
-    return uploader
+    calls: list[dict] = []
+
+    def _fake_upload(**kwargs):
+        calls.append(kwargs)
+        return "/fmus/test-cache.fmu"
+
+    fmi_module._upload_to_modal_volume = _fake_upload  # type: ignore[assignment]
+    return calls
 
 
 class FMIEngineTests(TestCase):
     """Validate FMI engine Modal dispatch and required configuration."""
 
+    def setUp(self):
+        from simplevalidations.validations.services import fmi as fmi_module
+
+        self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
+
     def tearDown(self):
         FMIValidationEngine.configure_modal_runner(None)
         from simplevalidations.validations.services import fmi as fmi_module
 
-        fmi_module._FMUModalCachePublisher.configure_modal_runner(None)  # type: ignore[attr-defined]
+        if self._original_uploader is not None:
+            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment]
 
     def test_fmi_engine_success_path(self):
         org = OrganizationFactory()

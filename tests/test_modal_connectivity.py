@@ -7,11 +7,7 @@ from pathlib import Path
 from django.conf import settings
 from django.test import TestCase
 
-from sv_shared.fmi import (
-    FMIRunResult,
-    FMIRunStatus,
-    FMUVolumeUploadRequest,
-)
+from sv_shared.fmi import FMIRunResult, FMIRunStatus
 
 
 class ModalConnectivityTest(TestCase):
@@ -46,49 +42,6 @@ class ModalConnectivityTest(TestCase):
             os.environ.setdefault("MODAL_TOKEN_ID", token_id)
             os.environ.setdefault("MODAL_TOKEN_SECRET", token_secret)
 
-    def test_modal_can_lookup_fmi_runner(self) -> None:
-        """
-        Verify that we can authenticate to Modal and locate the FMI runner function.
-
-        Passing means credentials are valid and the Modal app "fmi-runner" with
-        function "run_fmi_simulation" exists.
-        """
-
-        import modal
-        import modal.exception as exc
-
-        try:
-            fn = modal.Function.from_name("fmi-runner", "run_fmi_simulation")
-        except exc.AuthError as err:
-            self.fail(f"Modal authentication failed: {err}")
-        except exc.NotFoundError:
-            self.fail(
-                "Modal fmi-runner.run_fmi_simulation not found; deploy the Modal app "
-                "or update the function name."
-            )
-        except Exception as err:  # pragma: no cover - defensive
-            self.fail(f"Modal lookup unexpected error: {err}")
-        else:
-            self.assertIsNotNone(fn)
-
-    def test_modal_has_cache_uploader(self) -> None:
-        """Ensure the cache uploader function is registered and callable."""
-
-        import modal
-        import modal.exception as exc
-
-        try:
-            fn = modal.Function.from_name("fmi-runner", "upload_fmu_to_volume")
-        except exc.AuthError as err:
-            self.fail(f"Modal authentication failed: {err}")
-        except exc.NotFoundError:
-            self.fail(
-                "Modal fmi-runner.upload_fmu_to_volume not found; deploy the Modal app "
-                "or update the function name."
-            )
-        else:
-            self.assertIsNotNone(fn)
-
     def test_modal_executes_feedthrough_fmu_from_volume(self) -> None:
         """
         Upload the linux64 Feedthrough FMU into the Modal Volume and execute it.
@@ -108,32 +61,25 @@ class ModalConnectivityTest(TestCase):
         payload = asset.read_bytes()
         checksum = hashlib.sha256(payload).hexdigest()
 
+        target_volume_name = os.getenv("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
+        volume = modal.Volume.from_name(target_volume_name, create_if_missing=True)
+        remote_name = f"/{checksum}.fmu"
+        if hasattr(volume, "batch_upload"):
+            with volume.batch_upload() as batch:
+                batch.put_file(str(asset), remote_name)
+        elif hasattr(volume, "put_file"):
+            volume.put_file(str(asset), remote_name)
+        elif hasattr(volume, "__setitem__"):
+            volume[remote_name.lstrip("/")] = payload  # type: ignore[index]
+        else:  # pragma: no cover - defensive
+            self.fail("Modal Volume does not support batch_upload, put_file, or byte assignment")
+
         try:
-            uploader = modal.Function.from_name("fmi-runner", "upload_fmu_to_volume")
             runner = modal.Function.from_name("fmi-runner", "run_fmi_simulation")
         except exc.NotFoundError as err:
-            self.fail(f"Modal FMI functions missing: {err}")
+            self.fail(f"Modal FMI run function missing: {err}")
         except exc.AuthError as err:
             self.fail(f"Modal authentication failed: {err}")
-
-        upload_request = FMUVolumeUploadRequest(
-            checksum=checksum,
-            filename=asset.name,
-            fmu_bytes=payload,
-            size_bytes=len(payload),
-        )
-        upload_kwargs = {
-            # Use pydantic's dump to normalize field names/types for the Modal call.
-            # mode="python" avoids JSON encoding the raw bytes (FMU archives are not UTF-8).
-            "payload": upload_request.model_dump(mode="python"),
-            "use_test_volume": True,
-        }
-        if hasattr(uploader, "call"):
-            uploader.call(**upload_kwargs)
-        elif hasattr(uploader, "remote"):
-            uploader.remote(**upload_kwargs)
-        else:
-            uploader(**upload_kwargs)
 
         run_kwargs = {
             "fmu_storage_key": str(asset),

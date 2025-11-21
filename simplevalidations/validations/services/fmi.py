@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Iterable
@@ -32,11 +33,7 @@ from simplevalidations.validations.models import (
     Validator,
     ValidatorCatalogEntry,
 )
-from sv_shared.fmi import (
-    FMIProbeResult,
-    FMUVolumeUploadRequest,
-    FMUVolumeUploadResult,
-)
+from sv_shared.fmi import FMIProbeResult
 
 MAX_FMU_SIZE_BYTES = 50 * 1024 * 1024
 DISALLOWED_EXTENSIONS = {
@@ -64,14 +61,6 @@ class _FMIProbeRunner(ModalRunnerMixin):
 
     modal_app_name = "fmi-runner"
     modal_function_name = "probe_fmu"
-    modal_return_logs_default = False
-
-
-class _FMUModalCachePublisher(ModalRunnerMixin):
-    """Modal runner used to persist FMUs into a shared Modal Volume cache."""
-
-    modal_app_name = "fmi-runner"
-    modal_function_name = "upload_fmu_to_volume"
     modal_return_logs_default = False
 
 
@@ -202,28 +191,68 @@ def _cache_fmu_in_modal_volume(
     use_test_volume: bool = False,
 ) -> str:
     """
-    Copy a validated FMU into the Modal Volume cache and return the cached path.
+    Copy a validated FMU into the Modal Volume cache using the Modal client.
 
-    This avoids presigned URL handling at run time because Modal will read
-    directly from the cached FMU keyed by checksum.
+    This avoids presigned URLs and keeps uploads on the control plane; the
+    Modal runtime reads directly from the cached FMU keyed by checksum.
     """
 
-    publisher = _FMUModalCachePublisher()
-    request = FMUVolumeUploadRequest(
+    return _upload_to_modal_volume(
         checksum=checksum,
         filename=filename,
-        fmu_bytes=payload,
-        size_bytes=len(payload),
-    )
-    response = publisher._invoke_modal_runner(  # type: ignore[attr-defined]
-        include_logs=False,
-        payload=request.model_dump(mode="json"),
+        payload=payload,
         use_test_volume=use_test_volume,
     )
-    result = FMUVolumeUploadResult.model_validate(response)
-    if not result.stored:
-        raise FMUStorageError("Modal volume refused to store FMU.")
-    return result.volume_path
+
+
+def _upload_to_modal_volume(
+    *,
+    checksum: str,
+    filename: str,
+    payload: bytes,
+    use_test_volume: bool,
+) -> str:
+    """
+    Write an FMU into the appropriate Modal Volume from the control plane.
+
+    In production we write to the production volume; for tests we route to a
+    dedicated test volume. The returned path matches the mount points used in
+    the Modal runtime (/fmus or /fmus-test). This helper assumes control-plane
+    credentials (env vars or ~/.modal.toml) are available.
+    """
+
+    try:
+        import modal
+    except ImportError as exc:  # pragma: no cover - environment dependency
+        raise FMUStorageError("Install 'modal' to cache FMUs in Modal Volume.") from exc
+
+    volume_name = (
+        os.getenv("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
+        if use_test_volume
+        else os.getenv("FMI_VOLUME_NAME", "fmi-cache")
+    )
+    mount_prefix = "/fmus-test" if use_test_volume else "/fmus"
+    remote_name = f"{checksum}.fmu"
+
+    volume = modal.Volume.from_name(volume_name, create_if_missing=True)
+    if hasattr(volume, "batch_upload"):
+        with tempfile.NamedTemporaryFile(prefix="fmu-upload-", suffix=".fmu", delete=False) as tmp:
+            tmp.write(payload)
+            tmp.flush()
+            with volume.batch_upload() as batch:
+                batch.put_file(tmp.name, f"/{remote_name}")
+    elif hasattr(volume, "put_file"):
+        # Older client without batch_upload but with put_file
+        with tempfile.NamedTemporaryFile(prefix="fmu-upload-", suffix=".fmu", delete=False) as tmp:
+            tmp.write(payload)
+            tmp.flush()
+            volume.put_file(tmp.name, f"/{remote_name}")
+    elif hasattr(volume, "__setitem__"):
+        # Fallback for legacy clients: direct bytes assignment into the volume mapping.
+        volume[remote_name] = payload  # type: ignore[index]
+    else:  # pragma: no cover - defensive against unexpected client versions
+        raise FMUStorageError("Modal Volume API missing batch_upload/put_file/item assignment.")
+    return f"{mount_prefix}/{remote_name}"
 
 
 def create_fmi_validator(

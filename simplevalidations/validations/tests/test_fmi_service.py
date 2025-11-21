@@ -27,13 +27,17 @@ class FMIServiceTests(TestCase):
     def setUp(self):
         self.org = OrganizationFactory()
         self.project = ProjectFactory(org=self.org)
-        _prime_modal_cache_fake()
+        from simplevalidations.validations.services import fmi as fmi_module
+
+        self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
+        self._fake_calls = _prime_modal_cache_fake()
 
     def tearDown(self):
         from simplevalidations.validations.services import fmi as fmi_module
 
         fmi_module._FMIProbeRunner.configure_modal_runner(None)  # type: ignore[attr-defined]
-        fmi_module._FMUModalCachePublisher.configure_modal_runner(None)  # type: ignore[attr-defined]
+        if self._original_uploader is not None:
+            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment]
 
     def test_create_fmi_validator_introspects_and_seeds_catalog(self):
         upload = _make_fake_fmu()

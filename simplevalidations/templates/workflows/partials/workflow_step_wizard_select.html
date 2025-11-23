@@ -80,12 +80,15 @@
                                  name="choice"
                                  id="{{ input_id }}"
                                  value="{{ entry.value }}"
+                                 {% if entry.disabled %}
+                                   disabled
+                                 {% endif %}
                                  {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
                                    checked
                                  {% endif %}
                                  autocomplete="off"
                                  required>
-                          <label class="validator-card h-100 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}is-selected{% endif %}"
+                          <label class="validator-card h-100 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}is-selected{% endif %} {% if entry.disabled %}is-disabled{% endif %}"
                                  for="{{ input_id }}">
                             <div class="validator-card__icon mb-3">
                               <i class="bi {{ entry.icon }}"></i>
@@ -99,6 +102,11 @@
                             {% if entry.description %}
                               <p class="validator-card__description small mb-0 mt-2">
                                 {{ entry.description }}
+                              </p>
+                            {% endif %}
+                            {% if entry.disabled and entry.disabled_reason %}
+                              <p class="text-danger small mb-0 mt-2">
+                                {{ entry.disabled_reason }}
                               </p>
                             {% endif %}
                           </label>

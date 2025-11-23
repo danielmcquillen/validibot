@@ -34,3 +34,8 @@ mkdocs build -f mkdocs.dev.yml
 ```
 
 > Tip: Clean out the `site/` directory between builds if you switch audiences to avoid mixing outputs.
+
+## 3. Help Pages (`docs/help_pages`)
+
+- These files are for quick-ready help pages shown directly on the site when the user is using the app.
+- The files are built to FlatPage objects using a management command. (They are not published using mkdocs.)

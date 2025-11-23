@@ -74,16 +74,16 @@
         <div class="card app-card h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
             <div class="card-title mb-0">
-              {% trans "Rules" %}
+              {% trans "Default Assertions" %}
             </div>
             {% if can_manage_validators %}
               <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modal-rule-create">
-                <i class="bi bi-plus me-1"></i>{% trans "Add rule" %}
+                <i class="bi bi-plus me-1"></i>{% trans "Add default assertion" %}
               </button>
             {% endif %}
           </div>
           <div class="card-body">
-            {% include 'validations/library/partials/validator_rules_card.html' with rules=validator_rules %}
+            {% include 'validations/library/partials/validator_default_assertions_card.html' with assertions=validator_default_assertions %}
           </div>
         </div>
       </div>
@@ -108,7 +108,7 @@
   {% for entry_id, form in signal_edit_forms.items %}
     {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=form %}
   {% endfor %}
-  {% for rule_id, form in rule_edit_forms.items %}
+  {% for rule_id, form in default_assertion_edit_forms.items %}
     {% include "validations/library/partials/modal_rule_edit.html" with rule_id=rule_id form=form %}
   {% endfor %}
 {% endblock app_content %}

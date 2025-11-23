@@ -6,29 +6,42 @@ from uuid import uuid4
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.urls import reverse
 from django.test import override_settings
+from django.urls import reverse
 
-from simplevalidations.actions.constants import ActionCategoryType
-from simplevalidations.actions.constants import CertificationActionType
-from simplevalidations.actions.constants import IntegrationActionType
-from simplevalidations.actions.models import ActionDefinition
-from simplevalidations.actions.models import SignedCertificateAction
-from simplevalidations.actions.models import SlackMessageAction
+from simplevalidations.actions.constants import (
+    ActionCategoryType,
+    CertificationActionType,
+    IntegrationActionType,
+)
+from simplevalidations.actions.models import (
+    ActionDefinition,
+    SignedCertificateAction,
+    SlackMessageAction,
+)
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.users.tests.factories import (
+    OrganizationFactory,
+    UserFactory,
+    grant_role,
+)
 from simplevalidations.users.tests.utils import ensure_all_roles_exist
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import JSONSchemaVersion
-from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import (
+    AssertionType,
+    JSONSchemaVersion,
+    ValidationType,
+    ValidatorRuleType,
+)
 from simplevalidations.validations.models import Validator
-from simplevalidations.validations.tests.factories import CustomValidatorFactory
-from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.validations.tests.factories import (
+    CustomValidatorFactory,
+    ValidatorFactory,
+)
 from simplevalidations.workflows.models import WorkflowStep
-from simplevalidations.workflows.tests.factories import WorkflowFactory
-from simplevalidations.workflows.tests.factories import WorkflowStepFactory
+from simplevalidations.workflows.tests.factories import (
+    WorkflowFactory,
+    WorkflowStepFactory,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -166,6 +179,40 @@ def test_wizard_lists_action_tabs(client):
     assert certification_def.name in html
     assert "Integrations" in html
     assert "Certifications" in html
+
+
+def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    xml_validator = ensure_validator(
+        ValidationType.XML_SCHEMA,
+        "xml-validator",
+        "XML Schema",
+    )
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert xml_validator.name in html
+    assert f'value="validator:{xml_validator.pk}"' in html
+    assert f'value="validator:{xml_validator.pk}" disabled' in html
+
+
+def test_fmi_validator_enabled_for_json_workflow(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    fmi_validator = ensure_validator(ValidationType.FMI, "fmi-validator", "FMI Validator")
+
+    url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
+    response = client.get(url, HTTP_HX_REQUEST="true")
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    value = f'value="validator:{fmi_validator.pk}"'
+    assert value in html
+    assert f"{value} disabled" not in html
 
 
 def test_create_view_creates_json_schema_step(client):
@@ -676,6 +723,42 @@ def test_step_form_navigation_links(client):
     assert reverse("workflows:workflow_step_edit", args=[workflow.pk, first_step.pk]) in html
     assert "Previous step" in html
     assert "Next step" not in html
+
+
+def test_step_editor_shows_default_assertions_card(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ValidatorFactory(validation_type=ValidationType.BASIC, slug="basic-validator")
+    validator.rules.create(
+        name="Baseline price check",
+        rule_type=ValidatorRuleType.CEL_EXPRESSION,
+        expression="payload.price > 0",
+        order=0,
+    )
+    step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
+
+    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "default-assertions-card" in html
+    assert "Default assertions run by the validator selected for this step: 1 assertion." in html
+    assert "View default assertions" in html
+
+
+def test_step_editor_hides_default_assertions_when_none(client):
+    workflow = WorkflowFactory()
+    _login_for_workflow(client, workflow)
+    validator = ValidatorFactory(validation_type=ValidationType.BASIC, slug="basic-no-defaults")
+    step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
+
+    edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
+    response = client.get(edit_url)
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "default-assertions-card" not in html
 
 
 def test_move_and_delete_step(client):

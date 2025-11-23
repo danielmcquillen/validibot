@@ -1,0 +1,35 @@
+{% load i18n core_tags %}
+
+<div class="assertion-step-wrapper default-assertions-card-wrapper">
+  <div class="assertion-card default-assertions-card default-assetions-card card shadow-sm">
+    <div class="card-body d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div class="d-flex flex-column gap-1">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-primary text-uppercase">{% trans "Default assertions" %}</span>
+          <span class="text-muted small">
+            {% blocktrans count count=default_assertions_count trimmed %}
+              Default assertions run by the validator selected for this step: {{ count }} assertion.
+            {% plural %}
+              Default assertions run by validator selected for this step: {{ count }} assertions.
+            {% endblocktrans %}
+          </span>
+        </div>
+        <p class="text-muted small mb-0">
+          ( {% trans "Because these assertions are defined in the validator, they always run, and are always evaluated first." %} )
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button type="button"
+                class="btn btn-outline-primary btn-sm"
+                data-bs-toggle="modal"
+                data-bs-target="#validatorDefaultAssertionsModal"
+                hx-get="{% org_url 'validations:validator_default_assertions' slug=validator.slug %}"
+                hx-target="#default-assertions-modal-content"
+                hx-trigger="click">
+          <i class="bi bi-search me-1"></i>
+          {% trans "View default assertions" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -4,7 +4,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modalRuleCreateLabel">{% trans "Add rule" %}</h5>
+        <h5 class="modal-title" id="modalRuleCreateLabel">{% trans "Add default assertion" %}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
       </div>
       <form hx-post="{% org_url 'validations:validator_rule_create' pk=validator.id %}"
@@ -13,14 +13,14 @@
             novalidate>
         <div class="modal-body">
           {% csrf_token %}
-          {{ rule_create_form|crispy }}
+          {{ default_assertion_create_form|crispy }}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
             {% trans "Cancel" %}
           </button>
           <button type="submit" class="btn btn-primary">
-            {% trans "Save rule" %}
+            {% trans "Save default assertion" %}
           </button>
         </div>
       </form>

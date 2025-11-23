@@ -1,27 +1,27 @@
 {% load i18n core_tags %}
 
-{% if rules %}
+{% if assertions %}
   <div class="table-responsive">
     <table class="table table-sm align-middle">
       <thead>
         <tr>
           <th scope="col" class="text-muted small">{% trans "Order" %}</th>
-          <th scope="col" class="text-muted small">{% trans "Name" %}</th>
+          <th scope="col" class="text-muted small">{% trans "Assertion" %}</th>
           <th scope="col" class="text-muted small">{% trans "Type" %}</th>
           <th scope="col" class="text-muted small">{% trans "Signals" %}</th>
           <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
         </tr>
       </thead>
       <tbody>
-        {% for rule in rules %}
-          <tr id="validator-rule-{{ rule.id }}">
-            <td class="text-muted small">{{ rule.order }}</td>
-            <td class="fw-semibold">{{ rule.name }}</td>
-            <td class="text-muted small">{{ rule.get_rule_type_display }}</td>
+        {% for assertion in assertions %}
+          <tr id="validator-assertion-{{ assertion.id }}">
+            <td class="text-muted small">{{ assertion.order }}</td>
+            <td class="fw-semibold">{{ assertion.name }}</td>
+            <td class="text-muted small">{{ assertion.get_rule_type_display }}</td>
             <td class="text-muted small">
-              {% if rule.rule_entries.all %}
+              {% if assertion.rule_entries.all %}
                 <div class="d-flex flex-wrap gap-1">
-                  {% for link in rule.rule_entries.all %}
+                  {% for link in assertion.rule_entries.all %}
                     <span class="badge bg-light text-dark border">{{ link.catalog_entry.slug }}</span>
                   {% endfor %}
                 </div>
@@ -30,18 +30,17 @@
               {% endif %}
             </td>
             <td class="text-end">
-              <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Rule actions' %}">
+              <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Default assertion actions' %}">
                 <button class="btn btn-outline-secondary"
                         data-bs-toggle="modal"
-                        data-bs-target="#modal-rule-edit"
-                        data-rule-id="{{ rule.id }}">
+                        data-bs-target="#modal-rule-edit-{{ assertion.id }}">
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn btn-outline-danger"
-                        hx-delete="{% org_url 'validations:validator_rule_delete' pk=rule.validator_id rule_pk=rule.id %}"
-                        hx-target="#validator-rule-{{ rule.id }}"
+                        hx-delete="{% org_url 'validations:validator_rule_delete' pk=assertion.validator_id rule_pk=assertion.id %}"
+                        hx-target="#validator-assertion-{{ assertion.id }}"
                         hx-swap="outerHTML"
-                        hx-confirm="{% blocktrans trimmed with name=rule.name %}Delete rule '{{ name }}'?{% endblocktrans %}">
+                        hx-confirm="{% blocktrans trimmed with name=assertion.name %}Delete default assertion '{{ name }}'?{% endblocktrans %}">
                   <i class="bi bi-trash"></i>
                 </button>
               </div>
@@ -52,5 +51,5 @@
     </table>
   </div>
 {% else %}
-  <p class="text-muted mb-0">{% trans "No rules yet." %}</p>
+  <p class="text-muted mb-0">{% trans "No default assertions yet." %}</p>
 {% endif %}

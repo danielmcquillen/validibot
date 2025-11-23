@@ -147,6 +147,11 @@
     color: var(--bs-secondary-color);
     transition: color 0.2s ease;
   }
+
+  &.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 }
 
 .modal-step-selector-dialog {

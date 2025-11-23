@@ -4,7 +4,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="modalRuleEditLabel-{{ rule_id }}">{% trans "Edit rule" %}</h5>
+        <h5 class="modal-title" id="modalRuleEditLabel-{{ rule_id }}">{% trans "Edit default assertion" %}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
       </div>
       <form hx-post="{% org_url 'validations:validator_rule_update' pk=validator.id rule_pk=rule_id %}"
@@ -20,7 +20,7 @@
             {% trans "Cancel" %}
           </button>
           <button type="submit" class="btn btn-primary">
-            {% trans "Save rule" %}
+            {% trans "Save default assertion" %}
           </button>
         </div>
       </form>

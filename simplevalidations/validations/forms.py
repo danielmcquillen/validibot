@@ -902,7 +902,7 @@ class RulesetAssertionForm(forms.Form):
 
 
 class ValidatorRuleForm(forms.Form):
-    """Form for creating/updating validator-level rules (currently CEL only)."""
+    """Form for creating/updating validator-level default assertions (CEL only)."""
 
     name = forms.CharField(
         label=_("Name"),
@@ -914,7 +914,7 @@ class ValidatorRuleForm(forms.Form):
         required=False,
     )
     rule_type = forms.ChoiceField(
-        label=_("Rule type"),
+        label=_("Assertion type"),
         choices=ValidatorRuleType.choices,
     )
     cel_expression = forms.CharField(
@@ -954,7 +954,7 @@ class ValidatorRuleForm(forms.Form):
     def clean_rule_type(self):
         value = self.cleaned_data.get("rule_type")
         if value != ValidatorRuleType.CEL_EXPRESSION:
-            raise ValidationError(_("Unsupported rule type."))
+            raise ValidationError(_("Unsupported assertion type."))
         return value
 
     def clean_cel_expression(self):

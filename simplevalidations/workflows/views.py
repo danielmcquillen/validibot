@@ -44,6 +44,7 @@ from simplevalidations.validations.constants import (
     ValidationType,
     XMLSchemaType,
 )
+from simplevalidations.submissions.constants import SubmissionDataFormat, SubmissionFileType
 from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.models import (
     RulesetAssertion,
@@ -1351,7 +1352,11 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
         validators = self._available_validators(workflow)
         action_definitions = self._available_action_definitions()
-        tabs, options = self._build_step_tabs(validators, action_definitions)
+        tabs, options = self._build_step_tabs(
+            workflow,
+            validators,
+            action_definitions,
+        )
         form = WorkflowStepTypeForm(request.POST, options=options)
         if form.is_valid():
             if workflow.steps.count() >= MAX_STEP_COUNT:
@@ -1362,6 +1367,25 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             selection = form.get_selection()
             if selection["kind"] == "validator":
                 validator = selection["object"]
+                if not workflow.validator_is_compatible(validator):
+                    allowed = ", ".join(workflow.allowed_file_type_labels())
+                    form.add_error(
+                        None,
+                        _(
+                            "%(validator)s cannot be added because this workflow only "
+                            "accepts %(allowed)s submissions.",
+                        )
+                        % {
+                            "validator": validator.name,
+                            "allowed": allowed or _("the selected"),
+                        },
+                    )
+                    return self._render_select(
+                        request,
+                        workflow,
+                        form=form,
+                        status=400,
+                    )
                 create_url = reverse_with_org(
                     "workflows:workflow_step_create",
                     request=request,
@@ -1397,13 +1421,17 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         return get_object_or_404(WorkflowStep, workflow=workflow, pk=step_id)
 
     def _available_validators(self, workflow: Workflow) -> list[Validator]:
-        qs = Validator.objects.filter(
-            models.Q(org__isnull=True) | models.Q(org=workflow.org),
-        )
+        """
+        Return validators visible to this workflow's org. Compatibility is
+        enforced at save time so the selector can still show validators that
+        would require different file types.
+        """
         validators: list[Validator] = []
-        for validator in qs.order_by("validation_type", "name", "pk"):
-            if workflow.validator_is_compatible(validator):
-                validators.append(validator)
+        for validator in Validator.objects.filter(
+            models.Q(org__isnull=True) | models.Q(org=workflow.org),
+        ).order_by("validation_type", "name", "pk"):
+            self._ensure_validator_defaults(validator)
+            validators.append(validator)
         return validators
 
     def _available_action_definitions(self) -> list[ActionDefinition]:
@@ -1418,7 +1446,11 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         validators = self._available_validators(workflow)
         action_definitions = self._available_action_definitions()
 
-        tabs, options = self._build_step_tabs(validators, action_definitions)
+        tabs, options = self._build_step_tabs(
+            workflow,
+            validators,
+            action_definitions,
+        )
 
         selected_value = None
         if form is not None:
@@ -1443,6 +1475,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
     def _build_step_tabs(
         self,
+        workflow: Workflow,
         validators: list[Validator],
         action_definitions: list[ActionDefinition],
     ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -1488,7 +1521,9 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 handled.extend(filtered)
             else:
                 filtered = []
-            members = [self._serialize_validator(v) for v in filtered]
+            members = [
+                self._serialize_validator(workflow, v) for v in filtered
+            ]
             tabs.append({"slug": slug, "label": label, "entries": members})
             options.extend(members)
 
@@ -1500,7 +1535,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             )
             if advanced_tab is not None:
                 serialized = [
-                    self._serialize_validator(v) for v in remaining_validators
+                    self._serialize_validator(workflow, v)
+                    for v in remaining_validators
                 ]
                 advanced_tab["entries"].extend(serialized)
                 options.extend(serialized)
@@ -1535,7 +1571,45 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
 
         return tabs, options
 
-    def _serialize_validator(self, validator: Validator) -> dict[str, object]:
+    def _ensure_validator_defaults(self, validator: Validator) -> None:
+        """
+        Backfill expected supported formats/file types for validators created
+        before defaults expanded (notably FMI, which now accepts JSON/TEXT).
+        """
+        if validator.validation_type != ValidationType.FMI:
+            return
+        changed = False
+        if validator.supported_file_types is None:
+            validator.supported_file_types = []
+            changed = True
+        if validator.supported_data_formats is None:
+            validator.supported_data_formats = []
+            changed = True
+        for ft in (SubmissionFileType.JSON, SubmissionFileType.TEXT):
+            if ft not in validator.supported_file_types:
+                validator.supported_file_types.append(ft)
+                changed = True
+        for fmt in (SubmissionDataFormat.JSON, SubmissionDataFormat.TEXT):
+            if fmt not in validator.supported_data_formats:
+                validator.supported_data_formats.append(fmt)
+                changed = True
+        if changed:
+            validator.save(
+                update_fields=["supported_file_types", "supported_data_formats"],
+            )
+
+    def _serialize_validator(
+        self,
+        workflow: Workflow,
+        validator: Validator,
+    ) -> dict[str, object]:
+        is_compatible = workflow.validator_is_compatible(validator)
+        allowed = ", ".join(workflow.allowed_file_type_labels())
+        disabled_reason = None
+        if not is_compatible:
+            disabled_reason = _(
+                "Not allowed for this workflow's submission types (%(allowed)s)."
+            ) % {"allowed": allowed or _("selected types")}
         return {
             "value": f"validator:{validator.pk}",
             "label": validator.name,
@@ -1545,6 +1619,8 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "icon": getattr(validator, "display_icon", "bi-sliders"),
             "kind": "validator",
             "object": validator,
+            "disabled": not is_compatible,
+            "disabled_reason": disabled_reason,
         }
 
     def _serialize_action_definition(
@@ -1924,7 +2000,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and validator.has_signal_stages() and allow_assertions,
         )
-        validator_rules_count = validator.rules.count() if validator else 0
+        default_assertions_count = validator.rules.count() if validator else 0
         context.update(
             {
                 "workflow": workflow,
@@ -1940,7 +2016,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_entries": catalog_entries,
                 "catalog_display": catalog_display,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
-                "validator_rules_count": validator_rules_count,
+                "validator_default_assertions_count": default_assertions_count,
             },
         )
         return context

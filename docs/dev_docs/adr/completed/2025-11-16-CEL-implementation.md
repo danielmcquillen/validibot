@@ -32,13 +32,8 @@ However, since SimpleValidations is still an MVP, we can keep things simple for 
 3. **Scope for MVP**
    - Static expression evaluation only (no stateful accumulators across time).
    - Support numeric, boolean, string, list/object access, and standard CEL comparison/logical operators.
-   - Provide a small set of helper functions:
-     - Core: `len`, `has`, `exists` (alias for has), `isEmpty`, `notEmpty`.
-     - Math: `abs`, `round`, `ceil`, `floor`, `min`, `max`, `clamp`.
-     - Strings: `lower`, `upper`, `contains`, `startsWith`, `endsWith`, `matches` (regex), `trim`, `replace`, `split`, `join`.
-     - Collections: `all`, `any`, `map`, `filter` (bounded to safe, deterministic use), `distinct`.
-     - Type helpers: `typeOf`, `toNumber`, `toString`, `toBool` (safe casting with failure -> null).
-     - Date/time: MVP skip; consider adding later with clear UTC-only semantics if needed.
+   - Current helper allowlist implemented in code: `has`, `is_int`, `percentile`, `mean`, `sum`, `max`, `min`, `abs`, `round`, `duration`.
+   - Planned (not yet allowlisted) helpers: `series` for provider-backed timeseries plus the broader set originally proposed (len/exists/isEmpty/notEmpty, ceil/floor/clamp, string helpers like contains/startsWith/endsWith/matches, collection helpers such as all/any/map/filter/distinct, and casting helpers like toNumber/toString/toBool). Date/time helpers remain deferred.
    - No user-defined functions/macros in MVP; consider later.
 
 4. **Types and validation**

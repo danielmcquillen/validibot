@@ -65,26 +65,11 @@
 
             {% if can_manage_assertions and supports_assertions %}
 
-              {% if uses_signal_stages %}
+              {% if validator_default_assertions_count %}
+                {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
+              {% endif %}
 
-                {% if validator_rules_count %}
-                  <div class="card mb-3">
-                    <div class="card-body d-flex justify-content-between align-items-center">
-                      <div>
-                        <div class="fw-semibold">
-                          {% blocktrans count count=validator_rules_count %}The selected validator will run {{ count }} standard rule.{% plural %}The selected validator will run {{ count }} standard rules.{% endblocktrans %}
-                        </div>
-                        <div class="text-muted small">
-                          {% trans "Default rules always run first." %}
-                        </div>
-                      </div>
-                      <a class="btn btn-outline-primary btn-sm"
-                         href="{% org_url 'validations:validator_detail' slug=validator.slug %}">
-                        {% trans "View Validator Rules" %}
-                      </a>
-                    </div>
-                  </div>
-                {% endif %}
+              {% if uses_signal_stages %}
 
                 {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
 
@@ -97,24 +82,6 @@
                 {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
               {% else %}
                 {% if assertions %}
-                  {% if validator_rules_count %}
-                    <div class="card mb-3">
-                      <div class="card-body d-flex justify-content-between align-items-center">
-                        <div>
-                          <div class="fw-semibold">
-                            {% blocktrans count count=validator_rules_count %}The selected validator will run {{ count }} standard rule.{% plural %}The selected validator will run {{ count }} standard rules.{% endblocktrans %}
-                          </div>
-                          <div class="text-muted small">
-                            {% trans "Default rules always run first." %}
-                          </div>
-                        </div>
-                        <a class="btn btn-outline-primary btn-sm"
-                           href="{% org_url 'validations:validator_detail' slug=validator.slug %}">
-                          {% trans "View Validator Rules" %}
-                        </a>
-                      </div>
-                    </div>
-                  {% endif %}
                   {% for assertion in assertions %}
                     {% include 'workflows/partials/components/assertion_step.html' %}
                   {% endfor %}
@@ -137,6 +104,20 @@
         {% if catalog_display %}
           {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix flat_mode=True %}
         {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade"
+       id="validatorDefaultAssertionsModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content" id="default-assertions-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
       </div>
     </div>
   </div>

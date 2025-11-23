@@ -213,11 +213,20 @@ Notes for future phases will be appended here as we encounter edge cases.
 
 ## Appendix A — CEL helper definitions (behavior)
 
+Current helper allowlist implemented in code:
+
+- `has(value)`: true if value is non-null / present.
+- `is_int(value)`: true if value is an integer.
 - `percentile(values, q)`: q-quantile with linear interpolation; ignores null/NaN; returns null for empty input.
-- `series(id)`: provider-backed list of numbers (lazy; cached per run).
-- `max/min/mean/sum`: numeric reductions on lists.
-- `has(x)`: true if x is non-null / present.
-- `is_int(x)`: true if x is an integer (for strict range checks).
+- `mean(values)`: average of numeric list (ignores nulls).
+- `sum(values)`: sum of numeric list.
+- `max(values)`: maximum of numeric list.
+- `min(values)`: minimum of numeric list.
+- `abs(value)`: absolute value of a number.
+- `round(value, digits)`: rounds to the provided decimal places.
+- `duration(series, predicate)`: count of samples where `predicate(series[i])` is true.
+
+Planned additions (not yet allowlisted): `series(id)` for provider-backed series lookups plus the broader helper set described in ADR-2015-11-16 (string helpers, collection helpers, ceil/floor, casts, etc.).
 
 ## Appendix B — Tiny Python sketches
 

@@ -111,6 +111,18 @@ def create_default_validators():
             validator.supported_file_types = defaults["supported_file_types"]
         if not validator.supported_data_formats:
             validator.supported_data_formats = defaults["supported_data_formats"]
+        if validator.supported_data_formats is None:
+            validator.supported_data_formats = []
+        if validator.supported_file_types is None:
+            validator.supported_file_types = []
+        expected_formats = defaults["supported_data_formats"]
+        for fmt in expected_formats:
+            if fmt not in validator.supported_data_formats:
+                validator.supported_data_formats.append(fmt)
+        expected_file_types = defaults["supported_file_types"]
+        for ft in expected_file_types:
+            if ft not in validator.supported_file_types:
+                validator.supported_file_types.append(ft)
         validator.has_processor = validator_data.get(
             "has_processor",
             validator.has_processor,

@@ -84,6 +84,7 @@ DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.sitemaps",
     "django.forms",
+    "django.contrib.flatpages",
 ]
 THIRD_PARTY_APPS = [
     "crispy_forms",
@@ -118,6 +119,7 @@ LOCAL_APPS = [
     "simplevalidations.marketing",
     "simplevalidations.blog",
     "simplevalidations.members",
+    "simplevalidations.help",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

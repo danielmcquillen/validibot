@@ -7,7 +7,7 @@ import django_filters
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
 from django.db import models
 from django.db.models import Prefetch
 from django.http import HttpResponse, HttpResponseRedirect
@@ -525,6 +525,28 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         )
         return breadcrumbs
 
+    def get_validator_queryset(self):
+        """
+        Return validators visible to the active org/user with rule and catalog
+        relationships preloaded for display-only contexts.
+        """
+        org = self.get_active_org()
+        queryset = (
+            Validator.objects.select_related("custom_validator", "org")
+            .prefetch_related(
+                "catalog_entries",
+                "rules",
+                "rules__rule_entries",
+                "rules__rule_entries__catalog_entry",
+            )
+            .order_by("validation_type", "name")
+        )
+        if org:
+            queryset = queryset.filter(models.Q(is_system=True) | models.Q(org=org))
+        else:
+            queryset = queryset.filter(is_system=True)
+        return queryset
+
 
 class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     template_name = "validations/library/library.html"
@@ -700,23 +722,13 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        org = self.get_active_org()
-        qs = (
-            Validator.objects.select_related("custom_validator", "org")
-            .prefetch_related("catalog_entries", "rules", "rules__rule_entries")
-            .order_by("validation_type", "name")
-        )
-        if org:
-            qs = qs.filter(models.Q(is_system=True) | models.Q(org=org))
-        else:
-            qs = qs.filter(is_system=True)
-        return qs
+        return self.get_validator_queryset()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
         display = validator.catalog_display
-        rules = validator.rules.order_by("order", "name").prefetch_related(
+        default_assertions = validator.rules.order_by("order", "name").prefetch_related(
             "rule_entries",
             "rule_entries__catalog_entry",
         )
@@ -741,8 +753,10 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             entry.id: ValidatorCatalogEntryForm(instance=entry)
             for entry in validator.catalog_entries.all()
         }
-        context["rule_create_form"] = ValidatorRuleForm(signal_choices=signal_choices)
-        context["rule_edit_forms"] = {
+        context["default_assertion_create_form"] = ValidatorRuleForm(
+            signal_choices=signal_choices,
+        )
+        context["default_assertion_edit_forms"] = {
             rule.id: ValidatorRuleForm(
                 initial={
                     "name": rule.name,
@@ -756,7 +770,7 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 },
                 signal_choices=signal_choices,
             )
-            for rule in rules
+            for rule in default_assertions
         }
         show_output_tab = bool(validator.has_processor)
         requested_signals_tab = (
@@ -777,7 +791,7 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 "catalog_display": display,
                 "catalog_entries": display.entries,
                 "catalog_tab_prefix": "validator-detail",
-                "validator_rules": rules,
+                "validator_default_assertions": default_assertions,
                 "show_output_tab": show_output_tab,
                 "active_signals_tab": active_signals_tab,
                 "probe_result": getattr(validator.fmu_model, "probe_result", None)
@@ -804,6 +818,47 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             },
         )
         return breadcrumbs
+
+
+class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
+    """
+    Render validator default assertions for display in a modal (HTMX target).
+    """
+
+    model = Validator
+    context_object_name = "validator"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    template_name = (
+        "validations/library/partials/validator_default_assertions_modal.html"
+    )
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org(
+                    "workflows:workflow_list",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.get_validator_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = context["validator"]
+        context.update(
+            {
+                "validator_default_assertions": validator.rules.order_by(
+                    "order",
+                    "name",
+                ),
+                "can_view_validator_detail": True,
+            },
+        )
+        return context
 
 
 class CustomValidatorManageMixin(ValidatorLibraryMixin):
@@ -968,7 +1023,22 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
     form_class = CustomValidatorUpdateForm
 
     def dispatch(self, request, *args, **kwargs):
-        self.custom_validator = self.get_object()
+        try:
+            self.custom_validator = self.get_object()
+        except ObjectDoesNotExist:
+            messages.error(
+                request,
+                _(
+                    "This custom validator is missing its configuration. "
+                    "Please recreate it from the Validator Library."
+                ),
+            )
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
         return super().dispatch(request, *args, **kwargs)
 
     def get_object(self):
@@ -1315,7 +1385,7 @@ class ValidatorSignalListView(ValidatorSignalMixin, TemplateView):
 
 
 class ValidatorRuleMixin(CustomValidatorManageMixin):
-    """Common helpers for validator rule CRUD."""
+    """Common helpers for validator default assertion CRUD."""
 
     validator: Validator
 
@@ -1417,7 +1487,7 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
                     rule=rule,
                     catalog_entry=entry,
                 )
-            messages.success(request, _("Rule created."))
+            messages.success(request, _("Default assertion created."))
             if request.headers.get("HX-Request"):
                 return self._hx_redirect()
             return self._redirect()
@@ -1427,7 +1497,7 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
                 "validations/library/partials/modal_rule_create.html",
                 {
                     "validator": self.validator,
-                    "rule_create_form": form,
+                    "default_assertion_create_form": form,
                 },
                 status=400,
             )
@@ -1470,7 +1540,7 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
                     rule=rule,
                     catalog_entry=entry,
                 )
-            messages.success(request, _("Rule updated."))
+            messages.success(request, _("Default assertion updated."))
             if request.headers.get("HX-Request"):
                 return self._hx_redirect()
             return self._redirect()
@@ -1497,7 +1567,7 @@ class ValidatorRuleDeleteView(ValidatorRuleMixin, TemplateView):
             validator=self.validator,
         )
         rule.delete()
-        messages.success(request, _("Rule deleted."))
+        messages.success(request, _("Default assertion deleted."))
         if request.headers.get("HX-Request"):
             return self._hx_redirect()
         return self._redirect()

@@ -13843,6 +13843,10 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   color: var(--bs-secondary-color);
   transition: color 0.2s ease;
 }
+.validator-card.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 .modal-step-selector-dialog {
   --bs-modal-width: min(1100px, 95vw);
@@ -14013,6 +14017,10 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   background: #fff;
   width: 100%;
   margin-bottom: 1rem;
+}
+#assertion-step-builder #assertions-editor-card .assertion-card.default-assertions-card {
+  border-top: 4px solid var(--bs-primary);
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.15);
 }
 #assertion-step-builder #assertions-editor-card .assertion-actions {
   display: inline-flex;

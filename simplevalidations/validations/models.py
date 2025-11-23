@@ -60,6 +60,8 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ],
     ValidationType.FMI: [
         SubmissionFileType.BINARY,
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
     ],
     ValidationType.CUSTOM_VALIDATOR: [
         SubmissionFileType.JSON,
@@ -88,6 +90,8 @@ VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
     ],
     ValidationType.FMI: [
         SubmissionDataFormat.FMU,
+        SubmissionDataFormat.JSON,
+        SubmissionDataFormat.TEXT,
     ],
     ValidationType.CUSTOM_VALIDATOR: [
         SubmissionDataFormat.JSON,
@@ -1734,10 +1738,11 @@ class ValidationFinding(TimeStampedModel):
 
 class ValidatorCatalogRule(TimeStampedModel):
     """
-    Rule defined at the validator level (e.g., default CEL expressions).
+    Default assertion defined at the validator level (for example, CEL expressions).
 
-    Rules can reference one or more catalog entries; the exact meaning of the
-    rule is driven by ``rule_type`` and the stored ``expression``/``metadata``.
+    Default assertions run automatically whenever the validator executes and can
+    reference one or more catalog entries. The meaning of an assertion is driven by
+    ``rule_type`` and the stored ``expression``/``metadata``.
     """
 
     class Meta:
@@ -1781,9 +1786,9 @@ class ValidatorCatalogRule(TimeStampedModel):
     def clean(self):
         super().clean()
         if not self.name or not self.name.strip():
-            raise ValidationError({"name": _("Rule name is required.")})
+            raise ValidationError({"name": _("Default assertion name is required.")})
         if not self.expression or not str(self.expression).strip():
-            raise ValidationError({"expression": _("Rule expression is required.")})
+            raise ValidationError({"expression": _("Default assertion expression is required.")})
 
     def __str__(self):
         return f"{self.validator.slug}:{self.name}"
@@ -1791,7 +1796,7 @@ class ValidatorCatalogRule(TimeStampedModel):
 
 class ValidatorCatalogRuleEntry(models.Model):
     """
-    Join table linking rules to catalog entries they reference.
+    Join table linking default assertions to catalog entries they reference.
     """
 
     class Meta:

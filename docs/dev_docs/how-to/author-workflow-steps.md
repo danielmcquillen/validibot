@@ -27,6 +27,8 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 
 The dedicated editor is specific to the validation type you picked. All forms include a **Step name** field along with convenient navigation at the bottom of the page to jump back to the workflow overview or, when editing, to switch between adjacent steps.
 
+The **Step Assertions** panel always shows a **Default assertions** card at the top. This card summarizes the validator-level default assertions that will run before any step-specific assertions and links to a modal listing the full set; from there you can jump to the validator’s read-only detail page if you need to review the defaults in depth.
+
 ### JSON Schema
 - Paste the schema or upload a file—the editor detects the source automatically.
 - JSON schemas must declare `$schema` as Draft 2020-12; the editor enforces this version automatically.
@@ -46,6 +48,7 @@ The dedicated editor is specific to the validation type you picked. All forms in
 
 ### FMI (preview)
 - Attach an FMI validator and upload an FMU. The upload is stored in canonical storage (S3 in production) **and** copied into a Modal Volume cache keyed by the FMU checksum, so Modal runs never need a presigned URL.
+- Workflow submissions for FMI steps remain JSON/text; the FMU itself is uploaded once at validator creation. This keeps launch-time payloads simple while the validator uses the stored FMU for simulation.
 - Catalog inputs/outputs are generated from the FMU metadata. A **probe** is a short, safety-first run that opens the FMU, validates `modelDescription.xml`, checks for suspicious files, and seeds the catalog before assertions can be added.
 - Execution now runs on Modal using the cached FMU: inputs flow to the FMU run, outputs are captured, and CEL assertions evaluate them just like other validators.
 

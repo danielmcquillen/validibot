@@ -13514,6 +13514,10 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   padding: 8px;
 }
 
+.workflow-card.archived .card-body, .workflow-card.archived .card-footer {
+  background-color: #f8f9fa;
+  border-color: #dee2e6;
+}
 .workflow-card dl {
   display: flex;
   flex-direction: row;
@@ -14366,6 +14370,10 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   margin-left: 1.5rem;
 }
 
+help-section {
+  border: 0;
+}
+
 h1,
 h2,
 h3,
@@ -14422,6 +14430,14 @@ h6 {
   font-size: 1.2rem;
   font-weight: 600;
 }
+.app-content-header-bar .app-content-header .app-page-title {
+  border: 0;
+}
+.app-content-header-bar .app-content-header .app-page-subtitle {
+  font-size: 0.9rem;
+  color: #888;
+  margin-top: 0.1rem;
+}
 .validation-success-alert {
   margin-right: 30px;
 }
@@ -14434,6 +14450,38 @@ h6 {
   height: auto;
   margin-right: -40px;
   margin-top: -5px;
+}
+
+.target-signal-name {
+  color: var(--bs-info);
+  font-weight: 600;
+}
+
+.help-tooltip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cel-tooltip .tooltip-inner {
+  max-width: 28rem;
+  white-space: normal;
+}
+
+.catalog-entry-list dl dt {
+  font-weight: normal;
+}
+
+.table th[data-sortable=true] i {
+  color: #999;
+  transition: color 0.2s ease;
+}
+.table th[data-sortable=true]:hover i {
+  color: var(--bs-primary) !important;
+  opacity: 0.8;
+}
+.table th[data-sortable=true][data-sort-direction=asc] i, .table th[data-sortable=true][data-sort-direction=desc] i {
+  color: var(--bs-primary);
 }
 
 /*# sourceMappingURL=project.css.map */

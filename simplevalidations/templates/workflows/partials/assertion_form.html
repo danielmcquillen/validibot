@@ -1,8 +1,14 @@
 {% load i18n crispy_forms_tags %}
 
 <div class="modal-header">
-  <h5 class="modal-title">{{ modal_title }}</h5>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <h5 class="modal-title">
+    {{ modal_title }}
+  </h5>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close">
+  </button>
 </div>
 <div class="modal-body">
   <form method="post"
@@ -12,30 +18,19 @@
         data-sv-assertion-form="1">
     {% csrf_token %}
     {{ form|crispy }}
-    {% if form.no_signal_choices %}
-      <p class="text-muted small my-2">
-        {% trans "(no signals defined in validator)" %}
-      </p>
-    {% endif %}
     <datalist id="{{ target_slug_datalist_id }}">
       {% for value, label in catalog_choices %}
-        <option value="{{ value }}" label="{{ label }}"></option>
+        <option value="{{ value }}" label="{{ label }}">
+        </option>
       {% endfor %}
     </datalist>
-    <p class="form-text mt-n2">
-      {% if allow_custom_targets %}
-        {% blocktrans %}
-          You may enter new targets using dot notation (e.g., data.error.message) and [index] for lists.
-        {% endblocktrans %}
-      {% else %}
-        {% blocktrans %}
-          Only catalog targets are available for this validator.
-        {% endblocktrans %}
-      {% endif %}
-    </p>
     <div class="d-flex justify-content-end gap-2">
-      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
-      <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+        {% trans "Cancel" %}
+      </button>
+      <button type="submit" class="btn btn-primary">
+        {{ submit_label }}
+      </button>
     </div>
   </form>
 </div>

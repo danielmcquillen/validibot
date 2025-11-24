@@ -8,15 +8,13 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Prefetch
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.http import JsonResponse
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import DetailView, ListView, TemplateView
-from django.views.generic import View
+from django.views.generic import DetailView, ListView, TemplateView, View
 from django.views.generic.edit import DeleteView, FormView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, viewsets
@@ -50,16 +48,16 @@ from simplevalidations.validations.models import (
     default_supported_data_formats_for_validation,
 )
 from simplevalidations.validations.serializers import ValidationRunSerializer
-from simplevalidations.validations.utils import (
-    create_custom_validator,
-    update_custom_validator,
-)
 from simplevalidations.validations.services.fmi import (
     FMIIntrospectionError,
     create_fmi_validator,
     run_fmu_probe,
 )
 from simplevalidations.validations.tasks import run_fmu_probe_task
+from simplevalidations.validations.utils import (
+    create_custom_validator,
+    update_custom_validator,
+)
 from simplevalidations.workflows.models import Workflow, WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -737,20 +735,25 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
             for entry in validator.catalog_entries.order_by("slug").all()
         ]
 
-        def _build_stage_form(run_stage):
-            form = ValidatorCatalogEntryForm(initial={"run_stage": run_stage})
-            form.fields["run_stage"].widget = forms.HiddenInput()
-            return form
-
-        context["signal_create_form_input"] = _build_stage_form(CatalogRunStage.INPUT)
-        if validator.has_processor:
-            context["signal_create_form_output"] = _build_stage_form(
-                CatalogRunStage.OUTPUT,
-            )
-        else:
-            context["signal_create_form_output"] = None
+        signal_create_form = ValidatorCatalogEntryForm(
+            initial={"run_stage": CatalogRunStage.INPUT},
+            validator=validator,
+        )
+        if not validator.has_processor:
+            signal_create_form.fields["run_stage"].widget = forms.HiddenInput()
+        context["signal_create_form"] = signal_create_form
         context["signal_edit_forms"] = {
-            entry.id: ValidatorCatalogEntryForm(instance=entry)
+            entry.id: {
+                "form": ValidatorCatalogEntryForm(
+                    instance=entry,
+                    validator=validator,
+                ),
+                "title": _(
+                    "Edit Input Signal"
+                    if entry.run_stage == CatalogRunStage.INPUT
+                    else "Edit Output Signal"
+                ),
+            }
             for entry in validator.catalog_entries.all()
         }
         context["default_assertion_create_form"] = ValidatorRuleForm(
@@ -1285,10 +1288,36 @@ class ValidatorSignalMixin(CustomValidatorManageMixin):
 class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
     form_class = ValidatorCatalogEntryForm
 
+    def get(self, request, *args, **kwargs):
+        """Handle GET requests to return fresh form content for HTMx modal."""
+        stage = request.GET.get("run_stage") or CatalogRunStage.INPUT
+        form = self.form_class(initial={"run_stage": stage}, validator=self.validator)
+        if not self.validator.has_processor:
+            form.fields["run_stage"].widget = forms.HiddenInput()
+        
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_signal_create.html",
+                {
+                    "validator": self.validator,
+                    "modal_form": form,
+                    "modal_id": "modal-signal-create",
+                    "modal_title": _("Add Signal"),
+                },
+            )
+        # Non-HTMx GET request - redirect to validator detail
+        return self._redirect()
+
     def post(self, request, *args, **kwargs):
         stage = request.POST.get("run_stage") or CatalogRunStage.INPUT
-        form = self.form_class(request.POST, initial={"run_stage": stage})
-        form.fields["run_stage"].widget = forms.HiddenInput()
+        form = self.form_class(
+            request.POST,
+            initial={"run_stage": stage},
+            validator=self.validator,
+        )
+        if not self.validator.has_processor:
+            form.fields["run_stage"].widget = forms.HiddenInput()
         if form.is_valid():
             entry = form.save(commit=False)
             entry.validator = self.validator
@@ -1298,26 +1327,16 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
                 return self._hx_redirect()
             return self._redirect()
         if request.headers.get("HX-Request"):
-            modal_id = (
-                "modal-signal-create-output"
-                if stage == CatalogRunStage.OUTPUT
-                else "modal-signal-create-input"
-            )
-            modal_title = (
-                _("Add Output Signal")
-                if stage == CatalogRunStage.OUTPUT
-                else _("Add Input Signal")
-            )
             return render(
                 request,
                 "validations/library/partials/modal_signal_create.html",
                 {
                     "validator": self.validator,
                     "modal_form": form,
-                    "modal_id": modal_id,
-                    "modal_title": modal_title,
+                    "modal_id": "modal-signal-create",
+                    "modal_title": _("Add Signal"),
                 },
-                status=400,
+                status=200,
             )
         messages.error(request, _("Please correct the errors below."))
         return self._redirect()
@@ -1332,7 +1351,7 @@ class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
             pk=self.kwargs.get("entry_pk"),
             validator=self.validator,
         )
-        form = self.form_class(request.POST, instance=entry)
+        form = self.form_class(request.POST, instance=entry, validator=self.validator)
         if form.is_valid():
             form.save()
             messages.success(request, _("Signal updated."))
@@ -1348,7 +1367,7 @@ class ValidatorSignalUpdateView(ValidatorSignalMixin, FormView):
                     "entry_id": entry.id,
                     "form": form,
                 },
-                status=400,
+                status=200,
             )
         messages.error(request, _("Please correct the errors below."))
         return self._redirect()
@@ -1407,6 +1426,17 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         response["HX-Redirect"] = url
         return response
 
+    def _can_move_rule(self) -> bool:
+        membership = self.get_active_membership()
+        if not membership:
+            return False
+        if membership.has_role(RoleCode.OWNER) or membership.has_role(RoleCode.ADMIN):
+            return True
+        if membership.has_role(RoleCode.AUTHOR):
+            custom = getattr(self.validator, "custom_validator", None)
+            return bool(custom and custom.created_by_id == self.request.user.id)
+        return False
+
     def _redirect(self):
         return redirect(
             reverse_with_org(
@@ -1425,23 +1455,79 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         )
 
     def _validate_cel_expression(
-        self, expr: str, entries: list[ValidatorCatalogEntry]
-    ) -> None:
+        self, expr: str, available_entries: list[ValidatorCatalogEntry]
+    ) -> list[ValidatorCatalogEntry]:
+        """Validate CEL and return the catalog entries that are referenced.
+
+        The parser is intentionally lightweight: it confirms the expression
+        references only known signals while allowing CEL literals, built-ins,
+        and lambda variables. Output signals may be referenced as
+        ``output.<slug>``.
+        """
         expr = (expr or "").strip()
         if not expr:
             raise ValidationError(_("CEL expression is required."))
         if not self._delimiters_balanced(expr):
             raise ValidationError(_("Parentheses and brackets must be balanced."))
-        identifiers = {
-            match.group(0) for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expr)
+
+        reserved_literals = {"true", "false", "null", "payload", "output"}
+        cel_builtins = {
+            "has",
+            "exists",
+            "exists_one",
+            "all",
+            "map",
+            "filter",
+            "size",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "type",
+            "int",
+            "double",
+            "string",
+            "bool",
+            "abs",
+            "ceil",
+            "floor",
+            "round",
+            "timestamp",
+            "duration",
+            "matches",
+            "in",
         }
-        allowed = {entry.slug for entry in entries} | {"payload"}
-        unknown = {ident for ident in identifiers if ident not in allowed}
+
+        slug_map = {entry.slug: entry for entry in available_entries}
+        referenced: set[ValidatorCatalogEntry] = set()
+        unknown: set[str] = set()
+
+        # Capture explicit output.<slug> references.
+        for match in re.finditer(r"output\.([A-Za-z_][A-Za-z0-9_]*)", expr):
+            slug = match.group(1)
+            if slug in slug_map:
+                referenced.add(slug_map[slug])
+            else:
+                unknown.add(f"output.{slug}")
+
+        # Capture bare identifiers and allow literals/built-ins/lambda vars.
+        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*", expr):
+            name = match.group(0)
+            if name in reserved_literals or name in cel_builtins:
+                continue
+            if name in slug_map:
+                referenced.add(slug_map[name])
+                continue
+            # Treat single-character names as likely lambda variables.
+            if len(name) == 1:
+                continue
+            unknown.add(name)
+
         if unknown:
             raise ValidationError(
                 _("Unknown signal(s) referenced: %(names)s")
                 % {"names": ", ".join(sorted(unknown))}
             )
+        return list(referenced)
 
     @staticmethod
     def _delimiters_balanced(expression: str) -> bool:
@@ -1469,11 +1555,15 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
         )
         if form.is_valid():
             signals = form.cleaned_data.get("signals") or []
-            entries = self._resolve_selected_entries(signals)
-            self._validate_cel_expression(
-                form.cleaned_data["cel_expression"],
-                entries,
+            selected_entries = self._resolve_selected_entries(signals)
+            available_entries = list(
+                self.validator.catalog_entries.order_by("slug"),
             )
+            referenced_entries = self._validate_cel_expression(
+                form.cleaned_data["cel_expression"],
+                available_entries,
+            )
+            entries = list({*selected_entries, *referenced_entries})
             rule = ValidatorCatalogRule.objects.create(
                 validator=self.validator,
                 name=form.cleaned_data["name"],
@@ -1523,11 +1613,15 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
         )
         if form.is_valid():
             signals = form.cleaned_data.get("signals") or []
-            entries = self._resolve_selected_entries(signals)
-            self._validate_cel_expression(
-                form.cleaned_data["cel_expression"],
-                entries,
+            selected_entries = self._resolve_selected_entries(signals)
+            available_entries = list(
+                self.validator.catalog_entries.order_by("slug"),
             )
+            referenced_entries = self._validate_cel_expression(
+                form.cleaned_data["cel_expression"],
+                available_entries,
+            )
+            entries = list({*selected_entries, *referenced_entries})
             rule.name = form.cleaned_data["name"]
             rule.description = form.cleaned_data.get("description") or ""
             rule.rule_type = form.cleaned_data["rule_type"]
@@ -1557,6 +1651,65 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
             )
         messages.error(request, _("Please correct the errors below."))
         return self._redirect()
+
+
+class ValidatorRuleMoveView(ValidatorRuleMixin, View):
+    """Move a default assertion up or down within a validator."""
+
+    def post(self, request, *args, **kwargs):
+        if not self._can_move_rule():
+            return HttpResponse(status=403)
+        direction = request.POST.get("direction")
+        rule = get_object_or_404(
+            ValidatorCatalogRule,
+            pk=self.kwargs.get("rule_pk"),
+            validator=self.validator,
+        )
+        rules = list(
+            ValidatorCatalogRule.objects.filter(validator=self.validator).order_by(
+                "order",
+                "pk",
+            )
+        )
+        try:
+            index = rules.index(rule)
+        except ValueError:
+            return HttpResponse(status=404)
+
+        if direction == "up" and index > 0:
+            rules[index - 1], rules[index] = rules[index], rules[index - 1]
+        elif direction == "down" and index < len(rules) - 1:
+            rules[index], rules[index + 1] = rules[index + 1], rules[index]
+        else:
+            return HttpResponse(status=204)
+
+        with transaction.atomic():
+            for pos, item in enumerate(rules, start=1):
+                ValidatorCatalogRule.objects.filter(pk=item.pk).update(order=pos * 10)
+
+        assertions = (
+            ValidatorCatalogRule.objects.filter(validator=self.validator)
+            .order_by("order", "name")
+            .prefetch_related(
+                "rule_entries",
+                "rule_entries__catalog_entry",
+            )
+        )
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/validator_default_assertions_card.html",
+                {
+                    "assertions": assertions,
+                },
+            )
+        return redirect(
+            reverse_with_org(
+                "validations:validator_detail",
+                request=request,
+                kwargs={"slug": self.validator.slug},
+            )
+        )
 
 
 class ValidatorRuleDeleteView(ValidatorRuleMixin, TemplateView):

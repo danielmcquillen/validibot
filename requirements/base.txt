@@ -66,3 +66,7 @@ modal==1.2.2
 cel-python==0.4.0
 
 fmpy==0.3.26
+
+# For rendering markdown in help pages
+django-markdownify==0.9.5
+nh3==0.2.18

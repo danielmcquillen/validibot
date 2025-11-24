@@ -1,4 +1,11 @@
 .workflow-card {
+  &.archived {
+    .card-body, .card-footer {
+      background-color: #f8f9fa;
+      border-color: #dee2e6;
+    }
+  }
+
   dl {
     display: flex;
     flex-direction: row;

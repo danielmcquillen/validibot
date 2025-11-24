@@ -26,54 +26,7 @@
     </thead>
     <tbody>
       {% for workflow in workflows %}
-        {% with row_id="workflow-card-wrapper-"|add:workflow.pk %}
-          <tr id="{{ row_id }}">
-            <td class="align-middle">
-              <div class="fw-semibold">
-                {{ workflow.name }}
-              </div>
-              <div class="text-muted small">
-                {{ workflow.slug }}
-              </div>
-              {% if workflow.is_locked %}
-                <span class="badge text-bg-warning text-dark mt-1">
-                  {% trans "Locked" %}
-                </span>
-              {% endif %}
-            </td>
-            <td class="align-middle">
-              {% if workflow.project %}
-                <span class="badge rounded-pill border border-1 workflow-project-badge"
-                      style="background-color: {{ workflow.project.color }};
-                             color: {{ workflow.project.badge_text_color }};
-                             border-color: {{ workflow.project.badge_border_color }}"
-                      title="{{ workflow.project.name }}">
-                  {{ workflow.project.name }}
-                </span>
-              {% endif %}
-            </td>
-            <td class="align-middle">
-              {% if workflow.version %}
-                <span class="badge text-bg-light">{{ workflow.version }}</span>
-              {% else %}
-                <span class="text-muted small">{% trans "Unversioned" %}</span>
-              {% endif %}
-            </td>
-            <td class="align-middle">
-              {% if workflow.is_active %}
-                <span class="badge text-bg-success">{% trans "Active" %}</span>
-              {% else %}
-                <span class="badge text-bg-warning">{% trans "Inactive" %}</span>
-              {% endif %}
-            </td>
-            <td class="align-middle text-muted small">
-              {{ workflow.modified|date:"M j, Y" }}
-            </td>
-            <td class="align-middle text-end">
-              {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow target_id=row_id %}
-            </td>
-          </tr>
-        {% endwith %}
+        {% include "workflows/partials/components/workflow_table_row.html" with workflow=workflow show_archived=show_archived current_layout=current_layout %}
       {% endfor %}
     </tbody>
   </table>

@@ -15,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
@@ -84,6 +85,28 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             return False
         can_create = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
         return can_create
+
+    def _can_manage_workflow_actions(
+        self,
+        workflow: Workflow,
+        user: User,
+        membership,
+    ) -> bool:
+        """
+        Archive/delete permissions: Owners/Admins can manage any workflow;
+        Authors can manage only workflows they created.
+        """
+        if not membership or not getattr(membership, "is_active", False):
+            return False
+        if membership.has_any_role({RoleCode.OWNER, RoleCode.ADMIN}):
+            return True
+        if membership.has_any_role({RoleCode.AUTHOR}) and workflow.user_id == getattr(
+            user,
+            "id",
+            None,
+        ):
+            return True
+        return False
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from django.test import TestCase
 
-from simplevalidations.validations.constants import AssertionType, Severity, ValidationType
+from simplevalidations.validations.constants import (
+    AssertionType,
+    CatalogRunStage,
+    Severity,
+    ValidationType,
+)
 from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.tests.factories import (
     RulesetFactory,
@@ -91,3 +96,64 @@ class RulesetAssertionFormTests(TestCase):
         self.assertTrue(updated.validator.allow_custom_assertion_targets)
         self.assertEqual(updated.validator.supported_data_formats, ["json"])
         self.assertEqual(updated.notes, "New Notes")
+
+    def test_target_resolution_prefers_input_without_prefix(self):
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC, is_system=False)
+        input_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            slug="temperature",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_field": "temperature",
+                "severity": Severity.ERROR,
+                "cel_expression": "temperature > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid())
+        self.assertIsNone(form.cleaned_data["target_catalog_entry"])
+
+    def test_output_requires_prefix_on_collision(self):
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC, is_system=False)
+        input_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            slug="price",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        output_entry = ValidatorCatalogEntryFactory.build(
+            validator=validator,
+            slug="price",
+            run_stage=CatalogRunStage.OUTPUT,
+        )
+
+        form = self._form(
+            validator=validator,
+            catalog_entries=[input_entry, output_entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_field": "price",
+                "severity": Severity.ERROR,
+                "cel_expression": "price > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form.is_valid())
+
+        form_prefixed = self._form(
+            validator=validator,
+            catalog_entries=[input_entry, output_entry],
+            data={
+                "assertion_type": AssertionType.CEL_EXPRESSION.value,
+                "target_field": "output.price",
+                "severity": Severity.ERROR,
+                "cel_expression": "output.price > 0",
+                "when_expression": "",
+            },
+        )
+        self.assertTrue(form_prefixed.is_valid())
+        self.assertIsNone(form_prefixed.cleaned_data["target_catalog_entry"])

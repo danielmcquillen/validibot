@@ -69,6 +69,32 @@
       <!-- Action buttons -->
       <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0 pe-1">
 
+        {% if can_toggle_archived %}
+          <div class="btn-group me-2"
+               role="group"
+               aria-label="{% trans 'Archived toggle' %}">
+            {% if show_archived %}
+              <a class="btn btn-dark active"
+                 href="{{ archived_toggle_urls.hide }}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 aria-pressed="true"
+                 title="{% trans 'Hide archived workflows' %}">
+                <i class="bi bi-archive"></i>
+              </a>
+            {% else %}
+              <a class="btn btn-light"
+                 href="{{ archived_toggle_urls.show }}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 aria-pressed="false"
+                 title="{% trans 'Show archived workflows' %}">
+                <i class="bi bi-archive"></i>
+              </a>
+            {% endif %}
+          </div>
+        {% endif %}
+
         <!-- toggle grid/table -->
         <div class="btn-group me-1"
              role="group"

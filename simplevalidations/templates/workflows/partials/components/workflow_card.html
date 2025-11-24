@@ -1,6 +1,10 @@
 {% load i18n static core_tags %}
 
-<div class="card app-card workflow-card mb-3"
+<div class="card app-card workflow-card
+            {% if workflow.is_archived %}
+                archived
+            {% endif %}
+            mb-3"
      id="workflow-card-{{ workflow.pk }}">
     <div class="card-header ">
         <div class="card-title text-truncate">
@@ -15,12 +19,16 @@
         </div>
 
         <div class="card-header-status">
-            {% if workflow.is_active %}
+            {% if workflow.is_archived %}
+                <span class="badge text-bg-warning ms-1">
+                    {% trans "Archived" %}
+                </span>
+            {% elif workflow.is_active %}
                 <span class="badge text-bg-success ms-1">
                     {% trans "Active" %}
                 </span>
             {% else %}
-                <span class="badge text-bg-warning ms-1">
+                <span class="badge text-bg-secondary ms-1">
                     {% trans "Inactive" %}
                 </span>
             {% endif %}
@@ -80,6 +88,6 @@
 
     </div>
     <div class="card-footer d-flex flex-row justify-content-end align-items-center gap-2">
-        {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow target_id="workflow-card-wrapper-"|add:workflow.pk %}
+        {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow show_archived=show_archived current_layout=current_layout target_id="workflow-item-wrapper-"|add:workflow.pk %}
     </div>
 </div>

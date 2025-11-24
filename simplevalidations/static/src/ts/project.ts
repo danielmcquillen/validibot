@@ -5,6 +5,7 @@ import * as bootstrap from 'bootstrap';
 import { Chart, registerables } from 'chart.js';
 import htmx from 'htmx.org';
 import { initAppFeatures } from './app';
+import { initTableSorting } from './tableSorting';
 
 declare global {
     interface Window {
@@ -117,6 +118,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initializeCharts(document);
     initAppFeatures(document);
+    initTableSorting(document);
 });
 
 function simplevalidationsInitBootstrap() {
@@ -186,6 +188,7 @@ window.htmx.onLoad((content: Node) => {
     const root = resolveRoot(content);
     initializeCharts(root);
     initAppFeatures(root);
+    initTableSorting(root);
 
     root.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
         new window.bootstrap.Tooltip(tooltipTriggerEl);

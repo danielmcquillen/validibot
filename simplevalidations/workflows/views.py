@@ -6,7 +6,7 @@ from http import HTTPStatus
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -56,10 +56,12 @@ from simplevalidations.validations.services.validation_run import ValidationRunS
 from simplevalidations.workflows.constants import (
     WORKFLOW_EXECUTOR_ROLES,
     WORKFLOW_LIST_LAYOUT_SESSION_KEY,
+    WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY,
     WORKFLOW_MANAGER_ROLES,
     WORKFLOW_VIEWER_ROLES,
     WorkflowListLayout,
 )
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.workflows.forms import (
     WorkflowPublicInfoForm,
     WorkflowStepTypeForm,
@@ -694,7 +696,13 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
     layout_session_key = WORKFLOW_LIST_LAYOUT_SESSION_KEY
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = (
+            super()
+            .get_queryset()
+            .annotate(run_count=Count("validation_runs", distinct=True))
+        )
+        if not self._show_archived():
+            qs = qs.filter(is_archived=False)
         search = self.request.GET.get("q", "").strip()
         if search:
             qs = qs.filter(name__icontains=search)
@@ -714,14 +722,32 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
             can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
             can_execute = membership.has_any_role(WORKFLOW_EXECUTOR_ROLES)
             can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
+            can_toggle_archived = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+        else:
+            can_toggle_archived = False
 
         # Attach information about what user can do with each workflow
         # so we don't need to check multiple times in the template
         for wf in workflows:
-            wf.curr_user_can_execute = wf.is_active and can_execute
-            wf.curr_user_can_delete = can_manage
-            wf.curr_user_can_edit = can_manage
+            wf.curr_user_can_execute = (
+                wf.is_active and not wf.is_archived and can_execute
+            )
+            wf.curr_user_can_delete = self._can_manage_workflow_actions(
+                wf,
+                self.request.user,
+                membership,
+            )
+            wf.curr_user_can_edit = self._can_manage_workflow_actions(
+                wf,
+                self.request.user,
+                membership,
+            )
             wf.curr_user_can_view = can_view
+            run_count = getattr(wf, "run_count", None)
+            if run_count is None:
+                run_count = 1 if wf.validation_runs.exists() else 0
+            wf.has_runs = run_count > 0
+            wf.run_count = run_count
 
         layout = str(self._get_layout())
         context.update(
@@ -729,6 +755,9 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
                 "search_query": self.request.GET.get("q", ""),
                 "current_layout": layout,
                 "layout_urls": self._build_layout_urls(),
+                "show_archived": self._show_archived(),
+                "archived_toggle_urls": self._build_archived_toggle_urls(),
+                "can_toggle_archived": can_toggle_archived,
                 "can_create_workflow": self.user_can_create_workflow(),
                 "can_manage_workflow": self.user_can_manage_workflow(),
                 "can_view_workflow": self.user_can_view_workflow(),
@@ -774,6 +803,52 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
             "grid": f"?{grid_query}" if grid_query else "?",
             "table": f"?{table_query}" if table_query else "?",
         }
+
+    def _show_archived(self) -> bool:
+        if not self._can_toggle_archived():
+            return False
+        raw = (self.request.GET.get("archived") or "").lower()
+        if raw in {"1", "true", "yes"}:
+            self._remember_archived(True)
+            return True
+        if raw in {"0", "false", "no"}:
+            self._remember_archived(False)
+            return False
+        stored = self.request.session.get(WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY)
+        if isinstance(stored, bool):
+            return stored
+        if isinstance(stored, str):
+            return stored.lower() in {"1", "true", "yes"}
+        return False
+
+    def _can_toggle_archived(self) -> bool:
+        membership = getattr(
+            self.request.user,
+            "membership_for_current_org",
+            lambda: None,
+        )()
+        if not membership or not getattr(membership, "is_active", False):
+            return False
+        return membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+
+    def _build_archived_toggle_urls(self) -> dict[str, str]:
+        base_url = reverse_with_org(
+            "workflows:workflow_list",
+            request=self.request,
+        )
+        show_query = self._build_query_params(archived="1")
+        hide_query = self._build_query_params(archived="0")
+        return {
+            "show": f"{base_url}?{show_query}" if show_query else base_url,
+            "hide": f"{base_url}?{hide_query}" if hide_query else base_url,
+        }
+
+    def _remember_archived(self, show: bool) -> None:
+        try:
+            self.request.session[WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY] = show
+            self.request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            return
 
 
 class WorkflowDetailView(WorkflowAccessMixin, DetailView):
@@ -1051,6 +1126,148 @@ class WorkflowDeleteView(WorkflowAccessMixin, DeleteView):
         if request.method == "DELETE":
             return HttpResponse(status=204)
         return HttpResponseRedirect(success_url)
+
+
+class WorkflowArchiveView(WorkflowObjectMixin, View):
+    """Archive a workflow (set inactive) without deleting historical runs."""
+
+    def post(self, request, *args, **kwargs):
+        workflow = self.get_workflow()
+        membership = self.request.user.membership_for_current_org()
+        show_archived = self._determine_show_archived(request)
+        if not self._can_manage_workflow_actions(
+            workflow,
+            self.request.user,
+            membership,
+        ):
+            return HttpResponse(status=403)
+
+        unarchive = (request.POST.get("unarchive") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+
+        if unarchive:
+            if not workflow.is_archived:
+                messages.info(request, _("Workflow is already active."))
+            else:
+                workflow.is_archived = False
+                workflow.is_active = True
+                workflow.save(update_fields=["is_archived", "is_active"])
+                messages.success(
+                    request,
+                    _("Workflow unarchived and re-enabled for new runs."),
+                )
+        else:
+            if workflow.is_archived:
+                messages.info(request, _("Workflow is already archived."))
+            else:
+                workflow.is_archived = True
+                workflow.is_active = False
+                workflow.save(update_fields=["is_archived", "is_active"])
+                messages.info(
+                    request,
+                    _("Workflow archived and disabled. Runs remain available for audit."),
+                )
+
+        if request.headers.get("HX-Request"):
+            layout = self._determine_layout(request)
+            # When archiving and archived items are hidden, remove the row.
+            if not show_archived and workflow.is_archived:
+                return HttpResponse("", status=204)
+
+            self._populate_workflow_metadata(workflow)
+            self._attach_permissions(workflow)
+            template = (
+                "workflows/partials/components/workflow_table_row.html"
+                if layout == WorkflowListLayout.TABLE
+                else "workflows/partials/components/workflow_grid_item.html"
+            )
+            html = render_to_string(
+                template,
+                {
+                    "workflow": workflow,
+                    "show_archived": show_archived,
+                    "current_layout": layout,
+                },
+                request=request,
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = "workflowArchived"
+            return response
+
+        success_url = reverse_with_org(
+            "workflows:workflow_list",
+            request=request,
+        )
+        return HttpResponseRedirect(success_url)
+
+    def _determine_show_archived(self, request) -> bool:
+        raw = (request.POST.get("show_archived") or "").lower()
+        if raw in {"1", "true", "yes"}:
+            self._remember_archived(request, True)
+            return True
+        if raw in {"0", "false", "no"}:
+            self._remember_archived(request, False)
+            return False
+        stored = request.session.get(WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY)
+        if isinstance(stored, bool):
+            return stored
+        if isinstance(stored, str):
+            return stored.lower() in {"1", "true", "yes"}
+        return False
+
+    def _remember_archived(self, request, show: bool) -> None:
+        try:
+            request.session[WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY] = show
+            request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            return
+
+    def _determine_layout(self, request) -> str:
+        layout = (request.POST.get("layout") or "").lower()
+        if layout in WorkflowListLayout.values:
+            return layout
+        stored = request.session.get(WORKFLOW_LIST_LAYOUT_SESSION_KEY)
+        if stored in WorkflowListLayout.values:
+            return stored
+        return WorkflowListLayout.GRID
+
+    def _populate_workflow_metadata(self, workflow: Workflow) -> None:
+        run_count = getattr(workflow, "run_count", None)
+        if run_count is None:
+            run_count = 1 if workflow.validation_runs.exists() else 0
+        workflow.has_runs = run_count > 0
+        workflow.run_count = run_count
+
+    def _attach_permissions(self, workflow: Workflow) -> None:
+        """
+        Recompute per-user permission flags for a workflow when rendering partials.
+        """
+        membership = getattr(self.request.user, "membership_for_current_org", lambda: None)()
+        can_manage = False
+        can_execute = False
+        can_view = False
+        if membership and getattr(membership, "is_active", False):
+            can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+            can_execute = membership.has_any_role(WORKFLOW_EXECUTOR_ROLES)
+            can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
+        workflow.curr_user_can_execute = (
+            workflow.is_active and not workflow.is_archived and can_execute
+        )
+        workflow.curr_user_can_delete = self._can_manage_workflow_actions(
+            workflow,
+            self.request.user,
+            membership,
+        )
+        workflow.curr_user_can_delete = self._can_manage_workflow_actions(
+            workflow,
+            self.request.user,
+            membership,
+        )
+        workflow.curr_user_can_edit = workflow.curr_user_can_delete
+        workflow.curr_user_can_view = can_view
 
 
 class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
@@ -2384,25 +2601,64 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
         )
         direction = request.POST.get("direction")
         assertions = list(ruleset.assertions.order_by("order", "pk"))
-        try:
-            index = assertions.index(assertion)
-        except ValueError:
-            return hx_trigger_response(
-                status_code=400,
-                message=_("Assertion not found."),
+        validator = getattr(self.step, "validator", None)
+        use_stage_buckets = bool(validator and validator.has_processor)
+
+        if use_stage_buckets:
+            grouped = {"input": [], "output": []}
+            for item in assertions:
+                key = (
+                    "input"
+                    if item.resolved_run_stage == CatalogRunStage.INPUT
+                    else "output"
+                )
+                grouped[key].append(item)
+            target_key = (
+                "input"
+                if assertion.resolved_run_stage == CatalogRunStage.INPUT
+                else "output"
             )
-        if direction == "up" and index > 0:
-            assertions[index - 1], assertions[index] = (
-                assertions[index],
-                assertions[index - 1],
-            )
-        elif direction == "down" and index < len(assertions) - 1:
-            assertions[index], assertions[index + 1] = (
-                assertions[index + 1],
-                assertions[index],
-            )
+            target_list = grouped[target_key]
+            try:
+                index = target_list.index(assertion)
+            except ValueError:
+                return hx_trigger_response(
+                    status_code=400,
+                    message=_("Assertion not found."),
+                )
+            if direction == "up" and index > 0:
+                target_list[index - 1], target_list[index] = (
+                    target_list[index],
+                    target_list[index - 1],
+                )
+            elif direction == "down" and index < len(target_list) - 1:
+                target_list[index], target_list[index + 1] = (
+                    target_list[index + 1],
+                    target_list[index],
+                )
+            else:
+                return hx_trigger_response(status_code=204)
+            assertions = grouped["input"] + grouped["output"]
         else:
-            return hx_trigger_response(status_code=204)
+            try:
+                index = assertions.index(assertion)
+            except ValueError:
+                return hx_trigger_response(
+                    status_code=400,
+                    message=_("Assertion not found."),
+                )
+            if direction == "up" and index > 0:
+                assertions[index - 1], assertions[index] = (
+                    assertions[index],
+                    assertions[index - 1],
+                )
+            elif direction == "down" and index < len(assertions) - 1:
+                assertions[index], assertions[index + 1] = (
+                    assertions[index + 1],
+                    assertions[index],
+                )
+            else:
+                return hx_trigger_response(status_code=204)
         with transaction.atomic():
             for pos, item in enumerate(assertions, start=1):
                 RulesetAssertion.objects.filter(pk=item.pk).update(order=pos * 10)

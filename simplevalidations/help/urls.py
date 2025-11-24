@@ -7,8 +7,6 @@ from . import views
 app_name = "help"
 
 urlpatterns = [
-    # /help/ -> /help/index/
-    path("", views.help_page, name="index"),
-    # /help/<anything>/ -> /help/<anything>/
-    path("<path:path>/", views.help_page, name="page"),
+    path("", views.help_page, name="help_index"),
+    path("<path:path>/", views.help_page, name="help_page"),
 ]

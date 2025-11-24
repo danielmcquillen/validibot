@@ -1,6 +1,30 @@
 from django.contrib import admin
 
-from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.workflows.models import Workflow, WorkflowStep
+
+
+@admin.register(Workflow)
+class WorkflowAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "org",
+        "project",
+        "user",
+        "slug",
+        "version",
+        "is_active",
+        "is_archived",
+        "make_info_public",
+        "allowed_file_types",
+        "created",
+        "modified",
+    )
+    search_fields = (
+        "name",
+        "slug",
+    )
+    ordering = ("name",)
 
 
 @admin.register(WorkflowStep)
@@ -13,9 +37,7 @@ class WorkflowStepAdmin(admin.ModelAdmin):
         "created",
         "modified",
     )
-    list_filter = (
-        "workflow",
-    )
+    list_filter = ("workflow",)
     search_fields = (
         "name",
         "workflow__name",

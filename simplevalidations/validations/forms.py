@@ -8,21 +8,41 @@ from typing import Any
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Column, Layout, Row
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
-from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.validations.constants import (
     AssertionOperator,
     AssertionType,
     CatalogEntryType,
+    CatalogRunStage,
     CustomValidatorType,
     Severity,
-    CatalogRunStage,
     ValidatorRuleType,
 )
 from simplevalidations.validations.models import ValidatorCatalogEntry
+
+
+class CelHelpLabelMixin:
+    """Provide a helper to append the CEL help tooltip to field labels."""
+
+    @staticmethod
+    def _cel_help_markup() -> str:
+        return render_to_string("shared/cel_help_tooltip.html").strip()
+
+    def _append_cel_help_to_label(self, field_name: str = "cel_expression") -> None:
+        field = self.fields.get(field_name)
+        if not field:
+            return
+        field.label = mark_safe(
+            f"<div class='d-flex flex-row justify-content-between'>{field.label}{self._cel_help_markup()}</div>"
+        )
 
 
 class CustomValidatorCreateForm(forms.Form):
@@ -239,7 +259,7 @@ class _LiteralValue:
     source: str
 
 
-class RulesetAssertionForm(forms.Form):
+class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     """Form for creating/updating catalog-backed assertions."""
 
     assertion_type = forms.ChoiceField(
@@ -247,7 +267,7 @@ class RulesetAssertionForm(forms.Form):
         choices=AssertionType.choices,
     )
     target_field = forms.CharField(
-        label=_("Target Field"),
+        label=_("Target Signal"),
         required=False,
         widget=forms.TextInput(
             attrs={
@@ -256,7 +276,7 @@ class RulesetAssertionForm(forms.Form):
         ),
     )
     target_catalog_entry = forms.ChoiceField(
-        label=_("Signal"),
+        label=_("Catalog Signal"),
         required=False,
         choices=[],
     )
@@ -375,33 +395,79 @@ class RulesetAssertionForm(forms.Form):
     ):
         super().__init__(*args, **kwargs)
         self.catalog_choices = list(catalog_choices or [])
-        self.catalog_entries = list(catalog_entries or [])
-        self.catalog_entry_map = {
-            entry.slug: entry
-            for entry in self.catalog_entries
-            if getattr(entry, "slug", None)
-        }
-        self.catalog_slugs = set(self.catalog_entry_map.keys())
+        derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
+        self.catalog_entries = [
+            entry
+            for entry in list(catalog_entries or [])
+            if derived_enabled or entry.entry_type == CatalogEntryType.SIGNAL
+        ]
+        self.catalog_entry_map = {}
+        self.inputs_by_slug: dict[str, ValidatorCatalogEntry] = {}
+        self.outputs_by_slug: dict[str, ValidatorCatalogEntry] = {}
+        self.choice_map: dict[str, ValidatorCatalogEntry] = {}
+        for entry in self.catalog_entries:
+            if entry.run_stage == CatalogRunStage.OUTPUT:
+                self.outputs_by_slug.setdefault(entry.slug, entry)
+            else:
+                self.inputs_by_slug.setdefault(entry.slug, entry)
+        self.catalog_slugs = set(
+            list(self.inputs_by_slug.keys()) + list(self.outputs_by_slug.keys())
+        )
         self.validator = validator
         self.target_slug_datalist_id = target_slug_datalist_id
         signal_choices = []
         for entry in self.catalog_entries:
-            role = _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
+            role = (
+                _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
+            )
             kind = entry.get_entry_type_display()
             label = entry.label or entry.slug
-            signal_choices.append(
-                (entry.slug, f"{label} : {role} : {kind}")
-            )
+            value = f"{entry.run_stage}:{entry.slug}"
+            self.choice_map[value] = entry
+            signal_choices.append((value, f"{label} · {role}"))
         self.no_signal_choices = len(signal_choices) == 0
-        self.fields["target_catalog_entry"].choices = [("", _("Select a signal"))] + signal_choices
+        self.fields["target_catalog_entry"].choices = [
+            ("", _("Select a signal"))
+        ] + signal_choices
+        # Hide catalog selector in favor of the target field; we still keep it for backend resolution.
+        self.fields["target_catalog_entry"].widget = forms.HiddenInput()
         if self.no_signal_choices:
-            self.fields["target_catalog_entry"].widget = forms.HiddenInput()
+            self.fields["target_catalog_entry"].required = False
+
+        if self.fields.get("cel_expression"):
+            if self._validator_allows_custom_targets():
+                cel_help_text = _(
+                    "You may enter new targets using dot notation (e.g., data.error.message) "
+                    "and [index] for lists."
+                )
+            else:
+                cel_help_text = _(
+                    "Only catalog targets are available for this validator."
+                )
+            self.fields["cel_expression"].help_text = cel_help_text
 
         target_field = self.fields["target_field"]
-        target_field.help_text = _(
-            "Use dot notation for nested objects and [index] for lists, e.g. "
-            "`data.error[0].message`.",
-        )
+        if self._validator_allows_custom_targets():
+            if self.no_signal_choices:
+                target_field.label = _("Target Path")
+                target_field.help_text = _(
+                    "Use dot notation for nested objects and [index] for lists, e.g. "
+                    "`payload.results[0].value`"
+                )
+            else:
+                target_field.label = _("Target Signal or Path")
+                target_field.help_text = _(
+                    "Use `output.<name>` to "
+                    "disambiguate output signals when an input signal shares the same name. "
+                    "Use dot notation for nested objects and [index] for lists, e.g. "
+                    "`payload.results[0].value`.",
+                )
+        else:
+            target_field.label = _("Target Signal")
+            target_field.help_text = _(
+                "Use `output.<name>` to "
+                "disambiguate output signals when an input shares the same name.",
+            )
         target_attrs = target_field.widget.attrs
         target_attrs.update(
             {
@@ -413,7 +479,7 @@ class RulesetAssertionForm(forms.Form):
                 {
                     "list": self.target_slug_datalist_id,
                 },
-        )
+            )
         operator_choices = [("", _("(Select one)"))]
         operator_choices.extend(self._basic_operator_choices())
         self.fields["operator"].choices = operator_choices
@@ -422,8 +488,10 @@ class RulesetAssertionForm(forms.Form):
         self.helper.layout = Layout(
             Row(
                 Column("assertion_type", css_class="col-12 col-lg-3"),
-                Column("target_catalog_entry", css_class="col-12 col-lg-5"),
-                Column("target_field", css_class="col-12 col-lg-4"),
+                Column("cel_expression", css_class="col-12 col-lg-9"),
+            ),
+            Row(
+                Column("target_field", css_class="col-12"),
             ),
             Row(
                 Column("operator", css_class="col-12"),
@@ -447,22 +515,27 @@ class RulesetAssertionForm(forms.Form):
                 Column("tolerance_mode", css_class="col-6 col-lg-3"),
             ),
             Row(
-                Column("datetime_value", css_class="col-12 col-lg-6"),
-                Column("collection_operator", css_class="col-12 col-lg-3"),
-                Column("collection_value", css_class="col-12 col-lg-3"),
+                Column("datetime_value", css_class="col-12 col-lg-4"),
+                Column("collection_operator", css_class="col-12 col-lg-4"),
+                Column("collection_value", css_class="col-12 col-lg-4"),
             ),
-            "cel_expression",
             Row(
                 Column("severity", css_class="col-12 col-lg-4"),
                 Column("when_expression", css_class="col-12 col-lg-8"),
             ),
             "message_template",
         )
+        self._append_cel_help_to_label("cel_expression")
 
     def clean(self):
         cleaned = super().clean()
-        self._resolve_target_field()
         assertion_type = cleaned.get("assertion_type")
+        if assertion_type == AssertionType.CEL_EXPRESSION:
+            # CEL expressions declare their own targets inside the expression.
+            self.cleaned_data["target_catalog_entry"] = None
+            self.cleaned_data["target_field_value"] = ""
+        else:
+            self._resolve_target_field()
         if assertion_type == AssertionType.BASIC:
             operator_value = cleaned.get("operator")
             if not operator_value:
@@ -480,10 +553,15 @@ class RulesetAssertionForm(forms.Form):
             )
         else:
             expression = self._clean_cel_expression()
+            if not self._validator_allows_custom_targets():
+                self._validate_cel_identifiers(expression)
             cleaned["rhs_payload"] = {"expr": expression}
             cleaned["options_payload"] = {}
             cleaned["resolved_operator"] = AssertionOperator.CEL_EXPR
             cleaned["cel_cache"] = expression
+            # Ensure the target constraint is satisfied for CEL assertions.
+            cleaned["target_catalog_entry"] = None
+            cleaned["target_field_value"] = expression or "__cel__"
         return cleaned
 
     def _basic_operator_choices(self):
@@ -493,20 +571,110 @@ class RulesetAssertionForm(forms.Form):
             if choice != AssertionOperator.CEL_EXPR
         ]
 
+    def _validate_cel_identifiers(self, expression: str) -> None:
+        reserved_literals = {"true", "false", "null", "payload", "output"}
+        cel_builtins = {
+            "has",
+            "exists",
+            "exists_one",
+            "all",
+            "map",
+            "filter",
+            "size",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "type",
+            "int",
+            "double",
+            "string",
+            "bool",
+            "abs",
+            "ceil",
+            "floor",
+            "round",
+            "timestamp",
+            "duration",
+            "matches",
+            "in",
+        }
+        allowed = set(self.catalog_slugs)
+        allowed.update(f"output.{slug}" for slug in self.outputs_by_slug)
+        unknown = set()
+        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_\\.]*", expression):
+            name = match.group(0)
+            if name in reserved_literals or name in cel_builtins:
+                continue
+            if len(name) == 1:
+                continue
+            if name not in allowed:
+                unknown.add(name)
+        if unknown:
+            raise ValidationError(
+                {
+                    "cel_expression": _("Unknown signal(s) referenced: %(names)s")
+                    % {"names": ", ".join(sorted(unknown))}
+                }
+            )
+
     def _resolve_target_field(self):
         catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
         value = (self.cleaned_data.get("target_field") or "").strip()
 
         if catalog_choice:
-            if catalog_choice not in self.catalog_slugs:
+            entry = self.choice_map.get(catalog_choice)
+            if not entry:
                 raise ValidationError(
-                    {"target_field": _("Unknown signal(s) referenced. Provide a catalog signal or enable custom targets.")}
+                    {
+                        "target_field": _(
+                            "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
+                        )
+                    }
                 )
-            self.cleaned_data["target_catalog_entry"] = self.catalog_entry_map[catalog_choice]
+            self.cleaned_data["target_catalog_entry"] = entry
             self.cleaned_data["target_field_value"] = ""
             return
 
         if value:
+            # Explicit output prefix wins.
+            explicit_output = False
+            if value.startswith("output."):
+                explicit_output = True
+                value = value.replace("output.", "", 1)
+
+            if explicit_output and value in self.outputs_by_slug:
+                self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
+                self.cleaned_data["target_field_value"] = ""
+                return
+
+            if value in self.inputs_by_slug:
+                if value in self.outputs_by_slug and not explicit_output:
+                    raise ValidationError(
+                        {
+                            "target_field": _(
+                                "Both an input and output are named '%(name)s'. Use `output.%(name)s` to target the output signal."
+                            )
+                            % {"name": value}
+                        }
+                    )
+                self.cleaned_data["target_catalog_entry"] = self.inputs_by_slug[value]
+                self.cleaned_data["target_field_value"] = ""
+                return
+
+            if value in self.outputs_by_slug:
+                if value in self.inputs_by_slug and not explicit_output:
+                    raise ValidationError(
+                        {
+                            "target_field": _(
+                                "Both an input and output are named '%(name)s'. Use `output.%(name)s` to target the output signal."
+                            )
+                            % {"name": value}
+                        }
+                    )
+                self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
+                self.cleaned_data["target_field_value"] = ""
+                return
+
             if not self._validator_allows_custom_targets():
                 raise ValidationError(
                     {
@@ -528,7 +696,13 @@ class RulesetAssertionForm(forms.Form):
             self.cleaned_data["target_field_value"] = value
             return
 
-        raise ValidationError({"target_field": _("Unknown signal(s) referenced. Provide a catalog signal or enable custom targets.")})
+        raise ValidationError(
+            {
+                "target_field": _(
+                    "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
+                )
+            }
+        )
 
     def _validator_allows_custom_targets(self) -> bool:
         return bool(getattr(self.validator, "allow_custom_assertion_targets", False))
@@ -901,7 +1075,7 @@ class RulesetAssertionForm(forms.Form):
         return initial
 
 
-class ValidatorRuleForm(forms.Form):
+class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
     """Form for creating/updating validator-level default assertions (CEL only)."""
 
     name = forms.CharField(
@@ -938,6 +1112,11 @@ class ValidatorRuleForm(forms.Form):
         signal_choices = kwargs.pop("signal_choices", [])
         super().__init__(*args, **kwargs)
         self.fields["signals"].choices = signal_choices
+        # Signals are auto-detected from the CEL expression; render as read-only.
+        self.fields["signals"].disabled = True
+        self.fields["signals"].help_text = _(
+            "Signals are detected from the CEL expression and shown for reference."
+        )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
@@ -949,6 +1128,11 @@ class ValidatorRuleForm(forms.Form):
             "rule_type",
             "signals",
             "cel_expression",
+        )
+        self._append_cel_help_to_label("cel_expression")
+        cel_label = self.fields["cel_expression"].label
+        self.fields["cel_expression"].label = mark_safe(
+            f'<span class="w-100 d-block">{cel_label}</span>'
         )
 
     def clean_rule_type(self):
@@ -970,7 +1154,6 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
     class Meta:
         model = ValidatorCatalogEntry
         fields = [
-            "entry_type",
             "run_stage",
             "slug",
             "target_field",
@@ -987,21 +1170,35 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.validator = kwargs.pop("validator", None)
         super().__init__(*args, **kwargs)
-        self.fields["entry_type"].initial = CatalogEntryType.SIGNAL
-        self.fields["entry_type"].empty_label = None
+        self.validator = self.validator or getattr(self.instance, "validator", None)
         self.fields["label"].required = False
+        self.fields["label"].widget = forms.HiddenInput()
+        self.fields["label"].initial = ""
+        self.fields["slug"].label = _("Signal name")
+        self.fields["slug"].help_text = _(
+            "Short, slug-form name (lowercase letters, numbers, hyphens) used in assertions and CEL expressions."
+        )
+        self.fields["slug"].validators = []
+        self.fields["slug"].error_messages["required"] = _("Signal name is required.")
         self.fields["description"].help_text = _(
             "A short description to help you remember what data this signal represents."
         )
         self.fields["is_required"].help_text = _(
             "Requires the signal to be present in the submission (inputs) or processor output (outputs)."
         )
+        if not getattr(settings, "ENABLE_DERIVED_SIGNALS", False):
+            # Always treat as signal and hide type selection.
+            self.instance.entry_type = CatalogEntryType.SIGNAL
+            self.fields["entry_type"] = forms.CharField(
+                initial=CatalogEntryType.SIGNAL,
+                widget=forms.HiddenInput(),
+            )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Row(
-                Column("entry_type", css_class="col-12 col-md-6"),
                 Column("run_stage", css_class="col-12 col-md-6"),
             ),
             Row(
@@ -1009,7 +1206,6 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
                 Column("target_field", css_class="col-12 col-md-6"),
             ),
             Row(
-                Column("label", css_class="col-12 col-md-6"),
                 Column("data_type", css_class="col-12 col-md-6"),
             ),
             "description",
@@ -1023,6 +1219,32 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             ),
         )
 
+    def clean_slug(self):
+        value = (self.cleaned_data.get("slug") or "").strip()
+        if not value:
+            raise ValidationError(_("Signal name is required."))
+        suggested = slugify(value)
+        if suggested != value:
+            raise ValidationError(
+                _(
+                    "Use slug format (lowercase letters, numbers, hyphens). Try: %(suggested)s"
+                )
+                % {"suggested": suggested or _("a-slug-name")}
+            )
+        if not self.validator:
+            return value
+        existing = ValidatorCatalogEntry.objects.filter(
+            validator=self.validator,
+            slug=value,
+        ).exclude(pk=self.instance.pk)
+        if existing.exists():
+            raise ValidationError(
+                _(
+                    "Signal name must be unique across inputs and outputs for this validator."
+                )
+            )
+        return value
+
     def clean(self):
         cleaned = super().clean()
         entry_type = cleaned.get("entry_type")
@@ -1032,4 +1254,6 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         if not cleaned.get("is_hidden"):
             cleaned["default_value"] = None
             self.cleaned_data["default_value"] = None
+        cleaned["label"] = ""
+        self.cleaned_data["label"] = ""
         return cleaned

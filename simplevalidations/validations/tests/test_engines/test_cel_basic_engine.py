@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
@@ -25,6 +25,7 @@ from simplevalidations.validations.tests.factories import (
 )
 
 
+@override_settings(ENABLE_DERIVED_SIGNALS=True)
 class CelBasicEngineTests(TestCase):
     @classmethod
     def setUpTestData(cls):

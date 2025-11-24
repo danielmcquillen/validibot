@@ -13,7 +13,12 @@
     </div>
   </div>
   <div class="card-body">
-    {% if flat_mode %}
+    {% if not catalog_display or not catalog_display.entries %}
+      {# Hide the card entirely when no catalog signals exist #}
+      <p class="text-muted mb-0">
+        {% trans "No catalog entries registered yet." %}
+      </p>
+    {% elif flat_mode %}
       {% if catalog_display %}
         {% with prefix=catalog_tab_prefix|default:'catalog' %}
           <div class="catalog-filter mb-3 d-flex flex-row align-items-center">
@@ -25,54 +30,49 @@
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ prefix }}-flat-filter"
-                   placeholder="{% trans 'Filter by name or slug' %}"
+                   placeholder="{% trans 'Filter by signal name' %}"
                    data-sv-catalog-filter
                    data-sv-catalog-filter-target="#{{ prefix }}-flat-panel" />
           </div>
           <div id="{{ prefix }}-flat-panel" data-sv-catalog-panel>
-            <div class="catalog-entry-sublist-header">
-              {% trans "Input signals" %}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle" data-sortable-table>
+                <thead>
+                  <tr>
+                    <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
+                    <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
+                    <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for entry in catalog_display.entries %}
+                    <tr data-sv-catalog-entry
+                        data-sv-catalog-label="{{ entry.label|default:entry.slug|escape }}"
+                        data-sv-catalog-slug="{{ entry.slug|escape }}">
+                      <td>
+                        <code class="catalog-entry-slug d-inline-block text-truncate"
+                              data-original-text="{{ entry.target_field|escape }}"
+                              style="max-width: 220px;"
+                              title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+                      </td>
+                      <td class="text-muted small" data-sort-value="{{ entry.entry_type }}">
+                        {{ entry.get_entry_type_display }}
+                      </td>
+                      <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">
+                        {{ entry.get_run_stage_display }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                  {% if not catalog_display.entries %}
+                    <tr data-sv-catalog-entry>
+                      <td colspan="3" class="text-muted small">
+                        {% trans "No catalog entries registered yet." %}
+                      </td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
             </div>
-            {% if catalog_display.inputs %}
-              {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.inputs %}
-            {% else %}
-              <p class="text-muted small" data-sv-catalog-empty-static>
-                {% trans "No input signals." %}
-              </p>
-            {% endif %}
-
-            <div class="catalog-entry-sublist-header mt-3">
-              {% trans "Input derivations" %}
-            </div>
-            {% if catalog_display.input_derivations %}
-              {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.input_derivations %}
-            {% else %}
-              <p class="text-muted small" data-sv-catalog-empty-static>
-                {% trans "No input derivations." %}
-              </p>
-            {% endif %}
-
-            <div class="catalog-entry-sublist-header mt-4">
-              {% trans "Output signals" %}
-            </div>
-            {% if catalog_display.outputs %}
-              {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.outputs %}
-            {% else %}
-              <p class="text-muted small" data-sv-catalog-empty-static>
-                {% trans "No output signals." %}
-              </p>
-            {% endif %}
-
-            <div class="catalog-entry-sublist-header mt-3">
-              {% trans "Output derivations" %}
-            </div>
-            {% if catalog_display.output_derivations %}
-              {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.output_derivations %}
-            {% else %}
-              <p class="text-muted small" data-sv-catalog-empty-static>
-                {% trans "No output derivations." %}
-              </p>
-            {% endif %}
             <p class="text-muted small d-none" data-sv-catalog-empty>
               {% trans "No entries match your filter." %}
             </p>
@@ -128,21 +128,15 @@
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
-                   placeholder="{% trans 'Filter by name or slug' %}"
+                   placeholder="{% trans 'Filter by signal name' %}"
                    data-sv-catalog-filter
                    data-sv-catalog-filter-target="#{{ catalog_tab_prefix|default:'catalog' }}-input-panel" />
           </div>
           {% if catalog_display.inputs or catalog_display.input_derivations %}
             {% if catalog_display.inputs %}
-              <div class="catalog-entry-sublist-header">
-                {% trans "Input signals" %}
-              </div>
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.inputs %}
             {% endif %}
             {% if catalog_display.input_derivations %}
-              <div class="catalog-entry-sublist-header mt-3">
-                {% trans "Input derivations" %}
-              </div>
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.input_derivations %}
             {% endif %}
           {% else %}
@@ -167,21 +161,15 @@
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
-                   placeholder="{% trans 'Filter by name or slug' %}"
+                   placeholder="{% trans 'Filter by signal name' %}"
                    data-sv-catalog-filter
                    data-sv-catalog-filter-target="#{{ catalog_tab_prefix|default:'catalog' }}-output-panel" />
           </div>
           {% if catalog_display.outputs or catalog_display.output_derivations %}
             {% if catalog_display.outputs %}
-              <div class="catalog-entry-sublist-header">
-                {% trans "Output signals" %}
-              </div>
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.outputs %}
             {% endif %}
             {% if catalog_display.output_derivations %}
-              <div class="catalog-entry-sublist-header mt-3">
-                {% trans "Output derivations" %}
-              </div>
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.output_derivations %}
             {% endif %}
           {% else %}

@@ -13,6 +13,7 @@ from simplevalidations.validations.tests.factories import (
     ValidatorCatalogEntryFactory,
 )
 from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.validations.forms import ValidatorCatalogEntryForm
 from simplevalidations.validations.tests.factories import RulesetFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
@@ -73,3 +74,79 @@ def test_ruleset_validator_property_resolves_via_workflow_step():
     validator = ValidatorFactory()
     WorkflowStepFactory(validator=validator, ruleset=ruleset)
     assert ruleset.validator == validator
+
+
+@pytest.mark.django_db
+def test_signal_name_must_be_slug_format():
+    validator = ValidatorFactory(is_system=False)
+    form = ValidatorCatalogEntryForm(
+        data={
+            "run_stage": CatalogRunStage.INPUT,
+            "slug": "My Variable",
+            "target_field": "payload.value",
+            "label": "",
+            "data_type": "number",
+        },
+        validator=validator,
+    )
+    assert not form.is_valid()
+    assert "slug" in form.errors
+    assert "Try: my-variable" in form.errors["slug"][0]
+
+
+@pytest.mark.django_db
+def test_signal_name_unique_across_stages():
+    validator = ValidatorFactory(is_system=False)
+    ValidatorCatalogEntryFactory(
+        validator=validator,
+        run_stage=CatalogRunStage.INPUT,
+        slug="boo",
+    )
+    form = ValidatorCatalogEntryForm(
+        data={
+            "run_stage": CatalogRunStage.OUTPUT,
+            "slug": "boo",
+            "target_field": "output.boo",
+            "label": "",
+            "data_type": "number",
+        },
+        validator=validator,
+    )
+    assert not form.is_valid()
+    assert "unique" in form.errors["slug"][0].lower() or "must be unique" in form.errors["slug"][0].lower()
+
+
+@pytest.mark.django_db
+def test_signal_create_modal_returns_errors_in_htmx():
+    org = OrganizationFactory()
+    from django.test import Client
+    from django.urls import reverse
+    from simplevalidations.users.constants import RoleCode
+    from simplevalidations.users.tests.factories import UserFactory, grant_role
+
+    user = UserFactory()
+    grant_role(user, org, RoleCode.AUTHOR)
+    user.set_current_org(org)
+    validator = ValidatorFactory(org=org, is_system=False)
+
+    client = Client()
+    client.force_login(user)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.post(
+        reverse("validations:validator_signal_create", kwargs={"pk": validator.pk}),
+        data={
+            "run_stage": CatalogRunStage.INPUT,
+            "slug": "",
+            "target_field": "",
+            "data_type": "number",
+        },
+        HTTP_HX_REQUEST="true",
+    )
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "modal-signal-create" in html
+    assert "Signal name is required" in html

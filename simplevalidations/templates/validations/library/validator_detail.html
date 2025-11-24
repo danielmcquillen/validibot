@@ -66,10 +66,14 @@
           </button>
         </div>
       </div>
-      <div id="probe-status" class="d-none"></div>
+      <div id="probe-status" class="d-none">
+      </div>
     {% endif %}
 
     <div class="row g-4">
+      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
+      </div>
       <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
         <div class="card app-card h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
@@ -77,7 +81,9 @@
               {% trans "Default Assertions" %}
             </div>
             {% if can_manage_validators %}
-              <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#modal-rule-create">
+              <button class="btn btn-sm btn-primary"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modal-rule-create">
                 <i class="bi bi-plus me-1"></i>{% trans "Add default assertion" %}
               </button>
             {% endif %}
@@ -86,9 +92,6 @@
             {% include 'validations/library/partials/validator_default_assertions_card.html' with assertions=validator_default_assertions %}
           </div>
         </div>
-      </div>
-      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
-        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
       </div>
     </div>
 
@@ -100,13 +103,10 @@
       {% trans "Back to Validator Library" %}
     </a>
   </div>
-  {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create-input" modal_title=_("Add Input Signal") modal_form=signal_create_form_input %}
-  {% if show_output_tab %}
-    {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create-output" modal_title=_("Add Output Signal") modal_form=signal_create_form_output %}
-  {% endif %}
+  {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
   {% include "validations/library/partials/modal_rule_create.html" %}
-  {% for entry_id, form in signal_edit_forms.items %}
-    {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=form %}
+  {% for entry_id, payload in signal_edit_forms.items %}
+    {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
   {% endfor %}
   {% for rule_id, form in default_assertion_edit_forms.items %}
     {% include "validations/library/partials/modal_rule_edit.html" with rule_id=rule_id form=form %}

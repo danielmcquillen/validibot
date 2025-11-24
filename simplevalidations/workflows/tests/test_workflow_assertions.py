@@ -52,6 +52,10 @@ class WorkflowStepAssertionsTests(TestCase):
             run_stage=CatalogRunStage.OUTPUT,
         )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        if not step.ruleset_id:
+            ruleset = RulesetFactory(org=workflow.org)
+            step.ruleset = ruleset
+            step.save(update_fields=["ruleset"])
         return step
 
     def _make_basic_step(self, workflow):
@@ -87,7 +91,7 @@ class WorkflowStepAssertionsTests(TestCase):
             create_url,
             data={
                 "assertion_type": "basic",
-                "target_catalog_entry": "facility_electric_demand_w",
+                "target_catalog_entry": "output:facility_electric_demand_w",
                 "operator": "le",
                 "comparison_value": "1000",
                 "severity": "ERROR",
@@ -118,7 +122,62 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("Assertion Type", body)
-        self.assertIn("custom-signal", body)
+
+    def test_move_assertion_single_stage(self):
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_basic_step(workflow)
+        assert step.ruleset
+        a1 = RulesetAssertionFactory(ruleset=step.ruleset, order=10)
+        a2 = RulesetAssertionFactory(ruleset=step.ruleset, order=20)
+        move_url = reverse(
+            "workflows:workflow_step_assertion_move",
+            kwargs={"pk": workflow.pk, "step_id": step.pk, "assertion_id": a2.pk},
+        )
+        resp = self.client.post(move_url, data={"direction": "up"})
+        self.assertEqual(resp.status_code, 204)
+        orders = list(
+            step.ruleset.assertions.order_by("order").values_list("pk", flat=True)
+        )
+        self.assertEqual(orders[0], a2.pk)
+
+    def test_move_assertion_respects_stages(self):
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        assert step.ruleset
+        input_entry = ValidatorCatalogEntryFactory(
+            validator=step.validator,
+            slug="input-signal",
+            run_stage=CatalogRunStage.INPUT,
+        )
+        output_entry = ValidatorCatalogEntryFactory(
+            validator=step.validator,
+            slug="output-signal",
+            run_stage=CatalogRunStage.OUTPUT,
+        )
+        a_input = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            order=10,
+            target_catalog_entry=input_entry,
+            target_field="",
+        )
+        a_output = RulesetAssertionFactory(
+            ruleset=step.ruleset,
+            order=20,
+            target_catalog_entry=output_entry,
+            target_field="",
+        )
+        move_url = reverse(
+            "workflows:workflow_step_assertion_move",
+            kwargs={"pk": workflow.pk, "step_id": step.pk, "assertion_id": a_output.pk},
+        )
+        # Try to move output "up" (should stay in output bucket, not jump before input)
+        resp = self.client.post(move_url, data={"direction": "up"})
+        self.assertEqual(resp.status_code, 204)
+        ordered = [a.resolved_run_stage for a in step.ruleset.assertions.order_by("order")]
+        # input should still precede output
+        self.assertEqual(ordered, [CatalogRunStage.INPUT, CatalogRunStage.OUTPUT])
 
     def test_basic_validator_supports_assertions(self):
         workflow = WorkflowFactory()
@@ -130,6 +189,28 @@ class WorkflowStepAssertionsTests(TestCase):
         )
         response = self.client.get(url, HTTP_HX_REQUEST="true")
         self.assertEqual(response.status_code, 200)
+
+    def test_cel_expression_requires_known_signal(self):
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        step = self._make_energyplus_step(workflow)
+        create_url = reverse(
+            "workflows:workflow_step_assertion_create",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.post(
+            create_url,
+            data={
+                "assertion_type": "cel_expr",
+                "cel_expression": "unknown_signal < 5",
+                "severity": "ERROR",
+                "message_template": "",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Unknown signal(s) referenced", body)
 
     def test_basic_assertion_create_allows_custom_target(self):
         workflow = WorkflowFactory()

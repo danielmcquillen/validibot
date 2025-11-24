@@ -18,10 +18,14 @@ from typing import TYPE_CHECKING, Any
 
 from simplevalidations.validations.cel import DEFAULT_HELPERS, CelHelper
 from simplevalidations.validations.cel_eval import evaluate_cel_expression
+from django.conf import settings
+
 from simplevalidations.validations.constants import (
     CEL_MAX_CONTEXT_SYMBOLS,
     CEL_MAX_EVAL_TIMEOUT_MS,
     CEL_MAX_EXPRESSION_CHARS,
+    CatalogEntryType,
+    CatalogRunStage,
     Severity,
     ValidationType,
 )
@@ -157,16 +161,30 @@ class BaseValidatorEngine(ABC):
         Include the raw payload so expressions can reference it directly if needed.
         """
         context: dict[str, Any] = {"payload": payload}
-        entries = list(
-            validator.catalog_entries.all().only(
-                "slug",
-                "is_required",
-            ),
+        derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
+        qs = validator.catalog_entries.all().only(
+            "slug",
+            "is_required",
+            "entry_type",
+            "run_stage",
         )
+        if not derived_enabled:
+            qs = qs.filter(entry_type=CatalogEntryType.SIGNAL)
+        entries = list(qs)
         for entry in entries:
             value, found = self._resolve_path(payload, entry.slug)
             if found:
-                context[entry.slug] = value
+                if (
+                    entry.entry_type == CatalogEntryType.SIGNAL
+                    and entry.run_stage == CatalogRunStage.OUTPUT
+                    and entry.slug in context
+                ):
+                    # Preserve existing input mapping; expose output via prefix for disambiguation.
+                    context.setdefault(f"output.{entry.slug}", value)
+                else:
+                    context[entry.slug] = value
+                if entry.entry_type == CatalogEntryType.SIGNAL and entry.run_stage == CatalogRunStage.OUTPUT:
+                    context.setdefault(f"output.{entry.slug}", value)
             elif entry.is_required:
                 context[entry.slug] = None
 

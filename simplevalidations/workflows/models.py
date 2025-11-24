@@ -200,6 +200,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         default=True,
         help_text=_("Inactive workflows stay visible but cannot run validations."),
     )
+    is_archived = models.BooleanField(
+        default=False,
+        help_text=_("Archived workflows are disabled and hidden unless explicitly shown."),
+    )
 
     make_info_public = models.BooleanField(
         default=False,

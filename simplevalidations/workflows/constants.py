@@ -8,6 +8,7 @@ from simplevalidations.users.constants import RoleCode
 
 WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY = "workflow_launch_input_mode"
 WORKFLOW_LIST_LAYOUT_SESSION_KEY = "workflow_list_layout"
+WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY = "workflow_list_show_archived"
 
 
 class WorkflowListLayout(models.TextChoices):

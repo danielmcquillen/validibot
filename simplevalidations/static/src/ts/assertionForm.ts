@@ -78,11 +78,19 @@ class AssertionFormController {
   private wrappers = new Map<ConditionalFieldName, HTMLElement>();
   private typeField: HTMLSelectElement | null;
   private operatorField: HTMLSelectElement | null;
+  private targetField: HTMLElement | null;
+  private targetCatalogField: HTMLElement | null;
+  private celField: HTMLElement | null;
+  private typeWrapper: HTMLElement | null;
   private focusApplied = false;
 
   constructor(private form: HTMLFormElement) {
     this.typeField = this.form.querySelector<HTMLSelectElement>('#id_assertion_type');
     this.operatorField = this.form.querySelector<HTMLSelectElement>('#id_operator');
+    this.targetField = this.form.querySelector<HTMLElement>('[name="target_field"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.targetCatalogField = this.form.querySelector<HTMLElement>('[name="target_catalog_entry"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.celField = this.form.querySelector<HTMLElement>('[name="cel_expression"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.typeWrapper = this.typeField?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
   }
 
   init(): void {
@@ -151,12 +159,15 @@ class AssertionFormController {
       return;
     }
     this.hideAllConditional();
+    this.ensureCelPosition();
     const typeValue = this.typeField.value;
     if (typeValue === 'cel_expr') {
       this.showFields(['cel_expression', 'cel_allow_custom_signals']);
       this.operatorField.value = '';
+      this.toggleTargetVisibility(false);
       return;
     }
+    this.toggleTargetVisibility(true);
 
     this.setVisible('operator', true);
     const operatorValue = this.operatorField.value;
@@ -170,6 +181,32 @@ class AssertionFormController {
       STRING_OPTION_FIELDS.forEach((name) => visible.add(name));
     }
     this.showFields(visible);
+  }
+
+  /**
+   * Force the CEL expression field to appear directly after the assertion type field.
+   */
+  private ensureCelPosition(): void {
+    if (!this.celField || !this.typeWrapper) {
+      return;
+    }
+    const parent = this.typeWrapper.parentElement;
+    if (!parent) {
+      return;
+    }
+    if (this.celField.previousElementSibling === this.typeWrapper) {
+      return;
+    }
+    parent.insertBefore(this.celField, this.typeWrapper.nextElementSibling);
+  }
+
+  private toggleTargetVisibility(show: boolean): void {
+    if (this.targetField) {
+      this.targetField.style.display = show ? '' : 'none';
+    }
+    if (this.targetCatalogField) {
+      this.targetCatalogField.style.display = show ? '' : 'none';
+    }
   }
 
   private focusTargetField(): void {

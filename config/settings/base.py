@@ -70,6 +70,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 # ASGI_APPLICATION = "config.asgi.application"
 
 GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
+ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
 
 # APPS
 # ------------------------------------------------------------------------------
@@ -99,6 +100,7 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "drf_spectacular",
     "django_filters",
+    "markdownify",
 ]
 if GITHUB_APP_ENABLED:
     THIRD_PARTY_APPS.append("django_github_app")
@@ -123,6 +125,39 @@ LOCAL_APPS = [
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+MARKDOWNIFY = {
+    "default": {
+        "WHITELIST_TAGS": [
+            "a",
+            "abbr",
+            "acronym",
+            "b",
+            "blockquote",
+            "code",
+            "em",
+            "i",
+            "li",
+            "ol",
+            "strong",
+            "ul",
+            "p",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "pre",
+            "span",
+        ],
+        "WHITELIST_ATTRS": {
+            "a": ["href", "title"],
+            "span": ["class"],
+            "code": ["class"],
+        },
+    },
+}
 
 # MIGRATIONS
 # ------------------------------------------------------------------------------
@@ -488,3 +523,7 @@ MODAL_TOKEN_SECRET = env("MODAL_TOKEN_SECRET", default="")
 
 
 TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=False)
+
+
+# FEATURES
+ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)

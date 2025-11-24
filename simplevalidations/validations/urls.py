@@ -81,6 +81,11 @@ urlpatterns = [
         name="validator_rule_update",
     ),
     path(
+        "library/custom/<int:pk>/rules/<int:rule_pk>/move/",
+        views.ValidatorRuleMoveView.as_view(),
+        name="validator_rule_move",
+    ),
+    path(
         "library/custom/<int:pk>/rules/<int:rule_pk>/delete/",
         views.ValidatorRuleDeleteView.as_view(),
         name="validator_rule_delete",

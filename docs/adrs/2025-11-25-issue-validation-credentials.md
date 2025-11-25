@@ -288,6 +288,19 @@ For the January alpha, we explicitly do not implement:
 
 ---
 
+## Security & Privacy Considerations
+
+Verifiable Credentials in this design provide authenticity and integrity, not confidentiality. We assume that any credential published at a public URL may be retrieved by anyone who knows or discovers that URL.
+
+For the MVP, we adopt these rules:
+
+- VC payloads must be safe to treat as public.
+- VC contents must not include personally identifying information about individuals.
+- VC contents must not include sensitive customer identifiers (e.g. client names, street addresses) or detailed proprietary performance metrics unless an organization explicitly opts in.
+- VC contents should focus on opaque identifiers (ULIDs), hashes of submitted content, media types, workflow identifiers, validator codes, run status, and timestamps.
+- Detailed run context (project names, filenames that reveal clients, full metrics, etc.) stays in internal SimpleValidations data models and is only shown to authenticated users with appropriate permissions.
+- Public `/credentials/<id>/` endpoints should present a minimal view suitable for sharing and verification; richer information is only available to authenticated users.
+
 ## Consequences
 
 **Pros**

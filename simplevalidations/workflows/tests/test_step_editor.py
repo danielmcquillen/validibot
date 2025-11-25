@@ -19,6 +19,7 @@ from simplevalidations.actions.models import (
     SignedCertificateAction,
     SlackMessageAction,
 )
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import (
     OrganizationFactory,
@@ -494,7 +495,7 @@ def test_create_json_schema_rejects_text_and_file(client):
 
 
 def test_create_xml_step_requires_schema_text(client):
-    workflow = WorkflowFactory()
+    workflow = WorkflowFactory(allowed_file_types=[SubmissionFileType.XML])
     _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.XML_SCHEMA, "xml-validator", "XML Validator")
 

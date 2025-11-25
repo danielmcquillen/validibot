@@ -886,10 +886,20 @@ class Validator(TimeStampedModel):
     def clean(self):
         super().clean()
         data_formats = [value for value in (self.supported_data_formats or []) if value]
-        if not data_formats:
-            data_formats = default_supported_data_formats_for_validation(
-                self.validation_type,
-            )
+        file_types_hint = [value for value in (self.supported_file_types or []) if value]
+        placeholder_formats = _default_validator_data_formats()
+        placeholder_file_types = _default_validator_file_types()
+        expected_formats = default_supported_data_formats_for_validation(
+            self.validation_type,
+        )
+        # If formats/file types are still on the placeholder defaults, apply the
+        # validation-type defaults so compatibility checks stay accurate.
+        if not data_formats or (
+            data_formats == placeholder_formats
+            and expected_formats != placeholder_formats
+            and (not file_types_hint or file_types_hint == placeholder_file_types)
+        ):
+            data_formats = expected_formats
         normalized_formats: list[str] = []
         for value in data_formats:
             if value not in SubmissionDataFormat.values:

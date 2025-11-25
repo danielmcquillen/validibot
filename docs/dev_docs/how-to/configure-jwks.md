@@ -7,7 +7,7 @@ SimpleValidations now advertises badge-signing public keys at `/.well-known/jwks
 - Provision an asymmetric KMS key (currently `alias/sv-badge-signing-prod`) and grant the web application **GetPublicKey** access.
 - Set the following environment variables:
   - `KMS_KEY_ID` – the active key alias or ARN used for signing badges.
-  - `AWS_DEFAULT_REGION` – the region that hosts the key (for example `us-west-1`).
+  - `AWS_DEFAULT_REGION` – the region that hosts the key (for example `ap-southeast-2`).
   - `SV_JWKS_KEYS` – comma-separated list of key aliases/ARNs that should be published. During rotation include both the new and previous key until old badges expire.
   - `SV_JWKS_ALG` – advertised signing algorithm (`ES256` for the current ECC key).
 - Deploy and confirm that `/.well-known/jwks.json` returns the expected key set and serves with the `application/jwk-set+json` content type.

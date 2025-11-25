@@ -33,6 +33,7 @@ from simplevalidations.validations.models import (
     ValidationStepRunSummary,
     Validator,
 )
+from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.workflows.models import Workflow, WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,17 @@ class Command(BaseCommand):
         )
         submission.latest_run = run
         submission.save(update_fields=["latest_run"])
+        tracking_service = TrackingEventService()
+        tracking_service.log_validation_run_created(
+            run=run,
+            recorded_at=start_time,
+            channel="web",
+        )
+        tracking_service.log_validation_run_status(
+            run=run,
+            status=run.status,
+            recorded_at=end_time,
+        )
 
         total_findings = 0
         total_errors = 0

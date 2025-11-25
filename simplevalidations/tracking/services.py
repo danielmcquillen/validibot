@@ -37,6 +37,7 @@ class TrackingEventService:
         org: Organization | None,
         user: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        channel: str | None = None,
         recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         """
@@ -62,6 +63,7 @@ class TrackingEventService:
                 org=org,
                 user=user,
                 extra_data=extra_data,
+                channel=channel,
                 recorded_at=recorded_at,
             )
         except Exception:
@@ -86,6 +88,7 @@ class TrackingEventService:
         org: Organization | None,
         user: User | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        channel: str | None = None,
         recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         if not event_type:
@@ -122,6 +125,14 @@ class TrackingEventService:
             create_kwargs["created"] = recorded_at
             create_kwargs["modified"] = recorded_at
 
+        derived_channel = self._determine_channel(
+            channel=channel,
+            extra_data=prepared_extra,
+        )
+        if derived_channel:
+            create_kwargs["extra_data"] = create_kwargs.get("extra_data") or {}
+            create_kwargs["extra_data"]["channel"] = derived_channel
+
         tracking_event = TrackingEvent.objects.create(**create_kwargs)
         return tracking_event
 
@@ -144,11 +155,16 @@ class TrackingEventService:
         submission_id: Any | None = None,
         validation_run_id: Any | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        channel: str | None = None,
         recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         """
         Generic helper for logging validation run lifecycle events.
         """
+        channel = self._determine_channel(
+            channel=channel or (extra_data.get("channel") if extra_data else None),
+            extra_data=extra_data,
+        )
 
         if run is not None:
             workflow = workflow or getattr(run, "workflow", None)
@@ -199,6 +215,7 @@ class TrackingEventService:
             org=event_org,
             user=actor,
             extra_data=cleaned_payload or None,
+            channel=channel or self._map_source_to_channel(getattr(run, "source", None)),
             recorded_at=recorded_at,
         )
 
@@ -213,6 +230,7 @@ class TrackingEventService:
         submission_id: Any | None = None,
         validation_run_id: Any | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        channel: str | None = None,
         recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         return self.log_validation_run_event(
@@ -225,6 +243,7 @@ class TrackingEventService:
             submission_id=submission_id,
             validation_run_id=validation_run_id,
             extra_data=extra_data,
+            channel=channel,
             recorded_at=recorded_at,
         )
 
@@ -238,6 +257,7 @@ class TrackingEventService:
         submission_id: Any | None = None,
         validation_run_id: Any | None = None,
         extra_data: Mapping[str, Any] | None = None,
+        channel: str | None = None,
         recorded_at: datetime | None = None,
     ) -> TrackingEvent | None:
         """Public method for logging workflow start events."""
@@ -253,6 +273,7 @@ class TrackingEventService:
                 submission_id=submission_id,
                 validation_run_id=validation_run_id,
                 extra_data=extra_data,
+                channel=channel,
                 recorded_at=recorded_at,
                 event_type=AppEventType.VALIDATION_RUN_STARTED,
             )
@@ -351,6 +372,39 @@ class TrackingEventService:
         for key, value in extra_data.items():
             processed[key] = self._normalize_extra_value(value)
         return processed
+
+    def _determine_channel(
+        self,
+        *,
+        channel: str | None,
+        extra_data: dict[str, Any] | None,
+    ) -> str | None:
+        """
+        Normalize the interaction channel for analytics.
+
+        We prefer an explicit channel, fall back to path hints, and otherwise
+        leave the value unset so callers can distinguish unknowns.
+        """
+        normalized = (channel or "").strip().lower()
+        if normalized in {"api", "web"}:
+            return normalized
+
+        path = ""
+        if extra_data:
+            path = str(extra_data.get("path") or "").lower()
+        if path and "/api" in path:
+            return "api"
+        if path:
+            return "web"
+        return None
+
+    def _map_source_to_channel(self, source: str | None) -> str | None:
+        normalized = (source or "").lower()
+        if normalized == "api":
+            return "api"
+        if normalized:
+            return "web"
+        return None
 
     def _normalize_extra_value(self, value: Any) -> Any:
         if value is None:

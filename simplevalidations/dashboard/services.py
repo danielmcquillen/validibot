@@ -155,3 +155,64 @@ def build_chart_payload(
     }
 
     return chart_config
+
+
+def build_stacked_bar_payload(
+    series_by_label: dict[str, list[tuple[datetime, int]]],
+    *,
+    colors: dict[str, str],
+    bucket: str,
+) -> dict:
+    """
+    Build a stacked bar chart payload for multiple time series.
+
+    Assumes each series covers the same periods (as returned by generate_time_series).
+    """
+    labels: list[str] = []
+    datasets: list[dict[str, object]] = []
+
+    if not series_by_label:
+        return {
+            "type": "bar",
+            "data": {"labels": [], "datasets": []},
+            "options": {
+                "scales": {"x": {"stacked": True}, "y": {"stacked": True}},
+                "plugins": {"legend": {"display": True, "position": "bottom"}},
+            },
+        }
+
+    first_series = next(iter(series_by_label.values()))
+    for period, _ in first_series:
+        labels.append(period.strftime("%b %d") if bucket == "day" else period.strftime("%b %d %H:%M"))
+
+    for label, series in series_by_label.items():
+        values = [int(value) for _, value in series]
+        color = colors.get(label, "#20c997")
+        datasets.append(
+            {
+                "label": label,
+                "data": values,
+                "backgroundColor": color,
+                "borderColor": color,
+                "stack": "users",
+            },
+        )
+
+    return {
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": datasets,
+        },
+        "options": {
+            "responsive": True,
+            "maintainAspectRatio": False,
+            "scales": {
+                "x": {"stacked": True},
+                "y": {"stacked": True, "beginAtZero": True, "ticks": {"precision": 0}},
+            },
+            "plugins": {
+                "legend": {"display": True, "position": "bottom"},
+            },
+        },
+    }

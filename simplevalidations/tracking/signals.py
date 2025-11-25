@@ -35,6 +35,7 @@ def log_user_logged_in(sender, request, user, **kwargs):
     service = TrackingEventService()
     org = _extract_org(user)
     metadata = _build_request_metadata(request)
+    channel = "api" if metadata.get("path", "").startswith("/api") else "web"
     service.log_tracking_event(
         event_type=TrackingEventType.APP_EVENT,
         app_event_type=AppEventType.USER_LOGGED_IN,
@@ -42,6 +43,7 @@ def log_user_logged_in(sender, request, user, **kwargs):
         org=org,
         user=user,
         extra_data={k: v for k, v in metadata.items() if v},
+        channel=channel,
     )
 
 
@@ -50,6 +52,7 @@ def log_user_logged_out(sender, request, user, **kwargs):
     service = TrackingEventService()
     org = _extract_org(user)
     metadata = _build_request_metadata(request)
+    channel = "api" if metadata.get("path", "").startswith("/api") else "web"
     service.log_tracking_event(
         event_type=TrackingEventType.APP_EVENT,
         app_event_type=AppEventType.USER_LOGGED_OUT,
@@ -57,4 +60,5 @@ def log_user_logged_out(sender, request, user, **kwargs):
         org=org,
         user=user,
         extra_data={k: v for k, v in metadata.items() if v},
+        channel=channel,
     )

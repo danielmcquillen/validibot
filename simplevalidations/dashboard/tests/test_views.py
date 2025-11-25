@@ -154,5 +154,11 @@ class DashboardViewTests(TestCase):
             {"time_range": "24h"},
         )
         response.render()
-        dataset = response.context_data["chart_config"]["data"]["datasets"][0]["data"]
-        self.assertEqual(max(dataset), 1)
+        config = response.context_data["chart_config"]
+        self.assertEqual(config["type"], "bar")
+        datasets = config["data"]["datasets"]
+        totals = [
+            sum(values)
+            for values in zip(*[dataset["data"] for dataset in datasets])
+        ]
+        self.assertEqual(max(totals), 1)

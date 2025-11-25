@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from simplevalidations.submissions.models import Submission
+from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.validations.constants import ValidationRunSource
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
@@ -66,6 +67,7 @@ class Command(BaseCommand):
         )
 
         created_runs = []
+        tracking_service = TrackingEventService()
         now = timezone.now()
 
         # Status distribution (realistic mix)
@@ -135,6 +137,16 @@ class Command(BaseCommand):
             )
 
             created_runs.append(run)
+            tracking_service.log_validation_run_created(
+                run=run,
+                recorded_at=started_at or now,
+                channel="web",
+            )
+            tracking_service.log_validation_run_status(
+                run=run,
+                status=run.status,
+                recorded_at=ended_at or started_at or now,
+            )
 
             # Progress indicator
             if (i + 1) % 50 == 0:

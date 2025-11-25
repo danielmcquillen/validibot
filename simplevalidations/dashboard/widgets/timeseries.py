@@ -3,8 +3,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from simplevalidations.dashboard.services import build_chart_payload
-from simplevalidations.dashboard.services import generate_time_series
+from django.db import models
+
+from simplevalidations.dashboard.services import (
+    build_chart_payload,
+    build_stacked_bar_payload,
+    generate_time_series,
+)
 from simplevalidations.dashboard.widgets.base import DashboardWidget
 from simplevalidations.dashboard.widgets.base import register_widget
 from simplevalidations.tracking.models import TrackingEvent
@@ -57,20 +62,36 @@ class UsersTimeSeriesWidget(DashboardWidget):
         if org:
             qs = qs.filter(org=org)
         bucket = self.time_range.select_bucket_granularity()
-        series = generate_time_series(
-            qs,
+        api_series = generate_time_series(
+            qs.filter(extra_data__channel="api"),
             time_range=self.time_range,
             bucket=bucket,
             value_field="user_id",
             distinct=True,
         )
-        chart_config = build_chart_payload(
-            series,
-            label="Users",
-            color="#20c997",
+        web_series = generate_time_series(
+            qs.filter(
+                models.Q(extra_data__channel="web")
+                | models.Q(extra_data__channel__isnull=True)
+                | models.Q(extra_data__channel=""),
+            ),
+            time_range=self.time_range,
+            bucket=bucket,
+            value_field="user_id",
+            distinct=True,
+        )
+        chart_config = build_stacked_bar_payload(
+            {
+                "API Users": api_series,
+                "Web Users": web_series,
+            },
+            colors={
+                "API Users": "#0d6efd",
+                "Web Users": "#20c997",
+            },
             bucket=bucket,
         )
-        values = [value for _, value in series]
+        values = [value for _, value in api_series] + [value for _, value in web_series]
         return {
             "chart_config": chart_config,
             "chart_config_json": json.dumps(chart_config),

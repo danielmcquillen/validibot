@@ -86,7 +86,8 @@ def seed_sample_tracking_data(
                 project=project,
                 org=org,
                 user=user,
-                extra_data=seeded_flag,
+                extra_data={**seeded_flag, "channel": "web"},
+                channel="web",
                 recorded_at=login_time,
             )
             if event:
@@ -96,6 +97,7 @@ def seed_sample_tracking_data(
             run_base_time = day_start + timedelta(hours=run_index * 2)
             submission_id = uuid.uuid4().hex
             run_identifier = uuid.uuid4().hex
+            channel = "api" if (run_index + day_offset) % 2 == 0 else "web"
             created_event = service.log_validation_run_created(
                 workflow=workflow,
                 project=project,
@@ -103,7 +105,8 @@ def seed_sample_tracking_data(
                 user=user,
                 submission_id=submission_id,
                 validation_run_id=run_identifier,
-                extra_data=seeded_flag,
+                extra_data={**seeded_flag, "channel": channel},
+                channel=channel,
                 recorded_at=run_base_time,
             )
             if created_event:
@@ -115,7 +118,12 @@ def seed_sample_tracking_data(
                 user=user,
                 submission_id=submission_id,
                 validation_run_id=run_identifier,
-                extra_data={**seeded_flag, "status": ValidationRunStatus.RUNNING},
+                extra_data={
+                    **seeded_flag,
+                    "status": ValidationRunStatus.RUNNING,
+                    "channel": channel,
+                },
+                channel=channel,
                 recorded_at=run_base_time + timedelta(minutes=5),
             )
             if started_event:
@@ -140,7 +148,12 @@ def seed_sample_tracking_data(
                 event_type=final_event_type,
                 submission_id=submission_id,
                 validation_run_id=run_identifier,
-                extra_data={**seeded_flag, "status": status_value},
+                extra_data={
+                    **seeded_flag,
+                    "status": status_value,
+                    "channel": channel,
+                },
+                channel=channel,
                 recorded_at=run_base_time + timedelta(minutes=15),
             )
             if completion_event:

@@ -56,10 +56,6 @@ pydantic==2.12.4
 # For running tasks in Modal
 modal==1.2.2
 
-# For modal.com communication
-# sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main
--e ./sv_shared_dev
-
 # For python CEL operations during Validation steps
 # Consider moving to Rust-based CEL implementation if we can determin that it's
 # a better option (it doesn't have many stars) : https://github.com/hardbyte/python-common-expression-language
@@ -70,3 +66,5 @@ fmpy==0.3.26
 # For rendering markdown in help pages
 django-markdownify==0.9.5
 nh3==0.2.18
+
+# sv_shared is installed in either local.txt or production.txt

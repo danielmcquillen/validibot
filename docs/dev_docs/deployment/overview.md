@@ -53,7 +53,8 @@ you need to bootstrap a new Heroku app.
   (e.g., restoring a backup).
 
 The [Heroku deployment guide](heroku.md) contains the copy/paste commands and
-per-app defaults.
+per-app defaults. See also the [important notes](important_notes.md) for critical
+config reminders.
 
 ## ASGI vs WSGI
 

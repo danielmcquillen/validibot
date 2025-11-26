@@ -51,7 +51,7 @@ class OrgPermissionBackendTests(TestCase):
         )
 
         self.assertTrue(
-            actor.has_perm(PermissionCode.RESULTS_VIEW_ALL.value, run),
+            actor.has_perm(PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value, run),
         )
 
     def test_executor_only_sees_own_runs(self):
@@ -68,13 +68,13 @@ class OrgPermissionBackendTests(TestCase):
         )
 
         self.assertTrue(
-            executor.has_perm(PermissionCode.RESULTS_VIEW_OWN.value, run),
+            executor.has_perm(PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value, run),
         )
 
         reviewer = UserFactory()
         grant_role(reviewer, org, RoleCode.WORKFLOW_VIEWER)
         self.assertFalse(
-            reviewer.has_perm(PermissionCode.RESULTS_VIEW_OWN.value, run),
+            reviewer.has_perm(PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value, run),
         )
 
     def test_admin_manage_org_permission(self):

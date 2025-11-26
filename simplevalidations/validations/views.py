@@ -1077,7 +1077,7 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
             {
                 "form_title": _("Edit %(name)s Settings") % {"name": validator.name},
                 "validator": validator,
-                "can_manage_validators": True,
+                "can_manage_validators": self.can_manage_validators(),
             }
         )
         return context
@@ -1153,7 +1153,7 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
         context.update(
             {
                 "validator": validator,
-                "can_manage_validators": True,
+                "can_manage_validators": self.can_manage_validators(),
                 "delete_blockers": blockers,
                 "can_delete": not blockers,
             }

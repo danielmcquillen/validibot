@@ -45,6 +45,10 @@
 
 _All project context lives in the developer documentation. Keep this guide short, and keep the docs rich._
 
+## Documentation tone
+
+When updating docs, write in a clear, friendly, conversational style. Use short paragraphs instead of dense bullet lists, avoid jargon when a plainer phrase works, and favor clarity over terseness.
+
 ## Running commands, tests, etc.
 
 Use uv to run commands, tests etc. so the relevant virtual environment is automatically made available.

@@ -27,17 +27,22 @@ SimpleValidations defines six organization-scoped roles. Permissions are cumulat
 
 ## Permission Codes
 
-Permissions are exposed as Django-style codenames (see `users.constants.PermissionCode`) and enforced through the `OrgPermissionBackend` so code can call `user.has_perm(code, obj_with_org)`.
+Permissions are exposed as Django-style codenames (see `users.constants.PermissionCode`) and enforced through the `OrgPermissionBackend`, so code calls `user.has_perm(code, obj_with_org)` instead of inspecting roles directly. An “obj_with_org” is any object that carries organization context—typically a model instance with an `org` or `org_id` field. Examples include `Workflow`, `ValidationRun`, `Organization`, and even `Membership` when needed. Think of it as “an object the permission backend can use to figure out which org this action targets.”
 
 - `workflow_launch`: `OWNER`, `ADMIN`, `EXECUTOR`
 - `workflow_view`: `OWNER`, `ADMIN`, `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, `WORKFLOW_VIEWER`
-- `workflow_edit`: `OWNER`, `ADMIN`, `AUTHOR`
-- `results_view_all`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
-- `results_view_own`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`, `EXECUTOR` (always true for run.owner)
-- `results_review`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
+- `workflow_edit`: `OWNER`, `ADMIN`, `AUTHOR` (the `_edit` suffix covers both create and edit)
+- `validation_results_view_all`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
+- `validation_results_view_own`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`, `EXECUTOR` (always true for the run’s owner)
+- `validator_view`: `OWNER`, `ADMIN`, `AUTHOR`
+- `validator_edit`: `OWNER`, `ADMIN`, `AUTHOR` (create and edit)
+- `analytics_view`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
+- `analytics_review`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER` (for approving/annotating analytics outputs)
 - `admin_manage_org`: `OWNER`, `ADMIN`
 
-Enforcement pattern: call `user.has_perm(PermissionCode.<code>.value, obj_with_org)` instead of checking roles directly; the `OrgPermissionBackend` maps roles-to-permissions and handles object scoping (e.g., own-run visibility).
+Enforcement pattern: call `user.has_perm(PermissionCode.<code>.value, obj_with_org)` and let the backend map roles to permissions and handle object scoping (including “own” semantics).
+
+For clarity: `_edit` permissions include create and edit flows; `analytics_*` cover dashboards and approvals; `validator_*` govern access to the Validator Library and custom validator CRUD.
 
 Only Owners, Admins, Authors, and Results Viewers can open validation results. Executors without those roles only see the runs they launched. Workflow Viewers without additional roles see a compact menu limited to Workflows and Validation Runs.
 

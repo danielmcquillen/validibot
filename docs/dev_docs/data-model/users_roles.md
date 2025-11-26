@@ -36,6 +36,7 @@ representation consistent everywhere we compare roles.
 - Creating a membership immediately activates it (`is_active=True`).
 - Assigning a role is done via `Membership.add_role(role_code)`. The helper makes sure the backing `Role` row exists before adding the through relation.
 - Authorization should call `user.has_perm(PermissionCode.<code>.value, obj_with_org)`; the org permission backend maps roles to permissions and scopes to the object’s org. `Membership.has_role` remains available for business rules (e.g., “do not remove final OWNER”).
+  - An `obj_with_org` is any object that carries organization context, such as a `Workflow`, `ValidationRun`, `Organization`, or any model with an `org`/`org_id` attribute. The backend uses that attribute to evaluate the correct membership.
 
 Roles can be added or removed through the service layer, but the low level
 helpers keep the database consistent.
@@ -71,7 +72,9 @@ inspect roles without additional queries.
 5. The Workflow and Validation APIs mirror the UI guards via permission codes:
    - create/update/delete workflow: `workflow_edit`
    - start workflow run: `workflow_launch`
-   - view validation results: `results_view_all` or `results_view_own`
+   - view validation results: `validation_results_view_all` or `validation_results_view_own`
+   - view/manage validators: `validator_view` / `validator_edit`
+   - analytics dashboards: `analytics_view` / `analytics_review`
    - manage org/users: `admin_manage_org`
 
 ## How roles, permissions, and (future) Django Groups line up
@@ -79,8 +82,8 @@ inspect roles without additional queries.
 We keep the data model simple and Django-native:
 
 - **Tables:** `User` ←→ `Membership` ←→ `Organization`, with `MembershipRole` joining to `Role` rows keyed by `RoleCode`.
-- **Permission codes:** Defined in `users.constants.PermissionCode` and seeded via migration `users/migrations/0005_permission_definitions.py`.
-- **Backend:** `OrgPermissionBackend` implements Django’s `has_perm` contract and translates a user’s roles-in-org into permission grants on a per-object basis. It also handles “own” semantics (`results_view_own` checks run.user_id).
+- **Permission codes:** Defined in `users.constants.PermissionCode` and seeded via migrations (`0005` and `0006`).
+- **Backend:** `OrgPermissionBackend` implements Django’s `has_perm` contract and translates a user’s roles-in-org into permission grants on a per-object basis. It also handles “own” semantics (`validation_results_view_own` checks run.user_id).
 - **Groups:** We do **not** create or rely on Django `Group` objects today. If you need them (e.g., for Django admin or external tooling), you can mirror `Role` → `Group` mappings without changing authorization call sites because everything already uses `user.has_perm`.
 
 ### What happens when a user joins an org?
@@ -88,7 +91,7 @@ We keep the data model simple and Django-native:
 1. An `Organization` exists (personal orgs are created automatically on first login).
 2. A `Membership` row is created (`is_active=True`).
 3. The inviter or form assigns one or more `Role` codes (e.g., `EXECUTOR`, `RESULTS_VIEWER`).
-4. From that point on, `user.has_perm("workflow_launch", workflow)` and `user.has_perm("results_view_all", run)` will return `True` when the object’s `org` matches the membership because the backend maps those roles to permission codes.
+4. From that point on, `user.has_perm("workflow_launch", workflow)` and `user.has_perm("validation_results_view_all", run)` will return `True` when the object’s `org` matches the membership because the backend maps those roles to permission codes.
 
 ### When roles change in the UI
 
@@ -101,12 +104,20 @@ We keep the data model simple and Django-native:
 ```python
 # Workflow access
 user.has_perm(PermissionCode.WORKFLOW_VIEW.value, workflow)
-user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow)
+user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow)  # covers create + edit
 user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow)
 
 # Validation runs
-user.has_perm(PermissionCode.RESULTS_VIEW_ALL.value, validation_run)
-user.has_perm(PermissionCode.RESULTS_VIEW_OWN.value, validation_run)  # True for run owner
+user.has_perm(PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value, validation_run)
+user.has_perm(PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value, validation_run)  # True for run owner
+
+# Validator library
+user.has_perm(PermissionCode.VALIDATOR_VIEW.value, validator_or_org)
+user.has_perm(PermissionCode.VALIDATOR_EDIT.value, validator_or_org)
+
+# Analytics
+user.has_perm(PermissionCode.ANALYTICS_VIEW.value, org_or_run)
+user.has_perm(PermissionCode.ANALYTICS_REVIEW.value, org_or_run)
 
 # Org admin / member management
 user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, organization)

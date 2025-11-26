@@ -7,7 +7,7 @@ class Command(BaseCommand):
     help = "Create baseline validator records for common validation types."
 
     def handle(self, *args, **options):
-        created, skipped = create_default_validators()
+        created, updated = create_default_validators()
         if created:
             self.stdout.write(self.style.SUCCESS(f"Created {created} validator(s)."))
-        self.stdout.write(self.style.SUCCESS(f"Existing validators skipped: {skipped}"))
+        self.stdout.write(self.style.SUCCESS(f"Updated {updated} existing validator(s)."))

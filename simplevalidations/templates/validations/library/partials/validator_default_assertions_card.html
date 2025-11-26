@@ -10,7 +10,9 @@
             <th scope="col" class="text-muted small">{% trans "Assertion" %}</th>
             <th scope="col" class="text-muted small">{% trans "Type" %}</th>
             <th scope="col" class="text-muted small">{% trans "Signals" %}</th>
-            <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
+            {% if can_edit_validator %}
+              <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -30,41 +32,43 @@
                   <span class="text-muted">—</span>
                 {% endif %}
               </td>
-              <td class="text-end">
-                <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Default assertion actions' %}">
-                  <button class="btn btn-outline-primary"
-                          data-bs-toggle="modal"
-                          data-bs-target="#modal-rule-edit-{{ assertion.id }}">
-                    <i class="bi bi-pencil-square"></i>
-                  </button>
-                  <button class="btn btn-outline-primary"
-                          hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-vals='{"direction": "up"}'
-                          hx-target="#validator-default-assertions-card"
-                          hx-swap="outerHTML"
-                          {% if forloop.first %}disabled{% endif %}>
-                    <i class="bi bi-arrow-up"></i>
-                  </button>
-                  <button class="btn btn-outline-primary"
-                          hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-vals='{"direction": "down"}'
-                          hx-target="#validator-default-assertions-card"
-                          hx-swap="outerHTML"
-                          {% if forloop.last %}disabled{% endif %}>
-                    <i class="bi bi-arrow-down"></i>
-                  </button>
-                  <button class="btn btn-outline-danger"
-                          hx-delete="{% org_url 'validations:validator_rule_delete' pk=assertion.validator_id rule_pk=assertion.id %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-target="#validator-assertion-{{ assertion.id }}"
-                          hx-swap="outerHTML"
-                          hx-confirm="{% blocktrans trimmed with name=assertion.name %}Delete default assertion '{{ name }}'?{% endblocktrans %}">
-                    <i class="bi bi-trash"></i>
-                  </button>
-                </div>
-              </td>
+              {% if can_edit_validator %}
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Default assertion actions' %}">
+                    <button class="btn btn-outline-primary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-rule-edit-{{ assertion.id }}">
+                      <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="btn btn-outline-primary"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-vals='{"direction": "up"}'
+                            hx-target="#validator-default-assertions-card"
+                            hx-swap="outerHTML"
+                            {% if forloop.first %}disabled{% endif %}>
+                      <i class="bi bi-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-outline-primary"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-vals='{"direction": "down"}'
+                            hx-target="#validator-default-assertions-card"
+                            hx-swap="outerHTML"
+                            {% if forloop.last %}disabled{% endif %}>
+                      <i class="bi bi-arrow-down"></i>
+                    </button>
+                    <button class="btn btn-outline-danger"
+                            hx-delete="{% org_url 'validations:validator_rule_delete' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-target="#validator-assertion-{{ assertion.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="{% blocktrans trimmed with name=assertion.name %}Delete default assertion '{{ name }}'?{% endblocktrans %}">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>

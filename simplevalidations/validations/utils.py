@@ -3,8 +3,7 @@ import logging
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
-from simplevalidations.validations.constants import CustomValidatorType
-from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import CustomValidatorType, ValidationType
 from simplevalidations.validations.providers import get_provider_for_validator
 
 logger = logging.getLogger(__name__)
@@ -23,9 +22,18 @@ def create_default_validators():
 
     default_validators = [
         {
-            "name": _("Manual Assertions"),
-            "slug": "basic-assertions",
-            "description": _("Author assertions directly without a provider catalog."),
+            "name": _("Basic Validator"),
+            "slug": "basic-validator",
+            "short_description": _(
+                "Author assertions directly without a provider catalog.",
+            ),
+            "description": _(
+                """
+                <p>Workflow authors can use the 'Basic Validator' as a starting point
+                for creating assertions directly. There are no signals or predefined assertions.
+                Perfect for lightweight checks or ad-hoc rules expressed in CEL.</p>
+                """
+            ),
             "validation_type": ValidationType.BASIC,
             "version": "1.0",
             "order": 0,
@@ -34,7 +42,18 @@ def create_default_validators():
         {
             "name": _("JSON Schema Validation"),
             "slug": "json-schema-validation",
-            "description": _("Validate JSON payload against a predefined schema."),
+            "short_description": _(
+                "Validate JSON payloads against predefined schemas.",
+            ),
+            "description": _(
+                """
+                <p>
+                This validator validates JSON payloads against predefined JSON schemas.
+                When a workflow author selects this validator, they must attach
+                a valid JSON schema. 
+                </p>
+                """
+            ),
             "validation_type": ValidationType.JSON_SCHEMA,
             "version": "1.0",
             "order": 1,
@@ -42,7 +61,18 @@ def create_default_validators():
         {
             "name": _("XML Validation"),
             "slug": "xml-validation",
-            "description": _("Validate XML payload against a predefined schema."),
+            "short_description": _(
+                "Validate XML submissions against XSD/DTD definitions.",
+            ),
+            "description": _(
+                """
+                <p>
+                This validator validates XML submissions against XSD, DTD or RelaxNG definitions.
+                When a workflow author selects this validator, they must attach
+                a valid schema. 
+                </p>
+                """
+            ),
             "validation_type": ValidationType.XML_SCHEMA,
             "version": "1.0",
             "order": 2,
@@ -50,8 +80,14 @@ def create_default_validators():
         {
             "name": _("EnergyPlus Validation"),
             "slug": "energyplus-idf-validation",
+            "short_description": _(
+                "Validate EnergyPlus IDF files and outputs.",
+            ),
             "description": _(
-                "Validate an EnergyPlus IDF file for correctness and output values."
+                """
+                <p>Validate EnergyPlus IDF files for correctness and expected outputs. 
+                "Run simulations, surface findings, and keep building models reliable.</p>
+                """
             ),
             "validation_type": ValidationType.ENERGYPLUS,
             "version": "1.0",
@@ -61,8 +97,14 @@ def create_default_validators():
         {
             "name": _("FMI Validation"),
             "slug": "fmi-validation",
+            "short_description": _(
+                "Run FMUs and assert against inputs and outputs.",
+            ),
             "description": _(
-                "Run an FMU in an isolated runtime and expose inputs/outputs to assertions."
+                """
+                <p>Run FMUs in an isolated runtime and assert against inputs and outputs. 
+                "Instrument simulations safely and share findings with collaborators.</p>
+                """
             ),
             "validation_type": ValidationType.FMI,
             "version": "1.0",
@@ -72,8 +114,14 @@ def create_default_validators():
         {
             "name": _("AI Assisted Validation"),
             "slug": "ai-assisted-validation",
+            "short_description": _(
+                "Use AI to validate submission content against your criteria.",
+            ),
             "description": _(
-                "Use AI to validate the submission content based on custom criteria."
+                """
+                <p>Use AI to validate submission content against your criteria. Blend 
+                traditional assertions with AI scoring to review nuanced data quickly.</p>
+                """
             ),
             "validation_type": ValidationType.AI_ASSIST,
             "version": "1.0",
@@ -82,7 +130,7 @@ def create_default_validators():
     ]
 
     created = 0
-    skipped = 0
+    updated = 0
     for validator_data in default_validators:
         defaults = {
             **validator_data,
@@ -101,12 +149,14 @@ def create_default_validators():
             created += 1
             logger.info(f"  - created default validator: {validator.slug}")
         else:
-            skipped += 1
+            updated += 1
 
         # Update order in case it has changed
         validator.order = validator_data["order"]
         validator.is_system = True
         validator.org = None
+        validator.short_description = validator_data.get("short_description") or ""
+        validator.description = validator_data.get("description") or ""
         if not validator.supported_file_types:
             validator.supported_file_types = defaults["supported_file_types"]
         if not validator.supported_data_formats:
@@ -137,7 +187,7 @@ def create_default_validators():
         if provider:
             provider.ensure_catalog_entries()
 
-    return created, skipped
+    return created, updated
 
 
 def create_custom_validator(
@@ -145,6 +195,7 @@ def create_custom_validator(
     org,
     user,
     name: str,
+    short_description: str = "",
     description: str,
     custom_type: str,
     notes: str = "",
@@ -173,6 +224,7 @@ def create_custom_validator(
     )
     validator = Validator.objects.create(
         name=name,
+        short_description=short_description,
         description=description,
         validation_type=base_validation_type,
         org=org,
@@ -198,6 +250,7 @@ def update_custom_validator(
     custom_validator,
     *,
     name: str,
+    short_description: str,
     description: str,
     notes: str,
     version: str | None = "",
@@ -211,6 +264,7 @@ def update_custom_validator(
 
     validator = custom_validator.validator
     validator.name = name
+    validator.short_description = short_description
     validator.description = description
     if version is not None:
         validator.version = version
@@ -224,6 +278,7 @@ def update_custom_validator(
     validator.save(
         update_fields=[
             "name",
+            "short_description",
             "description",
             "version",
             "allow_custom_assertion_targets",

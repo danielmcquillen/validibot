@@ -24,6 +24,7 @@ from simplevalidations.core.utils import reverse_with_org, truthy
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import (
     VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
+    VALIDATION_LIBRARY_TAB_SESSION_KEY,
     CatalogRunStage,
     LibraryLayout,
     ValidationRunStatus,
@@ -574,10 +575,14 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
         ]
 
     def get_active_tab(self):
-        tab = (self.request.GET.get("tab") or self.default_tab).lower()
-        if tab not in self.allowed_tabs:
-            return self.default_tab
-        return tab
+        tab = (self.request.GET.get("tab") or "").lower()
+        if tab in self.allowed_tabs:
+            self._remember_tab(tab)
+            return tab
+        persisted = self.request.session.get(VALIDATION_LIBRARY_TAB_SESSION_KEY)
+        if persisted in self.allowed_tabs:
+            return persisted
+        return self.default_tab
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -636,6 +641,13 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
     def _remember_layout(self, layout: str) -> None:
         try:
             self.request.session[self.layout_session_key] = layout
+            self.request.session.modified = True
+        except Exception:  # pragma: no cover - defensive
+            return
+
+    def _remember_tab(self, tab: str) -> None:
+        try:
+            self.request.session[VALIDATION_LIBRARY_TAB_SESSION_KEY] = tab
             self.request.session.modified = True
         except Exception:  # pragma: no cover - defensive
             return
@@ -790,6 +802,8 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         context.update(
             {
                 "can_manage_validators": self.can_manage_validators(),
+                "can_edit_validator": self.can_manage_validators()
+                and not validator.is_system,
                 "return_tab": self._resolve_return_tab(validator),
                 "catalog_display": display,
                 "catalog_entries": display.entries,
@@ -805,6 +819,9 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         return context
 
     def _resolve_return_tab(self, validator):
+        remembered = self.request.session.get(VALIDATION_LIBRARY_TAB_SESSION_KEY)
+        if remembered in {"system", "custom"}:
+            return remembered
         requested = (self.request.GET.get("tab") or "").lower()
         if requested in {"system", "custom"}:
             return requested
@@ -814,9 +831,14 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         breadcrumbs = super().get_breadcrumbs()
         validator = getattr(self, "object", None) or self.get_object()
         label = validator.name or validator.slug
+        crumb_label = (
+            _("View “%(name)s”") % {"name": label}
+            if validator.is_system
+            else _("Edit “%(name)s”") % {"name": label}
+        )
         breadcrumbs.append(
             {
-                "name": _("Edit “%(name)s”") % {"name": label},
+                "name": crumb_label,
                 "url": "",
             },
         )
@@ -918,6 +940,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
                 org=org,
                 project=form.cleaned_data.get("project"),
                 name=form.cleaned_data["name"],
+                short_description=form.cleaned_data.get("short_description") or "",
                 description=form.cleaned_data.get("description") or "",
                 upload=form.cleaned_data["fmu_file"],
             )
@@ -998,6 +1021,7 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
             org=org,
             user=self.request.user,
             name=form.cleaned_data["name"],
+            short_description=form.cleaned_data.get("short_description") or "",
             description=form.cleaned_data.get("description") or "",
             custom_type=form.cleaned_data["custom_type"],
             notes=form.cleaned_data.get("notes") or "",
@@ -1058,6 +1082,7 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         validator = self.custom_validator.validator
         return {
             "name": validator.name,
+            "short_description": validator.short_description,
             "description": validator.description,
             "version": validator.version,
             "allow_custom_assertion_targets": validator.allow_custom_assertion_targets,
@@ -1107,6 +1132,7 @@ class CustomValidatorUpdateView(CustomValidatorManageMixin, FormView):
         custom = update_custom_validator(
             self.custom_validator,
             name=form.cleaned_data["name"],
+            short_description=form.cleaned_data.get("short_description") or "",
             description=form.cleaned_data.get("description") or "",
             notes=form.cleaned_data.get("notes") or "",
             version=form.cleaned_data.get("version") or "",

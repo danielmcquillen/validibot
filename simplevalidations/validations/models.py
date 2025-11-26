@@ -373,10 +373,11 @@ class RulesetAssertion(TimeStampedModel):
         "validations.ValidatorCatalogEntry",
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="ruleset_assertions",
         help_text=_("Reference to a catalog entry when targeting a known signal."),
     )
+    
     target_field = models.CharField(
         max_length=255,
         blank=True,
@@ -748,6 +749,13 @@ class Validator(TimeStampedModel):
         help_text=_(
             "A unique identifier for the validator, used in URLs.",
         ),  # e.g. "json-2020-12", "eplus-23-1"
+    )
+    
+    short_description = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("A brief summary of the validator's purpose. This description appears in lists and cards."),
     )
 
     description = models.TextField(
@@ -1886,7 +1894,7 @@ class ValidatorCatalogRuleEntry(models.Model):
     )
     catalog_entry = models.ForeignKey(
         ValidatorCatalogEntry,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="referencing_rules",
     )
 

@@ -26,6 +26,7 @@
 
   .validator-library-card {
     overflow: hidden;
+    min-height: 15rem;
     .card-header {
       height: 3rem;
       background: linear-gradient(180deg, #eaf1f8 0%, #dfe9f3 100%);

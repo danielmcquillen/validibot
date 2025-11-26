@@ -4,13 +4,10 @@ import logging
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.sites.models import Site
-from django.http import HttpRequest
-from django.http import HttpResponse
-from django.shortcuts import redirect
-from django.shortcuts import render
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect, render
 from django.templatetags.static import static
-from django.urls import reverse
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -19,14 +16,18 @@ from django.views.generic import TemplateView
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import is_htmx
-from simplevalidations.marketing.constants import MarketingShareImage
-from simplevalidations.marketing.constants import ProspectEmailStatus
+from simplevalidations.marketing.constants import (
+    MarketingShareImage,
+    ProspectEmailStatus,
+)
 from simplevalidations.marketing.email.utils import is_allowed_postmark_source
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
-from simplevalidations.marketing.services import WaitlistPayload
-from simplevalidations.marketing.services import WaitlistSignupError
-from simplevalidations.marketing.services import submit_waitlist_signup
+from simplevalidations.marketing.services import (
+    WaitlistPayload,
+    WaitlistSignupError,
+    submit_waitlist_signup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +299,36 @@ class FeatureIntegrationsPageView(FeatureDetailPageView):
     share_image_path = MarketingShareImage.INTEGRATIONS
     share_image_alt = _(
         "Robot coordinating integrations between GitHub, Slack, and validation workflows.",
+    )
+
+
+class FeatureCustomValidatorsPageView(FeatureDetailPageView):
+    """Highlight how teams build and reuse bespoke validators."""
+
+    template_name = "marketing/features/custom_validators.html"
+    page_title = _("Custom Validators")
+    meta_description = _(
+        "Design bespoke validators with your own catalogs, assertions, and helper logic "
+        "so teams can standardize complex checks.",
+    )
+    share_image_path = MarketingShareImage.DEFAULT
+    share_image_alt = _(
+        "Robot assembling custom validation blocks tailored to a team's data.",
+    )
+
+
+class FeatureConsultingPageView(FeatureDetailPageView):
+    """Explain data validation consulting services for teams that want guidance."""
+
+    template_name = "marketing/features/data_validation_consulting.html"
+    page_title = _("Data Validation Consulting")
+    meta_description = _(
+        "Let us help you to design workflows, create complex validators, and launch "
+        "solid validation programs.",
+    )
+    share_image_path = MarketingShareImage.DEFAULT
+    share_image_alt = _(
+        "Robot advisor collaborating with a team on validation workflows.",
     )
 
 

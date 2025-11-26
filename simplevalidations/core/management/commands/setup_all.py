@@ -224,11 +224,11 @@ class Command(BaseCommand):
     # Feature defaults
     # ---------------------------------------------------------------------
     def _ensure_default_validators(self):
-        created, skipped = create_default_validators()
+        created, updated = create_default_validators()
         if created:
             logger.info("Created %d default validators.", created)
-        if skipped:
-            logger.info("Skipped %d existing default validators.", skipped)
+        if updated:
+            logger.info("Updated %d existing default validators.", updated)
 
     def _assign_default_projects_to_workflows(self):
         for workflow in Workflow.objects.filter(project__isnull=True).select_related(

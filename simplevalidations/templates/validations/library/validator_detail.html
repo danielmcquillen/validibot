@@ -20,7 +20,7 @@
           {{ validator.name }}
         </h1>
       </div>
-      {% if can_manage_validators and not validator.is_system %}
+      {% if can_edit_validator %}
         <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0 gap-2">
           <a class="btn btn-outline-secondary"
              href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}">
@@ -70,9 +70,29 @@
       </div>
     {% endif %}
 
+    {# If this is a system validotor, we show a description block #}
+    {% if validator.is_system %}
+
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="card-title mb-0">
+            {% trans "Description" %}
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-12 col-lg-6">
+              {{ validator.description|safe }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+    {% endif %}
+
     <div class="row g-4">
       <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
-        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
+        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
       </div>
       <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
         <div class="card app-card h-100">
@@ -80,7 +100,7 @@
             <div class="card-title mb-0">
               {% trans "Default Assertions" %}
             </div>
-            {% if can_manage_validators %}
+            {% if can_edit_validator %}
               <button class="btn btn-sm btn-primary"
                       data-bs-toggle="modal"
                       data-bs-target="#modal-rule-create">
@@ -89,7 +109,7 @@
             {% endif %}
           </div>
           <div class="card-body">
-            {% include 'validations/library/partials/validator_default_assertions_card.html' with assertions=validator_default_assertions %}
+            {% include 'validations/library/partials/validator_default_assertions_card.html' with assertions=validator_default_assertions can_edit_validator=can_edit_validator %}
           </div>
         </div>
       </div>
@@ -103,12 +123,14 @@
       {% trans "Back to Validator Library" %}
     </a>
   </div>
-  {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
-  {% include "validations/library/partials/modal_rule_create.html" %}
-  {% for entry_id, payload in signal_edit_forms.items %}
-    {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
-  {% endfor %}
-  {% for rule_id, form in default_assertion_edit_forms.items %}
-    {% include "validations/library/partials/modal_rule_edit.html" with rule_id=rule_id form=form %}
-  {% endfor %}
+  {% if can_edit_validator %}
+    {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
+    {% include "validations/library/partials/modal_rule_create.html" %}
+    {% for entry_id, payload in signal_edit_forms.items %}
+      {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
+    {% endfor %}
+    {% for rule_id, form in default_assertion_edit_forms.items %}
+      {% include "validations/library/partials/modal_rule_edit.html" with rule_id=rule_id form=form %}
+    {% endfor %}
+  {% endif %}
 {% endblock app_content %}

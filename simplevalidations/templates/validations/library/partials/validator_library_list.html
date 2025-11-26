@@ -6,10 +6,15 @@
   {% else %}
     <div class="row g-3">
       {% for validator in validators %}
-        <div class="col-12 col-md-6 col-xl-4">
+        <div class="col-12 col-md-6 col-lg-4">
           {% include 'validations/library/partials/validator_library_card.html' with validator=validator can_manage_validators=can_manage_validators %}
         </div>
       {% endfor %}
+      
+      <div class="col-12 col-md-6 col-lg-4">
+        {% include "validations/library/partials/marketing_card_consulting_help.html" %}
+      </div>
+
     </div>
   {% endif %}
 {% else %}

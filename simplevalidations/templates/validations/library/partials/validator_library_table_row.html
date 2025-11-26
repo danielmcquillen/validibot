@@ -22,7 +22,7 @@
     {% endif %}
   </td>
   <td class="align-middle text-muted small">
-    {{ validator.description|default:_("No description provided.") }}
+    {{ validator.short_description|default:_("No description provided.") }}
   </td>
   <td class="align-middle text-end">
     {% include "validations/library/partials/validator_library_actions.html" with validator=validator can_manage_validators=can_manage_validators target_id=row_id %}

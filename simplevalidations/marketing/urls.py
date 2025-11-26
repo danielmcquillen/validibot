@@ -68,6 +68,16 @@ urlpatterns = [
         name="features_integrations",
     ),
     path(
+        "features/custom-validators/",
+        views.FeatureCustomValidatorsPageView.as_view(),
+        name="features_custom_validators",
+    ),
+    path(
+        "features/data-validation-consulting/",
+        views.FeatureConsultingPageView.as_view(),
+        name="features_consulting",
+    ),
+    path(
         "resources/",
         views.ResourcesPageView.as_view(),
         name="resources",

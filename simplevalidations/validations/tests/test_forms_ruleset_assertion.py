@@ -83,6 +83,7 @@ class RulesetAssertionFormTests(TestCase):
         updated = update_custom_validator(
             custom,
             name="New Name",
+            short_description="New short",
             description="New Desc",
             notes="New Notes",
             version="9.9",
@@ -91,6 +92,7 @@ class RulesetAssertionFormTests(TestCase):
         )
         updated.validator.refresh_from_db()
         self.assertEqual(updated.validator.name, "New Name")
+        self.assertEqual(updated.validator.short_description, "New short")
         self.assertEqual(updated.validator.description, "New Desc")
         self.assertEqual(updated.validator.version, "9.9")
         self.assertTrue(updated.validator.allow_custom_assertion_targets)

@@ -42,6 +42,11 @@
                                 <a class="dropdown-item"
                                    href="{% url 'marketing:features_blockchain' %}">{% translate "Blockchain" %}</a>
                             </li>
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_custom_validators' %}">{% translate "Custom Validators" %}</a>
+                            </li>
+
                         </ul>
                     </div>
                     <div>
@@ -56,6 +61,15 @@
                             <li>
                                 <a class="dropdown-item"
                                    href="{% url 'marketing:features_integrations' %}#slack-integration">Slack</a>
+                            </li>
+                        </ul>
+                        <p class="section-heading mb-2 mt-5">
+                            {% translate "Consulting" %}
+                        </p>
+                        <ul class="list-unstyled">
+                            <li>
+                                <a class="dropdown-item"
+                                   href="{% url 'marketing:features_consulting' %}">{% translate "Data Validation Consulting" %}</a>
                             </li>
                         </ul>
                     </div>

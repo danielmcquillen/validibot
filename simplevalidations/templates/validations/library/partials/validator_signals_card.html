@@ -5,7 +5,7 @@
     <div class="card-title mb-0">
       {% trans "Signals" %}
     </div>
-    {% if can_manage_validators %}
+    {% if can_edit_validator %}
       <button class="btn btn-sm btn-primary"
               data-bs-toggle="modal"
               data-bs-target="#modal-signal-create">
@@ -38,21 +38,23 @@
                 <td class="text-muted small">{{ entry.get_data_type_display }}</td>
                 <td class="text-muted small">{% trans "Input" %}</td>
                 <td class="text-end">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
-                    <button class="btn btn-outline-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modal-signal-edit-{{ entry.id }}">
-                      <i class="bi bi-pencil-square"></i>
-                    </button>
-                    <button class="btn btn-outline-danger"
-                            hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
-                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                            hx-target="#validator-signal-{{ entry.id }}"
-                            hx-swap="outerHTML"
-                            hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  </div>
+                  {% if can_edit_validator %}
+                    <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
+                      <button class="btn btn-outline-primary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modal-signal-edit-{{ entry.id }}">
+                        <i class="bi bi-pencil-square"></i>
+                      </button>
+                      <button class="btn btn-outline-danger"
+                              hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
+                              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                              hx-target="#validator-signal-{{ entry.id }}"
+                              hx-swap="outerHTML"
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -70,21 +72,23 @@
                 <td class="text-muted small">{{ entry.get_data_type_display }}</td>
                 <td class="text-muted small">{% trans "Output" %}</td>
                 <td class="text-end">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
-                    <button class="btn btn-outline-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modal-signal-edit-{{ entry.id }}">
-                      <i class="bi bi-pencil-square"></i>
-                    </button>
-                    <button class="btn btn-outline-danger"
-                            hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
-                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                            hx-target="#validator-signal-{{ entry.id }}"
-                            hx-swap="outerHTML"
-                            hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
-                      <i class="bi bi-trash"></i>
-                    </button>
-                  </div>
+                  {% if can_edit_validator %}
+                    <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
+                      <button class="btn btn-outline-primary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#modal-signal-edit-{{ entry.id }}">
+                        <i class="bi bi-pencil-square"></i>
+                      </button>
+                      <button class="btn btn-outline-danger"
+                              hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
+                              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                              hx-target="#validator-signal-{{ entry.id }}"
+                              hx-swap="outerHTML"
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}

@@ -14149,6 +14149,7 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 }
 #validator-library .validator-library-card {
   overflow: hidden;
+  min-height: 15rem;
 }
 #validator-library .validator-library-card .card-header {
   height: 3rem;
@@ -14372,6 +14373,19 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 
 help-section {
   border: 0;
+}
+
+.custom-consulting-marketing-card .card-header {
+  color: #fff;
+  background: rgb(3.1534883721, 58.3395348837, 109.8465116279) !important;
+}
+.custom-consulting-marketing-card .card-body {
+  color: #fff;
+  background: rgb(4.576744186, 84.6697674419, 159.423255814);
+}
+.custom-consulting-marketing-card .card-footer {
+  border-top: 1px dotted #fff;
+  background: rgb(4.576744186, 84.6697674419, 159.423255814);
 }
 
 h1,

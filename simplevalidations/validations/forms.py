@@ -52,6 +52,12 @@ class CustomValidatorCreateForm(forms.Form):
         label=_("Name"),
         max_length=120,
     )
+    short_description = forms.CharField(
+        label=_("Short description"),
+        max_length=255,
+        required=False,
+        help_text=_("Shown in lists and cards."),
+    )
     description = forms.CharField(
         label=_("Description"),
         widget=forms.Textarea(attrs={"rows": 3}),
@@ -100,6 +106,7 @@ class CustomValidatorCreateForm(forms.Form):
                 Column("name", css_class="col-12 col-xl-7"),
                 Column("custom_type", css_class="col-12 col-xl-5"),
             ),
+            "short_description",
             "description",
             "version",
             Row(
@@ -116,6 +123,12 @@ class FMIValidatorCreateForm(forms.Form):
     name = forms.CharField(
         label=_("Name"),
         max_length=120,
+    )
+    short_description = forms.CharField(
+        label=_("Short description"),
+        max_length=255,
+        required=False,
+        help_text=_("Shown in lists and cards."),
     )
     description = forms.CharField(
         label=_("Description"),
@@ -146,6 +159,7 @@ class FMIValidatorCreateForm(forms.Form):
                 Column("name", css_class="col-12 col-xl-6"),
                 Column("project", css_class="col-12 col-xl-6"),
             ),
+            "short_description",
             "description",
             "fmu_file",
         )
@@ -167,6 +181,12 @@ class CustomValidatorUpdateForm(forms.Form):
     name = forms.CharField(
         label=_("Name"),
         max_length=120,
+    )
+    short_description = forms.CharField(
+        label=_("Short description"),
+        max_length=255,
+        required=False,
+        help_text=_("Shown in lists and cards."),
     )
     description = forms.CharField(
         label=_("Description"),
@@ -207,6 +227,7 @@ class CustomValidatorUpdateForm(forms.Form):
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Row(Column("name", css_class="col-12")),
+            "short_description",
             "description",
             "version",
             Row(

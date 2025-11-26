@@ -27,6 +27,7 @@ class LibraryLayout(TextChoices):
 
 
 VALIDATION_LIBRARY_LAYOUT_SESSION_KEY = "validation_library_layout"
+VALIDATION_LIBRARY_TAB_SESSION_KEY = "validation_library_tab"
 
 
 class StepStatus(TextChoices):

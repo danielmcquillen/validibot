@@ -13,8 +13,8 @@
 {% block app_content %}
   <div class="container-fluid">
 
-    <div class="app-content-header-bar row align-items-center">
-      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+    <div class="app-content-header-bar row ">
+      <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0 p-0">
         <h1 class="app-page-title">
           <i class="bi {{ validator.display_icon }} me-2"></i>
           {{ form_title }}
@@ -42,7 +42,7 @@
               <a href="{% org_url 'validations:validation_library' %}"
                  class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>
-                {% trans "Back to Validator Library" %}
+                {% trans "Cancel" %}
               </a>
             {% endif %}
             <button type="submit" class="btn btn-primary">

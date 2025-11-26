@@ -6,21 +6,37 @@
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th scope="col" class="text-muted small">{% trans "Order" %}</th>
-            <th scope="col" class="text-muted small">{% trans "Assertion" %}</th>
-            <th scope="col" class="text-muted small">{% trans "Type" %}</th>
-            <th scope="col" class="text-muted small">{% trans "Signals" %}</th>
+            <th scope="col" class="text-muted small">
+              {% trans "Order" %}
+            </th>
+            <th scope="col" class="text-muted small">
+              {% trans "Assertion" %}
+            </th>
+            <th scope="col" class="text-muted small">
+              {% trans "Type" %}
+            </th>
+            <th scope="col" class="text-muted small">
+              {% trans "Signals" %}
+            </th>
             {% if can_edit_validator %}
-              <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
+              <th scope="col" class="text-muted small text-end">
+                {% trans "Actions" %}
+              </th>
             {% endif %}
           </tr>
         </thead>
         <tbody>
           {% for assertion in assertions %}
             <tr id="validator-assertion-{{ assertion.id }}">
-              <td class="text-muted small">{{ assertion.order }}</td>
-              <td class="fw-semibold">{{ assertion.name }}</td>
-              <td class="text-muted small">{{ assertion.get_rule_type_display }}</td>
+              <td class="text-muted small">
+                {{ assertion.order }}
+              </td>
+              <td class="fw-semibold">
+                {{ assertion.name }}
+              </td>
+              <td class="text-muted small">
+                {{ assertion.get_rule_type_display }}
+              </td>
               <td class="text-muted small">
                 {% if assertion.rule_entries.all %}
                   <div class="d-flex flex-wrap gap-1">
@@ -34,7 +50,9 @@
               </td>
               {% if can_edit_validator %}
                 <td class="text-end">
-                  <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Default assertion actions' %}">
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Default assertion actions' %}">
                     <button class="btn btn-outline-primary"
                             data-bs-toggle="modal"
                             data-bs-target="#modal-rule-edit-{{ assertion.id }}">
@@ -46,7 +64,9 @@
                             hx-vals='{"direction": "up"}'
                             hx-target="#validator-default-assertions-card"
                             hx-swap="outerHTML"
-                            {% if forloop.first %}disabled{% endif %}>
+                            {% if forloop.first %}
+                              disabled
+                            {% endif %}>
                       <i class="bi bi-arrow-up"></i>
                     </button>
                     <button class="btn btn-outline-primary"
@@ -55,7 +75,9 @@
                             hx-vals='{"direction": "down"}'
                             hx-target="#validator-default-assertions-card"
                             hx-swap="outerHTML"
-                            {% if forloop.last %}disabled{% endif %}>
+                            {% if forloop.last %}
+                              disabled
+                            {% endif %}>
                       <i class="bi bi-arrow-down"></i>
                     </button>
                     <button class="btn btn-outline-danger"
@@ -63,7 +85,9 @@
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-target="#validator-assertion-{{ assertion.id }}"
                             hx-swap="outerHTML"
-                            hx-confirm="{% blocktrans trimmed with name=assertion.name %}Delete default assertion '{{ name }}'?{% endblocktrans %}">
+                            hx-confirm="{% blocktrans trimmed with name=assertion.name %}
+                                          Delete default assertion '{{ name }}'?
+                                        {% endblocktrans %}">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
@@ -75,6 +99,14 @@
       </table>
     </div>
   {% else %}
-    <p class="text-muted mb-0">{% trans "No default assertions yet." %}</p>
+    <div class="my-5 w-100 text-center">
+      <p class="text-muted small">
+        {% if validator.is_system %}
+          {% trans "No default assertions in this validator." %}
+        {% else %}
+          {% trans "No default assertions yet." %}
+        {% endif %}
+      </p>
+    </div>
   {% endif %}
 </div>

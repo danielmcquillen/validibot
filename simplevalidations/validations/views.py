@@ -613,6 +613,9 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                     "validations:custom_validator_create",
                     request=self.request,
                 ),
+                "custom_validators_empty_cta_modal_target": (
+                    "#validatorCreateModal" if self.can_manage_validators() else None
+                ),
                 "custom_validators_empty_cta_url": (
                     reverse_with_org(
                         "validations:custom_validator_create",
@@ -689,10 +692,10 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
             {
                 "value": "fmi",
                 "name": str(_("FMI Validator")),
-                "subtitle": str(_("Simulation")),
+                "subtitle": str(_("Simulation-based")),
                 "description": str(
                     _(
-                        "Upload an FMU to auto-discover signals and run FMI-backed checks.",
+                        "Upload an FMU to auto-discover input and output signals and create default assertions.",
                     ),
                 ),
                 "icon": "bi-cpu",
@@ -1320,7 +1323,7 @@ class ValidatorSignalCreateView(ValidatorSignalMixin, FormView):
         form = self.form_class(initial={"run_stage": stage}, validator=self.validator)
         if not self.validator.has_processor:
             form.fields["run_stage"].widget = forms.HiddenInput()
-        
+
         if request.headers.get("HX-Request"):
             return render(
                 request,

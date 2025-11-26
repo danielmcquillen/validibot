@@ -137,7 +137,7 @@
                   View or edit your custom validators, or create a new one.
                 </div>
 
-                {% include "validations/library/partials/validator_library_list.html" with validators=custom_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("You have not created any custom validators yet.") empty_cta_url=custom_validators_empty_cta_url empty_cta_label=custom_validators_empty_cta_label %}
+                {% include "validations/library/partials/validator_library_list.html" with validators=custom_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("You have not created any custom validators yet.") empty_cta_url=custom_validators_empty_cta_url empty_cta_label=custom_validators_empty_cta_label empty_cta_modal_target=custom_validators_empty_cta_modal_target %}
               </div>
               <div class="tab-pane
                           {% if active_tab == 'system' %}
@@ -153,7 +153,9 @@
                                 {% endif %}">
 
                 <div class="mb-3 text-muted">
-                  These are the default validators provided by SimpleValidations that you can use in your workflows. 
+                  These are the default validators you can use in your workflows. 
+                  Click 'view' to learn more about how each validator works.
+                  Don't see what you need? <a href="{% org_url 'marketing:features_consulting' %}">Let us help</a>.
                 </div>
                 {% include "validations/library/partials/validator_library_list.html" with validators=system_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("No system validators are registered.") empty_cta_url=None empty_cta_label=None %}
               </div>

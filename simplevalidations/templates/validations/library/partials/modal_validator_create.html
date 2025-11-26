@@ -43,8 +43,13 @@
                                  checked
                                {% endif %}
                                autocomplete="off"
-                               required>
-                        <label class="validator-card h-100 {% if validator_create_selected and validator_create_selected == option.value %}is-selected{% elif not validator_create_selected and forloop.first %}is-selected{% endif %}"
+                               required />
+                        <label class="validator-card h-100
+                                      {% if validator_create_selected and validator_create_selected == option.value %}
+                                        is-selected
+                                      {% elif not validator_create_selected and forloop.first %}
+                                        is-selected
+                                      {% endif %}"
                                for="{{ input_id }}">
                           <div class="validator-card__icon mb-3">
                             <i class="bi {{ option.icon }}"></i>

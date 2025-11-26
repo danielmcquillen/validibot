@@ -25,7 +25,7 @@ def create_default_validators():
             "name": _("Basic Validator"),
             "slug": "basic-validator",
             "short_description": _(
-                "Author assertions directly without a provider catalog.",
+                "The simplest validator. No signals or default assertions. Allows workflow author to add signals and assertions directly without a validator catalog.",
             ),
             "description": _(
                 """
@@ -43,12 +43,12 @@ def create_default_validators():
             "name": _("JSON Schema Validation"),
             "slug": "json-schema-validation",
             "short_description": _(
-                "Validate JSON payloads against predefined schemas.",
+                "Validate JSON payloads against predefined JSON schemas.",
             ),
             "description": _(
                 """
                 <p>
-                This validator validates JSON payloads against predefined JSON schemas.
+                This validator validates JSON payloads against a predefined JSON schema.
                 When a workflow author selects this validator, they must attach
                 a valid JSON schema. 
                 </p>
@@ -62,12 +62,12 @@ def create_default_validators():
             "name": _("XML Validation"),
             "slug": "xml-validation",
             "short_description": _(
-                "Validate XML submissions against XSD/DTD definitions.",
+                "Validate XML submissions against XSD, DTD, or RelaxNG definitions.",
             ),
             "description": _(
                 """
                 <p>
-                This validator validates XML submissions against XSD, DTD or RelaxNG definitions.
+                This validator validates XML submissions against an XSD, DTD or RelaxNG schema.
                 When a workflow author selects this validator, they must attach
                 a valid schema. 
                 </p>
@@ -102,8 +102,18 @@ def create_default_validators():
             ),
             "description": _(
                 """
-                <p>Run FMUs in an isolated runtime and assert against inputs and outputs. 
-                "Instrument simulations safely and share findings with collaborators.</p>
+                <p>
+                This validator allows a workflow author to write assertions against incoming data.
+                It allows a workflow author to validating incoming data as well as simulation outputs.
+                </p>
+                <p>
+                The validator sends inputs using the Functional Mock-up Interface (FMI) standard to an 
+                FMU-based simulation running in an isolated runtime. If the simulation succeeds it
+                gathers outputs and returns them as output signals for further validation, if defined.
+                </p>
+                <p>
+                The workflow author to write assertions against simulation output signals.
+                </p>
                 """
             ),
             "validation_type": ValidationType.FMI,

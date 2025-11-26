@@ -18,11 +18,21 @@
       <table class="table table-sm align-middle table-hover" data-sortable-table>
         <thead>
           <tr>
-            <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
-            <th class="text-muted small text-end">{% trans "Actions" %}</th>
+            <th class="text-muted small" data-sortable="true">
+              {% trans "Signal name" %}
+            </th>
+            <th class="text-muted small" data-sortable="true">
+              {% trans "Target path" %}
+            </th>
+            <th class="text-muted small" data-sortable="true">
+              {% trans "Type" %}
+            </th>
+            <th class="text-muted small" data-sortable="true">
+              {% trans "Stage" %}
+            </th>
+            <th class="text-muted small text-end">
+              {% trans "Actions" %}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -30,16 +40,26 @@
             {% for entry in catalog_display.inputs %}
               <tr id="validator-signal-{{ entry.id }}">
                 <td>
-                  <span class="d-inline-block text-truncate" style="max-width: 180px;" title="{{ entry.slug }}">{{ entry.slug }}</span>
+                  <span class="d-inline-block text-truncate"
+                        style="max-width: 180px"
+                        title="{{ entry.slug }}">{{ entry.slug }}</span>
                 </td>
                 <td>
-                  <code class="d-inline-block text-truncate" style="max-width: 220px;" title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+                  <code class="d-inline-block text-truncate"
+                        style="max-width: 220px"
+                        title="{{ entry.target_field }}">{{ entry.target_field }}</code>
                 </td>
-                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-                <td class="text-muted small">{% trans "Input" %}</td>
+                <td class="text-muted small">
+                  {{ entry.get_data_type_display }}
+                </td>
+                <td class="text-muted small">
+                  {% trans "Input" %}
+                </td>
                 <td class="text-end">
                   {% if can_edit_validator %}
-                    <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
+                    <div class="btn-group btn-group-sm"
+                         role="group"
+                         aria-label="{% trans 'Signal actions' %}">
                       <button class="btn btn-outline-primary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
@@ -50,7 +70,9 @@
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"
                               hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}
+                                            Delete signal '{{ name }}'?
+                                          {% endblocktrans %}">
                         <i class="bi bi-trash"></i>
                       </button>
                     </div>
@@ -64,16 +86,26 @@
             {% for entry in catalog_display.outputs %}
               <tr id="validator-signal-{{ entry.id }}">
                 <td>
-                  <span class="d-inline-block text-truncate" style="max-width: 180px;" title="{{ entry.slug }}">{{ entry.slug }}</span>
+                  <span class="d-inline-block text-truncate"
+                        style="max-width: 180px"
+                        title="{{ entry.slug }}">{{ entry.slug }}</span>
                 </td>
                 <td>
-                  <code class="d-inline-block text-truncate" style="max-width: 220px;" title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+                  <code class="d-inline-block text-truncate"
+                        style="max-width: 220px"
+                        title="{{ entry.target_field }}">{{ entry.target_field }}</code>
                 </td>
-                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-                <td class="text-muted small">{% trans "Output" %}</td>
+                <td class="text-muted small">
+                  {{ entry.get_data_type_display }}
+                </td>
+                <td class="text-muted small">
+                  {% trans "Output" %}
+                </td>
                 <td class="text-end">
                   {% if can_edit_validator %}
-                    <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Signal actions' %}">
+                    <div class="btn-group btn-group-sm"
+                         role="group"
+                         aria-label="{% trans 'Signal actions' %}">
                       <button class="btn btn-outline-primary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
@@ -84,7 +116,9 @@
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"
                               hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}
+                                            Delete signal '{{ name }}'?
+                                          {% endblocktrans %}">
                         <i class="bi bi-trash"></i>
                       </button>
                     </div>
@@ -96,14 +130,26 @@
 
           {% if not catalog_display.inputs and not show_output_tab %}
             <tr>
-              <td colspan="5" class="text-muted small">
-                {% trans "No signals have been added yet." %}
+              <td colspan="5" class="text-muted small ">
+                <div class="my-5 w-100 text-center">
+                  {% if validator.is_system %}
+                    {% trans "No signals defined for this validator ." %}
+                  {% else %}
+                    {% trans "No signals have been added yet." %}
+                  {% endif %}
+                </div>
               </td>
             </tr>
           {% elif not catalog_display.inputs and show_output_tab and not catalog_display.outputs %}
             <tr>
-              <td colspan="5" class="text-muted small">
-                {% trans "No signals have been added yet." %}
+              <td colspan="5" class="text-muted small my-5">
+                <div class="my-5 w-100 text-center">
+                  {% if validator.is_system %}
+                    {% trans "No signals defined for this validator ." %}
+                  {% else %}
+                    {% trans "No signals have been added yet." %}
+                  {% endif %}
+                </div>
               </td>
             </tr>
           {% endif %}

@@ -6,7 +6,7 @@ from http import HTTPStatus
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models, transaction
-from django.db.models import Q, Count
+from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
@@ -34,6 +34,11 @@ from simplevalidations.core.view_helpers import (
     hx_trigger_response,
 )
 from simplevalidations.projects.models import Project
+from simplevalidations.submissions.constants import (
+    SubmissionDataFormat,
+    SubmissionFileType,
+)
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.mixins import SuperuserRequiredMixin
 from simplevalidations.users.models import Organization
 from simplevalidations.validations.constants import (
@@ -44,7 +49,6 @@ from simplevalidations.validations.constants import (
     ValidationType,
     XMLSchemaType,
 )
-from simplevalidations.submissions.constants import SubmissionDataFormat, SubmissionFileType
 from simplevalidations.validations.forms import RulesetAssertionForm
 from simplevalidations.validations.models import (
     RulesetAssertion,
@@ -61,7 +65,6 @@ from simplevalidations.workflows.constants import (
     WORKFLOW_VIEWER_ROLES,
     WorkflowListLayout,
 )
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.workflows.forms import (
     WorkflowPublicInfoForm,
     WorkflowStepTypeForm,
@@ -1168,7 +1171,9 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
                 workflow.save(update_fields=["is_archived", "is_active"])
                 messages.info(
                     request,
-                    _("Workflow archived and disabled. Runs remain available for audit."),
+                    _(
+                        "Workflow archived and disabled. Runs remain available for audit."
+                    ),
                 )
 
         if request.headers.get("HX-Request"):
@@ -1245,7 +1250,9 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
         """
         Recompute per-user permission flags for a workflow when rendering partials.
         """
-        membership = getattr(self.request.user, "membership_for_current_org", lambda: None)()
+        membership = getattr(
+            self.request.user, "membership_for_current_org", lambda: None
+        )()
         can_manage = False
         can_execute = False
         can_view = False
@@ -1738,9 +1745,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 handled.extend(filtered)
             else:
                 filtered = []
-            members = [
-                self._serialize_validator(workflow, v) for v in filtered
-            ]
+            members = [self._serialize_validator(workflow, v) for v in filtered]
             tabs.append({"slug": slug, "label": label, "entries": members})
             options.extend(members)
 
@@ -1752,8 +1757,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             )
             if advanced_tab is not None:
                 serialized = [
-                    self._serialize_validator(workflow, v)
-                    for v in remaining_validators
+                    self._serialize_validator(workflow, v) for v in remaining_validators
                 ]
                 advanced_tab["entries"].extend(serialized)
                 options.extend(serialized)
@@ -1833,6 +1837,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "name": validator.name,
             "subtitle": validator.get_validation_type_display(),
             "description": validator.description,
+            "short_description": validator.short_description,
             "icon": getattr(validator, "display_icon", "bi-sliders"),
             "kind": "validator",
             "object": validator,

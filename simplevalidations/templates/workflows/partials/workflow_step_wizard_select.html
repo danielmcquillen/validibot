@@ -51,14 +51,21 @@
           <ul class="nav nav-tabs" role="tablist">
             {% for tab in validator_tabs %}
               <li class="nav-item" role="presentation">
-                <button class="nav-link {% if tab.slug == selected_tab %}active{% endif %}"
+                <button class="nav-link
+                               {% if tab.slug == selected_tab %}
+                                 active
+                               {% endif %}"
                         id="workflow-tab-{{ tab.slug }}-tab"
                         data-bs-toggle="tab"
                         type="button"
                         role="tab"
                         data-bs-target="#workflow-tab-{{ tab.slug }}"
                         aria-controls="workflow-tab-{{ tab.slug }}"
-                        aria-selected="{% if tab.slug == selected_tab %}true{% else %}false{% endif %}">
+                        aria-selected="{% if tab.slug == selected_tab %}
+                                         true
+                                       {% else %}
+                                         false
+                                       {% endif %}">
                   {{ tab.label }}
                 </button>
               </li>
@@ -66,7 +73,11 @@
           </ul>
           <div class="tab-content pt-3 flex-grow-1 d-flex flex-column">
             {% for tab in validator_tabs %}
-              <div class="tab-pane fade {% if tab.slug == selected_tab %}show active{% endif %} flex-grow-1"
+              <div class="tab-pane fade
+                          {% if tab.slug == selected_tab %}
+                            show active
+                          {% endif %}
+                          flex-grow-1"
                    id="workflow-tab-{{ tab.slug }}"
                    role="tabpanel"
                    aria-labelledby="workflow-tab-{{ tab.slug }}-tab">
@@ -79,10 +90,22 @@
                                  type="radio"
                                  name="choice"
                                  id="{{ input_id }}"
-                                 value="{{ entry.value }}"{% if entry.disabled %} disabled{% endif %}{% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %} checked{% endif %}
+                                 value="{{ entry.value }}"
+                                 {% if entry.disabled %}
+                                   disabled
+                                 {% endif %}
+                                 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
+                                   checked
+                                 {% endif %}
                                  autocomplete="off"
-                                 required>
-                          <label class="validator-card h-100 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}is-selected{% endif %} {% if entry.disabled %}is-disabled{% endif %}"
+                                 required />
+                          <label class="validator-card h-100 mb-3
+                                        {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
+                                          is-selected
+                                        {% endif %}
+                                        {% if entry.disabled %}
+                                          is-disabled
+                                        {% endif %}"
                                  for="{{ input_id }}">
                             <div class="validator-card__icon mb-3">
                               <i class="bi {{ entry.icon }}"></i>
@@ -90,12 +113,14 @@
                             <div class="validator-card__title mb-1">
                               {{ entry.name }}
                             </div>
+                            {% comment %}
                             <div class="validator-card__subtitle text-uppercase">
                               {{ entry.subtitle }}
                             </div>
-                            {% if entry.description %}
+                            {% endcomment %}
+                            {% if entry.short_description %}
                               <p class="validator-card__description small mb-0 mt-2">
-                                {{ entry.description }}
+                                {{ entry.short_description }}
                               </p>
                             {% endif %}
                             {% if entry.disabled and entry.disabled_reason %}
@@ -110,7 +135,7 @@
                   </div>
                 {% else %}
                   <div class="alert alert-info mb-0" role="alert">
-                    {% trans "No options available yet." %}
+                    {% trans "No custom validators available yet." %}
                   </div>
                 {% endif %}
               </div>

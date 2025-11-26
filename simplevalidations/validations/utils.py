@@ -43,7 +43,7 @@ def create_default_validators():
             "name": _("JSON Schema Validation"),
             "slug": "json-schema-validation",
             "short_description": _(
-                "Validate JSON payloads against predefined JSON schemas.",
+                "Validate JSON payloads against a JSON schema provided by the workflow author.",
             ),
             "description": _(
                 """
@@ -62,7 +62,7 @@ def create_default_validators():
             "name": _("XML Validation"),
             "slug": "xml-validation",
             "short_description": _(
-                "Validate XML submissions against XSD, DTD, or RelaxNG definitions.",
+                "Validate XML submissions against a XSD, DTD, or RelaxNG schema provided by the workflow author.",
             ),
             "description": _(
                 """

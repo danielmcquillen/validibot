@@ -1,4 +1,4 @@
-{% load i18n core_tags %}
+{% load i18n core_tags static %}
 
 <div id="validator-item-{{ validator.id }}">
   <div class="card app-card validator-library-card
@@ -13,6 +13,13 @@
         {{ validator.name }}
       </div>
     </div>
+    {% if validator.card_image_name %}
+      <div class="card-image">
+        <img src="{% static 'validations/images/validator_cards/'|add:validator.card_image_name %}"
+             class="card-img-top"
+             alt="{{ validator.name }} card image" />
+      </div>
+    {% endif %}
     <div class="card-body position-relative">
 
       <div class="d-flex flex-row">

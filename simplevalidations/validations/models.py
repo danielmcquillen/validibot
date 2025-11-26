@@ -377,7 +377,7 @@ class RulesetAssertion(TimeStampedModel):
         related_name="ruleset_assertions",
         help_text=_("Reference to a catalog entry when targeting a known signal."),
     )
-    
+
     target_field = models.CharField(
         max_length=255,
         blank=True,
@@ -750,12 +750,14 @@ class Validator(TimeStampedModel):
             "A unique identifier for the validator, used in URLs.",
         ),  # e.g. "json-2020-12", "eplus-23-1"
     )
-    
+
     short_description = models.CharField(
         max_length=255,
         blank=True,
         default="",
-        help_text=_("A brief summary of the validator's purpose. This description appears in lists and cards."),
+        help_text=_(
+            "A brief summary of the validator's purpose. This description appears in lists and cards."
+        ),
     )
 
     description = models.TextField(
@@ -873,6 +875,12 @@ class Validator(TimeStampedModel):
             "Logical file types this validator can process (JSON, XML, text, etc.).",
         ),
     )
+
+    @property
+    def card_image_name(self) -> str:
+        if self.validation_type:
+            return f"{self.validation_type}_card_img_small.png"
+        return "default_card_img_small.png"
 
     @property
     def display_icon(self) -> str:

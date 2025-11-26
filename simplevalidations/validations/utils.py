@@ -40,8 +40,8 @@ def create_default_validators():
             "allow_custom_assertion_targets": True,
         },
         {
-            "name": _("JSON Schema Validation"),
-            "slug": "json-schema-validation",
+            "name": _("JSON Schema Validator"),
+            "slug": "json-schema-validator",
             "short_description": _(
                 "Validate JSON payloads against a JSON schema provided by the workflow author.",
             ),
@@ -59,8 +59,8 @@ def create_default_validators():
             "order": 1,
         },
         {
-            "name": _("XML Validation"),
-            "slug": "xml-validation",
+            "name": _("XML Validator"),
+            "slug": "xml-validator",
             "short_description": _(
                 "Validate XML submissions against a XSD, DTD, or RelaxNG schema provided by the workflow author.",
             ),
@@ -78,8 +78,8 @@ def create_default_validators():
             "order": 2,
         },
         {
-            "name": _("EnergyPlus Validation"),
-            "slug": "energyplus-idf-validation",
+            "name": _("EnergyPlus Validator"),
+            "slug": "energyplus-idf-validator",
             "short_description": _(
                 "Validate EnergyPlus IDF files and outputs.",
             ),
@@ -95,8 +95,8 @@ def create_default_validators():
             "has_processor": True,
         },
         {
-            "name": _("FMI Validation"),
-            "slug": "fmi-validation",
+            "name": _("FMI Validator"),
+            "slug": "fmi-validator",
             "short_description": _(
                 "Run FMUs and assert against inputs and outputs.",
             ),
@@ -122,8 +122,8 @@ def create_default_validators():
             "has_processor": True,
         },
         {
-            "name": _("AI Assisted Validation"),
-            "slug": "ai-assisted-validation",
+            "name": _("AI Assisted Validator"),
+            "slug": "ai-assisted-validator",
             "short_description": _(
                 "Use AI to validate submission content against your criteria.",
             ),
@@ -162,6 +162,7 @@ def create_default_validators():
             updated += 1
 
         # Update order in case it has changed
+        validator.name = validator_data["name"]
         validator.order = validator_data["order"]
         validator.is_system = True
         validator.org = None

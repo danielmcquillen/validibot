@@ -1,6 +1,6 @@
 {% extends "app_base.html" %}
 
-{% load i18n core_tags %}
+{% load i18n core_tags static %}
 
 {% block title %}
   {{ validator.name }} · {% trans "Validator Library" %}
@@ -11,14 +11,23 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
+
+
   <div id="validator-detail" class="container-fluid">
 
     <div class="app-content-header-bar row align-items-center">
       <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
-        <h1 class="app-page-title">
-          <i class="bi {{ validator.display_icon }} me-2"></i>
-          {{ validator.name }}
-        </h1>
+        {% if has_hero %}
+          <div class="app-page-title h3 mb-0 text-body" aria-hidden="true">
+            <i class="bi {{ validator.display_icon }} me-2"></i>
+            {{ validator.name }}
+          </div>
+        {% else %}
+          <h1 class="app-page-title">
+            <i class="bi {{ validator.display_icon }} me-2"></i>
+            {{ validator.name }}
+          </h1>
+        {% endif %}
       </div>
       {% if can_edit_validator %}
         <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0 gap-2">
@@ -70,8 +79,19 @@
       </div>
     {% endif %}
 
-    {# If this is a system validotor, we show a description block #}
+    {# If this is a system validator, we show a description block #}
     {% if validator.is_system %}
+
+      <div class="validator-hero mb-4">
+        <div class="validator-hero__bg"
+             style="background-image: url('{% static 'validations/images/validator_cards/'|add:validator.card_image_name %}')">
+        </div>
+        <div class="validator-hero-content">
+          <div class="validator-hero-title">
+            {{ validator.name }}
+          </div>
+        </div>
+      </div>
 
       <div class="card mb-4">
         <div class="card-header">
@@ -83,6 +103,9 @@
           <div class="row">
             <div class="col-12 col-lg-6">
               {{ validator.description|safe }}
+            </div>
+            <div class="col-12 col-lg-6">
+
             </div>
           </div>
         </div>

@@ -5,8 +5,7 @@ from rest_framework import permissions
 from rest_framework.exceptions import ValidationError
 
 from simplevalidations.users.models import Organization
-from simplevalidations.workflows.constants import WORKFLOW_MANAGER_ROLES
-from simplevalidations.workflows.views_helpers import user_has_workflow_manager_role
+from simplevalidations.users.permissions import PermissionCode
 
 
 class WorkflowPermission(permissions.BasePermission):
@@ -30,7 +29,7 @@ class WorkflowPermission(permissions.BasePermission):
 
         if view.action == "create":
             org = self._resolve_target_org(request)
-            return user.has_org_roles(org, WORKFLOW_MANAGER_ROLES)
+            return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, org)
 
         # update/destroy permissions are enforced at the object level
         return True
@@ -43,7 +42,7 @@ class WorkflowPermission(permissions.BasePermission):
         if view.action in ("retrieve", "list", "start_validation"):
             return True
 
-        return user_has_workflow_manager_role(user, obj)
+        return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, obj)
 
     def _resolve_target_org(self, request) -> Organization:
         """

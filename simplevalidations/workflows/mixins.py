@@ -15,7 +15,7 @@ from django.utils.translation import gettext_lazy as _
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.users.models import User
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
@@ -24,8 +24,6 @@ from simplevalidations.validations.constants import (
 from simplevalidations.validations.models import Ruleset, ValidationRun
 from simplevalidations.workflows.constants import (
     WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
-    WORKFLOW_MANAGER_ROLES,
-    WORKFLOW_VIEWER_ROLES,
 )
 from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
 from simplevalidations.workflows.models import Workflow, WorkflowStep
@@ -64,8 +62,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
-        return can_manage
+        return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, membership.org)
 
     def user_can_view_workflow(self, *, user: User | None = None) -> bool:
         user = user or self.request.user
@@ -74,7 +71,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        return membership.has_any_role(WORKFLOW_VIEWER_ROLES)
+        return user.has_perm(PermissionCode.WORKFLOW_VIEW.value, membership.org)
 
     def user_can_create_workflow(self, *, user: User | None = None) -> bool:
         user = user or self.request.user
@@ -83,8 +80,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         membership = user.membership_for_current_org()
         if membership is None or not membership.is_active:
             return False
-        can_create = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
-        return can_create
+        return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, membership.org)
 
     def _can_manage_workflow_actions(
         self,
@@ -98,15 +94,11 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         """
         if not membership or not getattr(membership, "is_active", False):
             return False
-        if membership.has_any_role({RoleCode.OWNER, RoleCode.ADMIN}):
+        if user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, workflow):
             return True
-        if membership.has_any_role({RoleCode.AUTHOR}) and workflow.user_id == getattr(
-            user,
-            "id",
-            None,
-        ):
-            return True
-        return False
+        if not user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow):
+            return False
+        return workflow.user_id == getattr(user, "id", None)
 
 
 class WorkflowObjectMixin(WorkflowAccessMixin):

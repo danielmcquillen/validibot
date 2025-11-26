@@ -15,15 +15,16 @@ user/organization relationship is modeled and enforced.
 | `users.Role` | Catalog of role codes. Codes mirror `RoleCode` values so we can attach descriptions or rename without touching code. |
 | `users.MembershipRole` | Through table between `Membership` and `Role`, allowing a user to hold multiple roles inside the same org. |
 
-### Role codes
+### Role codes and permission checks
 
 Role membership is defined in `users.constants.RoleCode`. Current codes are:
 
-- `OWNER` – denotes organizational accountability (billing, contractual owner); pair with `ADMIN` to act on that authority.
-- `ADMIN` – required for organization management actions (invitations, role changes, org updates/deletion guard).
+- `OWNER` – organizational accountability; automatically implies every other role.
+- `ADMIN` – organization management actions (invite/remove members, edit org).
 - `AUTHOR` – build and maintain workflows (create, edit, clone, delete steps).
-- `EXECUTOR` – launch validation runs and inspect detailed results.
-- `VIEWER` – read-only visibility into workflows and runs.
+- `EXECUTOR` – launch validation runs (paired with RESULTS_VIEWER when review is needed).
+- `RESULTS_VIEWER` – read-only access to validation results across the org.
+- `WORKFLOW_VIEWER` – read-only access to workflow definitions/metadata.
 
 Exactly one membership per organization can hold the `OWNER` role at a time. Assigning `OWNER` to another member automatically removes it from the previous holder (they retain any remaining roles, including `ADMIN`).
 
@@ -33,10 +34,8 @@ representation consistent everywhere we compare roles.
 ### Membership lifecycle
 
 - Creating a membership immediately activates it (`is_active=True`).
-- Assigning a role is done via `Membership.add_role(role_code)`. The helper makes
-  sure the backing `Role` row exists before adding the through relation.
-- Checking a role uses `Membership.has_role(role_code)` which performs a single
-  `EXISTS` query.
+- Assigning a role is done via `Membership.add_role(role_code)`. The helper makes sure the backing `Role` row exists before adding the through relation.
+- Authorization should call `user.has_perm(PermissionCode.<code>.value, obj_with_org)`; the org permission backend maps roles to permissions and scopes to the object’s org. `Membership.has_role` remains available for business rules (e.g., “do not remove final OWNER”).
 
 Roles can be added or removed through the service layer, but the low level
 helpers keep the database consistent.
@@ -67,13 +66,62 @@ inspect roles without additional queries.
 1. View/service pulls the user’s `current_org` (or the explicit org in the
    request).
 2. Membership is fetched using `membership_for_current_org()`.
-3. Role checks are evaluated using `has_role(RoleCode.EXECUTOR)` etc.
-4. Shared helpers (for example `grant_role` in the test factories) use the same
-   primitives so business logic stays consistent.
-5. The Workflow API now mirrors the UI guards:
-   - creating/updating/deleting workflows requires an `OWNER`, `ADMIN`, or `AUTHOR` role in the workflow’s org,
-   - starting a workflow run requires `EXECUTOR`,
-   - deleting a validation run requires `ADMIN` or `OWNER`.
+3. Authorization is evaluated with `user.has_perm(PermissionCode.<code>.value, obj_with_org)`; the permission backend reads the user’s active membership and the object’s org.
+4. Shared helpers (for example `grant_role` in the test factories) keep membership roles synchronized; permissions flow automatically from those roles.
+5. The Workflow and Validation APIs mirror the UI guards via permission codes:
+   - create/update/delete workflow: `workflow_edit`
+   - start workflow run: `workflow_launch`
+   - view validation results: `results_view_all` or `results_view_own`
+   - manage org/users: `admin_manage_org`
+
+## How roles, permissions, and (future) Django Groups line up
+
+We keep the data model simple and Django-native:
+
+- **Tables:** `User` ←→ `Membership` ←→ `Organization`, with `MembershipRole` joining to `Role` rows keyed by `RoleCode`.
+- **Permission codes:** Defined in `users.constants.PermissionCode` and seeded via migration `users/migrations/0005_permission_definitions.py`.
+- **Backend:** `OrgPermissionBackend` implements Django’s `has_perm` contract and translates a user’s roles-in-org into permission grants on a per-object basis. It also handles “own” semantics (`results_view_own` checks run.user_id).
+- **Groups:** We do **not** create or rely on Django `Group` objects today. If you need them (e.g., for Django admin or external tooling), you can mirror `Role` → `Group` mappings without changing authorization call sites because everything already uses `user.has_perm`.
+
+### What happens when a user joins an org?
+
+1. An `Organization` exists (personal orgs are created automatically on first login).
+2. A `Membership` row is created (`is_active=True`).
+3. The inviter or form assigns one or more `Role` codes (e.g., `EXECUTOR`, `RESULTS_VIEWER`).
+4. From that point on, `user.has_perm("workflow_launch", workflow)` and `user.has_perm("results_view_all", run)` will return `True` when the object’s `org` matches the membership because the backend maps those roles to permission codes.
+
+### When roles change in the UI
+
+- The member roles form updates the `MembershipRole` set.
+- No additional permission bookkeeping is required—the next `has_perm` call reflects the new roles.
+- Integrity rules (e.g., “cannot remove the last OWNER/ADMIN”) are enforced with role-aware checks, but all request authorization uses `has_perm`.
+
+### Concrete `has_perm` examples
+
+```python
+# Workflow access
+user.has_perm(PermissionCode.WORKFLOW_VIEW.value, workflow)
+user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow)
+user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow)
+
+# Validation runs
+user.has_perm(PermissionCode.RESULTS_VIEW_ALL.value, validation_run)
+user.has_perm(PermissionCode.RESULTS_VIEW_OWN.value, validation_run)  # True for run owner
+
+# Org admin / member management
+user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, organization)
+```
+
+### API and UI alignment
+
+- DRF permissions and view mixins call `has_perm` with the target object (workflow, validation run, or organization) so org scoping is automatic.
+- Templates rely on precomputed flags that were derived from `has_perm`; avoid checking roles directly in templates to keep behavior consistent.
+
+### Extending with Django Groups (if ever needed)
+
+- Create a `Group` per `RoleCode` (or per `PermissionCode`) and assign the seeded `auth.Permission` rows to that group.
+- When adding a membership role, also add the user to the corresponding group. Authorization continues to use `has_perm`, so this is transparent to the rest of the codebase.
+- This pattern makes Django admin and third-party tooling work without touching the authorization layer in application code.
 
 ### Tips
 

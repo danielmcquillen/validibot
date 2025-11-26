@@ -32,3 +32,26 @@ class RoleCode(models.TextChoices):
         "RESULTS_VIEWER",
         _("Validation Results Viewer"),
     )
+
+
+class PermissionCode(models.TextChoices):
+    """
+    Canonical permission codes used by the org-scoped RBAC layer.
+    """
+
+    WORKFLOW_LAUNCH = "workflow_launch", _("Start workflow runs")
+    VALIDATION_RESULTS_VIEW_ALL = (
+        "validation_results_view_all",
+        _("View all validation results"),
+    )
+    VALIDATION_RESULTS_VIEW_OWN = (
+        "validation_results_view_own",
+        _("View validation results for own runs"),
+    )
+    WORKFLOW_VIEW = "workflow_view", _("View workflow definitions and metadata")
+    WORKFLOW_EDIT = "workflow_edit", _("Create or edit workflows")
+    VALIDATOR_VIEW = "validator_view", _("View validators and catalog entries")
+    VALIDATOR_EDIT = "validator_edit", _("Create or edit validators")
+    ANALYTICS_VIEW = "analytics_view", _("View analytics and reporting dashboards")
+    ANALYTICS_REVIEW = "analytics_review", _("Review or approve analytics outputs")
+    ADMIN_MANAGE_ORG = "admin_manage_org", _("Manage organization users and roles")

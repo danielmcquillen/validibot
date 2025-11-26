@@ -12,7 +12,11 @@ from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, MembershipRole, Role
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
+from simplevalidations.users.tests.factories import (
+    OrganizationFactory,
+    UserFactory,
+    grant_role,
+)
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.tests.factories import (
@@ -52,12 +56,14 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Create test user
         self.user = UserFactory(orgs=[self.org])  # Fixed: was orgs=[self.org]
+        grant_role(self.user, self.org, RoleCode.RESULTS_VIEWER)
 
         # Create another org and user for isolation testing
         self.other_org = OrganizationFactory()
         self.other_user = UserFactory(
             orgs=[self.other_org]
         )  # Fixed: was orgs=[self.other_org]
+        grant_role(self.other_user, self.other_org, RoleCode.RESULTS_VIEWER)
 
         # Create test project
         self.project = ProjectFactory(org=self.org)

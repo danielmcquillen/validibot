@@ -4,7 +4,6 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.users.constants import RoleCode
 
 WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY = "workflow_launch_input_mode"
 WORKFLOW_LIST_LAYOUT_SESSION_KEY = "workflow_list_layout"
@@ -14,25 +13,6 @@ WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY = "workflow_list_show_archived"
 class WorkflowListLayout(models.TextChoices):
     GRID = "grid", _("Grid")
     TABLE = "table", _("Table")
-
-
-# Role groups shared by UI mixins and API permissions
-WORKFLOW_MANAGER_ROLES = {
-    RoleCode.OWNER,
-    RoleCode.ADMIN,
-    RoleCode.AUTHOR,
-}
-WORKFLOW_EXECUTOR_ROLES = {
-    RoleCode.EXECUTOR,
-    RoleCode.ADMIN,
-    RoleCode.OWNER,
-}
-WORKFLOW_VIEWER_ROLES = WORKFLOW_MANAGER_ROLES.union(
-    {
-        RoleCode.WORKFLOW_VIEWER,
-        RoleCode.EXECUTOR,
-    }
-)
 
 
 class AccessScope(models.TextChoices):

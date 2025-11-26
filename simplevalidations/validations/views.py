@@ -21,7 +21,7 @@ from rest_framework import filters, permissions, viewsets
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org, truthy
-from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.validations.constants import (
     VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
     VALIDATION_LIBRARY_TAB_SESSION_KEY,
@@ -102,6 +102,26 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
         )
         return membership, active_org_id
 
+    def _access_context(self):
+        """
+        Resolve the active membership and permission flags for the current user.
+        """
+
+        user = self.request.user
+        membership, active_org_id = self._active_membership(user)
+        if not membership or not active_org_id:
+            return None, None, False, False
+        org = membership.org
+        has_full_access = user.has_perm(
+            PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
+            org,
+        )
+        has_own_access = user.has_perm(
+            PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
+            org,
+        )
+        return membership, active_org_id, has_full_access, has_own_access
+
     def filter_queryset(self, queryset):
         """
         Enforce role-based visibility:
@@ -110,34 +130,25 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
         """
 
         user = self.request.user
-        membership, active_org_id = self._active_membership(user)
+        membership, active_org_id, has_full_access, has_own_access = (
+            self._access_context()
+        )
         if not membership or not active_org_id:
             return ValidationRun.objects.none()
-
-        role_codes = set(
-            membership.membership_roles.values_list("role__code", flat=True)
-        )
-        has_full_access = bool(
-            role_codes
-            & {
-                RoleCode.ADMIN,
-                RoleCode.OWNER,
-                RoleCode.RESULTS_VIEWER,
-                RoleCode.AUTHOR,
-            }
-        )
 
         scoped = queryset
         if has_full_access:
             scoped = scoped.filter(org_id=active_org_id)
-        else:
+        elif has_own_access:
             scoped = scoped.filter(org_id=active_org_id, user_id=user.id)
+        else:
+            scoped = ValidationRun.objects.none()
 
         logger.debug(
             "ValidationRunViewSet.filter_queryset user=%s org=%s roles=%s full_access=%s filtered_ids=%s",
             user.id,
             active_org_id,
-            role_codes,
+            membership.role_codes,
             has_full_access,
             list(scoped.values_list("id", flat=True)),
         )
@@ -150,39 +161,16 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
             return ValidationRun.objects.none()
 
         user = self.request.user
-        active_org = getattr(self.request, "active_org", None)
-        active_org_id = (
-            active_org.id if active_org else getattr(user, "current_org_id", None)
+        membership, active_org_id, has_full_access, has_own_access = (
+            self._access_context()
         )
-        if not active_org_id:
+        if not membership or not active_org_id:
             return ValidationRun.objects.none()
-
-        membership = (
-            user.memberships.filter(org_id=active_org_id, is_active=True)
-            .select_related("org")
-            .prefetch_related("membership_roles__role")
-            .first()
-        )
-        if not membership:
-            return ValidationRun.objects.none()
-
-        role_codes = set(
-            membership.membership_roles.values_list("role__code", flat=True)
-        )
-        has_full_access = bool(
-            role_codes
-            & {
-                RoleCode.ADMIN,
-                RoleCode.OWNER,
-                RoleCode.RESULTS_VIEWER,
-                RoleCode.AUTHOR,
-            }
-        )
         logger.debug(
             "ValidationRunViewSet.get_queryset user=%s org=%s roles=%s full_access=%s",
             user.id,
             active_org_id,
-            role_codes,
+            membership.role_codes,
             has_full_access,
         )
 
@@ -197,8 +185,10 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if has_full_access:
             qs = base_qs.filter(org_id=active_org_id)
-        else:
+        elif has_own_access:
             qs = base_qs.filter(org_id=active_org_id, user_id=user.id)
+        else:
+            qs = ValidationRun.objects.none()
 
         # Default recent-only (last 30 days) unless:
         # - ?all=1 provided, or
@@ -260,14 +250,16 @@ class ValidationRunAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         for membership in memberships:
             if active_org_id and membership.org_id != active_org_id:
                 continue
-            roles = membership.role_codes
-            if roles & {
-                RoleCode.ADMIN,
-                RoleCode.OWNER,
-                RoleCode.RESULTS_VIEWER,
-            }:
+            org = membership.org
+            if user.has_perm(
+                PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
+                org,
+            ):
                 full_access_org_ids.add(membership.org_id)
-            elif RoleCode.EXECUTOR in roles:
+            elif user.has_perm(
+                PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
+                org,
+            ):
                 restricted_org_ids.add(membership.org_id)
         filters = models.Q()
         if full_access_org_ids:
@@ -351,47 +343,19 @@ class ValidationRunListView(ValidationRunAccessMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        active_org = getattr(self.request, "active_org", None)
-        active_org_id = (
-            active_org.id if active_org else getattr(user, "current_org_id", None)
-        )
-        memberships = {
-            membership.org_id: membership
-            for membership in user.memberships.filter(is_active=True)
-            .select_related("org")
-            .prefetch_related("membership_roles__role")
-            if not active_org_id or membership.org_id == active_org_id
-        }
         for validation in context.get("validations", []):
-            membership = memberships.get(validation.org_id)
-            role_codes = (
-                set(membership.membership_roles.values_list("role__code", flat=True))
-                if membership
-                else set()
+            can_view_all = user.has_perm(
+                PermissionCode.VALIDATION_RESULTS_VIEW_ALL.value,
+                validation,
             )
-            validation.curr_user_can_view = bool(
-                membership
-                and (
-                    role_codes
-                    & {
-                        RoleCode.ADMIN,
-                        RoleCode.OWNER,
-                        RoleCode.RESULTS_VIEWER,
-                    }
-                    or (
-                        RoleCode.EXECUTOR in role_codes
-                        and validation.user_id == user.id
-                    )
-                )
+            can_view_own = user.has_perm(
+                PermissionCode.VALIDATION_RESULTS_VIEW_OWN.value,
+                validation,
             )
-            validation.curr_user_can_delete = bool(
-                membership
-                and membership.has_any_role(
-                    {
-                        RoleCode.ADMIN,
-                        RoleCode.OWNER,
-                    },
-                )
+            validation.curr_user_can_view = bool(can_view_all or can_view_own)
+            validation.curr_user_can_delete = user.has_perm(
+                PermissionCode.ADMIN_MANAGE_ORG.value,
+                validation,
             )
         context.update(
             {
@@ -477,13 +441,22 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         return None
 
     def has_library_access(self) -> bool:
-        membership = self.get_active_membership()
-        if not membership:
+        org = self.get_active_org() or getattr(self.get_active_membership(), "org", None)
+        if not org:
             return False
-        return membership.has_author_admin_owner_privileges
+        return self.request.user.has_perm(
+            PermissionCode.VALIDATOR_VIEW.value,
+            org,
+        )
 
     def can_manage_validators(self) -> bool:
-        return self.has_library_access()
+        org = self.get_active_org() or getattr(self.get_active_membership(), "org", None)
+        if not org:
+            return False
+        return self.request.user.has_perm(
+            PermissionCode.VALIDATOR_EDIT.value,
+            org,
+        )
 
     def require_manage_permission(self):
         if not self.can_manage_validators():
@@ -922,7 +895,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["form_title"] = _("Create FMI Validator")
-        context["can_manage_validators"] = True
+        context["can_manage_validators"] = self.can_manage_validators()
         context["validator"] = None
         return context
 
@@ -1004,7 +977,7 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["form_title"] = _("Create Custom Basic Validator")
-        context["can_manage_validators"] = True
+        context["can_manage_validators"] = self.can_manage_validators()
         context["validator"] = None
         return context
 
@@ -1459,12 +1432,18 @@ class ValidatorRuleMixin(CustomValidatorManageMixin):
         membership = self.get_active_membership()
         if not membership:
             return False
-        if membership.has_role(RoleCode.OWNER) or membership.has_role(RoleCode.ADMIN):
+        if self.request.user.has_perm(
+            PermissionCode.ADMIN_MANAGE_ORG.value,
+            self.validator,
+        ):
             return True
-        if membership.has_role(RoleCode.AUTHOR):
-            custom = getattr(self.validator, "custom_validator", None)
-            return bool(custom and custom.created_by_id == self.request.user.id)
-        return False
+        if not self.request.user.has_perm(
+            PermissionCode.WORKFLOW_EDIT.value,
+            self.validator,
+        ):
+            return False
+        custom = getattr(self.validator, "custom_validator", None)
+        return bool(custom and custom.created_by_id == self.request.user.id)
 
     def _redirect(self):
         return redirect(
@@ -1804,9 +1783,9 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
     def delete(self, request, *args, **kwargs):
         self.object = self.get_object()
         success_url = self.get_success_url()
-        if not request.user.has_org_roles(
-            self.object.org,
-            {RoleCode.ADMIN, RoleCode.OWNER},
+        if not request.user.has_perm(
+            PermissionCode.ADMIN_MANAGE_ORG.value,
+            self.object,
         ):
             raise PermissionDenied(
                 "You do not have permission to delete this validation run."

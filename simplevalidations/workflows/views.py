@@ -38,9 +38,9 @@ from simplevalidations.submissions.constants import (
     SubmissionDataFormat,
     SubmissionFileType,
 )
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.mixins import SuperuserRequiredMixin
 from simplevalidations.users.models import Organization
+from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.validations.constants import (
     ADVANCED_VALIDATION_TYPES,
     CatalogRunStage,
@@ -58,11 +58,8 @@ from simplevalidations.validations.models import (
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.workflows.constants import (
-    WORKFLOW_EXECUTOR_ROLES,
     WORKFLOW_LIST_LAYOUT_SESSION_KEY,
     WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY,
-    WORKFLOW_MANAGER_ROLES,
-    WORKFLOW_VIEWER_ROLES,
     WorkflowListLayout,
 )
 from simplevalidations.workflows.forms import (
@@ -124,7 +121,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         org = self._resolve_target_org()
-        if not self.request.user.has_org_roles(org, WORKFLOW_MANAGER_ROLES):
+        if not self.request.user.has_perm(
+            PermissionCode.WORKFLOW_EDIT.value,
+            org,
+        ):
             raise DRFPermissionDenied(
                 detail=_(
                     "You do not have permission to create workflows for this organization."
@@ -134,7 +134,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         workflow: Workflow = self.get_object()
-        if not self.request.user.has_org_roles(workflow.org, WORKFLOW_MANAGER_ROLES):
+        if not self.request.user.has_perm(
+            PermissionCode.WORKFLOW_EDIT.value,
+            workflow,
+        ):
             raise DRFPermissionDenied(
                 detail=_("You do not have permission to update this workflow."),
             )
@@ -151,7 +154,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         serializer.save(org=workflow.org, user=workflow.user)
 
     def perform_destroy(self, instance: Workflow):
-        if not self.request.user.has_org_roles(instance.org, WORKFLOW_MANAGER_ROLES):
+        if not self.request.user.has_perm(
+            PermissionCode.WORKFLOW_EDIT.value,
+            instance,
+        ):
             raise DRFPermissionDenied(
                 detail=_("You do not have permission to delete this workflow."),
             )
@@ -721,13 +727,13 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
         can_manage = False
         can_execute = False
         can_view = False
+        can_toggle_archived = False
         if membership:
-            can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
-            can_execute = membership.has_any_role(WORKFLOW_EXECUTOR_ROLES)
-            can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
-            can_toggle_archived = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
-        else:
-            can_toggle_archived = False
+            org = membership.org
+            can_manage = user.has_perm(PermissionCode.WORKFLOW_EDIT.value, org)
+            can_execute = user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, org)
+            can_view = user.has_perm(PermissionCode.WORKFLOW_VIEW.value, org)
+            can_toggle_archived = can_manage
 
         # Attach information about what user can do with each workflow
         # so we don't need to check multiple times in the template
@@ -832,7 +838,10 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
         )()
         if not membership or not getattr(membership, "is_active", False):
             return False
-        return membership.has_any_role(WORKFLOW_MANAGER_ROLES)
+        return self.request.user.has_perm(
+            PermissionCode.WORKFLOW_EDIT.value,
+            membership.org,
+        )
 
     def _build_archived_toggle_urls(self) -> dict[str, str]:
         base_url = reverse_with_org(
@@ -1257,16 +1266,21 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
         can_execute = False
         can_view = False
         if membership and getattr(membership, "is_active", False):
-            can_manage = membership.has_any_role(WORKFLOW_MANAGER_ROLES)
-            can_execute = membership.has_any_role(WORKFLOW_EXECUTOR_ROLES)
-            can_view = membership.has_any_role(WORKFLOW_VIEWER_ROLES)
+            org = membership.org
+            can_manage = self.request.user.has_perm(
+                PermissionCode.WORKFLOW_EDIT.value,
+                org,
+            )
+            can_execute = self.request.user.has_perm(
+                PermissionCode.WORKFLOW_LAUNCH.value,
+                org,
+            )
+            can_view = self.request.user.has_perm(
+                PermissionCode.WORKFLOW_VIEW.value,
+                org,
+            )
         workflow.curr_user_can_execute = (
             workflow.is_active and not workflow.is_archived and can_execute
-        )
-        workflow.curr_user_can_delete = self._can_manage_workflow_actions(
-            workflow,
-            self.request.user,
-            membership,
         )
         workflow.curr_user_can_delete = self._can_manage_workflow_actions(
             workflow,

@@ -20,12 +20,7 @@ from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, Organization, Role, User
-from simplevalidations.workflows.constants import (
-    WORKFLOW_EXECUTOR_ROLES,
-    WORKFLOW_MANAGER_ROLES,
-    WORKFLOW_VIEWER_ROLES,
-)
-
+from simplevalidations.users.permissions import PermissionCode, roles_for_permission
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +52,7 @@ class WorkflowQuerySet(models.QuerySet):
         if not getattr(user, "is_authenticated", False):
             return self.none()
 
-        allowed_view_roles = WORKFLOW_VIEWER_ROLES
+        allowed_view_roles = roles_for_permission(PermissionCode.WORKFLOW_VIEW)
         subq = Membership.objects.filter(
             org=OuterRef("org_id"),
             user=user,
@@ -268,80 +263,44 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def can_view(self, *, user: User) -> bool:
         """
         Check if the given user can view this workflow.
-        Requires that the user has a viewer role in the workflow's org.
+        Requires the ``workflow_view`` permission in the workflow's org.
         """
         if not user or not user.is_authenticated:
             return False
 
-        return (
-            Membership.objects.filter(
-                user=user,
-                org=self.org,
-                is_active=True,
-                membership_roles__role__code__in=WORKFLOW_VIEWER_ROLES,
-            )
-            .distinct()
-            .exists()
-        )
+        return user.has_perm(PermissionCode.WORKFLOW_VIEW.value, self)
 
     def can_delete(self, *, user: User) -> bool:
         """
         Check if the given user can delete this workflow.
-        Requires that the user has the WORKFLOW_MANAGER role in the workflow's org.
+        Requires the ``workflow_edit`` permission in the workflow's org.
         """
         if not user or not user.is_authenticated:
             return False
 
-        return (
-            Membership.objects.filter(
-                user=user,
-                org=self.org,
-                is_active=True,
-                membership_roles__role__code__in=WORKFLOW_MANAGER_ROLES,
-            )
-            .distinct()
-            .exists()
-        )
+        return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, self)
 
     def can_execute(self, *, user: User) -> bool:
         """
         Check if the given user can execute this workflow.
-        Requires that the user has the EXECUTOR role in the workflow's org.
+        Requires the ``workflow_launch`` permission in the workflow's org.
         """
         if not self.is_active:
             return False
         if not user or not user.is_authenticated:
             return False
 
-        return (
-            Membership.objects.filter(
-                user=user,
-                org=self.org,
-                is_active=True,
-                membership_roles__role__code__in=WORKFLOW_EXECUTOR_ROLES,
-            )
-            .distinct()
-            .exists()
-        )
+        return user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self)
 
     def can_edit(self, *, user: User) -> bool:
         """
         Check if the given user can edit this workflow.
-        Requires a workflow manager role in the workflow's organization.
+        Requires the ``workflow_edit`` permission in the workflow's organization.
         """
         if not user or not user.is_authenticated:
             return False
 
-        return (
-            Membership.objects.filter(
-                user=user,
-                org=self.org,
-                is_active=True,
-                membership_roles__role__code__in=WORKFLOW_MANAGER_ROLES,
-            )
-            .distinct()
-            .exists()
-        )
+        return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, self)
 
     def allowed_file_type_labels(self) -> list[str]:
         labels: list[str] = []

@@ -289,25 +289,6 @@ class User(AbstractUser):
             return None
         return Membership.objects.filter(user=self, org=self.current_org).first()
 
-    def has_org_roles(self, org: Organization, role_codes: set[str]) -> bool:
-        """
-        Return True when the user is an active member of ``org`` with any of the
-        roles in ``role_codes``.
-        """
-
-        if not org:
-            return False
-
-        membership = (
-            self.memberships.filter(org=org, is_active=True)
-            .select_related("org")
-            .prefetch_related("membership_roles__role")
-            .first()
-        )
-        if membership is None:
-            return False
-        return membership.has_any_role(role_codes)
-
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.
 

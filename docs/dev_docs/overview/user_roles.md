@@ -25,7 +25,31 @@ SimpleValidations defines six organization-scoped roles. Permissions are cumulat
 | Results Viewer | `RESULTS_VIEWER` | Validation review | Read-only access to validation run details and findings across the current organization. |
 | Workflow Viewer | `WORKFLOW_VIEWER` | Transparency | Read-only access to workflows and public details (no validation results access). |
 
+## Permission Codes
+
+Permissions are exposed as Django-style codenames (see `users.constants.PermissionCode`) and enforced through the `OrgPermissionBackend` so code can call `user.has_perm(code, obj_with_org)`.
+
+- `workflow_launch`: `OWNER`, `ADMIN`, `EXECUTOR`
+- `workflow_view`: `OWNER`, `ADMIN`, `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, `WORKFLOW_VIEWER`
+- `workflow_edit`: `OWNER`, `ADMIN`, `AUTHOR`
+- `results_view_all`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
+- `results_view_own`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`, `EXECUTOR` (always true for run.owner)
+- `results_review`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
+- `admin_manage_org`: `OWNER`, `ADMIN`
+
+Enforcement pattern: call `user.has_perm(PermissionCode.<code>.value, obj_with_org)` instead of checking roles directly; the `OrgPermissionBackend` maps roles-to-permissions and handles object scoping (e.g., own-run visibility).
+
 Only Owners, Admins, Authors, and Results Viewers can open validation results. Executors without those roles only see the runs they launched. Workflow Viewers without additional roles see a compact menu limited to Workflows and Validation Runs.
+
+### Integrity-only role checks
+
+Direct role lookups remain for a few data-integrity safeguards (not authorization):
+
+- Prevent removing the last `OWNER` or last `ADMIN` from an organization.
+- Block removing yourself from an organization.
+- Enforce single-owner transfer rules.
+
+All request-level access control should use `user.has_perm(PermissionCode.<code>.value, obj_with_org)` so behavior stays consistent across UI and API.
 
 ### Owner (`OWNER`)
 

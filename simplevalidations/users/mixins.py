@@ -6,6 +6,7 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect
 
 from simplevalidations.users.models import Organization
+from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.users.scoping import ensure_active_org_scope
 
 
@@ -25,7 +26,10 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
             (m for m in memberships if m.org_id == organization.id),
             None,
         )
-        if not membership or not membership.is_admin:
+        if not membership or not request.user.has_perm(
+            PermissionCode.ADMIN_MANAGE_ORG.value,
+            organization,
+        ):
             raise PermissionDenied(
                 "You do not have administrator access to this organization."
             )

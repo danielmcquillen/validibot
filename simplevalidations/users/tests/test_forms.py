@@ -64,6 +64,25 @@ class TestOrganizationMemberForm:
         assert not form.is_valid()
         assert "roles" in form.errors
 
+    def test_admin_implications_apply_on_invite(self):
+        org = OrganizationFactory()
+        user = UserFactory()
+        form = OrganizationMemberForm(
+            data={
+                "email": user.email,
+                "roles": [RoleCode.ADMIN],
+            },
+            organization=org,
+        )
+
+        assert form.is_valid()
+        membership = form.save()
+        assert membership.has_role(RoleCode.ADMIN)
+        assert membership.has_role(RoleCode.AUTHOR)
+        assert membership.has_role(RoleCode.EXECUTOR)
+        assert membership.has_role(RoleCode.RESULTS_VIEWER)
+        assert membership.has_role(RoleCode.WORKFLOW_VIEWER)
+
 
 @pytest.mark.django_db
 class TestOrganizationMemberRolesForm:
@@ -101,3 +120,36 @@ class TestOrganizationMemberRolesForm:
         assert form.is_valid()
         form.save()
         assert set(membership.role_codes) == set(RoleCode.values)
+
+    def test_admin_implications_enforced_and_disabled(self):
+        membership = MembershipFactory()
+        form = OrganizationMemberRolesForm(
+            data={"roles": [RoleCode.ADMIN]},
+            membership=membership,
+        )
+
+        assert form.is_valid()
+        roles = set(form.cleaned_data["roles"])
+        assert {
+            RoleCode.ADMIN,
+            RoleCode.AUTHOR,
+            RoleCode.EXECUTOR,
+            RoleCode.RESULTS_VIEWER,
+            RoleCode.WORKFLOW_VIEWER,
+        }.issubset(roles)
+        options = {option["value"]: option for option in form.role_options}
+        assert options[RoleCode.AUTHOR]["implied"] is True
+        assert options[RoleCode.AUTHOR]["disabled"] is True
+
+    def test_author_implies_executor(self):
+        membership = MembershipFactory()
+        form = OrganizationMemberRolesForm(
+            data={"roles": [RoleCode.AUTHOR]},
+            membership=membership,
+        )
+
+        assert form.is_valid()
+        roles = set(form.cleaned_data["roles"])
+        assert RoleCode.AUTHOR in roles
+        assert RoleCode.EXECUTOR in roles
+        assert RoleCode.WORKFLOW_VIEWER in roles

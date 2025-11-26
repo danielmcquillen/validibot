@@ -14,13 +14,13 @@ ROLE_HELP_TEXT: dict[str, str] = {
         "Sole org authority. All admin rights plus billing/subscription control. Assigned at setup and cannot be changed here."
     ),
     RoleCode.ADMIN: _(
-        "All author capabilities plus member/org management, projects, and settings."
+        "Includes Author, Executor, Results Viewer, and Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
     ),
     RoleCode.AUTHOR: _(
-        "All executor capabilities plus creating and editing workflows, validators, and rulesets."
+        "Includes Executor and Workflow Viewer capabilities plus creating and editing workflows, validators, and rulesets."
     ),
     RoleCode.EXECUTOR: _(
-        "Read-only workflow access plus launch workflows, monitor progress, and review the runs they launch."
+        "Includes Workflow Viewer access plus launch workflows, monitor progress, and review the runs they launch."
     ),
     RoleCode.RESULTS_VIEWER: _(
         "Read-only access to all validation runs in organization."
@@ -30,28 +30,74 @@ ROLE_HELP_TEXT: dict[str, str] = {
     ),
 }
 
+ROLE_IMPLICATIONS: dict[str, set[str]] = {
+    RoleCode.OWNER: set(RoleCode.values),
+    RoleCode.ADMIN: {
+        RoleCode.AUTHOR,
+        RoleCode.EXECUTOR,
+        RoleCode.RESULTS_VIEWER,
+        RoleCode.WORKFLOW_VIEWER,
+    },
+    RoleCode.AUTHOR: {
+        RoleCode.EXECUTOR,
+        RoleCode.WORKFLOW_VIEWER,
+    },
+    RoleCode.EXECUTOR: {
+        RoleCode.WORKFLOW_VIEWER,
+    },
+}
+
 
 def _build_role_options(
     selected_roles: set[str],
     *,
     owner_locked: bool = False,
     disable_owner_checkbox: bool = True,
+    implied_roles: set[str] | None = None,
 ) -> list[dict[str, str | bool]]:
     """
     Prepare a template-friendly list describing each role option.
     """
 
+    implied_roles = implied_roles or set()
     options: list[dict[str, str | bool]] = []
     for code, label in RoleCode.choices:
+        is_implied = code in implied_roles
         option = {
             "value": code,
             "label": label,
             "help": ROLE_HELP_TEXT.get(code, ""),
             "checked": code in selected_roles,
-            "disabled": owner_locked or (disable_owner_checkbox and code == RoleCode.OWNER),
+            "disabled": owner_locked
+            or (disable_owner_checkbox and code == RoleCode.OWNER)
+            or is_implied,
+            "implied": is_implied,
         }
         options.append(option)
     return options
+
+
+def _expand_roles_with_implications(role_codes: set[str]) -> tuple[set[str], set[str]]:
+    """
+    Expand role selections with implied roles (e.g., Admin -> Author/Executor).
+    Returns the expanded set plus the subset that were implied (not directly selected).
+    """
+
+    expanded = set(role_codes)
+    implied: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for role, grants in ROLE_IMPLICATIONS.items():
+            if role not in expanded:
+                continue
+            for grant in grants:
+                if grant not in expanded:
+                    expanded.add(grant)
+                    implied.add(grant)
+                    changed = True
+    implied -= role_codes
+    return expanded, implied
 
 
 def _extract_role_values(source, key: str) -> list[str]:
@@ -206,10 +252,12 @@ class OrganizationMemberForm(forms.Form):
                 selected_roles = [selected_roles]
             selected_roles = set(selected_roles)
         selected_roles &= self.assignable_role_codes
+        selected_roles, implied_roles = _expand_roles_with_implications(selected_roles)
         self.role_options = _build_role_options(
             selected_roles,
             owner_locked=False,
             disable_owner_checkbox=True,
+            implied_roles=implied_roles,
         )
 
     def clean_email(self):
@@ -240,7 +288,12 @@ class OrganizationMemberForm(forms.Form):
 
     def clean_roles(self):
         roles = self.cleaned_data.get("roles") or []
-        return [role for role in roles if role in self.assignable_role_codes]
+        roles_set = {role for role in roles if role in self.assignable_role_codes}
+        extra = set(_extract_role_values(self.data, "roles")) - self.assignable_role_codes
+        if extra:
+            raise forms.ValidationError(_("Owner role cannot be assigned through this form."))
+        expanded, implied_roles = _expand_roles_with_implications(roles_set)
+        return list(expanded)
 
     def save(self) -> Membership:
         roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
@@ -274,10 +327,12 @@ class OrganizationMemberRolesForm(forms.Form):
             current_roles = bound_roles & valid_codes
         self.fields["roles"].choices = RoleCode.choices
         self.fields["roles"].initial = list(current_roles)
+        current_roles, implied_roles = _expand_roles_with_implications(current_roles)
         self.role_options = _build_role_options(
             current_roles,
             owner_locked=owner_locked,
             disable_owner_checkbox=True,
+            implied_roles=implied_roles,
         )
         self.owner_locked = owner_locked
         self.fields["roles"].help_text = _(
@@ -300,7 +355,8 @@ class OrganizationMemberRolesForm(forms.Form):
             raise forms.ValidationError(
                 _("The Owner role cannot be removed. Contact support to transfer ownership."),
             )
-        return normalized
+        expanded, implied_roles = _expand_roles_with_implications(set(normalized))
+        return list(expanded)
 
     def save(self) -> Membership:
         roles = set(self.cleaned_data.get("roles") or [])

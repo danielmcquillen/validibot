@@ -25,7 +25,7 @@ from rest_framework.authtoken.models import Token
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
-from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.constants import PermissionCode, RoleCode
 from simplevalidations.users.forms import OrganizationForm
 from simplevalidations.users.forms import OrganizationMemberRolesForm
 from simplevalidations.users.forms import UserProfileForm
@@ -237,7 +237,15 @@ def _admin_memberships_for(user: User) -> list[Membership]:
         .select_related("org")
         .prefetch_related("membership_roles__role")
     )
-    return [membership for membership in memberships if membership.is_admin]
+    admin_memberships: list[Membership] = []
+    for membership in memberships:
+        organization = membership.org
+        if organization and user.has_perm(
+            PermissionCode.ADMIN_MANAGE_ORG.value,
+            organization,
+        ):
+            admin_memberships.append(membership)
+    return admin_memberships
 
 
 class OrganizationListView(BreadcrumbMixin, LoginRequiredMixin, TemplateView):

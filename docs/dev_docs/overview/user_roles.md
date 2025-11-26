@@ -25,6 +25,15 @@ SimpleValidations defines six organization-scoped roles. Permissions are cumulat
 | Results Viewer | `RESULTS_VIEWER` | Validation review | Read-only access to validation run details and findings across the current organization. |
 | Workflow Viewer | `WORKFLOW_VIEWER` | Transparency | Read-only access to workflows and public details (no validation results access). |
 
+Roles are cumulative: `OWNER` inherits every other role, and `ADMIN` picks up the same permissions as Author/Executor/Viewer through the permission map even if those role rows are not explicitly stored. Stack roles only when the UI needs a specific combination (for example, pair `EXECUTOR` with `RESULTS_VIEWER` so operators can also review results).
+The role picker mirrors these implications: selecting `ADMIN` auto-selects Author/Executor/Results Viewer/Workflow Viewer, selecting `AUTHOR` auto-selects Executor/Workflow Viewer, and selecting `EXECUTOR` auto-selects Workflow Viewer. Uncheck the higher role to fine-tune lower roles.
+
+Hybrid model in practice
+
+- Cumulative supersets: `OWNER` and `ADMIN` exist so “full access” is one assignment and the permission map stays simple.
+- Composable lower roles: `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, and `WORKFLOW_VIEWER` remain mix-and-match (executor + results reviewer; workflow viewer only).
+- UI pattern: checkboxes with implied roles pre-checked/disabled let us cover both use cases. Radio buttons would block the composable mixes we rely on.
+
 ## Permission Codes
 
 Permissions are exposed as Django-style codenames (see `users.constants.PermissionCode`) and enforced through the `OrgPermissionBackend`, so code calls `user.has_perm(code, obj_with_org)` instead of inspecting roles directly. An “obj_with_org” is any object that carries organization context—typically a model instance with an `org` or `org_id` field. Examples include `Workflow`, `ValidationRun`, `Organization`, and even `Membership` when needed. Think of it as “an object the permission backend can use to figure out which org this action targets.”
@@ -72,6 +81,7 @@ All request-level access control should use `user.has_perm(PermissionCode.<code>
 - Exactly one member holds the Owner role at any time; transfers require platform support and automatically demote the previous owner.
 - Personal workspaces create a membership flagged as Owner which immediately unlocks every other role.
 - Owner memberships cannot be removed or reassigned within the UI to protect billing continuity.
+- Comparable platforms follow the same cumulative pattern: GitHub org Owners and Discourse admins automatically carry every lower privilege. We mirror that to keep expectations simple.
 
 ### Admin (`ADMIN`)
 
@@ -177,7 +187,7 @@ All request-level access control should use `user.has_perm(PermissionCode.<code>
 **Personal Organizations**
 
 - Single-user workspaces automatically created for each user
-- User is automatically assigned Owner, Admin, and Executor roles
+- User is automatically assigned Owner, Admin, and Executor roles (Owner already implies the others; we keep the explicit rows so the UI matches invited-member defaults and any legacy integrity checks stay simple)
 - Provides a private space for personal validation work
 - Can be used for prototyping before sharing with teams
 

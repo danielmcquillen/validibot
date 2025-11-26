@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 
-from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.constants import PermissionCode
 from simplevalidations.users.models import ensure_personal_workspace
 from simplevalidations.users.scoping import ensure_active_org_scope
 
@@ -59,10 +59,17 @@ def _apply_organization_context(request):
     )
     active_role_codes = set(active_membership.role_codes) if active_membership else set()
     has_author_admin_owner = bool(
-        active_membership and active_membership.has_author_admin_owner_privileges
+        active_org
+        and request.user.has_perm(PermissionCode.WORKFLOW_EDIT.value, active_org)
     )
-    is_org_admin = bool(active_membership and active_membership.is_admin)
-    can_manage_validators = has_author_admin_owner
+    is_org_admin = bool(
+        active_org
+        and request.user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, active_org)
+    )
+    can_manage_validators = bool(
+        active_org
+        and request.user.has_perm(PermissionCode.VALIDATOR_EDIT.value, active_org)
+    )
 
     return {
         "org_memberships": memberships,

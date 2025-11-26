@@ -13,13 +13,20 @@ from simplevalidations.dashboard.time_ranges import iter_time_range_options
 from simplevalidations.dashboard.time_ranges import resolve_time_range
 from simplevalidations.dashboard.widgets import registry
 from simplevalidations.dashboard.widgets.base import WidgetRegistrationError
+from simplevalidations.users.constants import PermissionCode
 
 
 def _has_dashboard_access(request) -> bool:
     membership = getattr(request, "active_membership", None)
     if not membership and hasattr(request.user, "membership_for_current_org"):
         membership = request.user.membership_for_current_org()
-    return bool(membership and membership.has_author_admin_owner_privileges)
+    organization = getattr(membership, "org", None)
+    if not membership or not organization:
+        return False
+    return request.user.has_perm(
+        PermissionCode.ANALYTICS_VIEW.value,
+        organization,
+    )
 
 
 class MyDashboardView(LoginRequiredMixin, BreadcrumbMixin, View):

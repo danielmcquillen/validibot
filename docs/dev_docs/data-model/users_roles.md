@@ -28,8 +28,17 @@ Role membership is defined in `users.constants.RoleCode`. Current codes are:
 
 Exactly one membership per organization can hold the `OWNER` role at a time. Assigning `OWNER` to another member automatically removes it from the previous holder (they retain any remaining roles, including `ADMIN`).
 
-The column values in the database come from `RoleCode`, which keeps the string
-representation consistent everywhere we compare roles.
+Roles are cumulative. `OWNER` inherits every other role when permissions are evaluated via `has_perm`, and `ADMIN` picks up all author/executor/viewer permissions through the permission map (even if those role rows are not explicitly present). We still record individual role rows so the UI can display intent, and so legacy integrity checks (e.g., “cannot remove final OWNER”) remain simple.
+
+Role picker behavior mirrors those implications: choosing `ADMIN` auto-selects `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, and `WORKFLOW_VIEWER`; choosing `AUTHOR` auto-selects `EXECUTOR` and `WORKFLOW_VIEWER`; choosing `EXECUTOR` auto-selects `WORKFLOW_VIEWER`. Uncheck the higher role to fine-tune lower roles.
+
+Hybrid model, not pure hierarchy
+
+- We keep cumulative supersets (`OWNER`, `ADMIN`) so “give them everything” is one click and the permission map stays predictable.
+- We also keep composable lower roles (`AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, `WORKFLOW_VIEWER`) because common invites need mixes like “executor + results reviewer” or “workflow viewer only.”
+- The checkbox UI plus the auto-implications covers both: pick a super-role for the broad set, or uncheck it and compose the specific combination you need. Radio buttons would block those mixes.
+
+The column values in the database come from `RoleCode`, which keeps the string representation consistent everywhere we compare roles.
 
 ### Membership lifecycle
 
@@ -48,8 +57,7 @@ When a user signs in for the first time we call
 
 1. Create a new `Organization` flagged as `is_personal=True`.
 2. Create a corresponding `Membership` for the user.
-3. Grant the `ADMIN`, `OWNER`, and `EXECUTOR` roles to that membership so they can
-   manage the org, invite others, and run workflows immediately (matches the behavior in `ensure_personal_workspace`).
+3. Grant the `ADMIN`, `OWNER`, and `EXECUTOR` roles to that membership so they can manage the org, invite others, and run workflows immediately. `OWNER` already implies the others for permission checks, but we persist them explicitly to mirror the default invite experience, keep UI checkboxes consistent, and support any integrity checks that look at stored roles.
 4. Persist the new org as `user.current_org`.
 
 Granting the executor role automatically was recently hardened so personal orgs
@@ -140,6 +148,7 @@ user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, organization)
   org from the URL to avoid leaking cross-org data.
 - Prefer the helpers on `Membership` instead of touching `MembershipRole`
   directly.
+- Assign the minimal role set a person needs. Use `has_perm` to answer “can they do X?”; only stack roles when you need to expose a specific UI experience (e.g., combining `EXECUTOR` with `RESULTS_VIEWER` for operators who also review results).
 - When inviting a user to an organization, add all required roles in one place.
 - The `Role` table is intentionally short; feel free to extend it with display
   names or descriptions to power better UI messaging.

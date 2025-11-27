@@ -313,34 +313,31 @@
 // Robot Character Elements
 // ========================================
 
-.robot-quote-section {
-  display: grid;
-  grid-template-columns: auto auto; /* speech bubble, then robot */
+.floating-check-section {
   align-items: center;
-  position: relative;
   margin-bottom: 1.5rem;
+  position: relative;
+  margin-top: 30px;
 
-  .robot-head {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: start;
-    align-self: top;
-    position: relative;
+  .floating-checkmark {
+    right: 15px;
     z-index: 2; /* bring robot on top of bubble */
-    margin-left: -25px; /* adjust this to overlap halfway */
+    float: left;
     margin-top: -30px;
+    position: absolute;
   }
 
-  .robot-head img {
-    width: 100px; /* or whatever size fits best */
-    height: auto;
+  .floating-checkmark img {
+    height: 60px !important;
+    width: 60px !important;
     filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
   }
 
   .speech-bubble {
+    position: absolute;
     grid-column: 1;
     grid-row: 1;
-    background: rgb(254, 250, 242);
+    background: rgb(223, 236, 251);
     border: 1px dotted #333;
     border-radius: 12px;
     padding: 1.2rem;
@@ -351,10 +348,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
 
     .bubble-text {
       font-family: "Share Tech Mono", sans-serif;
       font-size: 1.1rem;
+      padding-left: 1rem;
       color: settings.$blue;
       font-weight: 500;
       margin: 0;

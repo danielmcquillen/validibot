@@ -337,8 +337,8 @@
     position: absolute;
     grid-column: 1;
     grid-row: 1;
-    background: linear-gradient(135deg, #dff0ff, #c3e6ff);
-    border: 1px solid rgba(79, 212, 255, 0.5);
+    background: linear-gradient(135deg, #e6f4ff, #d1ecff);
+    border: 1px solid rgba(79, 212, 255, 0.35);
     border-radius: 12px;
     padding: 1.2rem;
     font-family: monospace;
@@ -349,25 +349,23 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    box-shadow:
-      0 8px 20px rgba(settings.$blue, 0.18),
-      0 0 30px rgba(79, 212, 255, 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: 0 6px 16px rgba(settings.$blue, 0.12),
+      0 0 24px rgba(79, 212, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 
     &::before {
       content: "";
       position: absolute;
-      inset: -10px;
+      inset: -6px;
       border-radius: 16px;
       background: radial-gradient(
         circle at 30% 30%,
-        rgba(111, 214, 255, 0.45),
-        transparent 55%
+        rgba(111, 214, 255, 0.35),
+        transparent 50%
       );
-      filter: blur(12px);
+      filter: blur(10px);
       z-index: -1;
       pointer-events: none;
-      opacity: 0.9;
+      opacity: 0.65;
     }
 
     .bubble-text {
@@ -375,10 +373,10 @@
       font-size: 1.1rem;
       padding-left: 1rem;
       color: settings.$blue;
-      font-weight: 500;
       margin: 0;
       padding-right: 1rem;
       color: #333;
+      font-weight: 500;
     }
   }
 }

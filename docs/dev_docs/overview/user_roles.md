@@ -22,31 +22,32 @@ SimpleValidations defines six organization-scoped roles. Permissions are cumulat
 | Admin | `ADMIN` | Operational management | Manage organization settings, members, and lifecycle (including deletion safeguards). |
 | Author | `AUTHOR` | Workflow design | Create, edit, and retire workflows across the organization. |
 | Executor | `EXECUTOR` | Validation operations | Launch runs and inspect detailed results for their own runs. |
-| Results Viewer | `RESULTS_VIEWER` | Validation review | Read-only access to validation run details and findings across the current organization. |
+| Analytics Viewer | `ANALYTICS_VIEWER` | Analytics review | Read-only access to analytics dashboards and reports. |
+| Results Viewer | `VALIDATION_RESULTS_VIEWER` | Validation review | Read-only access to validation run details and findings across the current organization. |
 | Workflow Viewer | `WORKFLOW_VIEWER` | Transparency | Read-only access to workflows and public details (no validation results access). |
 
-Roles are cumulative: `OWNER` inherits every other role, and `ADMIN` picks up the same permissions as Author/Executor/Viewer through the permission map even if those role rows are not explicitly stored. Stack roles only when the UI needs a specific combination (for example, pair `EXECUTOR` with `RESULTS_VIEWER` so operators can also review results).
-The role picker mirrors these implications: selecting `ADMIN` auto-selects Author/Executor/Results Viewer/Workflow Viewer, selecting `AUTHOR` auto-selects Executor/Workflow Viewer, and selecting `EXECUTOR` auto-selects Workflow Viewer. Uncheck the higher role to fine-tune lower roles.
+Roles are cumulative: `OWNER` inherits every other role, and `ADMIN` picks up the same permissions as Author/Executor/Viewer through the permission map even if those role rows are not explicitly stored. Stack roles only when the UI needs a specific combination (for example, pair `EXECUTOR` with `VALIDATION_RESULTS_VIEWER` so operators can also review results).
+The role picker mirrors these implications: selecting `ADMIN` auto-selects Author/Executor/Analytics Viewer/Validation Results Viewer/Workflow Viewer, selecting `AUTHOR` auto-selects Executor/Analytics Viewer/Validation Results Viewer/Workflow Viewer, and selecting `EXECUTOR` auto-selects Workflow Viewer. Uncheck the higher role to fine-tune lower roles.
 
 Hybrid model in practice
 
 - Cumulative supersets: `OWNER` and `ADMIN` exist so “full access” is one assignment and the permission map stays simple.
-- Composable lower roles: `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, and `WORKFLOW_VIEWER` remain mix-and-match (executor + results reviewer; workflow viewer only).
-- UI pattern: checkboxes with implied roles pre-checked/disabled let us cover both use cases. Radio buttons would block the composable mixes we rely on.
+- Composable lower roles: `AUTHOR`, `EXECUTOR`, `ANALYTICS_VIEWER`, `VALIDATION_RESULTS_VIEWER`, and `WORKFLOW_VIEWER` remain mix-and-match (executor + results reviewer; analytics-only; workflow viewer only).
+- UI pattern: checkboxes with implied roles pre-checked/disabled let us cover both use cases. Radio buttons would block the composable mixes we rely on. The form shows implied roles checked and disabled when you select a cumulative role, similar to GitHub/Discourse RBAC UIs.
 
 ## Permission Codes
 
 Permissions are exposed as Django-style codenames (see `users.constants.PermissionCode`) and enforced through the `OrgPermissionBackend`, so code calls `user.has_perm(code, obj_with_org)` instead of inspecting roles directly. An “obj_with_org” is any object that carries organization context—typically a model instance with an `org` or `org_id` field. Examples include `Workflow`, `ValidationRun`, `Organization`, and even `Membership` when needed. Think of it as “an object the permission backend can use to figure out which org this action targets.”
 
 - `workflow_launch`: `OWNER`, `ADMIN`, `EXECUTOR`
-- `workflow_view`: `OWNER`, `ADMIN`, `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, `WORKFLOW_VIEWER`
+- `workflow_view`: `OWNER`, `ADMIN`, `AUTHOR`, `EXECUTOR`, `VALIDATION_RESULTS_VIEWER`, `WORKFLOW_VIEWER`
 - `workflow_edit`: `OWNER`, `ADMIN`, `AUTHOR` (the `_edit` suffix covers both create and edit)
-- `validation_results_view_all`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
-- `validation_results_view_own`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`, `EXECUTOR` (always true for the run’s owner)
+- `validation_results_view_all`: `OWNER`, `ADMIN`, `AUTHOR`, `VALIDATION_RESULTS_VIEWER`
+- `validation_results_view_own`: `OWNER`, `ADMIN`, `AUTHOR`, `VALIDATION_RESULTS_VIEWER`, `EXECUTOR` (always true for the run’s owner)
 - `validator_view`: `OWNER`, `ADMIN`, `AUTHOR`
 - `validator_edit`: `OWNER`, `ADMIN`, `AUTHOR` (create and edit)
-- `analytics_view`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER`
-- `analytics_review`: `OWNER`, `ADMIN`, `AUTHOR`, `RESULTS_VIEWER` (for approving/annotating analytics outputs)
+- `analytics_view`: `OWNER`, `ADMIN`, `AUTHOR`, `ANALYTICS_VIEWER`
+- `analytics_review`: `OWNER`, `ADMIN`, `AUTHOR`, `ANALYTICS_VIEWER` (for approving/annotating analytics outputs)
 - `admin_manage_org`: `OWNER`, `ADMIN`
 
 Enforcement pattern: call `user.has_perm(PermissionCode.<code>.value, obj_with_org)` and let the backend map roles to permissions and handle object scoping (including “own” semantics).
@@ -140,7 +141,23 @@ All request-level access control should use `user.has_perm(PermissionCode.<code>
 - Executors cannot alter workflow configuration or organization settings.
 - Without an Author/Admin/Owner/Results Viewer role, Executors only see the Workflows and Validation Runs links in the app navigation and only the runs they launched.
 
-### Results Viewer (`RESULTS_VIEWER`)
+### Analytics Viewer (`ANALYTICS_VIEWER`)
+
+**What it represents:** Read-only consumer of analytics dashboards and reports.
+
+**Permissions:**
+
+- View analytics dashboards (no edit or approval capabilities).
+- No implicit access to validation results unless paired with `VALIDATION_RESULTS_VIEWER`.
+
+**Typical holders:** Product stakeholders, analytics reviewers, leadership needing dashboards without edit/run access.
+
+**Notes:**
+
+- Authors/Admins/Owners automatically imply Analytics Viewer via role implications.
+- Combine with `VALIDATION_RESULTS_VIEWER` when a user needs both analytics and validation findings; combine with `EXECUTOR` for operators who also need dashboards.
+
+### Results Viewer (`VALIDATION_RESULTS_VIEWER`)
 
 **What it represents:** Read-only reviewer focused on validation outcomes.
 

@@ -125,7 +125,7 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
     def filter_queryset(self, queryset):
         """
         Enforce role-based visibility:
-        - ADMIN/OWNER/RESULTS_VIEWER: can see all runs in the active org.
+        - ADMIN/OWNER/VALIDATION_RESULTS_VIEWER: can see all runs in the active org.
         - Otherwise: only runs they launched in the active org.
         """
 

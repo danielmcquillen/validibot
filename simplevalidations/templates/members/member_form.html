@@ -23,44 +23,178 @@
       </div>
     </div>
 
-    <form method="post" novalidate>
-      <div class="card app-card">
-        <div class="card-header">
-          {% trans "User Properties" %}
-        </div>
-        <div class="card-body">
-          {% csrf_token %}
-          {% if form.non_field_errors %}
-            <div class="alert alert-danger" role="alert">
-              {% for error in form.non_field_errors %}{{ error }}<br />{% endfor %}
+    <div class="row">
+      <div class="col-12 col-lg-6">
+
+        <form method="post" novalidate>
+          <div class="card app-card">
+            <div class="card-header">
+              {% trans "User Properties" %}
             </div>
-          {% endif %}
-          {% if form.roles.errors %}
-            <div class="alert alert-danger" role="alert">
-              {% for error in form.roles.errors %}{{ error }}<br />{% endfor %}
+            <div class="card-body">
+              {% csrf_token %}
+              {% if form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.non_field_errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if form.roles.errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.roles.errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if form.owner_locked %}
+                <div class="alert alert-info" role="status">
+                  {% trans "This member is the organization owner and already has every permission. Ownership changes require SimpleValidations support." %}
+                </div>
+              {% endif %}
+              <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
+              {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
+              <p class="form-text small text-muted mt-2">
+                {{ form.fields.roles.help_text }}
+              </p>
             </div>
-          {% endif %}
-          {% if form.owner_locked %}
-            <div class="alert alert-info" role="status">
-              {% trans "This member is the organization owner and already has every permission. Ownership changes require SimpleValidations support." %}
+            <div class="card-footer">
+              <div class="d-flex justify-content-end gap-2">
+                <a class="btn btn-outline-secondary"
+                   href="{% org_url 'members:member_list' %}">
+                  {% trans "Cancel" %}
+                </a>
+                <button type="submit" class="btn btn-primary">
+                  {% trans "Save" %}
+                </button>
+              </div>
             </div>
-          {% endif %}
-          <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
-          {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
-          <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
-        </div>
-        <div class="card-footer">
-          <div class="d-flex justify-content-end gap-2">
-            <a class="btn btn-outline-secondary"
-               href="{% org_url 'members:member_list' %}">
-              {% trans "Cancel" %}
-            </a>
-            <button type="submit" class="btn btn-primary">
-              {% trans "Save" %}
-            </button>
+          </div>
+        </form>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card app-card help-card">
+          <div class="card-header">
+            {% trans "About member roles" %}
+          </div>
+          <div class="card-body">
+            <p class="mb-3">
+              {% blocktrans %}
+                Roles are cumulative: higher roles (Owner, Admin, Author) automatically include lower ones. The form will check and lock the implied roles for you so you can see what comes along for the ride.
+              {% endblocktrans %}
+            </p>
+            <p class="mb-3">
+              {% blocktrans %}
+                <strong>Want everything for a user?</strong><br /> Pick Admin (or Owner). 
+              {% endblocktrans %}
+            </p>
+
+            <p>
+              {% blocktrans %}
+               <strong>Want a tailored mix?</strong><br /> Uncheck the higher role and select the specific pieces you need—like Executor plus Validation Results Viewer, or Analytics Viewer alone.
+              {% endblocktrans %}
+            </p>
+
+            <p>
+              {% blocktrans %}
+             Here's a quick cheat sheet to help you pick:
+              {% endblocktrans %}
+            </p>
+
+            <div class="table-responsive mb-3">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th style="min-width: 12rem;">
+                      {% trans "Role" %}
+                    </th>
+                    <th>
+                      {% trans "Includes automatically" %}
+                    </th>
+                    <th>
+                      {% trans "Best for" %}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Admin" %}
+                    </td>
+                    <td>
+                      {% trans "Author, Executor, Validation Results Viewer, Analytics Viewer, Workflow Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "Full control of org settings, members, and content" %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Author" %}
+                    </td>
+                    <td>
+                      {% trans "Executor, Validation Results Viewer, Analytics Viewer, Workflow Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "Building and maintaining workflows/validators" %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Executor" %}
+                    </td>
+                    <td>
+                      {% trans "Workflow Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "Running validations and seeing their own runs" %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Analytics Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "None (view dashboards only)" %}
+                    </td>
+                    <td>
+                      {% trans "Stakeholders who need dashboards without edit/run access" %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Workflow Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "None (read-only workflows)" %}
+                    </td>
+                    <td>
+                      {% trans "Visibility into workflows without edit or run rights" %}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="fw-semibold">
+                      {% trans "Validation Results Viewer" %}
+                    </td>
+                    <td>
+                      {% trans "None (view validation results org-wide)" %}
+                    </td>
+                    <td>
+                      {% trans "Reviewers who inspect validation findings" %}
+                    </td>
+                  </tr>
+
+                </tbody>
+              </table>
+            </div>
+            <div class="alert alert-info mb-0" role="status">
+              {% trans "Tip: if a role is auto-selected and locked, it is implied by a higher role you chose. Uncheck the higher role to fine-tune the lower roles." %}
+            </div>
           </div>
         </div>
       </div>
-    </form>
+    </div>
   </div>
 {% endblock app_content %}

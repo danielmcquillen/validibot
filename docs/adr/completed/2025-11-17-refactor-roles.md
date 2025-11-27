@@ -14,7 +14,7 @@ Refactor how roles are used throught the application, based on the following gri
 | ADMIN (if used) | All               | All                | All         | All runs in org             | Org-level management      |
 | AUTHOR          | All               | All                | All         | All runs in org             | Power user                |
 | EXECUTOR        | All               | No                 | Yes         | **Only runs they launched** | No access to others’ data |
-| RESULTS_VIEWER  | No                | No                 | No          | All                         | “Analyst / reviewer”      |
+| VALIDATION_RESULTS_VIEWER  | No                | No                 | No          | All                         | “Analyst / reviewer”      |
 | WORKFLOW_VIEWER | All               | No                 | No          | No                          | Pure read-only            |
 
 All permissions are scoped to an organization and apply only to that organization, and must be defined in each organization where the role should be granted.

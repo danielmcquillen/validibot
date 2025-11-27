@@ -40,7 +40,7 @@ class OrgPermissionBackendTests(TestCase):
     def test_results_viewer_can_see_all_runs(self):
         org = OrganizationFactory()
         actor = UserFactory()
-        grant_role(actor, org, RoleCode.RESULTS_VIEWER)
+        grant_role(actor, org, RoleCode.VALIDATION_RESULTS_VIEWER)
         submission = SubmissionFactory(org=org, user=actor)
         run = ValidationRunFactory(
             submission=submission,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from django.contrib.auth.backends import BaseBackend
 
 from simplevalidations.users.constants import PermissionCode, RoleCode
@@ -41,7 +42,7 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
         model="validationrun",
         roles=frozenset(
             (
-                RoleCode.RESULTS_VIEWER,
+                RoleCode.VALIDATION_RESULTS_VIEWER,
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.AUTHOR,
@@ -56,7 +57,7 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
         roles=frozenset(
             (
                 RoleCode.EXECUTOR,
-                RoleCode.RESULTS_VIEWER,
+                RoleCode.VALIDATION_RESULTS_VIEWER,
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.AUTHOR,
@@ -75,7 +76,7 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
                 RoleCode.AUTHOR,
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
-                RoleCode.RESULTS_VIEWER,
+                RoleCode.VALIDATION_RESULTS_VIEWER,
             ),
         ),
     ),
@@ -137,7 +138,7 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
         model="validationrun",
         roles=frozenset(
             (
-                RoleCode.RESULTS_VIEWER,
+                RoleCode.ANALYTICS_VIEWER,
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.AUTHOR,
@@ -151,7 +152,7 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
         model="validationrun",
         roles=frozenset(
             (
-                RoleCode.RESULTS_VIEWER,
+                RoleCode.ANALYTICS_VIEWER,
                 RoleCode.ADMIN,
                 RoleCode.OWNER,
                 RoleCode.AUTHOR,
@@ -160,7 +161,9 @@ PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
     ),
 )
 
-PERMISSIONS_BY_CODE = {definition.code: definition for definition in PERMISSION_DEFINITIONS}
+PERMISSIONS_BY_CODE = {
+    definition.code: definition for definition in PERMISSION_DEFINITIONS
+}
 
 
 def normalize_perm_code(perm: str | PermissionCode) -> PermissionCode | None:
@@ -187,7 +190,9 @@ def roles_for_permission(perm: PermissionCode) -> frozenset[str]:
     return definition.roles if definition else frozenset()
 
 
-def membership_grants_permission(membership: Membership | None, perm: str | PermissionCode) -> bool:
+def membership_grants_permission(
+    membership: Membership | None, perm: str | PermissionCode
+) -> bool:
     """
     Evaluate whether a membership satisfies the given permission using the
     centralized role-to-permission mapping.

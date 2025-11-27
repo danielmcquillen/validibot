@@ -7,13 +7,13 @@ user/organization relationship is modeled and enforced.
 
 ## Core Tables
 
-| Model | Purpose |
-| --- | --- |
-| `users.User` | Application account. Holds profile information, current organization pointer, and helper methods for org membership. |
-| `users.Organization` | Tenant boundary. May be marked `is_personal` when created just for a single user. |
-| `users.Membership` | Through table joining `User` and `Organization`. Adds `is_active` so a user can be invited/suspended without losing history. |
-| `users.Role` | Catalog of role codes. Codes mirror `RoleCode` values so we can attach descriptions or rename without touching code. |
-| `users.MembershipRole` | Through table between `Membership` and `Role`, allowing a user to hold multiple roles inside the same org. |
+| Model                  | Purpose                                                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `users.User`           | Application account. Holds profile information, current organization pointer, and helper methods for org membership.         |
+| `users.Organization`   | Tenant boundary. May be marked `is_personal` when created just for a single user.                                            |
+| `users.Membership`     | Through table joining `User` and `Organization`. Adds `is_active` so a user can be invited/suspended without losing history. |
+| `users.Role`           | Catalog of role codes. Codes mirror `RoleCode` values so we can attach descriptions or rename without touching code.         |
+| `users.MembershipRole` | Through table between `Membership` and `Role`, allowing a user to hold multiple roles inside the same org.                   |
 
 ### Role codes and permission checks
 
@@ -21,21 +21,22 @@ Role membership is defined in `users.constants.RoleCode`. Current codes are:
 
 - `OWNER` – organizational accountability; automatically implies every other role.
 - `ADMIN` – organization management actions (invite/remove members, edit org).
-- `AUTHOR` – build and maintain workflows (create, edit, clone, delete steps).
-- `EXECUTOR` – launch validation runs (paired with RESULTS_VIEWER when review is needed).
-- `RESULTS_VIEWER` – read-only access to validation results across the org.
+- `AUTHOR` – build and maintain workflows (create, edit, clone, delete steps) and validators.
+- `EXECUTOR` – launch validation runs (paired with VALIDATION_RESULTS_VIEWER when review is needed).
+- `ANALYTICS_VIEWER` – read-only access to analytics dashboards and reports.
+- `VALIDATION_RESULTS_VIEWER` – read-only access to validation results across the org.
 - `WORKFLOW_VIEWER` – read-only access to workflow definitions/metadata.
 
 Exactly one membership per organization can hold the `OWNER` role at a time. Assigning `OWNER` to another member automatically removes it from the previous holder (they retain any remaining roles, including `ADMIN`).
 
-Roles are cumulative. `OWNER` inherits every other role when permissions are evaluated via `has_perm`, and `ADMIN` picks up all author/executor/viewer permissions through the permission map (even if those role rows are not explicitly present). We still record individual role rows so the UI can display intent, and so legacy integrity checks (e.g., “cannot remove final OWNER”) remain simple.
+Roles are cumulative. `OWNER` inherits every other role when permissions are evaluated via `has_perm`, and `ADMIN` picks up all author/executor/analytics/results/workflow viewer permissions through the permission map (even if those role rows are not explicitly present). We still record individual role rows so the UI can display intent, and so legacy integrity checks (e.g., “cannot remove final OWNER”) remain simple.
 
-Role picker behavior mirrors those implications: choosing `ADMIN` auto-selects `AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, and `WORKFLOW_VIEWER`; choosing `AUTHOR` auto-selects `EXECUTOR` and `WORKFLOW_VIEWER`; choosing `EXECUTOR` auto-selects `WORKFLOW_VIEWER`. Uncheck the higher role to fine-tune lower roles.
+Role picker behavior mirrors those implications: choosing `ADMIN` auto-selects `AUTHOR`, `EXECUTOR`, `ANALYTICS_VIEWER`, `VALIDATION_RESULTS_VIEWER`, and `WORKFLOW_VIEWER`; choosing `AUTHOR` auto-selects `EXECUTOR`, `ANALYTICS_VIEWER`, `VALIDATION_RESULTS_VIEWER`, and `WORKFLOW_VIEWER`; choosing `EXECUTOR` auto-selects `WORKFLOW_VIEWER`. Uncheck the higher role to fine-tune lower roles.
 
 Hybrid model, not pure hierarchy
 
 - We keep cumulative supersets (`OWNER`, `ADMIN`) so “give them everything” is one click and the permission map stays predictable.
-- We also keep composable lower roles (`AUTHOR`, `EXECUTOR`, `RESULTS_VIEWER`, `WORKFLOW_VIEWER`) because common invites need mixes like “executor + results reviewer” or “workflow viewer only.”
+- We also keep composable lower roles (`AUTHOR`, `EXECUTOR`, `ANALYTICS_VIEWER`, `VALIDATION_RESULTS_VIEWER`, `WORKFLOW_VIEWER`) because common invites need mixes like “executor + results reviewer” or “workflow viewer only.”
 - The checkbox UI plus the auto-implications covers both: pick a super-role for the broad set, or uncheck it and compose the specific combination you need. Radio buttons would block those mixes.
 
 The column values in the database come from `RoleCode`, which keeps the string representation consistent everywhere we compare roles.
@@ -98,7 +99,7 @@ We keep the data model simple and Django-native:
 
 1. An `Organization` exists (personal orgs are created automatically on first login).
 2. A `Membership` row is created (`is_active=True`).
-3. The inviter or form assigns one or more `Role` codes (e.g., `EXECUTOR`, `RESULTS_VIEWER`).
+3. The inviter or form assigns one or more `Role` codes (e.g., `EXECUTOR`, `VALIDATION_RESULTS_VIEWER`).
 4. From that point on, `user.has_perm("workflow_launch", workflow)` and `user.has_perm("validation_results_view_all", run)` will return `True` when the object’s `org` matches the membership because the backend maps those roles to permission codes.
 
 ### When roles change in the UI
@@ -148,7 +149,7 @@ user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, organization)
   org from the URL to avoid leaking cross-org data.
 - Prefer the helpers on `Membership` instead of touching `MembershipRole`
   directly.
-- Assign the minimal role set a person needs. Use `has_perm` to answer “can they do X?”; only stack roles when you need to expose a specific UI experience (e.g., combining `EXECUTOR` with `RESULTS_VIEWER` for operators who also review results).
+- Assign the minimal role set a person needs. Use `has_perm` to answer “can they do X?”; only stack roles when you need to expose a specific UI experience (e.g., combining `EXECUTOR` with `VALIDATION_RESULTS_VIEWER` for operators who also review results).
 - When inviting a user to an organization, add all required roles in one place.
 - The `Role` table is intentionally short; feel free to extend it with display
   names or descriptions to power better UI messaging.
@@ -156,3 +157,4 @@ user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, organization)
   role (`OrganizationAdminRequiredMixin`), and the Owner role now automatically
   grants it (along with every other role) so owners always meet those checks.
 - If you promote someone else to Owner, the system will automatically drop the role from the previous Owner so the uniqueness guarantee holds.
+- The role picker auto-expands cumulative roles and disables implied boxes so users can see what comes with `ADMIN`/`OWNER`. Uncheck the higher role to fine-tune lower roles; this mirrors GitHub/Discourse-style RBAC UIs.

@@ -7,6 +7,8 @@ import htmx from 'htmx.org';
 import { initAppFeatures } from './app';
 import { initTableSorting } from './tableSorting';
 
+type RoleCode = 'OWNER' | 'ADMIN' | 'AUTHOR' | 'EXECUTOR' | 'ANALYTICS_VIEWER' | 'VALIDATION_RESULTS_VIEWER' | 'WORKFLOW_VIEWER';
+
 declare global {
     interface Window {
         bootstrap: typeof bootstrap;
@@ -50,6 +52,128 @@ function initializeCharts(root: ParentNode | Document = document): void {
 
 const LEFT_NAV_STORAGE_KEY = 'simplevalidations:leftNavCollapsed'; // Persist the user's collapse preference across pages.
 const LEFT_NAV_PREF_ATTRIBUTE = 'data-left-nav-prefers-collapsed';
+
+const ROLE_IMPLICATIONS: Record<RoleCode, RoleCode[]> = {
+    OWNER: ['OWNER', 'ADMIN', 'AUTHOR', 'EXECUTOR', 'ANALYTICS_VIEWER', 'VALIDATION_RESULTS_VIEWER', 'WORKFLOW_VIEWER'],
+    ADMIN: ['AUTHOR', 'EXECUTOR', 'ANALYTICS_VIEWER', 'VALIDATION_RESULTS_VIEWER', 'WORKFLOW_VIEWER'],
+    AUTHOR: ['EXECUTOR', 'ANALYTICS_VIEWER', 'VALIDATION_RESULTS_VIEWER', 'WORKFLOW_VIEWER'],
+    EXECUTOR: ['WORKFLOW_VIEWER'],
+    ANALYTICS_VIEWER: [],
+    VALIDATION_RESULTS_VIEWER: [],
+    WORKFLOW_VIEWER: [],
+};
+
+function expandRoles(selectedCodes: Set<string>): { expanded: Set<string>; implied: Set<string> } {
+    const expanded = new Set(selectedCodes);
+    const implied = new Set<string>();
+    const frontier = [...selectedCodes];
+    while (frontier.length) {
+        const role = frontier.pop();
+        if (!role) {
+            continue;
+        }
+        (ROLE_IMPLICATIONS[role as RoleCode] || []).forEach((grant) => {
+            if (!expanded.has(grant)) {
+                expanded.add(grant);
+                frontier.push(grant);
+            }
+            implied.add(grant);
+        });
+    }
+    return { expanded, implied };
+}
+
+function initRolePicker(container: HTMLElement): void {
+    if (!container || container.dataset.svRolePickerInit === 'true') {
+        return;
+    }
+    container.dataset.svRolePickerInit = 'true';
+    const fieldName = container.dataset.fieldName || 'roles';
+    const checkboxes = Array.from(
+        container.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-role-code]'),
+    );
+
+    // Seed user-selected markers from initial state (exclude implied-at-render).
+    checkboxes.forEach((cb) => {
+        const isImplied = cb.dataset.implied === 'true';
+        if (cb.checked && !isImplied) {
+            cb.dataset.userSelected = 'true';
+        }
+    });
+    const updateHiddenFields = () => {
+        container.querySelectorAll('.role-hidden-field').forEach((el) => el.remove());
+        checkboxes.forEach((cb) => {
+            if (cb.disabled && cb.checked) {
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = fieldName;
+                hidden.value = cb.value;
+                hidden.className = 'role-hidden-field';
+                container.appendChild(hidden);
+            }
+        });
+    };
+
+    const applyImplications = () => {
+        const explicitSelections = new Set(
+            checkboxes
+                .filter((cb) => cb.checked && cb.dataset.userSelected === 'true')
+                .map((cb) => cb.dataset.roleCode || ''),
+        );
+        const { expanded, implied } = expandRoles(explicitSelections);
+        const impliedByAnother = (code: string) =>
+            Array.from(explicitSelections).some((sel) => sel !== code && (ROLE_IMPLICATIONS[sel as RoleCode] || []).includes(code as RoleCode));
+        console.debug('role-picker: apply', {
+            explicit: Array.from(explicitSelections),
+            expanded: Array.from(expanded),
+            implied: Array.from(implied),
+        });
+
+        // Any implied role should no longer be treated as an explicit user choice.
+        checkboxes.forEach((cb) => {
+            const code = cb.dataset.roleCode || '';
+            if (implied.has(code) || impliedByAnother(code)) {
+                cb.dataset.userSelected = '';
+            }
+        });
+
+        checkboxes.forEach((cb) => {
+            const code = cb.dataset.roleCode || '';
+            const isImplied = implied.has(code) || impliedByAnother(code);
+            cb.checked = expanded.has(code);
+            cb.disabled = isImplied || code === 'OWNER';
+            cb.dataset.implied = isImplied ? 'true' : '';
+            const helper = cb.closest('.organization-role-option')?.querySelector<HTMLElement>('.form-text.text-muted');
+            if (helper) {
+                helper.hidden = !isImplied;
+            }
+        });
+        updateHiddenFields();
+    };
+
+    checkboxes.forEach((cb) => {
+        cb.addEventListener('change', () => {
+            const code = cb.dataset.roleCode;
+            cb.dataset.userSelected = cb.checked && cb.dataset.implied !== 'true' ? 'true' : '';
+            console.debug('role-picker: change', {
+                code,
+                checked: cb.checked,
+                userSelected: cb.dataset.userSelected,
+                impliedFlag: cb.dataset.implied,
+            });
+            applyImplications();
+        });
+    });
+    applyImplications();
+}
+
+function initRolePickers(root: ParentNode | Document = document): void {
+    const containers = root.querySelectorAll<HTMLElement>('.organization-role-list');
+    containers.forEach((container) => {
+        console.debug('role-picker: init container', { id: container.id || null });
+        initRolePicker(container);
+    });
+}
 
 function initAppLeftNavToggle(): void {
     const nav = document.getElementById('app-left-nav');
@@ -119,6 +243,7 @@ window.addEventListener('DOMContentLoaded', () => {
     initializeCharts(document);
     initAppFeatures(document);
     initTableSorting(document);
+    initRolePickers(document);
 });
 
 function simplevalidationsInitBootstrap() {
@@ -189,6 +314,7 @@ window.htmx.onLoad((content: Node) => {
     initializeCharts(root);
     initAppFeatures(root);
     initTableSorting(root);
+    initRolePickers(root);
 
     root.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
         new window.bootstrap.Tooltip(tooltipTriggerEl);

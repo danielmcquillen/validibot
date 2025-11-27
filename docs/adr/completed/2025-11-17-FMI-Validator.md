@@ -50,7 +50,7 @@ We introduce a new Validator step type, conceptually:
 - Use `FMUModel` (not “FMIModel”), scoped to `Project`/org and referenced by the FMI validator. Typically 1:1, but reuse is allowed if we want multiple validators with different assertions/bindings over the same FMU.
 - IO is exposed via `ValidatorCatalogEntry` rows tied to the FMI validator. We use existing fields (`entry_type` SIGNAL/DERIVATION, `run_stage` INPUT/OUTPUT, `is_required`). Add a `hidden` flag (default False) to allow the validator author to hide specific signals; for hidden signals, allow an optional `default_value` constrained by the data type. Store FMU variable names as-is (sanitized, no renaming).
 - Catalog entries define the FMU variable-to-signal mapping. Workflow step bindings (where to source input values) are per-step: the step config maps submission fields/other signals → input catalog entry slugs. The Ruleset continues to hold assertions only and references catalog entry slugs; signals are not stored in Ruleset content.
-- Role requirements: only `OWNER/ADMIN/AUTHOR` in the current org can create/manage FMI validators and FMUs; `EXECUTOR` can run workflows; `RESULTS_VIEWER` can read results org-wide.
+- Role requirements: only `OWNER/ADMIN/AUTHOR` in the current org can create/manage FMI validators and FMUs; `EXECUTOR` can run workflows; `VALIDATION_RESULTS_VIEWER` can read results org-wide.
 
 **UI authoring flow (UI-only, full-page wizard)**
 

@@ -46,3 +46,23 @@
     padding: 8px;
   }
 }
+
+.help-card {
+  border-top: 4px solid var(--bs-primary);
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.06), rgba(0, 123, 255, 0.01));
+  box-shadow: var(--bs-box-shadow-sm);
+
+  .card-header {
+    background-color: rgba(0, 123, 255, 0.08);
+    color: var(--bs-primary);
+    font-weight: 600;
+  }
+
+  .card-body {
+    font-size: 0.95rem;
+  }
+
+  table {
+    font-size: 0.95rem;
+  }
+}

@@ -22,14 +22,17 @@ class RoleCode(models.TextChoices):
     # to to run validations for workflows within an org.
     EXECUTOR = "EXECUTOR", _("Executor")
 
+    # Analytics-focused read-only role.
+    ANALYTICS_VIEWER = "ANALYTICS_VIEWER", _("Analytics Viewer")
+
     # Viewer role with read-only access to workflow view and reports within the org.
     # This provides a more detailed view of the workflow...more than what is shown
     # in the public view. But no edit or execution permissions are granted.
     WORKFLOW_VIEWER = "WORKFLOW_VIEWER", _("Workflow Viewer")
 
     # Reviewer role with permissions to review validation results within the org.
-    RESULTS_VIEWER = (
-        "RESULTS_VIEWER",
+    VALIDATION_RESULTS_VIEWER = (
+        "VALIDATION_RESULTS_VIEWER",
         _("Validation Results Viewer"),
     )
 

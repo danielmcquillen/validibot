@@ -60,7 +60,10 @@
                                 hx-swap="outerHTML"
                                 hx-confirm="{% trans "Remove member with username" %} '{{ membership.user.username }}' ?"
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-                          {% trans "Remove" %}
+                          <i class="bi bi-trash"
+                             data-bs-toggle="tooltip"
+                             title="{% blocktrans %}Remove member {{ membership.user.username }}{% endblocktrans %}"
+                             aria-label="{% blocktrans %}Remove member {{ membership.user.username }}{% endblocktrans %}"></i>
                         </button>
                       {% endif %}
                     </div>

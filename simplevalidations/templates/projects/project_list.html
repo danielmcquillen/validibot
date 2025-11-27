@@ -85,8 +85,11 @@
                                   hx-post="{% url 'projects:project-delete' project.pk %}"
                                   hx-target="#project-row-{{ project.pk }}"
                                   hx-swap="outerHTML"
-                                  hx-confirm="{% trans 'Delete this project?' %}">
-                            {% trans "Delete" %}
+                                  hx-confirm="{% trans 'Delete this project?' %}"
+                                  data-bs-toggle="tooltip"
+                                  title="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}"
+                                  aria-label="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}">
+                            <i class="bi bi-trash"></i>
                           </button>
                         </div>
                       {% endif %}

@@ -68,7 +68,7 @@ def test_results_viewer_cannot_delete_validation_run(client, db):
     )
 
     reviewer = UserFactory()
-    grant_role(reviewer, org, RoleCode.RESULTS_VIEWER)
+    grant_role(reviewer, org, RoleCode.VALIDATION_RESULTS_VIEWER)
     reviewer.set_current_org(org)
     client.force_login(reviewer)
 

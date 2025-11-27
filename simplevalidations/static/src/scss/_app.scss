@@ -146,3 +146,11 @@ h6 {
     }
   }
 }
+
+// Standardize button widths in card footers.
+// This makes the style consistent across the app.
+.card-footer {
+  .btn {
+    min-width: 100px;
+  }
+}

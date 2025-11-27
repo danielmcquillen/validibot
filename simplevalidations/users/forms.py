@@ -14,15 +14,18 @@ ROLE_HELP_TEXT: dict[str, str] = {
         "Sole org authority. All admin rights plus billing/subscription control. Assigned at setup and cannot be changed here."
     ),
     RoleCode.ADMIN: _(
-        "Includes Author, Executor, Results Viewer, and Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
+        "Includes Author, Executor, Validation Results Viewer, Analytics Viewer, and Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
     ),
     RoleCode.AUTHOR: _(
-        "Includes Executor and Workflow Viewer capabilities plus creating and editing workflows, validators, and rulesets."
+        "Includes Executor, Validation Results Viewer, Analytics Viewer, and Workflow Viewer capabilities plus creating and editing workflows, validators, and rulesets."
     ),
     RoleCode.EXECUTOR: _(
         "Includes Workflow Viewer access plus launch workflows, monitor progress, and review the runs they launch."
     ),
-    RoleCode.RESULTS_VIEWER: _(
+    RoleCode.ANALYTICS_VIEWER: _(
+        "Read-only access to analytics dashboards and reports."
+    ),
+    RoleCode.VALIDATION_RESULTS_VIEWER: _(
         "Read-only access to all validation runs in organization."
     ),
     RoleCode.WORKFLOW_VIEWER: _(
@@ -35,11 +38,14 @@ ROLE_IMPLICATIONS: dict[str, set[str]] = {
     RoleCode.ADMIN: {
         RoleCode.AUTHOR,
         RoleCode.EXECUTOR,
-        RoleCode.RESULTS_VIEWER,
+        RoleCode.VALIDATION_RESULTS_VIEWER,
+        RoleCode.ANALYTICS_VIEWER,
         RoleCode.WORKFLOW_VIEWER,
     },
     RoleCode.AUTHOR: {
         RoleCode.EXECUTOR,
+        RoleCode.ANALYTICS_VIEWER,
+        RoleCode.VALIDATION_RESULTS_VIEWER,
         RoleCode.WORKFLOW_VIEWER,
     },
     RoleCode.EXECUTOR: {
@@ -80,23 +86,20 @@ def _build_role_options(
 def _expand_roles_with_implications(role_codes: set[str]) -> tuple[set[str], set[str]]:
     """
     Expand role selections with implied roles (e.g., Admin -> Author/Executor).
-    Returns the expanded set plus the subset that were implied (not directly selected).
+    Returns the expanded set plus the subset that were implied (lower roles), even if
+    they were explicitly selected before a higher role was added.
     """
 
     expanded = set(role_codes)
     implied: set[str] = set()
-    changed = True
-    while changed:
-        changed = False
-        for role, grants in ROLE_IMPLICATIONS.items():
-            if role not in expanded:
-                continue
-            for grant in grants:
-                if grant not in expanded:
-                    expanded.add(grant)
-                    implied.add(grant)
-                    changed = True
-    implied -= role_codes
+    frontier = list(role_codes)
+    while frontier:
+        role = frontier.pop()
+        for grant in ROLE_IMPLICATIONS.get(role, ()):
+            if grant not in expanded:
+                expanded.add(grant)
+                frontier.append(grant)
+            implied.add(grant)
     return expanded, implied
 
 
@@ -335,9 +338,7 @@ class OrganizationMemberRolesForm(forms.Form):
             implied_roles=implied_roles,
         )
         self.owner_locked = owner_locked
-        self.fields["roles"].help_text = _(
-            "Owners permanently hold every permission. Contact support to transfer ownership."
-        )
+      
         self.disable_all_roles = owner_locked
         self.helper = FormHelper()
         self.helper.form_method = "post"

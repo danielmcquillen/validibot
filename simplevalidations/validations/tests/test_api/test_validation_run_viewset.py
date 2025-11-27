@@ -56,14 +56,14 @@ class ValidationRunViewSetTestCase(TestCase):
 
         # Create test user
         self.user = UserFactory(orgs=[self.org])  # Fixed: was orgs=[self.org]
-        grant_role(self.user, self.org, RoleCode.RESULTS_VIEWER)
+        grant_role(self.user, self.org, RoleCode.VALIDATION_RESULTS_VIEWER)
 
         # Create another org and user for isolation testing
         self.other_org = OrganizationFactory()
         self.other_user = UserFactory(
             orgs=[self.other_org]
         )  # Fixed: was orgs=[self.other_org]
-        grant_role(self.other_user, self.other_org, RoleCode.RESULTS_VIEWER)
+        grant_role(self.other_user, self.other_org, RoleCode.VALIDATION_RESULTS_VIEWER)
 
         # Create test project
         self.project = ProjectFactory(org=self.org)
@@ -297,7 +297,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_results_viewer_can_retrieve_any_run(self):
-        """RESULTS_VIEWER can fetch any run in their org."""
+        """VALIDATION_RESULTS_VIEWER can fetch any run in their org."""
         owner = UserFactory(orgs=[self.org])
         run = ValidationRunFactory(
             submission=self.submission,
@@ -308,7 +308,7 @@ class ValidationRunViewSetTestCase(TestCase):
         )
         reviewer = UserFactory(orgs=[self.org])
         reviewer_membership = reviewer.memberships.get(org=self.org)
-        reviewer_membership.set_roles({RoleCode.RESULTS_VIEWER})
+        reviewer_membership.set_roles({RoleCode.VALIDATION_RESULTS_VIEWER})
         reviewer.set_current_org(self.org)
 
         self.client.force_authenticate(user=reviewer)
@@ -362,10 +362,10 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(response.data["results"][0]["id"], str(other_run.id))
 
     def test_results_viewer_sees_all_runs_in_org(self):
-        """RESULTS_VIEWER can see all runs for their org."""
+        """VALIDATION_RESULTS_VIEWER can see all runs for their org."""
         reviewer = UserFactory(orgs=[self.org])
         reviewer_membership = reviewer.memberships.get(org=self.org)
-        reviewer_membership.set_roles({RoleCode.RESULTS_VIEWER})
+        reviewer_membership.set_roles({RoleCode.VALIDATION_RESULTS_VIEWER})
         reviewer.set_current_org(self.org)
         self.client.force_authenticate(user=reviewer)
 

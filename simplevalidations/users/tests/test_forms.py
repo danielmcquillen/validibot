@@ -80,7 +80,7 @@ class TestOrganizationMemberForm:
         assert membership.has_role(RoleCode.ADMIN)
         assert membership.has_role(RoleCode.AUTHOR)
         assert membership.has_role(RoleCode.EXECUTOR)
-        assert membership.has_role(RoleCode.RESULTS_VIEWER)
+        assert membership.has_role(RoleCode.VALIDATION_RESULTS_VIEWER)
         assert membership.has_role(RoleCode.WORKFLOW_VIEWER)
 
 
@@ -134,12 +134,17 @@ class TestOrganizationMemberRolesForm:
             RoleCode.ADMIN,
             RoleCode.AUTHOR,
             RoleCode.EXECUTOR,
-            RoleCode.RESULTS_VIEWER,
+            RoleCode.ANALYTICS_VIEWER,
+            RoleCode.VALIDATION_RESULTS_VIEWER,
             RoleCode.WORKFLOW_VIEWER,
         }.issubset(roles)
         options = {option["value"]: option for option in form.role_options}
         assert options[RoleCode.AUTHOR]["implied"] is True
         assert options[RoleCode.AUTHOR]["disabled"] is True
+        assert options[RoleCode.ANALYTICS_VIEWER]["implied"] is True
+        assert options[RoleCode.ANALYTICS_VIEWER]["disabled"] is True
+        assert options[RoleCode.VALIDATION_RESULTS_VIEWER]["implied"] is True
+        assert options[RoleCode.VALIDATION_RESULTS_VIEWER]["disabled"] is True
 
     def test_author_implies_executor(self):
         membership = MembershipFactory()
@@ -152,4 +157,39 @@ class TestOrganizationMemberRolesForm:
         roles = set(form.cleaned_data["roles"])
         assert RoleCode.AUTHOR in roles
         assert RoleCode.EXECUTOR in roles
+        assert RoleCode.ANALYTICS_VIEWER in roles
+        assert RoleCode.VALIDATION_RESULTS_VIEWER in roles
         assert RoleCode.WORKFLOW_VIEWER in roles
+
+    def test_prior_checked_viewer_roles_disable_when_author_selected(self):
+        membership = MembershipFactory()
+        form = OrganizationMemberRolesForm(
+            data={
+                "roles": [
+                    RoleCode.WORKFLOW_VIEWER,
+                    RoleCode.VALIDATION_RESULTS_VIEWER,
+                    RoleCode.AUTHOR,
+                ],
+            },
+            membership=membership,
+        )
+
+        assert form.is_valid()
+        options = {option["value"]: option for option in form.role_options}
+        assert options[RoleCode.WORKFLOW_VIEWER]["disabled"] is True
+        assert options[RoleCode.VALIDATION_RESULTS_VIEWER]["disabled"] is True
+        assert options[RoleCode.EXECUTOR]["disabled"] is True
+        assert options[RoleCode.ANALYTICS_VIEWER]["disabled"] is True
+
+    def test_member_form_renders_implied_roles_disabled(self):
+        membership = MembershipFactory()
+        membership.set_roles({RoleCode.ADMIN})
+        form = OrganizationMemberRolesForm(membership=membership)
+        admin_option = next(option for option in form.role_options if option["value"] == RoleCode.ADMIN)
+        author_option = next(option for option in form.role_options if option["value"] == RoleCode.AUTHOR)
+        executor_option = next(option for option in form.role_options if option["value"] == RoleCode.EXECUTOR)
+        assert admin_option["checked"] is True
+        assert author_option["checked"] is True
+        assert author_option["disabled"] is True
+        assert executor_option["checked"] is True
+        assert executor_option["disabled"] is True

@@ -1,19 +1,19 @@
+from datetime import timedelta
+
 from allauth.account.forms import SignupForm
 from allauth.socialaccount.forms import SignupForm as SocialSignupForm
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit
 from django import forms
 from django.contrib.auth import forms as admin_forms
-from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
-from datetime import timedelta
+from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership, Organization, PendingInvite, User
 
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
-        "Sole org authority. All admin rights plus billing/subscription control. Assigned at setup and cannot be changed here."
+        "ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. Sole org authority. All admin rights plus billing/subscription control. ."
     ),
     RoleCode.ADMIN: _(
         "Includes Author, Executor, Validation Results Viewer, Analytics Viewer, and Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
@@ -56,6 +56,23 @@ ROLE_IMPLICATIONS: dict[str, set[str]] = {
 }
 
 
+def _minimize_roles(role_codes: set[str]) -> set[str]:
+    """
+    Reduce a set of roles to the minimal set of explicit selections.
+
+    For example, if input is {ADMIN, AUTHOR, EXECUTOR, WORKFLOW_VIEWER},
+    return {ADMIN} because ADMIN implies all the others.
+    """
+    minimal = set(role_codes)
+
+    # Remove any role that's implied by another role in the set
+    for role in role_codes:
+        for grant in ROLE_IMPLICATIONS.get(role, ()):
+            minimal.discard(grant)
+
+    return minimal
+
+
 def _build_role_options(
     selected_roles: set[str],
     *,
@@ -88,20 +105,21 @@ def _build_role_options(
 def _expand_roles_with_implications(role_codes: set[str]) -> tuple[set[str], set[str]]:
     """
     Expand role selections with implied roles (e.g., Admin -> Author/Executor).
-    Returns the expanded set plus the subset that were implied (lower roles), even if
-    they were explicitly selected before a higher role was added.
+    Returns the expanded set plus the subset that were implied (automatically granted
+    by higher roles), excluding any roles that were explicitly in the input set.
     """
 
     expanded = set(role_codes)
     implied: set[str] = set()
-    frontier = list(role_codes)
-    while frontier:
-        role = frontier.pop()
+
+    # For each explicitly selected role, add its implications
+    for role in role_codes:
         for grant in ROLE_IMPLICATIONS.get(role, ()):
-            if grant not in expanded:
-                expanded.add(grant)
-                frontier.append(grant)
-            implied.add(grant)
+            expanded.add(grant)
+            # A role is implied only if it wasn't explicitly selected
+            if grant not in role_codes:
+                implied.add(grant)
+
     return expanded, implied
 
 
@@ -252,7 +270,9 @@ class OrganizationMemberForm(forms.Form):
         if self.is_bound:
             selected_roles = set(_extract_role_values(self.data, "roles"))
         else:
-            selected_roles = self.initial.get("roles", self.fields["roles"].initial) or []
+            selected_roles = (
+                self.initial.get("roles", self.fields["roles"].initial) or []
+            )
             if isinstance(selected_roles, str):
                 selected_roles = [selected_roles]
             selected_roles = set(selected_roles)
@@ -294,9 +314,13 @@ class OrganizationMemberForm(forms.Form):
     def clean_roles(self):
         roles = self.cleaned_data.get("roles") or []
         roles_set = {role for role in roles if role in self.assignable_role_codes}
-        extra = set(_extract_role_values(self.data, "roles")) - self.assignable_role_codes
+        extra = (
+            set(_extract_role_values(self.data, "roles")) - self.assignable_role_codes
+        )
         if extra:
-            raise forms.ValidationError(_("Owner role cannot be assigned through this form."))
+            raise forms.ValidationError(
+                _("Owner role cannot be assigned through this form.")
+            )
         expanded, implied_roles = _expand_roles_with_implications(roles_set)
         return list(expanded)
 
@@ -384,6 +408,38 @@ class InviteUserForm(forms.Form):
 
 
 class OrganizationMemberRolesForm(forms.Form):
+    """
+
+    A form for selecting the roles assigned to an organization member.
+
+    The following rules should be followed:
+
+    - OWNER role is never enabled.
+    - If ADMIN is selected, all other roles checkboxes are selected and disabled for further edits.
+    - If AUTHOR is selected, EXECUTOR, ANALYTICS_VIEWER, VALIDATION_RESULTS_VIEWER,
+      and WORKFLOW_VIEWER are checkboxes selected and disabled for further edits.
+    - If EXECUTOR is selected, WORKFLOW_VIEWER checkbox is selected and disabled, while the
+      ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER checkboxes are enabled for further edits.
+    - ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER can be selected/deselected independently
+      unless disabled by the above rules.
+
+
+    IMPORTANT: When the form is first shown, the above rules should be applied to
+    reflect the current state of the member's roles when the form is initialized.
+
+    When the form is submitted, the above rules should be enforced in the clean_roles method.
+
+    Args:
+        forms (_type_): _description_
+
+    Raises:
+        forms.ValidationError: _description_
+        forms.ValidationError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+
     roles = forms.MultipleChoiceField(
         label=_("Roles"),
         required=False,
@@ -404,34 +460,53 @@ class OrganizationMemberRolesForm(forms.Form):
             current_roles = bound_roles & valid_codes
         self.fields["roles"].choices = RoleCode.choices
         self.fields["roles"].initial = list(current_roles)
-        current_roles, implied_roles = _expand_roles_with_implications(current_roles)
+        # Minimize to find explicit selections, then re-expand to get implied roles
+        minimal_roles = _minimize_roles(current_roles)
+        expanded_roles, implied_roles = _expand_roles_with_implications(minimal_roles)
         self.role_options = _build_role_options(
-            current_roles,
+            expanded_roles,
             owner_locked=owner_locked,
             disable_owner_checkbox=True,
             implied_roles=implied_roles,
         )
         self.owner_locked = owner_locked
-      
+
         self.disable_all_roles = owner_locked
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False
 
     def clean_roles(self):
-        roles = self.cleaned_data.get("roles") or []
+        roles = set(self.cleaned_data.get("roles") or [])
         valid_codes = {code for code, _ in RoleCode.choices}
-        normalized = [role for role in roles if role in valid_codes]
+        normalized = {role for role in roles if role in valid_codes}
         if RoleCode.OWNER in normalized and not self.owner_locked:
             raise forms.ValidationError(
                 _("The Owner role cannot be assigned through this screen."),
             )
         if self.owner_locked and RoleCode.OWNER not in normalized:
             raise forms.ValidationError(
-                _("The Owner role cannot be removed. Contact support to transfer ownership."),
+                _(
+                    "The Owner role cannot be removed. Contact support to transfer ownership."
+                ),
             )
-        expanded, implied_roles = _expand_roles_with_implications(set(normalized))
-        return list(expanded)
+
+        # Enforce cascading role rules
+        if RoleCode.ADMIN in normalized:
+            normalized.update(set(RoleCode.values) - {RoleCode.OWNER})
+        if RoleCode.AUTHOR in normalized:
+            normalized.update(
+                {
+                    RoleCode.EXECUTOR,
+                    RoleCode.ANALYTICS_VIEWER,
+                    RoleCode.VALIDATION_RESULTS_VIEWER,
+                    RoleCode.WORKFLOW_VIEWER,
+                }
+            )
+        if RoleCode.EXECUTOR in normalized:
+            normalized.add(RoleCode.WORKFLOW_VIEWER)
+
+        return list(normalized)
 
     def save(self) -> Membership:
         roles = set(self.cleaned_data.get("roles") or [])

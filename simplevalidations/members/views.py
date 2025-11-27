@@ -15,10 +15,13 @@ from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
 from simplevalidations.core.utils import reverse_with_org
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.notifications.models import Notification
-from simplevalidations.users.forms import InviteUserForm, OrganizationMemberForm
-from simplevalidations.users.forms import OrganizationMemberRolesForm
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.forms import (
+    InviteUserForm,
+    OrganizationMemberForm,
+    OrganizationMemberRolesForm,
+)
 from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
 from simplevalidations.users.models import Membership, PendingInvite, User
 
@@ -80,7 +83,7 @@ class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        query = self.request.GET.get("q", "").strip()
+        query = self.request.GET.get("search", "").strip()
         matches: list[User] = []
         if len(query) >= 3:
             matches = (

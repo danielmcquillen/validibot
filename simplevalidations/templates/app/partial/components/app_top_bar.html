@@ -26,14 +26,17 @@
     <div class="app-header-right">
         <div class="me-3">
             <a href="{% url 'notifications:notification-list' %}"
-               class="btn btn-outline-secondary position-relative"
+               class="btn btn-outline-dark position-relative"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="{% trans 'Notifications' %}"
                aria-label="{% trans 'Notifications' %}">
-                <i class="bi bi-bell"></i>
+                <i class="bi bi-bell-fill"></i>
                 {% if unread_notification_count %}
-                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    {{ unread_notification_count }}
-                    <span class="visually-hidden">{% trans "unread notifications" %}</span>
-                  </span>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        {{ unread_notification_count }}
+                        <span class="visually-hidden">{% trans "unread notifications" %}</span>
+                    </span>
                 {% endif %}
             </a>
         </div>
@@ -90,18 +93,19 @@
                     </a>
                 </li>
                 <li>
-                    <a class="dropdown-item"
-                       href="{% url 'notifications:notification-list' %}">
-                        {% trans "Notifications" %}
-                    </a>
-                </li>
-                <li>
                     <a class="dropdown-item
                               {% if user_settings_nav.api_key %}
                                   active
                               {% endif %}"
                        href="{% org_url 'users:api-key' %}">
                         {% trans "API Key" %}
+                    </a>
+                </li>
+                <hr class="dropdown-divider" />
+                <li>
+                    <a class="dropdown-item"
+                       href="{% url 'notifications:notification-list' %}">
+                        {% trans "Notifications" %}
                     </a>
                 </li>
                 {% if is_org_admin %}

@@ -17,6 +17,8 @@
 
   .app-header-right {
     margin-right: 1rem;
+    display: flex;
+    flex-direction: row;
   }
 
   #user-profile-selector {

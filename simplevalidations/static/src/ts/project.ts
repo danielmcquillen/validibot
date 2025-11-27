@@ -66,21 +66,31 @@ const ROLE_IMPLICATIONS: Record<RoleCode, RoleCode[]> = {
 function expandRoles(selectedCodes: Set<string>): { expanded: Set<string>; implied: Set<string> } {
     const expanded = new Set(selectedCodes);
     const implied = new Set<string>();
-    const frontier = [...selectedCodes];
-    while (frontier.length) {
-        const role = frontier.pop();
-        if (!role) {
-            continue;
-        }
+
+    // For each explicitly selected role, add its implications
+    selectedCodes.forEach((role) => {
         (ROLE_IMPLICATIONS[role as RoleCode] || []).forEach((grant) => {
-            if (!expanded.has(grant)) {
-                expanded.add(grant);
-                frontier.push(grant);
+            expanded.add(grant);
+            // A role is implied if it's granted by another role, not if it was explicitly selected
+            if (!selectedCodes.has(grant)) {
+                implied.add(grant);
             }
-            implied.add(grant);
         });
-    }
+    });
+
     return { expanded, implied };
+}
+
+function minimizeSelection(codes: Set<string>): Set<string> {
+    const minimal = new Set(codes);
+    codes.forEach((role) => {
+        (ROLE_IMPLICATIONS[role as RoleCode] || []).forEach((grant) => {
+            if (codes.has(grant)) {
+                minimal.delete(grant);
+            }
+        });
+    });
+    return minimal;
 }
 
 function initRolePicker(container: HTMLElement): void {
@@ -93,11 +103,13 @@ function initRolePicker(container: HTMLElement): void {
         container.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-role-code]'),
     );
 
-    // Seed user-selected markers from initial state (exclude implied-at-render).
+    // Seed explicit markers from initial state (exclude implied-at-render).
     checkboxes.forEach((cb) => {
         const isImplied = cb.dataset.implied === 'true';
         if (cb.checked && !isImplied) {
-            cb.dataset.userSelected = 'true';
+            cb.dataset.explicit = 'true';
+        } else {
+            cb.dataset.explicit = cb.dataset.explicit || '';
         }
     });
     const updateHiddenFields = () => {
@@ -115,32 +127,24 @@ function initRolePicker(container: HTMLElement): void {
     };
 
     const applyImplications = () => {
-        const explicitSelections = new Set(
-            checkboxes
-                .filter((cb) => cb.checked && cb.dataset.userSelected === 'true')
-                .map((cb) => cb.dataset.roleCode || ''),
+        const checkedCodes = new Set(
+            checkboxes.filter((cb) => cb.checked).map((cb) => cb.dataset.roleCode || ''),
         );
+        const explicitSelections = minimizeSelection(checkedCodes);
         const { expanded, implied } = expandRoles(explicitSelections);
-        const impliedByAnother = (code: string) =>
-            Array.from(explicitSelections).some((sel) => sel !== code && (ROLE_IMPLICATIONS[sel as RoleCode] || []).includes(code as RoleCode));
         console.debug('role-picker: apply', {
             explicit: Array.from(explicitSelections),
             expanded: Array.from(expanded),
             implied: Array.from(implied),
         });
 
-        // Any implied role should no longer be treated as an explicit user choice.
         checkboxes.forEach((cb) => {
             const code = cb.dataset.roleCode || '';
-            if (implied.has(code) || impliedByAnother(code)) {
-                cb.dataset.userSelected = '';
+            const isImplied = implied.has(code);
+            if (!explicitSelections.has(code)) {
+                cb.dataset.explicit = '';
             }
-        });
-
-        checkboxes.forEach((cb) => {
-            const code = cb.dataset.roleCode || '';
-            const isImplied = implied.has(code) || impliedByAnother(code);
-            cb.checked = expanded.has(code);
+            cb.checked = expanded.has(code) || explicitSelections.has(code);
             cb.disabled = isImplied || code === 'OWNER';
             cb.dataset.implied = isImplied ? 'true' : '';
             const helper = cb.closest('.organization-role-option')?.querySelector<HTMLElement>('.form-text.text-muted');
@@ -154,11 +158,11 @@ function initRolePicker(container: HTMLElement): void {
     checkboxes.forEach((cb) => {
         cb.addEventListener('change', () => {
             const code = cb.dataset.roleCode;
-            cb.dataset.userSelected = cb.checked && cb.dataset.implied !== 'true' ? 'true' : '';
+            cb.dataset.explicit = cb.checked ? 'true' : '';
             console.debug('role-picker: change', {
                 code,
                 checked: cb.checked,
-                userSelected: cb.dataset.userSelected,
+                explicit: cb.dataset.explicit,
                 impliedFlag: cb.dataset.implied,
             });
             applyImplications();

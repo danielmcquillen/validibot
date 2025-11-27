@@ -13116,10 +13116,24 @@ a {
 }
 
 .cta-section {
-  background: linear-gradient(135deg, #066fd1, #2fb344);
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 20%, rgba(66, 153, 225, 0.2), transparent 45%), radial-gradient(circle at 80% 0%, rgba(6, 111, 209, 0.2), transparent 50%), linear-gradient(135deg, rgb(6.711627907, 124.1651162791, 233.788372093), rgb(92.4082191781, 167.2520547945, 229.1917808219));
+  box-shadow: inset 0 12px 32px rgba(6, 111, 209, 0.2), inset 0 -12px 32px rgba(66, 153, 225, 0.18);
   color: white;
   padding: 4rem 0;
   text-align: center;
+}
+.cta-section > .container {
+  position: relative;
+  z-index: 1;
+}
+.cta-section .cta-title {
+  text-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.cta-section .cta-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 @media (max-width: 768px) {
   .cta-section {
@@ -13145,6 +13159,18 @@ a {
   .cta-section .cta-subtitle {
     font-size: 1rem;
   }
+}
+.cta-section .btn-robot-cta {
+  background: linear-gradient(135deg, #ffd666, #ffb703);
+  color: #1b1d2a;
+  border: none;
+  box-shadow: 0 10px 24px rgba(255, 183, 3, 0.35), 0 0 18px rgba(255, 214, 102, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.cta-section .btn-robot-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(255, 183, 3, 0.42), 0 0 22px rgba(255, 214, 102, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  color: #0f111a;
 }
 
 @keyframes pulse {

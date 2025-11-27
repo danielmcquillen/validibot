@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from attr import has
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from regex import P
 
-from simplevalidations.users.models import Organization, PendingInvite, User
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import PendingInvite
+from simplevalidations.users.models import User
 
 
 class Notification(models.Model):

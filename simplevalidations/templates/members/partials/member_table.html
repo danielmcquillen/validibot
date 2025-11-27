@@ -4,7 +4,10 @@
   <div class="card shadow-sm h-100">
     <div class="card-header d-flex justify-content-between align-items-center">
       <span class="fw-semibold">{% trans "Organization members" %}</span>
-      <span class="badge text-bg-light">{{ memberships|length }}</span>
+      <div>
+        {% trans "Total members" %}:
+        <span class="badge text-bg-light">{{ memberships|length }}</span>
+      </div>
     </div>
     <div class="card-body p-0">
       {% if memberships %}
@@ -58,12 +61,16 @@
                                 hx-delete="{% org_url 'members:member_delete' member_id=membership.pk %}"
                                 hx-target="#member-list-card"
                                 hx-swap="outerHTML"
-                                hx-confirm="{% trans "Remove member with username" %} '{{ membership.user.username }}' ?"
+                                hx-confirm="{% trans "Remove member with username" %} '{{ membership.user.username }}' from this organization?"
                                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
                           <i class="bi bi-trash"
                              data-bs-toggle="tooltip"
-                             title="{% blocktrans %}Remove member {{ membership.user.username }}{% endblocktrans %}"
-                             aria-label="{% blocktrans %}Remove member {{ membership.user.username }}{% endblocktrans %}"></i>
+                             title="{% blocktrans %}
+                                      Remove member {{ membership.user.username }}
+                                    {% endblocktrans %}"
+                             aria-label="{% blocktrans %}
+                                           Remove member {{ membership.user.username }}
+                                         {% endblocktrans %}"></i>
                         </button>
                       {% endif %}
                     </div>

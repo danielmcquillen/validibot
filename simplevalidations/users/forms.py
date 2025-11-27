@@ -480,15 +480,12 @@ class OrganizationMemberRolesForm(forms.Form):
         roles = set(self.cleaned_data.get("roles") or [])
         valid_codes = {code for code, _ in RoleCode.choices}
         normalized = {role for role in roles if role in valid_codes}
+        if self.owner_locked:
+            # Preserve owner regardless of bound data; the checkbox is disabled.
+            normalized.add(RoleCode.OWNER)
         if RoleCode.OWNER in normalized and not self.owner_locked:
             raise forms.ValidationError(
                 _("The Owner role cannot be assigned through this screen."),
-            )
-        if self.owner_locked and RoleCode.OWNER not in normalized:
-            raise forms.ValidationError(
-                _(
-                    "The Owner role cannot be removed. Contact support to transfer ownership."
-                ),
             )
 
         # Enforce cascading role rules

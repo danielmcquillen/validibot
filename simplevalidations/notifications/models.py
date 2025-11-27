@@ -58,10 +58,17 @@ class Notification(models.Model):
 
     @property
     def can_dismiss(self) -> bool:
-        if self.type == self.Type.INVITE:
-            if hasattr(self, "invite"):
-                self.invite.status != PendingInvite.Status.PENDING
-            else:
-                return True
-        else:
-            return self.dismissed_at is None
+        """
+        Invite handling:
+        - Invitee cannot dismiss while invite is pending.
+        - Inviter can always dismiss.
+        - Once invite is no longer pending (accepted/declined/expired/canceled),
+          any recipient can dismiss.
+        - Non-invite notifications are always dismissible.
+        """
+        if not self.invite:
+            return True
+        if self.user != self.invite.invitee_user:
+            return True
+        # An invitee can dismiss only if the invite is no longer pending.
+        return self.invite.status != PendingInvite.Status.PENDING

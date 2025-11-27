@@ -41,7 +41,7 @@
             </h2>
             {% if subject_details.description %}
               <p class="text-muted mb-0">
-                {{ subject_details.description }}
+                {{ subject_details.short_description|safe }}
               </p>
             {% endif %}
           </div>

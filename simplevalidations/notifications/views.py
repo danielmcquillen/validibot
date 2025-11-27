@@ -12,6 +12,9 @@ from django.views.generic import TemplateView, ListView
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from simplevalidations.notifications.models import Notification
+from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.tracking.services import TrackingEventService
+from simplevalidations.events.constants import AppEventType
 from simplevalidations.users.models import PendingInvite, User
 
 
@@ -125,6 +128,21 @@ class AcceptInviteView(View):
         notification.read_at = timezone.now()
         notification.save(update_fields=["read_at"])
         _notify_inviter(invite, action=_("accepted"))
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_ACCEPTED,
+            project=None,
+            org=invite.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+                "roles": invite.roles,
+            },
+            channel="web",
+        )
         messages.success(request, _("Invitation accepted."))
         if request.headers.get("HX-Request"):
             notification.refresh_from_db()
@@ -157,6 +175,21 @@ class DeclineInviteView(View):
         notification.read_at = timezone.now()
         notification.save(update_fields=["read_at"])
         _notify_inviter(invite, action=_("declined"))
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_DECLINED,
+            project=None,
+            org=invite.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+                "roles": invite.roles,
+            },
+            channel="web",
+        )
         messages.info(request, _("Invitation declined."))
         if request.headers.get("HX-Request"):
             notification.refresh_from_db()

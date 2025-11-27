@@ -9,6 +9,7 @@ from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory
@@ -31,6 +32,10 @@ class ValidationRunFilterTestCase(TestCase):
 
         # Mock get_current_org
         self.user.get_current_org = lambda: self.org
+        self.user.current_org = self.org
+        self.user.save(update_fields=["current_org"])
+        membership = self.user.memberships.get(org=self.org)
+        membership.set_roles({RoleCode.ADMIN})
 
         self.client.force_authenticate(user=self.user)
 

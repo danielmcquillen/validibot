@@ -2104,6 +2104,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             details = {
                 "name": validator.name,
                 "description": validator.description,
+                "short_description": validator.short_description,
                 "type_label": validator.get_validation_type_display(),
                 "icon": icon,
             }

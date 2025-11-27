@@ -39,6 +39,11 @@ class AppEventType(models.TextChoices):
     USER_LOGGED_IN = "user.logged_in", _("User Logged In")
     USER_LOGGED_OUT = "user.logged_out", _("User Logged Out")
 
+    # Invitations
+    INVITE_CREATED = "invite.created", _("Invite Created")
+    INVITE_ACCEPTED = "invite.accepted", _("Invite Accepted")
+    INVITE_DECLINED = "invite.declined", _("Invite Declined")
+
 
 # Convenient subsets
 RUN_EVENTS = (

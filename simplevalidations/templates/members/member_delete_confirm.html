@@ -35,10 +35,12 @@
             </p>
           </div>
           <div class="card-footer d-flex justify-content-between">
-            <a class="btn btn-outline-secondary" href="{% org_url 'members:member_edit' member_id=membership.id %}">
-              {% trans "Back" %}
+            <a class="btn btn-outline-secondary"
+               href="{% org_url 'members:member_edit' member_id=membership.id %}">
+              {% trans "Cancel" %}
             </a>
-            <form method="post" action="{% org_url 'members:member_delete' member_id=membership.id %}">
+            <form method="post"
+                  action="{% org_url 'members:member_delete' member_id=membership.id %}">
               {% csrf_token %}
               <button type="submit" class="btn btn-danger">
                 {% trans "Yes, remove member" %}

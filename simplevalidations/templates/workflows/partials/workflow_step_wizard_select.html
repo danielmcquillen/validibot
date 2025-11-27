@@ -90,10 +90,7 @@
                                  type="radio"
                                  name="choice"
                                  id="{{ input_id }}"
-                                 value="{{ entry.value }}"
-                                 {% if entry.disabled %}
-                                   disabled
-                                 {% endif %}
+                                 value="{{ entry.value }}"{% if entry.disabled %} disabled{% endif %}
                                  {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
                                    checked
                                  {% endif %}

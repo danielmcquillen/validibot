@@ -49,27 +49,25 @@
         </span>
       {% endif %}
 
-      {% if notification %}
-        {% if notification.can_dismiss %}
-          <form method="post"
-                hx-post="{% url 'notifications:notification-dismiss' notification.pk %}"
-                hx-target="closest .alert"
-                hx-swap="outerHTML">
-            {% csrf_token %}
-            {% if show_dismissed %}
-              <input type="hidden" name="show_dismissed" value="on" />
-            {% endif %}
-            <button type="submit"
-                    class="btn-close"
-                    aria-label="{% trans 'Dismiss' %}"
-                    title="{% trans 'Dismiss notification' %}">
-            </button>
-          </form>
-        {% elif notification.is_dismissed %}
-          <span class="text-muted small fst-italic">
-            {% trans "(notification dismissed)" %}
-          </span>
-        {% endif %}
+      {% if notification and notification.can_dismiss and not notification.dismissed_at %}
+        <form method="post"
+              hx-post="{% url 'notifications:notification-dismiss' notification.pk %}"
+              hx-target="closest .alert"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          {% if show_dismissed %}
+            <input type="hidden" name="show_dismissed" value="on" />
+          {% endif %}
+          <button type="submit"
+                  class="btn-close"
+                  aria-label="{% trans 'Dismiss' %}"
+                  title="{% trans 'Dismiss notification' %}">
+          </button>
+        </form>
+      {% elif notification and notification.dismissed_at %}
+        <span class="text-muted small fst-italic">
+          {% trans "(notification dismissed)" %}
+        </span>
       {% endif %}
     </div>
   </div>

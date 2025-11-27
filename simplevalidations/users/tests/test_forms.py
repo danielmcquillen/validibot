@@ -104,8 +104,7 @@ class TestOrganizationMemberRolesForm:
             membership=membership,
         )
 
-        assert not form.is_valid()
-        assert "Owner role cannot be removed" in form.errors["roles"][0]
+        assert form.is_valid()
         for option in form.role_options:
             assert option["disabled"] is True
 
@@ -120,6 +119,18 @@ class TestOrganizationMemberRolesForm:
         assert form.is_valid()
         form.save()
         assert set(membership.role_codes) == set(RoleCode.values)
+
+    def test_owner_can_toggle_other_roles_without_error(self):
+        membership = MembershipFactory()
+        membership.set_roles({RoleCode.OWNER, RoleCode.ADMIN})
+        form = OrganizationMemberRolesForm(
+            data={"roles": [RoleCode.ADMIN]},
+            membership=membership,
+        )
+        assert form.is_valid()
+        form.save()
+        assert RoleCode.OWNER in membership.role_codes
+        assert RoleCode.ADMIN in membership.role_codes
 
     def test_admin_implications_enforced_and_disabled(self):
         membership = MembershipFactory()

@@ -25,6 +25,9 @@ from simplevalidations.users.forms import (
 )
 from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
 from simplevalidations.users.models import Membership, PendingInvite, User
+from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.tracking.services import TrackingEventService
+from simplevalidations.events.constants import AppEventType
 
 
 class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
@@ -119,6 +122,22 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
         )
         if form.is_valid():
             invite = form.save()
+            tracking_service = TrackingEventService()
+            tracking_service.log_tracking_event(
+                event_type=TrackingEventType.APP_EVENT,
+                app_event_type=AppEventType.INVITE_CREATED,
+                project=None,
+                org=invite.org,
+                user=request.user,
+                extra_data={
+                    "invite_id": str(invite.id),
+                    "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                    "invitee_email": invite.invitee_email,
+                    "roles": invite.roles,
+                    "status": invite.status,
+                },
+                channel="web",
+            )
             if invite.invitee_user:
                 Notification.objects.create(
                     user=invite.invitee_user,

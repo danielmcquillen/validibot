@@ -43,7 +43,7 @@
         {% if page_obj.object_list %}
           <div class="list-group list-group-flush mb-3 flex-grow-1">
             {% for notification in page_obj.object_list %}
-              {% include "notifications/partials/invite_row.html" with notification=notification %}
+              {% include "notifications/partials/invite_row.html" with notification=notification show_dismissed=show_dismissed %}
             {% endfor %}
           </div>
         {% else %}

@@ -402,24 +402,27 @@
 .cta-section {
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(
+
+  .ready-to-meet-robot {
+    position: absolute;
+    bottom: 0;
+    left: 100px;
+    height: 250px;
+    width: auto;
+  }
+
+  background: radial-gradient(
       circle at 20% 20%,
       rgba(66, 153, 225, 0.2),
       transparent 45%
     ),
-    radial-gradient(
-      circle at 80% 0%,
-      rgba(6, 111, 209, 0.2),
-      transparent 50%
-    ),
+    radial-gradient(circle at 80% 0%, rgba(6, 111, 209, 0.2), transparent 50%),
     linear-gradient(
       135deg,
       lighten(settings.$blue, 5%),
       lighten(settings.$azure, 6%)
     );
-  box-shadow:
-    inset 0 12px 32px rgba(6, 111, 209, 0.2),
+  box-shadow: inset 0 12px 32px rgba(6, 111, 209, 0.2),
     inset 0 -12px 32px rgba(66, 153, 225, 0.18);
   color: white;
   padding: 4rem 0;
@@ -437,10 +440,6 @@
   .cta-subtitle {
     color: rgba(255, 255, 255, 0.9);
     text-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  }
-
-  @media (max-width: 768px) {
-    padding: 3rem 0;
   }
 
   .cta-title {
@@ -467,20 +466,40 @@
     background: linear-gradient(135deg, #ffd666, #ffb703);
     color: #1b1d2a;
     border: none;
-    box-shadow:
-      0 10px 24px rgba(255, 183, 3, 0.35),
-      0 0 18px rgba(255, 214, 102, 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 24px rgba(255, 183, 3, 0.35),
+      0 0 18px rgba(255, 214, 102, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.6);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 
     &:hover {
       transform: translateY(-2px);
-      box-shadow:
-        0 14px 28px rgba(255, 183, 3, 0.42),
+      box-shadow: 0 14px 28px rgba(255, 183, 3, 0.42),
         0 0 22px rgba(255, 214, 102, 0.55),
         inset 0 1px 0 rgba(255, 255, 255, 0.65);
       color: #0f111a;
     }
+  }
+
+  .btn-robot-cta-green {
+    background: linear-gradient(135deg, #4ade80, #22c55e);
+    color: #0b1a0f;
+    border: none;
+    box-shadow: 0 10px 24px rgba(34, 197, 94, 0.35),
+      0 0 18px rgba(74, 222, 128, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px rgba(34, 197, 94, 0.4),
+        0 0 22px rgba(74, 222, 128, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+      color: #081109;
+    }
+  }
+@media (max-width: 1200px) {
+    padding-bottom: 200px;
+  }
+  @media (max-width: 900px) {
+    padding-bottom: 300px;
   }
 }
 

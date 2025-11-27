@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
@@ -479,3 +480,88 @@ class MembershipRole(models.Model):
 
     def __str__(self):
         return f"{self.membership_id}:{self.role.code}"
+
+
+class PendingInvite(TimeStampedModel):
+    """
+    Represents an invitation to join an organization with proposed roles.
+    Stores status and expiry and transitions to a Membership on acceptance.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", _("Pending")
+        ACCEPTED = "ACCEPTED", _("Accepted")
+        DECLINED = "DECLINED", _("Declined")
+        CANCELED = "CANCELED", _("Canceled")
+        EXPIRED = "EXPIRED", _("Expired")
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="pending_invites",
+    )
+    inviter = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="sent_invites",
+    )
+    invitee_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="received_invites",
+        null=True,
+        blank=True,
+    )
+    invitee_email = models.EmailField(blank=True, null=True)
+    roles = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    expires_at = models.DateTimeField()
+    token = models.UUIDField(default=uuid4, editable=False)
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self):
+        target = self.invitee_user or self.invitee_email or "unknown"
+        return f"Invite to {self.org} for {target}"
+
+    def mark_expired_if_needed(self) -> None:
+        if self.status != self.Status.PENDING:
+            return
+        if self.expires_at <= datetime.now(timezone.utc):
+            self.status = self.Status.EXPIRED
+            self.save(update_fields=["status"])
+
+    def accept(self, roles: list[str] | None = None) -> Membership:
+        self.mark_expired_if_needed()
+        if self.status != self.Status.PENDING:
+            raise ValueError("Invite is not pending.")
+        membership_roles = roles or self.roles or []
+        if self.invitee_user is None:
+            raise ValueError("Invitee user is not set; cannot accept without user.")
+        membership, _ = Membership.objects.get_or_create(
+            user=self.invitee_user,
+            org=self.org,
+            defaults={"is_active": True},
+        )
+        membership.set_roles(set(membership_roles))
+        self.status = self.Status.ACCEPTED
+        self.save(update_fields=["status"])
+        return membership
+
+    def decline(self) -> None:
+        self.mark_expired_if_needed()
+        if self.status != self.Status.PENDING:
+            return
+        self.status = self.Status.DECLINED
+        self.save(update_fields=["status"])
+
+    @classmethod
+    def create_with_expiry(cls, **kwargs) -> "PendingInvite":
+        expiry = kwargs.pop("expires_at", datetime.now(timezone.utc) + timedelta(days=7))
+        return cls.objects.create(expires_at=expiry, **kwargs)

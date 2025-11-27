@@ -24,6 +24,19 @@
     </div>
 
     <div class="app-header-right">
+        <div class="me-3">
+            <a href="{% url 'notifications:notification-list' %}"
+               class="btn btn-outline-secondary position-relative"
+               aria-label="{% trans 'Notifications' %}">
+                <i class="bi bi-bell"></i>
+                {% if unread_notification_count %}
+                  <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    {{ unread_notification_count }}
+                    <span class="visually-hidden">{% trans "unread notifications" %}</span>
+                  </span>
+                {% endif %}
+            </a>
+        </div>
 
         <div id="user-profile-selector" class="dropdown">
             <button class="btn btn-dark d-inline-flex align-items-center justify-content-center p-0 rounded-circle overflow-hidden"
@@ -74,6 +87,12 @@
                               {% endif %}"
                        href="{% org_url 'users:email' %}">
                         {% trans "User Email" %}
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item"
+                       href="{% url 'notifications:notification-list' %}">
+                        {% trans "Notifications" %}
                     </a>
                 </li>
                 <li>

@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from django.contrib import messages
+from django.db import models
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext_lazy as _
@@ -15,10 +16,11 @@ from django.views.generic.edit import FormView
 
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.forms import OrganizationMemberForm
+from simplevalidations.notifications.models import Notification
+from simplevalidations.users.forms import InviteUserForm, OrganizationMemberForm
 from simplevalidations.users.forms import OrganizationMemberRolesForm
 from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
-from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Membership, PendingInvite, User
 
 
 class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
@@ -35,13 +37,23 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
             .prefetch_related("membership_roles__role")
             .order_by("user__name", "user__username")
         )
+        pending_invites = list(
+            PendingInvite.objects.filter(org=self.organization).order_by("-created")
+        )
+        for invite in pending_invites:
+            invite.mark_expired_if_needed()
         context.update(
             {
                 "organization": self.organization,
                 "memberships": memberships,
+                "pending_invites": pending_invites,
                 "add_form": kwargs.get(
                     "add_form",
                     OrganizationMemberForm(organization=self.organization),
+                ),
+                "invite_form": kwargs.get(
+                    "invite_form",
+                    InviteUserForm(organization=self.organization, inviter=self.request.user),
                 ),
             },
         )
@@ -58,6 +70,97 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
 
     def _success_url(self) -> str:
         return reverse_with_org("members:member_list", request=self.request)
+
+
+class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
+    """Return type-ahead search results for inviters."""
+
+    organization_context_attr = "organization"
+    template_name = "members/partials/invite_search_results.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        query = self.request.GET.get("q", "").strip()
+        matches: list[User] = []
+        if len(query) >= 3:
+            matches = (
+                User.objects.filter(
+                    models.Q(username__icontains=query)
+                    | models.Q(email__icontains=query)
+                    | models.Q(name__icontains=query)
+                )
+                .exclude(memberships__org=self.organization)
+                .distinct()[:5]
+            )
+        context.update(
+            {
+                "query": query,
+                "matches": matches,
+                "organization": self.organization,
+            },
+        )
+        return context
+
+
+class InviteCreateView(OrganizationAdminRequiredMixin, View):
+    """Handle invite creation via type-ahead selection or raw email."""
+
+    organization_context_attr = "organization"
+
+    def post(self, request, *args, **kwargs):
+        form = InviteUserForm(
+            data=request.POST,
+            organization=self.organization,
+            inviter=request.user,
+        )
+        if form.is_valid():
+            invite = form.save()
+            if invite.invitee_user:
+                Notification.objects.create(
+                    user=invite.invitee_user,
+                    org=invite.org,
+                    type=Notification.Type.INVITE,
+                    invite=invite,
+                    payload={"roles": invite.roles, "inviter": request.user.id},
+                )
+            messages.success(
+                request,
+                _("Invitation sent."),
+            )
+            return HttpResponseRedirect(reverse_with_org("members:member_list", request=request))
+        memberships = (
+            Membership.objects.filter(org=self.organization, is_active=True)
+            .select_related("user")
+            .prefetch_related("membership_roles__role")
+            .order_by("user__name", "user__username")
+        )
+        context = {
+            "organization": self.organization,
+            "memberships": memberships,
+            "pending_invites": PendingInvite.objects.filter(org=self.organization).order_by("-created"),
+            "add_form": OrganizationMemberForm(organization=self.organization),
+            "invite_form": form,
+        }
+        return render(request, "members/member_list.html", context, status=400)
+
+
+class InviteCancelView(OrganizationAdminRequiredMixin, View):
+    """Allow an inviter to cancel a pending invite."""
+
+    organization_context_attr = "organization"
+
+    def post(self, request, *args, **kwargs):
+        invite = get_object_or_404(
+            PendingInvite,
+            pk=kwargs.get("invite_id"),
+            org=self.organization,
+            inviter=request.user,
+        )
+        if invite.status == PendingInvite.Status.PENDING:
+            invite.status = PendingInvite.Status.CANCELED
+            invite.save(update_fields=["status"])
+            messages.info(request, _("Invitation canceled."))
+        return HttpResponseRedirect(reverse_with_org("members:member_list", request=request))
 
 
 class MemberUpdateView(OrganizationAdminRequiredMixin, FormView):

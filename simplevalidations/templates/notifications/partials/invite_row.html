@@ -1,0 +1,40 @@
+{% load i18n %}
+{% with invite=notification.invite %}
+  <div class="list-group-item d-flex justify-content-between align-items-start">
+    <div>
+      <div class="fw-semibold">
+        {% if invite %}
+          {% blocktrans with org=invite.org.name %}Invitation to {{ org }}{% endblocktrans %}
+        {% else %}
+          {% trans "Invitation" %}
+        {% endif %}
+      </div>
+      <div class="text-muted small">
+        {{ notification.created_at|date:"Y-m-d H:i" }}
+        {% if invite and invite.roles %}
+          · {{ invite.roles|join:", " }}
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      {% if invite and invite.status == "PENDING" %}
+        <form method="post" action="{% url 'notifications:notification-invite-accept' notification.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-success">{% trans "Accept" %}</button>
+        </form>
+        <form method="post" action="{% url 'notifications:notification-invite-decline' notification.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-secondary">{% trans "Decline" %}</button>
+        </form>
+      {% else %}
+        <span class="badge text-bg-light">
+          {% if invite %}
+            {{ invite.get_status_display }}
+          {% else %}
+            {% trans "Processed" %}
+          {% endif %}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+{% endwith %}

@@ -263,6 +263,7 @@ TEMPLATES = [
                 "simplevalidations.users.context_processors.allauth_settings",
                 "simplevalidations.core.context_processors.site_feature_settings",
                 "simplevalidations.users.context_processors.organization_context",
+                "simplevalidations.notifications.context_processors.notifications_context",
             ],
         },
     },

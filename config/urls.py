@@ -96,6 +96,10 @@ if settings.ENABLE_APP:
             "app/help/",
             include("simplevalidations.help.urls", namespace="help"),
         ),
+        path(
+            "app/notifications/",
+            include("simplevalidations.notifications.urls", namespace="notifications"),
+        ),
     ]
 
 

@@ -5,9 +5,11 @@ from crispy_forms.layout import Submit
 from django import forms
 from django.contrib.auth import forms as admin_forms
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from datetime import timedelta
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Organization, User
+from simplevalidations.users.models import Membership, Organization, PendingInvite, User
 
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
@@ -307,6 +309,78 @@ class OrganizationMemberForm(forms.Form):
         )
         membership.set_roles(roles)
         return membership
+
+
+class InviteUserForm(forms.Form):
+    """Form to send an invitation to an existing user or email."""
+
+    search = forms.CharField(
+        label=_("User or email"),
+        required=True,
+        help_text=_("Start typing a username or email to search."),
+    )
+    invitee_user = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    invitee_email = forms.EmailField(required=False, widget=forms.HiddenInput())
+    roles = forms.MultipleChoiceField(
+        label=_("Roles"),
+        required=False,
+        choices=RoleCode.choices,
+        widget=forms.CheckboxSelectMultiple,
+        initial=[RoleCode.WORKFLOW_VIEWER],
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.organization: Organization | None = kwargs.pop("organization", None)
+        self.inviter: User | None = kwargs.pop("inviter", None)
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = "post"
+        self.helper.form_tag = False
+        self.fields["roles"].choices = RoleCode.choices
+        if self.is_bound:
+            selected_roles = set(_extract_role_values(self.data, "roles"))
+        else:
+            selected_roles = set(self.fields["roles"].initial or [])
+        self.role_options = _build_role_options(
+            selected_roles,
+            owner_locked=False,
+            disable_owner_checkbox=True,
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.organization is None or self.inviter is None:
+            raise forms.ValidationError(_("Organization context is required."))
+        user_id = cleaned.get("invitee_user")
+        email = cleaned.get("invitee_email") or cleaned.get("search")
+        if not user_id and not email:
+            raise forms.ValidationError(_("Select a user or provide an email."))
+        invitee_user = None
+        if user_id:
+            try:
+                invitee_user = User.objects.get(pk=user_id)
+            except User.DoesNotExist as exc:
+                raise forms.ValidationError(_("Selected user does not exist.")) from exc
+            cleaned["invitee_user"] = invitee_user
+            cleaned["invitee_email"] = invitee_user.email
+        else:
+            cleaned["invitee_user"] = None
+            cleaned["invitee_email"] = email
+        return cleaned
+
+    def save(self) -> PendingInvite:
+        roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
+        invitee_user = self.cleaned_data.get("invitee_user")
+        invitee_email = self.cleaned_data.get("invitee_email")
+        invite = PendingInvite.create_with_expiry(
+            org=self.organization,
+            inviter=self.inviter,
+            invitee_user=invitee_user,
+            invitee_email=invitee_email,
+            roles=roles,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        return invite
 
 
 class OrganizationMemberRolesForm(forms.Form):

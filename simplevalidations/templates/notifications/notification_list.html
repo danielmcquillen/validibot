@@ -1,0 +1,38 @@
+{% extends "app_base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% trans "Notifications" %} · SimpleValidations
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-bell me-2"></i>
+          {% trans "Notifications" %}
+        </h1>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        {% if notifications %}
+          <div class="list-group list-group-flush">
+            {% for notification in notifications %}
+              {% include "notifications/partials/invite_row.html" with notification=notification %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted">
+            {% trans "No notifications." %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

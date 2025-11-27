@@ -23,4 +23,9 @@ urlpatterns = [
         views.MemberDeleteView.as_view(),
         name="member_delete",
     ),
+    path(
+        "<int:member_id>/delete/confirm/",
+        views.MemberDeleteConfirmView.as_view(),
+        name="member_delete_confirm",
+    ),
 ]

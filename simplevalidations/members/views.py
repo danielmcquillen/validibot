@@ -14,6 +14,7 @@ from django.views import View
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
+from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.notifications.models import Notification
 from simplevalidations.users.constants import RoleCode
@@ -166,7 +167,7 @@ class InviteCancelView(OrganizationAdminRequiredMixin, View):
         return HttpResponseRedirect(reverse_with_org("members:member_list", request=request))
 
 
-class MemberUpdateView(OrganizationAdminRequiredMixin, FormView):
+class MemberUpdateView(OrganizationAdminRequiredMixin, BreadcrumbMixin, FormView):
     """
     Allow administrators to toggle role assignments for a member.
     """
@@ -197,6 +198,18 @@ class MemberUpdateView(OrganizationAdminRequiredMixin, FormView):
             },
         )
         return context
+
+    def get_breadcrumbs(self):
+        return [
+            {
+                "name": _("Members"),
+                "url": reverse_with_org("members:member_list", request=self.request),
+            },
+            {
+                "name": str(self.membership.user.name or self.membership.user.username),
+                "url": "",
+            },
+        ]
 
     def form_valid(self, form):
         form.save()
@@ -271,7 +284,7 @@ class MemberDeleteView(OrganizationAdminRequiredMixin, View):
             return HttpResponseRedirect(self._success_url())
 
         membership.delete()
-        success_message = _("Member removed.")
+        success_message = self.get_success_message(membership)
         messages.success(request, success_message)
         if is_htmx:
             return self._render_member_card(
@@ -284,6 +297,9 @@ class MemberDeleteView(OrganizationAdminRequiredMixin, View):
 
     def delete(self, request, *args, **kwargs):
         return self.post(request, *args, **kwargs)
+
+    def get_success_message(self, membership: Membership) -> str:
+        return _("Member removed.")
 
     def _can_remove_role(self, membership: Membership, role: str) -> bool:
         if not membership.has_role(role):
@@ -336,3 +352,29 @@ class MemberDeleteView(OrganizationAdminRequiredMixin, View):
                 },
             )
         return response
+
+
+class MemberDeleteConfirmView(MemberDeleteView, TemplateView):
+    """Render a confirmation page before removing a member."""
+
+    template_name = "members/member_delete_confirm.html"
+
+    def get(self, request, *args, **kwargs):
+        membership = get_object_or_404(
+            Membership.objects.select_related("org", "user"),
+            pk=kwargs.get("member_id"),
+            org=self.organization,
+        )
+        return render(
+            request,
+            self.template_name,
+            {
+                "membership": membership,
+                "organization": self.organization,
+            },
+        )
+
+    def get_success_message(self, membership: Membership) -> str:
+        return _("User '%(username)s' removed from organization") % {
+            "username": membership.user.username,
+        }

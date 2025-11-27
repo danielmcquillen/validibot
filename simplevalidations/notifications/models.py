@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from attr import has
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from regex import P
 
-from simplevalidations.users.models import Organization, User, PendingInvite
+from simplevalidations.users.models import Organization, PendingInvite, User
 
 
 class Notification(models.Model):
@@ -19,7 +21,9 @@ class Notification(models.Model):
         SYSTEM_ALERT = "system_alert", _("System alert")
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="notifications"
+    )
     org = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
@@ -36,6 +40,7 @@ class Notification(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    dismissed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -46,3 +51,17 @@ class Notification(models.Model):
     @property
     def is_unread(self) -> bool:
         return self.read_at is None
+
+    @property
+    def is_dismissed(self) -> bool:
+        return self.dismissed_at is not None
+
+    @property
+    def can_dismiss(self) -> bool:
+        if self.type == self.Type.INVITE:
+            if hasattr(self, "invite"):
+                self.invite.status != PendingInvite.Status.PENDING
+            else:
+                return True
+        else:
+            return self.dismissed_at is None

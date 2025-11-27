@@ -26,14 +26,14 @@
     <div class="app-header-right">
         <div class="me-3">
             <a href="{% url 'notifications:notification-list' %}"
-               class="btn btn-outline-dark position-relative"
+               class="btn btn-outline-dark position-relative notification-bell-btn"
                data-bs-toggle="tooltip"
                data-bs-placement="bottom"
                title="{% trans 'Notifications' %}"
                aria-label="{% trans 'Notifications' %}">
                 <i class="bi bi-bell-fill"></i>
                 {% if unread_notification_count %}
-                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    <span class="badge rounded-pill bg-danger notification-bell-badge">
                         {{ unread_notification_count }}
                         <span class="visually-hidden">{% trans "unread notifications" %}</span>
                     </span>
@@ -103,9 +103,14 @@
                 </li>
                 <hr class="dropdown-divider" />
                 <li>
-                    <a class="dropdown-item"
+                    <a class="dropdown-item d-flex justify-content-between align-items-center"
                        href="{% url 'notifications:notification-list' %}">
                         {% trans "Notifications" %}
+                        {% if unread_notification_count %}
+                          <span class="badge rounded-pill bg-danger">
+                            {{ unread_notification_count }}
+                          </span>
+                        {% endif %}
                     </a>
                 </li>
                 {% if is_org_admin %}

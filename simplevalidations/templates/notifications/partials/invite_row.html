@@ -1,8 +1,10 @@
 {% load i18n %}
+
 {% with invite=notification.invite %}
-  <div class="list-group-item d-flex justify-content-between align-items-start">
+  <div class="alert alert-info border alert-dismissible fade show d-flex justify-content-between align-items-start"
+       role="alert">
     <div>
-      <div class="fw-semibold">
+      <div class="fw-semibold mb-1">
         {% if invite %}
           {% blocktrans with org=invite.org.name %}Invitation to {{ org }}{% endblocktrans %}
         {% else %}
@@ -10,30 +12,64 @@
         {% endif %}
       </div>
       <div class="text-muted small">
+        {% trans "Organization:" %} {{ notification.org.name }}
+      </div>
+      <div class="text-muted small">
         {{ notification.created_at|date:"Y-m-d H:i" }}
-        {% if invite and invite.roles %}
-          · {{ invite.roles|join:", " }}
-        {% endif %}
       </div>
     </div>
-    <div class="d-flex gap-2">
-      {% if invite and invite.status == "PENDING" %}
-        <form method="post" action="{% url 'notifications:notification-invite-accept' notification.pk %}">
+    <div class="d-flex gap-2 align-items-start">
+      {% if invite and invite.status == "PENDING" and not notification.dismissed_at %}
+        <form method="post"
+              action="{% url 'notifications:notification-invite-accept' notification.pk %}">
           {% csrf_token %}
-          <button type="submit" class="btn btn-sm btn-success">{% trans "Accept" %}</button>
+          <button type="submit" class="btn btn-sm btn-success">
+            {% trans "Accept" %}
+          </button>
         </form>
-        <form method="post" action="{% url 'notifications:notification-invite-decline' notification.pk %}">
+        <form method="post"
+              action="{% url 'notifications:notification-invite-decline' notification.pk %}">
           {% csrf_token %}
-          <button type="submit" class="btn btn-sm btn-outline-secondary">{% trans "Decline" %}</button>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">
+            {% trans "Decline" %}
+          </button>
         </form>
       {% else %}
-        <span class="badge text-bg-light">
+        <span class="badge
+                     {% if invite and invite.status == "ACCEPTED" %}
+                       text-bg-success
+                     {% else %}
+                       text-bg-light
+                     {% endif %}">
           {% if invite %}
-            {{ invite.get_status_display }}
+            {{ invite.status }}
           {% else %}
             {% trans "Processed" %}
           {% endif %}
         </span>
+      {% endif %}
+
+      {% if notification %}
+        {% if notification.can_dismiss %}
+          <form method="post"
+                hx-post="{% url 'notifications:notification-dismiss' notification.pk %}"
+                hx-target="closest .alert"
+                hx-swap="outerHTML">
+            {% csrf_token %}
+            {% if show_dismissed %}
+              <input type="hidden" name="show_dismissed" value="on" />
+            {% endif %}
+            <button type="submit"
+                    class="btn-close"
+                    aria-label="{% trans 'Dismiss' %}"
+                    title="{% trans 'Dismiss notification' %}">
+            </button>
+          </form>
+        {% elif notification.is_dismissed %}
+          <span class="text-muted small fst-italic">
+            {% trans "(notification dismissed)" %}
+          </span>
+        {% endif %}
       {% endif %}
     </div>
   </div>

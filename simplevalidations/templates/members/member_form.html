@@ -17,7 +17,7 @@
         <h1 class="app-page-title">
           <i class="bi bi-person-gear me-2"></i>
           {% blocktrans with name=membership.user.name|default:membership.user.username %}
-            Edit {{ name }}
+            Edit Organization Membership for User '{{ name }}'
           {% endblocktrans %}
         </h1>
       </div>
@@ -61,14 +61,24 @@
               </p>
             </div>
             <div class="card-footer">
-              <div class="d-flex justify-content-end gap-2">
-                <a class="btn btn-outline-secondary"
-                   href="{% org_url 'members:member_list' %}">
-                  {% trans "Cancel" %}
-                </a>
-                <button type="submit" class="btn btn-primary">
-                  {% trans "Save" %}
-                </button>
+              <div class="d-flex justify-content-between align-items-center gap-2">
+                {% if membership and not form.owner_locked %}
+                  <a class="btn btn-outline-danger"
+                     href="{% org_url 'members:member_delete_confirm' member_id=membership.id %}">
+                    {% trans "Remove user from org" %}
+                  </a>
+                {% else %}
+                  <span></span>
+                {% endif %}
+                <div class="d-flex justify-content-end gap-2">
+                  <a class="btn btn-outline-secondary"
+                     href="{% org_url 'members:member_list' %}">
+                    {% trans "Cancel" %}
+                  </a>
+                  <button type="submit" class="btn btn-primary">
+                    {% trans "Save" %}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -77,6 +87,7 @@
       <div class="col-12 col-lg-6">
         <div class="card app-card help-card">
           <div class="card-header">
+            {% trans "Quick Help:" %}
             {% trans "About member roles" %}
           </div>
           <div class="card-body">

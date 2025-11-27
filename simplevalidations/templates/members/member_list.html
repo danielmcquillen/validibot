@@ -58,18 +58,25 @@
           </div>
           <div class="card-body pt-3">
             <div class="tab-content">
-              <div class="tab-pane fade show active" id="invite-tab-pane" role="tabpanel" aria-labelledby="invite-tab">
-                <form method="post" novalidate action="{% org_url 'members:invite_create' %}">
+              <div class="tab-pane fade show active"
+                   id="invite-tab-pane"
+                   role="tabpanel"
+                   aria-labelledby="invite-tab">
+                <form method="post"
+                      novalidate
+                      action="{% org_url 'members:invite_create' %}">
                   {% csrf_token %}
                   {% if invite_form.non_field_errors %}
                     <div class="alert alert-danger" role="alert">
                       {% for error in invite_form.non_field_errors %}
-                        {{ error }}<br />
+                        {{ error }}
+                        <br />
                       {% endfor %}
                     </div>
                   {% endif %}
                   <div class="mb-3">
-                    <label class="form-label fw-semibold" for="{{ invite_form.search.id_for_label }}">
+                    <label class="form-label fw-semibold"
+                           for="{{ invite_form.search.id_for_label }}">
                       {% trans "User or email" %}
                     </label>
                     <input type="text"
@@ -90,7 +97,8 @@
                     {% if invite_form.roles.errors %}
                       <div class="text-danger small mb-2">
                         {% for error in invite_form.roles.errors %}
-                          {{ error }}<br />
+                          {{ error }}
+                          <br />
                         {% endfor %}
                       </div>
                     {% endif %}
@@ -104,16 +112,27 @@
                   </div>
                 </form>
               </div>
-              <div class="tab-pane fade" id="current-invites-tab-pane" role="tabpanel" aria-labelledby="current-invites-tab">
+              <div class="tab-pane fade"
+                   id="current-invites-tab-pane"
+                   role="tabpanel"
+                   aria-labelledby="current-invites-tab">
                 {% if pending_invites %}
                   <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
                       <thead>
                         <tr>
-                          <th>{% trans "Invitee" %}</th>
-                          <th>{% trans "Roles" %}</th>
-                          <th>{% trans "Status" %}</th>
-                          <th class="text-end">{% trans "Actions" %}</th>
+                          <th>
+                            {% trans "Invitee" %}
+                          </th>
+                          <th>
+                            {% trans "Roles" %}
+                          </th>
+                          <th>
+                            {% trans "Status" %}
+                          </th>
+                          <th class="text-end">
+                            {% trans "Actions" %}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -121,7 +140,9 @@
                           <tr>
                             <td>
                               {{ invite.invitee_user.name|default:invite.invitee_user.username|default:invite.invitee_email }}
-                              <div class="text-muted small">{{ invite.created|date:"Y-m-d H:i" }}</div>
+                              <div class="text-muted small">
+                                {{ invite.created|date:"Y-m-d H:i" }}
+                              </div>
                             </td>
                             <td class="text-muted small">
                               {{ invite.roles|join:", " }}
@@ -131,9 +152,15 @@
                             </td>
                             <td class="text-end">
                               {% if invite.status == "PENDING" %}
-                                <form method="post" action="{% org_url 'members:invite_cancel' invite.id %}">
+                                <form method="post"
+                                      action="{% org_url 'members:invite_cancel' invite.id %}">
                                   {% csrf_token %}
-                                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                                  <button data-bs-toggle="tooltip"
+                                          data-bs-placement="top"
+                                          label="{% trans 'Cancel invitation' %}"
+                                          aria-label="{% trans 'Cancel invitation' %}"
+                                          type="submit"
+                                          class="btn btn-sm btn-outline-danger">
                                     <i class="bi bi-trash"></i>
                                   </button>
                                 </form>
@@ -147,7 +174,9 @@
                     </table>
                   </div>
                 {% else %}
-                  <p class="text-muted mb-0">{% trans "No invitations yet." %}</p>
+                  <p class="text-muted mb-0">
+                    {% trans "No invitations yet." %}
+                  </p>
                 {% endif %}
               </div>
             </div>

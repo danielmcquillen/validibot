@@ -21,6 +21,27 @@
     flex-direction: row;
   }
 
+  .notification-bell-btn {
+    padding: 0.35rem 0.5rem;
+    min-width: 2.5rem;
+    position: relative;
+    overflow: visible;
+  }
+
+  .notification-bell-badge {
+    position: absolute;
+    top: -0.4rem;
+    right: -0.6rem;
+    transform: none;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+  }
+
   #user-profile-selector {
     button {
       width: 2.2rem;

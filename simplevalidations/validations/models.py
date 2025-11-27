@@ -436,7 +436,7 @@ class RulesetAssertion(TimeStampedModel):
         constraints = [
             models.CheckConstraint(
                 name="ck_ruleset_assertion_target_oneof",
-                check=(
+                condition=(
                     Q(target_catalog_entry__isnull=False, target_field="")
                     | (Q(target_catalog_entry__isnull=True) & ~Q(target_field=""))
                 ),

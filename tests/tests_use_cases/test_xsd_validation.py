@@ -8,11 +8,11 @@ import pytest
 from django.urls import reverse
 from rest_framework.status import HTTP_200_OK
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType

@@ -2,11 +2,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import (
-    OrganizationFactory,
-    UserFactory,
-    grant_role,
-)
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.users.tests.utils import ensure_all_roles_exist
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 

@@ -6,7 +6,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import TestCase
-from sv_shared.fmi import FMIRunResult, FMIRunStatus
+from sv_shared.fmi import FMIRunResult
+from sv_shared.fmi import FMIRunStatus
 
 
 class ModalConnectivityTest(TestCase):
@@ -23,7 +24,9 @@ class ModalConnectivityTest(TestCase):
         os.environ.setdefault("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
         self._ensure_modal_env()
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
-            self.skipTest("Modal credentials not configured; skipping connectivity test.")
+            self.skipTest(
+                "Modal credentials not configured; skipping connectivity test."
+            )
         try:
             import modal  # noqa: F401
         except ImportError as err:  # pragma: no cover - defensive
@@ -53,9 +56,11 @@ class ModalConnectivityTest(TestCase):
 
         # Sanity check credentials are available before calling Modal.
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
-            self.skipTest("Modal credentials not configured; skipping FMU execution test.")
+            self.skipTest(
+                "Modal credentials not configured; skipping FMU execution test."
+            )
 
-        assets_root = Path(__file__).resolve().parent / "assets" / "fmu" 
+        assets_root = Path(__file__).resolve().parent / "assets" / "fmu"
         asset = assets_root / "Feedthrough.fmu"
         payload = asset.read_bytes()
         checksum = hashlib.sha256(payload).hexdigest()
@@ -72,7 +77,9 @@ class ModalConnectivityTest(TestCase):
         elif hasattr(volume, "__setitem__"):
             volume[remote_name.lstrip("/")] = payload  # type: ignore[index]
         else:  # pragma: no cover - defensive
-            self.fail("Modal Volume does not support batch_upload, put_file, or byte assignment")
+            self.fail(
+                "Modal Volume does not support batch_upload, put_file, or byte assignment"
+            )
 
         try:
             runner = modal.Function.from_name("fmi-runner", "run_fmi_simulation")
@@ -87,7 +94,11 @@ class ModalConnectivityTest(TestCase):
             "fmu_checksum": checksum,
             "use_test_volume": True,
             "inputs": {"int_in": 5},
-            "simulation_config": {"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
+            "simulation_config": {
+                "start_time": 0.0,
+                "stop_time": 1.0,
+                "step_size": 0.1,
+            },
             "output_variables": ["int_out"],
             "return_logs": False,
         }

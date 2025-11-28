@@ -1,9 +1,14 @@
+from http import HTTPStatus
+
 import pytest
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Organization
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory, grant_role
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 
 
 @pytest.fixture
@@ -31,7 +36,7 @@ def test_organization_list_requires_admin(client):
     client.force_login(user)
 
     response = client.get(reverse("users:organization-list"))
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     content = response.content.decode()
     assert "Personal Workspace" in content or "Workspace" in content
 
@@ -50,7 +55,7 @@ def test_roles_can_be_cleared(client_logged_in):
     session.save()
 
     response = client.post(url, data={"roles": []}, follow=True)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     membership.refresh_from_db()
     assert membership.role_codes == set()
 
@@ -60,7 +65,7 @@ def test_organization_list_shows_admin_orgs(client_logged_in):
     client, user, org = client_logged_in
 
     response = client.get(reverse("users:organization-list"))
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert org.name in response.content.decode()
 
 
@@ -72,7 +77,7 @@ def test_organization_create_assigns_admin(client_logged_in):
         data={"name": "Research Lab"},
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     org = Organization.objects.get(name="Research Lab")
     membership = Membership.objects.get(user=user, org=org)
     assert RoleCode.ADMIN in membership.role_codes
@@ -88,7 +93,7 @@ def test_organization_update_changes_name(client_logged_in):
         data={"name": "Updated Org"},
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     org.refresh_from_db()
     assert org.name == "Updated Org"
 
@@ -97,13 +102,18 @@ def test_organization_update_changes_name(client_logged_in):
 def test_organization_delete_requires_another_admin(client_logged_in):
     client, user, org = client_logged_in
     membership = Membership.objects.get(user=user, org=org)
-    assert not Membership.objects.filter(
-        org=org,
-        is_active=True,
-        membership_roles__role__code=RoleCode.ADMIN,
-    ).exclude(pk=membership.pk).distinct().exists()
+    assert (
+        not Membership.objects.filter(
+            org=org,
+            is_active=True,
+            membership_roles__role__code=RoleCode.ADMIN,
+        )
+        .exclude(pk=membership.pk)
+        .distinct()
+        .exists()
+    )
     response = client.post(reverse("users:organization-delete", args=[org.pk]))
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert Organization.objects.filter(pk=org.pk).exists()
 
 
@@ -111,7 +121,7 @@ def test_organization_delete_requires_another_admin(client_logged_in):
 def test_organization_detail_shows_summary(client_logged_in):
     client, user, org = client_logged_in
     response = client.get(reverse("users:organization-detail", args=[org.pk]))
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     content = response.content.decode()
     assert org.name in content
     assert "Manage members" in content
@@ -129,7 +139,7 @@ def test_update_member_roles_requires_remaining_admin(client_logged_in):
         data={"roles": [RoleCode.EXECUTOR]},
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     membership.refresh_from_db()
     assert RoleCode.ADMIN not in membership.role_codes
     assert RoleCode.OWNER not in membership.role_codes
@@ -146,7 +156,7 @@ def test_update_member_roles_prevents_last_owner_removal(client_logged_in):
         data={"roles": [RoleCode.ADMIN]},
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     membership.refresh_from_db()
     assert RoleCode.OWNER in membership.role_codes
     assert RoleCode.ADMIN in membership.role_codes
@@ -161,7 +171,7 @@ def test_remove_member_prevents_last_owner(client_logged_in):
     response = client.post(
         reverse("users:organization-member-delete", args=[org.pk, membership.pk]),
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert Membership.objects.filter(user=user, org=org).exists()
 
 
@@ -169,9 +179,12 @@ def test_remove_member_prevents_last_owner(client_logged_in):
 def test_remove_member_prevents_last_admin(client_logged_in):
     client, user, org = client_logged_in
     response = client.post(
-        reverse("users:organization-member-delete", args=[org.pk, Membership.objects.get(user=user, org=org).pk]),
+        reverse(
+            "users:organization-member-delete",
+            args=[org.pk, Membership.objects.get(user=user, org=org).pk],
+        ),
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert Membership.objects.filter(user=user, org=org).exists()
 
 
@@ -186,7 +199,7 @@ def test_switch_current_org_updates_session(client, db):
         reverse("users:organization-switch", args=[org.pk]),
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert client.session["active_org_id"] == org.id
 
 
@@ -203,7 +216,7 @@ def test_switch_current_org_redirects_to_safe_next(client, db):
         data={"next": safe_next},
     )
 
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == safe_next
 
 
@@ -220,5 +233,5 @@ def test_switch_current_org_falls_back_for_unsafe_next(client, db):
         data={"next": unsafe_next},
     )
 
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert response["Location"] == reverse("dashboard:my_dashboard")

@@ -10,11 +10,11 @@ from rest_framework.status import HTTP_200_OK
 from rest_framework.status import HTTP_201_CREATED
 from rest_framework.status import HTTP_202_ACCEPTED
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.models import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import XMLSchemaType
@@ -146,6 +146,7 @@ def _run_and_poll(client, workflow, *, content: str) -> dict:
                     poll_url = reverse(name, args=[run_id])
                     break
                 except Exception:
+                    logger.info("Could not reverse for %s", name)
                     continue
             if not poll_url:
                 poll_url = f"/api/v1/validation-runs/{run_id}/"

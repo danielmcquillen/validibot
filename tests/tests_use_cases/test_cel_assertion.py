@@ -5,24 +5,23 @@ from pathlib import Path
 
 import pytest
 
+from simplevalidations.submissions.tests.factories import SubmissionFactory
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import AssertionOperator
 from simplevalidations.validations.constants import AssertionType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.basic import BasicValidatorEngine
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.services.validation_run import ValidationRunService
-from simplevalidations.validations.tests.factories import (
-    RulesetAssertionFactory,
-    RulesetFactory,
-    ValidatorFactory,
-)
-from simplevalidations.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
-from simplevalidations.submissions.tests.factories import SubmissionFactory
-from simplevalidations.validations.engines.basic import BasicValidatorEngine
+from simplevalidations.validations.tests.factories import RulesetAssertionFactory
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
 @pytest.mark.django_db

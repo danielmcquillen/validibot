@@ -34,9 +34,17 @@ def test_seed_default_actions_creates_definitions():
 
 def test_action_registry_resolves_variants():
     assert get_action_model(IntegrationActionType.SLACK_MESSAGE) is SlackMessageAction
-    assert get_action_model(CertificationActionType.SIGNED_CERTIFICATE) is SignedCertificateAction
-    assert get_action_form(IntegrationActionType.SLACK_MESSAGE) is SlackMessageActionForm
-    assert get_action_form(CertificationActionType.SIGNED_CERTIFICATE) is SignedCertificateActionForm
+    assert (
+        get_action_model(CertificationActionType.SIGNED_CERTIFICATE)
+        is SignedCertificateAction
+    )
+    assert (
+        get_action_form(IntegrationActionType.SLACK_MESSAGE) is SlackMessageActionForm
+    )
+    assert (
+        get_action_form(CertificationActionType.SIGNED_CERTIFICATE)
+        is SignedCertificateActionForm
+    )
 
 
 def test_signed_certificate_action_falls_back_to_default():

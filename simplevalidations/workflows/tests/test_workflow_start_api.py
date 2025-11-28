@@ -23,20 +23,18 @@ from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.tests.factories import ValidationRunFactory
-from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.validations.services.validation_run import (
     ValidationRunLaunchResults,
 )
+from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.constants import WorkflowStartErrorCode
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
 
 try:
-    from simplevalidations.workflows.tests.factories import (
-        WorkflowFactory,
-        WorkflowStepFactory,
-    )
+    from simplevalidations.workflows.tests.factories import WorkflowFactory
+    from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 except Exception:  # noqa: BLE001
     WorkflowFactory = None
     WorkflowStepFactory = None
@@ -667,7 +665,7 @@ class TestWorkflowStartAPI:
         assert run.submission
         assert run.submission.input_file
 
-    def test_start_long_running_returns_202_and_polling_then_succeeds(  # noqa: PLR0913
+    def test_start_long_running_returns_202_and_polling_then_succeeds(
         self,
         settings,
         monkeypatch,
@@ -684,10 +682,16 @@ class TestWorkflowStartAPI:
         def make_run(*, org, workflow, submission, status):
             if ValidationRunFactory:
                 return ValidationRunFactory(
-                    org=org, workflow=workflow, submission=submission, status=status
+                    org=org,
+                    workflow=workflow,
+                    submission=submission,
+                    status=status,
                 )
             return ValidationRun.objects.create(
-                org=org, workflow=workflow, submission=submission, status=status
+                org=org,
+                workflow=workflow,
+                submission=submission,
+                status=status,
             )
 
         # Override the autouse 201 stub with a 202 stub for THIS test only
@@ -710,7 +714,10 @@ class TestWorkflowStartAPI:
 
         fake_service = SimpleNamespace(launch=pending_side_effect)
         monkeypatch.setattr(
-            views_mod, "ValidationRunService", lambda: fake_service, raising=True
+            views_mod,
+            "ValidationRunService",
+            lambda: fake_service,
+            raising=True,
         )
         monkeypatch.setattr(
             launch_helpers_mod,
@@ -730,7 +737,7 @@ class TestWorkflowStartAPI:
             data=json.dumps({"long": "run"}),
             content_type="application/json",
         )
-        assert resp.status_code == 202, resp.data
+        assert resp.status_code == status.HTTP_202_ACCEPTED, resp.data
         loc = resp["Location"]
         pending_id = resp.json()["id"]
 
@@ -743,7 +750,7 @@ class TestWorkflowStartAPI:
 
         # poll
         poll = api_client.get(loc)
-        assert poll.status_code == 200
+        assert poll.status_code == status.HTTP_200_OK
         assert poll.json()["status"] == ValidationRunStatus.SUCCEEDED
 
     def test_requires_executor_role(self, api_client: APIClient, org, workflow):

@@ -1483,13 +1483,47 @@ At this stage, you're covering costs while building customer base.
 **Infrastructure:** **$3,000/mo**  
 **Gross profit:** $24,800 - $190 - $3,000 = **$21,610/mo (~87% margin)**
 
+### Stress Test: What If Everyone Maxes Out?
+
+Let's assume every customer in Scenario 3 hits their soft caps and buys maximum reasonable overage:
+
+| Tier       | Orgs | Basic Launches (at soft cap) | Advanced Credits (heavy overage) |
+| ---------- | ---- | ---------------------------- | -------------------------------- |
+| Starter    | 20   | 20 × 10,000 = 200,000        | 20 × (200 + 500) = 14,000        |
+| Team       | 20   | 20 × 100,000 = 2,000,000     | 20 × (1,000 + 2,000) = 60,000    |
+| Enterprise | 10   | 10 × 500,000 = 5,000,000     | 10 × (5,000 + 3,000) = 80,000    |
+| **Total**  |      | **7.2 million/month**        | **154,000 credits/month**        |
+
+**Basic workflow load analysis:**
+
+- 7.2M launches/month ÷ 30 days ÷ 24 hours = ~10,000 launches/hour = ~3/second average
+- Assume 500ms average validation time
+- Peak load (10× average): ~30 concurrent requests
+- **Verdict: Easily handled by standard Heroku setup**
+
+**Advanced workflow (Modal) cost:**
+
+- 154,000 credits × $0.002 = **$308/month**
+- Still less than 2% of revenue
+- **Verdict: Modal costs remain negligible**
+
+**Revenue at max usage (more credit packs sold):**
+
+- Starter: 20 × ($25 + 5×$10) = $1,500
+- Team: 20 × ($100 + 4×$25) = $4,000
+- Enterprise: 10 × ($2,000 + 6×$25) = $21,500
+- **Total: $27,000/mo** (up from $24,800)
+
+**Conclusion:** Even with everyone at maximum usage, the system handles load comfortably and margins actually improve (more overage revenue, minimal extra cost).
+
 ### Key Insights
 
 1. **Modal costs are a rounding error.** Even at scale, Modal is <1% of revenue.
 2. **Infrastructure is the real fixed cost** in early stages.
 3. **Enterprise customers drive profitability.** One $2,000/mo Enterprise = 57 Starter customers.
 4. **Credit pack overages are pure margin** after you've covered subscription costs.
-5. **The $35→$100 jump is reasonable** (2.9× price for 5× credits + team features).
+5. **Soft caps for basic workflows work** because Heroku is fixed cost—heavy usage doesn't hurt us.
+6. **The system scales gracefully.** Max usage improves margins, not worsens them.
 
 ---
 

@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from http import HTTPStatus
 
 from simplevalidations.notifications.models import Notification
 from simplevalidations.tracking.models import TrackingEvent
@@ -36,7 +37,7 @@ def test_invite_notification_shows_for_invitee(client):
         },
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert PendingInvite.objects.filter(invitee_user=invitee, org=org).exists()
     assert Notification.objects.filter(user=invitee).count() == 1
     event = TrackingEvent.objects.filter(app_event_type=AppEventType.INVITE_CREATED).first()
@@ -48,7 +49,7 @@ def test_invite_notification_shows_for_invitee(client):
 
     client.force_login(invitee)
     resp = client.get(reverse("notifications:notification-list"))
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     content = resp.content.decode()
     assert org.name in content
     assert "Invitation" in content
@@ -84,7 +85,7 @@ def test_invitee_can_accept_and_become_member(client):
     resp = client.post(
         reverse("notifications:notification-invite-accept", kwargs={"pk": notification.pk})
     )
-    assert resp.status_code in (302, 200)
+    assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
     assert invite.status == PendingInvite.Status.ACCEPTED
     membership = invitee.memberships.filter(org=org).first()
@@ -117,7 +118,7 @@ def test_dismissing_notification_sets_timestamp(client):
         reverse("notifications:notification-dismiss", kwargs={"pk": notification.pk}),
         HTTP_HX_REQUEST="true",
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     notification.refresh_from_db()
     assert notification.dismissed_at is not None
 
@@ -152,7 +153,7 @@ def test_invitee_can_decline_and_event_is_logged(client):
     resp = client.post(
         reverse("notifications:notification-invite-decline", kwargs={"pk": notification.pk})
     )
-    assert resp.status_code in (302, 200)
+    assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
     assert invite.status == PendingInvite.Status.DECLINED
     event = TrackingEvent.objects.filter(app_event_type=AppEventType.INVITE_DECLINED).last()

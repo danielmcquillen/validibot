@@ -4,6 +4,7 @@ import html
 import json
 from http import HTTPStatus
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,7 +12,6 @@ from django.urls import reverse
 from lxml import html as lxml_html
 
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.submissions.models import Submission
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
@@ -27,13 +27,14 @@ from simplevalidations.validations.services.validation_run import (
 )
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory
-from simplevalidations.workflows.constants import (
-    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
-)
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
+
+if TYPE_CHECKING:
+    from simplevalidations.submissions.models import Submission
 
 
 def _force_login_for_workflow(client, workflow, *, user=None):
@@ -69,7 +70,7 @@ def test_launch_page_renders_for_org_member(client):
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
     response = client.get(
-        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
     )
 
     body = response.content.decode()
@@ -84,7 +85,7 @@ def test_launch_page_disables_form_without_steps(client):
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
     response = client.get(
-        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk})
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}),
     )
 
     body = response.content.decode()
@@ -99,7 +100,7 @@ def test_launch_post_creates_run_and_redirects(client, monkeypatch):
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
-    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
         run = ValidationRun.objects.create(
             org=org,
             workflow=workflow,
@@ -141,7 +142,7 @@ def test_launch_start_records_upload_preference(client, monkeypatch):
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.EXECUTOR)
 
-    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
         run = ValidationRun.objects.create(
             org=org,
             workflow=workflow,
@@ -190,7 +191,7 @@ def test_launch_upload_flow_accepts_file_and_creates_submission(client, monkeypa
     )
     captured = {}
 
-    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
         captured["submission"] = submission
         run = ValidationRun.objects.create(
             org=org,
@@ -226,7 +227,8 @@ def test_launch_upload_flow_accepts_file_and_creates_submission(client, monkeypa
     submission.refresh_from_db()
     assert submission.original_filename == asset_path.name
     assert submission.file_type == SubmissionFileType.JSON
-    assert submission.input_file and submission.input_file.name
+    assert submission.input_file
+    assert submission.input_file.name
     assert '"name"' in submission.get_content()
     assert ValidationRun.objects.filter(submission=submission).count() == 1
     assert client.session[WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY] == "upload"
@@ -240,7 +242,7 @@ def test_launch_inline_flow_accepts_json_payload(client, monkeypatch):
     payload = Path("tests/assets/json/example_product.json").read_text()
     captured = {}
 
-    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):  # noqa: ANN001
+    def fake_launch(self, request, org, workflow, submission, user_id, metadata, **_):
         captured["submission"] = submission
         run = ValidationRun.objects.create(
             org=org,
@@ -312,7 +314,9 @@ def test_launch_start_requires_executor_role(client):
     )
 
     assert response.status_code == HTTPStatus.FORBIDDEN
-    assert "You do not have permission to run this workflow." in response.content.decode()
+    assert (
+        "You do not have permission to run this workflow." in response.content.decode()
+    )
 
 
 def test_launch_toggle_sections_follow_session_preference(client):
@@ -360,7 +364,7 @@ def test_browse_files_button_targets_attachment_input(client):
 
     response = client.get(url)
     document = lxml_html.fromstring(response.content.decode())
-    browse_label = document.xpath('//*[@data-dropzone-browse]')[0]
+    browse_label = document.xpath("//*[@data-dropzone-browse]")[0]
     attachment_input = document.xpath('//input[@name="attachment"]')[0]
 
     assert browse_label.tag == "label"
@@ -393,7 +397,8 @@ def test_cancel_run_updates_status(client):
     assert response.status_code == HTTPStatus.OK
     assert run.status == ValidationRunStatus.CANCELED
     hx_trigger = response.headers.get("HX-Trigger")
-    assert hx_trigger and "Workflow validation canceled" in hx_trigger
+    assert hx_trigger
+    assert "Workflow validation canceled" in hx_trigger
 
 
 def test_cancel_run_reports_completed_before_cancel(client):
@@ -419,7 +424,8 @@ def test_cancel_run_reports_completed_before_cancel(client):
 
     assert response.status_code == HTTPStatus.OK
     hx_trigger = response.headers.get("HX-Trigger")
-    assert hx_trigger and "Process completed before it could be cancelled" in hx_trigger
+    assert hx_trigger
+    assert "Process completed before it could be cancelled" in hx_trigger
 
 
 def test_cancel_run_requires_executor_role(client):
@@ -531,7 +537,7 @@ def test_latest_run_view_loads_most_recent_run(client):
     grant_role(superuser, workflow.org, RoleCode.ADMIN)
     superuser.set_current_org(workflow.org)
     client.force_login(superuser)
-    recent_run = ValidationRunFactory(
+    ValidationRunFactory(
         submission__workflow=workflow,
         submission__org=workflow.org,
         workflow=workflow,
@@ -562,7 +568,9 @@ def test_latest_run_view_redirects_when_no_runs_exist(client):
     )
 
     assert response.status_code == HTTPStatus.FOUND
-    assert reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}) in response.url
+    assert (
+        reverse("workflows:workflow_launch", kwargs={"pk": workflow.pk}) in response.url
+    )
 
 
 def test_public_info_view_accessible_when_enabled(client):
@@ -576,7 +584,7 @@ def test_public_info_view_accessible_when_enabled(client):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
             "properties": {"sku": {"type": "string"}},
-        }
+        },
     )
     ruleset = Ruleset.objects.create(
         org=workflow.org,
@@ -684,7 +692,8 @@ def test_public_info_view_hides_schema_when_not_shared(client):
         validation_type=ValidationType.XML_SCHEMA,
         slug="public-xml",
     )
-    xml_schema = """<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>\n  <xs:element name='item' type='xs:string'/>\n</xs:schema>"""
+    xml_schema = """<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>\n  
+    <xs:element name='item' type='xs:string'/>\n</xs:schema>"""
     ruleset = Ruleset.objects.create(
         org=workflow.org,
         user=workflow.user,

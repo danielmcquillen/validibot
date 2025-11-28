@@ -1,4 +1,5 @@
 import contextlib
+import logging
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -25,6 +26,8 @@ from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.validations.tests.factories import ValidationStepRunFactory
 from simplevalidations.validations.views import ValidationRunViewSet
 from simplevalidations.workflows.tests.factories import WorkflowFactory
+
+logger = logging.getLogger(__name__)
 
 
 class ValidationRunViewSetTestCase(TestCase):
@@ -140,7 +143,7 @@ class ValidationRunViewSetTestCase(TestCase):
         old_run.save()
 
         # Create recent run
-        recent_run = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
             org=self.org,
@@ -159,7 +162,7 @@ class ValidationRunViewSetTestCase(TestCase):
         self.client.force_authenticate(user=self.user)
 
         # Create runs with different statuses
-        pending_run = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
             org=self.org,
@@ -167,7 +170,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        completed_run = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
             org=self.org,
@@ -192,7 +195,7 @@ class ValidationRunViewSetTestCase(TestCase):
         other_workflow = WorkflowFactory(org=self.org, user=self.user)
 
         # Create runs for different workflows
-        run1 = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
             org=self.org,
@@ -200,7 +203,7 @@ class ValidationRunViewSetTestCase(TestCase):
             status=ValidationRunStatus.PENDING,
         )
 
-        run2 = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=other_workflow,
             org=self.org,
@@ -232,7 +235,7 @@ class ValidationRunViewSetTestCase(TestCase):
         old_run.created = timezone.now() - timedelta(days=5)
         old_run.save()
 
-        new_run = ValidationRunFactory(
+        ValidationRunFactory(
             submission=self.submission,
             workflow=self.workflow,
             org=self.org,
@@ -414,7 +417,9 @@ class ValidationRunViewSetTestCase(TestCase):
             set(membership.membership_roles.values_list("role__code", flat=True)),
             {RoleCode.EXECUTOR},
         )
-        print("target org", self.org.id, "roles before request", membership.role_codes)
+        logger.info(
+            f"target org {self.org.id} roles before request {membership.role_codes}"
+        )
         own_submission = SubmissionFactory(
             org=self.org,
             project=self.project,

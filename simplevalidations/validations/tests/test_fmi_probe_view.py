@@ -4,10 +4,14 @@ from django.test import TestCase
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory, grant_role
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.validations.tests.test_fmi_engine import (
     _fake_fmu,
+)  # reuse helper
+from simplevalidations.validations.tests.test_fmi_engine import (
     _prime_modal_cache_fake,
 )  # reuse helper
 
@@ -36,7 +40,7 @@ class FMIProbeViewTests(TestCase):
         from simplevalidations.validations.services import fmi as fmi_module
 
         if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment]
+            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
     def test_probe_start_returns_queue_status(self):
         url = reverse("validations:fmi_probe_start", args=[self.validator.pk])

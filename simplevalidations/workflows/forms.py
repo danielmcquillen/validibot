@@ -84,26 +84,27 @@ def _detect_xml_schema_type(payload: str) -> str | None:
     except Exception:  # pragma: no cover
         return None
 
+    xml_doc = None
     try:
         parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
         xml_doc = etree.XML(payload_bytes, parser=parser)
     except Exception:
-        logger.info("Could not detect schema type.")
-        return None
+        logger.info("Could not detect schema type via XML parsing.")
 
-    try:
-        etree.XMLSchema(xml_doc)
-    except Exception:
-        logger.info("XML Schema detection failed for XSD.")
-    else:
-        return XMLSchemaType.XSD.value
+    if xml_doc is not None:
+        try:
+            etree.XMLSchema(xml_doc)
+        except Exception:
+            logger.info("XML Schema detection failed for XSD.")
+        else:
+            return XMLSchemaType.XSD.value
 
-    try:
-        etree.RelaxNG(xml_doc)
-    except Exception:
-        logger.info("XML Schema detection failed for RELAXNG.")
-    else:
-        return XMLSchemaType.RELAXNG.value
+        try:
+            etree.RelaxNG(xml_doc)
+        except Exception:
+            logger.info("XML Schema detection failed for RELAXNG.")
+        else:
+            return XMLSchemaType.RELAXNG.value
 
     try:
         etree.DTD(io.StringIO(payload))

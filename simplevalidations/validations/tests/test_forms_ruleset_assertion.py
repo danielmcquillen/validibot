@@ -2,18 +2,14 @@ from __future__ import annotations
 
 from django.test import TestCase
 
-from simplevalidations.validations.constants import (
-    AssertionType,
-    CatalogRunStage,
-    Severity,
-    ValidationType,
-)
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.forms import RulesetAssertionForm
-from simplevalidations.validations.tests.factories import (
-    RulesetFactory,
-    ValidatorCatalogEntryFactory,
-    ValidatorFactory,
-)
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.validations.utils import update_custom_validator
 
 
@@ -36,7 +32,7 @@ class RulesetAssertionFormTests(TestCase):
         validator.refresh_from_db()
         self.assertFalse(validator.allow_custom_assertion_targets)
         entry = ValidatorCatalogEntryFactory(validator=validator, slug="price")
-        ruleset = RulesetFactory()
+        RulesetFactory()
         form = self._form(
             validator=validator,
             catalog_entries=[entry],
@@ -48,7 +44,7 @@ class RulesetAssertionFormTests(TestCase):
                 "when_expression": "",
             },
         )
-        self.assertFalse(form._validator_allows_custom_targets())
+        self.assertFalse(form._validator_allows_custom_targets())  # noqa: SLF001
         self.assertFalse(form.is_valid())
         self.assertIn("Unknown signal(s) referenced", str(form.errors))
 
@@ -100,7 +96,9 @@ class RulesetAssertionFormTests(TestCase):
         self.assertEqual(updated.notes, "New Notes")
 
     def test_target_resolution_prefers_input_without_prefix(self):
-        validator = ValidatorFactory(validation_type=ValidationType.BASIC, is_system=False)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC, is_system=False
+        )
         input_entry = ValidatorCatalogEntryFactory(
             validator=validator,
             slug="temperature",
@@ -121,7 +119,9 @@ class RulesetAssertionFormTests(TestCase):
         self.assertIsNone(form.cleaned_data["target_catalog_entry"])
 
     def test_output_requires_prefix_on_collision(self):
-        validator = ValidatorFactory(validation_type=ValidationType.BASIC, is_system=False)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC, is_system=False
+        )
         input_entry = ValidatorCatalogEntryFactory(
             validator=validator,
             slug="price",

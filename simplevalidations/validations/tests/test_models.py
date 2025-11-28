@@ -1,6 +1,5 @@
-from django.core.exceptions import ValidationError
-
 import pytest
+from django.core.exceptions import ValidationError
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.models import ValidationFinding

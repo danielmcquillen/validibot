@@ -441,7 +441,6 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             role = (
                 _("Output") if entry.run_stage == CatalogRunStage.OUTPUT else _("Input")
             )
-            kind = entry.get_entry_type_display()
             label = entry.label or entry.slug
             value = f"{entry.run_stage}:{entry.slug}"
             self.choice_map[value] = entry

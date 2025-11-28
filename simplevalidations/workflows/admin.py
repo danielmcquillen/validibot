@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 
 @admin.register(Workflow)

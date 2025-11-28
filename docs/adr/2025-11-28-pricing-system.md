@@ -12,10 +12,23 @@
 SimpleValidations needs a pricing and billing system that:
 
 1. **Supports tiered plans** – Free, Starter, Team, Enterprise with different feature sets.
-2. **Meters two types of usage** – Basic workflow launches (guardrail-only) and advanced workflow credits (cost-based).
+2. **Meters usage appropriately** – Different metering for different cost structures (see below).
 3. **Integrates with Stripe** – Subscription management, credit purchases, invoicing.
 4. **Provides usage visibility** – Dashboards and notifications that scale with plan tier.
 5. **Enables feature throttling** – Enforce limits based on plan, with clear upgrade paths.
+
+### Two Types of Workflows, Two Metering Models
+
+Workflows are classified as **basic** or **advanced** based on where their validators run:
+
+| Workflow Type | Where It Runs             | Our Cost Model     | How We Meter                          |
+| ------------- | ------------------------- | ------------------ | ------------------------------------- |
+| **Basic**     | Heroku (our servers)      | Fixed monthly      | Soft cap (high threshold, rarely hit) |
+| **Advanced**  | Modal.com (cloud compute) | Per-second billing | Consume credits (based on runtime)    |
+
+**Basic workflows** use validators that run on our Heroku infrastructure. Since we pay a fixed monthly cost regardless of usage, we use generous soft caps. These caps are set high enough that legitimate users rarely hit them. If someone does exceed the cap, we flag for manual review rather than hard-blocking—this lets us distinguish heavy legitimate use from abuse.
+
+**Advanced workflows** use at least one validator that runs on Modal.com (AI, simulations, etc.). Modal charges us per CPU-second, so we pass this cost through via credits. There's no launch cap—you can run as many advanced workflows as you have credits for.
 
 This ADR defines the pricing tiers, metering strategy, Stripe integration, and the infrastructure needed to implement it.
 
@@ -27,7 +40,7 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 |             | Free | Starter | Team          | Enterprise       |
 | ----------- | ---- | ------- | ------------- | ---------------- |
-| **Price**   | $0   | $35/mo  | $100/mo       | Contact us       |
+| **Price**   | $0   | $25/mo  | $100/mo       | Contact us       |
 | **Seats**   | 1    | 2       | 10            | Custom           |
 | **Support** | None | None    | Limited email | Priority + Slack |
 
@@ -44,10 +57,14 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Usage Quotas
 
-|                               | Free   | Starter  | Team      | Enterprise  |
-| ----------------------------- | ------ | -------- | --------- | ----------- |
-| **Basic workflow launches**   | 200/mo | 5,000/mo | 50,000/mo | 250,000+/mo |
-| **Advanced workflow credits** | 0      | 200/mo   | 1,000/mo  | 5,000+/mo   |
+|                                             | Free | Starter | Team    | Enterprise |
+| ------------------------------------------- | ---- | ------- | ------- | ---------- |
+| **Basic workflow launches** (soft cap)      | 500  | 10,000  | 100,000 | Unlimited  |
+| **Advanced workflow credits** (included/mo) | 0    | 200     | 1,000   | 5,000+     |
+
+**Basic workflow soft caps:** These are generous thresholds that most users will never hit. If exceeded, the user can continue but we're notified to review for abuse. Legitimate heavy users get their cap raised; bad actors get blocked.
+
+**Advanced workflow credits:** Hard limit based on credits consumed (not launch count). One advanced workflow launch might use 1-50+ credits depending on runtime and validator complexity. Purchase additional credit packs if needed.
 
 ### Platform Features
 
@@ -149,55 +166,67 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
 ## Metering Strategy
 
-### Why Two Systems?
+As explained in the Context section, we use two different metering approaches because our costs differ:
 
-| Aspect               | Basic Workflows          | Advanced Workflows       |
-| -------------------- | ------------------------ | ------------------------ |
-| **Where it runs**    | Heroku dynos             | Modal compute            |
-| **Cost structure**   | Fixed monthly            | Per-second compute       |
-| **Metering**         | Count-based guardrail    | Credit-based, cost-tied  |
-| **Billing approach** | Included in subscription | Credits consumed per run |
+- **Basic workflows** → Soft caps with manual review for edge cases
+- **Advanced workflows** → Consume credits based on actual compute time
 
-**Basic workflows** run on Heroku, which is a fixed monthly cost. We don't micro-bill CPU time because there's no incremental cost. Instead, we set per-org monthly caps as guardrails to prevent abuse.
+### Basic Workflow Metering (Soft Caps)
 
-**Advanced workflows** run on Modal, where we pay per-CPU-second. We need precise metering to recover costs and ensure fair pricing.
-
-### Basic Workflow Metering
-
-Simple count-based guardrail:
+Basic workflows cost us essentially nothing (fixed Heroku cost), so we don't hard-block users. Instead, we use soft caps:
 
 ```python
 # simplevalidations/billing/metering.py
 
 class BasicWorkflowMeter:
     """
-    Count-based metering for basic workflows.
+    Soft-cap metering for basic workflows.
 
-    Basic workflows are included in the subscription. We just enforce
-    monthly caps to prevent abuse and encourage upgrades.
+    Basic workflows run on our fixed-cost Heroku infrastructure, so we don't
+    hard-block users. Instead, we use generous soft caps and flag heavy usage
+    for manual review. This lets us distinguish legitimate power users from
+    abuse without blocking paying customers.
     """
 
     def check_and_increment(self, org: Organization) -> None:
         """
-        Check if org has basic launches remaining and increment counter.
+        Increment launch counter and flag if soft cap exceeded.
 
-        Raises:
-            QuotaExceededError: If monthly limit reached.
+        Does NOT raise an exception—we allow the launch to proceed.
+        Heavy usage triggers a review flag, not a block.
         """
         counter = self._get_or_create_monthly_counter(org)
-        limit = org.subscription.plan.basic_launches_per_month
-
-        if counter.basic_launches >= limit:
-            raise QuotaExceededError(
-                detail=_(
-                    "Monthly basic workflow limit reached (%(used)s/%(limit)s). "
-                    "Upgrade your plan for more capacity."
-                ) % {"used": counter.basic_launches, "limit": limit},
-                code="basic_quota_exceeded",
-            )
+        soft_cap = org.subscription.plan.basic_launches_soft_cap
 
         counter.basic_launches += 1
         counter.save(update_fields=["basic_launches"])
+
+        # Flag for review if exceeding soft cap (but don't block)
+        if counter.basic_launches > soft_cap:
+            self._flag_for_review(
+                org=org,
+                reason="basic_launches_soft_cap_exceeded",
+                details={
+                    "launches": counter.basic_launches,
+                    "soft_cap": soft_cap,
+                },
+            )
+
+    def _flag_for_review(self, org: Organization, reason: str, details: dict) -> None:
+        """
+        Create a review flag for the billing team.
+
+        They'll decide whether to:
+        - Raise the org's soft cap (legitimate heavy user)
+        - Contact the org about upgrading
+        - Block the org (abuse detected)
+        """
+        UsageReviewFlag.objects.get_or_create(
+            org=org,
+            reason=reason,
+            period_start=counter.period_start,
+            defaults={"details": details},
+        )
 ```
 
 ### Advanced Workflow Metering (Credits)
@@ -541,7 +570,7 @@ class Organization(models.Model):
             org=self,
             period_start=period_start,
             period_end=period_end,
-            basic_launches_limit=plan_limits.basic_launches_per_month or 0,
+            basic_launches_soft_cap=plan_limits.basic_launches_soft_cap or 0,
             advanced_credits_limit=plan_limits.advanced_credits_per_month,
         )
 ```
@@ -566,7 +595,7 @@ class PlanLimits:
     max_payload_mb: int
 
     # Usage limits
-    basic_launches_per_month: Optional[int]
+    basic_launches_soft_cap: Optional[int]  # None = unlimited, soft cap triggers review
     advanced_credits_per_month: int
 
     # Seats
@@ -590,7 +619,7 @@ PLAN_LIMITS = {
         max_workflows=2,
         max_custom_validators=0,
         max_payload_mb=1,
-        basic_launches_per_month=200,
+        basic_launches_soft_cap=500,
         advanced_credits_per_month=0,
         included_seats=1,
         has_integrations=False,
@@ -606,7 +635,7 @@ PLAN_LIMITS = {
         max_workflows=10,
         max_custom_validators=10,
         max_payload_mb=5,
-        basic_launches_per_month=5_000,
+        basic_launches_soft_cap=10_000,
         advanced_credits_per_month=200,
         included_seats=2,
         has_integrations=False,
@@ -622,7 +651,7 @@ PLAN_LIMITS = {
         max_workflows=100,
         max_custom_validators=100,
         max_payload_mb=20,
-        basic_launches_per_month=50_000,
+        basic_launches_soft_cap=100_000,
         advanced_credits_per_month=1_000,
         included_seats=10,
         has_integrations=True,
@@ -638,7 +667,7 @@ PLAN_LIMITS = {
         max_workflows=None,  # Unlimited
         max_custom_validators=None,
         max_payload_mb=100,
-        basic_launches_per_month=250_000,
+        basic_launches_soft_cap=None,  # Unlimited
         advanced_credits_per_month=5_000,  # Baseline, negotiable
         included_seats=0,  # Custom, negotiated
         has_integrations=True,
@@ -939,7 +968,7 @@ class BillingService:
             org=subscription.org,
             period_start=subscription.current_period_start.date(),
             period_end=subscription.current_period_end.date(),
-            basic_launches_limit=plan_limits.basic_launches_per_month or 0,
+            basic_launches_soft_cap=plan_limits.basic_launches_soft_cap or 0,
             advanced_credits_limit=plan_limits.advanced_credits_per_month,
         )
 ```
@@ -1082,11 +1111,11 @@ class UsageCounter(TimeStampedModel):
     period_start = models.DateField()
     period_end = models.DateField()
 
-    # Basic workflow usage
+    # Basic workflow usage (soft cap - exceeding triggers review, not block)
     basic_launches = models.IntegerField(default=0)
-    basic_launches_limit = models.IntegerField()
+    basic_launches_soft_cap = models.IntegerField()
 
-    # Advanced workflow usage
+    # Advanced workflow usage (hard limit - credits consumed)
     advanced_credits_used = models.IntegerField(default=0)
     advanced_credits_limit = models.IntegerField()
 
@@ -1110,9 +1139,10 @@ class UsageCounter(TimeStampedModel):
 
     @property
     def basic_usage_percent(self) -> float:
-        if self.basic_launches_limit == 0:
+        """Percentage of soft cap used (can exceed 100%)."""
+        if self.basic_launches_soft_cap == 0:
             return 0
-        return (self.basic_launches / self.basic_launches_limit) * 100
+        return (self.basic_launches / self.basic_launches_soft_cap) * 100
 
     @property
     def advanced_usage_percent(self) -> float:
@@ -1343,7 +1373,7 @@ class Validator(TimeStampedModel):
 - [ ] Implement Stripe webhook handler
 - [ ] Create checkout flow for plan selection
 - [ ] Create checkout flow for credit purchases
-- [ ] Implement `BasicWorkflowMeter` for guardrail enforcement
+- [ ] Implement `BasicWorkflowMeter` for monthly cap enforcement
 - [ ] Implement `AdvancedWorkflowMeter` for credit consumption
 - [ ] Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to settings
 

@@ -172,7 +172,8 @@ def _run_and_poll(
 @pytest.mark.django_db
 class TestXsdValidation:
     """
-    End-to-end XSD validation tests that start workflows via the API and poll to completion.
+    End-to-end XSD validation tests that start workflows via the API and poll
+    to completion.
     """
 
     def test_xml_xsd_happy_path(self, load_xml_asset, workflow_context):
@@ -197,7 +198,8 @@ class TestXsdValidation:
 
     def test_xml_xsd_one_field_fails(self, load_xml_asset, workflow_context):
         """
-        Invalid XML should fail XSD validation and report at least one issue, highlighting rating/max constraints.
+        Invalid XML should fail XSD validation and report at least one issue,
+        highlighting rating/max constraints.
         """
         invalid_product_xml = load_xml_asset("invalid_product.xml")
         client = workflow_context["client"]

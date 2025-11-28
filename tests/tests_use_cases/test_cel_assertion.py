@@ -59,7 +59,11 @@ class CelAssertionTests(TestCase):
         )
 
         workflow = WorkflowFactory(org=org, user=user, is_active=True)
-        step = WorkflowStepFactory(workflow=workflow, validator=validator, ruleset=ruleset)
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            ruleset=ruleset,
+        )
 
         payload = Path("tests/assets/json/example_product.json").read_text()
         payload_data = json.loads(payload)

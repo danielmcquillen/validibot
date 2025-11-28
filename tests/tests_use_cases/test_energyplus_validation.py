@@ -258,7 +258,8 @@ class TestEnergyPlusValidation:
         assert isinstance(issues, list)
         assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
-        # Ensure Modal runner was invoked with the expected payload shape for faked runs.
+        # Ensure Modal runner was invoked with the expected payload shape for faked
+        # runs.
         if not live_modal:
             assert runner is not None
             assert runner.calls, "Expected the EnergyPlus Modal runner to be invoked."

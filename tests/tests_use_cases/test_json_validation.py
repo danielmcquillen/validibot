@@ -98,7 +98,8 @@ def workflow_context(load_json_asset, api_client):
 
 def start_workflow_url(workflow_id: int) -> str:
     """
-    Resolve the workflow start endpoint, falling back to a conventional path if reverse fails.
+    Resolve the workflow start endpoint. Fall back to a conventional path if
+    reverse fails.
     """
     try:
         url = reverse("api:workflow-start", args=[workflow_id])
@@ -198,7 +199,7 @@ class TestJsonValidation:
             data = {}
             try:
                 data = resp.json()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.debug("Could not parse JSON response: %s", exc)
 
             run_id = data.get("id")
@@ -207,7 +208,7 @@ class TestJsonValidation:
                     try:
                         poll_url = reverse(name, args=[run_id])
                         break
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         logger.debug(
                             "Could not reverse %s for run %s: %s",
                             name,
@@ -230,7 +231,8 @@ class TestJsonValidation:
 
     def test_json_validation_one_field_fails(self, workflow_context):
         """
-        Invalid payload should fail validation and surface the rating/max error in issues.
+        Invalid payload should fail validation and surface the rating/max error
+        in issues.
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]
@@ -251,7 +253,7 @@ class TestJsonValidation:
             data = {}
             try:
                 data = resp.json()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.debug("Could not parse JSON response: %s", exc)
             run_id = data.get("id")
             if run_id:
@@ -259,7 +261,7 @@ class TestJsonValidation:
                     try:
                         poll_url = reverse(name, args=[run_id])
                         break
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         logger.debug(
                             "Could not reverse %s for run %s: %s",
                             name,

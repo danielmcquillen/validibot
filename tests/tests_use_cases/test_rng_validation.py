@@ -99,7 +99,8 @@ def extract_issues(data: dict) -> list[dict]:
 @pytest.fixture
 def workflow_context(load_rng_asset, api_client):
     """
-    Build a workflow configured for RELAX NG XML validation and authenticate the API client.
+    Build a workflow configured for RELAX NG XML validation and authenticate
+    the API client.
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
@@ -168,7 +169,7 @@ def _run_and_poll(
         data = {}
         try:
             data = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("Could not parse JSON response: %s", exc)
         run_id = data.get("id")
         if run_id:
@@ -176,8 +177,13 @@ def _run_and_poll(
                 try:
                     poll_url = reverse(name, args=[run_id])
                     break
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, exc)
+                except Exception as exc:
+                    logger.debug(
+                        "Could not reverse %s for run %s: %s",
+                        name,
+                        run_id,
+                        exc,
+                    )
             if not poll_url:
                 poll_url = f"/api/v1/validation-runs/{run_id}/"
 
@@ -189,12 +195,14 @@ def _run_and_poll(
 @pytest.mark.django_db
 class TestRelaxNGValidation:
     """
-    End-to-end RELAX NG validation tests covering both valid and invalid XML payloads.
+    End-to-end RELAX NG validation tests covering both valid and invalid XML
+    payloads.
     """
 
     def test_xml_rng_happy_path(self, load_xml_asset, workflow_context):
         """
-        Valid XML should pass RELAX NG validation and return a succeeded run with no issues.
+        Valid XML should pass RELAX NG validation and return a succeeded run
+        with no issues.
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]

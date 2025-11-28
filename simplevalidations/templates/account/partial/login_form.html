@@ -5,14 +5,14 @@
 
 <form class="login"
       method="post"
-      action="{% url 'account_login' %}?next=/app/dashboard/">
+      action="{% url 'account_login' %}">
     {% csrf_token %}
     {{ form|crispy }}
-    {% if redirect_field_value %}
+    {% with redirect_target=redirect_field_value|default:"/app/dashboard/" %}
         <input type="hidden"
                name="{{ redirect_field_name }}"
-               value="{{ redirect_field_value }}" />
-    {% endif %}
+               value="{{ redirect_target }}" />
+    {% endwith %}
     <div class="d-flex flex-row justify-content-end align-items-center mt-5">
         <a class="button secondaryAction"
            href="{% url 'account_reset_password' %}">{% trans "Forgot Password?" %}</a>

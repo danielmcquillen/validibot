@@ -6,3 +6,5 @@ This directory captures the architectural decisions that shape SimpleValidations
 - [ADR-2025-11-07: Assertion UI Refactor](2025-11-07-assertion-creation-format.md)
 - [ADR-2025-11-07: Catalog Coverage View For Custom Targets](2025-11-07-custom-target-visibility.md)
 - [ADR-2025-11-27: Idempotency Keys for API Validation Requests](2025-11-27-idempotency-keys.md)
+- [ADR-2025-11-28: Invite-Based Signup and Organization Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)
+- [ADR-2025-11-28: Public Workflow Access for Anonymous Users](2025-11-28-public-workflow-access.md)

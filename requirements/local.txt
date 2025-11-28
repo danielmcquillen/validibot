@@ -39,3 +39,5 @@ pytest-django==4.11.1  # https://github.com/pytest-dev/pytest-django
 
 # For modal.com communication
 -e ./sv_shared_dev
+
+selenium==4.38.0

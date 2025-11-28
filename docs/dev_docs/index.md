@@ -44,6 +44,14 @@ This site describes the core concepts, data model, and API for working with vali
 
 - [Architecture Decision Records](adr/index.md) - Directory of decisions that guide the platform
 
+### Testing
+
+Pytest ignores `tests_integration` by default (see `pyproject.toml`). Run them manually when you need the end-to-end checks:
+
+```sh
+uv run --extra dev pytest tests_integration
+```
+
 ### Deployment
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist

@@ -26,6 +26,13 @@ testpaths = [
   "simplevalidations",
 ] # exclude sibling dev repos (sv_modal_dev, sv_shared_dev) from discovery
 
+# ignore test_use_cases
+norecursedirs = [
+  "sv_modal_dev",
+  "sv_shared_dev",
+  "tests/tests_integration", # We run these manually
+]
+
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["simplevalidations/**"]

@@ -1,5 +1,10 @@
 {% load i18n crispy_forms_tags core_tags %}
 
+<style>
+  .modal-body {
+    max-height: 70vh;
+  }
+</style>
 {% with modal_id=modal_id|default:"modal-signal-create" modal_title=modal_title|default:_("Add signal") %}
   <div class="modal fade"
        id="{{ modal_id }}"
@@ -22,7 +27,7 @@
               hx-target="#{{ modal_id }}-content"
               hx-swap="innerHTML"
               novalidate>
-          <div class="modal-body overflow-auto" style="max-height: 70vh;">
+          <div class="modal-body overflow-auto">
             {% csrf_token %}
             {% if modal_form.non_field_errors %}
               <div class="alert alert-danger">

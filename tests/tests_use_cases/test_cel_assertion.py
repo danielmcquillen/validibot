@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from django.test import TestCase
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
@@ -25,79 +26,87 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
 @pytest.mark.django_db
-def test_cel_assertion_with_custom_targets_passes():
-    org = OrganizationFactory()
-    user = UserFactory()
-    grant_role(user, org, RoleCode.EXECUTOR)
+class CelAssertionTests(TestCase):
+    """
+    Exercises CEL assertions in the BASIC validator engine when custom assertion
+    targets are allowed. Ensures the validator builds a CEL context from JSON
+    payloads, evaluates the assertion successfully, and records a passing
+    ValidationRun with no findings.
+    """
 
-    validator = ValidatorFactory(
-        org=org,
-        is_system=False,
-        validation_type=ValidationType.BASIC,
-        allow_custom_assertion_targets=True,
-    )
-    ruleset = RulesetFactory(org=org, user=user)
-    RulesetAssertionFactory(
-        ruleset=ruleset,
-        assertion_type=AssertionType.CEL_EXPRESSION,
-        operator=AssertionOperator.CEL_EXPR,
-        rhs={"expr": 'price > 0 && rating >= 90 && "mini" in tags'},
-    )
+    def test_cel_assertion_with_custom_targets_passes(self):
+        """
+        Verify that a BASIC validator with ``allow_custom_assertion_targets`` set
+        can expose payload fields directly to CEL expressions, execute the rule,
+        and complete the workflow run without findings.
+        """
+        org = OrganizationFactory()
+        user = UserFactory()
+        grant_role(user, org, RoleCode.EXECUTOR)
 
-    workflow = WorkflowFactory(org=org, user=user, is_active=True)
-    step = WorkflowStepFactory(workflow=workflow, validator=validator, ruleset=ruleset)
+        validator = ValidatorFactory(
+            org=org,
+            is_system=False,
+            validation_type=ValidationType.BASIC,
+            allow_custom_assertion_targets=True,
+        )
+        ruleset = RulesetFactory(org=org, user=user)
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": 'price > 0 && rating >= 90 && "mini" in tags'},
+        )
 
-    payload = Path("tests/assets/json/example_product.json").read_text()
-    payload_data = json.loads(payload)
+        workflow = WorkflowFactory(org=org, user=user, is_active=True)
+        step = WorkflowStepFactory(workflow=workflow, validator=validator, ruleset=ruleset)
 
-    # Sanity: custom targets should be added to CEL context for this validator.
-    engine = BasicValidatorEngine()
-    assert validator.allow_custom_assertion_targets is True
-    ctx = engine._build_cel_context(payload_data, validator)  # noqa: SLF001
-    assert "price" in ctx, ctx
-    assert "rating" in ctx, ctx
-    assert "tags" in ctx, ctx
-    assert ctx["price"] == payload_data["price"]
-    assert ctx["rating"] == payload_data["rating"]
-    assert ctx["tags"] == payload_data["tags"]
-    issues = engine.evaluate_cel_assertions(
-        ruleset=ruleset,
-        validator=validator,
-        payload=payload_data,
-        target_stage="input",
-    )
-    assert issues == []
+        payload = Path("tests/assets/json/example_product.json").read_text()
+        payload_data = json.loads(payload)
 
-    submission = SubmissionFactory(
-        org=org,
-        project=workflow.project,
-        user=user,
-        workflow=workflow,
-        content=payload,
-    )
+        engine = BasicValidatorEngine()
+        assert validator.allow_custom_assertion_targets is True
+        context = engine._build_cel_context(payload_data, validator)  # noqa: SLF001
+        assert context["price"] == payload_data["price"]
+        assert context["rating"] == payload_data["rating"]
+        assert context["tags"] == payload_data["tags"]
 
-    validation_run = ValidationRun.objects.create(
-        org=org,
-        workflow=workflow,
-        submission=submission,
-        project=submission.project,
-        user=user,
-        status=ValidationRunStatus.PENDING,
-    )
+        issues = engine.evaluate_cel_assertions(
+            ruleset=ruleset,
+            validator=validator,
+            payload=payload_data,
+            target_stage="input",
+        )
+        assert issues == []
 
-    service = ValidationRunService()
-    result = service.execute(
-        validation_run_id=validation_run.id,
-        user_id=user.id,
-        metadata=None,
-    )
+        submission = SubmissionFactory(
+            org=org,
+            project=workflow.project,
+            user=user,
+            workflow=workflow,
+            content=payload,
+        )
 
-    validation_run.refresh_from_db()
-    findings = list(validation_run.findings.values_list("message", flat=True))
-    assert findings == [], f"Findings: {findings}"
-    assert result.status == ValidationRunStatus.SUCCEEDED
-    assert validation_run.status == ValidationRunStatus.SUCCEEDED
-    assert validation_run.findings.count() == 0
-    step_runs = validation_run.step_runs.all()
-    assert step_runs.count() == 1
-    assert step_runs.first().workflow_step == step
+        validation_run = ValidationRun.objects.create(
+            org=org,
+            workflow=workflow,
+            submission=submission,
+            project=submission.project,
+            user=user,
+            status=ValidationRunStatus.PENDING,
+        )
+
+        service = ValidationRunService()
+        result = service.execute(
+            validation_run_id=validation_run.id,
+            user_id=user.id,
+            metadata=None,
+        )
+
+        validation_run.refresh_from_db()
+        assert result.status == ValidationRunStatus.SUCCEEDED
+        assert validation_run.status == ValidationRunStatus.SUCCEEDED
+        assert validation_run.findings.count() == 0
+        step_runs = validation_run.step_runs.all()
+        assert step_runs.count() == 1
+        assert step_runs.first().workflow_step == step

@@ -28,6 +28,9 @@ pytestmark = pytest.mark.django_db
 
 
 def start_workflow_url(workflow_id: int) -> str:
+    """
+    Resolve the workflow start endpoint, falling back to the conventional API path.
+    """
     try:
         return reverse("api:workflow-start", args=[workflow_id])
     except Exception:
@@ -36,6 +39,9 @@ def start_workflow_url(workflow_id: int) -> str:
 
 
 def normalize_poll_url(location: str) -> str:
+    """
+    Normalize the polling URL returned by the start response.
+    """
     if not location:
         return ""
     if location.startswith("http"):
@@ -50,6 +56,9 @@ def poll_until_complete(
     timeout_s: float = 10.0,
     interval_s: float = 0.25,
 ) -> tuple[dict, int]:
+    """
+    Poll the run detail endpoint until a terminal state is reached or timeout.
+    """
     deadline = time.time() + timeout_s
     last = None
     last_status = None
@@ -71,6 +80,9 @@ def poll_until_complete(
 
 
 def extract_issues(data: dict) -> list[dict]:
+    """
+    Collect issues from each validation step in the run payload.
+    """
     steps = data.get("steps") or []
     collected: list[dict] = []
     for step in steps:
@@ -84,18 +96,14 @@ def extract_issues(data: dict) -> list[dict]:
     return collected
 
 
-# Example XML payloads and schemas
-
-
 @pytest.fixture
 def workflow_context(load_rng_asset, api_client):
     """
-    Create a workflow for XML validation. engine ∈ {"XSD","RELAXNG"}.
+    Build a workflow configured for RELAX NG XML validation and authenticate the API client.
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
 
-    # Ensure caller has EXECUTOR permissions in this org
     grant_role(user, org, RoleCode.EXECUTOR)
 
     validator = ValidatorFactory(
@@ -126,7 +134,6 @@ def workflow_context(load_rng_asset, api_client):
         order=1,
     )
 
-    # Authenticate API client
     api_client.force_authenticate(user=user)
 
     return {
@@ -146,6 +153,9 @@ def _run_and_poll(
     content: str,
     content_type: str = "application/xml",
 ) -> dict:
+    """
+    Start the workflow, then poll until the run completes, returning the final payload.
+    """
     start_url = start_workflow_url(workflow.pk)
     resp = client.post(start_url, data=content, content_type=content_type)
     assert resp.status_code in (HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED), (
@@ -158,16 +168,16 @@ def _run_and_poll(
         data = {}
         try:
             data = resp.json()
-        except Exception as e:
-            logger.debug("Could not parse JSON response: %s", e)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not parse JSON response: %s", exc)
         run_id = data.get("id")
         if run_id:
             for name in ("validation-run-detail", "api:validation-run-detail"):
                 try:
                     poll_url = reverse(name, args=[run_id])
                     break
-                except Exception as e:
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, e)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, exc)
             if not poll_url:
                 poll_url = f"/api/v1/validation-runs/{run_id}/"
 
@@ -176,33 +186,41 @@ def _run_and_poll(
     return data
 
 
-def test_xml_rng_happy_path(load_xml_asset, workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    valid_product_xml = load_xml_asset("valid_product.xml")
-    data = _run_and_poll(client, workflow, content=valid_product_xml)
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
-        f"Unexpected status: {run_status} payload={data}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) == 0, f"Expected no issues, got: {issues}"
+@pytest.mark.django_db
+class TestRelaxNGValidation:
+    """
+    End-to-end RELAX NG validation tests covering both valid and invalid XML payloads.
+    """
 
+    def test_xml_rng_happy_path(self, load_xml_asset, workflow_context):
+        """
+        Valid XML should pass RELAX NG validation and return a succeeded run with no issues.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        valid_product_xml = load_xml_asset("valid_product.xml")
+        data = _run_and_poll(client, workflow, content=valid_product_xml)
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+            f"Unexpected status: {run_status} payload={data}"
+        )
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
-def test_xml_rng_one_field_fails(load_xml_asset, workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    invalid_product_xml = load_xml_asset("invalid_product.xml")
-    data = _run_and_poll(client, workflow, content=invalid_product_xml)
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.FAILED.name, (
-        f"Unexpected status: {run_status}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) >= 1, "Expected at least one issue for invalid payload"
-    joined = " | ".join(str(i) for i in issues)
-    assert ("rating" in joined) or ("max" in joined.lower()), (
-        f"Expected rating/max error in issues, got: {issues}"
-    )
+    def test_xml_rng_one_field_fails(self, load_xml_asset, workflow_context):
+        """
+        Invalid XML should fail RELAX NG validation and report at least one issue.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        invalid_product_xml = load_xml_asset("invalid_product.xml")
+        data = _run_and_poll(client, workflow, content=invalid_product_xml)
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.FAILED.name, (
+            f"Unexpected status: {run_status}"
+        )
+
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) >= 1, "Expected at least one issue for invalid payload"

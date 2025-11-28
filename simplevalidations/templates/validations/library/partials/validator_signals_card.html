@@ -65,6 +65,7 @@
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
                         <i class="bi bi-pencil-square"></i>
                       </button>
+                      {# djlint:off H037 #}
                       <button class="btn btn-outline-danger"
                               hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
@@ -75,6 +76,7 @@
                                           {% endblocktrans %}">
                         <i class="bi bi-trash"></i>
                       </button>
+                      {# djlint:on #}
                     </div>
                   {% endif %}
                 </td>
@@ -111,16 +113,16 @@
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
                         <i class="bi bi-pencil-square"></i>
                       </button>
+                      {# djlint:off H037 #}
                       <button class="btn btn-outline-danger"
                               hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"
                               hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}
-                                            Delete signal '{{ name }}'?
-                                          {% endblocktrans %}">
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
                         <i class="bi bi-trash"></i>
                       </button>
+                      {# djlint:on #}
                     </div>
                   {% endif %}
                 </td>

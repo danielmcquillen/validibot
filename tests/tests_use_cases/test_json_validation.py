@@ -24,10 +24,11 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 logger = logging.getLogger(__name__)
 
-pytestmark = pytest.mark.django_db
-
 
 def valid_product_payload() -> dict[str, Any]:
+    """
+    Produce a sample product payload that satisfies the example JSON Schema.
+    """
     return {
         "sku": "ABCD1234",
         "name": "Widget Mini",
@@ -40,6 +41,9 @@ def valid_product_payload() -> dict[str, Any]:
 
 
 def invalid_product_payload() -> dict[str, Any]:
+    """
+    Produce a payload that intentionally violates the schema (rating > 100).
+    """
     bad = valid_product_payload()
     bad["rating"] = 150  # violates max 100
     return bad
@@ -48,13 +52,12 @@ def invalid_product_payload() -> dict[str, Any]:
 @pytest.fixture
 def workflow_context(load_json_asset, api_client):
     """
-    Build a minimal workflow that validates a product JSON using a JSON Schema ruleset.
-    Schema is loaded from tests/assets/json/example_product_schema.json via fixture.
+    Build a minimal workflow that validates a product JSON using a JSON Schema
+    ruleset, and authenticate the API client with EXECUTOR permissions.
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
 
-    # Ensure caller has EXECUTOR permissions in this org
     grant_role(user, org, RoleCode.EXECUTOR)
 
     validator = ValidatorFactory(
@@ -80,7 +83,6 @@ def workflow_context(load_json_asset, api_client):
         order=1,
     )
 
-    # Authenticate API client
     api_client.force_authenticate(user=user)
 
     return {
@@ -95,7 +97,9 @@ def workflow_context(load_json_asset, api_client):
 
 
 def start_workflow_url(workflow_id: int) -> str:
-    # Prefer reversing if a name is available; fallback to conventional path
+    """
+    Resolve the workflow start endpoint, falling back to a conventional path if reverse fails.
+    """
     try:
         url = reverse("api:workflow-start", args=[workflow_id])
     except Exception:
@@ -106,6 +110,9 @@ def start_workflow_url(workflow_id: int) -> str:
 
 
 def normalize_poll_url(location: str) -> str:
+    """
+    Normalize the polling URL returned by a start response.
+    """
     if not location:
         return ""
     if location.startswith("http"):
@@ -145,7 +152,10 @@ def poll_until_complete(
 
 
 def extract_issues(data: dict) -> list[dict]:
-    steps = data.get("steps")
+    """
+    Collect issues from each validation step in the run payload.
+    """
+    steps = data.get("steps") or []
     collected: list[dict] = []
     for step in steps:
         issues = step.get("issues") or []
@@ -158,98 +168,120 @@ def extract_issues(data: dict) -> list[dict]:
     return collected
 
 
-def test_json_validation_happy_path(workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
+@pytest.mark.django_db
+class TestJsonValidation:
+    """
+    End-to-end JSON Schema validation tests that start workflows via the API and
+    poll until completion, covering both valid and invalid payloads.
+    """
 
-    start_url = start_workflow_url(workflow.pk)
-    payload = valid_product_payload()
+    def test_json_validation_happy_path(self, workflow_context):
+        """
+        Valid payload should succeed and return no issues from the validation run.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
 
-    resp = client.post(
-        start_url,
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-    assert resp.status_code in (200, 201, 202), resp.content
+        start_url = start_workflow_url(workflow.pk)
+        payload = valid_product_payload()
 
-    loc = resp.headers.get("Location") or resp.headers.get("location") or ""
-    poll_url = normalize_poll_url(loc)
-    if not poll_url:
-        data = {}
-        try:
-            data = resp.json()
-        except Exception as e:
-            logger.debug("Could not parse JSON response: %s", e)
+        resp = client.post(
+            start_url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert resp.status_code in (200, 201, 202), resp.content
 
-        run_id = data.get("id")
-        if run_id:
-            for name in ("validation-run-detail", "api:validation-run-detail"):
-                try:
-                    poll_url = reverse(name, args=[run_id])
-                    break
-                except Exception as e:
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, e)
-            if not poll_url:
-                poll_url = f"/api/v1/validation-runs/{run_id}/"
+        loc = resp.headers.get("Location") or resp.headers.get("location") or ""
+        poll_url = normalize_poll_url(loc)
+        if not poll_url:
+            data = {}
+            try:
+                data = resp.json()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not parse JSON response: %s", exc)
 
-    data, last_status = poll_until_complete(client, poll_url)
-    assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
+            run_id = data.get("id")
+            if run_id:
+                for name in ("validation-run-detail", "api:validation-run-detail"):
+                    try:
+                        poll_url = reverse(name, args=[run_id])
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug(
+                            "Could not reverse %s for run %s: %s",
+                            name,
+                            run_id,
+                            exc,
+                        )
+                if not poll_url:
+                    poll_url = f"/api/v1/validation-runs/{run_id}/"
 
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
-        f"Unexpected status: {run_status} payload={data}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) == 0, f"Expected no issues, got: {issues}"
+        data, last_status = poll_until_complete(client, poll_url)
+        assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
 
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+            f"Unexpected status: {run_status} payload={data}"
+        )
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
-def test_json_validation_one_field_fails(workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
+    def test_json_validation_one_field_fails(self, workflow_context):
+        """
+        Invalid payload should fail validation and surface the rating/max error in issues.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
 
-    start_url = start_workflow_url(workflow.pk)
-    payload = invalid_product_payload()
+        start_url = start_workflow_url(workflow.pk)
+        payload = invalid_product_payload()
 
-    resp = client.post(
-        start_url,
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-    assert resp.status_code in (200, 201, 202), resp.content
+        resp = client.post(
+            start_url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        assert resp.status_code in (200, 201, 202), resp.content
 
-    loc = resp.headers.get("Location") or resp.headers.get("location") or ""
-    poll_url = normalize_poll_url(loc)
-    if not poll_url:
-        data = {}
-        try:
-            data = resp.json()
-        except Exception as e:
-            logger.debug("Could not parse JSON response: %s", e)
-        run_id = data.get("id")
-        if run_id:
-            for name in ("validation-run-detail", "api:validation-run-detail"):
-                try:
-                    poll_url = reverse(name, args=[run_id])
-                    break
-                except Exception as e:
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, e)
-            if not poll_url:
-                poll_url = f"/api/v1/validation-runs/{run_id}/"
+        loc = resp.headers.get("Location") or resp.headers.get("location") or ""
+        poll_url = normalize_poll_url(loc)
+        if not poll_url:
+            data = {}
+            try:
+                data = resp.json()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not parse JSON response: %s", exc)
+            run_id = data.get("id")
+            if run_id:
+                for name in ("validation-run-detail", "api:validation-run-detail"):
+                    try:
+                        poll_url = reverse(name, args=[run_id])
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug(
+                            "Could not reverse %s for run %s: %s",
+                            name,
+                            run_id,
+                            exc,
+                        )
+                if not poll_url:
+                    poll_url = f"/api/v1/validation-runs/{run_id}/"
 
-    data, last_status = poll_until_complete(client, poll_url)
-    assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
+        data, last_status = poll_until_complete(client, poll_url)
+        assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
 
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.FAILED.name, (
-        f"Unexpected status: {run_status}"
-    )
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.FAILED.name, (
+            f"Unexpected status: {run_status}"
+        )
 
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) >= 1, "Expected at least one issue for invalid payload"
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) >= 1, "Expected at least one issue for invalid payload"
 
-    joined = " | ".join(str(i) for i in issues)
-    assert ("rating" in joined) or ("maximum" in joined), (
-        f"Expected rating/max error in issues, got: {issues}"
-    )
+        joined = " | ".join(str(issue) for issue in issues)
+        assert ("rating" in joined) or ("maximum" in joined), (
+            f"Expected rating/max error in issues, got: {issues}"
+        )

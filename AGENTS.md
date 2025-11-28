@@ -119,6 +119,10 @@ as closely as possible to the runtime system. These tests often span multiple pa
 
 Please try to always use proper Django TestCase classes with good cleanup and tear down structure.
 
+## Testing documentation habit
+
+- Add a brief, informative docstring to every test method to spell out the behavior under test and why it matters. Keep doing this for new tests so intent stays obvious.
+
 # Documentation
 
 Make sure to always add code documentation to the top of all classes. Explain clearly what the class is for

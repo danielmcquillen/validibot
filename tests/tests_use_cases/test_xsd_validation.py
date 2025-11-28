@@ -169,41 +169,52 @@ def _run_and_poll(
     return data
 
 
-def test_xml_xsd_happy_path(load_xml_asset, workflow_context):
-    valid_product_xml = load_xml_asset("valid_product.xml")
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    data = _run_and_poll(
-        client=client,
-        workflow=workflow,
-        content=valid_product_xml,
-    )
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
-        f"Unexpected status: {run_status} payload={data}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) == 0, f"Expected no issues, got: {issues}"
+@pytest.mark.django_db
+class TestXsdValidation:
+    """
+    End-to-end XSD validation tests that start workflows via the API and poll to completion.
+    """
 
+    def test_xml_xsd_happy_path(self, load_xml_asset, workflow_context):
+        """
+        Valid XML should satisfy the XSD schema, succeed the run, and return no issues.
+        """
+        valid_product_xml = load_xml_asset("valid_product.xml")
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        data = _run_and_poll(
+            client=client,
+            workflow=workflow,
+            content=valid_product_xml,
+        )
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+            f"Unexpected status: {run_status} payload={data}"
+        )
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) == 0, f"Expected no issues, got: {issues}"
 
-def test_xml_xsd_one_field_fails(load_xml_asset, workflow_context):
-    invalid_product_xml = load_xml_asset("invalid_product.xml")
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    data = _run_and_poll(
-        client=client,
-        workflow=workflow,
-        content=invalid_product_xml,
-    )
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.FAILED.name, (
-        f"Unexpected status: {run_status}"
-    )
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) >= 1, "Expected at least one issue for invalid payload"
-    joined = " | ".join(str(i) for i in issues)
-    assert ("rating" in joined) or ("max" in joined.lower()), (
-        f"Expected rating/max error in issues, got: {issues}"
-    )
+    def test_xml_xsd_one_field_fails(self, load_xml_asset, workflow_context):
+        """
+        Invalid XML should fail XSD validation and report at least one issue, highlighting rating/max constraints.
+        """
+        invalid_product_xml = load_xml_asset("invalid_product.xml")
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        data = _run_and_poll(
+            client=client,
+            workflow=workflow,
+            content=invalid_product_xml,
+        )
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.FAILED.name, (
+            f"Unexpected status: {run_status}"
+        )
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) >= 1, "Expected at least one issue for invalid payload"
+        joined = " | ".join(str(i) for i in issues)
+        assert ("rating" in joined) or ("max" in joined.lower()), (
+            f"Expected rating/max error in issues, got: {issues}"
+        )

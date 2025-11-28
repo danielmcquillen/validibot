@@ -24,10 +24,12 @@ from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 logger = logging.getLogger(__name__)
-pytestmark = pytest.mark.django_db
 
 
 def start_workflow_url(workflow_id: int) -> str:
+    """
+    Resolve the API start URL for a workflow, falling back to a guessed path if reversing fails.
+    """
     try:
         return reverse("api:workflow-start", args=[workflow_id])
     except Exception:  # pragma: no cover - fallback for mismatched urls
@@ -36,6 +38,9 @@ def start_workflow_url(workflow_id: int) -> str:
 
 
 def normalize_poll_url(location: str) -> str:
+    """
+    Normalize the polling URL returned by the workflow start endpoint.
+    """
     if not location:
         return ""
     if location.startswith("http"):
@@ -50,6 +55,9 @@ def poll_until_complete(
     timeout_s: float = 10.0,
     interval_s: float = 0.25,
 ) -> tuple[dict, int]:
+    """
+    Poll the validation run endpoint until a terminal state is reached or timeout occurs.
+    """
     deadline = time.time() + timeout_s
     last = None
     last_status = None
@@ -71,6 +79,9 @@ def poll_until_complete(
 
 
 def extract_issues(data: dict) -> list[dict]:
+    """
+    Collect issues from the step payload of a validation run response.
+    """
     steps = data.get("steps") or []
     collected: list[dict] = []
     for step in steps:
@@ -86,6 +97,9 @@ def extract_issues(data: dict) -> list[dict]:
 
 @pytest.fixture
 def workflow_context(load_dtd_asset, api_client):
+    """
+    Build a minimal workflow configured for XML DTD validation and authenticate the API client.
+    """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
     grant_role(user, org, RoleCode.EXECUTOR)
@@ -125,6 +139,9 @@ def workflow_context(load_dtd_asset, api_client):
 
 
 def _run_and_poll(client, workflow, *, content: str) -> dict:
+    """
+    Start a workflow via the API and poll until the validation run completes, returning the payload.
+    """
     start_url = start_workflow_url(workflow.pk)
     resp = client.post(start_url, data=content, content_type="application/xml")
     assert resp.status_code in (HTTP_200_OK, HTTP_201_CREATED, HTTP_202_ACCEPTED), (
@@ -156,24 +173,36 @@ def _run_and_poll(client, workflow, *, content: str) -> dict:
     return data
 
 
-def test_xml_dtd_happy_path(load_xml_asset, workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    payload = load_xml_asset("valid_product.xml")
+@pytest.mark.django_db
+class TestDtdValidation:
+    """
+    End-to-end DTD validation tests that start a workflow via the API and poll
+    until completion, asserting both happy path and failure scenarios.
+    """
 
-    data = _run_and_poll(client, workflow, content=payload)
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name
-    assert extract_issues(data) == []
+    def test_xml_dtd_happy_path(self, load_xml_asset, workflow_context):
+        """
+        Valid XML payload should pass DTD validation, produce a succeeded run, and return no issues.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        payload = load_xml_asset("valid_product.xml")
 
+        data = _run_and_poll(client, workflow, content=payload)
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.SUCCEEDED.name
+        assert extract_issues(data) == []
 
-def test_xml_dtd_missing_required_elements(load_xml_asset, workflow_context):
-    client = workflow_context["client"]
-    workflow = workflow_context["workflow"]
-    payload = load_xml_asset("invalid_product.xml")
+    def test_xml_dtd_missing_required_elements(self, load_xml_asset, workflow_context):
+        """
+        Invalid XML payload missing required elements should fail DTD validation and return issues.
+        """
+        client = workflow_context["client"]
+        workflow = workflow_context["workflow"]
+        payload = load_xml_asset("invalid_product.xml")
 
-    data = _run_and_poll(client, workflow, content=payload)
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.FAILED.name
-    issues = extract_issues(data)
-    assert issues, "Expected DTD validation issues"
+        data = _run_and_poll(client, workflow, content=payload)
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.FAILED.name
+        issues = extract_issues(data)
+        assert issues, "Expected DTD validation issues"

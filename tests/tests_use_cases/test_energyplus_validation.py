@@ -227,30 +227,41 @@ def _run_and_poll(client, workflow, content: str) -> dict:
     return data
 
 
-def test_energyplus_workflow_success(energyplus_workflow):
-    client = energyplus_workflow["client"]
-    workflow = energyplus_workflow["workflow"]
-    runner = energyplus_workflow["runner"]
-    live_modal = energyplus_workflow["live_modal"]
-    weather_file = energyplus_workflow["weather_file"]
+@pytest.mark.django_db
+class TestEnergyPlusValidation:
+    """
+    End-to-end EnergyPlus validation that starts a workflow via the API, polls
+    to completion, and verifies the Modal runner interaction and outcomes.
+    """
 
-    payload = load_example_epjson()
+    def test_energyplus_workflow_success(self, energyplus_workflow):
+        """
+        A valid EPJSON payload should succeed with no issues and, when mocked,
+        invoke the Modal runner with the expected weather file and payload shape.
+        """
+        client = energyplus_workflow["client"]
+        workflow = energyplus_workflow["workflow"]
+        runner = energyplus_workflow["runner"]
+        live_modal = energyplus_workflow["live_modal"]
+        weather_file = energyplus_workflow["weather_file"]
 
-    data = _run_and_poll(client, workflow, payload)
+        payload = load_example_epjson()
 
-    run_status = (data.get("status") or data.get("state") or "").upper()
-    assert run_status == ValidationRunStatus.SUCCEEDED.name, (
-        f"Unexpected status: {run_status} payload={data}"
-    )
+        data = _run_and_poll(client, workflow, payload)
 
-    issues = extract_issues(data)
-    assert isinstance(issues, list)
-    assert len(issues) == 0, f"Expected no issues, got: {issues}"
+        run_status = (data.get("status") or data.get("state") or "").upper()
+        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+            f"Unexpected status: {run_status} payload={data}"
+        )
 
-    # Ensure Modal runner was invoked with the expected payload shape for faked runs.
-    if not live_modal:
-        assert runner is not None
-        assert runner.calls, "Expected the EnergyPlus Modal runner to be invoked."
-        first_call = runner.calls[0]
-        assert "energyplus_payload" in first_call
-        assert first_call["weather_file"] == weather_file
+        issues = extract_issues(data)
+        assert isinstance(issues, list)
+        assert len(issues) == 0, f"Expected no issues, got: {issues}"
+
+        # Ensure Modal runner was invoked with the expected payload shape for faked runs.
+        if not live_modal:
+            assert runner is not None
+            assert runner.calls, "Expected the EnergyPlus Modal runner to be invoked."
+            first_call = runner.calls[0]
+            assert "energyplus_payload" in first_call
+            assert first_call["weather_file"] == weather_file

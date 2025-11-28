@@ -4,9 +4,11 @@ import contextlib
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing import Any
 
-from attr import dataclass, field
+from attr import dataclass
+from attr import field
 from celery.exceptions import TimeoutError as CeleryTimeout
 from django.conf import settings
 from django.db import transaction
@@ -15,23 +17,19 @@ from django.utils.translation import gettext as _
 from rest_framework import status
 
 from simplevalidations.tracking.services import TrackingEventService
-from simplevalidations.validations.constants import (
-    VALIDATION_RUN_TERMINAL_STATUSES,
-    Severity,
-    StepStatus,
-    ValidationRunSource,
-    ValidationRunStatus,
-)
+from simplevalidations.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunSource
+from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.registry import get as get_validator_class
-from simplevalidations.validations.models import (
-    ValidationFinding,
-    ValidationRun,
-    ValidationRunSummary,
-    ValidationStepRun,
-    ValidationStepRunSummary,
-)
+from simplevalidations.validations.models import ValidationFinding
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import ValidationRunSummary
+from simplevalidations.validations.models import ValidationStepRun
+from simplevalidations.validations.models import ValidationStepRunSummary
 from simplevalidations.validations.services.models import ValidationRunTaskResult
 
 logger = logging.getLogger(__name__)
@@ -44,13 +42,13 @@ RUN_CANCELED_MESSAGE = _("Run canceled by user.")
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
-    from simplevalidations.users.models import Organization, User
-    from simplevalidations.validations.engines.base import (
-        BaseValidatorEngine,
-        ValidationResult,
-    )
-    from simplevalidations.validations.models import Ruleset, Validator
-    from simplevalidations.workflows.models import Workflow, WorkflowStep
+    from simplevalidations.users.models import Organization
+    from simplevalidations.users.models import User
+    from simplevalidations.validations.engines.base import BaseValidatorEngine
+    from simplevalidations.validations.models import Ruleset
+    from simplevalidations.validations.models import Validator
+    from simplevalidations.workflows.models import Workflow
+    from simplevalidations.workflows.models import WorkflowStep
 
 
 @dataclass
@@ -108,23 +106,24 @@ class ValidationRunService:
 
         Args:
             request:                The HTTP request object.
-            org:                    The organization under which the validation run is created.
+            org:                    The organization under which the validation
+                                    run is created.
             workflow:               The workflow to be executed.
             submission:             The submission associated with the validation run.
             user_id:                The ID of the user initiating the run.
             metadata:               Optional metadata to be associated with the run.
-            wait_for_completion:    Whether to wait synchronously for the run to complete.
+            wait_for_completion:    Whether to wait synchronously for the run to
+                                    complete.
             source:                 Origin of the run (launch page, API, etc.).
 
         Returns:
-            ValidationRunLaunchResults: Instance of this dataclass with results of launch.
+            ValidationRunLaunchResults: Instance of this dataclass with
+            results of launch.
 
         """
         start_time = time.perf_counter()
         # local import to avoid cycles
-        from simplevalidations.validations.tasks import (  # noqa:PLC0415
-            execute_validation_run,
-        )
+        from simplevalidations.validations.tasks import execute_validation_run
 
         if not request:
             err_msg = "Request object is required to build absolute URIs."
@@ -225,8 +224,11 @@ class ValidationRunService:
         attempts = int(getattr(settings, "VALIDATION_START_ATTEMPTS", 4))
 
         if wait_for_completion and async_result is not None:
+            msg = (
+                "Waiting synchronously for validation run %s (attempts=%s, timeout=%ss)"
+            )
             logger.debug(
-                "Waiting synchronously for validation run %s (attempts=%s, timeout=%ss)",
+                msg,
                 validation_run.id,
                 attempts,
                 per_attempt,
@@ -619,8 +621,8 @@ class ValidationRunService:
                 meta=meta,
                 ruleset_assertion_id=issue.assertion_id,
             )
-            finding._ensure_run_alignment()
-            finding._strip_payload_prefix()
+            finding._ensure_run_alignment() # noqa: SLF001
+            finding._strip_payload_prefix() # noqa: SLF001
             findings.append(finding)
         if findings:
             ValidationFinding.objects.bulk_create(findings, batch_size=500)
@@ -634,8 +636,7 @@ class ValidationRunService:
         validation_result: ValidationResult,
     ) -> dict[str, Any]:
         issues = [
-            self._normalize_issue(issue)
-            for issue in (validation_result.issues or [])
+            self._normalize_issue(issue) for issue in (validation_result.issues or [])
         ]
         severity_counts, assertion_failures = self._persist_findings(
             validation_run=validation_run,

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from celery import shared_task
 from django.conf import settings
 
-from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.validations.services.fmi import run_fmu_probe
+from simplevalidations.validations.services.validation_run import ValidationRunService
 
 if TYPE_CHECKING:
     from simplevalidations.validations.models import FMUModel
@@ -69,7 +69,7 @@ def run_fmu_probe_task(self, fmu_model_id: int) -> dict:
     without executing arbitrary native code in-process.
     """
 
-    from simplevalidations.validations.models import FMUModel  # noqa: PLC0415
+    from simplevalidations.validations.models import FMUModel
 
     fmu: FMUModel = FMUModel.objects.get(pk=fmu_model_id)
     result = run_fmu_probe(fmu)

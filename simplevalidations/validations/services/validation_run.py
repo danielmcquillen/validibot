@@ -621,8 +621,8 @@ class ValidationRunService:
                 meta=meta,
                 ruleset_assertion_id=issue.assertion_id,
             )
-            finding._ensure_run_alignment() # noqa: SLF001
-            finding._strip_payload_prefix() # noqa: SLF001
+            finding._ensure_run_alignment()  # noqa: SLF001
+            finding._strip_payload_prefix()  # noqa: SLF001
             findings.append(finding)
         if findings:
             ValidationFinding.objects.bulk_create(findings, batch_size=500)

@@ -2,30 +2,32 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
+from decimal import InvalidOperation
 from typing import Any
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Column, Layout, Row
+from crispy_forms.layout import Column
+from crispy_forms.layout import Layout
+from crispy_forms.layout import Row
 from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionDataFormat
-from simplevalidations.validations.constants import (
-    AssertionOperator,
-    AssertionType,
-    CatalogEntryType,
-    CatalogRunStage,
-    CustomValidatorType,
-    Severity,
-    ValidatorRuleType,
-)
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import CustomValidatorType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidatorRuleType
 from simplevalidations.validations.models import ValidatorCatalogEntry
 
 
@@ -40,8 +42,11 @@ class CelHelpLabelMixin:
         field = self.fields.get(field_name)
         if not field:
             return
-        field.label = mark_safe(
-            f"<div class='d-flex flex-row justify-content-between'>{field.label}{self._cel_help_markup()}</div>"
+        # Use format_html to safely escape the label while allowing our HTML wrapper
+        field.label = format_html(
+            "<div class='d-flex flex-row justify-content-between'>{}{}</div>",
+            field.label,
+            mark_safe(self._cel_help_markup()),
         )
 
 
@@ -390,7 +395,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         label=_("Message"),
         required=False,
         help_text=_(
-            "Supports {{value}} style placeholders plus filters round, upper, lower, default."
+            "Supports {{value}} style placeholders plus filters round, "
+            "upper, lower, default."
         ),
         widget=forms.Textarea(
             attrs={
@@ -447,9 +453,11 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             signal_choices.append((value, f"{label} · {role}"))
         self.no_signal_choices = len(signal_choices) == 0
         self.fields["target_catalog_entry"].choices = [
-            ("", _("Select a signal"))
-        ] + signal_choices
-        # Hide catalog selector in favor of the target field; we still keep it for backend resolution.
+            ("", _("Select a signal")),
+            *signal_choices,
+        ]
+        # Hide catalog selector in favor of the target field; we 
+        # still keep it for backend resolution.
         self.fields["target_catalog_entry"].widget = forms.HiddenInput()
         if self.no_signal_choices:
             self.fields["target_catalog_entry"].required = False
@@ -457,7 +465,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         if self.fields.get("cel_expression"):
             if self._validator_allows_custom_targets():
                 cel_help_text = _(
-                    "You may enter new targets using dot notation (e.g., data.error.message) "
+                    "You may enter new targets using dot notation "
+                    "(e.g., data.error.message) "
                     "and [index] for lists."
                 )
             else:
@@ -478,7 +487,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 target_field.label = _("Target Signal or Path")
                 target_field.help_text = _(
                     "Use `output.<name>` to "
-                    "disambiguate output signals when an input signal shares the same name. "
+                    "disambiguate output signals when an input signal shares "
+                    "the same name. "
                     "Use dot notation for nested objects and [index] for lists, e.g. "
                     "`payload.results[0].value`.",
                 )
@@ -647,7 +657,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 raise ValidationError(
                     {
                         "target_field": _(
-                            "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
+                            "Unknown signal(s) referenced. Provide a catalog signal "
+                            "or enable custom targets."
                         )
                     }
                 )
@@ -672,7 +683,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     raise ValidationError(
                         {
                             "target_field": _(
-                                "Both an input and output are named '%(name)s'. Use `output.%(name)s` to target the output signal."
+                                "Both an input and output are named '%(name)s'. "
+                                "Use `output.%(name)s` to target the output signal."
                             )
                             % {"name": value}
                         }
@@ -686,7 +698,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     raise ValidationError(
                         {
                             "target_field": _(
-                                "Both an input and output are named '%(name)s'. Use `output.%(name)s` to target the output signal."
+                                "Both an input and output are named '%(name)s'. "
+                                "Use `output.%(name)s` to target the output signal."
                             )
                             % {"name": value}
                         }
@@ -699,7 +712,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 raise ValidationError(
                     {
                         "target_field": _(
-                            "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
+                            "Unknown signal(s) referenced. Provide a catalog signal "
+                            "or enable custom targets."
                         ),
                     },
                 )
@@ -719,7 +733,8 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         raise ValidationError(
             {
                 "target_field": _(
-                    "Unknown signal(s) referenced. Provide a catalog signal or enable custom targets."
+                    "Unknown signal(s) referenced. Provide a catalog "
+                    "signal or enable custom targets."
                 )
             }
         )
@@ -1151,8 +1166,10 @@ class ValidatorRuleForm(CelHelpLabelMixin, forms.Form):
         )
         self._append_cel_help_to_label("cel_expression")
         cel_label = self.fields["cel_expression"].label
-        self.fields["cel_expression"].label = mark_safe(
-            f'<span class="w-100 d-block">{cel_label}</span>'
+        # Use format_html to safely escape the label
+        self.fields["cel_expression"].label = format_html(
+            '<span class="w-100 d-block">{}</span>',
+            cel_label,
         )
 
     def clean_rule_type(self):
@@ -1198,7 +1215,8 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         self.fields["label"].initial = ""
         self.fields["slug"].label = _("Signal name")
         self.fields["slug"].help_text = _(
-            "Short, slug-form name (lowercase letters, numbers, hyphens) used in assertions and CEL expressions."
+            "Short, slug-form name (lowercase letters, numbers, hyphens) used in "
+            "assertions and CEL expressions."
         )
         self.fields["slug"].validators = []
         self.fields["slug"].error_messages["required"] = _("Signal name is required.")
@@ -1206,7 +1224,8 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             "A short description to help you remember what data this signal represents."
         )
         self.fields["is_required"].help_text = _(
-            "Requires the signal to be present in the submission (inputs) or processor output (outputs)."
+            "Requires the signal to be present in the submission (inputs) or "
+            "processor output (outputs)."
         )
         if not getattr(settings, "ENABLE_DERIVED_SIGNALS", False):
             # Always treat as signal and hide type selection.
@@ -1247,7 +1266,8 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         if suggested != value:
             raise ValidationError(
                 _(
-                    "Use slug format (lowercase letters, numbers, hyphens). Try: %(suggested)s"
+                    "Use slug format (lowercase letters, "
+                    "numbers, hyphens). Try: %(suggested)s"
                 )
                 % {"suggested": suggested or _("a-slug-name")}
             )
@@ -1260,7 +1280,8 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         if existing.exists():
             raise ValidationError(
                 _(
-                    "Signal name must be unique across inputs and outputs for this validator."
+                    "Signal name must be unique across inputs and "
+                    "outputs for this validator."
                 )
             )
         return value

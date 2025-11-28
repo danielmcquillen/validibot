@@ -16,7 +16,8 @@ from simplevalidations.validations.models import ValidationRun
 from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
 
 CONTENT_TYPE_BY_FILE_TYPE = {
-    file_type: content_type for content_type, file_type in SUPPORTED_CONTENT_TYPES.items()
+    file_type: content_type
+    for content_type, file_type in SUPPORTED_CONTENT_TYPES.items()
 }
 
 
@@ -122,9 +123,9 @@ class ValidationRunStartSerializer(serializers.Serializer):
     Normalizes Workflow start requests for JSON-envelope and multipart inputs.
 
     The view instantiates this serializer for:
-      * Mode 2 (application/json envelope) – we accept strings, dicts, or lists
+      * Mode 2 (application/json envelope) - we accept strings, dicts, or lists
         in ``content`` and coerce them to text via ``FlexibleContentField``.
-      * Mode 3 (multipart/form-data uploads) – we expect a ``file`` part plus
+      * Mode 3 (multipart/form-data uploads) - we expect a ``file`` part plus
         optional metadata overrides.
 
     Validated data always contains exactly one of ``normalized_content`` (text)
@@ -311,7 +312,11 @@ class ValidationRunStartSerializer(serializers.Serializer):
 
         request = self.context.get("request") if hasattr(self, "context") else None
         if request:
-            for header_name in ("X-Content-Type", "X-Submission-Content-Type", "Content-Type"):
+            for header_name in (
+                "X-Content-Type",
+                "X-Submission-Content-Type",
+                "Content-Type",
+            ):
                 header_ct = request.headers.get(header_name)
                 if not header_ct:
                     continue
@@ -367,7 +372,7 @@ class ValidationRunStartSerializer(serializers.Serializer):
         """
         # cap on input JSON field length to avoid massive strings
         if content is None:
-            return
+            return False
         if content_encoding == "base64":
             # Base64 inflates size by ~33%, so limit pre-decode size
             max_b64_b = getattr(settings, "SUBMISSION_BASE64_MAX_BYTES", 13_000_000)

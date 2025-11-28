@@ -455,14 +455,6 @@ class ValidationRunViewSetTestCase(TestCase):
             response = ValidationRunViewSet.as_view({"get": "list"})(request)
             response.render()
         membership.refresh_from_db()
-        print(
-            "membership org",
-            membership.org_id,
-            "roles after request",
-            membership.role_codes,
-            "set_roles calls",
-            [(args[0].id, args[1]) for args, _ in mock_set_roles.call_args_list],
-        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         results = response.data["results"]

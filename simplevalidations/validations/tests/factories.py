@@ -28,11 +28,10 @@ from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
 from simplevalidations.validations.models import (
     default_supported_data_formats_for_validation,
-    default_supported_file_types_for_validation,
 )
-from simplevalidations.validations.models import ValidatorCatalogEntry
 from simplevalidations.validations.models import (
     default_supported_file_types_for_validation,
 )
@@ -103,7 +102,7 @@ class ValidatorFactory(DjangoModelFactory):
     )
 
     @factory.post_generation
-    def ensure_defaults(self, create, extracted, **kwargs):  # noqa: D401
+    def ensure_defaults(self, create, extracted, **kwargs):
         """Align flags with the chosen validation type."""
         desired = self.allow_custom_assertion_targets
         if self.validation_type == ValidationType.BASIC:

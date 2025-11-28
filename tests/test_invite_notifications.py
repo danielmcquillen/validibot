@@ -1,17 +1,17 @@
 from datetime import timedelta
+from http import HTTPStatus
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
-from http import HTTPStatus
 
-from simplevalidations.notifications.models import Notification
-from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.events.constants import AppEventType
+from simplevalidations.notifications.models import Notification
 from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import PendingInvite
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
+from simplevalidations.users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db
@@ -40,7 +40,9 @@ def test_invite_notification_shows_for_invitee(client):
     assert response.status_code == HTTPStatus.OK
     assert PendingInvite.objects.filter(invitee_user=invitee, org=org).exists()
     assert Notification.objects.filter(user=invitee).count() == 1
-    event = TrackingEvent.objects.filter(app_event_type=AppEventType.INVITE_CREATED).first()
+    event = TrackingEvent.objects.filter(
+        app_event_type=AppEventType.INVITE_CREATED,
+    ).first()
     assert event is not None
     assert event.event_type == TrackingEventType.APP_EVENT
     assert event.org_id == org.id
@@ -83,7 +85,10 @@ def test_invitee_can_accept_and_become_member(client):
     session["active_org_id"] = org.id
     session.save()
     resp = client.post(
-        reverse("notifications:notification-invite-accept", kwargs={"pk": notification.pk})
+        reverse(
+            "notifications:notification-invite-accept",
+            kwargs={"pk": notification.pk},
+        ),
     )
     assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
@@ -91,7 +96,9 @@ def test_invitee_can_accept_and_become_member(client):
     membership = invitee.memberships.filter(org=org).first()
     assert membership is not None
     assert RoleCode.WORKFLOW_VIEWER in membership.role_codes
-    event = TrackingEvent.objects.filter(app_event_type=AppEventType.INVITE_ACCEPTED).last()
+    event = TrackingEvent.objects.filter(
+        app_event_type=AppEventType.INVITE_ACCEPTED,
+    ).last()
     assert event is not None
     assert event.event_type == TrackingEventType.APP_EVENT
     assert event.org_id == org.id
@@ -151,12 +158,17 @@ def test_invitee_can_decline_and_event_is_logged(client):
     session["active_org_id"] = org.id
     session.save()
     resp = client.post(
-        reverse("notifications:notification-invite-decline", kwargs={"pk": notification.pk})
+        reverse(
+            "notifications:notification-invite-decline",
+            kwargs={"pk": notification.pk},
+        ),
     )
     assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
     assert invite.status == PendingInvite.Status.DECLINED
-    event = TrackingEvent.objects.filter(app_event_type=AppEventType.INVITE_DECLINED).last()
+    event = TrackingEvent.objects.filter(
+        app_event_type=AppEventType.INVITE_DECLINED,
+    ).last()
     assert event is not None
     assert event.event_type == TrackingEventType.APP_EVENT
     assert event.org_id == org.id
@@ -197,4 +209,6 @@ def test_can_dismiss_rules_for_invitee_and_inviter():
 
     invite.decline()
     invitee_notification.refresh_from_db()
-    assert invitee_notification.can_dismiss is True  # once resolved, invitee can dismiss
+    assert (
+        invitee_notification.can_dismiss is True
+    )  # once resolved, invitee can dismiss

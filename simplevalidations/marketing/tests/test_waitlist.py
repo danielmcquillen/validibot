@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from http import HTTPStatus
 
 import pytest
 from django.core import mail
@@ -21,7 +22,7 @@ def test_waitlist_signup_success_htmx_saves_prospect_and_sends_email(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 201
+    assert response.status_code == HTTPStatus.CREATED
     body = response.content.decode()
     assert "beta is ready" in body
 
@@ -51,7 +52,7 @@ def test_waitlist_footer_flow_returns_tersed_message(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 201
+    assert response.status_code == HTTPStatus.CREATED
     assert "Thanks! We&#x27;ll be in touch soon." in response.content.decode()
 
     prospect = Prospect.objects.get(email="footer@company.com")
@@ -77,7 +78,7 @@ def test_waitlist_failure_surfaces_form_error(client, monkeypatch):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert "Please try again in a moment." in response.content.decode()
     assert Prospect.objects.filter(email="person@company.com").exists()
 
@@ -92,7 +93,7 @@ def test_waitlist_honeypot_blocks_bot_submission(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert "hidden field blank" in response.content.decode()
     assert Prospect.objects.count() == 0
 
@@ -115,7 +116,7 @@ def test_postmark_delivery_webhook_marks_prospect_verified(client):
         REMOTE_ADDR="3.134.147.250",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     prospect = Prospect.objects.get(email="person@company.com")
     assert prospect.email_status == ProspectEmailStatus.VERIFIED
 
@@ -144,7 +145,7 @@ def test_postmark_bounce_webhook_marks_prospect_invalid(client):
         REMOTE_ADDR="3.134.147.250",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     prospect = Prospect.objects.get(email="person@company.com")
     assert prospect.email_status == ProspectEmailStatus.INVALID
 
@@ -167,6 +168,6 @@ def test_postmark_webhook_rejects_unknown_ip(client):
         REMOTE_ADDR="1.1.1.1",
     )
 
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
     prospect = Prospect.objects.get(email="person@company.com")
     assert prospect.email_status == ProspectEmailStatus.PENDING

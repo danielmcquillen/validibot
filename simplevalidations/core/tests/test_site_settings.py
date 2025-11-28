@@ -5,14 +5,16 @@ from simplevalidations.core.site_settings import APISubmissionSettings
 from simplevalidations.core.site_settings import MetadataPolicyError
 from simplevalidations.core.site_settings import get_site_settings
 
-
 pytestmark = pytest.mark.django_db
+
+
+METADATA_MAX_BYTES = 4096
 
 
 def test_get_site_settings_creates_default_record():
     SiteSettings.objects.all().delete()
     settings = get_site_settings()
-    assert settings.api_submission.metadata_max_bytes == 4096
+    assert settings.api_submission.metadata_max_bytes == METADATA_MAX_BYTES
     assert SiteSettings.objects.count() == 1
 
 
@@ -28,9 +30,9 @@ def test_get_site_settings_normalizes_invalid_data():
         },
     )
     settings = get_site_settings()
-    assert settings.api_submission.metadata_max_bytes == 4096
+    assert settings.api_submission.metadata_max_bytes == METADATA_MAX_BYTES
     stored = SiteSettings.objects.get(slug=SiteSettings.DEFAULT_SLUG)
-    assert stored.data["api_submission"]["metadata_max_bytes"] == 4096
+    assert stored.data["api_submission"]["metadata_max_bytes"] == METADATA_MAX_BYTES
 
 
 def test_submission_settings_enforce_metadata_policy_scalar_only():

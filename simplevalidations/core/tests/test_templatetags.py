@@ -6,7 +6,10 @@ from simplevalidations.core.templatetags import core_tags
 from simplevalidations.validations.constants import Severity
 
 
-def _build_context(path="/app/validations/library/", view_name="validations:validation_library"):
+def _build_context(
+    path="/app/validations/library/",
+    view_name="validations:validation_library",
+):
     request = RequestFactory().get(path)
     if view_name and ":" in view_name:
         namespace, url_name = view_name.split(":", 1)

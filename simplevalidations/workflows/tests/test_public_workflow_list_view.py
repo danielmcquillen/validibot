@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import pytest
 from django.urls import reverse
 
@@ -24,7 +26,7 @@ def test_public_list_shows_public_workflows_only(client):
 
     response = client.get(reverse("public_workflow_list"))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert public_workflow.name in body
     assert private_workflow.name not in body
@@ -36,7 +38,7 @@ def test_authenticated_user_sees_private_accessible_workflows(client):
 
     response = client.get(reverse("public_workflow_list"))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Member access" in body
     assert accessible.name in body
@@ -48,7 +50,7 @@ def test_search_filters_results(client):
 
     response = client.get(reverse("public_workflow_list"), {"q": "Image"})
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Image Validation" in body
     assert "Data Quality" not in body
@@ -58,10 +60,11 @@ def test_per_page_parameter_limits_results(client):
     WorkflowFactory.create_batch(12, make_info_public=True)
 
     response = client.get(
-        reverse("public_workflow_list"), {"per_page": "10", "layout": "list"}
+        reverse("public_workflow_list"),
+        {"per_page": "10", "layout": "list"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     page_obj = response.context["page_obj"]
-    assert page_obj.paginator.per_page == 10
-    assert len(response.context["workflows"]) == 10
+    assert page_obj.paginator.per_page == 10  # noqa: PLR2004
+    assert len(response.context["workflows"]) == 10  # noqa: PLR2004

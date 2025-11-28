@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from django.test import Client
 
 from simplevalidations.events.constants import AppEventType
@@ -11,7 +10,7 @@ from simplevalidations.users.tests.factories import UserFactory
 
 @pytest.mark.django_db
 def test_login_emits_tracking_event(client: Client):
-    password = "TestPass!234"
+    password = "TestPass!234"  # noqa: S105
     user = UserFactory(password=password)
 
     assert client.login(username=user.username, password=password)
@@ -26,7 +25,7 @@ def test_login_emits_tracking_event(client: Client):
 
 @pytest.mark.django_db
 def test_logout_emits_tracking_event(client: Client):
-    password = "LogOutPass!234"
+    password = "LogOutPass!234"  # noqa: S105
     user = UserFactory(password=password)
 
     assert client.login(username=user.username, password=password)

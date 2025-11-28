@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
 from simplevalidations.projects.forms import ProjectForm
+
+COLOR_CHARACTERS_LEN = 7
 
 
 def build_form(color: str):
@@ -35,7 +35,7 @@ def test_project_form_prefills_random_color_for_new_instances():
     initial_color = form.initial.get("color")
     assert isinstance(initial_color, str)
     assert initial_color.startswith("#")
-    assert len(initial_color) == 7
+    assert len(initial_color) == COLOR_CHARACTERS_LEN
     # Sanity-check: value looks like hex.
     int(initial_color[1:], 16)
 

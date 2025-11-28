@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import pytest
 from django.urls import reverse
 
@@ -29,7 +31,7 @@ def test_cel_help_link_present_in_assertion_form(client):
         kwargs={"pk": workflow.pk, "step_id": step.pk},
     )
     response = client.get(url, HTTP_HX_REQUEST="true")
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "cel-expressions" in response.content.decode()
 
 
@@ -49,5 +51,5 @@ def test_cel_help_link_present_in_default_assertion_modal(client):
         kwargs={"slug": custom_validator.validator.slug},
     )
     response = client.get(url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "cel-expressions" in response.content.decode()

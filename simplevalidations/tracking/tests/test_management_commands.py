@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import pytest
-
 from django.core.management import call_command
 
 from simplevalidations.tracking import sample_data
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db

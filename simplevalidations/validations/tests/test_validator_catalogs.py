@@ -1,20 +1,18 @@
+from http import HTTPStatus
+
 import pytest
 
-from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
-from simplevalidations.validations.tests.factories import (
-    CustomValidatorFactory,
-)
-from simplevalidations.validations.tests.factories import (
-    ValidatorCatalogEntryFactory,
-)
-from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.validations.forms import ValidatorCatalogEntryForm
+from simplevalidations.validations.tests.factories import CustomValidatorFactory
 from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -34,7 +32,7 @@ def test_validator_catalog_entries_grouped():
         slug="electric-demand",
     )
     grouped = validator.catalog_entries_by_type()
-    assert len(grouped[CatalogEntryType.SIGNAL]) == 2
+    assert len(grouped[CatalogEntryType.SIGNAL]) == 2  # noqa: PLR2004
     stage_grouped = validator.catalog_entries_by_stage()
     assert len(stage_grouped[CatalogRunStage.INPUT]) == 1
     assert stage_grouped[CatalogRunStage.INPUT][0].slug == "floor-area"
@@ -113,7 +111,10 @@ def test_signal_name_unique_across_stages():
         validator=validator,
     )
     assert not form.is_valid()
-    assert "unique" in form.errors["slug"][0].lower() or "must be unique" in form.errors["slug"][0].lower()
+    assert (
+        "unique" in form.errors["slug"][0].lower()
+        or "must be unique" in form.errors["slug"][0].lower()
+    )
 
 
 @pytest.mark.django_db
@@ -121,8 +122,10 @@ def test_signal_create_modal_returns_errors_in_htmx():
     org = OrganizationFactory()
     from django.test import Client
     from django.urls import reverse
+
     from simplevalidations.users.constants import RoleCode
-    from simplevalidations.users.tests.factories import UserFactory, grant_role
+    from simplevalidations.users.tests.factories import UserFactory
+    from simplevalidations.users.tests.factories import grant_role
 
     user = UserFactory()
     grant_role(user, org, RoleCode.AUTHOR)
@@ -146,7 +149,7 @@ def test_signal_create_modal_returns_errors_in_htmx():
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "modal-signal-create" in html
     assert "Signal name is required" in html

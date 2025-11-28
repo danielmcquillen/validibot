@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import pytest
 from django.urls import reverse
 
@@ -6,7 +8,6 @@ from simplevalidations.users.models import Membership
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
-
 
 pytestmark = pytest.mark.django_db
 
@@ -36,14 +37,14 @@ def test_member_list_requires_admin(client):
     session.save()
 
     response = client.get(reverse("members:member_list"))
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
 
 
 @pytest.mark.django_db
 def test_member_list_shows_members(admin_client):
     client, org, admin = admin_client
     response = client.get(reverse("members:member_list"))
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert admin.email in response.content.decode()
 
 
@@ -61,7 +62,7 @@ def test_member_can_be_added(admin_client):
         follow=True,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert Membership.objects.filter(user=invitee, org=org).exists()
 
 
@@ -78,7 +79,7 @@ def test_member_roles_can_be_updated(admin_client):
         follow=True,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     membership.refresh_from_db()
     assert membership.has_role(RoleCode.ADMIN)
 
@@ -95,7 +96,7 @@ def test_member_delete_removes_viewer(admin_client):
         follow=True,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert not Membership.objects.filter(pk=viewer_membership.pk).exists()
 
 
@@ -115,7 +116,7 @@ def test_member_delete_htmx_updates_list(admin_client):
         HTTP_X_CSRFTOKEN=csrf_token,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "member-list-card" in response.content.decode()
     assert "success" in (response.headers.get("HX-Trigger") or "")
     assert not Membership.objects.filter(pk=viewer_membership.pk).exists()
@@ -131,5 +132,5 @@ def test_member_delete_prevents_removing_last_admin(admin_client):
         follow=True,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert Membership.objects.filter(pk=membership.pk).exists()

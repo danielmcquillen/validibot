@@ -64,7 +64,10 @@ class DashboardViewTests(TestCase):
         session.save()
 
         response = self.client.get(
-            reverse("dashboard:widget-detail", kwargs={"slug": "total-validations"})
+            reverse(
+                "dashboard:widget-detail",
+                kwargs={"slug": "total-validations"},
+            ),
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("workflows", response["Location"])
@@ -159,6 +162,6 @@ class DashboardViewTests(TestCase):
         datasets = config["data"]["datasets"]
         totals = [
             sum(values)
-            for values in zip(*[dataset["data"] for dataset in datasets])
+            for values in zip(*[dataset["data"] for dataset in datasets], strict=False)
         ]
         self.assertEqual(max(totals), 1)

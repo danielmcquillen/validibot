@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+from typing import TYPE_CHECKING
+
 import pytest
-from django.test import Client
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.workflows.tests.factories import WorkflowFactory
+
+if TYPE_CHECKING:
+    from django.test import Client
 
 
 @pytest.mark.django_db
@@ -59,7 +65,7 @@ def test_activation_view_toggles_when_authorized(client: Client):
         {"is_active": "false"},
     )
 
-    assert response.status_code in {302, 204}
+    assert response.status_code in {HTTPStatus.FOUND, HTTPStatus.NO_CONTENT}
     workflow.refresh_from_db()
     assert workflow.is_active is False
 
@@ -74,6 +80,6 @@ def test_activation_view_toggles_when_authorized(client: Client):
         {"is_active": "true"},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
     workflow.refresh_from_db()
     assert workflow.is_active is False

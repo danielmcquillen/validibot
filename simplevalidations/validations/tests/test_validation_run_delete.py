@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
@@ -29,7 +31,7 @@ def test_viewer_cannot_delete_validation_run(client, db):
     url = reverse("validations:validation_delete", kwargs={"pk": run.pk})
     resp = client.post(url)
 
-    assert resp.status_code == 404
+    assert resp.status_code == HTTPStatus.NOT_FOUND
     assert run.__class__.objects.filter(pk=run.pk).exists()
 
 
@@ -50,7 +52,7 @@ def test_admin_can_delete_validation_run(client, db):
     url = reverse("validations:validation_delete", kwargs={"pk": run.pk})
     resp = client.post(url)
 
-    assert resp.status_code in {302, 204}
+    assert resp.status_code in {HTTPStatus.FOUND, HTTPStatus.NO_CONTENT}
     assert not run.__class__.objects.filter(pk=run.pk).exists()
 
 
@@ -75,5 +77,5 @@ def test_results_viewer_cannot_delete_validation_run(client, db):
     url = reverse("validations:validation_delete", kwargs={"pk": run.pk})
     resp = client.post(url)
 
-    assert resp.status_code == 403
+    assert resp.status_code == HTTPStatus.FORBIDDEN
     assert run.__class__.objects.filter(pk=run.pk).exists()

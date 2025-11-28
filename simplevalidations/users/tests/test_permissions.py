@@ -1,13 +1,12 @@
 from django.test import TestCase
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
-from simplevalidations.users.constants import PermissionCode, RoleCode
+from simplevalidations.users.constants import PermissionCode
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
-from simplevalidations.users.tests.factories import (
-    OrganizationFactory,
-    UserFactory,
-    grant_role,
-)
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.workflows.models import Workflow
 

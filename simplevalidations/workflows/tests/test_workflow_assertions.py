@@ -1,25 +1,22 @@
 import json
 
-from django.test import Client, TestCase
+from django.test import Client
+from django.test import TestCase
 from django.urls import reverse
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.utils import ensure_all_roles_exist
-from simplevalidations.validations.constants import (
-    AssertionOperator,
-    AssertionType,
-    CatalogRunStage,
-    ValidationType,
-)
-from simplevalidations.validations.tests.factories import (
-    CustomValidatorFactory,
-    RulesetAssertionFactory,
-    RulesetFactory,
-    ValidatorCatalogEntryFactory,
-    ValidatorFactory,
-)
-from simplevalidations.workflows.tests.factories import WorkflowFactory, WorkflowStepFactory
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.tests.factories import CustomValidatorFactory
+from simplevalidations.validations.tests.factories import RulesetAssertionFactory
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
+from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
 def _login_as_author(client: Client, workflow):
@@ -113,7 +110,10 @@ class WorkflowStepAssertionsTests(TestCase):
             slug="custom-signal",
             label="Custom signal",
         )
-        step = WorkflowStepFactory(workflow=workflow, validator=custom_validator.validator)
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            validator=custom_validator.validator,
+        )
         url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
@@ -128,7 +128,7 @@ class WorkflowStepAssertionsTests(TestCase):
         _login_as_author(self.client, workflow)
         step = self._make_basic_step(workflow)
         assert step.ruleset
-        a1 = RulesetAssertionFactory(ruleset=step.ruleset, order=10)
+        RulesetAssertionFactory(ruleset=step.ruleset, order=10)
         a2 = RulesetAssertionFactory(ruleset=step.ruleset, order=20)
         move_url = reverse(
             "workflows:workflow_step_assertion_move",
@@ -137,7 +137,7 @@ class WorkflowStepAssertionsTests(TestCase):
         resp = self.client.post(move_url, data={"direction": "up"})
         self.assertEqual(resp.status_code, 204)
         orders = list(
-            step.ruleset.assertions.order_by("order").values_list("pk", flat=True)
+            step.ruleset.assertions.order_by("order").values_list("pk", flat=True),
         )
         self.assertEqual(orders[0], a2.pk)
 
@@ -156,7 +156,7 @@ class WorkflowStepAssertionsTests(TestCase):
             slug="output-signal",
             run_stage=CatalogRunStage.OUTPUT,
         )
-        a_input = RulesetAssertionFactory(
+        RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=10,
             target_catalog_entry=input_entry,
@@ -175,7 +175,9 @@ class WorkflowStepAssertionsTests(TestCase):
         # Try to move output "up" (should stay in output bucket, not jump before input)
         resp = self.client.post(move_url, data={"direction": "up"})
         self.assertEqual(resp.status_code, 204)
-        ordered = [a.resolved_run_stage for a in step.ruleset.assertions.order_by("order")]
+        ordered = [
+            a.resolved_run_stage for a in step.ruleset.assertions.order_by("order")
+        ]
         # input should still precede output
         self.assertEqual(ordered, [CatalogRunStage.INPUT, CatalogRunStage.OUTPUT])
 
@@ -265,7 +267,9 @@ class WorkflowStepAssertionsTests(TestCase):
             validation_type=ValidationType.ENERGYPLUS,
             allow_custom_assertion_targets=True,
         )
-        ValidatorCatalogEntryFactory(validator=validator, slug="facility_electric_demand_w")
+        ValidatorCatalogEntryFactory(
+            validator=validator, slug="facility_electric_demand_w",
+        )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         create_url = reverse(
             "workflows:workflow_step_assertion_create",

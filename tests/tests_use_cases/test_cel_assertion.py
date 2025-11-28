@@ -53,7 +53,7 @@ def test_cel_assertion_with_custom_targets_passes():
     # Sanity: custom targets should be added to CEL context for this validator.
     engine = BasicValidatorEngine()
     assert validator.allow_custom_assertion_targets is True
-    ctx = engine._build_cel_context(payload_data, validator)
+    ctx = engine._build_cel_context(payload_data, validator)  # noqa: SLF001
     assert "price" in ctx, ctx
     assert "rating" in ctx, ctx
     assert "tags" in ctx, ctx

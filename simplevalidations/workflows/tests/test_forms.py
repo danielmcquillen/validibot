@@ -1,26 +1,24 @@
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
+import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from simplevalidations.projects.models import Project
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.models import ensure_default_project
-from simplevalidations.users.tests.factories import (
-    MembershipFactory,
-    OrganizationFactory,
-    UserFactory,
-)
+from simplevalidations.users.tests.factories import MembershipFactory
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.validations.constants import JSONSchemaVersion
 from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.workflows.forms import EnergyPlusStepConfigForm
 from simplevalidations.workflows.forms import JsonSchemaStepConfigForm
-from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.forms import WorkflowForm
 from simplevalidations.workflows.forms import WorkflowLaunchForm
+from simplevalidations.workflows.forms import XmlSchemaStepConfigForm
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
 pytestmark = pytest.mark.django_db
@@ -184,9 +182,7 @@ def test_workflow_launch_form_rejects_both_inputs():
     )
 
     assert not form.is_valid()
-    assert any(
-        "Provide inline content" in error for error in form.errors["__all__"]
-    )
+    assert any("Provide inline content" in error for error in form.errors["__all__"])
 
 
 def test_workflow_launch_form_rejects_invalid_metadata():
@@ -204,7 +200,9 @@ def test_workflow_launch_form_rejects_invalid_metadata():
     )
 
     assert not form.is_valid()
-    assert any("Metadata must be valid JSON." in error for error in form.errors["__all__"])
+    assert any(
+        "Metadata must be valid JSON." in error for error in form.errors["__all__"]
+    )
 
 
 def test_workflow_launch_form_rejects_unsupported_content_type():
@@ -221,7 +219,9 @@ def test_workflow_launch_form_rejects_unsupported_content_type():
     )
 
     assert not form.is_valid()
-    assert any("Select a supported file type." in error for error in form.errors["__all__"])
+    assert any(
+        "Select a supported file type." in error for error in form.errors["__all__"]
+    )
 
 
 def test_workflow_launch_form_hides_selector_when_single_file_type():
@@ -267,18 +267,18 @@ def test_json_schema_form_requires_2020_12_declaration_for_text():
     form = JsonSchemaStepConfigForm(
         data={
             "name": "Missing schema",
-            "schema_text": "{\n  \"type\": \"object\"\n}",
-        }
+            "schema_text": '{\n  "type": "object"\n}',
+        },
     )
 
     assert not form.is_valid()
-    assert any(
-        "Draft 2020-12" in error for error in form.errors["schema_text"]
-    )
+    assert any("Draft 2020-12" in error for error in form.errors["schema_text"])
 
 
 def test_json_schema_form_requires_2020_12_declaration_for_files():
-    payload = b'{"$schema": "https://json-schema.org/draft-07/schema", "type": "object"}'
+    payload = (
+        b'{"$schema": "https://json-schema.org/draft-07/schema", "type": "object"}'
+    )
     uploaded = SimpleUploadedFile(
         "schema.json",
         payload,
@@ -290,9 +290,7 @@ def test_json_schema_form_requires_2020_12_declaration_for_files():
     )
 
     assert not form.is_valid()
-    assert any(
-        "Draft 2020-12" in error for error in form.errors["schema_file"]
-    )
+    assert any("Draft 2020-12" in error for error in form.errors["schema_file"])
 
 
 def test_xml_schema_form_rejects_large_upload():
@@ -325,7 +323,7 @@ def test_xml_schema_form_detects_mismatched_relaxng_text():
             "name": "RNG schema uploaded",
             "schema_type": XMLSchemaType.XSD.value,
             "schema_text": rng_schema,
-        }
+        },
     )
 
     assert not form.is_valid()
@@ -356,7 +354,7 @@ def test_xml_schema_form_accepts_matching_rng():
             "name": "RNG schema",
             "schema_type": XMLSchemaType.RELAXNG.value,
             "schema_text": rng_schema,
-        }
+        },
     )
 
     assert form.is_valid(), form.errors
@@ -367,13 +365,12 @@ def test_energyplus_form_blocks_simulation_checks_without_run_flag():
         data={
             "name": "Energy simulation",
             "simulation_checks": ["eui-range"],
-        }
+        },
     )
 
     assert not form.is_valid()
     assert any(
-        "Enable 'Run EnergyPlus simulation' to use post-simulation checks."
-        in error
+        "Enable 'Run EnergyPlus simulation' to use post-simulation checks." in error
         for error in form.errors["simulation_checks"]
     )
 
@@ -384,7 +381,7 @@ def test_energyplus_form_accepts_simulation_checks_when_enabled():
             "name": "Energy simulation",
             "run_simulation": "on",
             "simulation_checks": ["eui-range"],
-        }
+        },
     )
 
     assert form.is_valid(), form.errors

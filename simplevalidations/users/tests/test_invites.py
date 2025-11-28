@@ -5,14 +5,18 @@ from django.utils import timezone
 
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import PendingInvite
-from simplevalidations.users.tests.factories import OrganizationFactory, UserFactory
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db
 def test_pending_invite_accept_creates_membership():
     inviter = UserFactory()
     org = OrganizationFactory()
-    inviter_membership, _ = inviter.memberships.get_or_create(org=org, defaults={"is_active": True})
+    inviter_membership, _ = inviter.memberships.get_or_create(
+        org=org,
+        defaults={"is_active": True},
+    )
     inviter_membership.set_roles({RoleCode.ADMIN})
     invitee = UserFactory()
     invite = PendingInvite.create_with_expiry(

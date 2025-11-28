@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+from http import HTTPStatus
 
 import pytest
 from django.test import override_settings
@@ -32,7 +33,7 @@ def test_postmark_signature_required_and_valid(client):
         REMOTE_ADDR="203.0.113.10",
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
 
 
 @override_settings(
@@ -53,7 +54,7 @@ def test_postmark_rejects_invalid_signature(client):
         REMOTE_ADDR="203.0.113.10",
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == HTTPStatus.FORBIDDEN
 
 
 @override_settings(
@@ -74,7 +75,7 @@ def test_postmark_ignores_spoofed_forwarded_ip(client):
         HTTP_X_FORWARDED_FOR="198.51.100.1",
     )
 
-    assert resp.status_code == 403
+    assert resp.status_code == HTTPStatus.FORBIDDEN
 
 
 @override_settings(
@@ -94,4 +95,4 @@ def test_postmark_allows_request_from_allowed_remote_addr(client):
         REMOTE_ADDR="198.51.100.1",
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK

@@ -5,7 +5,6 @@ from django.test import RequestFactory
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.context_processors import organization_context
 from simplevalidations.users.tests.factories import MembershipFactory
-from simplevalidations.users.tests.factories import MembershipFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 
@@ -41,7 +40,7 @@ def test_organization_context_clears_stale_session_scope():
     user.refresh_from_db()
     assert user.current_org_id == context["active_org"].id
     valid_ids = set(
-        user.memberships.filter(is_active=True).values_list("org_id", flat=True)
+        user.memberships.filter(is_active=True).values_list("org_id", flat=True),
     )
     assert request.session["active_org_id"] in valid_ids
 

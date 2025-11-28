@@ -25,7 +25,7 @@ class ModalConnectivityTest(TestCase):
         self._ensure_modal_env()
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
             self.skipTest(
-                "Modal credentials not configured; skipping connectivity test."
+                "Modal credentials not configured; skipping connectivity test.",
             )
         try:
             import modal  # noqa: F401
@@ -57,7 +57,7 @@ class ModalConnectivityTest(TestCase):
         # Sanity check credentials are available before calling Modal.
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
             self.skipTest(
-                "Modal credentials not configured; skipping FMU execution test."
+                "Modal credentials not configured; skipping FMU execution test.",
             )
 
         assets_root = Path(__file__).resolve().parent / "assets" / "fmu"
@@ -78,7 +78,8 @@ class ModalConnectivityTest(TestCase):
             volume[remote_name.lstrip("/")] = payload  # type: ignore[index]
         else:  # pragma: no cover - defensive
             self.fail(
-                "Modal Volume does not support batch_upload, put_file, or byte assignment"
+                "Modal Volume does not support batch_upload, "
+                "put_file, or byte assignment",
             )
 
         try:

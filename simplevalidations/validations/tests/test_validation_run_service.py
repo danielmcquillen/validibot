@@ -6,7 +6,6 @@ from rest_framework.test import APIRequestFactory
 from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.tests.factories import SubmissionFactory
-from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
@@ -20,7 +19,9 @@ from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.models import ValidationRunSummary
-from simplevalidations.validations.services.validation_run import GENERIC_EXECUTION_ERROR
+from simplevalidations.validations.services.validation_run import (
+    GENERIC_EXECUTION_ERROR,
+)
 from simplevalidations.validations.services.validation_run import ValidationRunService
 from simplevalidations.validations.tests.factories import RulesetAssertionFactory
 from simplevalidations.validations.tests.factories import RulesetFactory
@@ -36,7 +37,12 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     grant_role(user, org, RoleCode.EXECUTOR)
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
     WorkflowStepFactory(workflow=workflow)  # ensure workflow has a validator step
-    submission = SubmissionFactory(org=org, project=workflow.project, user=user, workflow=workflow)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+    )
 
     factory = APIRequestFactory()
     request = factory.post("/api/v1/workflows/start/")
@@ -50,8 +56,13 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
         recorded_run_ids.append(run_id)
 
         class DummyResult:
-            def get(self, timeout=None, propagate=False):
-                raise CeleryTimeout()
+            def get(
+                self,
+                timeout=None,
+                *,
+                propagate: bool = False,
+            ):
+                raise CeleryTimeout
 
         return DummyResult()
 
@@ -85,7 +96,12 @@ def test_execute_sets_generic_error_when_engine_missing():
         is_system=False,
     )
     WorkflowStepFactory(workflow=workflow, validator=validator)
-    submission = SubmissionFactory(org=org, project=workflow.project, user=user, workflow=workflow)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+    )
     validation_run = ValidationRun.objects.create(
         org=org,
         workflow=workflow,
@@ -168,7 +184,12 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     )
     step = WorkflowStepFactory(workflow=workflow, validator=validator, ruleset=ruleset)
     assertion = RulesetAssertionFactory(ruleset=ruleset)
-    submission = SubmissionFactory(org=org, project=workflow.project, user=user, workflow=workflow)
+    submission = SubmissionFactory(
+        org=org,
+        project=workflow.project,
+        user=user,
+        workflow=workflow,
+    )
     validation_run = ValidationRun.objects.create(
         org=org,
         workflow=workflow,

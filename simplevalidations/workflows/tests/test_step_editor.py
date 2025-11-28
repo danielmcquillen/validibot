@@ -2,47 +2,34 @@ from __future__ import annotations
 
 import json
 from html.parser import HTMLParser
-from uuid import uuid4
+from http import HTTPStatus
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
 
-from simplevalidations.actions.constants import (
-    ActionCategoryType,
-    CertificationActionType,
-    IntegrationActionType,
-)
-from simplevalidations.actions.models import (
-    ActionDefinition,
-    SignedCertificateAction,
-    SlackMessageAction,
-)
+from simplevalidations.actions.constants import ActionCategoryType
+from simplevalidations.actions.constants import CertificationActionType
+from simplevalidations.actions.constants import IntegrationActionType
+from simplevalidations.actions.models import ActionDefinition
+from simplevalidations.actions.models import SignedCertificateAction
+from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import (
-    OrganizationFactory,
-    UserFactory,
-    grant_role,
-)
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.users.tests.utils import ensure_all_roles_exist
-from simplevalidations.validations.constants import (
-    AssertionType,
-    JSONSchemaVersion,
-    ValidationType,
-    ValidatorRuleType,
-)
+from simplevalidations.validations.constants import JSONSchemaVersion
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import ValidatorRuleType
 from simplevalidations.validations.models import Validator
-from simplevalidations.validations.tests.factories import (
-    CustomValidatorFactory,
-    ValidatorFactory,
-)
+from simplevalidations.validations.tests.factories import CustomValidatorFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.workflows.models import WorkflowStep
-from simplevalidations.workflows.tests.factories import (
-    WorkflowFactory,
-    WorkflowStepFactory,
-)
+from simplevalidations.workflows.tests.factories import WorkflowFactory
+from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -50,7 +37,6 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture(autouse=True)
 def seed_roles(db):
     ensure_all_roles_exist()
-    return None
 
 
 def ensure_validator(validation_type: str, slug: str, name: str) -> Validator:
@@ -118,7 +104,7 @@ def _select_step_option(client, workflow, value: str) -> str:
         data={"stage": "select", "choice": value},
         HTTP_HX_REQUEST="true",
     )
-    assert response.status_code == 204
+    assert response.status_code == HTTPStatus.NO_CONTENT
     redirect_url = response.headers.get("HX-Redirect")
     assert redirect_url, "wizard should instruct the client to navigate to the editor"
     return redirect_url
@@ -174,7 +160,7 @@ def test_wizard_lists_action_tabs(client):
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
     response = client.get(url, HTTP_HX_REQUEST="true")
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert integration_def.name in html
     assert certification_def.name in html
@@ -194,7 +180,7 @@ def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
     response = client.get(url, HTTP_HX_REQUEST="true")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert xml_validator.name in html
     assert f'value="validator:{xml_validator.pk}"' in html
@@ -204,12 +190,16 @@ def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
 def test_fmi_validator_enabled_for_json_workflow(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    fmi_validator = ensure_validator(ValidationType.FMI, "fmi-validator", "FMI Validator")
+    fmi_validator = ensure_validator(
+        ValidationType.FMI,
+        "fmi-validator",
+        "FMI Validator",
+    )
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
     response = client.get(url, HTTP_HX_REQUEST="true")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     value = f'value="validator:{fmi_validator.pk}"'
     assert value in html
@@ -228,17 +218,15 @@ def test_create_view_creates_json_schema_step(client):
 
     # GET renders the full-page editor
     response = client.get(create_url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "Add workflow step" in response.content.decode()
 
     schema_text = json.dumps(
         {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
-            "properties": {
-                "sku": {"type": "string"}
-            },
-        }
+            "properties": {"sku": {"type": "string"}},
+        },
     )
     response = client.post(
         create_url,
@@ -251,8 +239,7 @@ def test_create_view_creates_json_schema_step(client):
             "schema_text": schema_text,
         },
     )
-    assert response.status_code == 302
-
+    assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     assert step.validator == validator
@@ -265,7 +252,10 @@ def test_create_view_creates_json_schema_step(client):
     assert step.description == "Ensures posted documents follow the schema."
     assert step.notes == "Remember to update schema when payload changes."
     assert step.display_schema is True
-    assert step.ruleset.metadata.get("schema_type") == JSONSchemaVersion.DRAFT_2020_12.value
+    assert (
+        step.ruleset.metadata.get("schema_type")
+        == JSONSchemaVersion.DRAFT_2020_12.value
+    )
 
 
 def test_create_view_with_custom_validator(client):
@@ -282,7 +272,7 @@ def test_create_view_with_custom_validator(client):
             "notes": "Initial custom validator step",
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     assert step.validator == custom_validator.validator
@@ -299,13 +289,13 @@ def test_custom_validator_multiple_steps_get_unique_rulesets(client):
     second_url = _select_validator(client, workflow, custom_validator.validator)
 
     response = client.post(first_url, data={"name": "Step A"})
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
 
     response = client.post(second_url, data={"name": "Step B"})
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
 
     steps = WorkflowStep.objects.filter(workflow=workflow).order_by("order")
-    assert steps.count() == 2
+    assert steps.count() == 2  # noqa: PLR2004
     assert steps[0].ruleset != steps[1].ruleset
 
 
@@ -317,7 +307,7 @@ def test_create_view_creates_action_step(client):
     create_url = _select_action(client, workflow, definition)
 
     response = client.get(create_url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "Add workflow step" in response.content.decode()
 
     response = client.post(
@@ -329,7 +319,7 @@ def test_create_view_creates_action_step(client):
             "message": "Validation finished successfully.",
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     assert step.validator is None
@@ -361,7 +351,7 @@ def test_create_certificate_action_uses_default_when_missing(client):
             "description": "Provide certificates for passing runs.",
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     variant = step.action.get_variant()
@@ -400,7 +390,7 @@ def test_create_certificate_action_step(client, tmp_path):
                 "certificate_template": template_file,
             },
         )
-        assert response.status_code == 302
+        assert response.status_code == HTTPStatus.FOUND
 
     step = WorkflowStep.objects.get(workflow=workflow)
     variant = step.action.get_variant()
@@ -439,7 +429,10 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
             config={"certificate_template": "original.html"},
         )
 
-        edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
+        edit_url = reverse(
+            "workflows:workflow_step_settings",
+            args=[workflow.pk, step.pk],
+        )
         response = client.post(
             edit_url,
             data={
@@ -448,16 +441,21 @@ def test_update_certificate_action_step_allows_existing_template(client, tmp_pat
                 "notes": "",
             },
         )
-        assert response.status_code == 302
+        assert response.status_code == HTTPStatus.FOUND
 
         step.refresh_from_db()
         variant = step.action.get_variant()
         assert variant.certificate_template.name.endswith("original.html")
 
+
 def test_create_view_validates_missing_upload(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
+    validator = ensure_validator(
+        ValidationType.JSON_SCHEMA,
+        "json-validator",
+        "JSON Validator",
+    )
 
     create_url = _select_validator(client, workflow, validator)
 
@@ -468,7 +466,7 @@ def test_create_view_validates_missing_upload(client):
             "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     html = response.content.decode()
     assert "Add content directly or upload a file." in html
 
@@ -476,20 +474,28 @@ def test_create_view_validates_missing_upload(client):
 def test_create_json_schema_rejects_text_and_file(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
+    validator = ensure_validator(
+        ValidationType.JSON_SCHEMA,
+        "json-validator",
+        "JSON Validator",
+    )
 
     create_url = _select_validator(client, workflow, validator)
-    fake_file = SimpleUploadedFile("schema.json", b"{}", content_type="application/json")
+    fake_file = SimpleUploadedFile(
+        "schema.json",
+        b"{}",
+        content_type="application/json",
+    )
     response = client.post(
         create_url,
         data={
             "name": "JSON Schema",
             "schema_type": JSONSchemaVersion.DRAFT_2020_12.value,
-            "schema_text": "{\"type\": \"object\"}",
+            "schema_text": '{"type": "object"}',
             "schema_file": fake_file,
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     body = response.content.decode()
     assert "Paste the schema or upload a file, not both." in body
 
@@ -497,7 +503,11 @@ def test_create_json_schema_rejects_text_and_file(client):
 def test_create_xml_step_requires_schema_text(client):
     workflow = WorkflowFactory(allowed_file_types=[SubmissionFileType.XML])
     _login_for_workflow(client, workflow)
-    validator = ensure_validator(ValidationType.XML_SCHEMA, "xml-validator", "XML Validator")
+    validator = ensure_validator(
+        ValidationType.XML_SCHEMA,
+        "xml-validator",
+        "XML Validator",
+    )
 
     create_url = _select_validator(client, workflow, validator)
     response = client.post(
@@ -508,7 +518,7 @@ def test_create_xml_step_requires_schema_text(client):
             "schema_text": "",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     html = response.content.decode()
     assert "We found a few issues" in html
     assert "Add content directly or upload a file." in html
@@ -535,7 +545,7 @@ def test_create_ai_policy_requires_rules(client):
             "cost_cap_cents": 15,
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     html = response.content.decode()
     assert "We found a few issues" in html
     assert "Add at least one policy rule." in html
@@ -561,7 +571,7 @@ def test_create_energyplus_requires_simulation_toggle_for_checks(client):
             "energyplus_notes": "",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     html = response.content.decode()
     assert "Run EnergyPlus simulation" in html
     assert "simulation_checks" in html
@@ -572,13 +582,17 @@ def test_create_energyplus_requires_simulation_toggle_for_checks(client):
 def test_step_settings_does_not_expose_validator_selector(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
+    validator = ensure_validator(
+        ValidationType.JSON_SCHEMA,
+        "json-validator",
+        "JSON Validator",
+    )
     step = WorkflowStepFactory(workflow=workflow, validator=validator)
 
     edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert 'name="validator_choice"' not in body
 
@@ -586,7 +600,11 @@ def test_step_settings_does_not_expose_validator_selector(client):
 def test_create_basic_step_uses_minimal_fields(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ensure_validator(ValidationType.BASIC, "basic-validator", "Manual Assertions")
+    validator = ensure_validator(
+        ValidationType.BASIC,
+        "basic-validator",
+        "Manual Assertions",
+    )
 
     create_url = _select_validator(client, workflow, validator)
     response = client.post(
@@ -598,7 +616,7 @@ def test_create_basic_step_uses_minimal_fields(client):
         },
     )
 
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     step = WorkflowStep.objects.get(workflow=workflow, validator=validator)
     assert step.name == "Manual assertions"
     assert step.config == {}
@@ -627,14 +645,14 @@ def test_update_view_prefills_ai_step(client):
                     "value": 18,
                     "value_b": None,
                     "message": "Cooling must be ≥18°C",
-                }
+                },
             ],
         },
     )
 
     edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "policy_check" in body
     assert "Cooling must be" in body
@@ -654,7 +672,7 @@ def test_update_view_prefills_ai_step(client):
             "mode": "ADVISORY",
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     step.refresh_from_db()
     assert step.name == "AI step updated"
     assert step.description == "Tweaked summary"
@@ -685,7 +703,7 @@ def test_update_view_prefills_action_step(client):
 
     edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "Original message" in html
     assert "Existing notes" in html
@@ -700,7 +718,7 @@ def test_update_view_prefills_action_step(client):
             "message": "Escalate to ops channel.",
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     step.refresh_from_db()
     action_variant = step.action.get_variant()
     assert step.action.name == "Alert ops updated"
@@ -717,11 +735,17 @@ def test_step_form_navigation_links(client):
     first_step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
     second_step = WorkflowStepFactory(workflow=workflow, validator=validator, order=20)
 
-    edit_url = reverse("workflows:workflow_step_settings", args=[workflow.pk, second_step.pk])
+    edit_url = reverse(
+        "workflows:workflow_step_settings",
+        args=[workflow.pk, second_step.pk],
+    )
     response = client.get(edit_url)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    assert reverse("workflows:workflow_step_edit", args=[workflow.pk, first_step.pk]) in html
+    assert (
+        reverse("workflows:workflow_step_edit", args=[workflow.pk, first_step.pk])
+        in html
+    )
     assert "Previous step" in html
     assert "Next step" not in html
 
@@ -729,7 +753,10 @@ def test_step_form_navigation_links(client):
 def test_step_editor_shows_default_assertions_card(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ValidatorFactory(validation_type=ValidationType.BASIC, slug="basic-validator")
+    validator = ValidatorFactory(
+        validation_type=ValidationType.BASIC,
+        slug="basic-validator",
+    )
     validator.rules.create(
         name="Baseline price check",
         rule_type=ValidatorRuleType.CEL_EXPRESSION,
@@ -741,23 +768,29 @@ def test_step_editor_shows_default_assertions_card(client):
     edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "default-assertions-card" in html
-    assert "Default assertions run by the validator selected for this step: 1 assertion." in html
+    assert (
+        "Default assertions run by the validator selected for this step: 1 assertion."
+        in html
+    )
     assert "View default assertions" in html
 
 
 def test_step_editor_hides_default_assertions_when_none(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator = ValidatorFactory(validation_type=ValidationType.BASIC, slug="basic-no-defaults")
+    validator = ValidatorFactory(
+        validation_type=ValidationType.BASIC,
+        slug="basic-no-defaults",
+    )
     step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
 
     edit_url = reverse("workflows:workflow_step_edit", args=[workflow.pk, step.pk])
     response = client.get(edit_url)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "default-assertions-card" not in html
 
@@ -784,15 +817,18 @@ def test_move_and_delete_step(client):
 
     move_url = reverse("workflows:workflow_step_move", args=[workflow.pk, step_b.pk])
     response = client.post(move_url, data={"direction": "up"}, HTTP_HX_REQUEST="true")
-    assert response.status_code == 204
+    assert response.status_code == HTTPStatus.NO_CONTENT
     step_a.refresh_from_db()
     step_b.refresh_from_db()
-    assert step_b.order == 10
-    assert step_a.order == 20
+    assert step_b.order == 10  # noqa: PLR2004
+    assert step_a.order == 20  # noqa: PLR2004
 
-    delete_url = reverse("workflows:workflow_step_delete", args=[workflow.pk, step_a.pk])
+    delete_url = reverse(
+        "workflows:workflow_step_delete",
+        args=[workflow.pk, step_a.pk],
+    )
     response = client.post(delete_url, HTTP_HX_REQUEST="true")
-    assert response.status_code == 204
+    assert response.status_code == HTTPStatus.NO_CONTENT
     assert list(workflow.steps.all()) == [step_b]
 
 
@@ -807,7 +843,7 @@ def test_step_create_rejects_validator_from_other_org(client):
         args=[workflow.pk, bad_validator.pk],
     )
     response = client.get(url)
-    assert response.status_code == 404
+    assert response.status_code == HTTPStatus.NOT_FOUND
 
 
 def test_step_delete_requires_manager_role(client):
@@ -822,7 +858,7 @@ def test_step_delete_requires_manager_role(client):
         args=[workflow.pk, step.pk],
     )
     response = client.post(url)
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
     assert WorkflowStep.objects.filter(pk=step.pk).exists()
 
 
@@ -839,7 +875,7 @@ def test_step_move_requires_manager_role(client):
         args=[workflow.pk, target_step.pk],
     )
     response = client.post(url, data={"direction": "up"})
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
     orders = list(
         workflow.steps.order_by("order").values_list("order", flat=True),
     )
@@ -860,7 +896,7 @@ def test_step_list_shows_author_notes_for_authors(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Author notes" in body
     assert "Private deployment checklist" in body
@@ -890,7 +926,7 @@ def test_step_list_renders_action_step(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "Notify Slack" in html
     assert definition.get_action_category_display() in html
@@ -918,7 +954,7 @@ def test_step_list_hides_author_notes_for_non_authors(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.content.decode()
     assert "Author notes" not in body
     assert "Only authors should see this" not in body
@@ -927,7 +963,7 @@ def test_step_list_hides_author_notes_for_non_authors(client):
 def test_wizard_select_highlights_selected_card(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    validator_a = ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
+    ensure_validator(ValidationType.JSON_SCHEMA, "json-validator", "JSON Validator")
     validator_b = ensure_validator(ValidationType.AI_ASSIST, "ai-assist", "AI Assist")
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
@@ -936,7 +972,7 @@ def test_wizard_select_highlights_selected_card(client):
         {"selected": f"validator:{validator_b.pk}"},
         HTTP_HX_REQUEST="true",
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     parser = _CardParser()
     parser.feed(html)

@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import pytest
 from django.urls import reverse
 from rest_framework import status
@@ -52,7 +54,12 @@ def run_validation_tasks_inline(monkeypatch):
         )
 
         class ImmediateResult:
-            def get(self, timeout=None, propagate=False):
+            def get(
+                self,
+                timeout=None,
+                *,
+                propagate=False,
+            ):
                 return execution_result
 
         return ImmediateResult()
@@ -108,7 +115,7 @@ def test_create_workflow_with_basic_step_and_assertion(client):
             "allowed_file_types": [SubmissionFileType.JSON],
         },
     )
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     workflow = Workflow.objects.get(name="Price check")
     assert workflow.project == project
 
@@ -124,7 +131,7 @@ def test_create_workflow_with_basic_step_and_assertion(client):
             "notes": "",
         },
     )
-    assert step_response.status_code == 302
+    assert step_response.status_code == HTTPStatus.FOUND
     step = workflow.steps.get(name="Manual price gate")
 
     # Add assertion ensuring price < 20
@@ -143,14 +150,15 @@ def test_create_workflow_with_basic_step_and_assertion(client):
         },
         HTTP_HX_REQUEST="true",
     )
-    assert assertion_response.status_code == 204
+    assert assertion_response.status_code == HTTPStatus.NO_CONTENT
     step.refresh_from_db()
     assertion = RulesetAssertion.objects.get(ruleset=step.ruleset)
     assert assertion.target_field == "price"
     assert assertion.operator == AssertionOperator.LT
-    assert assertion.rhs.get("value") == 20.0
+    assert assertion.rhs.get("value") == 20.0  # noqa: PLR2004
     assert (
-        assertion.message_template == "Price is too expensive! It should be less than $20."
+        assertion.message_template
+        == "Price is too expensive! It should be less than $20."
     )
 
 

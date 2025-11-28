@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -12,7 +14,7 @@ def test_support_message_htmx_success(client, settings):
     user = get_user_model().objects.create_user(
         username="supporter",
         email="supporter@example.com",
-        password="StrongPass!23",
+        password="StrongPass!23",  # noqa: S106
     )
     client.force_login(user)
 
@@ -25,7 +27,7 @@ def test_support_message_htmx_success(client, settings):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 201
+    assert response.status_code == HTTPStatus.CREATED
     assert "Message received" in response.content.decode()
     saved_message = SupportMessage.objects.get(user=user)
     assert saved_message.subject == "Need integration guidance"
@@ -38,7 +40,7 @@ def test_support_message_htmx_invalid_returns_form_with_errors(client):
     user = get_user_model().objects.create_user(
         username="invalid_tester",
         email="invalid@example.com",
-        password="StrongPass!23",
+        password="StrongPass!23",  # noqa: S106
     )
     client.force_login(user)
 
@@ -48,7 +50,7 @@ def test_support_message_htmx_invalid_returns_form_with_errors(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.context is not None
     form = response.context["form"]
     assert form.errors["subject"] == ["Please add a little more detail."]

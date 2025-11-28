@@ -1,4 +1,5 @@
 from datetime import timedelta
+from http import HTTPStatus
 
 import pytest
 from django.core.management import call_command
@@ -50,7 +51,7 @@ def test_project_list_requires_admin(client):
     session.save()
 
     response = client.get(reverse("projects:project-list"))
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN
 
 
 @pytest.mark.django_db
@@ -67,7 +68,7 @@ def test_project_create(client_admin):
         follow=True,
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     project = Project.objects.get(name="Analytics")
     assert project.org == org
     assert project.color == "#00AA88"
@@ -87,7 +88,7 @@ def test_project_update(client_admin):
         },
         follow=True,
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     project.refresh_from_db()
     assert project.name == "Updated Project"
     assert project.color == "#1185FF"
@@ -99,7 +100,7 @@ def test_project_delete(client_admin):
     project = ProjectFactory(org=org)
 
     response = client.post(reverse("projects:project-delete", args=[project.pk]))
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     assert not Project.objects.filter(pk=project.pk).exists()
     archived = Project.all_objects.filter(pk=project.pk).first()
     assert archived is not None
@@ -113,7 +114,7 @@ def test_default_project_cannot_be_deleted(client_admin):
     default = ProjectFactory(org=org, name="Default", is_default=True)
 
     response = client.post(reverse("projects:project-delete", args=[default.pk]))
-    assert response.status_code == 302
+    assert response.status_code == HTTPStatus.FOUND
     refreshed = Project.all_objects.get(pk=default.pk)
     assert refreshed.is_active is True
 
@@ -142,7 +143,8 @@ def test_soft_delete_detaches_related_records(client_admin):
     assert run_refreshed.project is None
     assert not Project.objects.filter(pk=project.pk).exists()
     archived = Project.all_objects.filter(pk=project.pk).first()
-    assert archived is not None and archived.is_active is False
+    assert archived is not None
+    assert archived.is_active is False
     assert not TrackingEvent.objects.filter(project=project).exists()
     assert OutboundEvent.objects.filter(project=project).count() == 0
 
@@ -154,7 +156,7 @@ def test_purge_projects_command_removes_old_soft_deleted_projects(client_admin):
     client.post(reverse("projects:project-delete", args=[project.pk]))
 
     Project.all_objects.filter(pk=project.pk).update(
-        deleted_at=timezone.now() - timedelta(days=10)
+        deleted_at=timezone.now() - timedelta(days=10),
     )
 
     call_command("purge_projects", days=7)
@@ -175,11 +177,14 @@ def test_project_list_recovers_from_stale_session_scope(client):
 
     response = client.get(reverse("projects:project-list"))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert client.session["active_org_id"] != rogue_org.pk
     user.refresh_from_db()
     valid_org_ids = set(
-        user.memberships.filter(is_active=True).values_list("org_id", flat=True)
+        user.memberships.filter(is_active=True).values_list(
+            "org_id",
+            flat=True,
+        ),
     )
     assert client.session["active_org_id"] in valid_org_ids
     assert user.current_org_id == client.session["active_org_id"]

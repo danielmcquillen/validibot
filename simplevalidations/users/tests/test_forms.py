@@ -1,7 +1,6 @@
 """Module for all Form Tests."""
 
 import pytest
-
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.users.constants import RoleCode
@@ -50,7 +49,9 @@ class TestOrganizationMemberForm:
         user = UserFactory()
         empty_form = OrganizationMemberForm(organization=org)
         owner_option = next(
-            option for option in empty_form.role_options if option["value"] == RoleCode.OWNER
+            option
+            for option in empty_form.role_options
+            if option["value"] == RoleCode.OWNER
         )
         assert owner_option["disabled"] is True
 
@@ -196,9 +197,17 @@ class TestOrganizationMemberRolesForm:
         membership = MembershipFactory()
         membership.set_roles({RoleCode.ADMIN})
         form = OrganizationMemberRolesForm(membership=membership)
-        admin_option = next(option for option in form.role_options if option["value"] == RoleCode.ADMIN)
-        author_option = next(option for option in form.role_options if option["value"] == RoleCode.AUTHOR)
-        executor_option = next(option for option in form.role_options if option["value"] == RoleCode.EXECUTOR)
+        admin_option = next(
+            option for option in form.role_options if option["value"] == RoleCode.ADMIN
+        )
+        author_option = next(
+            option for option in form.role_options if option["value"] == RoleCode.AUTHOR
+        )
+        executor_option = next(
+            option
+            for option in form.role_options
+            if option["value"] == RoleCode.EXECUTOR
+        )
         assert admin_option["checked"] is True
         assert author_option["checked"] is True
         assert author_option["disabled"] is True

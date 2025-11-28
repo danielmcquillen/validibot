@@ -11,7 +11,7 @@ from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
 class DummyResult:
-    def __init__(self, passed: bool, issues=None, stats=None):
+    def __init__(self, passed: bool, issues=None, stats=None):  # noqa: FBT001
         self.passed = passed
         self.issues = issues or []
         self.stats = stats or {}
@@ -24,7 +24,7 @@ def test_execute_logs_started_and_success(monkeypatch):
     TrackingEvent.objects.all().delete()
 
     def success_engine(self, validator, submission, ruleset=None, config=None):
-        return DummyResult(True, [])
+        return DummyResult(pased=True, issues=[])
 
     monkeypatch.setattr(
         ValidationRunService,
@@ -57,7 +57,7 @@ def test_execute_logs_failure(monkeypatch):
     TrackingEvent.objects.all().delete()
 
     def failure_engine(self, validator, submission, ruleset=None, config=None):
-        return DummyResult(False, ["boom"])
+        return DummyResult(passed=False, issues=["boom"])
 
     monkeypatch.setattr(
         ValidationRunService,

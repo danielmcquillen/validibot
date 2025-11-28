@@ -20,7 +20,7 @@ def test_create_dummy_workflows_creates_records():
     assert Workflow.objects.count() == initial_count + 3
 
     for workflow in workflows:
-        assert workflow.steps.count() >= 2
+        assert workflow.steps.count() >= 2  # noqa: PLR2004
         public_info = WorkflowPublicInfo.objects.get(workflow=workflow)
         assert public_info.content_html
         assert workflow.project is not None

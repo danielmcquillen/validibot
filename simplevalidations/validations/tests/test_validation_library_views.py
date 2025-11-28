@@ -159,7 +159,7 @@ class TestValidationLibraryViews:
                 "validations:validator_detail",
                 kwargs={"slug": validator.slug},
             )
-            + "?tab=system"
+            + "?tab=system",
         )
 
         assert response.status_code == HTTPStatus.OK
@@ -178,7 +178,7 @@ class TestValidationLibraryViews:
             reverse(
                 "validations:validator_detail",
                 kwargs={"slug": validator.slug},
-            )
+            ),
         )
         assert response.status_code == HTTPStatus.FOUND
         assert "workflows" in response.headers["Location"]
@@ -235,7 +235,7 @@ class TestValidationLibraryViews:
             HTTP_X_CSRFTOKEN=csrf_token,
         )
 
-        assert response.status_code == 400
+        assert response.status_code == HTTPStatus.BAD_REQUEST
         assert Validator.objects.filter(pk=custom_validator.validator.pk).exists()
         trigger = json.loads(response.headers["HX-Trigger"])
         assert trigger["toast"]["level"] == "danger"
@@ -290,7 +290,7 @@ class TestValidationLibraryViews:
             reverse(
                 "validations:custom_validator_delete",
                 kwargs={"slug": custom_validator.validator.slug},
-            )
+            ),
         )
 
         assert response.status_code == HTTPStatus.OK

@@ -1,5 +1,6 @@
-import pytest
+from http import HTTPStatus
 
+import pytest
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 
@@ -11,10 +12,8 @@ from simplevalidations.users.tests.utils import ensure_all_roles_exist
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.constants import ValidatorRuleType
 from simplevalidations.validations.models import ValidatorCatalogRuleEntry
-from simplevalidations.validations.tests.factories import (
-    ValidatorCatalogEntryFactory,
-    ValidatorFactory,
-)
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 from simplevalidations.validations.utils import create_custom_validator
 
 
@@ -69,7 +68,7 @@ def test_default_assertions_modal_lists_rules(client):
     )
     response = client.get(url, HTTP_HX_REQUEST="true")
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "Default assertions for" in html
     assert rule.name in html
@@ -90,7 +89,7 @@ def test_default_assertion_allows_boolean_literal(client):
     session.save()
 
     validator = ValidatorFactory(org=org, is_system=False)
-    signal = ValidatorCatalogEntryFactory(validator=validator, slug="bool_in")
+    ValidatorCatalogEntryFactory(validator=validator, slug="bool_in")
 
     response = client.post(
         reverse(
@@ -107,13 +106,14 @@ def test_default_assertion_allows_boolean_literal(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 204
+    assert response.status_code == HTTPStatus.NO_CONTENT
     rule = validator.rules.get(name="Bool check")
     assert rule.expression == "bool_in == true"
     linked_entries = list(
         ValidatorCatalogRuleEntry.objects.filter(rule=rule).values_list(
-            "catalog_entry__slug", flat=True
-        )
+            "catalog_entry__slug",
+            flat=True,
+        ),
     )
     assert linked_entries == ["bool_in"]
 
@@ -137,7 +137,7 @@ def test_default_assertion_move_reorders(client):
         description="",
         custom_type="BASIC",
     ).validator
-    first = validator.rules.create(
+    validator.rules.create(
         name="First",
         rule_type=ValidatorRuleType.CEL_EXPRESSION,
         expression="payload.a == 1",
@@ -159,7 +159,7 @@ def test_default_assertion_move_reorders(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     names = list(validator.rules.order_by("order").values_list("name", flat=True))
     assert names[0] == "Second"
     assert names[1] == "First"
@@ -204,4 +204,4 @@ def test_author_not_creator_cannot_move(client):
         HTTP_HX_REQUEST="true",
     )
 
-    assert response.status_code == 403
+    assert response.status_code == HTTPStatus.FORBIDDEN

@@ -6,7 +6,8 @@ from pathlib import Path
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
-from sv_shared.fmi import FMIRunResult, FMIRunStatus
+from sv_shared.fmi import FMIRunResult
+from sv_shared.fmi import FMIRunStatus
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
@@ -28,7 +29,9 @@ class FMIWorkflowIntegrationTest(TestCase):
         os.environ.setdefault("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
         self._ensure_modal_env()
         if not os.getenv("MODAL_TOKEN_ID") or not os.getenv("MODAL_TOKEN_SECRET"):
-            self.skipTest("Modal credentials not configured; skipping FMI integration test.")
+            self.skipTest(
+                "Modal credentials not configured; skipping FMI integration test.",
+            )
         try:
             import modal  # noqa: F401
         except ImportError as err:  # pragma: no cover - defensive
@@ -55,9 +58,15 @@ class FMIWorkflowIntegrationTest(TestCase):
         org = OrganizationFactory()
         project = ProjectFactory(org=org)
 
-        asset = Path(__file__).resolve().parents[1] / "assets" / "fmu" / "Feedthrough.fmu"
+        asset = (
+            Path(__file__).resolve().parents[1] / "assets" / "fmu" / "Feedthrough.fmu"
+        )
         payload = asset.read_bytes()
-        upload = SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
+        upload = SimpleUploadedFile(
+            asset.name,
+            payload,
+            content_type="application/octet-stream",
+        )
 
         validator = create_fmi_validator(
             org=org,
@@ -81,7 +90,11 @@ class FMIWorkflowIntegrationTest(TestCase):
             "fmu_checksum": fmu_model.checksum,
             "use_test_volume": True,
             "inputs": {"int_in": 5},
-            "simulation_config": {"start_time": 0.0, "stop_time": 1.0, "step_size": 0.1},
+            "simulation_config": {
+                "start_time": 0.0,
+                "stop_time": 1.0,
+                "step_size": 0.1,
+            },
             "output_variables": ["int_out"],
             "return_logs": False,
         }

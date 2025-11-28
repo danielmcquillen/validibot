@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -43,12 +45,13 @@ def test_jwks_view_returns_expected_payload(client, settings, monkeypatch):
         return expected_key
 
     monkeypatch.setattr(
-        "simplevalidations.core.views.jwk_from_kms_key", fake_jwk_from_kms_key
+        "simplevalidations.core.views.jwk_from_kms_key",
+        fake_jwk_from_kms_key,
     )
 
     response = client.get(reverse("jwks"))
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json() == {"keys": [expected_key]}
     assert response["Content-Type"] == "application/jwk-set+json"
     assert response["Cache-Control"] == "public, max-age=900"

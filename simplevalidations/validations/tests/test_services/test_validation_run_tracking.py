@@ -24,7 +24,7 @@ def test_execute_logs_started_and_success(monkeypatch):
     TrackingEvent.objects.all().delete()
 
     def success_engine(self, validator, submission, ruleset=None, config=None):
-        return DummyResult(pased=True, issues=[])
+        return DummyResult(passed=True, issues=[])
 
     monkeypatch.setattr(
         ValidationRunService,

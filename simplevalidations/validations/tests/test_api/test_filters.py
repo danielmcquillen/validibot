@@ -7,9 +7,9 @@ from rest_framework.test import APIClient
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.tests.factories import ValidationRunFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory

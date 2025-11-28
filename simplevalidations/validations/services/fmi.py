@@ -5,8 +5,8 @@ import io
 import os
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from defusedxml import ElementTree as ET
 from django.core.files.base import ContentFile
@@ -14,26 +14,22 @@ from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
-
-from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.submissions.constants import SubmissionDataFormat
-from simplevalidations.users.models import Organization
-from simplevalidations.validations.constants import (
-    CatalogEntryType,
-    CatalogRunStage,
-    CatalogValueType,
-    FMUProbeStatus,
-    ValidationType,
-)
-from simplevalidations.validations.engines.modal import ModalRunnerMixin
-from simplevalidations.validations.models import (
-    FMUModel,
-    FMUProbeResult,
-    FMIVariable,
-    Validator,
-    ValidatorCatalogEntry,
-)
 from sv_shared.fmi import FMIProbeResult
+
+from simplevalidations.submissions.constants import SubmissionDataFormat
+from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.users.models import Organization
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import CatalogValueType
+from simplevalidations.validations.constants import FMUProbeStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.modal import ModalRunnerMixin
+from simplevalidations.validations.models import FMIVariable
+from simplevalidations.validations.models import FMUModel
+from simplevalidations.validations.models import FMUProbeResult
+from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
 
 MAX_FMU_SIZE_BYTES = 50 * 1024 * 1024
 DISALLOWED_EXTENSIONS = {
@@ -107,7 +103,9 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
     return model_name, fmi_version, variables
 
 
-def _validate_fmu_bytes(payload: bytes, filename: str) -> tuple[str, str, list[FMIVariable], str]:
+def _validate_fmu_bytes(
+    payload: bytes, filename: str
+) -> tuple[str, str, list[FMIVariable], str]:
     """
     Perform structural, safety, and metadata validation on an FMU payload.
 
@@ -151,7 +149,8 @@ def _validate_fmu_bytes(payload: bytes, filename: str) -> tuple[str, str, list[F
         ) from exc
     except UnicodeDecodeError as exc:
         raise FMIIntrospectionError(
-            _("modelDescription.xml in %(name)s is not UTF-8 text.") % {"name": display_name}
+            _("modelDescription.xml in %(name)s is not UTF-8 text.")
+            % {"name": display_name}
         ) from exc
 
     model_name, fmi_version, variables = _parse_variables(xml_text)
@@ -233,14 +232,18 @@ def _upload_to_modal_volume(
 
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
     if hasattr(volume, "batch_upload"):
-        with tempfile.NamedTemporaryFile(prefix="fmu-upload-", suffix=".fmu", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(
+            prefix="fmu-upload-", suffix=".fmu", delete=False
+        ) as tmp:
             tmp.write(payload)
             tmp.flush()
             with volume.batch_upload(force=True) as batch:  # type: ignore[arg-type]
                 batch.put_file(tmp.name, f"/{remote_name}")
     elif hasattr(volume, "put_file"):
         # Older client without batch_upload but with put_file
-        with tempfile.NamedTemporaryFile(prefix="fmu-upload-", suffix=".fmu", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(
+            prefix="fmu-upload-", suffix=".fmu", delete=False
+        ) as tmp:
             tmp.write(payload)
             tmp.flush()
             volume.put_file(tmp.name, f"/{remote_name}")
@@ -248,7 +251,9 @@ def _upload_to_modal_volume(
         # Fallback for legacy clients: direct bytes assignment into the volume mapping.
         volume[remote_name] = payload  # type: ignore[index]
     else:  # pragma: no cover - defensive against unexpected client versions
-        raise FMUStorageError("Modal Volume API missing batch_upload/put_file/item assignment.")
+        raise FMUStorageError(
+            "Modal Volume API missing batch_upload/put_file/item assignment."
+        )
     return f"{mount_prefix}/{remote_name}"
 
 
@@ -280,7 +285,11 @@ def create_fmi_validator(
         )
         wrapped_upload = ContentFile(raw_bytes, name=upload.name)
         try:
-            stored_file = wrapped_upload if storage_backend is None else storage_backend(wrapped_upload)
+            stored_file = (
+                wrapped_upload
+                if storage_backend is None
+                else storage_backend(wrapped_upload)
+            )
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
         fmu = FMUModel.objects.create(
@@ -328,7 +337,9 @@ def create_fmi_validator(
         _persist_variables(fmu, validator, variables)
         FMUProbeResult.objects.create(
             fmu_model=fmu,
-            status=FMUProbeStatus.SUCCEEDED if approve_immediately else FMUProbeStatus.PENDING,
+            status=FMUProbeStatus.SUCCEEDED
+            if approve_immediately
+            else FMUProbeStatus.PENDING,
             last_error="" if approve_immediately else _("Awaiting probe run."),
             details={"variable_count": len(variables)},
         )

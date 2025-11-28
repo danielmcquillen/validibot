@@ -9,28 +9,27 @@ errors clearly so authors understand the missing pieces.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing import Any
 
 from django.utils.translation import gettext as _
-from sv_shared.fmi import FMIRunResult, FMIRunStatus
+from sv_shared.fmi import FMIRunResult
+from sv_shared.fmi import FMIRunStatus
 
-from simplevalidations.validations.constants import (
-    CatalogEntryType,
-    CatalogRunStage,
-    Severity,
-    ValidationType,
-)
-from simplevalidations.validations.engines.base import (
-    BaseValidatorEngine,
-    ValidationIssue,
-    ValidationResult,
-)
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.base import BaseValidatorEngine
+from simplevalidations.validations.engines.base import ValidationIssue
+from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.modal import ModalRunnerMixin
 from simplevalidations.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
-    from simplevalidations.validations.models import Ruleset, Validator
+    from simplevalidations.validations.models import Ruleset
+    from simplevalidations.validations.models import Validator
 
 
 @register_engine(ValidationType.FMI)
@@ -66,18 +65,22 @@ class FMIValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                 ValidationIssue(
                     path="",
                     message=_(
-                        "This FMI validator is missing an FMU asset. Attach an FMU before running."
+                        "This FMI validator is missing an FMU asset. "
+                        "Attach an FMU before running."
                     ),
                     severity=Severity.ERROR,
                 ),
             )
 
-        if submission.file_type and not validator.supports_file_type(submission.file_type):
+        if submission.file_type and not validator.supports_file_type(
+            submission.file_type
+        ):
             issues.append(
                 ValidationIssue(
                     path="",
                     message=_(
-                        "Unsupported submission file type '%(file_type)s' for FMI validator."
+                        "Unsupported submission file type '%(file_type)s'"
+                        "for FMI validator."
                     )
                     % {"file_type": submission.file_type},
                     severity=Severity.ERROR,
@@ -145,7 +148,7 @@ class FMIValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
             passed = False
         return ValidationResult(passed=passed, issues=issues, stats=stats)
 
-    def _build_modal_payload(self, validator: "Validator") -> dict[str, Any]:
+    def _build_modal_payload(self, validator: Validator) -> dict[str, Any]:
         outputs = list(
             validator.catalog_entries.filter(
                 run_stage=CatalogRunStage.OUTPUT,
@@ -162,7 +165,12 @@ class FMIValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         if getattr(validator, "fmu_model", None):
             fmu_checksum = validator.fmu_model.checksum
         fmu_url = getattr(fmu_path, "url", None)
-        use_test_volume = str(os.getenv("FMI_USE_TEST_VOLUME", "")).lower() in {"1", "true", "yes", "on"}
+        use_test_volume = str(os.getenv("FMI_USE_TEST_VOLUME", "")).lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         return {
             "fmu_storage_key": storage_key,
             "fmu_url": fmu_url or self.config.get("fmu_url"),

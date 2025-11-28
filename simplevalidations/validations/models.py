@@ -9,38 +9,37 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q, Value
+from django.db.models import Q
+from django.db.models import Value
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.constants import (
-    SubmissionDataFormat,
-    SubmissionFileType,
-    data_format_allowed_file_types,
-)
+from simplevalidations.submissions.constants import SubmissionDataFormat
+from simplevalidations.submissions.constants import SubmissionFileType
+from simplevalidations.submissions.constants import data_format_allowed_file_types
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.models import Organization, User
-from simplevalidations.validations.constants import (
-    AssertionOperator,
-    AssertionType,
-    CatalogEntryType,
-    CatalogRunStage,
-    CatalogValueType,
-    CustomValidatorType,
-    FMUProbeStatus,
-    JSONSchemaVersion,
-    RulesetType,
-    Severity,
-    StepStatus,
-    ValidationRunSource,
-    ValidationRunStatus,
-    ValidationType,
-    ValidatorRuleType,
-    XMLSchemaType,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import User
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import CatalogValueType
+from simplevalidations.validations.constants import CustomValidatorType
+from simplevalidations.validations.constants import FMUProbeStatus
+from simplevalidations.validations.constants import JSONSchemaVersion
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunSource
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import ValidatorRuleType
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [

@@ -9,15 +9,13 @@ from typing import Any
 from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 
-from simplevalidations.validations.constants import AssertionOperator
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import (
-    CEL_MAX_EVAL_TIMEOUT_MS,
-)
-from simplevalidations.validations.constants import Severity
-from simplevalidations.validations.constants import ValidationType
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.cel_eval import evaluate_cel_expression
+from simplevalidations.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
@@ -36,6 +34,7 @@ _FILTER_PATTERN = re.compile(r"^(?P<name>\w+)(?:\((?P<args>.*)\))?$")
 
 class MessageTemplateRenderError(Exception):
     """Raised when an assertion message template fails to render."""
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
                     message=_("Invalid JSON submission: %(error)s") % {"error": exc},
                 ),
             )
-            return ValidationResult(passed=False, issues=issues, stats={"exception": type(exc).__name__})
+            return ValidationResult(
+                passed=False, issues=issues, stats={"exception": type(exc).__name__}
+            )
 
         # Evaluate CEL assertions (if any) once using the full payload context.
         issues.extend(
@@ -231,12 +232,20 @@ class BasicValidatorEngine(BaseValidatorEngine):
         if op in {AssertionOperator.IS_NULL, AssertionOperator.NOT_NULL}:
             is_null = actual is None
             passed = is_null if op == AssertionOperator.IS_NULL else not is_null
-            return passed, _("Value was %(state)s.") % {"state": _("null") if is_null else _("not null")}
+            return passed, _("Value was %(state)s.") % {
+                "state": _("null") if is_null else _("not null")
+            }
         if op in {AssertionOperator.IS_EMPTY, AssertionOperator.NOT_EMPTY}:
             is_empty = not actual
             passed = is_empty if op == AssertionOperator.IS_EMPTY else not is_empty
-            return passed, _("Value was %(state)s.") % {"state": _("empty") if is_empty else _("not empty")}
-        if op in {AssertionOperator.LEN_EQ, AssertionOperator.LEN_LE, AssertionOperator.LEN_GE}:
+            return passed, _("Value was %(state)s.") % {
+                "state": _("empty") if is_empty else _("not empty")
+            }
+        if op in {
+            AssertionOperator.LEN_EQ,
+            AssertionOperator.LEN_LE,
+            AssertionOperator.LEN_GE,
+        }:
             return self._evaluate_length(op, actual, rhs, options)
         if op == AssertionOperator.TYPE_IS:
             return self._evaluate_type(actual, rhs)
@@ -249,7 +258,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
         if op in {AssertionOperator.SUBSET, AssertionOperator.SUPERSET}:
             return self._evaluate_set_relation(op, actual, rhs)
 
-        return False, _("Operator '%(operator)s' is not supported yet.") % {"operator": operator}
+        return False, _("Operator '%(operator)s' is not supported yet.") % {
+            "operator": operator
+        }
 
     def _build_cel_context(self, payload: Any, validator: Validator) -> dict[str, Any]:
         """
@@ -277,7 +288,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
                 return self._issue_from_assertion(
                     assertion,
                     path="",
-                    message=_("CEL 'when' failed: %(err)s") % {"err": guard_result.error},
+                    message=_("CEL 'when' failed: %(err)s")
+                    % {"err": guard_result.error},
                 )
             if not guard_result.value:
                 return None
@@ -305,7 +317,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
 
     def _evaluate_equality(self, op, actual, rhs, options):
         expected = rhs.get("value")
-        actual_value, expected_value = self._normalize_operands(actual, expected, options)
+        actual_value, expected_value = self._normalize_operands(
+            actual, expected, options
+        )
         passed = actual_value == expected_value
         if op == AssertionOperator.NE:
             passed = actual_value != expected_value
@@ -343,11 +357,16 @@ class BasicValidatorEngine(BaseValidatorEngine):
         lower_ok = actual_num >= low if include_min else actual_num > low
         upper_ok = actual_num <= high if include_max else actual_num < high
         passed = lower_ok and upper_ok
-        return passed, _("Expected between %(low)s and %(high)s.") % {"low": low, "high": high}
+        return passed, _("Expected between %(low)s and %(high)s.") % {
+            "low": low,
+            "high": high,
+        }
 
     def _evaluate_membership(self, op, actual, rhs, options):
         values = rhs.get("values") or []
-        actual_norm, expected_collection = self._normalize_operands(actual, values, options)
+        actual_norm, expected_collection = self._normalize_operands(
+            actual, values, options
+        )
         passed = actual_norm in expected_collection
         if op == AssertionOperator.NOT_IN:
             passed = actual_norm not in expected_collection
@@ -410,7 +429,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
         }
         expected_type = type_map.get(str(expected).lower())
         if not expected_type:
-            return False, _("Unsupported expected type '%(value)s'.") % {"value": expected}
+            return False, _("Unsupported expected type '%(value)s'.") % {
+                "value": expected
+            }
         return isinstance(actual, expected_type), _("Type mismatch.")
 
     def _evaluate_approx(self, actual, rhs, options):
@@ -423,7 +444,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
         if mode == "percent":
             tolerance = abs(target) * (tolerance / 100)
         diff = abs(actual_num - target)
-        return diff <= tolerance, _("Difference %(diff)s exceeds tolerance %(tol)s.") % {
+        return diff <= tolerance, _(
+            "Difference %(diff)s exceeds tolerance %(tol)s."
+        ) % {
             "diff": diff,
             "tol": tolerance,
         }
@@ -547,9 +570,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
             try:
                 rendered = self._render_message_template(template, context)
             except MessageTemplateRenderError:
-                message = _(
-                    "Message template error – falling back to default output."
-                )
+                message = _("Message template error – falling back to default output.")
             else:
                 if rendered:
                     message = rendered
@@ -591,7 +612,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
         self._add_target_alias(context, assertion, actual)
         return context
 
-    def _add_target_alias(self, context: dict[str, Any], assertion, actual: Any) -> None:
+    def _add_target_alias(
+        self, context: dict[str, Any], assertion, actual: Any
+    ) -> None:
         alias = ""
         if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
             alias = assertion.target_catalog_entry.slug or ""

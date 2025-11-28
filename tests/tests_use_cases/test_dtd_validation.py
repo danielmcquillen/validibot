@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 def start_workflow_url(workflow_id: int) -> str:
     """
-    Resolve the API start URL for a workflow, falling back to a guessed path if reversing fails.
+    Resolve the API start URL for a workflow, falling back to a
+    guessed path if reversing fails.
     """
     try:
         return reverse("api:workflow-start", args=[workflow_id])
@@ -56,7 +57,8 @@ def poll_until_complete(
     interval_s: float = 0.25,
 ) -> tuple[dict, int]:
     """
-    Poll the validation run endpoint until a terminal state is reached or timeout occurs.
+    Poll the validation run endpoint until a terminal
+    state is reached or timeout occurs.
     """
     deadline = time.time() + timeout_s
     last = None
@@ -98,7 +100,8 @@ def extract_issues(data: dict) -> list[dict]:
 @pytest.fixture
 def workflow_context(load_dtd_asset, api_client):
     """
-    Build a minimal workflow configured for XML DTD validation and authenticate the API client.
+    Build a minimal workflow configured for XML DTD
+    validation and authenticate the API client.
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
@@ -140,7 +143,8 @@ def workflow_context(load_dtd_asset, api_client):
 
 def _run_and_poll(client, workflow, *, content: str) -> dict:
     """
-    Start a workflow via the API and poll until the validation run completes, returning the payload.
+    Start a workflow via the API and poll until the
+    validation run completes, returning the payload.
     """
     start_url = start_workflow_url(workflow.pk)
     resp = client.post(start_url, data=content, content_type="application/xml")
@@ -182,7 +186,8 @@ class TestDtdValidation:
 
     def test_xml_dtd_happy_path(self, load_xml_asset, workflow_context):
         """
-        Valid XML payload should pass DTD validation, produce a succeeded run, and return no issues.
+        Valid XML payload should pass DTD validation,
+        produce a succeeded run, and return no issues.
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]
@@ -195,7 +200,8 @@ class TestDtdValidation:
 
     def test_xml_dtd_missing_required_elements(self, load_xml_asset, workflow_context):
         """
-        Invalid XML payload missing required elements should fail DTD validation and return issues.
+        Invalid XML payload missing required
+        elements should fail DTD validation and return issues.
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]

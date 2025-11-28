@@ -6,7 +6,7 @@ from django.test import TestCase
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.validations.constants import RulesetType, ValidationType
+from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.engines.fmi import FMIValidationEngine
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.services.fmi import create_fmi_validator

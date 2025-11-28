@@ -4,7 +4,6 @@ import base64
 import binascii
 import json
 from typing import Any
-from uuid import UUID
 
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _

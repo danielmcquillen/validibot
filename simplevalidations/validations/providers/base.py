@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from simplevalidations.validations.cel import CelHelper
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator

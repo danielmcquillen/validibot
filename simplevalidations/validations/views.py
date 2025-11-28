@@ -29,7 +29,6 @@ from simplevalidations.validations.constants import (
     LibraryLayout,
     ValidationRunStatus,
     ValidationType,
-    ValidatorRuleType,
 )
 from simplevalidations.validations.forms import (
     CustomValidatorCreateForm,
@@ -52,7 +51,6 @@ from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.services.fmi import (
     FMIIntrospectionError,
     create_fmi_validator,
-    run_fmu_probe,
 )
 from simplevalidations.validations.tasks import run_fmu_probe_task
 from simplevalidations.validations.utils import (

@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 from django.contrib import messages
-from django.db import models
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from django.views.generic import TemplateView, ListView
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import ListView
 
 from simplevalidations.notifications.models import Notification
-from simplevalidations.tracking.constants import TrackingEventType
-from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.events.constants import AppEventType
-from simplevalidations.users.models import PendingInvite, User
+from simplevalidations.tracking.services import TrackingEventService
+from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.users.models import PendingInvite
 
 
 class NotificationListView(LoginRequiredMixin, ListView):

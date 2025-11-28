@@ -1,7 +1,6 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-import pytest
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -11,7 +10,7 @@ from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, MembershipRole, Role
+from simplevalidations.users.models import Membership, Role
 from simplevalidations.users.tests.factories import (
     OrganizationFactory,
     UserFactory,

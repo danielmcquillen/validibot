@@ -10,7 +10,6 @@ import logging
 from allauth.account.models import EmailAddress
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import reverse
-from regex import F
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By

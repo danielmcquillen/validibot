@@ -2,9 +2,6 @@ import logging
 from base64 import b64decode
 
 from django.conf import settings
-from gidgethub import sansio
-from gidgethub.abc import GitHubAPI
-from gidgethub.sansio import Event
 
 logger = logging.getLogger(__name__)
 

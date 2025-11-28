@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from django.conf import settings
 from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404
 
 from simplevalidations.users.models import Organization
 from simplevalidations.users.permissions import PermissionCode

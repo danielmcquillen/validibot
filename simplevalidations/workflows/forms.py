@@ -23,7 +23,6 @@ from simplevalidations.workflows.models import Workflow, WorkflowPublicInfo
 
 if TYPE_CHECKING:
     from simplevalidations.users.models import User
-    from simplevalidations.validations.models import Validator
 
 
 AI_TEMPLATES = (

@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
+from typing import TYPE_CHECKING
 from typing import Any
 
 from django.conf import settings
@@ -10,46 +11,38 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext_lazy
 from rest_framework.response import Response as APIResponse
 
-from simplevalidations.core.site_settings import (
-    MetadataPolicyError,
-    get_site_settings,
-)
+from simplevalidations.core.site_settings import MetadataPolicyError
+from simplevalidations.core.site_settings import get_site_settings
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.ingest import (
-    prepare_inline_text,
-    prepare_uploaded_file,
-)
+from simplevalidations.submissions.ingest import prepare_inline_text
+from simplevalidations.submissions.ingest import prepare_uploaded_file
 from simplevalidations.submissions.models import Submission
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import (
-    VALIDATION_RUN_TERMINAL_STATUSES,
-    ValidationRunSource,
-)
-from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from simplevalidations.validations.constants import ValidationRunSource
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.services.validation_run import (
     ValidationRunLaunchResults,
-    ValidationRunService,
 )
-from simplevalidations.workflows.constants import (
-    SUPPORTED_CONTENT_TYPES,
-    WorkflowStartErrorCode,
-    preferred_content_type_for_file,
-)
+from simplevalidations.validations.services.validation_run import ValidationRunService
+from simplevalidations.workflows.constants import SUPPORTED_CONTENT_TYPES
+from simplevalidations.workflows.constants import WorkflowStartErrorCode
+from simplevalidations.workflows.constants import preferred_content_type_for_file
 from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.request_utils import (
-    SubmissionRequestMode,
-    detect_mode,
-    extract_request_basics,
-)
+from simplevalidations.workflows.request_utils import SubmissionRequestMode
+from simplevalidations.workflows.request_utils import detect_mode
+from simplevalidations.workflows.request_utils import extract_request_basics
 from simplevalidations.workflows.views_helpers import (
     describe_workflow_file_type_violation,
-    resolve_submission_file_type,
-    user_has_executor_role,
 )
+from simplevalidations.workflows.views_helpers import resolve_submission_file_type
+from simplevalidations.workflows.views_helpers import user_has_executor_role
+
+if TYPE_CHECKING:
+    from simplevalidations.validations.models import ValidationRun
 
 logger = logging.getLogger(__name__)
 
@@ -149,11 +142,15 @@ def launch_api_validation_run(
             source=ValidationRunSource.API,
         )
     except PermissionError:
-        payload = {"detail": _("You do not have permission to run this workflow.")}
+        payload = {
+            "detail": gettext_lazy("You do not have permission to run this workflow."),
+        }
         return APIResponse(payload, status=HTTPStatus.NOT_FOUND)
     except Exception:  # pragma: no cover - defensive
         logger.exception("Run service errored for workflow %s", workflow.pk)
-        payload = {"detail": _("Could not run the workflow. Please try again.")}
+        payload = {
+            "detail": gettext_lazy("Could not run the workflow. Please try again."),
+        }
         return APIResponse(payload, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     validation_run: ValidationRun = launch_result.validation_run
@@ -193,7 +190,7 @@ def handle_raw_body_mode(
     raw = body_bytes
     max_inline = getattr(settings, "SUBMISSION_INLINE_MAX_BYTES", 10_000_000)
     if len(raw) > max_inline:
-        err_msg = _("Payload too large.")
+        err_msg = gettext_lazy("Payload too large.")
         raise LaunchValidationError(
             detail=err_msg,
             code=WorkflowStartErrorCode.INVALID_PAYLOAD,
@@ -203,7 +200,7 @@ def handle_raw_body_mode(
     if encoding:
         if encoding.lower() != "base64":
             raise LaunchValidationError(
-                detail=_("Unsupported Content-Encoding (only base64)."),
+                detail=gettext_lazy("Unsupported Content-Encoding (only base64)."),
                 code=WorkflowStartErrorCode.INVALID_PAYLOAD,
                 status_code=400,
             )
@@ -211,7 +208,7 @@ def handle_raw_body_mode(
             raw = base64.b64decode(raw, validate=True)
         except Exception as e:
             raise LaunchValidationError(
-                detail=_("Invalid base64 payload."),
+                detail=gettext_lazy("Invalid base64 payload."),
                 code=WorkflowStartErrorCode.INVALID_PAYLOAD,
                 status_code=400,
             ) from e
@@ -219,8 +216,10 @@ def handle_raw_body_mode(
     ct_norm = (content_type_header or "").split(";")[0].strip().lower()
     file_type = SUPPORTED_CONTENT_TYPES.get(ct_norm)
     if not file_type:
-        err_msg = _("Unsupported Content-Type '%s'. ") % full_ct
-        err_msg += _("Supported : %s") % ", ".join(SUPPORTED_CONTENT_TYPES.keys())
+        err_msg = gettext_lazy("Unsupported Content-Type '%s'. ") % full_ct
+        err_msg += gettext_lazy("Supported : %s") % ", ".join(
+            SUPPORTED_CONTENT_TYPES.keys(),
+        )
         raise LaunchValidationError(
             detail=err_msg,
             code=WorkflowStartErrorCode.INVALID_PAYLOAD,
@@ -302,7 +301,7 @@ def process_structured_payload(
     """
     Shared serializer handling for JSON envelope and multipart submissions.
     """
-    if hasattr(payload, "copy"):
+    if hasattr(payload, "copy"):  # noqa : SIM108
         payload = payload.copy()
     else:
         payload = dict(payload or {})
@@ -316,7 +315,7 @@ def process_structured_payload(
         max_file = getattr(settings, "SUBMISSION_FILE_MAX_BYTES", 1_000_000_000)
         if getattr(file_obj, "size", 0) > max_file:
             raise LaunchValidationError(
-                detail=_("File too large."),
+                detail=gettext_lazy("File too large."),
                 code=WorkflowStartErrorCode.INVALID_PAYLOAD,
                 status_code=413,
             )
@@ -327,7 +326,7 @@ def process_structured_payload(
         metadata = enforce_metadata_policy(metadata, submission_settings)
     except MetadataPolicyError as exc:
         raise LaunchValidationError(
-            detail=_("Invalid request payload."),
+            detail=gettext_lazy("Invalid request payload."),
             code=WorkflowStartErrorCode.INVALID_PAYLOAD,
             status_code=400,
             errors=[
@@ -336,7 +335,7 @@ def process_structured_payload(
                     "message": str(exc),
                 },
             ],
-        )
+        ) from exc
 
     if vd.get("file") is not None:
         file_obj = vd["file"]
@@ -421,7 +420,7 @@ def process_structured_payload(
             metadata = enforce_metadata_policy(metadata, submission_settings)
         except MetadataPolicyError as exc:
             raise LaunchValidationError(
-                detail=_("Invalid request payload."),
+                detail=gettext_lazy("Invalid request payload."),
                 code=WorkflowStartErrorCode.INVALID_PAYLOAD,
                 status_code=400,
                 errors=[
@@ -430,7 +429,7 @@ def process_structured_payload(
                         "message": str(exc),
                     },
                 ],
-            )
+            ) from exc
 
         submission = Submission(
             org=workflow.org,
@@ -447,7 +446,7 @@ def process_structured_payload(
         )
     else:
         raise LaunchValidationError(
-            detail=_("No content provided."),
+            detail=gettext_lazy("No content provided."),
             code=WorkflowStartErrorCode.INVALID_PAYLOAD,
             status_code=400,
         )
@@ -637,7 +636,9 @@ def build_submission_from_api(
         body_bytes=body_bytes,
     )
     if detection_result.has_error:
-        error_message = detection_result.error or _("Invalid request payload.")
+        error_message = detection_result.error or gettext_lazy(
+            "Invalid request payload.",
+        )
         logger.warning(
             "Submission mode detection failed",
             extra={
@@ -647,7 +648,7 @@ def build_submission_from_api(
             },
         )
         raise LaunchValidationError(
-            detail=_("Invalid request payload."),
+            detail=gettext_lazy("Invalid request payload."),
             code=WorkflowStartErrorCode.INVALID_PAYLOAD,
             status_code=400,
             errors=[
@@ -701,7 +702,7 @@ def build_submission_from_api(
         },
     )
     raise LaunchValidationError(
-        detail=_("Unsupported request content type."),
+        detail=gettext_lazy("Unsupported request content type."),
         code=WorkflowStartErrorCode.INVALID_PAYLOAD,
         status_code=400,
     )
@@ -727,7 +728,9 @@ def ensure_workflow_ready_for_launch(workflow: Workflow) -> None:
         )
     if not workflow.steps.exists():
         raise LaunchValidationError(
-            detail=_("This workflow has no steps defined and cannot be executed."),
+            detail=gettext_lazy(
+                "This workflow has no steps defined and cannot be executed."
+            ),
             code=WorkflowStartErrorCode.NO_WORKFLOW_STEPS,
             status_code=HTTPStatus.BAD_REQUEST,
         )
@@ -738,14 +741,14 @@ def ensure_user_can_launch_workflow(*, workflow: Workflow, user: User) -> None:
 
     if not getattr(user, "is_authenticated", False):
         raise LaunchValidationError(
-            detail=_("You do not have permission to run this workflow."),
+            detail=gettext_lazy("You do not have permission to run this workflow."),
             code=WorkflowStartErrorCode.PERMISSION_DENIED,
             status_code=HTTPStatus.FORBIDDEN,
         )
 
     if not user_has_executor_role(user, workflow):
         raise LaunchValidationError(
-            detail=_("You do not have permission to run this workflow."),
+            detail=gettext_lazy("You do not have permission to run this workflow."),
             code=WorkflowStartErrorCode.PERMISSION_DENIED,
             status_code=HTTPStatus.FORBIDDEN,
         )

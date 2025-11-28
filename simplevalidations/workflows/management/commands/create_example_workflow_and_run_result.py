@@ -11,8 +11,7 @@ from django.utils import timezone
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Organization, User, ensure_default_project
+from simplevalidations.users.models import User, ensure_default_project
 from simplevalidations.validations.constants import (
     AssertionOperator,
     AssertionType,

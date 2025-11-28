@@ -35,7 +35,7 @@ from simplevalidations.workflows.models import WorkflowStep
 try:
     from simplevalidations.workflows.tests.factories import WorkflowFactory
     from simplevalidations.workflows.tests.factories import WorkflowStepFactory
-except Exception:  # noqa: BLE001
+except Exception:
     WorkflowFactory = None
     WorkflowStepFactory = None
 

@@ -1,3 +1,5 @@
+import contextlib
+
 import factory
 from factory.django import DjangoModelFactory
 
@@ -36,7 +38,7 @@ class WorkflowFactory(DjangoModelFactory):
     )
 
     @factory.post_generation
-    def link_user(self, create, extracted, **kwargs):  # noqa: FBT001
+    def link_user(self, create, extracted, **kwargs):
         if not create:
             return
         # Ensure the workflow's user has an active membership in the workflow org
@@ -46,12 +48,9 @@ class WorkflowFactory(DjangoModelFactory):
             defaults={"is_active": True},
         )
         if getattr(self, "with_owner", False):
-            grant_role(self.user, self.org, RoleCode.OWNER)
-        try:
-            self.user.set_current_org(self.org)
-        except ValueError:
-            # Tests may override membership manually; skip when access not allowed.
-            pass
+            with contextlib.suppress(ValueError):
+                # Tests may override membership manually; skip when access not allowed.
+                self.user.set_current_org(self.org)
 
 
 class WorkflowStepFactory(DjangoModelFactory):

@@ -1657,6 +1657,7 @@ This allows the workflow author to search and select specific users who can acce
 - [ ] Implement `validate_json_depth()` for nesting limits
 - [ ] Implement `parse_xml_safely()` wrapper
 - [ ] Configure size limits: 1 MB public, 10 MB authenticated
+- [ ] Harden `_detect_xml_schema_type` (workflows/forms.py) to align with defused XML guidance or replace it with `defusedxml`
 
 ### Views & Forms
 

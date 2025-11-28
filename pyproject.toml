@@ -166,7 +166,7 @@ ignore = [
   "C416",    # Allow Unnecessary dict comprehension (rewrite using `dict()`)
   "COM812",  # Allow Trailing comma missing
   "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
-  "G400",    # We want to use f-strings in logging
+  "G004",    # Allow f-strings in logging statements
 ]
 # The fixes in extend-unsafe-fixes will require
 # provide the `--unsafe-fixes` flag when fixing.

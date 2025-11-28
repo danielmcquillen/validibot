@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from sv_shared.fmi import FMIProbeResult
+from sv_shared.fmi import FMIVariableMeta
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.validations.constants import CatalogRunStage, ValidationType
-from simplevalidations.validations.services.fmi import create_fmi_validator, run_fmu_probe
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.services.fmi import create_fmi_validator
+from simplevalidations.validations.services.fmi import run_fmu_probe
 from simplevalidations.validations.tests.test_fmi_engine import _prime_modal_cache_fake
-from sv_shared.fmi import FMIProbeResult, FMIVariableMeta
 
 
 def _make_fake_fmu(name: str = "demo") -> SimpleUploadedFile:
@@ -16,9 +19,17 @@ def _make_fake_fmu(name: str = "demo") -> SimpleUploadedFile:
 
     from pathlib import Path
 
-    asset = Path(__file__).resolve().parents[3] / "tests" / "assets" / "fmu" / "Feedthrough.fmu"
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "assets"
+        / "fmu"
+        / "Feedthrough.fmu"
+    )
     payload = asset.read_bytes()
-    return SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
+    return SimpleUploadedFile(
+        asset.name, payload, content_type="application/octet-stream"
+    )
 
 
 class FMIServiceTests(TestCase):
@@ -35,9 +46,9 @@ class FMIServiceTests(TestCase):
     def tearDown(self):
         from simplevalidations.validations.services import fmi as fmi_module
 
-        fmi_module._FMIProbeRunner.configure_modal_runner(None)  # type: ignore[attr-defined]
+        fmi_module._FMIProbeRunner.configure_modal_runner(None)  # type: ignore[attr-defined] # noqa: SLF001
         if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment]
+            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
     def test_create_fmi_validator_introspects_and_seeds_catalog(self):
         upload = _make_fake_fmu()
@@ -102,7 +113,7 @@ class FMIServiceTests(TestCase):
         fake_runner = FakeProbeRunner(probe_result.model_dump(mode="json"))
         from simplevalidations.validations.services import fmi as fmi_module
 
-        fmi_module._FMIProbeRunner.configure_modal_runner(fake_runner)  # type: ignore[attr-defined]
+        fmi_module._FMIProbeRunner.configure_modal_runner(fake_runner)  # type: ignore[attr-defined] # noqa: SLF001
 
         run_fmu_probe(fmu_model)
 

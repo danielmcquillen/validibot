@@ -7,57 +7,66 @@ import django_filters
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
-from django.db import models, transaction
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db import transaction
 from django.db.models import Prefetch
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.shortcuts import redirect
+from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import DetailView, ListView, TemplateView, View
-from django.views.generic.edit import DeleteView, FormView
+from django.views.generic import DetailView
+from django.views.generic import ListView
+from django.views.generic import TemplateView
+from django.views.generic import View
+from django.views.generic.edit import DeleteView
+from django.views.generic.edit import FormView
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, permissions, viewsets
+from rest_framework import filters
+from rest_framework import permissions
+from rest_framework import viewsets
 
 from simplevalidations.core.mixins import BreadcrumbMixin
-from simplevalidations.core.utils import reverse_with_org, truthy
+from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.core.utils import truthy
 from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.validations.constants import (
     VALIDATION_LIBRARY_LAYOUT_SESSION_KEY,
-    VALIDATION_LIBRARY_TAB_SESSION_KEY,
-    CatalogRunStage,
-    LibraryLayout,
-    ValidationRunStatus,
-    ValidationType,
 )
-from simplevalidations.validations.forms import (
-    CustomValidatorCreateForm,
-    CustomValidatorUpdateForm,
-    FMIValidatorCreateForm,
-    ValidatorCatalogEntryForm,
-    ValidatorRuleForm,
-)
+from simplevalidations.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import LibraryLayout
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.forms import CustomValidatorCreateForm
+from simplevalidations.validations.forms import CustomValidatorUpdateForm
+from simplevalidations.validations.forms import FMIValidatorCreateForm
+from simplevalidations.validations.forms import ValidatorCatalogEntryForm
+from simplevalidations.validations.forms import ValidatorRuleForm
+from simplevalidations.validations.models import ValidationFinding
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import ValidationStepRun
+from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
+from simplevalidations.validations.models import ValidatorCatalogRule
+from simplevalidations.validations.models import ValidatorCatalogRuleEntry
 from simplevalidations.validations.models import (
-    ValidationFinding,
-    ValidationRun,
-    ValidationStepRun,
-    Validator,
-    ValidatorCatalogEntry,
-    ValidatorCatalogRule,
-    ValidatorCatalogRuleEntry,
     default_supported_data_formats_for_validation,
 )
 from simplevalidations.validations.serializers import ValidationRunSerializer
-from simplevalidations.validations.services.fmi import (
-    FMIIntrospectionError,
-    create_fmi_validator,
-)
+from simplevalidations.validations.services.fmi import FMIIntrospectionError
+from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.validations.tasks import run_fmu_probe_task
-from simplevalidations.validations.utils import (
-    create_custom_validator,
-    update_custom_validator,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.validations.utils import create_custom_validator
+from simplevalidations.validations.utils import update_custom_validator
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +151,14 @@ class ValidationRunViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             scoped = ValidationRun.objects.none()
 
+        msg = (
+            "ValidationRunViewSet.filter_queryset user=%s org=%s "
+            "roles=%s full_access=%s "
+            "filtered_ids=%s"
+        )
+
         logger.debug(
-            "ValidationRunViewSet.filter_queryset user=%s org=%s roles=%s full_access=%s filtered_ids=%s",
+            msg,
             user.id,
             active_org_id,
             membership.role_codes,
@@ -439,7 +454,9 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         return None
 
     def has_library_access(self) -> bool:
-        org = self.get_active_org() or getattr(self.get_active_membership(), "org", None)
+        org = self.get_active_org() or getattr(
+            self.get_active_membership(), "org", None
+        )
         if not org:
             return False
         return self.request.user.has_perm(
@@ -448,7 +465,9 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         )
 
     def can_manage_validators(self) -> bool:
-        org = self.get_active_org() or getattr(self.get_active_membership(), "org", None)
+        org = self.get_active_org() or getattr(
+            self.get_active_membership(), "org", None
+        )
         if not org:
             return False
         return self.request.user.has_perm(
@@ -476,7 +495,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             messages.error(
                 self.request,
                 _(
-                    "Validator Library is limited to organization owners, admins, and authors."
+                    "Validator Library is limited to organization "
+                    "owners, admins, and authors."
                 ),
             )
             return False
@@ -651,7 +671,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "subtitle": str(_("Author-defined")),
                 "description": str(
                     _(
-                        "Create a validator with custom inputs, outputs, and CEL assertions.",
+                        "Create a validator with custom inputs, "
+                        "outputs, and CEL assertions.",
                     ),
                 ),
                 "icon": "bi-sliders",
@@ -666,7 +687,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "subtitle": str(_("Simulation-based")),
                 "description": str(
                     _(
-                        "Upload an FMU to auto-discover input and output signals and create default assertions.",
+                        "Upload an FMU to auto-discover input and "
+                        "output signals and create default assertions.",
                     ),
                 ),
                 "icon": "bi-cpu",
@@ -1187,7 +1209,8 @@ class CustomValidatorDeleteView(CustomValidatorManageMixin, TemplateView):
     def _get_delete_blocker(self, validator):
         if WorkflowStep.objects.filter(validator=validator).exists():
             return _(
-                "Cannot delete %(name)s because workflow steps still reference this validator.",
+                "Cannot delete %(name)s because workflow steps "
+                "still reference this validator.",
             ) % {"name": validator.name}
         return None
 

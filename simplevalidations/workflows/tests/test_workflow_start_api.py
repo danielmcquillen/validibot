@@ -1,4 +1,5 @@
 import json
+import contextlib
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -86,6 +87,8 @@ def workflow(db, org, user):
     else:
         validator = ValidatorFactory(org=org, validation_type=ValidationType.BASIC)
         WorkflowStep.objects.create(workflow=wf, order=10, validator=validator)
+    with contextlib.suppress(ValueError):
+        user.set_current_org(org)
     return wf
 
 
@@ -97,12 +100,15 @@ def workflow_without_steps(db, org, user):
             user=user,
             allowed_file_types=[SubmissionFileType.JSON],
         )
-    return Workflow.objects.create(
+    wf = Workflow.objects.create(
         org=org,
         user=user,
         name=f"WF-no-steps-{uuid4().hex}",
         allowed_file_types=[SubmissionFileType.JSON],
     )
+    with contextlib.suppress(ValueError):
+        user.set_current_org(org)
+    return wf
 
 
 def start_url(workflow) -> str:

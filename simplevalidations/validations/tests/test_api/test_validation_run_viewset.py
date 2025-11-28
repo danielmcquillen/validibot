@@ -1,3 +1,4 @@
+import contextlib
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -5,24 +6,23 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
+from rest_framework.test import APIClient
+from rest_framework.test import APIRequestFactory
+from rest_framework.test import force_authenticate
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Role
-from simplevalidations.users.tests.factories import (
-    OrganizationFactory,
-    UserFactory,
-    grant_role,
-)
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Role
+from simplevalidations.users.tests.factories import OrganizationFactory
+from simplevalidations.users.tests.factories import UserFactory
+from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.tests.factories import (
-    ValidationFindingFactory,
-    ValidationRunFactory,
-    ValidationStepRunFactory,
-)
+from simplevalidations.validations.tests.factories import ValidationFindingFactory
+from simplevalidations.validations.tests.factories import ValidationRunFactory
+from simplevalidations.validations.tests.factories import ValidationStepRunFactory
 from simplevalidations.validations.views import ValidationRunViewSet
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 
@@ -75,9 +75,10 @@ class ValidationRunViewSetTestCase(TestCase):
             org=self.org, project=self.project, user=self.user
         )
 
-        # Mock get_current_org method
-        self.user.get_current_org = lambda: self.org
-        self.other_user.get_current_org = lambda: self.other_org
+        # Scope users to their orgs for viewset filtering
+        with contextlib.suppress(ValueError):
+            self.user.set_current_org(self.org)
+            self.other_user.set_current_org(self.other_org)
 
     def test_authentication_required(self):
         """Test that authentication is required for all endpoints."""

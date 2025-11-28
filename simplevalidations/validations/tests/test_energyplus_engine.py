@@ -97,10 +97,8 @@ def test_energyplus_engine_success_path():
     assert all(issue.severity != Severity.ERROR for issue in result.issues)
     assert result.stats is not None
     assert result.stats["simulation_id"] == "sim-123"
-    assert result.stats["metrics"]["energy_use_intensity_kwh_m2"] == 18.5
-    assert (
-        result.stats["energyplus_input_file_path"] == "inputs/sim-123.epJSON"
-    )
+    assert result.stats["metrics"]["energy_use_intensity_kwh_m2"] == 18.5 # noqa: PLR2004
+    assert result.stats["energyplus_input_file_path"] == "inputs/sim-123.epJSON"
     assert fake_runner.calls
     first_call = fake_runner.calls[0]
     assert first_call["return_logs"] is True

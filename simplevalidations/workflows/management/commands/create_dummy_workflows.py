@@ -4,7 +4,8 @@ import random
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 from django.db import transaction
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -12,14 +13,13 @@ from faker import Faker
 
 from simplevalidations.projects.models import Project
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Organization
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
-from simplevalidations.workflows.models import (
-    Workflow,
-    WorkflowPublicInfo,
-    WorkflowStep,
-)
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowPublicInfo
+from simplevalidations.workflows.models import WorkflowStep
 
 User = get_user_model()
 

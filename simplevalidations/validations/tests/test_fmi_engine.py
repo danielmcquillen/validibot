@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from sv_shared.fmi import FMIRunResult
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.tests.factories import SubmissionFactory
@@ -11,7 +12,6 @@ from simplevalidations.validations.engines.fmi import FMIValidationEngine
 from simplevalidations.validations.models import Ruleset
 from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.workflows.tests.factories import WorkflowFactory
-from sv_shared.fmi import FMIRunResult
 
 
 def _fake_fmu() -> SimpleUploadedFile:
@@ -19,9 +19,17 @@ def _fake_fmu() -> SimpleUploadedFile:
 
     from pathlib import Path
 
-    asset = Path(__file__).resolve().parents[3] / "tests" / "assets" / "fmu" / "Feedthrough.fmu"
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "assets"
+        / "fmu"
+        / "Feedthrough.fmu"
+    )
     payload = asset.read_bytes()
-    return SimpleUploadedFile(asset.name, payload, content_type="application/octet-stream")
+    return SimpleUploadedFile(
+        asset.name, payload, content_type="application/octet-stream"
+    )
 
 
 def _prime_modal_cache_fake():
@@ -37,7 +45,7 @@ def _prime_modal_cache_fake():
         calls.append(kwargs)
         return "/fmus/test-cache.fmu"
 
-    fmi_module._upload_to_modal_volume = _fake_upload  # type: ignore[assignment]
+    fmi_module._upload_to_modal_volume = _fake_upload  # type: ignore[assignment] # noqa: SLF001
     return calls
 
 
@@ -54,7 +62,7 @@ class FMIEngineTests(TestCase):
         from simplevalidations.validations.services import fmi as fmi_module
 
         if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment]
+            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
     def test_fmi_engine_success_path(self):
         org = OrganizationFactory()
@@ -96,7 +104,9 @@ class FMIEngineTests(TestCase):
                 self.calls.append(kwargs)
                 return self.response
 
-        fake_result = FMIRunResult.success(outputs={"y_out": 3.0}).model_dump(mode="json")
+        fake_result = FMIRunResult.success(outputs={"y_out": 3.0}).model_dump(
+            mode="json"
+        )
         runner = _FakeRunner(fake_result)
         FMIValidationEngine.configure_modal_runner(runner)
 
@@ -117,7 +127,9 @@ class FMIEngineTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         _prime_modal_cache_fake()
-        validator = create_fmi_validator(org=org, project=None, name="has-fmu", upload=_fake_fmu())
+        validator = create_fmi_validator(
+            org=org, project=None, name="has-fmu", upload=_fake_fmu()
+        )
         validator.fmu_model = None
         validator.is_system = True
         validator.save(update_fields=["fmu_model", "is_system"])
@@ -136,5 +148,7 @@ class FMIEngineTests(TestCase):
             project=workflow.project,
         )
         engine = FMIValidationEngine(config={})
-        result = engine.validate(validator=validator, submission=submission, ruleset=ruleset)
+        result = engine.validate(
+            validator=validator, submission=submission, ruleset=ruleset
+        )
         self.assertFalse(result.passed)

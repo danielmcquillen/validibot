@@ -12,12 +12,10 @@ from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.basic import BasicValidatorEngine
-from simplevalidations.validations.tests.factories import (
-    RulesetAssertionFactory,
-    RulesetFactory,
-    ValidatorCatalogEntryFactory,
-    ValidatorFactory,
-)
+from simplevalidations.validations.tests.factories import RulesetAssertionFactory
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 
 
 class TestExampleProductWithCEL(TestCase):
@@ -52,7 +50,8 @@ class TestExampleProductWithCEL(TestCase):
         cls.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
         cls.error_message = (
-            ' Your prices has to be greater than 0 AND rating greater than 90 AND "mini" '
+            ' Your prices has to be greater than 0 AND rating greater '
+            'than 90 AND "mini" '
             "has to be in the tags!!!"
         )
 
@@ -68,7 +67,8 @@ class TestExampleProductWithCEL(TestCase):
     def _engine_validate(self, payload: dict):
         self._assertion()
         engine = BasicValidatorEngine()
-        # Basic engine expects JSON string content; we bypass submissions and feed payload directly.
+        # Basic engine expects JSON string content; we bypass submissions and 
+        # feed payload directly.
         issues = engine.evaluate_cel_assertions(
             ruleset=self.ruleset,
             validator=self.validator,

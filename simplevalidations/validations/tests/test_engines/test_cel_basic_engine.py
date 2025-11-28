@@ -2,27 +2,24 @@ from __future__ import annotations
 
 import json
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
+from django.test import override_settings
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.validations.constants import (
-    AssertionOperator,
-    AssertionType,
-    CatalogEntryType,
-    CatalogRunStage,
-    RulesetType,
-    Severity,
-    ValidationType,
-)
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.basic import BasicValidatorEngine
-from simplevalidations.validations.tests.factories import (
-    RulesetAssertionFactory,
-    RulesetFactory,
-    ValidatorCatalogEntryFactory,
-    ValidatorFactory,
-)
+from simplevalidations.validations.tests.factories import RulesetAssertionFactory
+from simplevalidations.validations.tests.factories import RulesetFactory
+from simplevalidations.validations.tests.factories import ValidatorCatalogEntryFactory
+from simplevalidations.validations.tests.factories import ValidatorFactory
 
 
 @override_settings(ENABLE_DERIVED_SIGNALS=True)
@@ -224,7 +221,7 @@ class CelBasicEngineTests(TestCase):
             target_field="",
             rhs={"expr": "result.total == 5"},
         )
-        submission = self._submission({"price": 1})
+        self._submission({"price": 1})
         engine = BasicValidatorEngine()
         # Manually call shared CEL evaluation for output context
         issues = engine.evaluate_cel_assertions(

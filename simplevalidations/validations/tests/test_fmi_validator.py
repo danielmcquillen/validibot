@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.models import FMUModel, Validator
+from simplevalidations.validations.models import FMUModel
+from simplevalidations.validations.models import Validator
 from simplevalidations.validations.tests.factories import ValidatorFactory
 
 
@@ -38,7 +40,7 @@ class FMIValidatorModelTests(TestCase):
             org=self.org,
             is_system=False,
         )
-        with self.assertRaises(ValidationError):
+        with pytest.raises(ValidationError):
             validator.full_clean()
 
     def test_org_fmi_validator_accepts_fmu_asset(self) -> None:

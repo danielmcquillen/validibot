@@ -2,28 +2,31 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from typing import Any
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Field, Layout
+from crispy_forms.layout import Field
+from crispy_forms.layout import Layout
 from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.validations.constants import (
-    JSONSchemaVersion,
-    ValidationType,
-    XMLSchemaType,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowPublicInfo
+from simplevalidations.validations.constants import JSONSchemaVersion
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowPublicInfo
 
 if TYPE_CHECKING:
     from simplevalidations.users.models import User
 
+logger = logging.getLogger(__name__)
 
 AI_TEMPLATES = (
     ("ai_critic", _("AI Critic")),
@@ -58,30 +61,56 @@ JSON_SCHEMA_2020_12_URIS = {
 
 
 def _detect_xml_schema_type(payload: str) -> str | None:
+    """
+    Best-effort detection of an XML schema type for uploaded content.
+
+    The function tries to parse the payload once and then construct each schema
+    validator in turn. Expected/benign exceptions:
+    - ImportError (or similar) if ``lxml`` is unavailable: we return ``None``.
+    - ``etree.XML`` parse errors: malformed XML, so we bail out and return ``None``.
+    - Validator construction errors (XSD/RELAXNG/DTD): treated as “not that type”
+      and logged at info level, continuing to the next detector.
+
+    We only surface a value when a validator successfully instantiates; otherwise
+    callers receive ``None`` and should handle the absence of a detected schema.
+    """
+    payload_bytes = payload.encode("utf-8")
+    if len(payload_bytes) > SCHEMA_UPLOAD_MAX_BYTES:
+        logger.info("XML schema detection skipped: payload exceeds size limit.")
+        return None
+
     try:
-        from lxml import etree  # noqa: PLC0415
+        from lxml import etree
     except Exception:  # pragma: no cover
         return None
 
     try:
-        etree.XMLSchema(etree.XML(payload.encode("utf-8")))
-        return XMLSchemaType.XSD.value
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
+        xml_doc = etree.XML(payload_bytes, parser=parser)
     except Exception:
-        pass
+        logger.info("Could not detect schema type.")
+        return None
 
     try:
-        etree.RelaxNG(etree.XML(payload.encode("utf-8")))
-        return XMLSchemaType.RELAXNG.value
+        etree.XMLSchema(xml_doc)
     except Exception:
-        pass
+        logger.info("XML Schema detection failed for XSD.")
+    else:
+        return XMLSchemaType.XSD.value
+
+    try:
+        etree.RelaxNG(xml_doc)
+    except Exception:
+        logger.info("XML Schema detection failed for RELAXNG.")
+    else:
+        return XMLSchemaType.RELAXNG.value
 
     try:
         etree.DTD(io.StringIO(payload))
-        return XMLSchemaType.DTD.value
     except Exception:
-        pass
-
-    return None
+        logger.info("XML Schema detection failed for DTD.")
+        return None
+    return XMLSchemaType.DTD.value
 
 
 @dataclass(slots=True)
@@ -417,7 +446,9 @@ class WorkflowLaunchForm(forms.Form):
                 widget.attrs.update(
                     {
                         "data-dropzone-input": "true",
-                        "class": f"{widget.attrs.get('class', '')} visually-hidden".strip(),
+                        "class": (
+                            f"{widget.attrs.get('class', '')} visually-hidden".strip(),
+                        ),
                     },
                 )
             if name in {"filename", "metadata", "short_description"}:
@@ -464,7 +495,9 @@ class WorkflowLaunchForm(forms.Form):
 
         short_description = (cleaned.get("short_description") or "").strip()
         cleaned["short_description"] = (
-            short_description if self.workflow.allow_submission_short_description else ""
+            short_description
+            if self.workflow.allow_submission_short_description
+            else ""
         )
 
         if not self.workflow.allow_submission_name:
@@ -574,9 +607,10 @@ class BaseStepConfigForm(forms.Form):
 
 
 class FMIValidatorStepConfigForm(BaseStepConfigForm):
-    """Placeholder FMI step configuration. Inputs/outputs bind via the validator catalog."""
+    """Placeholder FMI step configuration. Inputs/outputs
+    bind via the validator catalog."""
 
-    pass
+    # No implementation yet; using base form.
 
 
 class JsonSchemaStepConfigForm(BaseStepConfigForm):
@@ -795,7 +829,8 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
                     self.add_error(
                         field_name,
                         _(
-                            "Unable to parse the XML schema. Ensure it matches the %(expected)s format."
+                            "Unable to parse the XML schema. Ensure it "
+                            "matches the %(expected)s format."
                         )
                         % {"expected": expected_label},
                     )
@@ -803,7 +838,8 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
                     detected_label = XMLSchemaType(detected_type).label
                     selected_label = XMLSchemaType(selected_type).label
                     message = _(
-                        "Uploaded schema appears to be %(detected)s but you selected %(selected)s."
+                        "Uploaded schema appears to be %(detected)s "
+                        "but you selected %(selected)s."
                     ) % {"detected": detected_label, "selected": selected_label}
                     self.add_error(field_name, message)
                     self.add_error("schema_type", message)
@@ -1004,7 +1040,7 @@ class WorkflowPublicInfoForm(forms.ModelForm):
         label=_("Make info public"),
         required=False,
         help_text=_(
-            "When enabled, anyone with the link can view the workflow’s info page.",
+            "When enabled, anyone with the link can view the workflow's info page.",
         ),
     )
 

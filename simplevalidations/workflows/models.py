@@ -5,6 +5,7 @@ import math
 import uuid
 from decimal import Decimal
 from decimal import InvalidOperation
+from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
@@ -22,13 +23,15 @@ from simplevalidations.core.mixins import FeaturedImageMixin
 from simplevalidations.core.utils import render_markdown_safe
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import Organization
 from simplevalidations.users.models import Role
 from simplevalidations.users.models import User
 from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.users.permissions import roles_for_permission
+
+if TYPE_CHECKING:
+    from simplevalidations.users.constants import RoleCode
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +190,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     allow_submission_short_description = models.BooleanField(
         default=False,
         help_text=_(
-            "Allow users to submit a short description along with their data for validation.",
+            "Allow users to submit a short description along with "
+            "their data for validation.",
         ),
     )
     version = models.CharField(

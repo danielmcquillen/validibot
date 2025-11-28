@@ -1,32 +1,31 @@
 import json
 import logging
 import uuid
-from http import HTTPStatus
 from typing import Any
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.utils.functional import Promise
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.projects.models import Project
-from simplevalidations.users.permissions import PermissionCode
 from simplevalidations.users.models import User
-from simplevalidations.validations.constants import (
-    ADVANCED_VALIDATION_TYPES,
-    ValidationRunStatus,
-)
-from simplevalidations.validations.models import Ruleset, ValidationRun
-from simplevalidations.workflows.constants import (
-    WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY,
-)
-from simplevalidations.workflows.forms import WorkflowForm, WorkflowLaunchForm
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.users.permissions import PermissionCode
+from simplevalidations.validations.constants import ADVANCED_VALIDATION_TYPES
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
+from simplevalidations.workflows.forms import WorkflowForm
+from simplevalidations.workflows.forms import WorkflowLaunchForm
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
 
 logger = logging.getLogger(__name__)
@@ -240,7 +239,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         step_runs = list(
             run.step_runs.select_related("workflow_step")
             .prefetch_related("findings", "findings__ruleset_assertion")
-            .order_by("step_order")
+            .order_by("step_order"),
         )
         run_in_progress = run.status in self.polling_statuses
         findings: list[Any] = []
@@ -249,7 +248,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 run.findings.select_related(
                     "validation_step_run",
                     "validation_step_run__workflow_step",
-                ).order_by("severity", "-created")[:10]
+                ).order_by("severity", "-created")[:10],
             )
         return step_runs, findings, run_in_progress
 

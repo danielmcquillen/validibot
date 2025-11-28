@@ -5,11 +5,9 @@ from factory.django import DjangoModelFactory
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.workflows.models import Workflow
 from simplevalidations.workflows.models import WorkflowStep
 

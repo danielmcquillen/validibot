@@ -11,38 +11,40 @@ from django.utils import timezone
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.models import Submission
-from simplevalidations.users.models import User, ensure_default_project
-from simplevalidations.validations.constants import (
-    AssertionOperator,
-    AssertionType,
-    RulesetType,
-    Severity,
-    StepStatus,
-    ValidationRunSource,
-    ValidationRunStatus,
-    ValidationType,
-)
-from simplevalidations.validations.models import (
-    Ruleset,
-    RulesetAssertion,
-    ValidationFinding,
-    ValidationRun,
-    ValidationRunSummary,
-    ValidationStepRun,
-    ValidationStepRunSummary,
-    Validator,
-)
 from simplevalidations.tracking.services import TrackingEventService
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.users.models import User
+from simplevalidations.users.models import ensure_default_project
+from simplevalidations.validations.constants import AssertionOperator
+from simplevalidations.validations.constants import AssertionType
+from simplevalidations.validations.constants import RulesetType
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import StepStatus
+from simplevalidations.validations.constants import ValidationRunSource
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import RulesetAssertion
+from simplevalidations.validations.models import ValidationFinding
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import ValidationRunSummary
+from simplevalidations.validations.models import ValidationStepRun
+from simplevalidations.validations.models import ValidationStepRunSummary
+from simplevalidations.validations.models import Validator
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_USERNAME = "daniel"
 EXAMPLE_RUN_SUMMARY_MARKER = {"example_run": True}
+MAX_INDEX = 10  # Number of ERROR findings; the rest will be WARNING
 
 
 class Command(BaseCommand):
-    help = "Create an example workflow, populate it with assertions, and generate a sample failed run."
+    help = (
+        "Create an example workflow, populate it with assertions, "
+        "and generate a sample failed run."
+    )
 
     workflow_slug = "example-custom-validation-workflow"
     validator_slug = "example-custom-validator"
@@ -128,9 +130,7 @@ class Command(BaseCommand):
     def _ensure_single_step(self, *, workflow, org, user, index: int):
         step_name = f"Custom Step {index}"
         existing_step = (
-            workflow.steps.filter(name=step_name)
-            .select_related("ruleset")
-            .first()
+            workflow.steps.filter(name=step_name).select_related("ruleset").first()
         )
         if existing_step and existing_step.ruleset:
             return existing_step, list(existing_step.ruleset.assertions.all())
@@ -182,7 +182,9 @@ class Command(BaseCommand):
             operator_cycle = cycle(operators)
             for idx in range(1, 21):
                 operator = next(operator_cycle)
-                rhs, options = self._build_assertion_payload(operator, idx + (index * 100))
+                rhs, options = self._build_assertion_payload(
+                    operator, idx + (index * 100)
+                )
                 RulesetAssertion.objects.create(
                     ruleset=ruleset,
                     order=idx * 10,
@@ -192,7 +194,10 @@ class Command(BaseCommand):
                     severity=Severity.ERROR,
                     rhs=rhs,
                     options=options,
-                    message_template=f"Step {index}: Field {idx} violated {operator.replace('_', ' ')}.",
+                    message_template=(
+                        f"Step {index}: Field {idx} "
+                        f"violated {operator.replace('_', ' ')}."
+                    ),
                 )
 
         step, created = WorkflowStep.objects.get_or_create(
@@ -327,7 +332,7 @@ class Command(BaseCommand):
             step_errors = 0
             step_warnings = 0
             for idx, assertion in enumerate(assertions):
-                severity_value = Severity.ERROR if idx < 10 else Severity.WARNING
+                severity_value = Severity.ERROR if idx < MAX_INDEX else Severity.WARNING
                 if severity_value == Severity.ERROR:
                     step_errors += 1
                 else:

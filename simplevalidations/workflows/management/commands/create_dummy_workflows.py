@@ -4,8 +4,7 @@ import random
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
-from django.core.management.base import CommandError
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -13,13 +12,14 @@ from faker import Faker
 
 from simplevalidations.projects.models import Project
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership
-from simplevalidations.users.models import Organization
+from simplevalidations.users.models import Membership, Organization
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.models import Validator
-from simplevalidations.workflows.models import Workflow
-from simplevalidations.workflows.models import WorkflowPublicInfo
-from simplevalidations.workflows.models import WorkflowStep
+from simplevalidations.workflows.models import (
+    Workflow,
+    WorkflowPublicInfo,
+    WorkflowStep,
+)
 
 User = get_user_model()
 
@@ -74,7 +74,9 @@ class Command(BaseCommand):
             return validators
 
         self.stdout.write(
-            self.style.WARNING("No validators found; creating a JSON Schema validator."),
+            self.style.WARNING(
+                "No validators found; creating a JSON Schema validator."
+            ),
         )
         demo_validator = Validator.objects.create(
             name="Demo JSON Schema Validator",
@@ -88,7 +90,9 @@ class Command(BaseCommand):
     def _create_workflow(self, *, index: int, validators: list[Validator]) -> Workflow:
         with transaction.atomic():
             org, user, project = self._create_org_with_user()
-            workflow_name = f"{self.faker.catch_phrase()} Workflow {self._random_suffix(4)}"
+            workflow_name = (
+                f"{self.faker.catch_phrase()} Workflow {self._random_suffix(4)}"
+            )
             workflow_slug = self._build_slug(workflow_name)
             workflow = Workflow.objects.create(
                 org=org,
@@ -117,7 +121,7 @@ class Command(BaseCommand):
         user = User.objects.create_user(
             username=username,
             email=email,
-            password="passw0rd!",
+            password="passw0rd!",  # noqa: S106
             name=self.faker.name(),
         )
 

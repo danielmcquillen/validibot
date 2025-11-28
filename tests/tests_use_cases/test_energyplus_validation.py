@@ -116,6 +116,7 @@ def energyplus_workflow(api_client):
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
     grant_role(user, org, RoleCode.EXECUTOR)
+    user.set_current_org(org)
 
     validator = ValidatorFactory(
         validation_type=ValidationType.ENERGYPLUS,

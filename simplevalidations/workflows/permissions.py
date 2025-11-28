@@ -11,7 +11,8 @@ class WorkflowPermission(permissions.BasePermission):
     """
     Enforce workflow access rules for the API:
 
-    - list/retrieve: any authenticated member of the workflow's org (handled in queryset)
+    - list/retrieve: any authenticated member of the workflow's org 
+        (handled in queryset)
     - create/update/delete: only users with manager roles (owner/admin/author)
     - start action: checked downstream to preserve existing 404 behaviour
     """
@@ -48,7 +49,9 @@ class WorkflowPermission(permissions.BasePermission):
         Determine which org the request is targeting for create operations.
         """
 
-        org_id = request.data.get("org") or getattr(request.user, "current_org_id", None)
+        org_id = request.data.get("org") or getattr(
+            request.user, "current_org_id", None
+        )
         if not org_id:
             raise ValidationError({"org": "Organization is required."})
 

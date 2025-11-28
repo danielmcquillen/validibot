@@ -104,6 +104,7 @@ def workflow_context(load_rng_asset, api_client):
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
+    user.set_current_org(org)
 
     grant_role(user, org, RoleCode.EXECUTOR)
 

@@ -164,8 +164,9 @@ ignore = [
   "RUF059",  # Allow use of dataclass with mutable default values
   "PLC0415", # Allow imports in places other than top of file
   "C416",    # Allow Unnecessary dict comprehension (rewrite using `dict()`)
+  "COM812",  # Allow Trailing comma missing
   "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
-  #"G400", # We want to use f-strings in logging
+  "G400",    # We want to use f-strings in logging
 ]
 # The fixes in extend-unsafe-fixes will require
 # provide the `--unsafe-fixes` flag when fixing.

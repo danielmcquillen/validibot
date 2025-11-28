@@ -89,6 +89,7 @@ def workflow_context(load_xsd_asset, api_client):
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
+    user.set_current_org(org)
 
     # Ensure caller has EXECUTOR permissions in this org
     grant_role(user, org, RoleCode.EXECUTOR)

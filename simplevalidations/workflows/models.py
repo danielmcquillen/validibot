@@ -3,12 +3,16 @@ from __future__ import annotations
 import logging
 import math
 import uuid
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
+from decimal import InvalidOperation
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
-from django.db.models import Exists, OuterRef, Q
+from django.db import models
+from django.db import transaction
+from django.db.models import Exists
+from django.db.models import OuterRef
+from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
@@ -19,8 +23,13 @@ from simplevalidations.core.utils import render_markdown_safe
 from simplevalidations.projects.models import Project
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Organization, Role, User
-from simplevalidations.users.permissions import PermissionCode, roles_for_permission
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import Role
+from simplevalidations.users.models import User
+from simplevalidations.users.permissions import PermissionCode
+from simplevalidations.users.permissions import roles_for_permission
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,7 +206,9 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     )
     is_archived = models.BooleanField(
         default=False,
-        help_text=_("Archived workflows are disabled and hidden unless explicitly shown."),
+        help_text=_(
+            "Archived workflows are disabled and hidden unless explicitly shown."
+        ),
     )
 
     make_info_public = models.BooleanField(

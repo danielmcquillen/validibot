@@ -106,6 +106,7 @@ def workflow_context(load_dtd_asset, api_client):
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
     grant_role(user, org, RoleCode.EXECUTOR)
+    user.set_current_org(org)
 
     validator = ValidatorFactory(validation_type=ValidationType.XML_SCHEMA)
     schema = load_dtd_asset("product.dtd")

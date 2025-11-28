@@ -163,6 +163,7 @@ ignore = [
   "PLR0915", # Too many statements in a class (112/100)
   "RUF059",  # Allow use of dataclass with mutable default values
   "PLC0415", # Allow imports in places other than top of file
+  "C416",    # Allow Unnecessary dict comprehension (rewrite using `dict()`)
   "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
   #"G400", # We want to use f-strings in logging
 ]

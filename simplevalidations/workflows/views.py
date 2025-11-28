@@ -4,95 +4,92 @@ import time
 from http import HTTPStatus
 
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import models, transaction
-from django.db.models import Count, Q
-from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db import transaction
+from django.db.models import Count
+from django.db.models import Q
+from django.http import Http404
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views import View
-from django.views.generic import DetailView, ListView, TemplateView, UpdateView
-from django.views.generic.edit import CreateView, DeleteView, FormView
-from rest_framework import permissions, viewsets
+from django.views.generic import DetailView
+from django.views.generic import ListView
+from django.views.generic import TemplateView
+from django.views.generic import UpdateView
+from django.views.generic.edit import CreateView
+from django.views.generic.edit import DeleteView
+from django.views.generic.edit import FormView
+from rest_framework import permissions
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response as APIResponse
 
 from simplevalidations.actions.constants import ActionCategoryType
-from simplevalidations.actions.models import (
-    ActionDefinition,
-    SignedCertificateAction,
-    SlackMessageAction,
-)
+from simplevalidations.actions.models import ActionDefinition
+from simplevalidations.actions.models import SignedCertificateAction
+from simplevalidations.actions.models import SlackMessageAction
 from simplevalidations.actions.registry import get_action_form
-from simplevalidations.core.utils import pretty_json, pretty_xml, reverse_with_org
-from simplevalidations.core.view_helpers import (
-    hx_redirect_response,
-    hx_trigger_response,
-)
+from simplevalidations.core.utils import pretty_json
+from simplevalidations.core.utils import pretty_xml
+from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.core.view_helpers import hx_redirect_response
+from simplevalidations.core.view_helpers import hx_trigger_response
 from simplevalidations.projects.models import Project
-from simplevalidations.submissions.constants import (
-    SubmissionDataFormat,
-    SubmissionFileType,
-)
+from simplevalidations.submissions.constants import SubmissionDataFormat
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.mixins import SuperuserRequiredMixin
 from simplevalidations.users.models import Organization
 from simplevalidations.users.permissions import PermissionCode
-from simplevalidations.validations.constants import (
-    ADVANCED_VALIDATION_TYPES,
-    CatalogRunStage,
-    JSONSchemaVersion,
-    ValidationRunStatus,
-    ValidationType,
-    XMLSchemaType,
-)
+from simplevalidations.validations.constants import ADVANCED_VALIDATION_TYPES
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import JSONSchemaVersion
+from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.constants import XMLSchemaType
 from simplevalidations.validations.forms import RulesetAssertionForm
-from simplevalidations.validations.models import (
-    RulesetAssertion,
-    ValidationRun,
-    Validator,
-)
+from simplevalidations.validations.models import RulesetAssertion
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import Validator
 from simplevalidations.validations.serializers import ValidationRunStartSerializer
 from simplevalidations.validations.services.validation_run import ValidationRunService
+from simplevalidations.workflows.constants import WORKFLOW_LIST_LAYOUT_SESSION_KEY
 from simplevalidations.workflows.constants import (
-    WORKFLOW_LIST_LAYOUT_SESSION_KEY,
     WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY,
-    WorkflowListLayout,
 )
-from simplevalidations.workflows.forms import (
-    WorkflowPublicInfoForm,
-    WorkflowStepTypeForm,
-    get_config_form_class,
-)
-from simplevalidations.workflows.mixins import (
-    WorkflowAccessMixin,
-    WorkflowFormViewMixin,
-    WorkflowLaunchContextMixin,
-    WorkflowObjectMixin,
-    WorkflowStepAssertionsMixin,
-)
-from simplevalidations.workflows.models import Workflow, WorkflowStep
+from simplevalidations.workflows.constants import WorkflowListLayout
+from simplevalidations.workflows.forms import WorkflowPublicInfoForm
+from simplevalidations.workflows.forms import WorkflowStepTypeForm
+from simplevalidations.workflows.forms import get_config_form_class
+from simplevalidations.workflows.mixins import WorkflowAccessMixin
+from simplevalidations.workflows.mixins import WorkflowFormViewMixin
+from simplevalidations.workflows.mixins import WorkflowLaunchContextMixin
+from simplevalidations.workflows.mixins import WorkflowObjectMixin
+from simplevalidations.workflows.mixins import WorkflowStepAssertionsMixin
+from simplevalidations.workflows.models import Workflow
+from simplevalidations.workflows.models import WorkflowStep
 from simplevalidations.workflows.permissions import WorkflowPermission
 from simplevalidations.workflows.serializers import WorkflowSerializer
-from simplevalidations.workflows.views_helpers import (
-    ensure_advanced_ruleset,
-    public_info_card_context,
-    resequence_workflow_steps,
-    resolve_project,
-    save_workflow_action_step,
-    save_workflow_step,
-    user_has_executor_role,
-)
-from simplevalidations.workflows.views_launch_helpers import (
-    LaunchValidationError,
-    build_submission_from_api,
-    build_submission_from_form,
-    launch_api_validation_run,
-    launch_web_validation_run,
-)
+from simplevalidations.workflows.views_helpers import ensure_advanced_ruleset
+from simplevalidations.workflows.views_helpers import public_info_card_context
+from simplevalidations.workflows.views_helpers import resequence_workflow_steps
+from simplevalidations.workflows.views_helpers import resolve_project
+from simplevalidations.workflows.views_helpers import save_workflow_action_step
+from simplevalidations.workflows.views_helpers import save_workflow_step
+from simplevalidations.workflows.views_helpers import user_has_executor_role
+from simplevalidations.workflows.views_launch_helpers import LaunchValidationError
+from simplevalidations.workflows.views_launch_helpers import build_submission_from_api
+from simplevalidations.workflows.views_launch_helpers import build_submission_from_form
+from simplevalidations.workflows.views_launch_helpers import launch_api_validation_run
+from simplevalidations.workflows.views_launch_helpers import launch_web_validation_run
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +124,8 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         ):
             raise DRFPermissionDenied(
                 detail=_(
-                    "You do not have permission to create workflows for this organization."
+                    "You do not have permission to create "
+                    "workflows for this organization.",
                 ),
             )
         serializer.save(org=org, user=self.request.user)
@@ -323,10 +321,12 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
             )
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(
-                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
+                context,
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
         # Launch the validation run ...
+        response = None
         try:
             launch_result = launch_web_validation_run(
                 submission_build=submission_build,
@@ -344,7 +344,6 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
                 workflow.pk,
                 (time.perf_counter() - start_time) * 1000,
             )
-            return response
         except PermissionError:
             form.add_error(None, _("You do not have permission to run this workflow."))
             context = self.get_context_data(launch_form=form)
@@ -354,8 +353,12 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
             form.add_error(None, _("Could not run the workflow. Please try again."))
             context = self.get_context_data(launch_form=form)
             return self.render_to_response(
-                context, status=HTTPStatus.INTERNAL_SERVER_ERROR
+                context,
+                status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
+        if response:
+            return response
+        raise RuntimeError("Expected response from launch_web_validation_run")
 
 
 class WorkflowLaunchStatusView(WorkflowLaunchContextMixin, View):
@@ -818,10 +821,10 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
             return False
         raw = (self.request.GET.get("archived") or "").lower()
         if raw in {"1", "true", "yes"}:
-            self._remember_archived(True)
+            self._remember_archived(show=True)
             return True
         if raw in {"0", "false", "no"}:
-            self._remember_archived(False)
+            self._remember_archived(show=False)
             return False
         stored = self.request.session.get(WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY)
         if isinstance(stored, bool):
@@ -855,7 +858,7 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
             "hide": f"{base_url}?{hide_query}" if hide_query else base_url,
         }
 
-    def _remember_archived(self, show: bool) -> None:
+    def _remember_archived(self, *, show: bool) -> None:
         try:
             self.request.session[WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY] = show
             self.request.session.modified = True
@@ -945,7 +948,9 @@ class WorkflowRunDetailView(WorkflowLaunchContextMixin, TemplateView):
 
 
 class WorkflowLastRunStatusView(
-    SuperuserRequiredMixin, WorkflowLaunchContextMixin, TemplateView
+    SuperuserRequiredMixin,
+    WorkflowLaunchContextMixin,
+    TemplateView,
 ):
     """
     Displays the most recent run of the workflow. ONLY FOR SUPERUSERS.
@@ -1171,19 +1176,16 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
                     request,
                     _("Workflow unarchived and re-enabled for new runs."),
                 )
+        elif workflow.is_archived:
+            messages.info(request, _("Workflow is already archived."))
         else:
-            if workflow.is_archived:
-                messages.info(request, _("Workflow is already archived."))
-            else:
-                workflow.is_archived = True
-                workflow.is_active = False
-                workflow.save(update_fields=["is_archived", "is_active"])
-                messages.info(
-                    request,
-                    _(
-                        "Workflow archived and disabled. Runs remain available for audit."
-                    ),
-                )
+            workflow.is_archived = True
+            workflow.is_active = False
+            workflow.save(update_fields=["is_archived", "is_active"])
+            messages.info(
+                request,
+                _("Workflow archived and disabled. Runs remain available for audit."),
+            )
 
         if request.headers.get("HX-Request"):
             layout = self._determine_layout(request)
@@ -1220,10 +1222,10 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
     def _determine_show_archived(self, request) -> bool:
         raw = (request.POST.get("show_archived") or "").lower()
         if raw in {"1", "true", "yes"}:
-            self._remember_archived(request, True)
+            self._remember_archived(request, show=True)
             return True
         if raw in {"0", "false", "no"}:
-            self._remember_archived(request, False)
+            self._remember_archived(request, show=False)
             return False
         stored = request.session.get(WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY)
         if isinstance(stored, bool):
@@ -1232,7 +1234,7 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
             return stored.lower() in {"1", "true", "yes"}
         return False
 
-    def _remember_archived(self, request, show: bool) -> None:
+    def _remember_archived(self, request, *, show: bool) -> None:
         try:
             request.session[WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY] = show
             request.session.modified = True
@@ -1262,15 +1264,10 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
         membership = getattr(
             self.request.user, "membership_for_current_org", lambda: None
         )()
-        can_manage = False
         can_execute = False
         can_view = False
         if membership and getattr(membership, "is_active", False):
             org = membership.org
-            can_manage = self.request.user.has_perm(
-                PermissionCode.WORKFLOW_EDIT.value,
-                org,
-            )
             can_execute = self.request.user.has_perm(
                 PermissionCode.WORKFLOW_LAUNCH.value,
                 org,
@@ -1843,7 +1840,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         disabled_reason = None
         if not is_compatible:
             disabled_reason = _(
-                "Not allowed for this workflow's submission types (%(allowed)s)."
+                "Not allowed for this workflow's submission types (%(allowed)s).",
             ) % {"allowed": allowed or _("selected types")}
         return {
             "value": f"validator:{validator.pk}",

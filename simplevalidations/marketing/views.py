@@ -673,7 +673,7 @@ def postmark_delivery_webhook(request: HttpRequest) -> HttpResponse:
         email = payload.get("Recipient") or payload.get("Email")
         if email in [
             "daniel@mcquilleninteractive.com",
-            "daniel@simplevalidations.com",
+            "daniel@validibot.com",
         ]:
             logger.info("Ignoring delivery webhook for test email: %s", email)
             return HttpResponse(status=200)

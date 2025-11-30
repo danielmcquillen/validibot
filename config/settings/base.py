@@ -518,7 +518,7 @@ SV_JWKS_KEYS = env.list(
 # EMAIL
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
-    default="Validibot <daniel@simplevalidations.com>",
+    default="Validibot <daniel@validibot.com>",
 )
 
 MODAL_TOKEN_ID = env("MODAL_TOKEN_ID", default="")

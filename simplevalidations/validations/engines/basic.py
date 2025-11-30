@@ -327,7 +327,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
 
     def _evaluate_comparison(self, op, actual, rhs, options):
         expected = rhs.get("value")
-        actual_num = self._to_number(actual, options.get("coerce_types"))
+        coerce_types = bool(options.get("coerce_types"))
+        actual_num = self._to_number(actual, allow_coerce=coerce_types)
         expected_num = self._to_number(expected, allow_coerce=True)
         if actual_num is None or expected_num is None:
             return False, _("Value is not numeric.")
@@ -347,7 +348,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
             actual_len = len(actual)
             actual_num = actual_len
         else:
-            actual_num = self._to_number(actual, options.get("coerce_types"))
+            coerce_types = bool(options.get("coerce_types"))
+            actual_num = self._to_number(actual, allow_coerce=coerce_types)
         low = self._to_number(rhs.get("min"), allow_coerce=True)
         high = self._to_number(rhs.get("max"), allow_coerce=True)
         if actual_num is None or low is None or high is None:
@@ -437,7 +439,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
     def _evaluate_approx(self, actual, rhs, options):
         target = self._to_number(rhs.get("value"), allow_coerce=True)
         tolerance = self._to_number(rhs.get("tolerance"), allow_coerce=True)
-        actual_num = self._to_number(actual, options.get("coerce_types"))
+        coerce_types = bool(options.get("coerce_types"))
+        actual_num = self._to_number(actual, allow_coerce=coerce_types)
         if None in {target, tolerance, actual_num}:
             return False, _("Value is not numeric.")
         mode = options.get("tolerance_mode", "absolute")

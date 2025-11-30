@@ -4,8 +4,11 @@ from dataclasses import dataclass
 
 from django.contrib.auth.backends import BaseBackend
 
-from simplevalidations.users.constants import PermissionCode, RoleCode
-from simplevalidations.users.models import Membership, Organization, User
+from simplevalidations.users.constants import PermissionCode
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import User
 
 
 @dataclass(frozen=True)
@@ -302,7 +305,7 @@ class OrgPermissionBackend(BaseBackend):
             return obj
 
         if hasattr(obj, "org"):
-            org = getattr(obj, "org")
+            org = obj.org
             if isinstance(org, Organization):
                 return org
 

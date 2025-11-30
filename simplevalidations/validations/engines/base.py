@@ -10,30 +10,33 @@ You won't find any concrete implementations here; those are in other modules.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
-from gettext import gettext as _
 import re
-from typing import TYPE_CHECKING, Any
+from abc import ABC
+from abc import abstractmethod
+from dataclasses import asdict
+from dataclasses import dataclass
+from gettext import gettext as _
+from typing import TYPE_CHECKING
+from typing import Any
 
-from simplevalidations.validations.cel import DEFAULT_HELPERS, CelHelper
-from simplevalidations.validations.cel_eval import evaluate_cel_expression
 from django.conf import settings
 
-from simplevalidations.validations.constants import (
-    CEL_MAX_CONTEXT_SYMBOLS,
-    CEL_MAX_EVAL_TIMEOUT_MS,
-    CEL_MAX_EXPRESSION_CHARS,
-    CatalogEntryType,
-    CatalogRunStage,
-    Severity,
-    ValidationType,
-)
+from simplevalidations.validations.cel import DEFAULT_HELPERS
+from simplevalidations.validations.cel import CelHelper
+from simplevalidations.validations.cel_eval import evaluate_cel_expression
+from simplevalidations.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
+from simplevalidations.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
+from simplevalidations.validations.constants import CEL_MAX_EXPRESSION_CHARS
+from simplevalidations.validations.constants import CatalogEntryType
+from simplevalidations.validations.constants import CatalogRunStage
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.providers import get_provider_for_validator
 
 if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
-    from simplevalidations.validations.models import Ruleset, Validator
+    from simplevalidations.validations.models import Ruleset
+    from simplevalidations.validations.models import Validator
 
 
 @dataclass
@@ -103,14 +106,14 @@ class BaseValidatorEngine(ABC):
         self.config: dict[str, Any] = config or {}
         self.processor_name: str = self.config.get("processor_name", "").strip()
 
-    def get_cel_helpers(self) -> dict[str, "CelHelper"]:
+    def get_cel_helpers(self) -> dict[str, CelHelper]:
         """
         Return the helper allowlist for this engine. Subclasses can override to
         append or remove helpers based on validator metadata.
         """
         return dict(self.cel_helpers)
 
-    def resolve_provider(self, validator: "Validator"):
+    def resolve_provider(self, validator: Validator):
         """
         Resolve the provider configured for the given validator, if any.
         """
@@ -146,16 +149,13 @@ class BaseValidatorEngine(ABC):
                     current = current[position]
                 else:
                     return None, False
+            elif isinstance(current, dict) and token in current:
+                current = current[token]
             else:
-                if isinstance(current, dict) and token in current:
-                    current = current[token]
-                else:
-                    return None, False
+                return None, False
         return current, True
 
-    def _build_cel_context(
-        self, payload: Any, validator: "Validator"
-    ) -> dict[str, Any]:
+    def _build_cel_context(self, payload: Any, validator: Validator) -> dict[str, Any]:
         """
         Build a context mapping catalog entry slugs to values resolved from payload.
         Include the raw payload so expressions can reference it directly if needed.
@@ -179,11 +179,15 @@ class BaseValidatorEngine(ABC):
                     and entry.run_stage == CatalogRunStage.OUTPUT
                     and entry.slug in context
                 ):
-                    # Preserve existing input mapping; expose output via prefix for disambiguation.
+                    # Preserve existing input mapping; expose output via
+                    # prefix for disambiguation.
                     context.setdefault(f"output.{entry.slug}", value)
                 else:
                     context[entry.slug] = value
-                if entry.entry_type == CatalogEntryType.SIGNAL and entry.run_stage == CatalogRunStage.OUTPUT:
+                if (
+                    entry.entry_type == CatalogEntryType.SIGNAL
+                    and entry.run_stage == CatalogRunStage.OUTPUT
+                ):
                     context.setdefault(f"output.{entry.slug}", value)
             elif entry.is_required:
                 context[entry.slug] = None
@@ -221,7 +225,7 @@ class BaseValidatorEngine(ABC):
         assertion,
         path: str,
         message: str,
-    ) -> "ValidationIssue":
+    ) -> ValidationIssue:
         return ValidationIssue(
             path=path,
             message=message,
@@ -234,11 +238,11 @@ class BaseValidatorEngine(ABC):
     def run_cel_assertions_for_stages(
         self,
         *,
-        validator: "Validator",
-        ruleset: "Ruleset",
+        validator: Validator,
+        ruleset: Ruleset,
         input_payload: Any | None = None,
         output_payload: Any | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """
         Convenience wrapper to evaluate CEL assertions for input/output stages.
 
@@ -281,23 +285,23 @@ class BaseValidatorEngine(ABC):
     def evaluate_cel_assertions(
         self,
         *,
-        ruleset: "Ruleset",
-        validator: "Validator",
+        ruleset: Ruleset,
+        validator: Validator,
         payload: Any,
         target_stage: str,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """
         Evaluate CEL assertions on the given ruleset using a context derived
         from the validator catalog and payload. Returns a list of issues.
         Only assertions targeting the given run_stage (via target_catalog_entry) are
         evaluated; assertions without a target_catalog_entry are treated as INPUT-stage.
         """
-        
+
         if validator is None:
             raise ValueError("validator must be provided.")
         if ruleset is None:
             raise ValueError("ruleset is required for CEL evaluation.")
-        
+
         if payload is None:
             return []
         if target_stage not in {"input", "output"}:
@@ -309,7 +313,7 @@ class BaseValidatorEngine(ABC):
             return []
         try:
             context = self._build_cel_context(payload, validator)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return [
                 ValidationIssue(
                     path="",

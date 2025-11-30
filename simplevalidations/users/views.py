@@ -25,7 +25,8 @@ from rest_framework.authtoken.models import Token
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
-from simplevalidations.users.constants import PermissionCode, RoleCode
+from simplevalidations.users.constants import PermissionCode
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.forms import OrganizationForm
 from simplevalidations.users.forms import OrganizationMemberRolesForm
 from simplevalidations.users.forms import UserProfileForm
@@ -419,7 +420,8 @@ class OrganizationDeleteView(
             messages.error(
                 request,
                 _(
-                    "You must assign another administrator before deleting this organization."
+                    "You must assign another administrator before "
+                    "deleting this organization."
                 ),
             )
             return redirect(
@@ -472,7 +474,7 @@ class OrganizationDetailView(
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        organization = getattr(self, "organization")
+        organization = self.organization
         member_count = Membership.objects.filter(
             org=organization,
             is_active=True,
@@ -508,14 +510,14 @@ class OrganizationMemberRolesUpdateView(OrganizationAdminRequiredMixin, FormView
         context = super().get_context_data(**kwargs)
         context.update(
             {
-                "organization": getattr(self, "organization"),
+                "organization": self.organization,
                 "membership": self.membership,
             }
         )
         return context
 
     def form_valid(self, form):
-        organization = getattr(self, "organization")
+        organization = self.organization
         new_roles = set(form.cleaned_data.get("roles") or [])
         if RoleCode.ADMIN not in new_roles:
             remaining_admins = (
@@ -568,7 +570,7 @@ class OrganizationMemberDeleteView(OrganizationAdminRequiredMixin, View):
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
-        organization = getattr(self, "organization")
+        organization = self.organization
         membership = get_object_or_404(
             Membership,
             pk=kwargs.get("member_id"),
@@ -588,7 +590,10 @@ class OrganizationMemberDeleteView(OrganizationAdminRequiredMixin, View):
         if membership.has_role(RoleCode.OWNER):
             messages.error(
                 request,
-                _("The organization owner cannot be removed. Contact support to transfer ownership."),
+                _(
+                    "The organization owner cannot be removed. "
+                    "Contact support to transfer ownership."
+                ),
             )
             return redirect(
                 reverse_with_org(

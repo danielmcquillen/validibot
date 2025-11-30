@@ -73,7 +73,7 @@ if getattr(settings, "GITHUB_APP_ENABLED", False):
             )
 
             logger.info("✅ validate_idf function completed for: %s", repo_full)
-            return
+
     except Exception as e:
         logger.debug("GitHub validators not active: %s", e)
 else:

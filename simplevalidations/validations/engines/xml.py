@@ -59,7 +59,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             )
         # lxml optional (import lazily)
         try:
-            from lxml import etree  # noqa: PLC0415
+            from lxml import etree
         except Exception as e:  # pragma: no cover
             return ValidationResult(
                 passed=False,
@@ -191,7 +191,7 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         Parse the XML schema string and return an lxml schema object.
         """
         try:
-            from lxml import etree  # noqa: PLC0415
+            from lxml import etree
         except Exception as e:  # pragma: no cover
             raise ImportError(_("XML validation requires lxml: ") + str(e)) from e
 

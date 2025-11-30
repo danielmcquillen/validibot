@@ -34,7 +34,7 @@ NOT_IN_OPERATOR = "not_in"
 IN_OPERATORS = frozenset({IN_OPERATOR, NOT_IN_OPERATOR})
 NONEMPTY_OPERATOR = "nonempty"
 VALUE_OPTIONS_DELIMITER = ","
-STATUS_PASS = "YES"
+STATUS_PASS = "YES" # noqa: S105
 STATUS_FAIL = "NO"
 STATUS_UNKNOWN = "UNKNOWN"
 NUMERIC_EQUALITY_REL_TOL = 0.0
@@ -82,6 +82,7 @@ RULE_DATA_KEY_OPERATOR = "operator"
 RULE_DATA_KEY_VALUE = "value"
 RULE_DATA_KEY_VALUE_B = "value_b"
 RULE_DATA_KEY_MESSAGE = "message"
+
 
 @dataclass(slots=True)
 class PolicyRule:
@@ -344,19 +345,13 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
         if isinstance(node, dict):
             for key, value in node.items():
                 if pointer == JSON_POINTER_ROOT:
-                    next_pointer = (
-                        f"{JSON_POINTER_ROOT}{JSON_POINTER_SEPARATOR}{key}"
-                    )
+                    next_pointer = f"{JSON_POINTER_ROOT}{JSON_POINTER_SEPARATOR}{key}"
                 else:
-                    next_pointer = (
-                        f"{pointer}{JSON_POINTER_SEPARATOR}{key}"
-                    )
+                    next_pointer = f"{pointer}{JSON_POINTER_SEPARATOR}{key}"
                 walk(value, next_pointer)
         elif isinstance(node, list):
             if node and all(
-                isinstance(v, (int, float))
-                for v in node
-                if not isinstance(v, bool)
+                isinstance(v, (int, float)) for v in node if not isinstance(v, bool)
             ):
                 numeric_values = [
                     float(v)
@@ -474,10 +469,7 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
                             ),
                         )
             if isinstance(node, str):
-                if (
-                    len(node) > UPPERCASE_STRING_THRESHOLD
-                    and node == node.upper()
-                ):
+                if len(node) > UPPERCASE_STRING_THRESHOLD and node == node.upper():
                     issues.append(
                         ValidationIssue(
                             path=pointer,
@@ -541,9 +533,9 @@ class AiAssistEngine(BaseValidatorEngine):
             snippets: dict[str, list[Any]] = {}
             for selector in selectors:
                 matches = _resolve_path(parsed, selector)
-                snippets[selector] = [
-                    value for _path, value in matches
-                ][:SELECTOR_SAMPLE_LIMIT]
+                snippets[selector] = [value for _path, value in matches][
+                    :SELECTOR_SAMPLE_LIMIT
+                ]
             stats[STAT_KEY_SELECTOR_SAMPLES] = snippets
 
         issues.extend(_heuristic_critiques(parsed))

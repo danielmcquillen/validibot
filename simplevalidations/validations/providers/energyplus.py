@@ -40,7 +40,9 @@ class EnergyPlusProvider(BaseValidationProvider):
                 slug="facility_electric_demand_w",
                 label="Facility Electricity Demand (W)",
                 data_type=CatalogValueType.TIMESERIES,
-                description="Series sourced from Facility:Electricity:Demand [W] meter.",
+                description=(
+                    "Series sourced from Facility:Electricity:Demand [W] meter."
+                ),
                 binding_config={
                     "source": "series",
                     "meter": "Facility:Electricity:Demand [W]",

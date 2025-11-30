@@ -15,6 +15,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
 from django.utils.html import format_html
+from django.utils.safestring import SafeString
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -35,18 +36,20 @@ class CelHelpLabelMixin:
     """Provide a helper to append the CEL help tooltip to field labels."""
 
     @staticmethod
-    def _cel_help_markup() -> str:
-        return render_to_string("shared/cel_help_tooltip.html").strip()
+    def _cel_help_markup() -> SafeString:
+        # Template content is developer-controlled, so mark_safe is appropriate here.
+        return mark_safe(render_to_string("shared/cel_help_tooltip.html").strip())  # noqa: S308
 
     def _append_cel_help_to_label(self, field_name: str = "cel_expression") -> None:
         field = self.fields.get(field_name)
         if not field:
             return
-        # Use format_html to safely escape the label while allowing our HTML wrapper
+        # Use format_html to safely escape the label while allowing our HTML wrapper.
+        # _cel_help_markup() returns SafeString so format_html won't escape it.
         field.label = format_html(
             "<div class='d-flex flex-row justify-content-between'>{}{}</div>",
             field.label,
-            mark_safe(self._cel_help_markup()),
+            self._cel_help_markup(),
         )
 
 
@@ -456,7 +459,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             ("", _("Select a signal")),
             *signal_choices,
         ]
-        # Hide catalog selector in favor of the target field; we 
+        # Hide catalog selector in favor of the target field; we
         # still keep it for backend resolution.
         self.fields["target_catalog_entry"].widget = forms.HiddenInput()
         if self.no_signal_choices:

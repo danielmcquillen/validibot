@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from typing import TYPE_CHECKING
 
-from django.http import HttpRequest
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
-from simplevalidations.users.models import Membership
-from simplevalidations.users.models import Organization
+    from django.http import HttpRequest
+
+    from simplevalidations.users.models import Membership
+    from simplevalidations.users.models import Organization
 
 logger = logging.getLogger(__name__)
 

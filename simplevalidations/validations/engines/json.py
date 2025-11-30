@@ -8,9 +8,9 @@ from django.utils.translation import gettext as _
 from jsonschema import Draft202012Validator
 from jsonschema import FormatChecker
 
+from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
-from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult

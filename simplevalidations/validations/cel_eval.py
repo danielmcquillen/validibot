@@ -14,11 +14,9 @@ from typing import Any
 
 import celpy
 
-from simplevalidations.validations.constants import (
-    CEL_MAX_CONTEXT_SYMBOLS,
-    CEL_MAX_EVAL_TIMEOUT_MS,
-    CEL_MAX_EXPRESSION_CHARS,
-)
+from simplevalidations.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
+from simplevalidations.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
+from simplevalidations.validations.constants import CEL_MAX_EXPRESSION_CHARS
 
 
 @dataclass(frozen=True)
@@ -53,7 +51,9 @@ def evaluate_cel_expression(
     """
     normalized = (expression or "").strip()
     if not normalized:
-        return CelEvaluationResult(success=False, value=None, error="Empty CEL expression.")
+        return CelEvaluationResult(
+            success=False, value=None, error="Empty CEL expression."
+        )
     if len(normalized) > CEL_MAX_EXPRESSION_CHARS:
         return CelEvaluationResult(
             success=False,
@@ -83,7 +83,7 @@ def evaluate_cel_expression(
                 value=None,
                 error="CEL evaluation timed out.",
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return CelEvaluationResult(
                 success=False,
                 value=None,

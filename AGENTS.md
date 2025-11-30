@@ -65,6 +65,10 @@ uv export --no-dev --extra prod --output-file requirements/production.txt
 uv export --extra dev --output-file requirements/local.txt
 ```
 
+## Linting
+
+- Whenever you write or modify code, run `uv run --extra dev ruff check` and fix any reported issues before you finish.
+
 ## Be consistent when defining constants
 
 We try to be consistent about putting constants in the relevant app's constants.py module as either a TextChoices or an Enum class, and then using those constants in

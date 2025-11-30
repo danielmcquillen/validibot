@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
 from uuid import uuid4
-from datetime import datetime, timedelta, timezone
 
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
@@ -15,11 +17,11 @@ from model_utils.models import TimeStampedModel
 from simplevalidations.users.constants import RoleCode
 
 
-def _workspace_name_for(user: "User") -> str:
+def _workspace_name_for(user: User) -> str:
     source = (user.name or "").strip() or (user.username or "Workspace")
     if source.endswith("s"):
-        return f"{source}’ Workspace"
-    return f"{source}’s Workspace"
+        return f"{source}' Workspace"
+    return f"{source}'s Workspace"
 
 
 def _generate_unique_slug(model, base: str, *, prefix: str = "") -> str:
@@ -34,7 +36,7 @@ def _generate_unique_slug(model, base: str, *, prefix: str = "") -> str:
     return slug
 
 
-def ensure_default_project(organization: "Organization"):
+def ensure_default_project(organization: Organization):
     from simplevalidations.projects.models import Project
 
     default = Project.all_objects.filter(org=organization, is_default=True).first()
@@ -58,7 +60,7 @@ def ensure_default_project(organization: "Organization"):
     )
 
 
-def ensure_personal_workspace(user: "User") -> "Organization":
+def ensure_personal_workspace(user: User) -> Organization:
     existing = (
         user.orgs.filter(is_personal=True, membership__is_active=True)
         .distinct()
@@ -151,7 +153,7 @@ class Organization(TimeStampedModel):
         """
         return reverse("organizations:detail", kwargs={"pk": self.pk})
 
-    def delete(self, *args, **kwargs):  # noqa: D401 - guard deletion of personal orgs
+    def delete(self, *args, **kwargs):
         if self.is_personal:
             raise ValidationError("Personal organizations cannot be deleted.")
         super().delete(*args, **kwargs)
@@ -234,11 +236,14 @@ class User(AbstractUser):
         If one isn't defined, set it to the user's personal org if it exists.
         If no personal org exists, create one and set it.
         """
-        if self.current_org and Membership.objects.filter(
-            user=self,
-            org=self.current_org,
-            is_active=True,
-        ).exists():
+        if (
+            self.current_org
+            and Membership.objects.filter(
+                user=self,
+                org=self.current_org,
+                is_active=True,
+            ).exists()
+        ):
             return self.current_org
 
         return ensure_personal_workspace(self)
@@ -513,8 +518,12 @@ class PendingInvite(TimeStampedModel):
         null=True,
         blank=True,
     )
-    invitee_email = models.EmailField(blank=True, null=True)
+    invitee_email = models.EmailField(
+        blank=True,
+    )
+
     roles = models.JSONField(default=list)
+
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -533,7 +542,7 @@ class PendingInvite(TimeStampedModel):
     def mark_expired_if_needed(self) -> None:
         if self.status != self.Status.PENDING:
             return
-        if self.expires_at <= datetime.now(timezone.utc):
+        if self.expires_at <= datetime.now(timezone.utc):  # noqa: UP017
             self.status = self.Status.EXPIRED
             self.save(update_fields=["status"])
 
@@ -562,6 +571,9 @@ class PendingInvite(TimeStampedModel):
         self.save(update_fields=["status"])
 
     @classmethod
-    def create_with_expiry(cls, **kwargs) -> "PendingInvite":
-        expiry = kwargs.pop("expires_at", datetime.now(timezone.utc) + timedelta(days=7))
+    def create_with_expiry(cls, **kwargs) -> PendingInvite:
+        expiry = kwargs.pop(
+            "expires_at",
+            datetime.now(timezone.utc) + timedelta(days=7),  # noqa: UP017
+        )
         return cls.objects.create(expires_at=expiry, **kwargs)

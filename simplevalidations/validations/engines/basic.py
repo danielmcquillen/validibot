@@ -328,7 +328,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
     def _evaluate_comparison(self, op, actual, rhs, options):
         expected = rhs.get("value")
         actual_num = self._to_number(actual, options.get("coerce_types"))
-        expected_num = self._to_number(expected, True)
+        expected_num = self._to_number(expected, allow_coerce=True)
         if actual_num is None or expected_num is None:
             return False, _("Value is not numeric.")
         passed = {
@@ -348,8 +348,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
             actual_num = actual_len
         else:
             actual_num = self._to_number(actual, options.get("coerce_types"))
-        low = self._to_number(rhs.get("min"), True)
-        high = self._to_number(rhs.get("max"), True)
+        low = self._to_number(rhs.get("min"), allow_coerce=True)
+        high = self._to_number(rhs.get("max"), allow_coerce=True)
         if actual_num is None or low is None or high is None:
             return False, _("Value is not numeric.")
         include_min = options.get("include_min", True)
@@ -407,7 +407,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
             length = len(actual)
         except TypeError:
             return False, _("Value has no length.")
-        expected = self._to_number(rhs.get("value"), True)
+        expected = self._to_number(rhs.get("value"), allow_coerce=True)
         if expected is None:
             return False, _("Length comparison target missing.")
         if op == AssertionOperator.LEN_EQ:
@@ -435,8 +435,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
         return isinstance(actual, expected_type), _("Type mismatch.")
 
     def _evaluate_approx(self, actual, rhs, options):
-        target = self._to_number(rhs.get("value"), True)
-        tolerance = self._to_number(rhs.get("tolerance"), True)
+        target = self._to_number(rhs.get("value"), allow_coerce=True)
+        tolerance = self._to_number(rhs.get("tolerance"), allow_coerce=True)
         actual_num = self._to_number(actual, options.get("coerce_types"))
         if None in {target, tolerance, actual_num}:
             return False, _("Value is not numeric.")
@@ -459,7 +459,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
         if not nested_op:
             return False, _("Nested operator missing.")
         for item in actual:
-            passed, _ = self._evaluate_basic_assertion(
+            passed, msg = self._evaluate_basic_assertion(
                 operator=nested_op,
                 actual=item,
                 rhs={"value": nested_value},
@@ -510,8 +510,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
         expected_value = expected
         if coerce:
             if isinstance(expected, (int, float)) or self._looks_numeric(expected):
-                actual_value = self._to_number(actual, True)
-                expected_value = self._to_number(expected, True)
+                actual_value = self._to_number(actual, allow_coerce=True)
+                expected_value = self._to_number(expected, allow_coerce=True)
         actual_value = self._normalize_string(actual_value, options)
         if isinstance(expected_value, list):
             expected_value = [
@@ -524,15 +524,16 @@ class BasicValidatorEngine(BaseValidatorEngine):
     def _looks_numeric(self, value) -> bool:
         if isinstance(value, (int, float)):
             return True
+        result = False
         if isinstance(value, str):
             try:
                 float(value)
-                return True
+                result = True
             except (TypeError, ValueError):
-                return False
-        return False
+                pass
+        return result
 
-    def _to_number(self, value, allow_coerce=False):
+    def _to_number(self, value, *, allow_coerce=False):
         if isinstance(value, (int, float)):
             return float(value)
         if allow_coerce and isinstance(value, str):
@@ -570,7 +571,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
             try:
                 rendered = self._render_message_template(template, context)
             except MessageTemplateRenderError:
-                message = _("Message template error – falling back to default output.")
+                message = _("Message template error - falling back to default output.")
             else:
                 if rendered:
                     message = rendered
@@ -699,7 +700,7 @@ class BasicValidatorEngine(BaseValidatorEngine):
         parsed: list[str] = []
         for raw in args.split(","):
             val = raw.strip()
-            if len(val) >= 2 and val[0] in {'"', "'"} and val[-1] == val[0]:
+            if len(val) >= 2 and val[0] in {'"', "'"} and val[-1] == val[0]:  # noqa : PLR2004
                 val = val[1:-1]
             parsed.append(val)
         return parsed

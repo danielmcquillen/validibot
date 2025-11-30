@@ -41,8 +41,7 @@ class BlogPostList(BreadcrumbMixin, generic.ListView):
                 "section": "blog",
                 "page_title": _("Blog"),
                 "page_subtitle": _(
-                    "Insights, guides, and product updates from the "
-                    "SimpleValidations team.",
+                    "Insights, guides, and product updates from the Validibot team.",
                 ),
                 "has_drafts": context["blog_posts"]
                 .filter(status=BlogPostStatus.DRAFT)
@@ -122,7 +121,7 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
             default_path = MarketingShareImage.DEFAULT.value
             share_image_url = request.build_absolute_uri(static(default_path))
             share_image_alt = _(
-                "SimpleValidations robot showcasing workflow automation.",
+                "Validibot robot showcasing workflow automation.",
             )
 
         context.update(
@@ -133,7 +132,7 @@ class BlogPostDetail(BreadcrumbMixin, generic.DetailView):
                 "related_posts": self._get_related_posts(blog_post),
                 "canonical_url": absolute_url,
                 "meta_description": meta_description,
-                "full_meta_title": _("{title} | SimpleValidations Blog").format(
+                "full_meta_title": _("{title} | Validibot Blog").format(
                     title=blog_post.title,
                 ),
                 "share_image_url": share_image_url,

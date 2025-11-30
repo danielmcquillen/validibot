@@ -17,7 +17,7 @@ When a client calls `POST /api/workflows/{id}/start/` to launch a validation run
 2. **Retry storms** – The client retries, creating duplicate validation runs (wasting compute, confusing users, potentially inflating billing).
 3. **Webhook double-delivery** – If we later add webhook callbacks, duplicate runs mean duplicate notifications to downstream systems.
 
-This is especially problematic for SimpleValidations because:
+This is especially problematic for Validibot because:
 
 - Validation runs can be expensive (EnergyPlus simulations, AI-assisted analysis).
 - Runs are billed against org quotas (`UsageCounter`).

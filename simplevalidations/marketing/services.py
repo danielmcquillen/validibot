@@ -32,7 +32,7 @@ class WaitlistPayload:
 default_plain_waitlist_msg = gettext(
     """
 Hey there — this is Daniel from McQuillen Interactive.
-Thanks for joining the SimpleValidations beta list!
+Thanks for joining the Validibot beta list!
 I'm working hard to get the beta release ready. I'll email you as soon as invites open.
 
 — Daniel
@@ -44,7 +44,7 @@ I'm working hard to get the beta release ready. I'll email you as soon as invite
 default_html_waitlist_msg = gettext(
     """
 <p>Hey there — this is Daniel from McQuillen Interactive. Thanks for joining the
- SimpleValidations beta list! 🎉</p>
+ Validibot beta list! 🎉</p>
 <p>I'm working hard to get the beta release ready. I'll email you as
  soon as invites open.</p>
 <p>— Daniel</p>
@@ -54,7 +54,7 @@ default_html_waitlist_msg = gettext(
 ).strip()
 
 
-def submit_waitlist_signup(payload: WaitlistPayload) -> None:  # noqa: PLR0912, PLR0915
+def submit_waitlist_signup(payload: WaitlistPayload) -> None:
     """
     Persist a beta waitlist signup locally and send a transactional welcome email.
 
@@ -115,7 +115,7 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:  # noqa: PLR0912, 
 
     subject = metadata.get(
         "subject",
-        gettext("You're on the SimpleValidations beta list!"),
+        gettext("You're on the Validibot beta list!"),
     )
 
     welcome_txt = metadata.get("message", default_plain_waitlist_msg)
@@ -160,9 +160,9 @@ def submit_waitlist_signup(payload: WaitlistPayload) -> None:  # noqa: PLR0912, 
     # Send an admin email to notify of a new signup
     if getattr(settings, "MARKETING_NOTIFY_ON_WAITLIST_SIGNUP", False):
         admin_email = settings.DEFAULT_FROM_EMAIL
-        admin_subject = f"New SimpleValidations waitlist signup: {payload.email}"
+        admin_subject = f"New Validibot waitlist signup: {payload.email}"
         admin_message = (
-            "A new user has signed up for the SimpleValidations beta waitlist."
+            "A new user has signed up for the Validibot beta waitlist."
         )
         try:
             send_mail(

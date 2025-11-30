@@ -11,12 +11,12 @@
 
 ### The Problem
 
-SimpleValidations currently supports two ways for users to join an organization:
+Validibot currently supports two ways for users to join an organization:
 
 1. **Self-signup** – A new user creates an account and gets an auto-provisioned personal workspace.
-2. **Invite existing user** – An admin invites an existing SimpleValidations user to their organization via `PendingInvite`. The invitee sees a notification and can accept/decline.
+2. **Invite existing user** – An admin invites an existing Validibot user to their organization via `PendingInvite`. The invitee sees a notification and can accept/decline.
 
-However, there's a gap: **we cannot invite someone who doesn't yet have a SimpleValidations account**. This is a common B2B scenario:
+However, there's a gap: **we cannot invite someone who doesn't yet have a Validibot account**. This is a common B2B scenario:
 
 > "I want to invite my colleague alice@acme.com to my organization. She doesn't have an account yet—she should sign up and land directly in my org."
 
@@ -492,7 +492,7 @@ class InviteSignupForm(forms.Form):
       <strong>{{ inviter.name|default:inviter.email }}</strong>
       {% trans "has invited you to join" %}
       <strong>{{ org.name }}</strong>
-      {% trans "on SimpleValidations." %}
+      {% trans "on Validibot." %}
     </p>
 
     <hr>
@@ -613,7 +613,7 @@ def send_invite_email(invite: PendingInvite) -> None:
     }
 
     send_mail(
-        subject=_("You've been invited to join %(org)s on SimpleValidations") % {
+        subject=_("You've been invited to join %(org)s on Validibot") % {
             "org": invite.org.name,
         },
         message=render_to_string(f"{template}.txt", context),

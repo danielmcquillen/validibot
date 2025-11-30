@@ -6,5 +6,5 @@
 
 ## Context
 
-SimpleValidations needs to be more thorough with the types of file formats it accepts and then
+Validibot needs to be more thorough with the types of file formats it accepts and then
 the types of file formats a Workflow and a Validator can work with.

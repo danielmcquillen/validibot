@@ -1,6 +1,6 @@
 # Authoring Workflow Steps
 
-This guide walks through the two-stage wizard used to add or edit workflow steps in SimpleValidations.
+This guide walks through the two-stage wizard used to add or edit workflow steps in Validibot.
 
 ## Pause or resume a workflow
 
@@ -61,7 +61,7 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 ### Actions (Integrations & Certifications)
 - Actions reuse catalogued definitions (for example, sending a Slack message or issuing a signed certificate).
 - Slack integrations prompt for the message that will be posted when the step runs; the text is stored on a dedicated `SlackMessageAction` model.
-- Certification steps let you upload an optional certificate template. If you skip the upload, SimpleValidations falls back to the bundled `default_signed_certificate.pdf`. Editing the step keeps the previous upload unless you explicitly provide a replacement.
+- Certification steps let you upload an optional certificate template. If you skip the upload, Validibot falls back to the bundled `default_signed_certificate.pdf`. Editing the step keeps the previous upload unless you explicitly provide a replacement.
 - The editor lets you rename the step, adjust the author notes, and record any action-specific inputs in purpose-built forms instead of the generic JSON payload we used previously.
 - Action steps never expose schemas to end users, but they appear alongside validation steps in the workflow timeline and step navigation.
 

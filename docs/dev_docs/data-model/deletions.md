@@ -1,11 +1,11 @@
-# Deletions in SimpleValidations
+# Deletions in Validibot
 
 ## Deleting Projects
 
 Users can delete a project, upon which the project is set to inactive and a deletion date is set.
 Default projects created for each organization are protected and cannot be deleted.
 
-Then SimpleValidations has a periodic task or management command that deletes all
+Then Validibot has a periodic task or management command that deletes all
 projects older than a time period N.
 
 When a project is first deleted and made "inactive" all workflow and workflow steps

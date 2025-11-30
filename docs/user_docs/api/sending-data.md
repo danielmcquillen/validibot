@@ -10,7 +10,7 @@ The user calling the API to run a workflow, whether you or someone else, must ha
 Let's assume that you're the one calling the API.
 
 - Review [Understanding Data Shapes & Types](data-shapes.md) to confirm how your source data should be represented and which MIME type fits best.
-- If you don't have your API key handy, the can find it by logging into SimpleValidations and navigating to your user profile.
+- If you don't have your API key handy, the can find it by logging into Validibot and navigating to your user profile.
 - Locate the URL of the workflow you want to call (visible in the 'Workflow details' portion of the workflow page).
 - Confirm the MIME type of the payload you plan to send (`application/json`, `application/xml`, plain text, etc.).
 - Decide whether you need to attach metadata (for example `{"source": "api"}`) alongside the content.

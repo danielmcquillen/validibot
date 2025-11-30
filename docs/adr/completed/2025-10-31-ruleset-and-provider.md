@@ -6,7 +6,7 @@
 
 ## Context
 
-SimpleValidations runs **workflows** composed of **steps**. Each step executes a **Validation** which uses a
+Validibot runs **workflows** composed of **steps**. Each step executes a **Validation** which uses a
 **Validator Engine** (registered in code) and may reference a **Ruleset** (author-defined checks).
 
 We need to extend this pattern to allow the workflow author to create a rich set of definitions of the types of

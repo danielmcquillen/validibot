@@ -1,4 +1,4 @@
-# SimpleValidations
+# Validibot
 
 A simple data validation engine.
 
@@ -103,7 +103,7 @@ This project includes two types of documentation served via MkDocs:
 
 ### Developer Documentation
 
-Internal documentation for contributors and developers working on SimpleValidations.
+Internal documentation for contributors and developers working on Validibot.
 
 To serve the developer docs locally:
 
@@ -115,7 +115,7 @@ The developer docs will be available at <http://127.0.0.1:9000>.
 
 ### User Documentation
 
-Product tutorials and walkthroughs for SimpleValidations end users.
+Product tutorials and walkthroughs for Validibot end users.
 
 To serve the user docs locally:
 

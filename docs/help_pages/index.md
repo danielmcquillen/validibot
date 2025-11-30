@@ -1,4 +1,4 @@
-## SimpleValidations Help Center
+## Validibot Help Center
 
 Use this help center to get quick, task-focused answers while you work in the app. Each section matches the in-product navigation so you can jump directly to what you need:
 

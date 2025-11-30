@@ -1,10 +1,10 @@
-# SimpleValidations Platform Overview
+# Validibot Platform Overview
 
-SimpleValidations is a comprehensive data validation orchestration platform designed to help organizations build, manage, and execute robust validation workflows at scale.
+Validibot is a comprehensive data validation orchestration platform designed to help organizations build, manage, and execute robust validation workflows at scale.
 
-## What is SimpleValidations?
+## What is Validibot?
 
-SimpleValidations transforms the traditionally fragmented and error-prone process of data validation into a systematic, reliable, and collaborative workflow. Instead of writing one-off scripts or maintaining complex validation codebases, teams can build reusable validation pipelines that enforce data quality standards consistently across their organization.
+Validibot transforms the traditionally fragmented and error-prone process of data validation into a systematic, reliable, and collaborative workflow. Instead of writing one-off scripts or maintaining complex validation codebases, teams can build reusable validation pipelines that enforce data quality standards consistently across their organization.
 
 ### The Problem We Solve
 
@@ -17,9 +17,9 @@ Modern applications handle increasingly complex data from multiple sources - API
 - **Limited Reusability**: Validation logic written for one use case can't easily be applied elsewhere
 - **Collaboration Challenges**: Domain experts can't easily contribute to or review validation rules
 
-### The SimpleValidations Solution
+### The Validibot Solution
 
-SimpleValidations provides a platform where validation logic is:
+Validibot provides a platform where validation logic is:
 
 - **Centralized**: All validation workflows live in one place with proper versioning
 - **Reusable**: Create workflows once, use them across multiple applications and contexts
@@ -32,7 +32,7 @@ SimpleValidations provides a platform where validation logic is:
 
 ### Organizations
 
-Organizations are the top-level container for all resources in SimpleValidations. They provide:
+Organizations are the top-level container for all resources in Validibot. They provide:
 
 - **Isolation**: Each organization's workflows, rulesets, and data are completely separate
 - **Access Control**: Users belong to organizations and have specific roles within them
@@ -41,7 +41,7 @@ Organizations are the top-level container for all resources in SimpleValidations
 
 ### Workflows
 
-Workflows are the heart of SimpleValidations - reusable, versioned definitions of validation processes. Each workflow:
+Workflows are the heart of Validibot - reusable, versioned definitions of validation processes. Each workflow:
 
 - **Defines a Process**: An ordered sequence of validation steps to execute
 - **Owns Configuration**: Specifies which validators to use and how they should behave
@@ -78,7 +78,7 @@ Each workflow consists of one or more validation steps. Each step:
 - **Produces Results**: Issues, warnings, and metadata from the validation process
 - **Can Be Reordered**: Steps execute in sequence and can be rearranged as needed
 
-SimpleValidations ships with built-in validation engines for common formats and supports custom validators for specialized use cases.
+Validibot ships with built-in validation engines for common formats and supports custom validators for specialized use cases.
 
 ### Rulesets
 
@@ -142,7 +142,7 @@ The REST API enables integration with any system that can make HTTP requests:
 
 ### CI/CD Integration
 
-SimpleValidations fits naturally into continuous integration pipelines:
+Validibot fits naturally into continuous integration pipelines:
 
 - **Pre-deployment Validation**: Validate configuration files before deployment
 - **Data Migration Validation**: Ensure migrated data meets quality standards
@@ -151,7 +151,7 @@ SimpleValidations fits naturally into continuous integration pipelines:
 
 ### Application Integration
 
-Applications can leverage SimpleValidations for runtime validation:
+Applications can leverage Validibot for runtime validation:
 
 - **User Upload Validation**: Validate files uploaded by users before processing
 - **API Gateway Integration**: Validate incoming requests at the gateway level
@@ -160,7 +160,7 @@ Applications can leverage SimpleValidations for runtime validation:
 
 ## Architecture Principles
 
-SimpleValidations is built on several key architectural principles:
+Validibot is built on several key architectural principles:
 
 ### Separation of Concerns
 
@@ -202,7 +202,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 
 ## Next Steps
 
-To get started with SimpleValidations:
+To get started with Validibot:
 
 1. **Read the detailed workflow documentation**: [How It Works](how_it_works.md)
 2. **Explore the data model**: [Data Model Overview](../data-model/index.md)

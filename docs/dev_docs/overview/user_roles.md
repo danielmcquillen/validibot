@@ -1,6 +1,6 @@
 # User Roles and Permissions
 
-SimpleValidations implements a comprehensive role-based access control (RBAC) system that governs how users can interact with workflows, submissions, and validation runs within their organizations.
+Validibot implements a comprehensive role-based access control (RBAC) system that governs how users can interact with workflows, submissions, and validation runs within their organizations.
 
 ## Overview
 
@@ -14,7 +14,7 @@ Users can belong to multiple organizations with different roles in each, providi
 
 ## Role Catalogue
 
-SimpleValidations defines six organization-scoped roles. Permissions are cumulative unless otherwise noted, and organization management actions currently hinge on the **Admin** role. Use the table below as a quick reference.
+Validibot defines six organization-scoped roles. Permissions are cumulative unless otherwise noted, and organization management actions currently hinge on the **Admin** role. Use the table below as a quick reference.
 
 | Role | Code | Primary scope | Key capabilities |
 | ---- | ---- | ------------- | ---------------- |
@@ -226,7 +226,7 @@ Only members with the `ADMIN` role (Owners automatically satisfy this requiremen
 
 ## Workflow Access Control
 
-Beyond organization-level roles, SimpleValidations provides workflow-specific access control:
+Beyond organization-level roles, Validibot provides workflow-specific access control:
 
 ### Workflow Visibility
 
@@ -409,4 +409,4 @@ orgs_with_roles = [
 ]
 ```
 
-This role-based access control system provides SimpleValidations with enterprise-grade security while maintaining the flexibility needed for diverse organizational structures and workflows.
+This role-based access control system provides Validibot with enterprise-grade security while maintaining the flexibility needed for diverse organizational structures and workflows.

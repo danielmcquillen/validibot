@@ -34,7 +34,7 @@ def test_waitlist_signup_success_htmx_saves_prospect_and_sends_email(client):
 
     assert len(mail.outbox) == 1
     message = mail.outbox[0]
-    assert "SimpleValidations" in message.subject
+    assert "Validibot" in message.subject
     assert message.to == ["person@company.com"]
 
 

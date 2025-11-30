@@ -1,4 +1,4 @@
-# Architecture Overview: SimpleValidations × Modal.com
+# Architecture Overview: Validibot × Modal.com
 
 Quick mental model for how we create validators that rely on Modal and how validation runs execute there. Use this as a narrative to remember what lives where and why.
 

@@ -2,7 +2,7 @@
 
 ## Mission
 
-- Keep SimpleValidations maintainable and transparent for a single developer.
+- Keep Validibot maintainable and transparent for a single developer.
 - Prefer straightforward Django patterns; document any advanced technique you touch.
 - Follow google guidelines for Python development.
 
@@ -143,7 +143,7 @@ Otherwise, create a static variable at the top of the module, and then use that 
 
 # HTMx + Bootstrap Modal Forms Pattern
 
-Bootstrap modals with HTMx form submissions require careful state management to avoid common issues like disappearing modals, stuck backdrops, or persisted form errors. Follow this pattern for all modal forms in SimpleValidations.
+Bootstrap modals with HTMx form submissions require careful state management to avoid common issues like disappearing modals, stuck backdrops, or persisted form errors. Follow this pattern for all modal forms in Validibot.
 
 ## The Problem
 

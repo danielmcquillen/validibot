@@ -12,7 +12,7 @@ This processing should happen as part of the Validator engine. As every validato
 
 We need to have this CEL mini-engine within the Validator engine defined in a way that is safe and which supports all the current functionality defined for the different Validator types. It should also be extensible to support new CEL expressions in the future.
 
-However, since SimpleValidations is still an MVP, we can keep things simple for now.
+However, since Validibot is still an MVP, we can keep things simple for now.
 
 ## Decision (draft)
 

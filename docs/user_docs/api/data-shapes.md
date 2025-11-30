@@ -1,6 +1,6 @@
 # Understanding Data Shapes & Types
 
-Before you post to the SimpleValidations API, decide how your payload should be framed. The validators that power each workflow expect specific shapes (JSON objects, XML documents, tabular text, binary archives, etc.), and the API relies on your `Content-Type` header to treat the bytes correctly. Use this guide to map your source data to the right MIME type and learn the normalization rules the platform applies.
+Before you post to the Validibot API, decide how your payload should be framed. The validators that power each workflow expect specific shapes (JSON objects, XML documents, tabular text, binary archives, etc.), and the API relies on your `Content-Type` header to treat the bytes correctly. Use this guide to map your source data to the right MIME type and learn the normalization rules the platform applies.
 
 ## Common Data Sources
 

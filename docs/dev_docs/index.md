@@ -1,6 +1,6 @@
-# SimpleValidations Documentation
+# Validibot Documentation
 
-Welcome to the **SimpleValidations** documentation.
+Welcome to the **Validibot** documentation.
 
 This site describes the core concepts, data model, and API for working with validation workflows.
 
@@ -17,11 +17,11 @@ This site describes the core concepts, data model, and API for working with vali
 ## Quick Reference
 
 - [Quick Reference](quick_reference.md) - Summary of core concepts and basic usage
-- [Related Libraries](related_libraries.md) - How `sv_shared` and `sv_modal` connect to SimpleValidations
+- [Related Libraries](related_libraries.md) - How `sv_shared` and `sv_modal` connect to Validibot
 
 ### Overview
 
-- [Platform Overview](overview/platform_overview.md) - What SimpleValidations is and why it exists
+- [Platform Overview](overview/platform_overview.md) - What Validibot is and why it exists
 - [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
 - [Settings Reference](overview/settings.md) - Environment and feature flags that shape behaviour locally and in prod
 - [Working Agreements](overview/platform_overview.md#working-agreements-for-developers) - How we keep the project understandable

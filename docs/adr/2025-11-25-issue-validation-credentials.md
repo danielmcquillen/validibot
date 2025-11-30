@@ -9,7 +9,7 @@
 
 ## Context
 
-SimpleValidations already defines action-based workflow steps for non-validation side effects (Slack messages, certificates, etc.) via concrete subclasses of `Action`. The current set includes:
+Validibot already defines action-based workflow steps for non-validation side effects (Slack messages, certificates, etc.) via concrete subclasses of `Action`. The current set includes:
 
 - `SlackMessageAction` – posts a Slack message when a run completes.
 - `SignedCertificateAction` – stores an uploaded PDF template and issues a signed certificate artifact after a run.
@@ -119,7 +119,7 @@ We will:
      },
      "credentialStatus": {
        "id": "https://www.simplevalidations.com/credentials/status/<credential_ulid>",
-       "type": "SimpleValidationsStatusList2025"
+       "type": "ValidibotStatusList2025"
      }
    }
    ```
@@ -298,7 +298,7 @@ For the MVP, we adopt these rules:
 - VC contents must not include personally identifying information about individuals.
 - VC contents must not include sensitive customer identifiers (e.g. client names, street addresses) or detailed proprietary performance metrics unless an organization explicitly opts in.
 - VC contents should focus on opaque identifiers (ULIDs), hashes of submitted content, media types, workflow identifiers, validator codes, run status, and timestamps.
-- Detailed run context (project names, filenames that reveal clients, full metrics, etc.) stays in internal SimpleValidations data models and is only shown to authenticated users with appropriate permissions.
+- Detailed run context (project names, filenames that reveal clients, full metrics, etc.) stays in internal Validibot data models and is only shown to authenticated users with appropriate permissions.
 - Public `/credentials/<id>/` endpoints should present a minimal view suitable for sharing and verification; richer information is only available to authenticated users.
 
 ## Consequences
@@ -306,7 +306,7 @@ For the MVP, we adopt these rules:
 **Pros**
 
 - We get a real, standards-based credential rather than an ad hoc PDF:
-  - Can be verified independently of SimpleValidations if someone caches the JWKS.
+  - Can be verified independently of Validibot if someone caches the JWKS.
   - Expressive enough for future scenarios (Open Badges 3.0, project-wide attestations).
 - We reuse the existing KMS + JWKS infrastructure, so:
   - No custom key management added for MVP.

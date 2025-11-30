@@ -1,4 +1,4 @@
-# SimpleValidations Style Guide
+# Validibot Style Guide
 
 This guide captures the small-but-important UI conventions we rely on across the app. Keep it friendly, consistent, and discoverable.
 

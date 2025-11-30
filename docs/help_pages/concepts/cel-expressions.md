@@ -1,4 +1,4 @@
-SimpleValidations uses Common Expression Language (CEL) for advanced assertions. CEL is a simple, safe expression syntax for writing small, fast, readable conditions and rules over your data.
+Validibot uses Common Expression Language (CEL) for advanced assertions. CEL is a simple, safe expression syntax for writing small, fast, readable conditions and rules over your data.
 
 You can use CEL to perform simple assertion logic on your incoming data,
 or data produced by your validator (e.g. after FMI Validator runs a submission through a simulation and produces output).
@@ -9,7 +9,7 @@ assertion will be added to the messages returned to the user.
 
 **What data can you reference?**
 
-In SimpleValidations, there are two types of data 'names' you can reference in a CEL expression. These names let you reference
+In Validibot, there are two types of data 'names' you can reference in a CEL expression. These names let you reference
 the data you want to validate:
 
 - **Signals**: a signal name defined by the current validator. These are the names the validator expects to be present in the data.
@@ -19,10 +19,10 @@ Therefore, the names available for a CEL expression are determined by the signal
 
 **Why not just use JSON or XML Schemas?**
 
-Yes, it's true, you can use the SimpleValidations JSON Schema validator or XML Schema validator for your workflow steps. In this case you don't
+Yes, it's true, you can use the Validibot JSON Schema validator or XML Schema validator for your workflow steps. In this case you don't
 define individual rules, you just create one big schema and attach it to your validator. Schemas are great for structure: making sure fields exist, have the right type, follow enums, match patterns, etc. They’re the first line of defense for data integrity.
 
-CEL expressions, on the other hand, handle the behavioural and cross-field rules for data that schemas either can’t express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMI Validator. In SimpleValidations, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They’re complementary, not competing.
+CEL expressions, on the other hand, handle the behavioural and cross-field rules for data that schemas either can’t express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMI Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They’re complementary, not competing.
 
 You could create a workflow that has both a JSON schema validation and then some assertions that use detailed CEL expressions.
 
@@ -73,7 +73,7 @@ For more syntax details, visit the CEL specification at <https://github.com/goog
 
 ### Full CEL Expression List
 
-The following CEL statements are supported in SimpleValidations
+The following CEL statements are supported in Validibot
 
 #### Base CEL Syntax
 

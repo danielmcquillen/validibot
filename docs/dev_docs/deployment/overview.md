@@ -1,6 +1,6 @@
 # Deployment Overview
 
-SimpleValidations currently ships to Heroku. This section summarises the moving parts
+Validibot currently ships to Heroku. This section summarises the moving parts
 and the order of operations so you can promote changes without surprises.
 
 ## Environments
@@ -58,7 +58,7 @@ config reminders.
 
 ## ASGI vs WSGI
 
-SimpleValidations can run either as an ASGI app (for long-lived connections and
+Validibot can run either as an ASGI app (for long-lived connections and
 websockets) or as a traditional WSGI app. The key touch points are:
 
 - `config/asgi.py` and `config/wsgi.py` expose the respective entrypoints. The ASGI

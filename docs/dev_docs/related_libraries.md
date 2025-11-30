@@ -1,6 +1,6 @@
 # Related Libraries
 
-SimpleValidations collaborates with two sibling projects that live alongside this repository. This page records their roles so future changes keep the three codebases aligned.
+Validibot collaborates with two sibling projects that live alongside this repository. This page records their roles so future changes keep the three codebases aligned.
 
 ## Project Layout
 

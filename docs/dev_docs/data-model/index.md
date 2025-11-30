@@ -1,6 +1,6 @@
 # Data Model Overview
 
-The core entities in SimpleValidations are:
+The core entities in Validibot are:
 
 - **Projects** provide an organization-scoped namespace that tags workflows,
   submissions, and runs for tenancy and reporting.

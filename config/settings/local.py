@@ -74,7 +74,7 @@ CELERY_TASK_EAGER_PROPAGATES = env("CELERY_TASK_EAGER_PROPAGATES", default=True)
 # So I con't have to cancel so many processes when restarting Celery.
 CELERY_WORKER_CONCURRENCY = 1
 
-# SimpleValidations settings for local development
+# Validibot settings for local development
 # ------------------------------------------------------------------------------
 
 

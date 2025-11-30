@@ -12,7 +12,7 @@
 
 ### The Opportunity
 
-SimpleValidations currently requires users to be authenticated to launch workflow validations. However, many valuable use cases require public access:
+Validibot currently requires users to be authenticated to launch workflow validations. However, many valuable use cases require public access:
 
 - **Embedded validation widgets** – A building energy consultant wants to embed a "Validate your IDF file" form on their website for prospective clients.
 - **Public APIs for CI/CD** – An open-source project wants to let anyone validate configuration files via API without creating an account.
@@ -313,8 +313,8 @@ class WorkflowAccessType(models.TextChoices):
 
     ORG_USERS = "ORG_USERS", _("Organization members only")
     ORG_USERS_SUBSET = "ORG_USERS_SUBSET", _("Specific organization members")
-    SV_USERS = "SV_USERS", _("Any SimpleValidations user")
-    SV_USERS_SUBSET = "SV_USERS_SUBSET", _("Specific SimpleValidations users")
+    SV_USERS = "SV_USERS", _("Any Validibot user")
+    SV_USERS_SUBSET = "SV_USERS_SUBSET", _("Specific Validibot users")
     PUBLIC = "PUBLIC", _("Public (anonymous)")
 
 
@@ -440,7 +440,7 @@ class WorkflowLaunchPermission:
 
     Implements the access type model:
     - PUBLIC: Anyone (with restrictions on input type/size)
-    - SV_USERS: Any authenticated SimpleValidations user
+    - SV_USERS: Any authenticated Validibot user
     - SV_USERS_SUBSET: Specific SV users chosen by author
     - ORG_USERS: Members of the workflow's organization
     - ORG_USERS_SUBSET: Specific org members/roles

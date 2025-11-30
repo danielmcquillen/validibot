@@ -1,4 +1,4 @@
-# ruff: noqa: ERA001, E501
+# ruff: noqa: E501
 """Base settings to build other settings files upon."""
 
 import logging
@@ -428,14 +428,14 @@ CORS_URLS_REGEX = r"^/api/.*$"
 # By Default swagger ui is available only to admin user(s). You can change permission classes to change that
 # See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings
 SPECTACULAR_SETTINGS = {
-    "TITLE": "SimpleValidations API",
-    "DESCRIPTION": "Documentation of API endpoints of SimpleValidations",
+    "TITLE": "Validibot API",
+    "DESCRIPTION": "Documentation of API endpoints of Validibot",
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
 }
 
-# SimpleValidations settings
+# Validibot settings
 # ------------------------------------------------------------------------------
 
 POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default=None)
@@ -518,7 +518,7 @@ SV_JWKS_KEYS = env.list(
 # EMAIL
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",
-    default="SimpleValidations <daniel@simplevalidations.com>",
+    default="Validibot <daniel@simplevalidations.com>",
 )
 
 MODAL_TOKEN_ID = env("MODAL_TOKEN_ID", default="")

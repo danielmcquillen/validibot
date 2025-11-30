@@ -219,7 +219,7 @@ class OrgPermissionBackend(BaseBackend):
     Permission backend that evaluates Django ``has_perm`` calls against
     organization-scoped membership roles.
 
-    It keeps SimpleValidations' per-org RBAC while letting callers use
+    It keeps Validibot' per-org RBAC while letting callers use
     first-class Django permission checks with an object carrying an ``org``
     or ``org_id`` attribute (e.g., Workflow, ValidationRun, Organization).
     """

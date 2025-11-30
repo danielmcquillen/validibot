@@ -1,6 +1,6 @@
-## How SimpleValidations works
+## How Validibot works
 
-SimpleValidations runs uploaded submissions through a workflow made of ordered steps:
+Validibot runs uploaded submissions through a workflow made of ordered steps:
 
 - **Submission**: A user uploads a file or payload in an allowed format (JSON, text, XML, etc.).
 - **Workflow**: A versioned definition owned by an organization. Each workflow can be active, inactive, or archived.

@@ -1,6 +1,6 @@
 # Configure the Badge JWKS Endpoint
 
-SimpleValidations now advertises badge-signing public keys at `/.well-known/jwks.json`. Badge verifiers fetch this document to validate the signatures we apply with AWS KMS.
+Validibot now advertises badge-signing public keys at `/.well-known/jwks.json`. Badge verifiers fetch this document to validate the signatures we apply with AWS KMS.
 
 ## Production checklist
 

@@ -1,6 +1,6 @@
 # Collaboration and Access
 
-Use this page to walk through how teams share work inside SimpleValidations.
+Use this page to walk through how teams share work inside Validibot.
 
 ## Roles and Permissions
 Summarize the OWNER, ADMIN, AUTHOR, and EXECUTOR roles. Add guidance for when to grant each role and how they relate to organizations, projects, and workflows.

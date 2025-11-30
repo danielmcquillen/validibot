@@ -4,10 +4,13 @@ import logging
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.sites.models import Site
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect, render
+from django.http import HttpRequest
+from django.http import HttpResponse
+from django.shortcuts import redirect
+from django.shortcuts import render
 from django.templatetags.static import static
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse
+from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -16,18 +19,14 @@ from django.views.generic import TemplateView
 from simplevalidations.core.forms import SupportMessageForm
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import is_htmx
-from simplevalidations.marketing.constants import (
-    MarketingShareImage,
-    ProspectEmailStatus,
-)
+from simplevalidations.marketing.constants import MarketingShareImage
+from simplevalidations.marketing.constants import ProspectEmailStatus
 from simplevalidations.marketing.email.utils import is_allowed_postmark_source
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
-from simplevalidations.marketing.services import (
-    WaitlistPayload,
-    WaitlistSignupError,
-    submit_waitlist_signup,
-)
+from simplevalidations.marketing.services import WaitlistPayload
+from simplevalidations.marketing.services import WaitlistSignupError
+from simplevalidations.marketing.services import submit_waitlist_signup
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 class MarketingMetadataMixin:
     page_title: str | None = None
     meta_description: str = _(
-        "SimpleValidations helps teams automate data quality checks, run complex "
+        "Validibot helps teams automate data quality checks, run complex "
         "validations, and certify results with confidence.",
     )
     meta_keywords: str = (
@@ -43,7 +42,8 @@ class MarketingMetadataMixin:
     )
     share_image_path: str | MarketingShareImage | None = MarketingShareImage.DEFAULT
     share_image_alt: str | None = _(
-        "Illustration of the SimpleValidations robot guiding teams through workflow automation.",
+        "Illustration of the Validibot robot guiding teams through "
+        "workflow automation.",
     )
 
     def get_page_title(self) -> str | None:
@@ -79,17 +79,17 @@ class MarketingMetadataMixin:
         website = {
             "@context": "https://schema.org",
             "@type": "WebSite",
-            "name": "SimpleValidations",
+            "name": "Validibot",
             "url": site_origin,
             "description": self.get_meta_description(),
             "potentialAction": {
                 "@type": "SubscribeAction",
                 "target": waitlist_url,
-                "name": "Join the SimpleValidations beta waitlist",
+                "name": "Join the Validibot beta waitlist",
             },
         }
         description = str(self.get_meta_description())
-        page_name = str(self.get_page_title() or "SimpleValidations")
+        page_name = str(self.get_page_title() or "Validibot")
         keywords = str(self.get_meta_keywords())
 
         webpage = {
@@ -105,7 +105,7 @@ class MarketingMetadataMixin:
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         page_title = self.get_page_title()
-        brand_name = "SimpleValidations"
+        brand_name = "Validibot"
         if page_title is not None:
             title_value = str(page_title)
             context.setdefault("page_title", title_value)
@@ -152,12 +152,12 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
 
     if settings.ENABLE_AI_VALIDATIONS:
         meta_description = _(
-            "SimpleValidations lets you build robust data validation workflows with "
+            "Validibot lets you build robust data validation workflows with "
             "schema checks, simulations, AI review, and credentialing.",
         )
     else:
         meta_description = _(
-            "SimpleValidations lets you build robust data validation workflows with "
+            "Validibot lets you build robust data validation workflows with "
             "schema checks, simulations, and credentialing.",
         )
     meta_keywords = (
@@ -165,7 +165,7 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
     )
     share_image_path = MarketingShareImage.DEFAULT
     share_image_alt = _(
-        "SimpleValidations robot greeting teams beside an abstract workflow diagram",
+        "Validibot robot greeting teams beside an abstract workflow diagram",
     )
 
     def get_context_data(self, **kwargs):
@@ -180,9 +180,9 @@ class HomePageView(MarketingMetadataMixin, TemplateView):
 class AboutPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name = "marketing/about.html"
     http_method_names = ["get"]
-    page_title = _("About SimpleValidations")
+    page_title = _("About Validibot")
     meta_description = _(
-        "Learn about Daniel McQuillen and the story behind SimpleValidations",
+        "Learn about Daniel McQuillen and the story behind Validibot",
     )
     breadcrumbs = []
 
@@ -192,13 +192,13 @@ class FeaturesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Feature Tour")
     meta_description = _(
-        "Explore how SimpleValidations blends schema checks, simulations, "
+        "Explore how Validibot blends schema checks, simulations, "
         "and credentialing to keep every submission trustworthy.",
     )
     breadcrumbs = []
     share_image_path = MarketingShareImage.DEFAULT
     share_image_alt = _(
-        "SimpleValidations robot showcasing the platform's core feature set.",
+        "Validibot robot showcasing the platform's core feature set.",
     )
 
 
@@ -207,7 +207,7 @@ class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
     http_method_names = ["get"]
     page_title: str = ""
     meta_description: str = _(
-        "Dive into SimpleValidations capabilities with "
+        "Dive into Validibot capabilities with "
         "in-depth feature briefings for technical teams.",
     )
     share_image_path: str | MarketingShareImage | None = MarketingShareImage.DEFAULT
@@ -226,14 +226,14 @@ class FeatureDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
 
 class FeatureOverviewPageView(FeatureDetailPageView):
     template_name = "marketing/features/overview.html"
-    page_title = _("SimpleValidations Overview")
+    page_title = _("Validibot Overview")
     meta_description = _(
-        "See how SimpleValidations orchestrates AI, simulations, "
+        "See how Validibot orchestrates AI, simulations, "
         "and human-friendly workflows to deliver trustworthy data pipelines.",
     )
     share_image_path = MarketingShareImage.DEFAULT
     share_image_alt = _(
-        "SimpleValidations robot overview illustration spanning workflow layers.",
+        "Validibot robot overview illustration spanning workflow layers.",
     )
 
 
@@ -293,12 +293,13 @@ class FeatureIntegrationsPageView(FeatureDetailPageView):
     template_name = "marketing/features/integrations.html"
     page_title = _("Integrations")
     meta_description = _(
-        "Connect SimpleValidations to your stack with webhooks, "
+        "Connect Validibot to your stack with webhooks, "
         "REST APIs, and export-ready payloads.",
     )
     share_image_path = MarketingShareImage.INTEGRATIONS
     share_image_alt = _(
-        "Robot coordinating integrations between GitHub, Slack, and validation workflows.",
+        "Robot coordinating integrations between GitHub, Slack, and "
+        "validation workflows.",
     )
 
 
@@ -308,8 +309,8 @@ class FeatureCustomValidatorsPageView(FeatureDetailPageView):
     template_name = "marketing/features/custom_validators.html"
     page_title = _("Custom Validators")
     meta_description = _(
-        "Design bespoke validators with your own catalogs, assertions, and helper logic "
-        "so teams can standardize complex checks.",
+        "Design bespoke validators with your own catalogs, assertions, "
+        "and helper logic so teams can standardize complex checks.",
     )
     share_image_path = MarketingShareImage.DEFAULT
     share_image_alt = _(
@@ -337,7 +338,7 @@ class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Pricing")
     meta_description = _(
-        "Compare SimpleValidations pricing plans for growing teams "
+        "Compare Validibot pricing plans for growing teams "
         "that need dependable data quality.",
     )
     breadcrumbs = []
@@ -348,7 +349,7 @@ class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateVie
     http_method_names = ["get"]
     page_title: str = ""
     meta_description: str = _(
-        "Select the SimpleValidations plan that aligns with your "
+        "Select the Validibot plan that aligns with your "
         "team's scale, automation goals, and support needs.",
     )
 
@@ -397,7 +398,7 @@ class ResourcesPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     page_title = _("Resource Library")
     meta_description = _(
         "Browse documentation, videos, and changelog highlights "
-        "to get the most out of SimpleValidations.",
+        "to get the most out of Validibot.",
     )
     breadcrumbs = []
 
@@ -424,7 +425,7 @@ class DocsPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Documentation")
     meta_description = _(
-        "Read the SimpleValidations documentation to understand architecture, "
+        "Read the Validibot documentation to understand architecture, "
         "APIs, and implementation patterns.",
     )
 
@@ -435,7 +436,7 @@ class VideosPageView(ResourceDetailPageView):
     page_title = _("Video Library")
     meta_description = _(
         "Watch product walkthroughs and best-practice videos for "
-        "SimpleValidations deployments.",
+        "Validibot deployments.",
     )
 
 
@@ -444,7 +445,7 @@ class ChangelogPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Changelog")
     meta_description = _(
-        "See what shipped recently across the SimpleValidations platform.",
+        "See what shipped recently across the Validibot platform.",
     )
 
 
@@ -453,7 +454,7 @@ class FAQPageView(ResourceDetailPageView):
     http_method_names = ["get"]
     page_title = _("Frequently Asked Questions")
     meta_description = _(
-        "Find answers to common questions about SimpleValidations "
+        "Find answers to common questions about Validibot "
         "setup, automation, and support.",
     )
 
@@ -461,7 +462,7 @@ class FAQPageView(ResourceDetailPageView):
 class SupportDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     page_title: str = ""
     meta_description: str = _(
-        "Get help from the SimpleValidations team through support "
+        "Get help from the Validibot team through support "
         "guides, contact forms, and system status updates.",
     )
 
@@ -482,7 +483,7 @@ class SupportHomePageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView)
     http_method_names = ["get"]
     page_title = _("Support")
     meta_description = _(
-        "Access support resources and contact options for the SimpleValidations team.",
+        "Access support resources and contact options for the Validibot team.",
     )
     breadcrumbs = []
 
@@ -498,7 +499,7 @@ class ContactPageView(SupportDetailPageView):
     http_method_names = ["get"]
     page_title = _("Contact Us")
     meta_description = _(
-        "Reach out to SimpleValidations for product questions, "
+        "Reach out to Validibot for product questions, "
         "partnerships, or support escalations.",
     )
 
@@ -631,7 +632,7 @@ class StatusPageView(SupportDetailPageView):
     http_method_names = ["get"]
     page_title = _("System Status")
     meta_description = _(
-        "Check the latest SimpleValidations platform uptime and incident history.",
+        "Check the latest Validibot platform uptime and incident history.",
     )
 
 
@@ -640,7 +641,7 @@ class TermsPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Terms of Service")
     meta_description = _(
-        "Review the SimpleValidations terms of service "
+        "Review the Validibot terms of service "
         "covering platform usage and responsibilities.",
     )
     breadcrumbs = []
@@ -651,7 +652,7 @@ class PrivacyPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     http_method_names = ["get"]
     page_title = _("Privacy Policy")
     meta_description = _(
-        "Understand how SimpleValidations collects, "
+        "Understand how Validibot collects, "
         "processes, and protects personal data.",
     )
     breadcrumbs = []

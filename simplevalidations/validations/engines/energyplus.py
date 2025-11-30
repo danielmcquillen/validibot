@@ -3,7 +3,7 @@ EnergyPlus validation engine powered by the Modal runner.
 
 This engine forwards incoming EnergyPlus submissions (epJSON or IDF) to the
 Modal function defined in ``sv_modal.projects.sv_energyplus`` and translates
-the response into SimpleValidations issues.
+the response into Validibot issues.
 
 The response is a typed ``EnergyPlusSimulationResult`` model defined in
 ``sv_shared.energyplus.models``. We can use that model for raw data to
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
     """
     Run submitted epJSON through the Modal EnergyPlus runner and translate the
-    response into SimpleValidations issues.
+    response into Validibot issues.
 
     Requirements:
     * The workflow step must enable ``run_simulation`` (static IDF checks are not

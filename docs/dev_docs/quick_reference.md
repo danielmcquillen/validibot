@@ -1,6 +1,6 @@
-# SimpleValidations Quick Reference
+# Validibot Quick Reference
 
-SimpleValidations lets you run validations on submitted content through configurable workflows.
+Validibot lets you run validations on submitted content through configurable workflows.
 
 ## Quick Reference
 

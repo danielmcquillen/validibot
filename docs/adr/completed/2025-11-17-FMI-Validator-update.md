@@ -41,6 +41,6 @@
 4. **E2E tests:** Add full workflow tests that run FMI steps with mocked Modal, plus integration tests once Modal is available in CI.
 5. **Docs:** Expand operator-facing docs with examples of binding inputs/outputs, probe expectations, supported FMI versions/kinds, and failure modes.
 
-## Context for SimpleValidations goals
+## Context for Validibot goals
 
 This work turns the FMI ADR from a concept into a usable preview: authors can upload FMUs, inspect discovered inputs/outputs, run probes safely, and (via Modal) execute short simulations without touching core app servers. It keeps the platform aligned with the larger goal of supporting simulation-backed validations while maintaining isolation, observability, and catalog-driven authoring. As we finish bindings and harden execution, FMI steps will become first-class citizens alongside JSON Schema and EnergyPlus.

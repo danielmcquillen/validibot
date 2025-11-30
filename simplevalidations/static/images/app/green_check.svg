@@ -6,7 +6,7 @@
     role="img"
     aria-labelledby="title desc"
 >
-    <title id="title">SimpleValidations Check Icon</title>
+    <title id="title">Validibot Check Icon</title>
     <desc id="desc">A clean green circular badge with a white check mark and a dark green border.</desc>
 
     <defs>

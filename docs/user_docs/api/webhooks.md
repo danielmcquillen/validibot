@@ -12,4 +12,4 @@ List the settings users must supply (URL, secret, retry policy). Leave placehold
 Summarize the JSON fields sent in each webhook (run ID, workflow name, status, findings summary). Include space for sample payloads and signature verification instructions.
 
 ## Testing and Monitoring
-Provide steps for using tools like ngrok or RequestBin, plus tips for monitoring delivery status and retry attempts from the SimpleValidations UI.
+Provide steps for using tools like ngrok or RequestBin, plus tips for monitoring delivery status and retry attempts from the Validibot UI.

@@ -1,10 +1,10 @@
-# How SimpleValidations Works
+# How Validibot Works
 
-This document provides a detailed technical walkthrough of how SimpleValidations executes validation workflows, from initial API request to final results.
+This document provides a detailed technical walkthrough of how Validibot executes validation workflows, from initial API request to final results.
 
 ## System Overview
 
-SimpleValidations operates as an orchestration layer that coordinates validation engines to process submitted content according to predefined workflows. The system is designed around an asynchronous, event-driven architecture that can handle both quick validations and long-running processes.
+Validibot operates as an orchestration layer that coordinates validation engines to process submitted content according to predefined workflows. The system is designed around an asynchronous, event-driven architecture that can handle both quick validations and long-running processes.
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -197,7 +197,7 @@ class JsonSchemaEngine(BaseValidatorEngine):
         validator = jsonschema.Draft7Validator(schema)
         errors = list(validator.iter_errors(data))
 
-        # Convert to SimpleValidations format
+        # Convert to Validibot format
         issues = [
             ValidationIssue(
                 path=error.absolute_path,

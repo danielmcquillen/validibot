@@ -1,6 +1,6 @@
 # Glossary
 
-Collect the core SimpleValidations terms here so new users have a quick reference.
+Collect the core Validibot terms here so new users have a quick reference.
 
 ## Workflow
 Describe how a workflow represents an ordered set of validation steps owned by an organization and scoped to a project.

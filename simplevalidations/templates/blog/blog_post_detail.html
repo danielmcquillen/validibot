@@ -30,7 +30,7 @@
               {% elif blog_post.author %}
                 {{ blog_post.author.username }}
               {% else %}
-                {% trans "SimpleValidations Team" %}
+                {% trans "Validibot Team" %}
               {% endif %}
             </span>
             <span class="d-none d-md-inline">•</span>
@@ -89,7 +89,7 @@
                            alt="{{ related.featured_image_alt|default:related.title }}" />
                     {% else %}
                       <span class="blog-card__media-placeholder">
-                        {% trans "SimpleValidations" %}
+                        {% trans "Validibot" %}
                       </span>
                     {% endif %}
                   </div>
@@ -101,7 +101,7 @@
                         {% elif related.author %}
                           {{ related.author.username }}
                         {% else %}
-                          {% trans "SimpleValidations Team" %}
+                          {% trans "Validibot Team" %}
                         {% endif %}
                       </span>
                       <span>•</span>

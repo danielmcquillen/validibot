@@ -6,7 +6,7 @@ Capture the recurring questions from end users. Start each section with the ques
 **How do I join a new organization?**
 Provide the high-level answer or link to the Collaboration guide.
 
-**Can I use SimpleValidations with SSO?**
+**Can I use Validibot with SSO?**
 Outline the supported identity providers and note who to contact for setup.
 
 ## Running Validations

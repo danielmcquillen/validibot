@@ -11,11 +11,11 @@
 
         <header class="mb-0">
           <h1>
-            {% trans "SimpleValidations Platform Overview" %}
+            {% trans "Validibot Platform Overview" %}
           </h1>
           <div class="lead">
             {% blocktrans trimmed %}
-              SimpleValidations gives teams a single place to design validation workflows, automate execution,
+              Validibot gives teams a single place to design validation workflows, automate execution,
               and review every validation result with the appropriate context.
             {% endblocktrans %}
           </div>
@@ -34,13 +34,13 @@
               </div>
               <ul>
                 <li>
-                  SimpleValidations provides you with an easy-to-use platform for creating validation "Workflows."
+                  Validibot provides you with an easy-to-use platform for creating validation "Workflows."
                 </li>
                 <li>
                   A validation workflow can include XML and JSON schema checks, simulations, and other validation procedures.
                 </li>
                 <li>
-                  Your users access these validation workflows on SimpleValidations via the web user interface, the REST API, or
+                  Your users access these validation workflows on Validibot via the web user interface, the REST API, or
                   a GitHub integration.
                 </li>
               </ul>
@@ -49,7 +49,7 @@
           <div>
             <img src="{% static 'marketing/images/robot_head.png' %}"
                  class="robot-head"
-                 alt="Image of the SimpleValidations robot head." />
+                 alt="Image of the Validibot robot head." />
           </div>
         </div>
       </div>
@@ -61,20 +61,20 @@
         </h2>
         <p>
           {% blocktrans trimmed %}
-            The basic premise behind SimpleValidations is simple: <mark>help your users validate their data.</mark>
+            The basic premise behind Validibot is simple: <mark>help your users validate their data.</mark>
           {% endblocktrans %}
         </p>
 
         <p>
           {% blocktrans trimmed %}
-            You do this by building a validation workflow, composed of a series of discrete validation steps. You then provide that workflow to your users via the SimpleValidations API or
+            You do this by building a validation workflow, composed of a series of discrete validation steps. You then provide that workflow to your users via the Validibot API or
             the web interface.
           {% endblocktrans %}
         </p>
 
         <p>
           {% blocktrans trimmed %}
-            Your users can then invoke the validation workflow by sending it their data. SimpleValidations will run each defined validation
+            Your users can then invoke the validation workflow by sending it their data. Validibot will run each defined validation
             step on the incoming data and report the results back to the user. If the validation has errors, the list of errors is shown.
             If it's successful, you can deliver a success message (complete with an official hash), a cryptographically signed certificate or
             even record the success event on a blockchain for full transparency.
@@ -91,7 +91,7 @@
               </li>
               <li>
                 If your users need to prove the data is valid to a third party, they can use the certificate
-                SimpleValidations provided, or refer to a blockchain record SimpleValidations created.
+                Validibot provided, or refer to a blockchain record Validibot created.
               </li>
             </ul>
           {% endblocktrans %}
@@ -135,7 +135,7 @@
         </h2>
         <p>
           {% blocktrans trimmed %}
-            A user triggers a run from their SimpleValidations dashboard, the REST API, or an integrations to GitHub. Submitted data is normalized,
+            A user triggers a run from their Validibot dashboard, the REST API, or an integrations to GitHub. Submitted data is normalized,
             checksummed, and then queued with organization context so the execution layer can pick up the task and proceed.
           {% endblocktrans %}
         </p>
@@ -152,7 +152,7 @@
         <p>
           {% blocktrans trimmed %}
             Every validation run records the triggering user, workflow version, project, findings, and timestamps.
-            Your SimpleValidations dashboards displays this data, showing trends across organizations so you can monitor throughput,
+            Your Validibot dashboards displays this data, showing trends across organizations so you can monitor throughput,
             error rates, and data quality in real time.
           {% endblocktrans %}
         </p>
@@ -198,7 +198,7 @@
           </h2>
           <p>
             {% blocktrans trimmed %}
-              SimpleValidations layers a Django control plane over an asynchronous execution fabric. The marketing site, app, and API all authenticate through the same organization-aware permissions model, while services route each step to the right validator—whether that is a JSON schema engine or a custom simulation.
+              Validibot layers a Django control plane over an asynchronous execution fabric. The marketing site, app, and API all authenticate through the same organization-aware permissions model, while services route each step to the right validator—whether that is a JSON schema engine or a custom simulation.
             {% endblocktrans %}
         </p>
         <p>
@@ -208,7 +208,7 @@
       </p>
 
       <h2 class="h4 fw-semibold mb-3">
-        {% trans "Why teams choose SimpleValidations" %}
+        {% trans "Why teams choose Validibot" %}
       </h2>
       <ul class="list-unstyled text-muted mb-0">
         <li class="mb-3">

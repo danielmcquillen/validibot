@@ -1,5 +1,5 @@
 """
-ASGI config for SimpleValidations project.
+ASGI config for Validibot project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 

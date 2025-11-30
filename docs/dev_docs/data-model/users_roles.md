@@ -1,6 +1,6 @@
 # Users, Organizations, and Roles
 
-SimpleValidations is a multi-tenant system. Every resource is scoped to an
+Validibot is a multi-tenant system. Every resource is scoped to an
 **Organization**, and every authenticated action runs in the context of the
 organization the user currently has selected. This document captures how the
 user/organization relationship is modeled and enforced.

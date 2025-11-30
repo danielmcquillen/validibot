@@ -8,7 +8,7 @@
 
 ### Problem Statement
 
-Currently, SimpleValidations stores _all_ user submission data indefinitely:
+Currently, Validibot stores _all_ user submission data indefinitely:
 
 - Small submissions (<10MB) are stored inline in PostgreSQL `Submission.content` TextField
 - Larger submissions are stored in S3 via `Submission.input_file` FileField
@@ -792,7 +792,7 @@ Ephemeral Submissions Dashboard
 ```markdown
 # Submission Retention Policies
 
-When you create a workflow, you choose how long SimpleValidations retains user submission data:
+When you create a workflow, you choose how long Validibot retains user submission data:
 
 ## Retention Tiers
 

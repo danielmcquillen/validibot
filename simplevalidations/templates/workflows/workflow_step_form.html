@@ -4,9 +4,9 @@
 
 {% block title %}
   {% if is_create %}
-    {% blocktrans with name=workflow.name %}Add Step · {{ name }} · SimpleValidations{% endblocktrans %}
+    {% blocktrans with name=workflow.name %}Add Step · {{ name }} · Validibot{% endblocktrans %}
   {% else %}
-    {% blocktrans with name=workflow.name step_id=step.pk %}Step {{ step_id }} · {{ name }} · SimpleValidations{% endblocktrans %}
+    {% blocktrans with name=workflow.name step_id=step.pk %}Step {{ step_id }} · {{ name }} · Validibot{% endblocktrans %}
   {% endif %}
 {% endblock title %}
 

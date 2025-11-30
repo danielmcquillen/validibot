@@ -1,5 +1,5 @@
-site_name: SimpleValidations Developer Docs
-site_description: Internal documentation for SimpleValidations contributors.
+site_name: Validibot Developer Docs
+site_description: Internal documentation for Validibot contributors.
 site_url: https://danielmcquillen.github.io/simplevalidations/dev/
 
 docs_dir: docs/dev_docs

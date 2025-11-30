@@ -1,6 +1,6 @@
 # API Overview
 
-Give readers a quick map of the SimpleValidations REST API before they dive into implementation details.
+Give readers a quick map of the Validibot REST API before they dive into implementation details.
 
 ## Base URL and Versioning
 Document the production and sandbox base URLs, along with any version prefixes (for example `/api/workflows/`). Note where to find changelog information when endpoints evolve.

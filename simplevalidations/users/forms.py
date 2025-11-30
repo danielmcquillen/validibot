@@ -9,20 +9,30 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import Membership, Organization, PendingInvite, User
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import PendingInvite
+from simplevalidations.users.models import User
 
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
-        "ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. Sole org authority. All admin rights plus billing/subscription control. ."
+        "ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. "
+        "Sole org authority. All admin rights plus billing/"
+        "subscription control. ."
     ),
     RoleCode.ADMIN: _(
-        "Includes Author, Executor, Validation Results Viewer, Analytics Viewer, and Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
+        "Includes Author, Executor, Validation Results Viewer, "
+        "Analytics Viewer, and Workflow Viewer. Uncheck Admin to "
+        "fine-tune individual permissions."
     ),
     RoleCode.AUTHOR: _(
-        "Includes Executor, Validation Results Viewer, Analytics Viewer, and Workflow Viewer capabilities plus creating and editing workflows, validators, and rulesets."
+        "Includes Executor, Validation Results Viewer, "
+        "Analytics Viewer, and Workflow Viewer capabilities plus creating "
+        "and editing workflows, validators, and rulesets."
     ),
     RoleCode.EXECUTOR: _(
-        "Includes Workflow Viewer access plus launch workflows, monitor progress, and review the runs they launch."
+        "Includes Workflow Viewer access plus launch workflows, "
+        "monitor progress, and review the runs they launch."
     ),
     RoleCode.ANALYTICS_VIEWER: _(
         "Read-only access to analytics dashboards and reports."
@@ -31,7 +41,8 @@ ROLE_HELP_TEXT: dict[str, str] = {
         "Read-only access to all validation runs in organization."
     ),
     RoleCode.WORKFLOW_VIEWER: _(
-        "Read-only access to workflows and org reports (no edit or execution permissions)."
+        "Read-only access to workflows and org reports "
+        "(no edit or execution permissions)."
     ),
 }
 
@@ -258,7 +269,8 @@ class OrganizationMemberForm(forms.Form):
         ]
         self.fields["roles"].choices = assignable_choices
         self.fields["roles"].help_text = _(
-            "Invitees may become Admins, Authors, Executors, or Viewers. The Owner role is fixed and cannot be granted through this form."
+            "Invitees may become Admins, Authors, Executors, or Viewers. "
+            "The Owner role is fixed and cannot be granted through this form."
         )
         self.fields["email"].widget.attrs.setdefault("class", "form-control")
 
@@ -291,7 +303,7 @@ class OrganizationMemberForm(forms.Form):
             self.user = User.objects.get(email__iexact=email)
         except User.DoesNotExist as exc:  # pragma: no cover - guard
             raise forms.ValidationError(
-                _("No user with that email exists in SimpleValidations."),
+                _("No user with that email exists in Validibot."),
             ) from exc
         return email
 
@@ -415,19 +427,22 @@ class OrganizationMemberRolesForm(forms.Form):
     The following rules should be followed:
 
     - OWNER role is never enabled.
-    - If ADMIN is selected, all other roles checkboxes are selected and disabled for further edits.
+    - If ADMIN is selected, all other roles checkboxes are selected and disabled
+      for further edits.
     - If AUTHOR is selected, EXECUTOR, ANALYTICS_VIEWER, VALIDATION_RESULTS_VIEWER,
       and WORKFLOW_VIEWER are checkboxes selected and disabled for further edits.
-    - If EXECUTOR is selected, WORKFLOW_VIEWER checkbox is selected and disabled, while the
-      ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER checkboxes are enabled for further edits.
-    - ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER can be selected/deselected independently
-      unless disabled by the above rules.
+    - If EXECUTOR is selected, WORKFLOW_VIEWER checkbox is selected and disabled,
+      while the ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER checkboxes are
+      enabled for further edits.
+    - ANALYTICS_VIEWER and VALIDATION_RESULTS_VIEWER can be selected/deselected
+      independently unless disabled by the above rules.
 
 
     IMPORTANT: When the form is first shown, the above rules should be applied to
     reflect the current state of the member's roles when the form is initialized.
 
-    When the form is submitted, the above rules should be enforced in the clean_roles method.
+    When the form is submitted, the above rules should be enforced in the
+    clean_roles method.
 
     Args:
         forms (_type_): _description_

@@ -1,10 +1,10 @@
 # Documentation strategy
 
-SimpleValidations maintains two complementary documentation sets so that each audience gets the right level of detail:
+Validibot maintains two complementary documentation sets so that each audience gets the right level of detail:
 
 ## 1. Public user documentation (`docs/user_docs`)
 
-- Audience: Customers and evaluators using SimpleValidations day-to-day.
+- Audience: Customers and evaluators using Validibot day-to-day.
 - Publishing flow:
   1. Edit Markdown content under `docs/user_docs/`.
   2. Preview locally with `mkdocs serve -f mkdocs.user.yml`.

@@ -2,7 +2,7 @@
 {% load i18n %}
 
 {% block title %}
-  {% trans "Edit member roles" %} · SimpleValidations
+  {% trans "Edit member roles" %} · Validibot
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -30,7 +30,7 @@
               {% endif %}
               {% if form.owner_locked %}
                 <div class="alert alert-info" role="status">
-                  {% trans "This member is the organization owner and already has every permission. Ownership changes require SimpleValidations support." %}
+                  {% trans "This member is the organization owner and already has every permission. Ownership changes require Validibot support." %}
                 </div>
               {% endif %}
               <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>

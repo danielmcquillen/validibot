@@ -1,6 +1,6 @@
 # Marketing Feature Pages
 
-The feature pages introduce SimpleValidations’ core capabilities without diving into
+The feature pages introduce Validibot’ core capabilities without diving into
 implementation specifics. They set expectations for what the platform delivers today
 and where it is heading, while keeping copy grounded in workflows we already support.
 

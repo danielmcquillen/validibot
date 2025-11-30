@@ -24,7 +24,7 @@ def _manager_for(model):
 
 class Command(BaseCommand):
     """
-    Prepare baseline data for a SimpleValidations deployment.
+    Prepare baseline data for a Validibot deployment.
     This backfills the behaviours that used to live in data migrations so that
     rebuilding migrations never drops critical records.
     """
@@ -33,7 +33,7 @@ class Command(BaseCommand):
         super().__init__(stdout=stdout, stderr=stderr, no_color=no_color)
 
     def handle(self, *args, **options):
-        self.stdout.write("Setting up SimpleValidations.")
+        self.stdout.write("Setting up Validibot.")
 
         self.stdout.write("Ensuring roles...")
         self._ensure_roles()
@@ -56,7 +56,7 @@ class Command(BaseCommand):
         self.stdout.write("Setting up default actions...")
         self._setup_default_actions()
 
-        self.stdout.write("DONE setting up SimpleValidations")
+        self.stdout.write("DONE setting up Validibot")
 
     def _setup_default_actions(self):
         create_default_actions()

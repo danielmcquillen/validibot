@@ -1,6 +1,6 @@
 # Modal.com Integration Notes
 
-How we interact with Modal from SimpleValidations and the sibling `sv_modal` project.
+How we interact with Modal from Validibot and the sibling `sv_modal` project.
 
 ## Credentials
 

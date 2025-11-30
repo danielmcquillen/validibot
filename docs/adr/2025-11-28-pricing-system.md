@@ -9,7 +9,7 @@
 
 ## Context
 
-SimpleValidations needs a pricing and billing system that:
+Validibot needs a pricing and billing system that:
 
 1. **Supports tiered plans** – Free, Starter, Team, Enterprise with different feature sets.
 2. **Meters usage appropriately** – Different metering for different cost structures (see below).
@@ -399,7 +399,7 @@ class PricingPlan(models.TextChoices):
 
 class Subscription(TimeStampedModel):
     """
-    Organization's subscription to SimpleValidations.
+    Organization's subscription to Validibot.
 
     Tracks the plan, Stripe subscription ID, and current usage balances.
     Each org has exactly one active subscription.

@@ -6,7 +6,7 @@ Proposed (2025-11-17)
 
 ## Context
 
-SimpleValidations is evolving from “schema-only” validations (JSON Schema, XML Schema, CEL-based checks) toward richer, simulation-backed validations. Many engineering-oriented users model system behavior using the Functional Mock-up Interface (FMI) standard and export models as FMUs (Functional Mock-up Units).
+Validibot is evolving from “schema-only” validations (JSON Schema, XML Schema, CEL-based checks) toward richer, simulation-backed validations. Many engineering-oriented users model system behavior using the Functional Mock-up Interface (FMI) standard and export models as FMUs (Functional Mock-up Units).
 
 There is a strong use case for allowing workflow authors to:
 
@@ -16,7 +16,7 @@ There is a strong use case for allowing workflow authors to:
 - Run the FMU as part of a validation workflow step, and
 - Use the resulting outputs in CEL-based assertions.
 
-However, FMUs are effectively untrusted native code wrapped in a zip. Running them directly in the SimpleValidations web/app infrastructure would significantly increase security risk. FMUs may also be designed for real-time or long-running co-simulation, which does not fit the “short, one-shot validation” model.
+However, FMUs are effectively untrusted native code wrapped in a zip. Running them directly in the Validibot web/app infrastructure would significantly increase security risk. FMUs may also be designed for real-time or long-running co-simulation, which does not fit the “short, one-shot validation” model.
 
 We need a design that:
 
@@ -100,7 +100,7 @@ Example fields:
 - `is_approved` – boolean indicating whether the FMU passed safety checks.
 - `introspection_metadata` – JSON (e.g., list of variables, capabilities, etc.).
 
-FMUs are uploaded through the SimpleValidations UI, stored in a bucket, and referenced by key. The FMU file is never extracted or executed on Django/gunicorn nodes.
+FMUs are uploaded through the Validibot UI, stored in a bucket, and referenced by key. The FMU file is never extracted or executed on Django/gunicorn nodes.
 
 ### 3. Automatic Introspection of Variables → Catalog
 
@@ -234,7 +234,7 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
 ### Positive
 
-- **Rich, simulation-based validation** becomes possible in SimpleValidations using a standard (FMI).
+- **Rich, simulation-based validation** becomes possible in Validibot using a standard (FMI).
 - **Workflow authors get a clean UX**:
   - Upload FMU.
   - Pick inputs/outputs from an auto-detected list.
@@ -277,7 +277,7 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
    - Modal.com is chosen for now due to:
      - Good fit with short-lived, containerized compute.
-     - Familiarity and reuse with other SimpleValidations simulation work.
+     - Familiarity and reuse with other Validibot simulation work.
    - Backend can be revisited later if requirements or pricing change.
 
 ## Implementation Notes / Next Steps

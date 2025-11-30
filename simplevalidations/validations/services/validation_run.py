@@ -877,7 +877,7 @@ class ValidationRunService:
         if submission_user and getattr(submission_user, "is_authenticated", False):
             return submission_user
         if user_id:
-            from django.contrib.auth import get_user_model  # noqa: PLC0415
+            from django.contrib.auth import get_user_model
 
             UserModel = get_user_model()  # noqa: N806
 

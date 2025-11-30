@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from simplevalidations.validations.cel import CelHelper
-from simplevalidations.validations.constants import ValidationType
+from typing import TYPE_CHECKING
+
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.models import ValidatorCatalogEntry
-from simplevalidations.validations.providers.models import CatalogEntryDefinition
+
+if TYPE_CHECKING:
+    from simplevalidations.validations.cel import CelHelper
+    from simplevalidations.validations.constants import ValidationType
+    from simplevalidations.validations.providers.models import CatalogEntryDefinition
 
 
 class BaseValidationProvider:
@@ -73,7 +77,6 @@ class BaseValidationProvider:
 
     def preflight_validate(self, ruleset, catalog):
         """Hook for validating ruleset catalog references."""
-        return None
 
     def instrument(self, configuration):
         """Hook for provider-specific instrumentation (EnergyPlus, etc.)."""

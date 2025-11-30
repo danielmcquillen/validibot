@@ -22,7 +22,9 @@ class Command(BaseCommand):
             slug=self.validator_slug,
             defaults={
                 "name": "EnergyPlus Validation",
-                "description": "Baseline EnergyPlus validator with demo catalog entries.",
+                "description": (
+                    "Baseline EnergyPlus validator with demo catalog entries."
+                ),
                 "validation_type": ValidationType.ENERGYPLUS,
                 "version": "1.0",
                 "order": 10,
@@ -71,7 +73,10 @@ class Command(BaseCommand):
                 "slug": "derived_density",
                 "label": "Derived Occupancy Density",
                 "data_type": CatalogValueType.NUMBER,
-                "description": "Helper derivation combining occupants and floor area prior to simulation.",
+                "description": (
+                    "Helper derivation combining occupants and floor "
+                    "area prior to simulation."
+                ),
                 "binding_config": {
                     "expr": "value('occupants') / value('submission_floor_area_m2')",
                 },
@@ -83,9 +88,14 @@ class Command(BaseCommand):
                 "slug": "derived_peak_to_average_ratio",
                 "label": "Peak/Average Demand Ratio",
                 "data_type": CatalogValueType.NUMBER,
-                "description": "Compares peak demand with average consumption after the simulation completes.",
+                "description": (
+                    "Compares peak demand with average consumption "
+                    "after the simulation completes."
+                ),
                 "binding_config": {
-                    "expr": "value('facility_peak_demand_w') / value('average_demand_w')",
+                    "expr": (
+                        "value('facility_peak_demand_w') / value('average_demand_w')"
+                    ),
                 },
                 "order": 40,
             },

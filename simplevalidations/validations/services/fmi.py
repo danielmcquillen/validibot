@@ -5,12 +5,11 @@ import io
 import os
 import tempfile
 import zipfile
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from defusedxml import ElementTree as ET
+from defusedxml import ElementTree as ET  # noqa: N817
 from django.core.files.base import ContentFile
-from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
@@ -18,7 +17,6 @@ from sv_shared.fmi import FMIProbeResult
 
 from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.users.models import Organization
 from simplevalidations.validations.constants import CatalogEntryType
 from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
@@ -30,6 +28,14 @@ from simplevalidations.validations.models import FMUModel
 from simplevalidations.validations.models import FMUProbeResult
 from simplevalidations.validations.models import Validator
 from simplevalidations.validations.models import ValidatorCatalogEntry
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from django.core.files.uploadedfile import UploadedFile
+
+    from simplevalidations.users.models import Organization
+
 
 MAX_FMU_SIZE_BYTES = 50 * 1024 * 1024
 DISALLOWED_EXTENSIONS = {
@@ -131,7 +137,7 @@ def _validate_fmu_bytes(
             for name in names:
                 member = name.lower()
                 suffix = Path(member).suffix
-                if member.startswith("../") or member.startswith("/"):
+                if member.startswith(("../", "/")):
                     raise FMIIntrospectionError(
                         _("FMU %(name)s contains unsafe path entries.")
                         % {"name": display_name},

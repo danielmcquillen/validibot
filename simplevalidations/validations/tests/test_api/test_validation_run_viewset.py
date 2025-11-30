@@ -451,7 +451,7 @@ class ValidationRunViewSetTestCase(TestCase):
             Membership,
             "set_roles",
             wraps=Membership.set_roles,
-        ) as mock_set_roles:
+        ):
             response = ValidationRunViewSet.as_view({"get": "list"})(request)
             response.render()
         membership.refresh_from_db()

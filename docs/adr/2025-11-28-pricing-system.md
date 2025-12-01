@@ -38,11 +38,11 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Tier Summary
 
-|             | Free | Starter | Team          | Enterprise       |
-| ----------- | ---- | ------- | ------------- | ---------------- |
-| **Price**   | $0   | $25/mo  | $100/mo       | Contact us       |
-| **Seats**   | 1    | 2       | 10            | Custom           |
-| **Support** | None | None    | Limited email | Priority + Slack |
+|             | Free | Starter | Team    | Enterprise       |
+| ----------- | ---- | ------- | ------- | ---------------- |
+| **Price**   | $0   | $25/mo  | $100/mo | Contact us       |
+| **Seats**   | 1    | 2       | 10      | Custom           |
+| **Support** | None | None    | Email   | Priority + Slack |
 
 ### Authoring Features
 
@@ -76,6 +76,8 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 | **Analytics**          | None  | Basic   | Extended | Comprehensive      |
 | **Deployment options** | Cloud | Cloud   | Cloud    | On-prem / regional |
 
+**Audit logs (Team/Enterprise):** Immutable, append-only records of every sensitive action (workflow edits/publishes, validator changes, permission changes, billing events, API launches, credential/integration updates). Each entry captures who, what, when, where (IP/UA), and the before/after payload hashes. Audit logs differ from basic usage tracking: usage counters summarize volume, while audit logs capture actor-level provenance needed for compliance (SOC 2), incident response, and customer attestations. Team users get 90-day retention and CSV export; Enterprise adds 1-year retention, tamper-evident hashing, and export to SIEM (syslog/S3 webhook).
+
 ### Overage (Credit Packs)
 
 |                              | Free | Starter          | Team            | Enterprise  |
@@ -99,6 +101,12 @@ Per-second cost = 0.0000131 + (4 × 0.00000222) = $0.00002198
 Per credit (60s) = 60 × $0.00002198 ≈ $0.00132 (~0.13 cents)
 ```
 
+What this means operationally:
+
+- A “credit” is pegged to a small, predictable slice of Modal compute (1 vCPU + 4 GiB for up to 60s). Longer or heavier jobs cost more credits via the `compute_weight` multiplier.
+- Our direct cost per credit is roughly **$0.00132**, so even heavy advanced workloads have negligible marginal cost compared to subscription revenue.
+- Credits normalize Modal’s per-second billing into a stable unit that is easy for customers to reason about and easy for us to expose in dashboards and alerts.
+
 **Included credits cost us:**
 
 | Plan       | Included Credits | Our Cost | Subscription Price | Margin on Credits |
@@ -116,6 +124,8 @@ Per credit (60s) = 60 × $0.00002198 ≈ $0.00132 (~0.13 cents)
 | Enterprise | Negotiated       | $0.00132 | Custom |
 
 This pricing is aggressive but fair. Modal costs are a rounding error; the real value is our platform, validators, and workflow orchestration.
+
+“Essentially free” means the included credits cost us well under one dollar per month at current Modal pricing—so they do not meaningfully affect gross margin. We can safely treat included credits as a marketing/convenience feature rather than a material COGS line.
 
 ---
 
@@ -196,6 +206,50 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 | AI analysis/critique   | HIGH         | LLM inference with complex prompts   |
 | EnergyPlus simulation  | HIGH         | Multi-minute building simulation     |
 | Custom code validators | Configurable | Depends on what the code does        |
+
+### Execution Target Derivation (heroku vs modal)
+
+`execution_target` is derived, not stored: we infer it from `validation_type` so metering can correctly classify runs without a separate field.
+
+| ValidationType    | execution_target |
+| ----------------- | ---------------- |
+| JSON_SCHEMA       | heroku           |
+| XML_SCHEMA        | heroku           |
+| BASIC             | heroku           |
+| CUSTOM_VALIDATOR  | heroku (default; override to modal if declared modal-only) |
+| ENERGYPLUS        | modal            |
+| FMI               | modal            |
+| AI_ASSIST         | modal            |
+
+On the `Validator` model we expose:
+
+```python
+@property
+def execution_target(self) -> str:
+    """Derived execution target for metering."""
+    match self.validation_type:
+        case ValidationType.ENERGYPLUS | ValidationType.FMI | ValidationType.AI_ASSIST:
+            return "modal"
+        case ValidationType.CUSTOM_VALIDATOR:
+            return "modal" if self.runs_on_modal else "heroku"
+        case _:
+            return "heroku"
+```
+
+### Default compute_weight per validation type
+
+We set sensible defaults to avoid under-charging advanced workloads:
+
+| ValidationType    | Default ValidatorWeight | Notes                                         |
+| ----------------- | ----------------------- | --------------------------------------------- |
+| JSON_SCHEMA       | LIGHT (1×)              | Fast parsing                                  |
+| XML_SCHEMA        | LIGHT (1×)              | Fast parsing                                  |
+| BASIC             | LIGHT (1×)              | Simple checks                                 |
+| CUSTOM_VALIDATOR  | LIGHT (1×)              | Overrideable per validator                    |
+| AI_ASSIST         | MEDIUM (2×)             | LLM inference medium cost                     |
+| ENERGYPLUS        | HEAVY (3×)              | Multi-minute simulations                      |
+| FMI               | HEAVY (3×)              | External model execution                      |
+| EXTREME workloads | EXTREME (5×)            | Opt-in for GPU/multi-hour jobs where needed   |
 
 ---
 
@@ -590,6 +644,16 @@ class CreditPurchase(TimeStampedModel):
         super().save(*args, **kwargs)
 ```
 
+### Legacy OrgQuota migration
+
+The existing OrgQuota model will be merged into Subscription. Subscription becomes the single source of truth for plan selection, included/purchased credits, usage thresholds, and limits. OrgQuota data will be migrated and the model removed once roll-out is complete.
+
+### Subscription lifecycle (including Free)
+
+- Creation: A Subscription record is created when an organization is created (for personal orgs, Free tier by default). Free will be feature-gated off for the MVP, but we are building the code paths now.
+- Stripe-backed plans: Subscription holds the Stripe IDs and balances; renewals reset included credits and roll usage counters.
+- No orphaned orgs: Code should not assume `org.subscription` is missing; creation happens at org creation time.
+
 ### Organization Model Extension
 
 The billing system requires a few additions to the existing Organization model
@@ -811,6 +875,24 @@ def stripe_webhook(request):
 
     return HttpResponse(status=200)
 ```
+
+### URLs & settings (Stripe and billing)
+
+- **URL patterns** (in `billing/urls.py`, included under `/billing/`):
+  - `path("stripe/webhook/", stripe_webhook, name="stripe-webhook")`
+  - `path("checkout/<plan>/", PlanCheckoutStartView.as_view(), name="checkout-plan")`
+  - `path("credits/checkout/", CreditPackCheckoutStartView.as_view(), name="checkout-credits")`
+  - `path("dashboard/", BillingDashboardView.as_view(), name="dashboard")`
+  - `path("compute-callback/", ComputeCallbackView.as_view(), name="compute-callback")`  # Modal job metrics ingress
+- **Settings / environment variables:**
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_WEBHOOK_SECRET`
+  - `STRIPE_PRICE_ID_STARTER`, `STRIPE_PRICE_ID_TEAM`, `STRIPE_PRICE_ID_ENTERPRISE`
+  - `STRIPE_PRICE_ID_CREDITS_STARTER`, `STRIPE_PRICE_ID_CREDITS_TEAM`
+- **Recommended libraries (2025):**
+  - Official `stripe` Python SDK for Checkout, Billing, and webhooks.
+  - Optional: `dj-stripe` if we choose to persist full Stripe objects and leverage its admin tooling; otherwise stick to the lightweight direct-SDK approach above.
+- **Webhook best practice:** verify signatures with `STRIPE_WEBHOOK_SECRET`, respond quickly (200), and offload heavy work to background jobs if needed.
 
 ### Checkout Flow
 
@@ -1038,7 +1120,7 @@ class BillingService:
             org=subscription.org,
             period_start=subscription.current_period_start.date(),
             period_end=subscription.current_period_end.date(),
-            basic_launches_soft_cap=plan_limits.basic_launches_soft_cap or 0,
+            basic_launches_limit=plan_limits.basic_launches_limit or 0,
             advanced_credits_limit=plan_limits.advanced_credits_per_month,
         )
 ```
@@ -1272,7 +1354,7 @@ class UsageNotificationService:
             usage_type="basic_launches",
             usage_percent=counter.basic_usage_percent,
             thresholds=thresholds,
-        )
+                )
 
         # Check advanced usage
         self._check_threshold(
@@ -1330,6 +1412,45 @@ class UsageNotificationService:
             },
             action_url=reverse("billing:dashboard"),
             action_label=_("View usage"),
+        )
+```
+
+### Billing Exceptions
+
+```python
+class BillingError(Exception):
+    """Base class for billing/plan errors with API-friendly fields."""
+
+    def __init__(self, detail: str, code: str, **extra):
+        self.detail = detail
+        self.code = code
+        self.extra = extra
+        super().__init__(detail)
+
+
+class InsufficientCreditsError(BillingError):
+    """Raised when advanced credits are insufficient to run a workflow."""
+
+    def __init__(self, detail: str, credits_needed: int):
+        super().__init__(detail=detail, code="insufficient_credits", credits_needed=credits_needed)
+
+
+class QuotaExceededError(BillingError):
+    """Raised when a count-based limit (workflows, seats, basic launches) is exceeded."""
+
+    def __init__(self, detail: str, limit: int):
+        super().__init__(detail=detail, code="quota_exceeded", limit=limit)
+
+
+class PayloadTooLargeError(BillingError):
+    """Raised when payload size exceeds plan limits."""
+
+    def __init__(self, detail: str, size_mb: float, max_mb: float):
+        super().__init__(
+            detail=detail,
+            code="payload_too_large",
+            size_mb=size_mb,
+            max_mb=max_mb,
         )
 ```
 
@@ -1423,6 +1544,17 @@ class ComputeUsageTracker:
         return record
 ```
 
+### Modal metrics integration pattern
+
+Modal does not expose a simple `get_job_metrics(job_id)` polling API. Instead, we will:
+
+1. Pass a `callback_url` (our `/billing/compute-callback/`) when dispatching Modal jobs via `sv_modal`.
+2. Modal posts job completion payloads (runtime_seconds, cpu_count, memory_gb, optional gpu_seconds) to that callback.
+3. The callback handler calls `ComputeUsageTracker.record_job_completion(...)` with the received metrics.
+4. As a fallback for synchronous runs, if `sv_modal` returns metrics in the function result, we call the same tracker directly.
+
+This avoids polling and guarantees we meter every advanced run as soon as Modal reports completion.
+
 ### Validator Model Additions
 
 ```python
@@ -1464,7 +1596,7 @@ class Validator(TimeStampedModel):
 
 ### Phase 1: Core Billing Infrastructure
 
-- [ ] Create `billing` app with models: `Subscription`, `UsageCounter`, `CreditReservation`
+- [ ] Update `billing` app with models: `Subscription`, `UsageCounter`, `CreditReservation`
 - [ ] Implement `PlanLimits` configuration for all tiers
 - [ ] Create Stripe products and prices for plans and credit packs
 - [ ] Implement Stripe webhook handler

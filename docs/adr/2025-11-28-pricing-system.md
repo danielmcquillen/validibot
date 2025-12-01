@@ -26,7 +26,7 @@ Workflows are classified as **basic** or **advanced** based on where their valid
 | **Basic**     | Heroku (our servers)      | Fixed monthly      | Soft cap (high threshold, rarely hit) |
 | **Advanced**  | Modal.com (cloud compute) | Per-second billing | Consume credits (based on runtime)    |
 
-**Basic workflows** use validators that run on our Heroku infrastructure. Since we pay a fixed monthly cost regardless of usage, we use generous soft caps. These caps are set high enough that legitimate users rarely hit them. If someone does exceed the cap, we flag for manual review rather than hard-blocking—this lets us distinguish heavy legitimate use from abuse.
+**Basic workflows** use validators that run on our Heroku infrastructure. Since we pay a fixed monthly cost regardless of usage, we set generous monthly limits. When an organization hits their limit, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom thresholds (e.g., 50%, 80%, 90%).
 
 **Advanced workflows** use at least one validator that runs on Modal.com (AI, simulations, etc.). Modal charges us per CPU-second, so we pass this cost through via credits. There's no launch cap—you can run as many advanced workflows as you have credits for.
 
@@ -59,10 +59,10 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 |                                             | Free | Starter | Team    | Enterprise |
 | ------------------------------------------- | ---- | ------- | ------- | ---------- |
-| **Basic workflow launches** (soft cap)      | 500  | 10,000  | 100,000 | Unlimited  |
+| **Basic workflow launches** (per month)     | 500  | 10,000  | 100,000 | Unlimited  |
 | **Advanced workflow credits** (included/mo) | 0    | 200     | 1,000   | 5,000+     |
 
-**Basic workflow soft caps:** These are generous thresholds that most users will never hit. If exceeded, the user can continue but we're notified to review for abuse. Legitimate heavy users get their cap raised; bad actors get blocked.
+**Basic workflow limits:** Hard monthly limits. When reached, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom percentage thresholds.
 
 **Advanced workflow credits:** Hard limit based on credits consumed (not launch count). One advanced workflow launch might use 1-50+ credits depending on runtime and validator complexity. Purchase additional credit packs if needed.
 
@@ -103,7 +103,7 @@ Per credit (60s) = 60 × $0.00002198 ≈ $0.00132 (~0.13 cents)
 
 | Plan       | Included Credits | Our Cost | Subscription Price | Margin on Credits |
 | ---------- | ---------------- | -------- | ------------------ | ----------------- |
-| Starter    | 200/mo           | ~$0.26   | $35/mo             | Essentially free  |
+| Starter    | 200/mo           | ~$0.26   | $25/mo             | Essentially free  |
 | Team       | 1,000/mo         | ~$1.32   | $100/mo            | Essentially free  |
 | Enterprise | 5,000/mo         | ~$6.60   | $1,000+/mo         | Essentially free  |
 
@@ -171,62 +171,86 @@ As explained in the Context section, we use two different metering approaches be
 - **Basic workflows** → Soft caps with manual review for edge cases
 - **Advanced workflows** → Consume credits based on actual compute time
 
-### Basic Workflow Metering (Soft Caps)
+### Basic Workflow Metering (Hard Limits)
 
-Basic workflows cost us essentially nothing (fixed Heroku cost), so we don't hard-block users. Instead, we use soft caps:
+Basic workflows run on our fixed-cost Heroku infrastructure. We enforce hard monthly limits with configurable warning notifications:
 
 ```python
 # simplevalidations/billing/metering.py
 
+class BasicWorkflowLimitExceeded(Exception):
+    """Raised when an org has exhausted their basic workflow quota."""
+
+    def __init__(self, detail: str, code: str = "basic_limit_exceeded"):
+        self.detail = detail
+        self.code = code
+        super().__init__(detail)
+
+
 class BasicWorkflowMeter:
     """
-    Soft-cap metering for basic workflows.
+    Hard-limit metering for basic workflows.
 
-    Basic workflows run on our fixed-cost Heroku infrastructure, so we don't
-    hard-block users. Instead, we use generous soft caps and flag heavy usage
-    for manual review. This lets us distinguish legitimate power users from
-    abuse without blocking paying customers.
+    Basic workflows run on our fixed-cost Heroku infrastructure. We enforce
+    hard monthly limits—when exhausted, further launches are blocked until
+    the next billing period. Users can configure warning thresholds to get
+    notified before hitting the limit.
     """
 
     def check_and_increment(self, org: Organization) -> None:
         """
-        Increment launch counter and flag if soft cap exceeded.
+        Check quota and increment launch counter.
 
-        Does NOT raise an exception—we allow the launch to proceed.
-        Heavy usage triggers a review flag, not a block.
+        Raises:
+            BasicWorkflowLimitExceeded: If the org has hit their monthly limit.
         """
         counter = self._get_or_create_monthly_counter(org)
-        soft_cap = org.subscription.plan.basic_launches_soft_cap
+        limit = self._get_limit(org)
+
+        # Unlimited plans (Enterprise) have limit=None
+        if limit is not None and counter.basic_launches >= limit:
+            raise BasicWorkflowLimitExceeded(
+                detail=_(
+                    "You've reached your monthly limit of %(limit)s basic workflow "
+                    "launches. Upgrade your plan or wait until %(reset_date)s."
+                ) % {"limit": limit, "reset_date": counter.period_end},
+                code="basic_limit_exceeded",
+            )
 
         counter.basic_launches += 1
         counter.save(update_fields=["basic_launches"])
 
-        # Flag for review if exceeding soft cap (but don't block)
-        if counter.basic_launches > soft_cap:
-            self._flag_for_review(
-                org=org,
-                reason="basic_launches_soft_cap_exceeded",
-                details={
-                    "launches": counter.basic_launches,
-                    "soft_cap": soft_cap,
-                },
-            )
+        # Check if any warning thresholds were crossed
+        self._check_warning_thresholds(org, counter, limit)
 
-    def _flag_for_review(self, org: Organization, reason: str, details: dict) -> None:
-        """
-        Create a review flag for the billing team.
+    def _get_limit(self, org: Organization) -> int | None:
+        """Get the basic workflow limit for an org (None = unlimited)."""
+        plan_limits = PLAN_LIMITS[org.subscription.plan]
+        return plan_limits.basic_launches_limit
 
-        They'll decide whether to:
-        - Raise the org's soft cap (legitimate heavy user)
-        - Contact the org about upgrading
-        - Block the org (abuse detected)
+    def _check_warning_thresholds(self, org: Organization, counter, limit: int | None) -> None:
         """
-        UsageReviewFlag.objects.get_or_create(
-            org=org,
-            reason=reason,
-            period_start=counter.period_start,
-            defaults={"details": details},
-        )
+        Send notifications when user-configured warning thresholds are crossed.
+
+        Users can configure thresholds like [50, 80, 90] to get notified
+        at 50%, 80%, and 90% of their limit.
+        """
+        if limit is None:
+            return  # Unlimited plan, no warnings
+
+        usage_percent = (counter.basic_launches / limit) * 100
+        thresholds = org.subscription.warning_thresholds or [80, 90]
+
+        for threshold in thresholds:
+            if self._just_crossed_threshold(counter, limit, threshold):
+                self._send_warning_notification(org, threshold, usage_percent)
+
+    def _just_crossed_threshold(self, counter, limit: int, threshold: int) -> bool:
+        """Check if this increment just crossed a threshold."""
+        current = counter.basic_launches
+        previous = current - 1
+        threshold_count = int(limit * threshold / 100)
+        return previous < threshold_count <= current
 ```
 
 ### Advanced Workflow Metering (Credits)
@@ -366,7 +390,7 @@ class AdvancedWorkflowMeter:
 ```
 Stripe Products:
 ├── sv_starter_monthly          # Starter plan subscription
-│   └── $35/month
+│   └── $25/month
 │   └── Includes: 200 advanced credits, 5k basic launches
 │
 ├── sv_team_monthly             # Team plan subscription
@@ -459,6 +483,14 @@ class Subscription(TimeStampedModel):
     # Billing period
     current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
+
+    # User-configurable warning thresholds (e.g., [50, 80, 90])
+    warning_thresholds = ArrayField(
+        base_field=models.PositiveIntegerField(),
+        default=list,
+        blank=True,
+        help_text=_("Percentage thresholds for usage warning notifications."),
+    )
 
     class Meta:
         indexes = [
@@ -570,7 +602,7 @@ class Organization(models.Model):
             org=self,
             period_start=period_start,
             period_end=period_end,
-            basic_launches_soft_cap=plan_limits.basic_launches_soft_cap or 0,
+            basic_launches_limit=plan_limits.basic_launches_limit or 0,
             advanced_credits_limit=plan_limits.advanced_credits_per_month,
         )
 ```
@@ -595,7 +627,7 @@ class PlanLimits:
     max_payload_mb: int
 
     # Usage limits
-    basic_launches_soft_cap: Optional[int]  # None = unlimited, soft cap triggers review
+    basic_launches_limit: Optional[int]  # None = unlimited, hard cap blocks at limit
     advanced_credits_per_month: int
 
     # Seats
@@ -619,7 +651,7 @@ PLAN_LIMITS = {
         max_workflows=2,
         max_custom_validators=0,
         max_payload_mb=1,
-        basic_launches_soft_cap=500,
+        basic_launches_limit=500,
         advanced_credits_per_month=0,
         included_seats=1,
         has_integrations=False,
@@ -635,7 +667,7 @@ PLAN_LIMITS = {
         max_workflows=10,
         max_custom_validators=10,
         max_payload_mb=5,
-        basic_launches_soft_cap=10_000,
+        basic_launches_limit=10_000,
         advanced_credits_per_month=200,
         included_seats=2,
         has_integrations=False,
@@ -651,7 +683,7 @@ PLAN_LIMITS = {
         max_workflows=100,
         max_custom_validators=100,
         max_payload_mb=20,
-        basic_launches_soft_cap=100_000,
+        basic_launches_limit=100_000,
         advanced_credits_per_month=1_000,
         included_seats=10,
         has_integrations=True,
@@ -667,7 +699,7 @@ PLAN_LIMITS = {
         max_workflows=None,  # Unlimited
         max_custom_validators=None,
         max_payload_mb=100,
-        basic_launches_soft_cap=None,  # Unlimited
+        basic_launches_limit=None,  # Unlimited
         advanced_credits_per_month=5_000,  # Baseline, negotiable
         included_seats=0,  # Custom, negotiated
         has_integrations=True,
@@ -1078,15 +1110,18 @@ class PlanEnforcer:
 
 ## Usage Monitoring and Notifications
 
-### Notification Thresholds
+### Warning Thresholds
 
-Different plans get different notification frequencies:
+Users can configure custom warning thresholds to be notified before hitting limits:
 
-| Plan       | Usage Alerts                          | Dashboard Features         |
-| ---------- | ------------------------------------- | -------------------------- |
-| Starter    | 80%, 100% of limits                   | Basic usage charts         |
-| Team       | 50%, 75%, 90%, 100% + daily digest    | Extended analytics, trends |
-| Enterprise | Custom thresholds + real-time + Slack | Full analytics, exports    |
+| Plan       | Default Thresholds | Customizable | Dashboard Features         |
+| ---------- | ------------------ | ------------ | -------------------------- |
+| Free       | 80%, 90%           | No           | None                       |
+| Starter    | 50%, 80%, 90%      | Yes          | Basic usage charts         |
+| Team       | 50%, 75%, 90%      | Yes          | Extended analytics, trends |
+| Enterprise | 50%, 75%, 90%      | Yes + Slack  | Full analytics, exports    |
+
+Warning thresholds are stored per-subscription and can be customized via the billing dashboard (Starter+).
 
 ### Usage Tracking Model
 
@@ -1111,9 +1146,9 @@ class UsageCounter(TimeStampedModel):
     period_start = models.DateField()
     period_end = models.DateField()
 
-    # Basic workflow usage (soft cap - exceeding triggers review, not block)
+    # Basic workflow usage (hard limit - blocks when exhausted)
     basic_launches = models.IntegerField(default=0)
-    basic_launches_soft_cap = models.IntegerField()
+    basic_launches_limit = models.IntegerField()
 
     # Advanced workflow usage (hard limit - credits consumed)
     advanced_credits_used = models.IntegerField(default=0)
@@ -1139,10 +1174,10 @@ class UsageCounter(TimeStampedModel):
 
     @property
     def basic_usage_percent(self) -> float:
-        """Percentage of soft cap used (can exceed 100%)."""
-        if self.basic_launches_soft_cap == 0:
+        """Percentage of limit used (0-100, capped at limit)."""
+        if self.basic_launches_limit == 0:
             return 0
-        return (self.basic_launches / self.basic_launches_soft_cap) * 100
+        return (self.basic_launches / self.basic_launches_limit) * 100
 
     @property
     def advanced_usage_percent(self) -> float:
@@ -1159,25 +1194,32 @@ class UsageCounter(TimeStampedModel):
 from simplevalidations.notifications.models import Notification
 
 
+# Default warning thresholds by plan (users can customize on Starter+)
+DEFAULT_WARNING_THRESHOLDS = {
+    PricingPlan.FREE: [80, 90],
+    PricingPlan.STARTER: [50, 80, 90],
+    PricingPlan.TEAM: [50, 75, 90],
+    PricingPlan.ENTERPRISE: [50, 75, 90],
+}
+
+
 class UsageNotificationService:
     """
-    Send usage notifications based on plan tier.
+    Send usage warning notifications based on user-configured thresholds.
     """
-
-    # Thresholds by plan
-    THRESHOLDS = {
-        PricingPlan.STARTER: [80, 100],
-        PricingPlan.TEAM: [50, 75, 90, 100],
-        PricingPlan.ENTERPRISE: [50, 75, 90, 95, 100],
-    }
 
     def check_and_notify(self, org: Organization) -> None:
         """
         Check usage levels and send notifications if thresholds crossed.
         """
         counter = org.current_usage_counter
-        plan = org.subscription.plan
-        thresholds = self.THRESHOLDS.get(plan, [100])
+        subscription = org.subscription
+
+        # Use custom thresholds if set, otherwise plan defaults
+        thresholds = (
+            subscription.warning_thresholds
+            or DEFAULT_WARNING_THRESHOLDS.get(subscription.plan, [80, 90])
+        )
 
         # Check basic usage
         self._check_threshold(
@@ -1221,14 +1263,7 @@ class UsageNotificationService:
         current_percent: float,
     ) -> None:
         """Create the actual notification."""
-        if threshold == 100:
-            level = Notification.Level.ERROR
-            title = _("Usage limit reached")
-            message = _(
-                "You've reached your %(usage_type)s limit. "
-                "Purchase more credits or upgrade your plan to continue."
-            )
-        elif threshold >= 90:
+        if threshold >= 90:
             level = Notification.Level.WARNING
             title = _("Approaching usage limit")
             message = _(
@@ -1373,7 +1408,7 @@ class Validator(TimeStampedModel):
 - [ ] Implement Stripe webhook handler
 - [ ] Create checkout flow for plan selection
 - [ ] Create checkout flow for credit purchases
-- [ ] Implement `BasicWorkflowMeter` for monthly cap enforcement
+- [ ] Implement `BasicWorkflowMeter` for hard monthly limit enforcement
 - [ ] Implement `AdvancedWorkflowMeter` for credit consumption
 - [ ] Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to settings
 
@@ -1433,10 +1468,10 @@ These scenarios validate that the pricing model is financially sound.
 | Enterprise        | 0                             |
 | Overage purchases | None                          |
 
-**Revenue:** 3×$35 + 2×$100 = **$305/mo**  
+**Revenue:** 3×$25 + 2×$100 = **$275/mo**  
 **Modal cost:** (450 + 1,600) × $0.002 = **$4.10/mo**  
 **Infrastructure:** **$300/mo**  
-**Gross profit:** $305 - $4 - $300 = **$1/mo** (break-even)
+**Gross profit:** $275 - $4.10 - $300 = **-$29.10/mo** (early-stage loss until volume grows)
 
 At this stage, you're covering costs while building customer base.
 
@@ -1450,18 +1485,18 @@ At this stage, you're covering costs while building customer base.
 
 **Revenue:**
 
-- Starter subs: 10 × $35 = $350
+- Starter subs: 10 × $25 = $250
 - Starter packs: 10 × 2 × $10 = $200
 - Team subs: 5 × $100 = $500
 - Team packs: 5 × 1 × $25 = $125
 - Enterprise sub: 1 × $1,000 = $1,000
 - Enterprise packs: 1 × $25 = $25
 
-**Total revenue:** **$2,200/mo**
+**Total revenue:** **$2,100/mo**
 
 **Modal cost:** (2,200 + 6,000 + 5,500) × $0.002 = **$27.40/mo**  
 **Infrastructure:** **$500/mo** (scaled up a bit)  
-**Gross profit:** $2,200 - $27 - $500 = **$1,673/mo (~76% margin)**
+**Gross profit:** $2,100 - $27.40 - $500 = **$1,572.60/mo (~75% margin)**
 
 ### Scenario 3: Mid-Scale Success
 
@@ -1473,15 +1508,15 @@ At this stage, you're covering costs while building customer base.
 
 **Revenue:**
 
-- Starter: 20 × ($35 + 3×$10) = $1,300
+- Starter: 20 × ($25 + 3×$10) = $1,100
 - Team: 20 × ($100 + 2×$25) = $3,000
 - Enterprise: 10 × ($2,000 + 2×$25) = $20,500
 
-**Total revenue:** **$24,800/mo**
+**Total revenue:** **$24,600/mo**
 
 **Modal cost:** 95,000 credits × $0.002 = **$190/mo**  
 **Infrastructure:** **$3,000/mo**  
-**Gross profit:** $24,800 - $190 - $3,000 = **$21,610/mo (~87% margin)**
+**Gross profit:** $24,600 - $190 - $3,000 = **$21,410/mo (~87% margin)**
 
 ### Stress Test: What If Everyone Maxes Out?
 

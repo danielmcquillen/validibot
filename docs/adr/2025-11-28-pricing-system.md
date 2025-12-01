@@ -211,15 +211,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
 `execution_target` is derived, not stored: we infer it from `validation_type` so metering can correctly classify runs without a separate field.
 
-| ValidationType    | execution_target |
-| ----------------- | ---------------- |
-| JSON_SCHEMA       | heroku           |
-| XML_SCHEMA        | heroku           |
-| BASIC             | heroku           |
-| CUSTOM_VALIDATOR  | heroku (default; override to modal if declared modal-only) |
-| ENERGYPLUS        | modal            |
-| FMI               | modal            |
-| AI_ASSIST         | modal            |
+| ValidationType   | execution_target                                           |
+| ---------------- | ---------------------------------------------------------- |
+| JSON_SCHEMA      | heroku                                                     |
+| XML_SCHEMA       | heroku                                                     |
+| BASIC            | heroku                                                     |
+| CUSTOM_VALIDATOR | heroku (default; override to modal if declared modal-only) |
+| ENERGYPLUS       | modal                                                      |
+| FMI              | modal                                                      |
+| AI_ASSIST        | modal                                                      |
 
 On the `Validator` model we expose:
 
@@ -240,16 +240,18 @@ def execution_target(self) -> str:
 
 We set sensible defaults to avoid under-charging advanced workloads:
 
-| ValidationType    | Default ValidatorWeight | Notes                                         |
-| ----------------- | ----------------------- | --------------------------------------------- |
-| JSON_SCHEMA       | LIGHT (1×)              | Fast parsing                                  |
-| XML_SCHEMA        | LIGHT (1×)              | Fast parsing                                  |
-| BASIC             | LIGHT (1×)              | Simple checks                                 |
-| CUSTOM_VALIDATOR  | LIGHT (1×)              | Overrideable per validator                    |
-| AI_ASSIST         | MEDIUM (2×)             | LLM inference medium cost                     |
-| ENERGYPLUS        | HEAVY (3×)              | Multi-minute simulations                      |
-| FMI               | HEAVY (3×)              | External model execution                      |
-| EXTREME workloads | EXTREME (5×)            | Opt-in for GPU/multi-hour jobs where needed   |
+| ValidationType    | Default ValidatorWeight | Notes                                     |
+| ----------------- | ----------------------- | ----------------------------------------- |
+| JSON_SCHEMA       | NORMAL (1×)             | Fast parsing                              |
+| XML_SCHEMA        | NORMAL (1×)             | Fast parsing                              |
+| BASIC             | NORMAL (1×)             | Simple checks                             |
+| CUSTOM_VALIDATOR  | NORMAL (1×)             | Overrideable per validator                |
+| AI_ASSIST         | NORMAL (1×)             | MVP: keep advanced at 1× until we profile |
+| ENERGYPLUS        | NORMAL (1×)             | MVP: keep advanced at 1× until we profile |
+| FMI               | NORMAL (1×)             | MVP: keep advanced at 1× until we profile |
+| EXTREME workloads | EXTREME (5×)            | Future: opt-in for GPU/multi-hour jobs    |
+
+MVP stance: all advanced validators ship with `validator_weight = ValidatorWeight.NORMAL` (1×). We retain higher tiers for future tuning once we have real cost data.
 
 ---
 
@@ -369,10 +371,10 @@ class ValidatorWeight(IntEnum):
 
     Higher weight = more expensive compute profile.
     """
-    LIGHT = 1    # Simple AI parsing, document extraction
-    MEDIUM = 2   # Standard simulations, complex AI
-    HEAVY = 3    # EnergyPlus simulations, large models
-    EXTREME = 5  # Multi-hour simulations, GPU workloads
+    NORMAL = 1   # Default for all advanced validators (MVP baseline)
+    MEDIUM = 2   # Future: heavier AI/inference
+    HEAVY = 3    # Future: EnergyPlus/FMI if we re-enable weighting
+    EXTREME = 5  # Future: GPU/multi-hour workloads
 
 
 def calculate_credits_used(
@@ -385,7 +387,7 @@ def calculate_credits_used(
     Formula: credits = ceil(runtime_seconds / 60) * validator_weight
 
     Examples:
-        - Light AI job (45s, weight 1): ceil(45/60) * 1 = 1 credit
+        - Normal AI job (45s, weight 1): ceil(45/60) * 1 = 1 credit
         - Medium sim (180s, weight 2): ceil(180/60) * 2 = 6 credits
         - Heavy sim (300s, weight 3): ceil(300/60) * 3 = 15 credits
     """
@@ -409,7 +411,7 @@ class AdvancedWorkflowMeter:
 
     def check_balance(self, org: Organization) -> int:
         """Return remaining credits for the org."""
-        return org.subscription.advanced_credits_balance
+        return org.subscription.total_credits_balance
 
     def reserve_credits(
         self,
@@ -457,10 +459,9 @@ class AdvancedWorkflowMeter:
             validator_weight=validator_weight,
         )
 
-        # Deduct from org balance
+        # Deduct from org balance (included first, then purchased)
         org = reservation.org
-        org.subscription.advanced_credits_balance -= actual_credits
-        org.subscription.save(update_fields=["advanced_credits_balance"])
+        org.subscription.consume_credits(actual_credits)
 
         # Update reservation
         reservation.actual_credits = actual_credits
@@ -883,16 +884,95 @@ def stripe_webhook(request):
   - `path("checkout/<plan>/", PlanCheckoutStartView.as_view(), name="checkout-plan")`
   - `path("credits/checkout/", CreditPackCheckoutStartView.as_view(), name="checkout-credits")`
   - `path("dashboard/", BillingDashboardView.as_view(), name="dashboard")`
-  - `path("compute-callback/", ComputeCallbackView.as_view(), name="compute-callback")`  # Modal job metrics ingress
+  - `path("compute-callback/", ComputeCallbackView.as_view(), name="compute-callback")` # Modal job metrics ingress
 - **Settings / environment variables:**
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`
   - `STRIPE_PRICE_ID_STARTER`, `STRIPE_PRICE_ID_TEAM`, `STRIPE_PRICE_ID_ENTERPRISE`
   - `STRIPE_PRICE_ID_CREDITS_STARTER`, `STRIPE_PRICE_ID_CREDITS_TEAM`
+  - `STRIPE_PRICE_ID_STARTER_ANNUAL`, `STRIPE_PRICE_ID_TEAM_ANNUAL` (if we add annuals)
+  - `STRIPE_TAX_ID` / Stripe Tax settings (if enabled)
 - **Recommended libraries (2025):**
   - Official `stripe` Python SDK for Checkout, Billing, and webhooks.
   - Optional: `dj-stripe` if we choose to persist full Stripe objects and leverage its admin tooling; otherwise stick to the lightweight direct-SDK approach above.
 - **Webhook best practice:** verify signatures with `STRIPE_WEBHOOK_SECRET`, respond quickly (200), and offload heavy work to background jobs if needed.
+
+### Checkout entry points
+
+- Plan checkout starts from the billing dashboard CTA per plan; we pass `org_id` in metadata and redirect to Stripe Checkout with success/cancel URLs under `/billing/`.
+- Credit pack checkout starts from the dashboard “buy credits” CTA; quantity is selected in-app, sent to Checkout with metadata (`org_id`, `type=credit_purchase`, `credits`).
+- Success URL returns to `/billing/dashboard/?checkout=success`; cancel returns to `/billing/dashboard/?checkout=cancelled`.
+
+### Stripe customer lifecycle
+
+- Create Stripe Customer on first checkout for an org; store `stripe_customer_id` on Subscription.
+- Updates to org name/billing email are pushed to Stripe customer; for multiple orgs per user, we keep one customer per org.
+- Payment method updates and invoice history use Stripe Billing Portal (link from dashboard).
+
+### Idempotency and retries
+
+- Webhooks: store processed event IDs to avoid double-processing; Stripe retries on 5xx/timeouts.
+- Checkout/session completion: use idempotency keys when creating sessions; webhook handlers must be idempotent and quick.
+- Heavy post-processing (e.g., emails, analytics) should go to async jobs.
+
+### Plan changes (upgrade/downgrade) and proration
+
+- Upgrades: immediate plan switch with Stripe proration on; reset included credits to new plan on next invoice.paid.
+- Downgrades: effective at period end; on downgrade, enforce lower limits (seats, integrations, audit logs) at the new period. Included credits reset to the downgraded amount; purchased credits stay.
+- Seat overages: block new invites when above plan’s included seats; do not auto-bill per-seat in MVP.
+
+### Payment failures and dunning
+
+- On `invoice.payment_failed`: send in-app warning + email; start grace period (configurable, default 7 days). During grace, allow existing users to view but block new launches of advanced workflows; optionally reduce basic limit.
+- On final failure/cancellation: set plan to Free (or suspend if Free is gated), keep data but block launches until payment is fixed.
+
+### MVP rollout (Heroku/Modal in AU)
+
+- Start AU-only: price in AUD, apply 10% GST, and limit Checkout to AU billing addresses.
+- Run Heroku and Modal in AU regions where possible; if any Modal jobs execute outside AU, disclose data egress in ToS/privacy and in the billing dashboard.
+- Keep plans simple (e.g., Starter + credit packs); gate Team/Enterprise and Free until tax/FX and seats are ready.
+- Use Stripe Billing Portal for payment updates; limit distribution to an allowlist while metering and webhooks stabilize.
+
+### Phase 2: Launching to other markets
+
+- Add USD pricing first (single-currency mode per deployment): introduce explicit USD price IDs for Starter/Team/credits; keep one currency active at a time to avoid mixed baskets.
+- Open signups to US/CA/NZ/SG before EU/UK to defer VAT/GDPR complexity; block unsupported countries at signup/checkout.
+- Enable Stripe Tax for new regions and capture required tax IDs (VAT/GST) and billing address per jurisdiction; configure inclusive vs exclusive pricing per region.
+- Add data residency disclosures: note that Heroku/Modal run in AU (or target region); if we add regional stacks later, document the routing rules.
+- Expand plans: un-gate Team/Enterprise, enable seat enforcement, and introduce annual price IDs; keep per-seat billing optional until stable.
+- Revisit credit pricing per currency; do not rely on FX conversions—set dedicated price IDs per currency.
+- Lift allowlist gradually; monitor dunning, webhook health, and metering accuracy before broadening distribution.
+
+### Data regions
+
+We will support three data regions: AU, US, and EU. MVP is AU-only and we will restrict signups/Checkout to AU until regional stacks are ready.
+
+```python
+class DataRegion(models.TextChoices):
+    AU = "AU", "Australia"
+    US = "US", "United States"
+    EU = "EU", "Europe"
+
+
+class Organization(models.Model):
+    ...
+    data_region = models.CharField(
+        max_length=2,
+        choices=DataRegion.choices,
+        default=DataRegion.AU,
+    )
+```
+
+Data residency rules: data stays in the org’s region unless a compute provider (e.g., Modal) for that region is unavailable, in which case we either queue the job or fall back only with explicit disclosure/consent. Each region will have dedicated Heroku/Modal deployments as we expand beyond AU.
+
+### Tax, invoices, receipts
+
+- Use Stripe Tax if enabled; collect billing address/VAT in Checkout.
+- Expose invoice PDFs and payment history via Billing Portal; for custom billing (Enterprise), attach invoices manually in Stripe and sync status via webhook.
+
+### Trials and promos
+
+- MVP: no free trials or promo codes. Note in ADR; can enable via Checkout `discounts` later.
 
 ### Checkout Flow
 
@@ -1261,6 +1341,11 @@ class UsageCounter(TimeStampedModel):
 
     A new counter is created at the start of each billing period.
     Historical counters are retained for analytics.
+
+    Billing period alignment: counters align to Stripe subscription periods
+    (current_period_start/end from webhook events). Webhook handlers must
+    backfill/create counters on `invoice.paid` and `customer.subscription.updated`
+    to keep usage in sync with Stripe billing cycles.
     """
 
     org = models.ForeignKey(
@@ -1531,10 +1616,9 @@ class ComputeUsageTracker:
             credits_used=credits_used,
         )
 
-        # Update org credit balance
+        # Update org credit balance (included first, then purchased)
         org = validation_run.org
-        org.subscription.advanced_credits_balance -= credits_used
-        org.subscription.save(update_fields=["advanced_credits_balance"])
+        org.subscription.consume_credits(credits_used)
 
         # Update usage counter
         counter = org.current_usage_counter
@@ -1555,6 +1639,8 @@ Modal does not expose a simple `get_job_metrics(job_id)` polling API. Instead, w
 
 This avoids polling and guarantees we meter every advanced run as soon as Modal reports completion.
 
+**Callback auth:** The `/billing/compute-callback/` endpoint requires an HMAC signature header from `sv_modal` using a shared secret to prevent spoofed usage events. Reject unsigned/invalid requests with 401 and log for audit.
+
 ### Validator Model Additions
 
 ```python
@@ -1574,9 +1660,9 @@ class Validator(TimeStampedModel):
     )
 
     compute_weight = models.PositiveSmallIntegerField(
-        default=ValidatorWeight.LIGHT,
+        default=ValidatorWeight.NORMAL,
         choices=[
-            (ValidatorWeight.LIGHT, _("Light (1x)")),
+            (ValidatorWeight.NORMAL, _("Normal (1x)")),
             (ValidatorWeight.MEDIUM, _("Medium (2x)")),
             (ValidatorWeight.HEAVY, _("Heavy (3x)")),
             (ValidatorWeight.EXTREME, _("Extreme (5x)")),

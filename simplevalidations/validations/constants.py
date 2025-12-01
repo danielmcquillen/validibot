@@ -57,7 +57,6 @@ class ValidationType(TextChoices):
 
 # 'advanced' validation types that may require more resources or have special handling
 ADVANCED_VALIDATION_TYPES = {
-    ValidationType.BASIC,
     ValidationType.ENERGYPLUS,
     ValidationType.FMI,
     ValidationType.CUSTOM_VALIDATOR,

@@ -19,16 +19,16 @@ Validibot needs a pricing and billing system that:
 
 ### Two Types of Workflows, Two Metering Models
 
-Workflows are classified as **basic** or **advanced** based on where their validators run:
+Workflows are classified as **basic** or **advanced** based on the compute intensity of their validators:
 
-| Workflow Type | Where It Runs             | Our Cost Model     | How We Meter                          |
-| ------------- | ------------------------- | ------------------ | ------------------------------------- |
-| **Basic**     | Heroku (our servers)      | Fixed monthly      | Soft cap (high threshold, rarely hit) |
-| **Advanced**  | Modal.com (cloud compute) | Per-second billing | Consume credits (based on runtime)    |
+| Workflow Type | Compute Profile                            | Our Cost Model      | How We Meter                       |
+| ------------- | ------------------------------------------ | ------------------- | ---------------------------------- |
+| **Basic**     | Low-compute validators only                | Negligible per-run  | Hard cap (monthly launch limit)    |
+| **Advanced**  | Any high-compute validator (AI, sim, etc.) | Per-compute billing | Consume credits (based on runtime) |
 
-**Basic workflows** use validators that run on our Heroku infrastructure. Since we pay a fixed monthly cost regardless of usage, we set generous monthly limits. When an organization hits their limit, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom thresholds (e.g., 50%, 80%, 90%).
+**Basic workflows** use only low-compute validators—schema checks, simple parsing, lightweight rule evaluation. These have negligible per-run cost regardless of where they execute, so we meter by launch count with generous monthly limits. When an organization hits their limit, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom thresholds (e.g., 50%, 80%, 90%).
 
-**Advanced workflows** use at least one validator that runs on Modal.com (AI, simulations, etc.). Modal charges us per CPU-second, so we pass this cost through via credits. There's no launch cap—you can run as many advanced workflows as you have credits for.
+**Advanced workflows** use at least one high-compute validator—AI models, building simulations, complex analysis. These consume meaningful compute resources (CPU time, memory, sometimes GPU), so we meter by actual resource consumption via credits. There's no launch cap—you can run as many advanced workflows as you have credits for.
 
 This ADR defines the pricing tiers, metering strategy, Stripe integration, and the infrastructure needed to implement it.
 
@@ -121,8 +121,8 @@ This pricing is aggressive but fair. Modal costs are a rounding error; the real 
 
 ## Workflow Classification: Basic vs Advanced
 
-Each workflow is classified based on its validators. This setting should be
-updated whenever a workflow is modified.
+Each workflow is classified based on the compute intensity of its validators.
+This classification is recalculated whenever the workflow's validators change.
 
 ```python
 # simplevalidations/workflows/constants.py
@@ -131,19 +131,40 @@ class WorkflowType(models.TextChoices):
     """
     Classification of workflows for metering purposes.
 
-    BASIC: All validators run on Heroku dynos (subscription cost).
-    ADVANCED: At least one validator runs on Modal (per-compute cost).
+    BASIC: All validators are low-compute (negligible per-run cost).
+    ADVANCED: At least one validator is high-compute (metered by credits).
     """
     BASIC = "BASIC", _("Basic")
     ADVANCED = "ADVANCED", _("Advanced")
 ```
 
+### Validator Compute Tiers
+
+Each validator has a `compute_tier` that indicates its resource intensity:
+
+```python
+# simplevalidations/validations/constants.py
+
+class ComputeTier(models.TextChoices):
+    """
+    Compute intensity classification for validators.
+
+    LOW: Lightweight operations (schema validation, simple parsing, rule checks).
+         Negligible cost per run—metered by monthly launch count.
+
+    HIGH: Resource-intensive operations (AI inference, simulations, complex analysis).
+          Meaningful cost per run—metered by credit consumption based on runtime.
+    """
+    LOW = "LOW", _("Low compute")
+    HIGH = "HIGH", _("High compute")
+```
+
 **Classification rules:**
 
-| Workflow Contains                                | Classification |
-| ------------------------------------------------ | -------------- |
-| Only local/Heroku validators                     | BASIC          |
-| Any Modal-based validator (AI, EnergyPlus, etc.) | ADVANCED       |
+| Workflow Contains                               | Classification |
+| ----------------------------------------------- | -------------- |
+| Only LOW compute tier validators                | BASIC          |
+| Any HIGH compute tier validator (AI, sim, etc.) | ADVANCED       |
 
 ```python
 # simplevalidations/workflows/models.py
@@ -153,14 +174,28 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     @property
     def workflow_type(self) -> WorkflowType:
         """
-        Determine workflow type based on validators used.
+        Determine workflow type based on validators' compute tiers.
 
-        A workflow is ADVANCED if any of its validators runs on Modal.
+        A workflow is ADVANCED if any of its validators is HIGH compute.
+        This is independent of where the validators execute.
         """
-        if self.validators.filter(execution_target="modal").exists():
+        if self.validators.filter(compute_tier=ComputeTier.HIGH).exists():
             return WorkflowType.ADVANCED
         return WorkflowType.BASIC
 ```
+
+### Default Compute Tiers by Validator Type
+
+| Validator Type         | Default Tier | Rationale                            |
+| ---------------------- | ------------ | ------------------------------------ |
+| Schema validation      | LOW          | Simple JSON/XML parsing              |
+| File format checks     | LOW          | Quick header/magic byte inspection   |
+| Regex/pattern matching | LOW          | In-memory string operations          |
+| Range/threshold checks | LOW          | Simple numeric comparisons           |
+| AI parsing/extraction  | HIGH         | LLM inference, tokenization overhead |
+| AI analysis/critique   | HIGH         | LLM inference with complex prompts   |
+| EnergyPlus simulation  | HIGH         | Multi-minute building simulation     |
+| Custom code validators | Configurable | Depends on what the code does        |
 
 ---
 
@@ -168,7 +203,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
 As explained in the Context section, we use two different metering approaches because our costs differ:
 
-- **Basic workflows** → Soft caps with manual review for edge cases
+- **Basic workflows** → Hard caps with manual review for edge cases
 - **Advanced workflows** → Consume credits based on actual compute time
 
 ### Basic Workflow Metering (Hard Limits)
@@ -191,10 +226,12 @@ class BasicWorkflowMeter:
     """
     Hard-limit metering for basic workflows.
 
-    Basic workflows run on our fixed-cost Heroku infrastructure. We enforce
-    hard monthly limits—when exhausted, further launches are blocked until
-    the next billing period. Users can configure warning thresholds to get
-    notified before hitting the limit.
+    Hard-limit metering for basic (low-compute) workflows.
+
+    Basic workflows use only low-compute validators with negligible per-run
+    cost. We enforce hard monthly limits—when exhausted, further launches
+    are blocked until the next billing period. Users can configure warning
+    thresholds to get notified before hitting the limit.
     """
 
     def check_and_increment(self, org: Organization) -> None:
@@ -309,10 +346,11 @@ def calculate_credits_used(
 
 class AdvancedWorkflowMeter:
     """
-    Credit-based metering for advanced (Modal) workflows.
+    Credit-based metering for advanced (high-compute) workflows.
 
-    Credits map directly to Modal compute costs, allowing us to
-    recover infrastructure costs and price fairly.
+    Credits map to actual compute resource consumption, allowing us
+    to recover infrastructure costs and price fairly regardless of
+    where the compute runs.
     """
 
     def check_balance(self, org: Organization) -> int:
@@ -489,7 +527,7 @@ class Subscription(TimeStampedModel):
         base_field=models.PositiveIntegerField(),
         default=list,
         blank=True,
-        help_text=_("Percentage thresholds for usage warning notifications."),
+        help_text=_("Percentage thresholds for usage warning notifications. Max 5 per org; OWNER-only management."),
     )
 
     class Meta:
@@ -1112,7 +1150,7 @@ class PlanEnforcer:
 
 ### Warning Thresholds
 
-Users can configure custom warning thresholds to be notified before hitting limits:
+Users can configure up to five custom warning thresholds (per org) to be notified before hitting limits. Only **OWNER** users can view or manage these thresholds in the billing dashboard; other roles can see resulting notifications but cannot edit thresholds. The UI is a simple list with add/edit/delete for percentages plus an optional label.
 
 | Plan       | Default Thresholds | Customizable | Dashboard Features         |
 | ---------- | ------------------ | ------------ | -------------------------- |
@@ -1121,7 +1159,14 @@ Users can configure custom warning thresholds to be notified before hitting limi
 | Team       | 50%, 75%, 90%      | Yes          | Extended analytics, trends |
 | Enterprise | 50%, 75%, 90%      | Yes + Slack  | Full analytics, exports    |
 
-Warning thresholds are stored per-subscription and can be customized via the billing dashboard (Starter+).
+Warning thresholds are stored per-subscription and can be customized via the billing dashboard (Starter+). Attempts to add more than five thresholds are blocked with inline validation.
+
+When a warning threshold is crossed, we notify in two ways so the owner cannot miss it:
+
+- Send an email to the billing contact (defaults to the org owner; falls back to `billing_email` if present).
+- Create an in-app warning notification for the owner in the notifications window, so the banner shows even if the email is skipped.
+
+Each threshold fires once per billing period unless reset by a new period or by updating the threshold value in the dashboard.
 
 ### Usage Tracking Model
 
@@ -1312,22 +1357,22 @@ This is documented in detail in ADR-2025-11-28-public-workflow-access.
 
 ---
 
-## Modal.com Usage Tracking
+## Compute Usage Tracking
 
-### Integration with Modal
+### High-Compute Validator Tracking
 
 ```python
-# simplevalidations/integrations/modal/tracking.py
-
-from sv_modal.client import ModalClient
+# simplevalidations/billing/tracking.py
 
 
-class ModalUsageTracker:
+class ComputeUsageTracker:
     """
-    Track Modal compute usage for credit calculation.
+    Track compute usage for high-compute validators.
 
-    Modal provides runtime metrics via their API. We capture these
-    after each job completes to calculate credit consumption.
+    High-compute validators (AI, simulations, etc.) report runtime metrics
+    after each job completes. We use these to calculate credit consumption.
+    The tracking is infrastructure-agnostic—it works whether the compute
+    runs on Modal, a local GPU cluster, or any other provider.
     """
 
     def record_job_completion(
@@ -1335,28 +1380,33 @@ class ModalUsageTracker:
         job_id: str,
         validator: Validator,
         validation_run: ValidationRun,
-    ) -> ModalJobRecord:
+        job_metrics: "JobMetrics",
+    ) -> ComputeJobRecord:
         """
-        Record Modal job completion and calculate credits.
-        """
-        # Get job metrics from Modal
-        client = ModalClient()
-        job_metrics = client.get_job_metrics(job_id)
+        Record high-compute job completion and calculate credits.
 
-        # Calculate credits
+        Args:
+            job_id: Unique identifier for the compute job.
+            validator: The validator that ran.
+            validation_run: The parent validation run.
+            job_metrics: Runtime metrics from the compute provider.
+        """
+
+        # Calculate credits based on runtime and validator weight
         credits_used = calculate_credits_used(
             runtime_seconds=job_metrics.runtime_seconds,
             validator_weight=validator.compute_weight,
         )
 
-        # Record for billing
-        record = ModalJobRecord.objects.create(
+        # Record for billing and audit trail
+        record = ComputeJobRecord.objects.create(
             validation_run=validation_run,
             validator=validator,
             job_id=job_id,
             runtime_seconds=job_metrics.runtime_seconds,
             memory_gb=job_metrics.memory_gb,
             cpu_count=job_metrics.cpu_count,
+            gpu_seconds=job_metrics.gpu_seconds,  # Optional, for GPU workloads
             credits_used=credits_used,
         )
 
@@ -1373,13 +1423,23 @@ class ModalUsageTracker:
         return record
 ```
 
-### Validator Compute Weights
+### Validator Model Additions
 
 ```python
 # simplevalidations/validations/models.py
 
 class Validator(TimeStampedModel):
     # ... existing fields ...
+
+    compute_tier = models.CharField(
+        max_length=10,
+        choices=ComputeTier.choices,
+        default=ComputeTier.LOW,
+        help_text=_(
+            "Compute intensity tier. LOW = metered by launch count. "
+            "HIGH = metered by credit consumption."
+        ),
+    )
 
     compute_weight = models.PositiveSmallIntegerField(
         default=ValidatorWeight.LIGHT,
@@ -1390,11 +1450,13 @@ class Validator(TimeStampedModel):
             (ValidatorWeight.EXTREME, _("Extreme (5x)")),
         ],
         help_text=_(
-            "Compute weight multiplier for credit calculation. "
-            "Higher weight = more credits consumed per minute."
+            "Credit multiplier for HIGH compute tier validators. "
+            "Higher weight = more credits consumed per minute of runtime."
         ),
     )
 ```
+
+**Note:** `compute_weight` only applies to HIGH tier validators. For LOW tier validators, the weight is ignored since they're metered by launch count, not runtime.
 
 ---
 
@@ -1432,13 +1494,14 @@ class Validator(TimeStampedModel):
 - [ ] Extended dashboard for Team plan
 - [ ] Comprehensive dashboard for Enterprise
 
-### Phase 4: Modal Integration
+### Phase 4: Compute Tracking
 
-- [ ] Add `compute_weight` field to Validator model
-- [ ] Implement `ModalUsageTracker`
-- [ ] Capture job metrics from Modal API
+- [ ] Add `compute_tier` and `compute_weight` fields to Validator model
+- [ ] Implement `ComputeUsageTracker` (infrastructure-agnostic)
+- [ ] Define `JobMetrics` interface for compute providers
+- [ ] Integrate Modal provider (via sv_modal) to report metrics
 - [ ] Calculate credits based on runtime and weight
-- [ ] Create `ModalJobRecord` for audit trail
+- [ ] Create `ComputeJobRecord` for audit trail
 
 ### Phase 5: Overage Handling
 

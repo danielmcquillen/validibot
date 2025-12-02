@@ -16,14 +16,14 @@ operate multiple environments.
 
 ```bash
 # Create the app if it does not exist
-heroku create simplevalidations --team your-team-name
+heroku create validibot --team your-team-name
 
 # Ensure the Python buildpack is first
-heroku buildpacks:set heroku/python -a simplevalidations
+heroku buildpacks:set heroku/python -a validibot
 
 # Attach add-ons
-heroku addons:create heroku-postgresql:standard-0 -a simplevalidations
-heroku addons:create heroku-redis:premium-0 -a simplevalidations
+heroku addons:create heroku-postgresql:standard-0 -a validibot
+heroku addons:create heroku-redis:premium-0 -a validibot
 ```
 
 Add Papertrail (or your preferred log drain) for long-term log retention.
@@ -33,13 +33,13 @@ Add Papertrail (or your preferred log drain) for long-term log retention.
 Use `_envs/production/django.env` as the source of truth. Set the values with:
 
 ```bash
-heroku config:set $(cat _envs/production/django.env | xargs) -a simplevalidations
+heroku config:set $(cat _envs/production/django.env | xargs) -a validibot
 ```
 
 Double-check the high-risk entries:
 
 - `DJANGO_SECRET_KEY`
-- `DJANGO_ALLOWED_HOSTS=simplevalidations.com,*.simplevalidations.com`
+- `DJANGO_ALLOWED_HOSTS=validibot.com,*.validibot.com`
 - `DJANGO_SECURE_SSL_REDIRECT=true`
 - `DJANGO_AWS_*` (bucket name, access keys, optional custom domain)
 - `POSTMARK_SERVER_TOKEN`
@@ -60,7 +60,7 @@ The `release` phase runs migrations automatically. For the first deploy (or afte
 database resets) run:
 
 ```bash
-heroku run python manage.py setup_all -a simplevalidations
+heroku run python manage.py setup_all -a validibot
 ```
 
 `setup_all` seeds role definitions, creates personal workspaces, and ensures the AI
@@ -84,8 +84,8 @@ The slug build runs `bin/post_compile`, which executes `collectstatic` and
 
 ## Post-Deploy Verification
 
-1. `heroku logs --tail -p web -a simplevalidations` – confirm startup is clean.
-2. `heroku logs --tail -p worker -a simplevalidations` – watch Celery queue health.
+1. `heroku logs --tail -p web -a validibot` – confirm startup is clean.
+2. `heroku logs --tail -p worker -a validibot` – watch Celery queue health.
 3. Visit the site root and the `/accounts/login/` endpoint to ensure static/media
    assets load.
 4. Trigger a waitlist signup to verify outbound email (Postmark).
@@ -96,21 +96,21 @@ The slug build runs `bin/post_compile`, which executes `collectstatic` and
 - **Scale dynos**
 
   ```bash
-  heroku ps:scale web=2 worker=2 beat=1 -a simplevalidations
+  heroku ps:scale web=2 worker=2 beat=1 -a validibot
   ```
 
 - **Tail logs**
 
   ```bash
-  heroku logs --tail -p web -a simplevalidations       # ASGI server
-  heroku logs --tail -p worker -a simplevalidations    # Celery worker
-  heroku logs --tail -p beat -a simplevalidations      # Celery beat
+  heroku logs --tail -p web -a validibot       # ASGI server
+  heroku logs --tail -p worker -a validibot    # Celery worker
+  heroku logs --tail -p beat -a validibot      # Celery beat
   ```
 
 - **Run management commands**
 
   ```bash
-  heroku run python manage.py <command> -a simplevalidations
+  heroku run python manage.py <command> -a validibot
   ```
 
 - **Database backups**
@@ -119,7 +119,7 @@ The slug build runs `bin/post_compile`, which executes `collectstatic` and
   backup into staging:
 
   ```bash
-  heroku pg:backups:restore b001 DATABASE_URL -a simplevalidations-staging
+  heroku pg:backups:restore b001 DATABASE_URL -a validibot-staging
   ```
 
 ## Rebuilding the Database (Development Only)
@@ -127,9 +127,9 @@ The slug build runs `bin/post_compile`, which executes `collectstatic` and
 Never reset production data. For disposable environments you can do:
 
 ```bash
-heroku pg:reset DATABASE_URL --confirm simplevalidations-dev
-heroku run python manage.py migrate -a simplevalidations-dev
-heroku run python manage.py setup_all -a simplevalidations-dev
+heroku pg:reset DATABASE_URL --confirm validibot-dev
+heroku run python manage.py migrate -a validibot-dev
+heroku run python manage.py setup_all -a validibot-dev
 ```
 
 After a reset, re-run `setup_all` to repopulate roles, workspaces, and validators.

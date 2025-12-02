@@ -1,0 +1,57 @@
+
+volumes:
+  media_volume:
+  validibot_local_postgres_data:
+  validibot_local_postgres_backups:
+  validibot_local_venv:
+
+services:
+  django: &django
+    # Django app serving user-facing traffic (runserver on 8000)
+    build:
+      context: .
+      dockerfile: compose/local/django/Dockerfile
+    depends_on:
+      - postgres
+      - mailpit
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+      - validibot_local_venv:/app/.venv
+    env_file:
+      - .envs/.local/.django
+      - .envs/.local/.postgres
+    ports:
+      - "8000:8000"
+    command: /start
+
+  worker:
+    # Django app for internal/task endpoints (runserver on 8001) to mimic separate scaling
+    <<: *django
+    command: ["/start-worker"]
+    ports:
+      - "8001:8001"
+
+  postgres:
+    # Local Postgres for app data
+    build:
+      context: .
+      dockerfile: compose/production/postgres/Dockerfile
+    env_file:
+      - .envs/.local/.postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "validibot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_postgres_data:/var/lib/postgresql/data
+      - validibot_local_postgres_backups:/backups
+
+  mailpit:
+    # Local SMTP capture for testing email
+    image: docker.io/axllent/mailpit:latest
+    ports:
+      - "8025:8025"

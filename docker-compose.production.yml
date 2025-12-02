@@ -1,0 +1,44 @@
+services:
+  django: &django
+    # Django app serving user-facing traffic (gunicorn on 8000)
+    build:
+      context: .
+      dockerfile: compose/production/django/Dockerfile
+    env_file:
+      - .envs/.production/.django
+    command: /start
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    volumes:
+      - validibot_production_venv:/app/.venv
+
+  worker:
+    # Django app for internal/task endpoints (gunicorn on 8001) to mimic separate scaling
+    <<: *django
+    command: ["/start-worker"]
+    ports:
+      - "8001:8001"
+    depends_on:
+      - postgres
+
+  postgres:
+    # Postgres for app data (production-like)
+    build:
+      context: .
+      dockerfile: compose/production/postgres/Dockerfile
+    env_file:
+      - .envs/.production/.postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "validibot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_production_postgres_data:/var/lib/postgresql/data
+      - validibot_production_postgres_backups:/backups
+volumes:
+  validibot_production_venv:

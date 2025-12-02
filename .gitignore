@@ -11,7 +11,7 @@ tmp/
 # We don't want uvlock to go to heroku
 uv.lock
 
-
+.envs/
 
 *.py[cod]
 *$py.class

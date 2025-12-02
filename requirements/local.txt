@@ -38,6 +38,6 @@ pytest-django==4.11.1  # https://github.com/pytest-dev/pytest-django
 
 
 # For modal.com communication
--e ./sv_shared_dev
+sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main
 
 selenium==4.38.0

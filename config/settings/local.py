@@ -24,6 +24,17 @@ CACHES = {
     },
 }
 
+# STORAGE (local filesystem)
+# -------------------------------------------------------------------------------
+MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
+MEDIA_URL = "/media/"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-host

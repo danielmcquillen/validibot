@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from django.contrib.auth.mixins import AccessMixin, LoginRequiredMixin
+from django.contrib.auth.mixins import AccessMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
 
@@ -42,7 +43,7 @@ class OrganizationAdminRequiredMixin(LoginRequiredMixin):
 
     def get_organization(self) -> Organization | None:
         if hasattr(self, "object") and getattr(self, "object", None):
-            obj = getattr(self, "object")
+            obj = self.object
             if isinstance(obj, Organization):
                 return obj
             if hasattr(obj, "org"):

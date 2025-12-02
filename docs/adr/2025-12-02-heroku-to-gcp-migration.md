@@ -322,6 +322,28 @@ Both buckets have:
 - Private ACL (no public access)
 - Lifecycle rules for old versions
 
+### Django Storage Configuration
+
+Updated Django settings to use Cloud Storage via `django-storages`:
+
+- **Production** (`config/settings/production.py`): Uses `GoogleCloudStorage` backend with ADC
+- **Local** (`config/settings/local.py`): Defaults to filesystem, optional GCS via `GCS_MEDIA_BUCKET` env var
+- **Dependencies**: Added `django-storages[google,s3]` to `pyproject.toml`
+- No explicit credentials in code - relies on Application Default Credentials
+
+See [Storage Documentation](../docs/dev_docs/google_cloud/storage.md) for details.
+
+### IAM & Service Accounts
+
+Created environment-specific service accounts:
+
+- **`validibot-dev-app`**: Runtime identity for dev Cloud Run services
+- **`validibot-prod-app`**: Runtime identity for prod Cloud Run services
+
+Each service account has `Storage Object Admin` role on its environment's bucket only (bucket-level, not project-level).
+
+See [IAM Documentation](../docs/dev_docs/google_cloud/iam.md) for details.
+
 ### Docker Configuration
 
 We've containerized the application for local development:
@@ -433,7 +455,8 @@ Added `django-cloud-tasks` package:
 
    ```bash
    gcloud sql instances create validibot-prod \
-     --database-version=POSTGRES_15 \
+     --database-version=POSTGRES_17 \
+     --edition=ENTERPRISE \
      --tier=db-f1-micro \
      --region=australia-southeast1 \
      --storage-type=SSD \
@@ -1150,7 +1173,9 @@ If fundamental issues require returning to Heroku:
 - [x] Create GCP project and enable APIs
 - [x] Create Cloud Storage buckets
 - [x] Containerize application for local development
-- [ ] Update production settings for GCP
+- [x] Update production settings for GCP (Cloud Storage)
+- [x] Configure IAM service accounts for dev/prod
+- [x] Grant bucket-level permissions to service accounts
 - [ ] Add Cloud Tasks URL routes
 
 ### Phase 2: Infrastructure (Week 2)

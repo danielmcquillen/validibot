@@ -5,11 +5,9 @@ from typing import Any
 
 from django.db import models
 
-from simplevalidations.dashboard.services import (
-    build_chart_payload,
-    build_stacked_bar_payload,
-    generate_time_series,
-)
+from simplevalidations.dashboard.services import build_chart_payload
+from simplevalidations.dashboard.services import build_stacked_bar_payload
+from simplevalidations.dashboard.services import generate_time_series
 from simplevalidations.dashboard.widgets.base import DashboardWidget
 from simplevalidations.dashboard.widgets.base import register_widget
 from simplevalidations.tracking.models import TrackingEvent

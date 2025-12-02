@@ -14,7 +14,8 @@ from simplevalidations.validations.constants import ValidationRunStatus
 
 if TYPE_CHECKING:  # pragma: no cover
     from simplevalidations.projects.models import Project
-    from simplevalidations.users.models import Organization, User
+    from simplevalidations.users.models import Organization
+    from simplevalidations.users.models import User
     from simplevalidations.workflows.models import Workflow
 
 
@@ -30,10 +31,10 @@ def _coerce_org(org, workflow, project):
 
 def seed_sample_tracking_data(
     *,
-    org: "Organization",
-    project: "Project | None" = None,
-    workflow: "Workflow | None" = None,
-    user: "User | None" = None,
+    org: Organization,
+    project: Project | None = None,
+    workflow: Workflow | None = None,
+    user: User | None = None,
     days: int = 7,
     runs_per_day: int = 4,
     logins_per_day: int = 2,

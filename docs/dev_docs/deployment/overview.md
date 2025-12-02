@@ -1,16 +1,41 @@
 # Deployment Overview
 
-Validibot currently ships to Heroku. This section summarises the moving parts
-and the order of operations so you can promote changes without surprises.
+Validibot is migrating from Heroku to Google Cloud Platform. This section covers
+both deployment targets during the transition.
 
-## Environments
+## Deployment Targets
+
+| Target           | Status         | Documentation                                            |
+| ---------------- | -------------- | -------------------------------------------------------- |
+| **Google Cloud** | 🚧 In Progress | [Google Cloud Deployment](../google_cloud/deployment.md) |
+| **Heroku**       | 📦 Legacy      | [Heroku Deployment](heroku.md)                           |
+
+## Google Cloud Architecture
+
+Production runs on Google Cloud Run with the following services:
+
+- **Cloud Run (web)** — Django app serving user traffic
+- **Cloud Run (worker)** — Background task processing
+- **Cloud SQL** — PostgreSQL 17 database
+- **Cloud Storage** — Media file storage
+- **Cloud Tasks** — Async task queue
+- **Secret Manager** — Credentials and secrets
+- **Artifact Registry** — Docker image storage
+
+See the [Go-Live Checklist](go-live-checklist.md) for pre-launch tasks.
+
+---
+
+## Legacy: Heroku
+
+### Environments
 
 - **Production** – single Heroku app running the ASGI web dyno, Celery worker, and
   Celery beat. Uses Heroku Postgres, Redis (Heroku Data for Redis), and S3 for media.
 - **Review apps / staging** – create as-needed from the production template; copy the
   config vars called out below and point to disposable add-ons.
 
-## Release Workflow
+### Release Workflow
 
 1. Run the test suite (`uv run --extra dev pytest`) and linting hooks locally.
 2. Push to GitHub; CI should pass before you promote a commit.
@@ -26,16 +51,16 @@ and the order of operations so you can promote changes without surprises.
 
 ## Config Vars Cheat Sheet
 
-| Key | Notes |
-| --- | ----- |
-| `DJANGO_SECRET_KEY` | Unique per environment; never reuse local keys. |
-| `DJANGO_ALLOWED_HOSTS` | Comma-separated hosts, e.g. `simplevalidations.com,*.simplevalidations.com`. |
-| `DATABASE_URL` | Managed by Postgres add-on. |
-| `REDIS_URL` | Provided by Redis add-on; shared by Django cache and Celery. |
-| `DJANGO_AWS_*` | S3 credentials and bucket info for media. |
-| `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail. |
-| `POSTMARK_SERVER_TOKEN` | Required for waitlist e-mail delivery. |
-| `SENTRY_DSN` | Optional but recommended. |
+| Key                        | Notes                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `DJANGO_SECRET_KEY`        | Unique per environment; never reuse local keys.                              |
+| `DJANGO_ALLOWED_HOSTS`     | Comma-separated hosts, e.g. `simplevalidations.com,*.simplevalidations.com`. |
+| `DATABASE_URL`             | Managed by Postgres add-on.                                                  |
+| `REDIS_URL`                | Provided by Redis add-on; shared by Django cache and Celery.                 |
+| `DJANGO_AWS_*`             | S3 credentials and bucket info for media.                                    |
+| `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail.                               |
+| `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                                       |
+| `SENTRY_DSN`               | Optional but recommended.                                                    |
 
 Keep `_envs/production/django.env` updated with the canonical set; use it when
 you need to bootstrap a new Heroku app.

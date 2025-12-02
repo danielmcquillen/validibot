@@ -16,9 +16,7 @@ def register_action_model(action_type: str, model: type[Action]) -> None:
 
 
 def get_action_model(action_type: str) -> type[Action]:
-    from simplevalidations.actions.models import (  # noqa: PLC0415
-        Action,  # local import to avoid cycles
-    )
+    from simplevalidations.actions.models import Action  # local import to avoid cycles
 
     return ACTION_MODEL_REGISTRY.get(action_type, Action)
 

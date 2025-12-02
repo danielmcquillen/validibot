@@ -1,4 +1,3 @@
-from typing import Tuple
 
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotAcceptable
@@ -33,7 +32,7 @@ class AgentAwareNegotiation(DefaultContentNegotiation):
 
     def select_renderer(
         self, request, renderers, format_suffix=None
-    ) -> Tuple[object, str]:
+    ) -> tuple[object, str]:
         accept = request.META.get("HTTP_ACCEPT", "")
 
         if _accept_includes(accept, A2A_MEDIA):

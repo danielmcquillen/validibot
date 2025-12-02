@@ -1,21 +1,19 @@
 from django.urls import path
 
-from simplevalidations.users.views import (
-    OrganizationCreateView,
-    OrganizationDeleteView,
-    OrganizationDetailView,
-    OrganizationListView,
-    OrganizationMemberDeleteView,
-    OrganizationMemberRolesUpdateView,
-    OrganizationUpdateView,
-    user_api_key_rotate_view,
-    user_api_key_view,
-    user_detail_view,
-    user_email_view,
-    user_profile_view,
-    user_redirect_view,
-    switch_current_org_view,
-)
+from simplevalidations.users.views import OrganizationCreateView
+from simplevalidations.users.views import OrganizationDeleteView
+from simplevalidations.users.views import OrganizationDetailView
+from simplevalidations.users.views import OrganizationListView
+from simplevalidations.users.views import OrganizationMemberDeleteView
+from simplevalidations.users.views import OrganizationMemberRolesUpdateView
+from simplevalidations.users.views import OrganizationUpdateView
+from simplevalidations.users.views import switch_current_org_view
+from simplevalidations.users.views import user_api_key_rotate_view
+from simplevalidations.users.views import user_api_key_view
+from simplevalidations.users.views import user_detail_view
+from simplevalidations.users.views import user_email_view
+from simplevalidations.users.views import user_profile_view
+from simplevalidations.users.views import user_redirect_view
 
 app_name = "users"
 urlpatterns = [

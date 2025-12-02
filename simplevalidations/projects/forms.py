@@ -35,11 +35,7 @@ def _lighten_hex(value: str, factor: float = 0.35) -> str:
     def lighten(channel: int) -> int:
         return min(255, int(channel + (255 - channel) * factor))
 
-    return "#{:02X}{:02X}{:02X}".format(
-        lighten(r),
-        lighten(g),
-        lighten(b),
-    )
+    return f"#{lighten(r):02X}{lighten(g):02X}{lighten(b):02X}"
 
 
 def _contrast_hex(value: str) -> str:

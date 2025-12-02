@@ -4,7 +4,8 @@ from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
 
-from simplevalidations.core.utils import pretty_json, reverse_with_org
+from simplevalidations.core.utils import pretty_json
+from simplevalidations.core.utils import reverse_with_org
 from simplevalidations.validations.constants import Severity
 from simplevalidations.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
 
@@ -190,7 +191,7 @@ def org_url(context, view_name, *args, **kwargs):
 
 @register.simple_tag
 def marketing_waitlist_form(origin: str = "hero"):
-    from simplevalidations.marketing.forms import BetaWaitlistForm  # noqa: PLC0415
+    from simplevalidations.marketing.forms import BetaWaitlistForm
 
     value = origin.strip().lower() if origin else BetaWaitlistForm.ORIGIN_HERO
     if value not in BetaWaitlistForm.ALLOWED_ORIGINS:

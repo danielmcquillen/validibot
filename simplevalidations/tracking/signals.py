@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from django.contrib.auth.signals import user_logged_in, user_logged_out
+from django.contrib.auth.signals import user_logged_in
+from django.contrib.auth.signals import user_logged_out
 from django.dispatch import receiver
 
 from simplevalidations.events.constants import AppEventType

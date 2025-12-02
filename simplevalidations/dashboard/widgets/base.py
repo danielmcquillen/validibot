@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 class WidgetRegistrationError(RuntimeError):
     """Raised when a widget fails to register with the dashboard registry."""
 
-    pass
 
 
 class DashboardWidget:

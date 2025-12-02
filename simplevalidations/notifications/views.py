@@ -2,18 +2,21 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import Http404, HttpResponse, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404
+from django.http import HttpResponse
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import ListView
 
-from simplevalidations.notifications.models import Notification
 from simplevalidations.events.constants import AppEventType
-from simplevalidations.tracking.services import TrackingEventService
+from simplevalidations.notifications.models import Notification
 from simplevalidations.tracking.constants import TrackingEventType
+from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.users.models import PendingInvite
 
 

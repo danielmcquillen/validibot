@@ -52,6 +52,12 @@ nav:
       - Manage Organizations & Projects: organization_management.md
   - Integrations:
       - EnergyPlus Modal: integrations/energyplus_modal.md
+  - Google Cloud:
+      - Overview: google_cloud/index.md
+      - Setup Cheatsheet: google_cloud/setup-cheatsheet.md
+      - Deployment: google_cloud/deployment.md
+      - Storage (GCS): google_cloud/storage.md
+      - IAM & Service Accounts: google_cloud/iam.md
   - Marketing:
       - Homepage Waitlist: marketing/homepage.md
       - Feature Pages: marketing/features.md
@@ -70,4 +76,5 @@ nav:
       - ADR-0021: adr/2025-10-31-ruleset-and-provider.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
+      - Go-Live Checklist: deployment/go-live-checklist.md
       - Heroku: deployment/heroku.md

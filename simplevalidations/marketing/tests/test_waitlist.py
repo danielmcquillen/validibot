@@ -7,7 +7,8 @@ import pytest
 from django.core import mail
 from django.urls import reverse
 
-from simplevalidations.marketing.constants import ProspectEmailStatus, ProspectOrigins
+from simplevalidations.marketing.constants import ProspectEmailStatus
+from simplevalidations.marketing.constants import ProspectOrigins
 from simplevalidations.marketing.forms import BetaWaitlistForm
 from simplevalidations.marketing.models import Prospect
 

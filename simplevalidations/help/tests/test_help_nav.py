@@ -10,7 +10,6 @@ from django.test import override_settings
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 
-
 pytestmark = pytest.mark.django_db
 
 

@@ -10,4 +10,4 @@ class UsersConfig(AppConfig):
 
     def ready(self):
         with contextlib.suppress(ImportError):
-            import simplevalidations.users.signals  # noqa: F401, PLC0415
+            import simplevalidations.users.signals  # noqa: F401

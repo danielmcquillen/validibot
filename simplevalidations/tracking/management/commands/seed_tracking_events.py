@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 
 from simplevalidations.projects.models import Project
 from simplevalidations.tracking.sample_data import seed_sample_tracking_data
-from simplevalidations.users.models import Organization, User
+from simplevalidations.users.models import Organization
+from simplevalidations.users.models import User
 from simplevalidations.workflows.models import Workflow
 
 

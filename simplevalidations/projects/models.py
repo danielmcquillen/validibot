@@ -133,11 +133,11 @@ class Project(TimeStampedModel):
             raise ValueError(_("Default projects cannot be deleted."))
         if not self.is_active:
             return
-        from simplevalidations.integrations.models import OutboundEvent  # noqa: PLC0415
-        from simplevalidations.submissions.models import Submission  # noqa: PLC0415
-        from simplevalidations.tracking.models import TrackingEvent  # noqa: PLC0415
-        from simplevalidations.validations.models import ValidationRun  # noqa: PLC0415
-        from simplevalidations.workflows.models import Workflow  # noqa: PLC0415
+        from simplevalidations.integrations.models import OutboundEvent
+        from simplevalidations.submissions.models import Submission
+        from simplevalidations.tracking.models import TrackingEvent
+        from simplevalidations.validations.models import ValidationRun
+        from simplevalidations.workflows.models import Workflow
 
         now = timezone.now()
         Submission.objects.filter(project=self).update(project=None)

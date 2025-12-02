@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import re
 from asyncio import iscoroutinefunction
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any
+from typing import Protocol
+from typing import TypeVar
+from typing import cast
 from venv import logger
 
 from django.utils.functional import classproperty
@@ -12,8 +16,10 @@ from gidgethub import sansio
 from gidgethub.routing import Router as GidgetHubRouter
 
 from ._typing import override
-from .github import AsyncGitHubAPI, SyncGitHubAPI
-from .mentions import Mention, MentionScope
+from .github import AsyncGitHubAPI
+from .github import SyncGitHubAPI
+from .mentions import Mention
+from .mentions import MentionScope
 
 AsyncCallback = Callable[..., Awaitable[None]]
 SyncCallback = Callable[..., None]
@@ -46,7 +52,7 @@ class GitHubRouter(GidgetHubRouter):
         self, func: AsyncCallback | SyncCallback, event_type: str, **data_detail: Any
     ) -> None:
         # Override to accept both async and sync callbacks.
-        super().add(cast(AsyncCallback, func), event_type, **data_detail)
+        super().add(cast("AsyncCallback", func), event_type, **data_detail)
 
     @classproperty
     def routers(cls):
@@ -95,9 +101,9 @@ class GitHubRouter(GidgetHubRouter):
 
             wrapper: MentionHandler
             if iscoroutinefunction(func):
-                wrapper = cast(AsyncMentionHandler, async_wrapper)
+                wrapper = cast("AsyncMentionHandler", async_wrapper)
             else:
-                wrapper = cast(SyncMentionHandler, sync_wrapper)
+                wrapper = cast("SyncMentionHandler", sync_wrapper)
 
             events = scope.get_events() if scope else MentionScope.all_events()
             for event_action in events:

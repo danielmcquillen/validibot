@@ -23,8 +23,6 @@ class SubmissionFactory(DjangoModelFactory):
     @factory.lazy_attribute
     def workflow(self):
         # Import here to avoid circular imports
-        from simplevalidations.workflows.tests.factories import (
-            WorkflowFactory,  # noqa: PLC0415
-        )
+        from simplevalidations.workflows.tests.factories import WorkflowFactory
 
         return WorkflowFactory(org=self.org, user=self.user)

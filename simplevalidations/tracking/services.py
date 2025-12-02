@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Any
-from datetime import datetime
 
 from django.utils.translation import gettext_lazy as _
 
@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     from simplevalidations.projects.models import Project
     from simplevalidations.users.models import Organization
     from simplevalidations.users.models import User
-    from simplevalidations.workflows.models import Workflow
     from simplevalidations.validations.models import ValidationRun
+    from simplevalidations.workflows.models import Workflow
 
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class TrackingEventService:
     def log_validation_run_event(
         self,
         *,
-        run: "ValidationRun" | None = None,
+        run: ValidationRun | None = None,
         workflow: Workflow | None = None,
         project: Project | None = None,
         org: Organization | None = None,
@@ -222,7 +222,7 @@ class TrackingEventService:
     def log_validation_run_created(
         self,
         *,
-        run: "ValidationRun" | None = None,
+        run: ValidationRun | None = None,
         workflow: Workflow | None = None,
         project: Project | None = None,
         org: Organization | None = None,
@@ -250,7 +250,7 @@ class TrackingEventService:
     def log_validation_run_started(
         self,
         *,
-        run: "ValidationRun" | None = None,
+        run: ValidationRun | None = None,
         workflow: Workflow | None = None,
         project: Project | None = None,
         user: User | None = None,
@@ -304,7 +304,7 @@ class TrackingEventService:
     def log_validation_run_status(
         self,
         *,
-        run: "ValidationRun",
+        run: ValidationRun,
         status: str,
         actor: User | None = None,
         extra_data: Mapping[str, Any] | None = None,

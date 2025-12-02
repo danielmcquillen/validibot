@@ -1,11 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
-from django.shortcuts import render
 from django.shortcuts import redirect
+from django.shortcuts import render
 from django.template.response import TemplateResponse
-from django.views import View
 from django.utils.translation import gettext_lazy as _
+from django.views import View
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org

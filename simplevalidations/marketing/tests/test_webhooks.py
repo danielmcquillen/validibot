@@ -18,7 +18,7 @@ def _signature(body: bytes, secret: str) -> str:
     POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_postmark_signature_required_and_valid(client):
     payload = {"RecordType": "Delivery", "Recipient": "test@example.com"}
     body = json.dumps(payload).encode("utf-8")
@@ -40,7 +40,7 @@ def test_postmark_signature_required_and_valid(client):
     POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_postmark_rejects_invalid_signature(client):
     payload = {"RecordType": "Delivery", "Recipient": "test@example.com"}
     body = json.dumps(payload).encode("utf-8")
@@ -61,7 +61,7 @@ def test_postmark_rejects_invalid_signature(client):
     POSTMARK_WEBHOOK_SIGNING_SECRET="",
     POSTMARK_WEBHOOK_ALLOWED_IPS=["198.51.100.1"],
 )
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_postmark_ignores_spoofed_forwarded_ip(client):
     payload = {"RecordType": "Delivery", "Recipient": "test@example.com"}
     body = json.dumps(payload).encode("utf-8")
@@ -82,7 +82,7 @@ def test_postmark_ignores_spoofed_forwarded_ip(client):
     POSTMARK_WEBHOOK_SIGNING_SECRET="",
     POSTMARK_WEBHOOK_ALLOWED_IPS=["198.51.100.1"],
 )
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_postmark_allows_request_from_allowed_remote_addr(client):
     payload = {"RecordType": "Delivery", "Recipient": "test@example.com"}
     body = json.dumps(payload).encode("utf-8")

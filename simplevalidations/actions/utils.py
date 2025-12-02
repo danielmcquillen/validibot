@@ -50,7 +50,7 @@ def create_default_actions() -> tuple[list[Action], list[Action]]:
             skipped.append(obj)
     if created:
         logger.info(
-            f"Created {obj} default action definitions.",  # noqa: G004
+            f"Created {obj} default action definitions.",
         )
     else:
         logger.info("Default action definitions already exist.")

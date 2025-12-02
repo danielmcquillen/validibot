@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
+from django.core.management.base import CommandError
 from django.utils import timezone
 
 from simplevalidations.projects.models import Project

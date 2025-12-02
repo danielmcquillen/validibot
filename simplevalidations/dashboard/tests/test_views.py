@@ -85,7 +85,7 @@ class DashboardViewTests(TestCase):
 
     def test_total_validations_widget_counts_scoped_runs(self):
         run = self._create_run_for_org(hours_ago=2)
-        logger.info(f"Created run {run.pk} for org {self.org.name}")  # noqa: G004
+        logger.info(f"Created run {run.pk} for org {self.org.name}")
         other_org = OrganizationFactory()
         other_submission = SubmissionFactory(org=other_org, project__org=other_org)
         other_run = ValidationRunFactory(submission=other_submission)

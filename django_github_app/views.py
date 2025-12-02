@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import logging
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
+from abc import abstractmethod
 from collections.abc import Coroutine
-from typing import Any, Generic, TypeVar
+from typing import Any
+from typing import Generic
+from typing import TypeVar
 
 import gidgethub
 from django.core.exceptions import BadRequest
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest
+from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
@@ -16,8 +20,10 @@ from gidgethub.sansio import Event
 
 from ._typing import override
 from .conf import app_settings
-from .github import AsyncGitHubAPI, SyncGitHubAPI
-from .models import EventLog, Installation
+from .github import AsyncGitHubAPI
+from .github import SyncGitHubAPI
+from .models import EventLog
+from .models import Installation
 from .routing import GitHubRouter
 
 GitHubAPIType = TypeVar("GitHubAPIType", AsyncGitHubAPI, SyncGitHubAPI)

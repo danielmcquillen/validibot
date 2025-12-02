@@ -1,13 +1,11 @@
 from django.contrib import admin
 
-from simplevalidations.validations.models import (
-    CustomValidator,
-    Ruleset,
-    RulesetAssertion,
-    ValidationRun,
-    Validator,
-    ValidatorCatalogEntry,
-)
+from simplevalidations.validations.models import CustomValidator
+from simplevalidations.validations.models import Ruleset
+from simplevalidations.validations.models import RulesetAssertion
+from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import Validator
+from simplevalidations.validations.models import ValidatorCatalogEntry
 
 
 @admin.register(Ruleset)

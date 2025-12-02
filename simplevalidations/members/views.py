@@ -8,7 +8,8 @@ from typing import Any
 from django.contrib import messages
 from django.db import models
 from django.http import HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import TemplateView
@@ -16,18 +17,18 @@ from django.views.generic.edit import FormView
 
 from simplevalidations.core.mixins import BreadcrumbMixin
 from simplevalidations.core.utils import reverse_with_org
+from simplevalidations.events.constants import AppEventType
 from simplevalidations.notifications.models import Notification
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.forms import (
-    InviteUserForm,
-    OrganizationMemberForm,
-    OrganizationMemberRolesForm,
-)
-from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
-from simplevalidations.users.models import Membership, PendingInvite, User
 from simplevalidations.tracking.constants import TrackingEventType
 from simplevalidations.tracking.services import TrackingEventService
-from simplevalidations.events.constants import AppEventType
+from simplevalidations.users.constants import RoleCode
+from simplevalidations.users.forms import InviteUserForm
+from simplevalidations.users.forms import OrganizationMemberForm
+from simplevalidations.users.forms import OrganizationMemberRolesForm
+from simplevalidations.users.mixins import OrganizationAdminRequiredMixin
+from simplevalidations.users.models import Membership
+from simplevalidations.users.models import PendingInvite
+from simplevalidations.users.models import User
 
 
 class MemberListView(OrganizationAdminRequiredMixin, TemplateView):

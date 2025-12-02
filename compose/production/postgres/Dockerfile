@@ -1,1 +1,1 @@
-FROM docker.io/postgres:15
+FROM docker.io/postgres:17

@@ -5,13 +5,13 @@ from http import HTTPStatus
 import pytest
 from django.urls import reverse
 
+from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.tests.factories import OrganizationFactory
 from simplevalidations.users.tests.factories import UserFactory
 from simplevalidations.users.tests.factories import grant_role
+from simplevalidations.validations.tests.factories import CustomValidatorFactory
 from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
-from simplevalidations.validations.tests.factories import CustomValidatorFactory
-from simplevalidations.users.constants import RoleCode
 
 pytestmark = pytest.mark.django_db
 

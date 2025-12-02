@@ -7,4 +7,4 @@ class TrackingConfig(AppConfig):
 
     def ready(self):
         # Register signal handlers for login/logout tracking.
-        from . import signals  # noqa: F401, PLC0415
+        from . import signals  # noqa: F401

@@ -8,3 +8,4 @@ This directory captures the architectural decisions that shape Validibot. Each A
 - [ADR-2025-11-27: Idempotency Keys for API Validation Requests](2025-11-27-idempotency-keys.md)
 - [ADR-2025-11-28: Invite-Based Signup and Organization Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)
 - [ADR-2025-11-28: Public Workflow Access for Anonymous Users](2025-11-28-public-workflow-access.md)
+- [ADR-2025-12-02: Heroku to Google Cloud Platform Migration](2025-12-02-heroku-to-gcp-migration.md)

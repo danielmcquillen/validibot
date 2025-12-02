@@ -101,6 +101,7 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "django_filters",
     "markdownify",
+    "django_cloud_tasks",
 ]
 if GITHUB_APP_ENABLED:
     THIRD_PARTY_APPS.append("django_github_app")

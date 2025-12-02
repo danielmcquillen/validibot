@@ -2,7 +2,6 @@
 import logging
 
 import sentry_sdk
-from google.oauth2 import service_account
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -68,24 +67,20 @@ SECURE_CONTENT_TYPE_NOSNIFF = env.bool(
 
 
 # STATIC & MEDIA (GCS)
-# ------------------------
-GCP_MEDIA_BUCKET = env("DJANGO_GCP_STORAGE_BUCKET_NAME", default=None)
-GCP_CREDENTIALS_FILE = env("GOOGLE_APPLICATION_CREDENTIALS", default=None)
-GCP_CREDENTIALS = (
-    service_account.Credentials.from_service_account_file(GCP_CREDENTIALS_FILE)
-    if GCP_CREDENTIALS_FILE
-    else None
-)
+# ------------------------------------------------------------------------------
+# On Cloud Run, django-storages uses Application Default Credentials (ADC)
+# automatically via the service account attached to the Cloud Run service.
+# No explicit credentials needed - just set the bucket name.
+GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
 
-if not GCP_MEDIA_BUCKET:
-    raise Exception("DJANGO_GCP_STORAGE_BUCKET_NAME is required in production.")  # noqa: TRY002
+if not GCS_MEDIA_BUCKET:
+    raise Exception("GCS_MEDIA_BUCKET is required in production.")  # noqa: TRY002
 
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
-            "bucket_name": GCP_MEDIA_BUCKET,
-            "credentials": GCP_CREDENTIALS,
+            "bucket_name": GCS_MEDIA_BUCKET,
             "file_overwrite": False,
         },
     },
@@ -93,7 +88,7 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
-MEDIA_URL = f"https://storage.googleapis.com/{GCP_MEDIA_BUCKET}/"
+MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
 
 # EMAIL
 # ------------------------------------------------------------------------------

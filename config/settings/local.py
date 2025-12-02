@@ -24,16 +24,37 @@ CACHES = {
     },
 }
 
-# STORAGE (local filesystem)
+# STORAGE
 # -------------------------------------------------------------------------------
-MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
-MEDIA_URL = "/media/"
-STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+# By default, use local filesystem for media. To test GCS locally, set
+# GCS_MEDIA_BUCKET and run `gcloud auth application-default login`.
+GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
+
+if GCS_MEDIA_BUCKET:
+    # Use GCS for media files (matches production)
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {
+                "bucket_name": GCS_MEDIA_BUCKET,
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
+else:
+    # Use local filesystem (default for local development)
+    MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
+    MEDIA_URL = "/media/"
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # EMAIL
 # ------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ WORKDIR ${APP_HOME}
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
+    git \
     # Translations dependencies
     gettext \
     # entrypoint
@@ -28,14 +29,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
 
+# Create placeholder for sv_shared_dev (will be volume-mounted at runtime)
+# This allows uv sync to complete during build
+RUN mkdir -p ${APP_HOME}/sv_shared_dev && \
+    echo '[project]' > ${APP_HOME}/sv_shared_dev/pyproject.toml && \
+    echo 'name = "sv-shared"' >> ${APP_HOME}/sv_shared_dev/pyproject.toml && \
+    echo 'version = "0.1.0"' >> ${APP_HOME}/sv_shared_dev/pyproject.toml && \
+    mkdir -p ${APP_HOME}/sv_shared_dev/sv_shared && \
+    touch ${APP_HOME}/sv_shared_dev/sv_shared/__init__.py
+
 # Install dependencies with dev extras for local work
 RUN uv sync --extra dev --frozen
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/
 
-# Create non-root user and own the app directory
-RUN addgroup --system django && adduser --system --ingroup django django && chown -R django:django ${APP_HOME}
+# Create non-root user with a real home and own the app directory
+RUN addgroup --system django \
+  && adduser --system --home /home/django --shell /bin/bash --ingroup django django \
+  && mkdir -p /home/django \
+  && chown -R django:django ${APP_HOME} /home/django
 
 # Copy entrypoint/start scripts and make executable
 USER root

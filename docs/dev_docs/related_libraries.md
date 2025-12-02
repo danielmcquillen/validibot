@@ -16,7 +16,7 @@ sv_modal installs sv_shared via a github reference. Do not change this. When sv_
 `sv_shared` defines payload schemas, enums, and helpers used by both the Django app and Modal workers. When implementing features in `simplevalidations`:
 
 - Inspect the authoritative models (for example, `../sv_shared/energyplus/models.py`) before changing serializers or engine payloads.
-- If a contract change is required, update `sv_shared` first, publish a compatible version, and upgrade `requirements/base.txt` (plus regenerate the legacy requirement sets).
+- If a contract change is required, update `sv_shared` first, publish a compatible version, and run `uv lock --upgrade-package sv-shared && uv sync` in this project.
 - Document any breaking or additive change in both repos—ideally via README updates or release notes—so engineers know which version pairs are compatible.
 
 ## sv_modal

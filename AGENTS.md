@@ -58,7 +58,15 @@ Project dependencies live in `pyproject.toml`; add the `dev` extra when you need
 Whenever you run a command that involves Django, be sure to first load the environment variables
 contained in `_envs/local/django.env` by running the `set-env.sh` script.
 
-When you update dependencies remember to regenerate the legacy requirement sets for Heroku:
+## Adding Dependencies
+
+Dependencies are managed in `pyproject.toml` using uv. See `docs/dev_docs/dependency-management.md` for full details.
+
+- **Base dependency** (both local and production): `uv add <package>`
+- **Dev-only dependency**: `uv add --group dev <package>`
+- **Production-only dependency**: `uv add --optional prod <package>`
+
+After modifying dependencies, regenerate the legacy requirement sets for Heroku:
 
 ```
 uv export --no-dev --output-file requirements/base.txt

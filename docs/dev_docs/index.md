@@ -52,6 +52,14 @@ Pytest ignores `tests_integration` by default (see `pyproject.toml`). Run them m
 uv run --extra dev pytest tests_integration
 ```
 
+You can run tests either on the host or inside the local Docker stack. On the host, load the local env vars (`source set-env.sh`) and run `uv run --extra dev pytest`. To keep everything inside Docker, use the same command via the app container:
+
+```sh
+docker compose -f docker-compose.local.yml run --rm django uv run --extra dev pytest
+```
+
+Append `tests_integration` to include the end-to-end suite in either case.
+
 ### Deployment
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist

@@ -3,7 +3,7 @@ volumes:
   media_volume:
   validibot_local_postgres_data:
   validibot_local_postgres_backups:
-  validibot_local_venv:
+  validibot_local_venv:  # Shared venv for django and worker containers
 
 services:
   django: &django
@@ -15,9 +15,10 @@ services:
       - postgres
       - mailpit
     volumes:
-      - .:/app
-      - media_volume:/app/media
       - validibot_local_venv:/app/.venv
+      - .:/app
+      - ../sv_shared:/app/sv_shared_dev
+      - media_volume:/app/media
     env_file:
       - .envs/.local/.django
       - .envs/.local/.postgres

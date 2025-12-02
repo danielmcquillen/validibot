@@ -16,7 +16,7 @@ Validibot maintains two complementary documentation sets so that each audience g
 
 - Audience: Engineers and technical partners working directly with the repository.
 - Running locally:
-  1. Install dependencies (`pip install -r requirements/docs.txt` or equivalent).
+  1. Install dependencies (`uv sync --extra dev`).
   2. Preview with `mkdocs serve -f mkdocs.dev.yml`.
   3. Build with `mkdocs build -f mkdocs.dev.yml` for offline bundles.
 - Content covers architecture notes, data models, and onboarding for contributors.

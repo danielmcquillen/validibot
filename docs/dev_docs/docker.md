@@ -20,6 +20,7 @@ This project was generated without the Cookiecutter Docker option. The files her
 5. Visit http://localhost:8000
 
 What’s running:
+
 - `web`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000).
 - `worker`: Same image, serving internal/task endpoints on port 8001 (lets you mimic separate Cloud Run services with different scaling/concurrency).
 - `postgres`: Postgres built from `compose/production/postgres/Dockerfile`, env vars from `.envs/.local/.postgres`.
@@ -42,12 +43,12 @@ Production-style “web” serves user traffic (gunicorn on 8000). The “worker
 
 You can still run locally without Docker (often faster for dev):
 
-1. Install Python 3.12 and `uv` (`pip install uv`).
+1. Install Python 3.13 and `uv` (see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/)).
 2. Install deps: `uv sync --extra dev`
-3. Set env vars (you can reuse `.envs/.local/.django` values):  
-   - `export DJANGO_SETTINGS_MODULE=config.settings.local`  
-   - `export DATABASE_URL=postgres://...` pointing to your local Postgres  
-   - `export DJANGO_SECRET_KEY=...`  
+3. Set env vars (you can reuse `.envs/.local/.django` values):
+   - `export DJANGO_SETTINGS_MODULE=config.settings.local`
+   - `export DATABASE_URL=postgres://...` pointing to your local Postgres
+   - `export DJANGO_SECRET_KEY=...`
 4. Start Postgres locally (or use a service like Postgres.app) with matching creds.
 5. Run migrations: `uv run python manage.py migrate`
 6. Run the server: `uv run python manage.py runserver 0.0.0.0:8000`

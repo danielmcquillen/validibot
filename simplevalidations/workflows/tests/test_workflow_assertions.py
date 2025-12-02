@@ -53,8 +53,12 @@ class WorkflowStepAssertionsTests(TestCase):
             step.save(update_fields=["ruleset"])
         return step
 
-    def _make_basic_step(self, workflow):
-        validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+    def _make_custom_validator_step(self, workflow):
+        """Create a step with CUSTOM_VALIDATOR that supports assertions."""
+        validator = ValidatorFactory(
+            validation_type=ValidationType.CUSTOM_VALIDATOR,
+            allow_custom_assertion_targets=True,
+        )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         if not step.ruleset_id:
             ruleset = RulesetFactory(org=workflow.org)
@@ -122,9 +126,10 @@ class WorkflowStepAssertionsTests(TestCase):
         self.assertIn("Assertion Type", body)
 
     def test_move_assertion_single_stage(self):
+        """Verify assertions can be reordered within a single stage."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        step = self._make_basic_step(workflow)
+        step = self._make_custom_validator_step(workflow)
         assert step.ruleset
         RulesetAssertionFactory(ruleset=step.ruleset, order=10)
         a2 = RulesetAssertionFactory(ruleset=step.ruleset, order=20)
@@ -179,10 +184,11 @@ class WorkflowStepAssertionsTests(TestCase):
         # input should still precede output
         self.assertEqual(ordered, [CatalogRunStage.INPUT, CatalogRunStage.OUTPUT])
 
-    def test_basic_validator_supports_assertions(self):
+    def test_custom_validator_supports_assertions(self):
+        """Verify CUSTOM_VALIDATOR type supports assertion creation."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        step = self._make_basic_step(workflow)
+        step = self._make_custom_validator_step(workflow)
         url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
@@ -212,10 +218,11 @@ class WorkflowStepAssertionsTests(TestCase):
         body = response.content.decode()
         self.assertIn("Unknown signal(s) referenced", body)
 
-    def test_basic_assertion_create_allows_custom_target(self):
+    def test_custom_validator_assertion_create_allows_custom_target(self):
+        """Verify assertions can use custom target fields when validator allows."""
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)
-        step = self._make_basic_step(workflow)
+        step = self._make_custom_validator_step(workflow)
         url = reverse(
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},

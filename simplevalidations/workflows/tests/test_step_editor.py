@@ -751,11 +751,12 @@ def test_step_form_navigation_links(client):
 
 
 def test_step_editor_shows_default_assertions_card(client):
+    """Verify default assertions card shows when validator has rules defined."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     validator = ValidatorFactory(
-        validation_type=ValidationType.BASIC,
-        slug="basic-validator",
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
+        slug="custom-validator-with-defaults",
     )
     validator.rules.create(
         name="Baseline price check",
@@ -779,11 +780,12 @@ def test_step_editor_shows_default_assertions_card(client):
 
 
 def test_step_editor_hides_default_assertions_when_none(client):
+    """Verify default assertions card is hidden when validator has no rules."""
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     validator = ValidatorFactory(
-        validation_type=ValidationType.BASIC,
-        slug="basic-no-defaults",
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
+        slug="custom-validator-no-defaults",
     )
     step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
 

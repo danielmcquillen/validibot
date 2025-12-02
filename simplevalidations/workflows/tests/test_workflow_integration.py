@@ -71,16 +71,23 @@ def run_validation_tasks_inline(monkeypatch):
     )
 
 
-def _ensure_basic_validator():
-    validator = Validator.objects.filter(validation_type=ValidationType.BASIC).first()
+def _ensure_custom_validator():
+    """Get or create a CUSTOM_VALIDATOR for assertion testing.
+
+    Uses CUSTOM_VALIDATOR because it's in ADVANCED_VALIDATION_TYPES and
+    supports workflow step assertions with custom targets.
+    """
+    validator = Validator.objects.filter(
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
+    ).first()
     if validator:
         if not validator.allow_custom_assertion_targets:
             validator.allow_custom_assertion_targets = True
             validator.save(update_fields=["allow_custom_assertion_targets"])
         return validator
     return ValidatorFactory(
-        validation_type=ValidationType.BASIC,
-        name="Manual Assertions",
+        validation_type=ValidationType.CUSTOM_VALIDATOR,
+        name="Custom Assertions",
         allow_custom_assertion_targets=True,
     )
 
@@ -95,13 +102,14 @@ def _login_user_for_org(client, user, org):
     session.save()
 
 
-def test_create_workflow_with_basic_step_and_assertion(client):
+def test_create_workflow_with_custom_step_and_assertion(client):
+    """Verify end-to-end creation of workflow, step, and custom target assertion."""
     user = UserFactory()
     org = OrganizationFactory()
     project = ProjectFactory(org=org, is_default=True)
     _login_user_for_org(client, user, org)
 
-    validator = _ensure_basic_validator()
+    validator = _ensure_custom_validator()
 
     # Create workflow
     response = client.post(
@@ -119,7 +127,7 @@ def test_create_workflow_with_basic_step_and_assertion(client):
     workflow = Workflow.objects.get(name="Price check")
     assert workflow.project == project
 
-    # Add BASIC step
+    # Add CUSTOM_VALIDATOR step
     step_response = client.post(
         reverse(
             "workflows:workflow_step_create",

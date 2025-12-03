@@ -287,3 +287,14 @@ gcp-auth:
 # Open the Cloud Run console in browser
 gcp-console:
     open "https://console.cloud.google.com/run/detail/{{gcp_region}}/{{gcp_service}}/metrics?project={{gcp_project}}"
+
+# Open the deployed app URL in browser
+gcp-open:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    URL=$(gcloud run services describe {{gcp_service}} \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(status.url)")
+    echo "Opening: $URL"
+    open "$URL"

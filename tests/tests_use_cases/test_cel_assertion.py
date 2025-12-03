@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-from django.test import TestCase
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.users.constants import RoleCode
@@ -25,8 +24,8 @@ from simplevalidations.workflows.tests.factories import WorkflowFactory
 from simplevalidations.workflows.tests.factories import WorkflowStepFactory
 
 
-@pytest.mark.django_db
-class CelAssertionTests(TestCase):
+@pytest.mark.django_db(transaction=True)
+class TestCelAssertion:
     """
     Exercises CEL assertions in the BASIC validator engine when custom assertion
     targets are allowed. Ensures the validator builds a CEL context from JSON

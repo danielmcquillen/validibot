@@ -17,7 +17,7 @@ def _signature(body: bytes, secret: str) -> str:
 
 
 @override_settings(
-    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret", #noqa: S106
+    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",  # noqa: S106
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
 @pytest.mark.django_db
@@ -39,7 +39,7 @@ def test_postmark_signature_required_and_valid(client):
 
 
 @override_settings(
-    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret", #noqa: S106
+    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",  # noqa: S106
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
 @pytest.mark.django_db

@@ -58,6 +58,18 @@ Project dependencies live in `pyproject.toml`; add the `dev` extra when you need
 Whenever you run a command that involves Django, be sure to first load the environment variables
 contained in `_envs/local/django.env` by running the `set-env.sh` script.
 
+## Environment Files
+
+The project has two sets of environment files with different purposes:
+
+| Directory | Purpose                              | Used By                                |
+| --------- | ------------------------------------ | -------------------------------------- |
+| `_envs/`  | Local development **without Docker** | `set-env.sh`, direct `uv run` commands |
+| `.envs/`  | Docker and cloud deployments         | Docker Compose, GCP Secret Manager     |
+
+**Important:** When deploying to GCP or updating secrets, always use files from `.envs/`, never `_envs/`.
+The `_envs/` directory is for local-only, non-containerized development.
+
 ## Adding Dependencies
 
 Dependencies are managed in `pyproject.toml` using uv. See `docs/dev_docs/dependency-management.md` for full details.

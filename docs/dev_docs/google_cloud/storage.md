@@ -14,10 +14,10 @@ We use Cloud Storage for:
 
 We have two buckets in the `australia-southeast1` region:
 
-| Environment | Bucket Name              | Purpose                       |
-| ----------- | ------------------------ | ----------------------------- |
-| Production  | `validibot-au-media`     | Production media files        |
-| Development | `validibot-au-media-dev` | Development and staging files |
+| Environment | Bucket Name           | Purpose                       |
+| ----------- | --------------------- | ----------------------------- |
+| Production  | `validibot-media`     | Production media files        |
+| Development | `validibot-media-dev` | Development and staging files |
 
 Both buckets have:
 
@@ -98,9 +98,9 @@ else:
 
 ## Environment Variables
 
-| Variable           | Description            | Example                  |
-| ------------------ | ---------------------- | ------------------------ |
-| `GCS_MEDIA_BUCKET` | Name of the GCS bucket | `validibot-au-media-dev` |
+| Variable           | Description            | Example               |
+| ------------------ | ---------------------- | --------------------- |
+| `GCS_MEDIA_BUCKET` | Name of the GCS bucket | `validibot-media-dev` |
 
 ## Dependencies
 
@@ -130,7 +130,7 @@ This opens a browser for OAuth authentication and stores credentials locally.
 ### 2. Set Environment Variables
 
 ```bash
-export GCS_MEDIA_BUCKET=validibot-au-media-dev
+export GCS_MEDIA_BUCKET=validibot-media-dev
 ```
 
 ### 3. Run Django
@@ -151,8 +151,8 @@ See [IAM & Service Accounts](iam.md) for details on how service accounts are con
 
 Each environment has a dedicated service account with `Storage Object Admin` role on its bucket:
 
-- `validibot-dev-app@PROJECT.iam.gserviceaccount.com` → `validibot-au-media-dev`
-- `validibot-prod-app@PROJECT.iam.gserviceaccount.com` → `validibot-au-media`
+- `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com` → `validibot-media`
+- `validibot-cloudrun-staging@PROJECT.iam.gserviceaccount.com` → `validibot-media-dev` (future)
 
 This ensures environment isolation - dev can't access prod, and vice versa.
 

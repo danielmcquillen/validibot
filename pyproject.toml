@@ -49,6 +49,11 @@ dependencies = [
     "python-slugify==8.0.4",
     "redis==7.0.1",
     "sentry-sdk==2.46.0",
+    # sv-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
+    # This Git URL is used when building Docker images (local or production).
+    # For local non-Docker development, see [tool.uv.sources] below which overrides
+    # this to use the local sv_shared_dev folder instead.
+    "sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main",
     "uvicorn-worker==0.4.0",
     "uvicorn[standard]==0.38.0",
     "whitenoise==6.11.0",
@@ -213,6 +218,14 @@ extend-unsafe-fixes = ["UP038"]
 [tool.ruff.lint.isort]
 force-single-line = true
 
+# ==== uv source overrides (local development only) ====
+# When developing locally WITHOUT Docker, uv uses this section to override
+# the sv-shared dependency. Instead of cloning from Git, it loads the package
+# from the sv_shared_dev folder (a symlink to ../sv_shared). This allows us to
+# edit sv-shared source code directly while working on Validibot.
+#
+# When building Docker images, we pass `--no-sources` to uv sync, which skips
+# this override and installs sv-shared from the Git URL in [project.dependencies].
 [tool.uv.sources]
 sv-shared = { path = "sv_shared_dev", editable = true }
 

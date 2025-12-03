@@ -96,6 +96,7 @@ TAG="latest"  # or use git SHA: $(git rev-parse --short HEAD)
 
 # Build with the full Artifact Registry path
 docker build \
+  --platform linux/amd64
   -f compose/production/django/Dockerfile \
   -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
   .
@@ -241,6 +242,7 @@ To deploy a new version:
 # Build new image with new tag
 NEW_TAG=$(git rev-parse --short HEAD)
 docker build \
+  --platform linux/amd64
   -f compose/production/django/Dockerfile \
   -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${NEW_TAG} \
   .

@@ -75,16 +75,24 @@ class Command(BaseCommand):
 
         if not username:
             return
-        if User.objects.filter(username=username).exists():
-            return
 
-        logger.info("Creating user '%s'", username)
+        user = None
+        try:  # noqa: SIM105
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            pass
 
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-        )
+        if not user:
+            logger.info("Creating user '%s'", username)
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+            )
+        else:
+            logger.info("Updating existing user '%s'", username)
+            if password:
+                user.set_password(password)
         user.name = name
         user.is_staff = True
         user.is_superuser = True

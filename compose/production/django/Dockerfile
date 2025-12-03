@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=1 \
+    UV_CACHE_DIR=/tmp/uv-cache \
     PATH="/root/.local/bin:${PATH}"
 
 ARG APP_HOME=/app
@@ -13,14 +14,14 @@ WORKDIR ${APP_HOME}
 
 # System deps for psycopg and tooling
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # C compiler for Python extensions (psycopg, etc.)
     build-essential \
+    # PostgreSQL client library for psycopg
     libpq-dev \
-    # Translations dependencies
+    # Django translation compilation (compilemessages)
     gettext \
-    # entrypoint
-    wait-for-it \
-    postgresql-client \
-    curl \
+    # Git for installing sv-shared from GitHub
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -28,7 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml uv.lock ${APP_HOME}/
 
 # Install dependencies (no dev extras) for production
-RUN uv sync --frozen
+# --no-sources skips [tool.uv.sources] overrides (which point to local dev paths)
+RUN uv sync --no-dev --no-sources
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/
@@ -52,3 +54,6 @@ ENV PATH="${APP_HOME}/.venv/bin:${PATH}"
 
 # Use entrypoint (waits for DB); compose sets the command (/start or /start-worker)
 ENTRYPOINT ["/entrypoint"]
+
+# Default command - run the web server
+CMD ["/start"]

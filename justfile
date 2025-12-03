@@ -25,14 +25,17 @@ set dotenv-load := false
 # Use bash for shell commands (more predictable than sh)
 set shell := ["bash", "-cu"]
 
+# Ensure gcloud SDK is in PATH (needed for docker-credential-gcloud)
+export PATH := env_var("HOME") + "/google-cloud-sdk/bin:" + env_var("PATH")
+
 # =============================================================================
 # Configuration Variables
 # =============================================================================
 
 # GCP Project Settings
+gcp_service := "validibot-web"
 gcp_project := "project-a509c806-3e21-4fbc-b19"
 gcp_region := "australia-southeast1"
-gcp_service := "validibot-web"
 gcp_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
 gcp_sql := gcp_project + ":" + gcp_region + ":validibot-db"
 gcp_image := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
@@ -121,11 +124,7 @@ gcp-deploy: gcp-build gcp-push
         --memory 1Gi \
         --allow-unauthenticated \
         --project {{gcp_project}}
-    @echo "Updating Cloud Run job to use new image..."
-    gcloud run jobs update validibot-setup \
-        --region {{gcp_region}} \
-        --image {{gcp_image}}:{{git_sha}} \
-        --project {{gcp_project}}
+    @echo "Note: Cloud Run jobs will use :latest image when next executed"
 
 # =============================================================================
 # GCP Cloud Run - Secrets Management
@@ -186,67 +185,66 @@ gcp-status:
 # =============================================================================
 
 # Run setup_all to initialize database with default data
-gcp-setup:
+gcp-setup-all:
     @echo "Running setup_all on Cloud Run..."
-    gcloud run jobs update validibot-setup \
+    -gcloud run jobs delete validibot-setup-all --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
+    gcloud run jobs create validibot-setup-all \
+        --image {{gcp_image}}:latest \
         --region {{gcp_region}} \
-        --args="-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
+        --service-account {{gcp_sa}} \
+        --set-cloudsql-instances {{gcp_sql}} \
+        --set-secrets=/secrets/.env=django-env:latest \
+        --memory 1Gi \
+        --command "/bin/bash" \
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
         --project {{gcp_project}}
-    gcloud run jobs execute validibot-setup \
+    gcloud run jobs execute validibot-setup-all \
         --region {{gcp_region}} \
         --wait \
         --project {{gcp_project}}
     @echo ""
-    @echo "✓ setup_all completed. Check logs with: just gcp-job-logs"
+    @echo "✓ setup_all completed. Check logs with: just gcp-job-logs validibot-setup-all"
 
-# Run any Django management command on Cloud Run
-# Usage: just gcp-manage "command args"
+# Run database migrations
+gcp-migrate:
+    @echo "Running migrate on Cloud Run..."
+    -gcloud run jobs delete validibot-migrate --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
+    gcloud run jobs create validibot-migrate \
+        --image {{gcp_image}}:latest \
+        --region {{gcp_region}} \
+        --service-account {{gcp_sa}} \
+        --set-cloudsql-instances {{gcp_sql}} \
+        --set-secrets=/secrets/.env=django-env:latest \
+        --memory 1Gi \
+        --command "/bin/bash" \
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput" \
+        --project {{gcp_project}}
+    gcloud run jobs execute validibot-migrate \
+        --region {{gcp_region}} \
+        --wait \
+        --project {{gcp_project}}
+    @echo ""
+    @echo "✓ migrate completed. Check logs with: just gcp-job-logs validibot-migrate"
+
+# View logs from a Cloud Run job execution
+# Usage: just gcp-job-logs [job-name]
 # Examples:
-#   just gcp-manage "shell -c 'from django.contrib.auth import get_user_model; print(get_user_model().objects.count())'"
-#   just gcp-manage "migrate --check"
-#   just gcp-manage "showmigrations"
-gcp-manage cmd:
-    @echo "Running: python manage.py {{cmd}}"
-    gcloud run jobs update validibot-setup \
-        --region {{gcp_region}} \
-        --args="-c,set -a && source /secrets/.env && set +a && python manage.py {{cmd}}" \
-        --project {{gcp_project}}
-    gcloud run jobs execute validibot-setup \
-        --region {{gcp_region}} \
-        --wait \
-        --project {{gcp_project}}
-    @echo ""
-    @echo "✓ Command completed. Check logs with: just gcp-job-logs"
-
-# View logs from the last Cloud Run job execution
-gcp-job-logs:
-    gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=validibot-setup" \
+#   just gcp-job-logs validibot-setup-all
+#   just gcp-job-logs validibot-migrate
+gcp-job-logs job="validibot-setup-all":
+    gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name={{job}}" \
         --project {{gcp_project}} \
         --limit 50 \
         --format="table(timestamp,textPayload)"
-
-# Run a Python one-liner in Django shell context
-# Usage: just gcp-shell "print(User.objects.count())"
-# The code runs with common imports pre-loaded (User, Organization, etc.)
-gcp-shell code:
-    @echo "Running Python code in Django shell..."
-    gcloud run jobs update validibot-setup \
-        --region {{gcp_region}} \
-        --args="-c,set -a && source /secrets/.env && set +a && python manage.py shell -c 'from django.contrib.auth import get_user_model; User = get_user_model(); {{code}}'" \
-        --project {{gcp_project}}
-    gcloud run jobs execute validibot-setup \
-        --region {{gcp_region}} \
-        --wait \
-        --project {{gcp_project}}
-    @just gcp-job-logs | head -20
 
 # =============================================================================
 # Helpers
 # =============================================================================
 
 # Connect local Django shell to production Cloud SQL database
-# This starts Cloud SQL Proxy and opens an interactive Django shell
-# Press Ctrl+D to exit the shell, then Ctrl+C to stop the proxy
+# This is the recommended way to run arbitrary Django commands against prod.
+# Uses Cloud SQL Proxy for secure connection.
+# Press Ctrl+D to exit shell, then Ctrl+C to stop proxy
 local-to-gcp-shell:
     #!/usr/bin/env bash
     set -euo pipefail

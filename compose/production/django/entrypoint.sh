@@ -3,6 +3,14 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# Load environment variables from secrets file if it exists (Cloud Run)
+if [ -f /secrets/.env ]; then
+  echo "Loading environment from /secrets/.env..."
+  set -a
+  source /secrets/.env
+  set +a
+fi
+
 # Cloud SQL uses Unix sockets, Docker Compose uses TCP
 # Check if we're using Cloud SQL (socket path exists or CLOUD_SQL_CONNECTION_NAME is set)
 if [ -n "${CLOUD_SQL_CONNECTION_NAME:-}" ] || [ -d "/cloudsql" ]; then

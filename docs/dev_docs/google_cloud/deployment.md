@@ -2,6 +2,26 @@
 
 This guide covers deploying Validibot to Google Cloud Run.
 
+## Quick Start with justfile
+
+The easiest way to deploy is using the `justfile` commands:
+
+```bash
+# Full deployment: build, push, and deploy
+just gcp-deploy
+
+# Run migrations after deployment
+just gcp-migrate
+
+# Seed default data and create superuser
+just gcp-setup-all
+
+# View logs
+just gcp-logs
+```
+
+Run `just` to see all available commands. The rest of this document explains what happens under the hood.
+
 ## Architecture Overview
 
 ```
@@ -185,41 +205,45 @@ gcloud run deploy validibot-worker \
 
 ## Required Secrets
 
-Before deploying, create these secrets in Secret Manager:
+Validibot uses a single `.env` file stored in Secret Manager. See the [Setup Cheatsheet](setup-cheatsheet.md#set-up-secrets) for details on creating and updating secrets.
+
+To update secrets after editing `.envs/.production/.django`:
 
 ```bash
-# Django secret key
-echo -n "$(openssl rand -base64 64)" | gcloud secrets create django-secret-key --data-file=-
-
-# Database URL (Cloud SQL format with Unix socket)
-echo -n "postgres://validibot_user:PASSWORD@/validibot?host=/cloudsql/${PROJECT_ID}:${REGION}:validibot-db" | \
-  gcloud secrets create db-url --data-file=-
-```
-
-Replace `PASSWORD` with the actual password from `db-password` secret:
-
-```bash
-gcloud secrets versions access latest --secret=db-password
+just gcp-secrets
+just gcp-deploy  # Redeploy to pick up changes
 ```
 
 ## Run Migrations
 
-After deploying, run migrations using Cloud Run Jobs or a one-off container:
+After deploying, run migrations using Cloud Run Jobs. The easiest way:
+
+```bash
+just gcp-migrate
+```
+
+Or manually with the correct command format:
 
 ```bash
 gcloud run jobs create validibot-migrate \
   --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
   --region=${REGION} \
-  --service-account=validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com \
-  --add-cloudsql-instances=${PROJECT_ID}:${REGION}:validibot-db \
-  --set-env-vars="DJANGO_SETTINGS_MODULE=config.settings.production" \
-  --set-secrets="DATABASE_URL=db-url:latest" \
-  --set-secrets="DJANGO_SECRET_KEY=django-secret-key:latest" \
-  --command="python,manage.py,migrate"
+  --service-account=validibot-cloudrun-prod@${PROJECT_ID}.iam.gserviceaccount.com \
+  --set-cloudsql-instances=${PROJECT_ID}:${REGION}:validibot-db \
+  --set-secrets=/secrets/.env=django-env:latest \
+  --memory=1Gi \
+  --command="/bin/bash" \
+  --args="-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput"
 
 # Execute the job
 gcloud run jobs execute validibot-migrate --region=${REGION} --wait
 ```
+
+**Important notes for Cloud Run Jobs:**
+
+- Use `--set-cloudsql-instances` (not `--add-cloudsql-instances`)
+- Use `--command "/bin/bash"` with `--args "-c,..."` to run shell commands
+- Must source `/secrets/.env` because `--command` bypasses the container entrypoint
 
 ## Verify Deployment
 

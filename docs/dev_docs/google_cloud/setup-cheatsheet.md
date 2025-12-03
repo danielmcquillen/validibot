@@ -440,33 +440,52 @@ gcloud run services describe validibot-web --region=australia-southeast1 --forma
 
 Since Cloud Run doesn't support `exec` into containers, use Cloud Run Jobs for one-off management commands.
 
-### Create a job for management commands
+**Important:** When using `--command` to override the container entrypoint, the entrypoint script (which loads secrets) is bypassed. You must explicitly source the secrets file in your command.
+
+### Using the justfile (recommended)
+
+The `justfile` provides convenient commands for common operations:
+
+```bash
+# Run database migrations
+just gcp-migrate
+
+# Run setup_all (seeds default data, creates superuser)
+just gcp-setup-all
+
+# View job logs
+just gcp-job-logs validibot-migrate
+just gcp-job-logs validibot-setup-all
+```
+
+### Manual job creation
+
+If you need to run a custom management command:
 
 ```bash
 gcloud run jobs create validibot-manage \
-  --image australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:v7 \
+  --image australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:latest \
   --region australia-southeast1 \
   --service-account validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com \
   --set-cloudsql-instances project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db \
   --set-secrets=/secrets/.env=django-env:latest \
   --memory 1Gi \
-  --command="/bin/bash" \
-  --args="-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
+  --command "/bin/bash" \
+  --args "-c,set -a && source /secrets/.env && set +a && python manage.py YOUR_COMMAND" \
   --project project-a509c806-3e21-4fbc-b19
 ```
+
+**Key points:**
+
+- Use `--set-cloudsql-instances` (not `--add-cloudsql-instances`) for jobs
+- Use `--command "/bin/bash"` with `--args "-c,..."` to run shell commands
+- Must `source /secrets/.env` because `--command` bypasses the entrypoint
+- `set -a` exports all variables, `set +a` stops exporting after sourcing
 
 ### Execute the job
 
 ```bash
 gcloud run jobs execute validibot-manage --region australia-southeast1 --wait
-```
-
-### Update the job for a different command
-
-```bash
-gcloud run jobs update validibot-manage \
-  --region australia-southeast1 \
-  --args="-c,set -a && source /secrets/.env && set +a && python manage.py YOUR_COMMAND"
 ```
 
 ### Check job logs

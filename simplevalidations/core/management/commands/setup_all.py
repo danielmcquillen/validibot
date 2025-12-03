@@ -70,28 +70,19 @@ class Command(BaseCommand):
     # ---------------------------------------------------------------------
     def _setup_local_superuser(self):
         """
-        Set up a local superuser for development if the env vars are present.
+        Set up a local superuser for development/production if env vars are present.
+
+        Reads SUPERUSER_USERNAME, SUPERUSER_PASSWORD, SUPERUSER_EMAIL, and
+        SUPERUSER_NAME from Django settings. If username is configured, creates
+        the user if they don't exist, or updates their password if they do.
         """
-
-        # Temporary debug helper for stdout
-        def dbg(msg):
-            import sys
-
-            print(msg, file=sys.stdout, flush=True)  # noqa: T201
-
-        dbg("=== setup_all v2 (2025-01-03) ===")
-
         username = getattr(settings, "SUPERUSER_USERNAME", None)
         password = getattr(settings, "SUPERUSER_PASSWORD", None)
         email = getattr(settings, "SUPERUSER_EMAIL", None)
         name = getattr(settings, "SUPERUSER_NAME", None)
 
-        dbg(f"SUPERUSER_USERNAME: {username!r}")
-        pw_status = f"SET ({len(password)} chars)" if password else "NOT SET"
-        dbg(f"SUPERUSER_PASSWORD: {pw_status}")
-
         if not username:
-            dbg("No username configured, skipping superuser setup")
+            logger.info("No SUPERUSER_USERNAME configured, skipping superuser setup")
             return
 
         user = None
@@ -101,37 +92,29 @@ class Command(BaseCommand):
             pass
 
         if not user:
-            dbg(f"Creating NEW user '{username}'")
             logger.info("Creating user '%s'", username)
             user = User.objects.create_user(
                 username=username,
                 email=email,
                 password=password,
             )
-            dbg(f"User '{username}' created successfully")
         else:
-            dbg(f"User '{username}' already exists, updating...")
             logger.info("Updating existing user '%s'", username)
             if password:
                 user.set_password(password)
                 user.save(update_fields=["password"])
-                dbg(f"Password UPDATED for user '{username}'")
                 logger.info("Password updated for user '%s'", username)
-            else:
-                dbg("No password provided, skipping password update")
 
         user.name = name
         user.is_staff = True
         user.is_superuser = True
         user.save(update_fields=["name", "is_staff", "is_superuser"])
-        dbg(f"User '{username}' is_staff=True, is_superuser=True saved")
 
         if email:
             user.emailaddress_set.update_or_create(
                 email=email,
                 defaults={"primary": True, "verified": True},
             )
-            dbg(f"Email '{email}' set as primary/verified")
 
     # ---------------------------------------------------------------------
     # Role seeding

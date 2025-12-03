@@ -29,8 +29,8 @@ class Command(BaseCommand):
 
         try:
             user = User.objects.get(username=username)
-        except User.DoesNotExist:
-            raise CommandError(f"User '{username}' does not exist")
+        except User.DoesNotExist as dne:
+            raise CommandError(f"User '{username}' does not exist") from dne
 
         user.set_password(password)
         user.save()

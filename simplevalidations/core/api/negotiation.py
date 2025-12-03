@@ -1,4 +1,3 @@
-
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import NotAcceptable
 from rest_framework.negotiation import DefaultContentNegotiation
@@ -54,7 +53,7 @@ class AgentAwareNegotiation(DefaultContentNegotiation):
                 (r for r in renderers if isinstance(r, JSONRenderer)), None
             )
             if json_renderer:
-                # Tell DRF we’re rendering JSON even though Accept was vendor+json
+                # Tell DRF we're rendering JSON even though Accept was vendor+json
                 return json_renderer, "application/json"
 
             # If no JSON renderer is available, fall back to DRF default selection

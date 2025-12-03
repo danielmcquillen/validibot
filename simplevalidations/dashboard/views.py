@@ -41,9 +41,14 @@ class MyDashboardView(LoginRequiredMixin, BreadcrumbMixin, View):
         if not _has_dashboard_access(request):
             messages.error(
                 request,
-                _("Dashboard insights are available to organization owners, admins, and authors."),
+                _(
+                    "Dashboard insights are available to organization owners, "
+                    "admins, and authors."
+                ),
             )
-            return redirect(reverse_with_org("workflows:workflow_list", request=request))
+            return redirect(
+                reverse_with_org("workflows:workflow_list", request=request)
+            )
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request):
@@ -67,7 +72,9 @@ class WidgetDetailView(LoginRequiredMixin, BreadcrumbMixin, View):
 
     def dispatch(self, request, *args, **kwargs):
         if not _has_dashboard_access(request):
-            return redirect(reverse_with_org("workflows:workflow_list", request=request))
+            return redirect(
+                reverse_with_org("workflows:workflow_list", request=request)
+            )
         return super().dispatch(request, *args, **kwargs)
 
     def get(self, request, slug: str):

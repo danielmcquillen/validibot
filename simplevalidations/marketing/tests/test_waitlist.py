@@ -69,7 +69,7 @@ def test_waitlist_failure_surfaces_form_error(client, monkeypatch):
     mail.outbox.clear()
 
     def boom(*args, **kwargs):
-        raise Exception("Postmark error")
+        raise Exception("Postmark error")  # noqa: TRY002
 
     monkeypatch.setattr("simplevalidations.marketing.services.send_mail", boom)
 

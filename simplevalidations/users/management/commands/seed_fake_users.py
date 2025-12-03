@@ -8,7 +8,10 @@ from simplevalidations.users.models import User
 
 
 class Command(BaseCommand):
-    help = "Create 10 random users with @example.com emails and verified/primary allauth addresses."
+    help = (
+        "Create 10 random users with @example.com emails and "
+        "verified/primary allauth addresses."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -22,7 +25,7 @@ class Command(BaseCommand):
         fake = Faker()
         count = options["count"]
         created = 0
-        
+
         for _ in range(count):
             # Generate a unique username from first name
             first_name = fake.first_name().lower()
@@ -31,14 +34,14 @@ class Command(BaseCommand):
             while User.objects.filter(username=username).exists():
                 username = f"{first_name}{counter}"
                 counter += 1
-            
+
             email = f"{username}@example.com"
             full_name = fake.name()
-            
+
             user = User.objects.create_user(
                 username=username,
                 email=email,
-                password="test1234",
+                password="test1234",  # noqa: S106
                 name=full_name,
             )
             EmailAddress.objects.update_or_create(
@@ -54,4 +57,3 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"Created user {user.username} ({user.name})"),
             )
         self.stdout.write(self.style.SUCCESS(f"Done. Created {created} user(s)."))
-

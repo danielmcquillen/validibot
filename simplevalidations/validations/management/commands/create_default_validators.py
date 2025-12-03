@@ -10,4 +10,6 @@ class Command(BaseCommand):
         created, updated = create_default_validators()
         if created:
             self.stdout.write(self.style.SUCCESS(f"Created {created} validator(s)."))
-        self.stdout.write(self.style.SUCCESS(f"Updated {updated} existing validator(s)."))
+        self.stdout.write(
+            self.style.SUCCESS(f"Updated {updated} existing validator(s).")
+        )

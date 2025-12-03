@@ -183,7 +183,11 @@ def build_stacked_bar_payload(
 
     first_series = next(iter(series_by_label.values()))
     for period, _ in first_series:
-        labels.append(period.strftime("%b %d") if bucket == "day" else period.strftime("%b %d %H:%M"))
+        labels.append(
+            period.strftime("%b %d")
+            if bucket == "day"
+            else period.strftime("%b %d %H:%M")
+        )
 
     for label, series in series_by_label.items():
         values = [int(value) for _, value in series]

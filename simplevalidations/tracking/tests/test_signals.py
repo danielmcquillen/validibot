@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from django.test import Client
 
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.users.tests.factories import UserFactory
+
+if TYPE_CHECKING:
+    from django.test import Client
 
 
 @pytest.mark.django_db

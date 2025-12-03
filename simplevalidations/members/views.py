@@ -61,7 +61,9 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
                 ),
                 "invite_form": kwargs.get(
                     "invite_form",
-                    InviteUserForm(organization=self.organization, inviter=self.request.user),
+                    InviteUserForm(
+                        organization=self.organization, inviter=self.request.user
+                    ),
                 ),
             },
         )
@@ -90,7 +92,7 @@ class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         query = self.request.GET.get("search", "").strip()
         matches: list[User] = []
-        if len(query) >= 3:
+        if len(query) >= 3:  # noqa: PLR2004
             matches = (
                 User.objects.filter(
                     models.Q(username__icontains=query)
@@ -151,7 +153,9 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
                 request,
                 _("Invitation sent."),
             )
-            return HttpResponseRedirect(reverse_with_org("members:member_list", request=request))
+            return HttpResponseRedirect(
+                reverse_with_org("members:member_list", request=request)
+            )
         memberships = (
             Membership.objects.filter(org=self.organization, is_active=True)
             .select_related("user")
@@ -161,7 +165,9 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
         context = {
             "organization": self.organization,
             "memberships": memberships,
-            "pending_invites": PendingInvite.objects.filter(org=self.organization).order_by("-created"),
+            "pending_invites": PendingInvite.objects.filter(
+                org=self.organization
+            ).order_by("-created"),
             "add_form": OrganizationMemberForm(organization=self.organization),
             "invite_form": form,
         }
@@ -184,7 +190,9 @@ class InviteCancelView(OrganizationAdminRequiredMixin, View):
             invite.status = PendingInvite.Status.CANCELED
             invite.save(update_fields=["status"])
             messages.info(request, _("Invitation canceled."))
-        return HttpResponseRedirect(reverse_with_org("members:member_list", request=request))
+        return HttpResponseRedirect(
+            reverse_with_org("members:member_list", request=request)
+        )
 
 
 class MemberUpdateView(OrganizationAdminRequiredMixin, BreadcrumbMixin, FormView):
@@ -267,7 +275,8 @@ class MemberDeleteView(OrganizationAdminRequiredMixin, View):
 
         if membership.has_role(RoleCode.OWNER):
             message = _(
-                "The organization owner cannot be removed. Contact support to transfer ownership."
+                "The organization owner cannot be removed. "
+                "Contact support to transfer ownership."
             )
             messages.error(request, message)
             if is_htmx:

@@ -5,8 +5,11 @@ from crispy_forms.layout import Layout
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
+from simplevalidations.projects.models import LUMINANCE_THRESHOLD
 from simplevalidations.projects.models import Project
 from simplevalidations.projects.models import generate_random_color
+
+HEX_VALUES_LENGTH = 7  # e.g., #RRGGBB
 
 
 def _normalize_hex(value: str | None) -> str | None:
@@ -17,7 +20,7 @@ def _normalize_hex(value: str | None) -> str | None:
         return None
     if not trimmed.startswith("#"):
         trimmed = f"#{trimmed}"
-    if len(trimmed) != 7:
+    if len(trimmed) != HEX_VALUES_LENGTH:
         return None
     try:
         int(trimmed[1:], 16)
@@ -44,7 +47,7 @@ def _contrast_hex(value: str) -> str:
     g = int(normalized[3:5], 16)
     b = int(normalized[5:7], 16)
     luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
-    return "#1F2328" if luminance > 140 else "#FFFFFF"
+    return "#1F2328" if luminance > LUMINANCE_THRESHOLD else "#FFFFFF"
 
 
 class ProjectColorWidget(forms.TextInput):

@@ -106,7 +106,7 @@ def render_markdown_safe(text_md: str) -> str:
     )
 
     # Second pass: linkify + safe target/rel
-    def set_target(attrs, new=False):
+    def set_target(attrs, *, new=False):
         href = attrs.get("href", "")
         if href.startswith(("http://", "https://")):
             attrs["target"] = "_blank"

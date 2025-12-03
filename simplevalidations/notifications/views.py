@@ -120,11 +120,16 @@ class AcceptInviteView(View):
             return HttpResponseRedirect(reverse("notifications:notification-list"))
         if invite.invitee_user is None:
             # Bind to current user if emails match
-            if invite.invitee_email and invite.invitee_email.lower() == (request.user.email or "").lower():
+            if (
+                invite.invitee_email
+                and invite.invitee_email.lower() == (request.user.email or "").lower()
+            ):
                 invite.invitee_user = request.user
                 invite.save(update_fields=["invitee_user"])
             else:
-                messages.error(request, _("This invite is not addressed to your account."))
+                messages.error(
+                    request, _("This invite is not addressed to your account.")
+                )
                 return HttpResponseRedirect(reverse("notifications:notification-list"))
         invite.accept()
         notification.read_at = timezone.now()

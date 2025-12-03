@@ -219,3 +219,10 @@ SPECTACULAR_SETTINGS["SERVERS"] = [
 ]
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Superuser configuration for setup_all command
+# These are used to bootstrap a superuser in production
+SUPERUSER_USERNAME = env("SUPERUSER_USERNAME", default=None)
+SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default=None)
+SUPERUSER_EMAIL = env("SUPERUSER_EMAIL", default=None)
+SUPERUSER_NAME = env("SUPERUSER_NAME", default=None)

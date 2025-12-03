@@ -13,6 +13,8 @@ from simplevalidations.core.mixins import FeaturedImageMixin
 
 User = get_user_model()
 
+CONTENT_PREVIEW_MAX_LENGTH = 200
+
 
 class BlogPost(FeaturedImageMixin, TimeStampedModel):
     """Editorial content used on the marketing blog and sitemap.
@@ -71,7 +73,11 @@ class BlogPost(FeaturedImageMixin, TimeStampedModel):
         if not content:
             return ""
         preview = strip_tags(content).strip()
-        return (preview[:200] + "...") if len(preview) > 200 else preview
+        return (
+            (preview[:CONTENT_PREVIEW_MAX_LENGTH] + "...")
+            if len(preview) > CONTENT_PREVIEW_MAX_LENGTH
+            else preview
+        )
 
     featured_image_alt_candidates = (
         "featured_image_alt",

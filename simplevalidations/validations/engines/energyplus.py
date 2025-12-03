@@ -130,7 +130,8 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                 ValidationIssue(
                     path="",
                     message=_(
-                        "EnergyPlus validators accept epJSON (JSON) or IDF (text) submissions."
+                        "EnergyPlus validators accept epJSON (JSON) or IDF "
+                        "(text) submissions."
                     ),
                     severity=Severity.ERROR,
                 ),
@@ -222,7 +223,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         stats["invocation_mode"] = typed_result.invocation_mode
         stats["energyplus_returncode"] = typed_result.energyplus_returncode
         stats["messages"] = list(typed_result.messages)
-        # `mode="json"` ensures Path fields inside the Pydantic model 
+        # `mode="json"` ensures Path fields inside the Pydantic model
         # are serialized as strings.
         stats["outputs"] = typed_result.outputs.model_dump(
             mode="json",
@@ -355,9 +356,7 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
                     "epjson_path" in raw_result
                     and "energyplus_input_file_path" not in raw_result
                 ):
-                    raw_result["energyplus_input_file_path"] = raw_result[
-                        "epjson_path"
-                    ]
+                    raw_result["energyplus_input_file_path"] = raw_result["epjson_path"]
                 raw_result.pop("epjson_path", None)
             return EnergyPlusSimulationResult.model_validate(raw_result)
         except Exception as exc:

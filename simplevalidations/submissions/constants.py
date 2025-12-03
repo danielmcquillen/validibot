@@ -24,8 +24,9 @@ class SubmissionDataFormat(models.TextChoices):
     This is distinct from the file type, as a submission
     file could be in one format but represent data in another format.
 
-    For example, an EnergyPlus IDF file submission would be a SubmissionFileType.TEXT file_type,
-    but the data_format would be SubmissionDataFormat.ENERGYPLUS_IDF.
+    For example, an EnergyPlus IDF file submission would be a 
+    SubmissionFileType.TEXT file_type, but the data_format would be 
+    SubmissionDataFormat.ENERGYPLUS_IDF.
 
     So in essense, SubmissionDataFormat describes the domain-specific format
     of the data contained within the submission file.
@@ -49,7 +50,10 @@ DATA_FORMAT_FILE_TYPE_MAP: dict[str, list[str]] = {
     SubmissionDataFormat.TEXT: [SubmissionFileType.TEXT],
     SubmissionDataFormat.YAML: [SubmissionFileType.YAML, SubmissionFileType.TEXT],
     SubmissionDataFormat.ENERGYPLUS_IDF: [SubmissionFileType.TEXT],
-    SubmissionDataFormat.ENERGYPLUS_EPJSON: [SubmissionFileType.JSON, SubmissionFileType.TEXT],
+    SubmissionDataFormat.ENERGYPLUS_EPJSON: [
+        SubmissionFileType.JSON,
+        SubmissionFileType.TEXT,
+    ],
     SubmissionDataFormat.FMU: [SubmissionFileType.BINARY],
     SubmissionDataFormat.UNKNOWN: [SubmissionFileType.UNKNOWN],
 }

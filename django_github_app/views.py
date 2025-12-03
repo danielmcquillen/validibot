@@ -34,6 +34,7 @@ _router = GitHubRouter(*GitHubRouter.routers)
 logger.info("GitHubRouter initialized in django_github_app.views: %s", _router)
 logger.info(" - Available routers: %s", GitHubRouter.routers)
 
+
 class BaseWebhookView(View, ABC, Generic[GitHubAPIType]):
     github_api_class: type[GitHubAPIType]
 

@@ -10,12 +10,14 @@ from django.urls import reverse
 
 
 def _signature(body: bytes, secret: str) -> str:
-    digest = hmac.new(secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256).digest()
+    digest = hmac.new(
+        secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256
+    ).digest()
     return base64.b64encode(digest).decode("utf-8")
 
 
 @override_settings(
-    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",
+    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret", #noqa: S106
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
 @pytest.mark.django_db
@@ -37,7 +39,7 @@ def test_postmark_signature_required_and_valid(client):
 
 
 @override_settings(
-    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret",
+    POSTMARK_WEBHOOK_SIGNING_SECRET="super-secret", #noqa: S106
     POSTMARK_WEBHOOK_ALLOWED_IPS=[],
 )
 @pytest.mark.django_db

@@ -8,12 +8,12 @@ from django.utils import timezone
 
 from simplevalidations.events.constants import AppEventType
 from simplevalidations.tracking.constants import TrackingEventType
-from simplevalidations.tracking.models import TrackingEvent
 from simplevalidations.tracking.services import TrackingEventService
 from simplevalidations.validations.constants import ValidationRunStatus
 
 if TYPE_CHECKING:  # pragma: no cover
     from simplevalidations.projects.models import Project
+    from simplevalidations.tracking.models import TrackingEvent
     from simplevalidations.users.models import Organization
     from simplevalidations.users.models import User
     from simplevalidations.workflows.models import Workflow

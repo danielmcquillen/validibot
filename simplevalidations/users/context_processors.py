@@ -57,7 +57,9 @@ def _apply_organization_context(request):
         request,
         memberships_qs,
     )
-    active_role_codes = set(active_membership.role_codes) if active_membership else set()
+    active_role_codes = (
+        set(active_membership.role_codes) if active_membership else set()
+    )
     has_author_admin_owner = bool(
         active_org
         and request.user.has_perm(PermissionCode.WORKFLOW_EDIT.value, active_org)

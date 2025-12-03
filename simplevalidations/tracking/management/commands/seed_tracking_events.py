@@ -23,11 +23,17 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--project-slug",
-            help="Optional project slug. Defaults to the first project under the organization or none.",
+            help=(
+                "Optional project slug. Defaults to the first "
+                "project under the organization or none.",
+            ),
         )
         parser.add_argument(
             "--workflow-slug",
-            help="Optional workflow slug. Defaults to an existing workflow or a generated sample.",
+            help=(
+                "Optional workflow slug. Defaults to an existing "
+                "workflow or a generated sample.",
+            ),
         )
         parser.add_argument(
             "--user-email",
@@ -62,7 +68,9 @@ class Command(BaseCommand):
         try:
             org = Organization.objects.get(slug=org_slug)
         except Organization.DoesNotExist as exc:
-            raise CommandError(f"Organization with slug '{org_slug}' not found.") from exc
+            raise CommandError(
+                f"Organization with slug '{org_slug}' not found."
+            ) from exc
 
         project = self._resolve_project(org, options.get("project_slug"))
         user = self._resolve_user(org, options.get("user_email"))
@@ -89,7 +97,8 @@ class Command(BaseCommand):
         if user is None:
             self.stdout.write(
                 self.style.WARNING(
-                    "No user was associated with the events; user charts may remain empty.",
+                    "No user was associated with the events; "
+                    "user charts may remain empty.",
                 ),
             )
 
@@ -99,7 +108,9 @@ class Command(BaseCommand):
                 return Project.objects.get(org=org, slug=slug)
             except Project.DoesNotExist:
                 self.stdout.write(
-                    self.style.WARNING(f"Project '{slug}' not found; continuing without project."),
+                    self.style.WARNING(
+                        f"Project '{slug}' not found; continuing without project."
+                    ),
                 )
                 return None
         return org.projects.order_by("name").first()
@@ -113,7 +124,8 @@ class Command(BaseCommand):
             if org not in user.orgs.all():
                 self.stdout.write(
                     self.style.WARNING(
-                        f"User '{email}' is not a member of org '{org.slug}'. Events will be recorded without a user.",
+                        f"User '{email}' is not a member of org '{org.slug}'. "
+                        f"Events will be recorded without a user.",
                     ),
                 )
                 return None
@@ -131,7 +143,9 @@ class Command(BaseCommand):
                 return Workflow.objects.get(org=org, slug=slug)
             except Workflow.DoesNotExist:
                 self.stdout.write(
-                    self.style.WARNING(f"Workflow '{slug}' not found; generating a sample workflow."),
+                    self.style.WARNING(
+                        f"Workflow '{slug}' not found; generating a sample workflow."
+                    ),
                 )
 
         workflow = org.workflows.order_by("name").first()
@@ -140,7 +154,8 @@ class Command(BaseCommand):
         if not user:
             self.stdout.write(
                 self.style.WARNING(
-                    "Cannot create a sample workflow without a user. Run seeding will omit workflow context.",
+                    "Cannot create a sample workflow without a user. "
+                    "Run seeding will omit workflow context.",
                 ),
             )
             return None

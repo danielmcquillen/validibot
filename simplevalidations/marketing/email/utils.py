@@ -3,11 +3,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+from typing import TYPE_CHECKING
 
 from django.conf import settings
-from django.http import HttpRequest
 
 from simplevalidations.core.utils import get_request_ip
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
 
 
 def is_allowed_postmark_source(request: HttpRequest) -> bool:

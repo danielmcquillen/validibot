@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -14,6 +13,7 @@ from simplevalidations.validations.constants import ValidationRunStatus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from simplevalidations.projects.models import Project
     from simplevalidations.users.models import Organization
@@ -215,7 +215,8 @@ class TrackingEventService:
             org=event_org,
             user=actor,
             extra_data=cleaned_payload or None,
-            channel=channel or self._map_source_to_channel(getattr(run, "source", None)),
+            channel=channel
+            or self._map_source_to_channel(getattr(run, "source", None)),
             recorded_at=recorded_at,
         )
 
@@ -313,13 +314,17 @@ class TrackingEventService:
         status_value = (
             status.value
             if hasattr(status, "value")
-            else str(status) if status is not None else None
+            else str(status)
+            if status is not None
+            else None
         )
         if not status_value:
             return None
         event_type = self._RUN_STATUS_EVENT_MAP.get(status_value)
         if not event_type:
-            logger.debug("No tracking event configured for run status '%s'", status_value)
+            logger.debug(
+                "No tracking event configured for run status '%s'", status_value
+            )
             return None
 
         payload: dict[str, Any] = {"status": status_value}

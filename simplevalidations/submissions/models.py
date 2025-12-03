@@ -51,7 +51,11 @@ def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
     date_part = now().strftime("%Y%m%d")
     safe_name = Path(filename).name
     unique = uuid.uuid4().hex[:12]
-    return f"submissions/{org_part}/{proj_part}/{user_part}/{date_part}/{unique}_{safe_name}"
+    p = (
+        f"submissions/{org_part}/{proj_part}/"
+        f"{user_part}/{date_part}/{unique}_{safe_name}"
+    )
+    return p
 
 
 class Submission(TimeStampedModel):

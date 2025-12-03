@@ -1,5 +1,6 @@
 from importlib import reload
 
+import pytest
 from django.test import SimpleTestCase
 from django.urls import NoReverseMatch
 from django.urls import Resolver404
@@ -30,16 +31,16 @@ class ApiFeatureFlagTests(SimpleTestCase):
     def test_api_urls_disabled_when_flag_false(self) -> None:
         with self.settings(ENABLE_API=False):
             self._reload_urls()
-            with self.assertRaises(NoReverseMatch):
+            with pytest.raises(NoReverseMatch):
                 reverse("api:workflow-list")
 
-            with self.assertRaises(Resolver404):
+            with pytest.raises(Resolver404):
                 resolve("/api/v1/workflows/")
 
-            with self.assertRaises(NoReverseMatch):
+            with pytest.raises(NoReverseMatch):
                 reverse("obtain_auth_token")
 
-            with self.assertRaises(Resolver404):
+            with pytest.raises(Resolver404):
                 resolve("/api/v1/auth-token/")
 
         self._reload_urls()

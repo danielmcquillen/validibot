@@ -42,7 +42,8 @@ class SiteSettingsAdmin(admin.ModelAdmin):
                 ),
                 "description": (
                     "Only system administrators should edit these values. "
-                    "Keep JSON well-formed and rely on the application to fill missing defaults."
+                    "Keep JSON well-formed and rely on the application to fill "
+                    "missing defaults."
                 ),
             },
         ),

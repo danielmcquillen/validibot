@@ -36,6 +36,7 @@ class Command(BaseCommand):
         queryset.delete()
         self.stdout.write(
             self.style.SUCCESS(
-                f"Deleted {count} project(s): {', '.join(str(pid) for pid in project_ids)}",
+                f"Deleted {count} project(s): "
+                f"{', '.join(str(pid) for pid in project_ids)}",
             ),
         )

@@ -63,11 +63,6 @@ class _FMIProbeRunner:
     """
 
     @classmethod
-    def configure_modal_runner(cls, mock_callable, *, cleanup_callable=None):
-        """Stub for backward compatibility with tests."""
-        pass  # noqa: PIE790
-
-    @classmethod
     def _invoke_modal_runner(cls, **kwargs):
         """Stub that raises not-implemented error."""
         msg = "FMI probing via Cloud Run Jobs is not yet implemented (Phase 4)"

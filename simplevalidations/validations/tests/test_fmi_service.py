@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
-from sv_shared.fmi import FMIProbeResult
-from sv_shared.fmi import FMIVariableMeta
 
 from simplevalidations.projects.tests.factories import ProjectFactory
 from simplevalidations.users.tests.factories import OrganizationFactory
@@ -46,7 +44,6 @@ class FMIServiceTests(TestCase):
     def tearDown(self):
         from simplevalidations.validations.services import fmi as fmi_module
 
-        fmi_module._FMIProbeRunner.configure_modal_runner(None)  # type: ignore[attr-defined] # noqa: SLF001
         if self._original_uploader is not None:
             fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
@@ -87,33 +84,6 @@ class FMIServiceTests(TestCase):
         )
         fmu_model = validator.fmu_model
         self.assertIsNotNone(fmu_model)
-
-        probe_result = FMIProbeResult.success(
-            variables=[
-                FMIVariableMeta(
-                    name="a",
-                    causality="input",
-                    value_type="Real",
-                    value_reference=1,
-                ),
-            ],
-        )
-
-        class FakeProbeRunner:
-            """Capture Modal probe invocations and return a canned response."""
-
-            def __init__(self, response: dict):
-                self.response = response
-                self.calls: list[dict] = []
-
-            def __call__(self, **kwargs):
-                self.calls.append(kwargs)
-                return self.response
-
-        fake_runner = FakeProbeRunner(probe_result.model_dump(mode="json"))
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        fmi_module._FMIProbeRunner.configure_modal_runner(fake_runner)  # type: ignore[attr-defined] # noqa: SLF001
 
         run_fmu_probe(fmu_model)
 

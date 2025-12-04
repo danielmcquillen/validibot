@@ -1,9 +1,10 @@
 # ADR-2025-12-01: Migrate Validibot Core Platform from Heroku to Google Cloud (Cloud Run)
 
-**Status:** Proposed  
-**Date:** 2025-12-01  
-**Owner:** Daniel / Validibot Platform  
-**Related ADRs:** Pricing & Billing, Data Residency, Async Execution Model, Modal Integration
+**Status:** Accepted and Implemented (as of 2025-12-04)
+**Date:** 2025-12-01
+**Last Updated:** 2025-12-04
+**Owner:** Daniel / Validibot Platform
+**Related ADRs:** Pricing & Billing, Data Residency, Async Execution Model, Modal Integration, Validator Job Interface (2025-12-04)
 
 ---
 
@@ -384,6 +385,160 @@ This ADR only commits to **AU stack**, but we will:
    - Replicate the same stack (Cloud Run + Cloud SQL + GCS + Cloud Tasks).
    - Use DNS like `us.validibot.com`, `eu.validibot.com` pointing to respective stacks.
    - New orgs in those regions are created in the regional DBs.
+
+---
+
+## 5A. Implementation Status (Updated 2025-12-04)
+
+All phases have been completed. Here's the final status of each phase:
+
+### Phase 1 – App Containerization ✅ COMPLETED
+**Completed:** Early December 2025
+
+- Migrated all Django configuration to environment variables using `django-environ`
+- Removed Heroku-specific dependencies (`django-heroku`)
+- Separated storage and queue abstractions
+- Verified all settings are 12-factor compliant
+
+### Phase 2 – Docker Image ✅ COMPLETED
+**Completed:** Early December 2025
+
+- Created production `Dockerfile` with multi-stage build
+- Added `docker-compose.yml` for local development
+- Configured `gunicorn` with appropriate workers and timeout settings
+- Tested migrations, tests, and static asset collection in containers
+
+### Phase 3 – GCP Resources (Staging) ✅ COMPLETED
+**Completed:** December 2025
+
+- Provisioned Cloud SQL PostgreSQL in `australia-southeast1`
+- Created GCS buckets (`validibot-media`, `validibot-files`)
+- Deployed Cloud Run service with Cloud SQL connector
+- Configured Secret Manager for credentials
+- Set up Cloud Logging and basic monitoring
+
+### Phase 4 – Cloud Run Jobs for Validators ✅ COMPLETED
+**Completed:** December 4, 2025
+
+**Key Achievement:** Replaced Cloud Tasks pattern with Cloud Run Jobs for heavy validators
+
+Instead of implementing Cloud Tasks for all async work, we adopted a **hybrid approach**:
+- **Synchronous execution** for lightweight validators (JSON, XML, CEL)
+- **Cloud Run Jobs** for heavy compute validators (EnergyPlus, FMU)
+- **Callback pattern** for async notification when jobs complete
+
+**Implementation Details:**
+
+1. **Validator Job Interface** (See ADR 2025-12-04):
+   - Created `ValidationInputEnvelope` and `ValidationOutputEnvelope` schemas in `sv_shared`
+   - Defined typed subclasses for domain-specific validators (EnergyPlusInputEnvelope, etc.)
+   - Implemented callback-based async pattern (POST callback when complete)
+
+2. **Cloud Run Job Launcher Service** ([launcher.py](../simplevalidations/validations/services/launcher.py)):
+   - `launch_energyplus_validation()` - Orchestrates EnergyPlus Cloud Run Jobs
+   - Uploads submission files to GCS
+   - Builds typed input envelopes with callback credentials
+   - Creates JWT callback tokens using GCP KMS
+   - Triggers Cloud Run Jobs via Cloud Tasks
+
+3. **GCS Integration** ([gcs_client.py](../simplevalidations/validations/services/gcs_client.py)):
+   - `upload_envelope()` - Upload Pydantic envelopes as JSON to GCS
+   - `download_envelope()` - Download and validate envelopes from GCS
+   - `upload_file()` - Upload arbitrary file content to GCS
+   - `parse_gcs_uri()` - Parse gs:// URIs into bucket/path components
+
+4. **Envelope Builder** ([envelope_builder.py](../simplevalidations/validations/services/envelope_builder.py)):
+   - `build_energyplus_input_envelope()` - Construct typed input envelopes
+   - Includes validator metadata, organization info, workflow context
+   - Generates callback URLs with authentication tokens
+   - Configures execution context (timeouts, tags, bundle URIs)
+
+5. **Callback Handler** ([callbacks.py](../simplevalidations/validations/api/callbacks.py)):
+   - `ValidationCallbackView` - Django REST endpoint for validator callbacks
+   - Verifies JWT callback tokens
+   - Downloads full output envelope from GCS
+   - Updates ValidationRun status and stores results
+   - Maps validator status codes to ValidationRun status codes
+
+6. **EnergyPlus Validator Container** ([validators/energyplus/](../validators/energyplus/)):
+   - Standalone Python container deployed as Cloud Run Job
+   - Downloads input envelope from GCS
+   - Runs EnergyPlus simulation
+   - Uploads output envelope to GCS
+   - POSTs minimal callback to Django
+
+7. **Engine Integration** ([energyplus.py](../simplevalidations/validations/engines/energyplus.py)):
+   - Added `validate_with_run()` method for async execution via Cloud Run Jobs
+   - Checks Cloud Run Jobs configuration before launching
+   - Falls back to synchronous execution if not configured
+
+**Architecture Benefits:**
+- No Celery/Redis infrastructure needed
+- Type-safe communication via Pydantic envelopes
+- Secure callbacks using GCP KMS-signed JWTs
+- Clean separation: Django orchestrates, Cloud Run Jobs execute
+- GCS acts as durable state store for inputs/outputs
+
+### Phase 5 – Modal Integration ⏸️ DEFERRED
+
+**Status:** Modal integration for FMI validators remains but is marked for future migration
+
+Modal.com is still used for FMI (Functional Mock-up Interface) validators. The Cloud Run Jobs pattern implemented in Phase 4 provides the blueprint for migrating FMI validators from Modal to Cloud Run Jobs when resources allow.
+
+**Future Work:**
+- Create FMI validator container (similar to EnergyPlus)
+- Implement `launch_fmi_validation()` in launcher service
+- Build FMIInputEnvelope and FMIOutputEnvelope schemas
+- Deploy as Cloud Run Job in `australia-southeast1`
+
+### Phase 6 – Data Migration ✅ COMPLETED
+**Completed:** December 2025
+
+- Successfully migrated Postgres data from Heroku to Cloud SQL
+- Migrated media files from AWS S3 to GCS
+- Zero data loss during migration
+- Maintained downtime within acceptable window
+
+### Phase 7 – DNS & TLS ✅ COMPLETED
+**Completed:** December 2025
+
+- Configured Cloud Run custom domain mapping
+- Enabled Google-managed TLS certificates
+- Set up appropriate redirects (www → root, HTTP → HTTPS)
+- DNS cutover completed successfully
+
+### Phase 8 – Remove Celery & Heroku ✅ COMPLETED
+**Completed:** December 4, 2025
+
+- Removed all Celery task definitions
+- Decommissioned Celery workers
+- Removed Redis dependency
+- Cleaned up backward compatibility code
+- All validators now use either:
+  - Synchronous execution (lightweight)
+  - Cloud Run Jobs (heavy compute)
+
+**Backward Compatibility Cleanup:**
+- Removed `InputItem` → `InputFileItem` alias
+- Removed `ValidationResultEnvelope` → `ValidationOutputEnvelope` alias
+- Removed `configure_modal_runner()` stub from FMI service
+- Updated all tests to use current API
+- Fixed schema version references (`validibot.output.v1`)
+
+### Phase 9 – Multi-Region Preparation 🚧 IN PROGRESS
+
+**Status:** Foundation laid, full multi-region deployment pending
+
+**Completed:**
+- `Organization.data_region` field exists with `"AU"` default
+- Settings parameterized by region (bucket names, job names)
+- All code region-aware
+
+**Remaining:**
+- Create US/EU GCP projects
+- Replicate stack in `us-central1` and `europe-west1`
+- Set up regional DNS (`us.validibot.com`, `eu.validibot.com`)
+- Implement region-routing logic
 
 ---
 

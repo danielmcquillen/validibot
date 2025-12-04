@@ -58,7 +58,6 @@ class FMIEngineTests(TestCase):
         self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
 
     def tearDown(self):
-        FMIValidationEngine.configure_modal_runner(None)
         from simplevalidations.validations.services import fmi as fmi_module
 
         if self._original_uploader is not None:
@@ -108,7 +107,6 @@ class FMIEngineTests(TestCase):
             mode="json"
         )
         runner = _FakeRunner(fake_result)
-        FMIValidationEngine.configure_modal_runner(runner)
 
         engine = FMIValidationEngine(config={"inputs": {"u_in": 1.0}})
         result = engine.validate(

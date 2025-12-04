@@ -114,7 +114,7 @@ class TestInputEnvelope:
         envelope = ValidationInputEnvelope.model_validate(data)
         assert envelope.inputs["timestep"] == 3600  # noqa: PLR2004
         assert envelope.inputs["duration"] == 86400  # noqa: PLR2004
-        assert envelope.inputs["tolerance"] == 0.001
+        assert envelope.inputs["tolerance"] == 0.001  # noqa: PLR2004
 
     def test_input_envelope_rejects_extra_fields(self):
         """Test that input envelope rejects extra fields."""
@@ -148,7 +148,7 @@ class TestOutputEnvelope:
     def test_minimal_success_result(self):
         """Test minimal success result envelope."""
         data = {
-            "schema_version": "validibot.result.v1",
+            "schema_version": "validibot.output.v1",
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
@@ -172,7 +172,7 @@ class TestOutputEnvelope:
     def test_result_with_validation_messages(self):
         """Test result envelope with validation messages."""
         data = {
-            "schema_version": "validibot.result.v1",
+            "schema_version": "validibot.output.v1",
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
@@ -215,7 +215,7 @@ class TestOutputEnvelope:
     def test_result_with_metrics(self):
         """Test result envelope with metrics."""
         data = {
-            "schema_version": "validibot.result.v1",
+            "schema_version": "validibot.output.v1",
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
@@ -254,7 +254,7 @@ class TestOutputEnvelope:
     def test_result_with_artifacts(self):
         """Test result envelope with artifacts."""
         data = {
-            "schema_version": "validibot.result.v1",
+            "schema_version": "validibot.output.v1",
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",

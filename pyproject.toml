@@ -230,7 +230,6 @@ dev = [
   "argon2-cffi==25.1.0",
   "authlib==1.6.5",
   "bleach==6.3.0",
-  "boto3==1.41.0",
   "cel-python==0.4.0",
   "celery==5.5.3",
   "coverage==7.12.0",

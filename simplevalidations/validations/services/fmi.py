@@ -22,7 +22,6 @@ from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import CatalogValueType
 from simplevalidations.validations.constants import FMUProbeStatus
 from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.engines.modal import ModalRunnerMixin
 from simplevalidations.validations.models import FMIVariable
 from simplevalidations.validations.models import FMUModel
 from simplevalidations.validations.models import FMUProbeResult
@@ -55,12 +54,24 @@ class FMUStorageError(ValueError):
     """Raised when FMU files cannot be stored or accessed."""
 
 
-class _FMIProbeRunner(ModalRunnerMixin):
-    """Modal runner wrapper dedicated to the probe_fmu function."""
+class _FMIProbeRunner:
+    """
+    FMI probe runner placeholder.
 
-    modal_app_name = "fmi-runner"
-    modal_function_name = "probe_fmu"
-    modal_return_logs_default = False
+    TODO: Phase 4 - Implement FMI probing via Cloud Run Jobs.
+    For now, this is a stub that will raise not-implemented errors.
+    """
+
+    @classmethod
+    def configure_modal_runner(cls, mock_callable, *, cleanup_callable=None):
+        """Stub for backward compatibility with tests."""
+        pass  # noqa: PIE790
+
+    @classmethod
+    def _invoke_modal_runner(cls, **kwargs):
+        """Stub that raises not-implemented error."""
+        msg = "FMI probing via Cloud Run Jobs is not yet implemented (Phase 4)"
+        raise NotImplementedError(msg)
 
 
 def _use_test_volume() -> bool:

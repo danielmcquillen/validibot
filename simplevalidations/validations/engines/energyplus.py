@@ -1,107 +1,50 @@
 """
-EnergyPlus validation engine powered by the Modal runner.
+EnergyPlus validation engine powered by Cloud Run Jobs.
 
-This engine forwards incoming EnergyPlus submissions (epJSON or IDF) to the
-Modal function defined in ``sv_modal.projects.sv_energyplus`` and translates
-the response into Validibot issues.
+This engine will forward incoming EnergyPlus submissions (epJSON or IDF) to
+Cloud Run Jobs and translate the response into Validibot issues.
 
-The response is a typed ``EnergyPlusSimulationResult`` model defined in
-``sv_shared.energyplus.models``. We can use that model for raw data to
-compare against the user's configured checks.
+TODO: Phase 4 - Implement full Cloud Run Jobs integration:
+- Create ValidationRun instances
+- Upload input envelopes to GCS
+- Trigger Cloud Run Jobs via Cloud Tasks
+- Receive callbacks from validators
+- Download output envelopes and translate to ValidationResult
 
-Additional static checks can be layered on once the runner exposes the
-necessary signals.
+For now, this is a placeholder that will be implemented in Phase 4.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 from typing import TYPE_CHECKING
-from typing import Any
-
-from pathlib import Path
 
 from django.utils.translation import gettext as _
-from pydantic import BaseModel
-from pydantic import Field
-from sv_shared.energyplus.models import EnergyPlusSimulationLogs
-from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
-from sv_shared.energyplus.models import EnergyPlusSimulationOutputs
 
-from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
-from simplevalidations.validations.engines.modal import ModalRunnerMixin
 from simplevalidations.validations.engines.registry import register_engine
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from simplevalidations.submissions.models import Submission
     from simplevalidations.validations.models import Ruleset
     from simplevalidations.validations.models import Validator
 
 
-# ==============================================================================
-# TODO (Phase 4): Temporary stub for backward compatibility
-# ==============================================================================
-# This class replicates the old EnergyPlusSimulationResult that was removed
-# from sv_shared. It will be completely replaced when we migrate to Cloud Run
-# Jobs using EnergyPlusOutputEnvelope.
-
-
-class EnergyPlusSimulationResult(BaseModel):
-    """
-    Temporary stub of the old Modal.com response model.
-
-    This will be removed in Phase 4 when we replace the entire Modal.com
-    execution path with Cloud Run Jobs using EnergyPlusOutputEnvelope.
-    """
-
-    simulation_id: str
-    status: str
-    outputs: EnergyPlusSimulationOutputs
-    metrics: EnergyPlusSimulationMetrics
-    logs: EnergyPlusSimulationLogs | None = None
-    messages: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
-    energyplus_returncode: int
-    execution_seconds: float
-    invocation_mode: str
-    energyplus_input_file_path: Path | None = None
-    energyplus_payload_format: str | None = None
-
-
 @register_engine(ValidationType.ENERGYPLUS)
-class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
+class EnergyPlusValidationEngine(BaseValidatorEngine):
     """
-    Run submitted epJSON through the Modal EnergyPlus runner and translate the
+    Run submitted epJSON through Cloud Run Jobs and translate the
     response into Validibot issues.
 
-    Requirements:
-    * The workflow step must enable ``run_simulation`` (static IDF checks are not
-      implemented yet).
-    * Provide a weather file name via the ruleset metadata
-      (``ruleset.metadata['weather_file']``) or the
-      ``ENERGYPLUS_DEFAULT_WEATHER`` environment variable.
-
-    Optional cleanup:
-    * Set ``cleanup_after_run`` in the engine config to request the Modal cleanup
-      function after results are processed. ``cleanup_missing_ok`` can be used to
-      control whether missing output directories raise errors.
+    TODO: Phase 4 - Full Cloud Run Jobs implementation.
+    For now, this is a placeholder that returns a not-implemented error.
     """
-
-    modal_app_name = "energyplus-runner"
-    modal_function_name = "run_energyplus_simulation"
-    modal_return_logs_env_var = "ENERGYPLUS_MODAL_RETURN_LOGS"
-    modal_cleanup_function_name = "cleanup_simulation_outputs"
 
     def validate(
         self,
@@ -109,375 +52,37 @@ class EnergyPlusValidationEngine(ModalRunnerMixin, BaseValidatorEngine):
         submission: Submission,
         ruleset: Ruleset | None,
     ) -> ValidationResult:
+        """
+        Validate an EnergyPlus submission.
+
+        TODO: Phase 4 implementation:
+        1. Create ValidationRun instance
+        2. Build EnergyPlusInputEnvelope using envelope_builder
+        3. Upload envelope to GCS
+        4. Trigger Cloud Run Job via Cloud Tasks
+        5. Return ValidationResult with pending status
+        6. Callback will update ValidationRun when complete
+
+        For now, returns not-implemented error.
+        """
         provider = self.resolve_provider(validator)
         if provider:
             provider.ensure_catalog_entries()
 
-        config = self.config or {}
-        run_simulation = bool(config.get("run_simulation", True))
+        issues = [
+            ValidationIssue(
+                path="",
+                message=_(
+                    "EnergyPlus Cloud Run Jobs integration is not yet implemented. "
+                    "This will be completed in Phase 4.",
+                ),
+                severity=Severity.ERROR,
+            ),
+        ]
 
-        # The 'stats' dict is the per-run telemetry we attach to the
-        # ValidationResult, giving downstream callers insight into how
-        # the simulation was invoked (modal function,
-        # weather file, run duration, outputs, cleanup status, etc.)
-        stats: dict[str, Any] = {
-            "modal_app": self.modal_app_name,
-            "modal_function": self.modal_function_name,
-            "run_simulation": run_simulation,
+        stats = {
+            "implementation_status": "Phase 4 - Not yet implemented",
+            "planned_executor": "Cloud Run Jobs",
         }
-        issues: list[ValidationIssue] = []
 
-        # We will do the syntax check within the modal function.
-
-        if not run_simulation:
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "EnergyPlus simulation execution is disabled for this step. "
-                        "Enable 'Run EnergyPlus simulation' until static IDF checks "
-                        "are available.",
-                    ),
-                    severity=Severity.ERROR,
-                ),
-            )
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        try:
-            energyplus_payload = submission.get_content()
-        except Exception as exc:  # pragma: no cover - defensive read failure
-            logger.exception("Unable to load submission content for EnergyPlus.")
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_("Unable to read submission content: %(error)s")
-                    % {"error": exc},
-                    severity=Severity.ERROR,
-                ),
-            )
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        if submission.file_type not in (
-            SubmissionFileType.JSON,
-            SubmissionFileType.TEXT,
-        ):
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "EnergyPlus validators accept epJSON (JSON) or IDF "
-                        "(text) submissions."
-                    ),
-                    severity=Severity.ERROR,
-                ),
-            )
-            return ValidationResult(
-                passed=False,
-                issues=issues,
-                stats={"file_type": submission.file_type},
-            )
-
-        stripped_payload = energyplus_payload.strip()
-        if not stripped_payload:
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_("Submission has no EnergyPlus content."),
-                    severity=Severity.ERROR,
-                ),
-            )
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        weather_file = self._resolve_weather_file(ruleset)
-        stats["weather_file"] = weather_file
-
-        issues.extend(
-            self.run_cel_assertions_for_stages(
-                ruleset=ruleset,
-                validator=validator,
-                input_payload=json.loads(energyplus_payload)
-                if stripped_payload.startswith("{")
-                else {},
-            ),
-        )
-
-        idf_checks = config.get("idf_checks") or []
-        simulation_checks = config.get("simulation_checks") or []
-        stats["requested_idf_checks"] = idf_checks
-        stats["requested_simulation_checks"] = simulation_checks
-
-        if idf_checks:
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "IDF checks (%(checks)s) are not implemented yet; only the "
-                        "EnergyPlus simulation runs at this stage.",
-                    )
-                    % {"checks": ", ".join(sorted(idf_checks))},
-                    severity=Severity.WARNING,
-                ),
-            )
-
-        try:
-            energyplus_payload_arg: Any = stripped_payload
-            if stripped_payload.startswith("{"):
-                try:
-                    energyplus_payload_arg = json.loads(stripped_payload)
-                except json.JSONDecodeError:
-                    energyplus_payload_arg = stripped_payload
-
-            raw_result = self._invoke_modal_runner(
-                energyplus_payload=energyplus_payload_arg,
-                weather_file=weather_file,
-                simulation_id=str(submission.id),
-            )
-        except Exception as exc:
-            logger.exception("EnergyPlus Modal invocation failed.")
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_("Failed to execute EnergyPlus via Modal: %(error)s")
-                    % {"error": exc},
-                    severity=Severity.ERROR,
-                ),
-            )
-            stats["modal_error"] = str(exc)
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        typed_result: EnergyPlusSimulationResult = self._parse_modal_result(
-            raw_result,
-            issues,
-            stats,
-        )
-        if typed_result is None:
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        stats["simulation_id"] = typed_result.simulation_id
-        stats["execution_seconds"] = typed_result.execution_seconds
-        stats["invocation_mode"] = typed_result.invocation_mode
-        stats["energyplus_returncode"] = typed_result.energyplus_returncode
-        stats["messages"] = list(typed_result.messages)
-        # `mode="json"` ensures Path fields inside the Pydantic model
-        # are serialized as strings.
-        stats["outputs"] = typed_result.outputs.model_dump(
-            mode="json",
-            exclude_none=True,
-        )
-        stats["metrics"] = typed_result.metrics.model_dump(
-            mode="json",
-            exclude_none=True,
-        )
-        if typed_result.logs is not None:
-            stats["logs"] = typed_result.logs.model_dump(
-                mode="json",
-                exclude_none=True,
-            )
-        energyplus_input_path = getattr(
-            typed_result,
-            "energyplus_input_file_path",
-            None,
-        )
-        if energyplus_input_path is not None:
-            stats["energyplus_input_file_path"] = str(energyplus_input_path)
-        payload_format = getattr(
-            typed_result,
-            "energyplus_payload_format",
-            None,
-        )
-        if payload_format is not None:
-            stats["energyplus_payload_format"] = payload_format
-
-        cleanup_after_run = bool(config.get("cleanup_after_run"))
-        if cleanup_after_run:
-            stats["cleanup_requested"] = True
-            cleanup_missing_ok = bool(config.get("cleanup_missing_ok", True))
-            try:
-                cleanup_result = self._invoke_modal_cleanup(
-                    simulation_id=typed_result.simulation_id,
-                    missing_ok=cleanup_missing_ok,
-                )
-            except Exception as exc:  # pragma: no cover - defensive cleanup failure
-                logger.exception(
-                    "EnergyPlus cleanup failed for simulation %s",
-                    typed_result.simulation_id,
-                )
-                issues.append(
-                    ValidationIssue(
-                        path="",
-                        message=_("EnergyPlus cleanup failed: %(error)s")
-                        % {"error": exc},
-                        severity=Severity.WARNING,
-                    ),
-                )
-                stats["cleanup_error"] = str(exc)
-            else:
-                stats["cleanup_result"] = cleanup_result
-
-        if typed_result.status != "success":
-            issues.extend(
-                [
-                    ValidationIssue(
-                        path="",
-                        message=error_msg,
-                        severity=Severity.ERROR,
-                    )
-                    for error_msg in typed_result.errors or []
-                ],
-            )
-            return ValidationResult(passed=False, issues=issues, stats=stats)
-
-        issues.extend(
-            self._run_simulation_checks(
-                simulation_checks=simulation_checks,
-                eui_band=config.get("eui_band") or {},
-                metrics=typed_result.metrics,
-            ),
-        )
-
-        # Evaluate CEL assertions (if any) against simulation outputs.
-        cel_context = typed_result.outputs.model_dump(
-            mode="json",
-            exclude_none=True,
-        )
-        issues.extend(
-            self.run_cel_assertions_for_stages(
-                ruleset=ruleset,
-                validator=validator,
-                output_payload=cel_context,
-            ),
-        )
-
-        passed = not any(issue.severity == Severity.ERROR for issue in issues)
-        return ValidationResult(passed=passed, issues=issues, stats=stats)
-
-    def _resolve_weather_file(self, ruleset: Ruleset | None) -> str:
-        if ruleset and isinstance(getattr(ruleset, "metadata", None), dict):
-            candidate = (ruleset.metadata or {}).get("weather_file")
-            if candidate:
-                return str(candidate)
-        env_default = os.getenv("ENERGYPLUS_DEFAULT_WEATHER")
-        if env_default:
-            return env_default
-        raise RuntimeError(
-            _(
-                "EnergyPlus ruleset must define metadata['weather_file'] or set "
-                "ENERGYPLUS_DEFAULT_WEATHER.",
-            ),
-        )
-
-    def _parse_modal_result(
-        self,
-        raw_result: Any,
-        issues: list[ValidationIssue],
-        stats: dict[str, Any],
-    ) -> EnergyPlusSimulationResult | None:
-        if EnergyPlusSimulationResult is None:
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "sv_modal SimulationResult model is unavailable. "
-                        "Ensure the sv_modal repository is accessible.",
-                    ),
-                    severity=Severity.ERROR,
-                ),
-            )
-            stats["modal_result_raw"] = raw_result
-            return None
-        try:
-            if isinstance(raw_result, dict):
-                if (
-                    "epjson_path" in raw_result
-                    and "energyplus_input_file_path" not in raw_result
-                ):
-                    raw_result["energyplus_input_file_path"] = raw_result["epjson_path"]
-                raw_result.pop("epjson_path", None)
-            return EnergyPlusSimulationResult.model_validate(raw_result)
-        except Exception as exc:
-            logger.exception("Unable to parse EnergyPlus result payload.")
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_("Unable to parse EnergyPlus result payload: %(error)s")
-                    % {"error": exc},
-                    severity=Severity.ERROR,
-                ),
-            )
-            stats["modal_result_raw"] = raw_result
-            return None
-
-    def _run_simulation_checks(
-        self,
-        *,
-        simulation_checks: list[str],
-        eui_band: dict[str, Any],
-        metrics: EnergyPlusSimulationMetrics,
-    ) -> list[ValidationIssue]:
-        issues: list[ValidationIssue] = []
-        if "eui-range" in simulation_checks:
-            eui_value = getattr(metrics, "energy_use_intensity_kwh_m2", None)
-            min_val = eui_band.get("min")
-            max_val = eui_band.get("max")
-            if eui_value is None:
-                issues.append(
-                    ValidationIssue(
-                        path="metrics.energy_use_intensity_kwh_m2",
-                        message=_(
-                            "EnergyPlus run did not expose an Energy Use Intensity "
-                            "value, so the configured range check could not run.",
-                        ),
-                        severity=Severity.WARNING,
-                    ),
-                )
-            else:
-                if min_val is not None and eui_value < float(min_val):
-                    issues.append(
-                        ValidationIssue(
-                            path="metrics.energy_use_intensity_kwh_m2",
-                            message=_(
-                                "Energy Use Intensity %(value)s kWh/m² is below the "
-                                "minimum %(threshold)s kWh/m².",
-                            )
-                            % {"value": eui_value, "threshold": min_val},
-                            severity=Severity.ERROR,
-                        ),
-                    )
-                if max_val is not None and eui_value > float(max_val):
-                    issues.append(
-                        ValidationIssue(
-                            path="metrics.energy_use_intensity_kwh_m2",
-                            message=_(
-                                "Energy Use Intensity %(value)s kWh/m² exceeds the "
-                                "maximum %(threshold)s kWh/m².",
-                            )
-                            % {"value": eui_value, "threshold": max_val},
-                            severity=Severity.ERROR,
-                        ),
-                    )
-        unsupported = sorted(set(simulation_checks) - {"eui-range"})
-        if unsupported:
-            issues.append(
-                ValidationIssue(
-                    path="",
-                    message=_("Simulation checks %(checks)s are not implemented yet.")
-                    % {"checks": ", ".join(unsupported)},
-                    severity=Severity.WARNING,
-                ),
-            )
-        return issues
-
-
-def configure_modal_runner(
-    mock_callable: Callable[..., Any] | None,
-    *,
-    cleanup_callable: Callable[..., Any] | None = None,
-) -> None:
-    """
-    Backwards-compatible helper to configure the Modal runner for tests.
-    """
-
-    EnergyPlusValidationEngine.configure_modal_runner(
-        mock_callable,
-        cleanup_callable=cleanup_callable,
-    )
+        return ValidationResult(passed=False, issues=issues, stats=stats)

@@ -513,11 +513,34 @@ DEFAULT_FROM_EMAIL = env(
     default="Validibot <daniel@validibot.com>",
 )
 
-MODAL_TOKEN_ID = env("MODAL_TOKEN_ID", default="")
-MODAL_TOKEN_SECRET = env("MODAL_TOKEN_SECRET", default="")
+# Cloud Run Job Validator Settings
+# ------------------------------------------------------------------------------
 
+# GCP Project configuration
+GCP_PROJECT_ID = env("GCP_PROJECT_ID", default="")
+GCP_REGION = env("GCP_REGION", default="us-central1")
 
-TEST_ENERGYPLUS_LIVE_MODAL = env.bool("TEST_ENERGYPLUS_LIVE_MODAL", default=False)
+# Cloud Tasks configuration for triggering validators
+CLOUD_TASKS_QUEUE_NAME = env("CLOUD_TASKS_QUEUE_NAME", default="validator-jobs")
+
+# GCS bucket for validation files
+VALIDATOR_GCS_BUCKET = env("VALIDATOR_GCS_BUCKET", default="")
+
+# KMS key for signing JWT callback tokens
+VALIDATOR_CALLBACK_KMS_KEY = env(
+    "VALIDATOR_CALLBACK_KMS_KEY",
+    default="",
+)
+
+# Cloud Run Job names for each validator type
+VALIDATOR_JOB_NAMES = {
+    "energyplus": env(
+        "VALIDATOR_JOB_NAME_ENERGYPLUS",
+        default="validibot-validator-energyplus",
+    ),
+    # Add more validator types as needed
+    # "fmi": env("VALIDATOR_JOB_NAME_FMI", default="validibot-validator-fmi"),
+}
 
 
 # FEATURES

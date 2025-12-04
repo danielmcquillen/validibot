@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import io
-import os
-import tempfile
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from defusedxml import ElementTree as ET  # noqa: N817
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
@@ -43,7 +42,6 @@ DISALLOWED_EXTENSIONS = {
     ".sh",
     ".cmd",
 }
-_TRUE_STRINGS = {"1", "true", "yes", "on"}
 
 
 class FMIIntrospectionError(ValueError):
@@ -58,26 +56,15 @@ class _FMIProbeRunner:
     """
     FMI probe runner placeholder.
 
-    TODO: Phase 4 - Implement FMI probing via Cloud Run Jobs.
+    TODO: Phase 4b - Implement FMI probing via Cloud Run Jobs.
     For now, this is a stub that will raise not-implemented errors.
     """
 
     @classmethod
     def _invoke_modal_runner(cls, **kwargs):
         """Stub that raises not-implemented error."""
-        msg = "FMI probing via Cloud Run Jobs is not yet implemented (Phase 4)"
+        msg = "FMI probing via Cloud Run Jobs is not yet implemented (Phase 4b)"
         raise NotImplementedError(msg)
-
-
-def _use_test_volume() -> bool:
-    """
-    Return True when the environment requests the test Modal Volume.
-
-    This keeps production and test FMUs isolated in separate Modal volumes.
-    """
-
-    raw = os.getenv("FMI_USE_TEST_VOLUME", "")
-    return str(raw).lower() in _TRUE_STRINGS
 
 
 def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
@@ -190,83 +177,37 @@ def _run_stage_for_causality(causality: str) -> CatalogRunStage | None:
     return None
 
 
-def _cache_fmu_in_modal_volume(
-    *,
-    fmu_model: FMUModel,
-    checksum: str,
-    filename: str,
-    payload: bytes,
-    use_test_volume: bool = False,
-) -> str:
+def _should_use_gcs_storage() -> bool:
     """
-    Copy a validated FMU into the Modal Volume cache using the Modal client.
+    Determine whether FMUs should be uploaded to GCS (cloud) or stored locally.
 
-    This avoids presigned URLs and keeps uploads on the control plane; the
-    Modal runtime reads directly from the cached FMU keyed by checksum.
+    Local/dev runs should keep files on the filesystem; production/staging
+    enables GCS by configuring GCS_VALIDATION_BUCKET (and storages).
     """
 
-    return _upload_to_modal_volume(
-        checksum=checksum,
-        filename=filename,
-        payload=payload,
-        use_test_volume=use_test_volume,
-    )
+    return bool(settings.GCS_VALIDATION_BUCKET)
 
 
-def _upload_to_modal_volume(
-    *,
-    checksum: str,
-    filename: str,
-    payload: bytes,
-    use_test_volume: bool,
-) -> str:
+def _upload_fmu_to_gcs(checksum: str, payload: bytes) -> str:
     """
-    Write an FMU into the appropriate Modal Volume from the control plane.
+    Upload a validated FMU payload to GCS and return its gs:// URI.
 
-    In production we write to the production volume; for tests we route to a
-    dedicated test volume. The returned path matches the mount points used in
-    the Modal runtime (/fmus or /fmus-test). This helper assumes control-plane
-    credentials (env vars or ~/.modal.toml) are available.
+    Uses checksum-based naming to deduplicate identical FMUs.
     """
 
-    try:
-        import modal
-    except ImportError as exc:  # pragma: no cover - environment dependency
-        raise FMUStorageError("Install 'modal' to cache FMUs in Modal Volume.") from exc
+    from google.cloud import storage
 
-    volume_name = (
-        os.getenv("FMI_TEST_VOLUME_NAME", "fmi-cache-test")
-        if use_test_volume
-        else os.getenv("FMI_VOLUME_NAME", "fmi-cache")
-    )
-    mount_prefix = "/fmus-test" if use_test_volume else "/fmus"
-    remote_name = f"{checksum}.fmu"
+    bucket_name = settings.GCS_VALIDATION_BUCKET
+    if not bucket_name:
+        msg = "GCS_VALIDATION_BUCKET is not configured."
+        raise FMUStorageError(msg)
 
-    volume = modal.Volume.from_name(volume_name, create_if_missing=True)
-    if hasattr(volume, "batch_upload"):
-        with tempfile.NamedTemporaryFile(
-            prefix="fmu-upload-", suffix=".fmu", delete=False
-        ) as tmp:
-            tmp.write(payload)
-            tmp.flush()
-            with volume.batch_upload(force=True) as batch:  # type: ignore[arg-type]
-                batch.put_file(tmp.name, f"/{remote_name}")
-    elif hasattr(volume, "put_file"):
-        # Older client without batch_upload but with put_file
-        with tempfile.NamedTemporaryFile(
-            prefix="fmu-upload-", suffix=".fmu", delete=False
-        ) as tmp:
-            tmp.write(payload)
-            tmp.flush()
-            volume.put_file(tmp.name, f"/{remote_name}")
-    elif hasattr(volume, "__setitem__"):
-        # Fallback for legacy clients: direct bytes assignment into the volume mapping.
-        volume[remote_name] = payload  # type: ignore[index]
-    else:  # pragma: no cover - defensive against unexpected client versions
-        raise FMUStorageError(
-            "Modal Volume API missing batch_upload/put_file/item assignment."
-        )
-    return f"{mount_prefix}/{remote_name}"
+    object_path = f"fmus/{checksum}.fmu"
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(object_path)
+    blob.upload_from_string(payload, content_type="application/octet-stream")
+    return f"gs://{bucket_name}/{object_path}"
 
 
 def create_fmi_validator(
@@ -296,23 +237,28 @@ def create_fmi_validator(
             filename=upload.name,
         )
         wrapped_upload = ContentFile(raw_bytes, name=upload.name)
+        fmu = FMUModel.objects.create(
+            org=org,
+            project=project,
+            name=name,
+            description=description,
+            size_bytes=len(raw_bytes),
+            checksum=checksum,
+            gcs_uri=_upload_fmu_to_gcs(checksum, raw_bytes)
+            if _should_use_gcs_storage()
+            else "",
+        )
         try:
             stored_file = (
                 wrapped_upload
                 if storage_backend is None
                 else storage_backend(wrapped_upload)
             )
+            # Save the FMU payload to the configured storage to ensure a local path
+            # exists in dev/test and an object exists in cloud storage when enabled.
+            fmu.file.save(upload.name, stored_file, save=False)
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
-        fmu = FMUModel.objects.create(
-            org=org,
-            project=project,
-            name=name,
-            description=description,
-            file=stored_file,
-            size_bytes=len(raw_bytes),
-            checksum=checksum,
-        )
         fmu.fmi_version = fmi_version
         fmu.introspection_metadata = {
             "model_name": model_name,
@@ -320,18 +266,6 @@ def create_fmi_validator(
         }
         fmu.is_approved = approve_immediately
         fmu.save()
-
-        try:
-            fmu.modal_volume_path = _cache_fmu_in_modal_volume(
-                fmu_model=fmu,
-                checksum=checksum,
-                filename=upload.name,
-                payload=raw_bytes,
-                use_test_volume=_use_test_volume(),
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            raise FMUStorageError(str(exc)) from exc
-        fmu.save(update_fields=["modal_volume_path", "modified"])
 
         validator = Validator.objects.create(
             org=org,
@@ -387,6 +321,7 @@ def _persist_variables(
             slug=slug,
             label=var.name,
             target_field=var.name,
+            input_binding_path="",
             data_type=_data_type_for_variable(var.value_type),
             metadata={"fmi_value_type": var.value_type, "unit": var.unit},
             is_required=(run_stage == CatalogRunStage.INPUT),
@@ -407,12 +342,12 @@ def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbe
     """
 
     runner = _FMIProbeRunner()
-    storage_key = getattr(fmu_model.file, "path", "") or getattr(
-        fmu_model.file,
-        "name",
-        "",
+    storage_key = (
+        fmu_model.gcs_uri
+        or getattr(fmu_model.file, "path", "")
+        or getattr(fmu_model.file, "name", "")
     )
-    fmu_url = getattr(fmu_model.file, "url", None)
+    fmu_url = fmu_model.gcs_uri or getattr(fmu_model.file, "url", None)
     probe_record, _ = FMUProbeResult.objects.get_or_create(
         fmu_model=fmu_model,
         defaults={"status": FMUProbeStatus.PENDING},
@@ -426,13 +361,12 @@ def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbe
             fmu_storage_key=storage_key,
             fmu_url=fmu_url,
             fmu_checksum=fmu_model.checksum,
-            use_test_volume=_use_test_volume(),
             return_logs=return_logs,
         )
         result = FMIProbeResult.model_validate(raw)
     except Exception as exc:  # pragma: no cover - defensive
         probe_record.mark_failed(str(exc))
-        raise
+        return FMIProbeResult.failure(errors=[str(exc)])
 
     if result.status == "success":
         _refresh_variables_from_probe(fmu_model, result.variables)

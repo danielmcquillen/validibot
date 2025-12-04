@@ -88,33 +88,25 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Workflow editor → Add Step → Select FMI validator
    - Step is created with reference to the validator
 
-2. **Configure input bindings** (per-step config)
-   - For each required input catalog entry, author specifies source:
-     - From submission field: `{"source": "submission", "field": "design_temperature"}`
-     - From previous step output: `{"source": "step", "step_id": "...", "signal": "zone_temp"}`
-     - Static value: `{"source": "static", "value": -10.0}`
-   - Bindings stored in `WorkflowStep.config["input_bindings"]`
+2. **Review inputs/outputs** (no custom signals)
+   - Inputs/outputs (and optional bindings) are defined by the validator author during FMU introspection. Workflow authors cannot add or rename signals.
+   - For each required input catalog entry, the binding path is taken from the catalog entry. If no binding is provided, we default to matching the top-level submission key with the catalog slug (UI should remind authors of this default).
 
-3. **Configure simulation settings** (optional)
-   - Start time, stop time, step size
-   - Stored in `WorkflowStep.config["simulation_config"]`
-
-4. **Create ruleset with assertions**
+3. **Create ruleset with assertions**
    - Create or select a Ruleset for this step
    - Write CEL assertions referencing output catalog entries:
      ```cel
-     signals.COP > 3.0
-     signals.energy_consumption < 1000
+     COP > 3.0
+     energy_consumption < 1000
      ```
    - Assertions stored in `Ruleset.content`
 
-5. **Workflow is ready**
+4. **Workflow is ready**
    - Workflow can be activated
    - Users can submit data to trigger validation runs
 
 **Data created/modified:**
-- `ValidatorCatalogEntry` rows define the exposed signals (inputs/outputs) for the validator (one per exposed FMU variable). These are created during validator authoring.
-- `WorkflowStep` stores per-step **bindings** in `config["input_bindings"]`, keyed by catalog entry slugs. Bindings are workflow-specific (which submission field/static value feeds which catalog entry), so they stay on the step rather than the catalog entries.
+- `ValidatorCatalogEntry` rows define the exposed signals (inputs/outputs) for the validator (one per exposed FMU variable). These are created during validator authoring. Each input entry carries an optional binding path (submission field path). If omitted, the binding defaults to the catalog slug as a top-level submission key.
 - `Ruleset` (CEL assertions referencing catalog entry slugs)
 
 ### Journey 3: Workflow User Runs Validation
@@ -132,13 +124,13 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Creates `StepRun` for the FMI step (status=PENDING)
 
 3. **FMI engine prepares execution**
-   - Resolves input bindings → extracts values from submission/previous steps
+   - Resolves input values using catalog entry bindings (or slug-name defaults) against the submission payload. No per-step remapping.
    - Builds `FMIInputEnvelope` with:
-     - FMU file URI (from FMUModel.gcs_uri)
-     - Resolved input values
+     - FMU file URI (from FMUModel.gcs_uri or local path in dev)
+     - Resolved input values keyed by catalog slugs
      - Simulation config
      - Callback URL and JWT token
-   - Uploads envelope to GCS as `input.json`
+   - Uploads envelope to storage (GCS in cloud, local path in dev) as `input.json`
    - Triggers Cloud Run Job
    - Updates step status to RUNNING
 
@@ -168,12 +160,7 @@ Understanding FMI validation requires understanding three distinct user journeys
 
 ### 3.1 FMU Storage Migration (Modal → GCS)
 
-**Current flow (Modal):**
-```
-Upload FMU → Validate ZIP → Store in S3 → Copy to Modal Volume → Store modal_volume_path
-```
-
-**New flow (GCS):**
+**New flow (GCS/local):**
 ```
 Upload FMU → Validate ZIP → Upload to GCS → Store gcs_uri
 ```
@@ -185,14 +172,11 @@ class FMUModel(models.Model):
     file = models.FileField(...)  # Local storage during upload/dev
     checksum = models.CharField(...)
 
-    # Add GCS URI (replaces modal_volume_path)
+    # Add GCS URI for cloud storage
     gcs_uri = models.URLField(
         blank=True,
         help_text="GCS URI to the FMU (e.g., gs://bucket/fmus/{checksum}.fmu)"
     )
-
-    # Deprecate - remove after migration
-    # modal_volume_path = models.CharField(...)  # REMOVE
 ```
 
 **FMU storage location:** `gs://{GCS_VALIDATION_BUCKET}/fmus/{checksum}.fmu`
@@ -200,8 +184,6 @@ class FMUModel(models.Model):
 Using checksum as filename enables deduplication - same FMU uploaded twice only stored once.
 
 Execution-time policy: Cloud Run Jobs should read the FMU directly from this canonical GCS URI (no copy into each execution bundle) to avoid duplication and keep checksum-based caching effective. If we later need per-run isolation we can add an optional “copy into bundle” flag, but the default remains direct read.
-
-Migration/backfill: Keep `modal_volume_path` readable during migration; backfill a `gcs_uri` for existing FMUs by uploading them to `gs://.../fmus/{checksum}.fmu` and only then retire `modal_volume_path`.
 
 ### 3.2 FMI Envelope Schemas
 
@@ -334,7 +316,7 @@ def launch_fmi_validation(
 
     Flow:
     1. Get FMU model and GCS URI
-    2. Resolve input bindings from step config
+    2. Resolve input bindings from catalog entries (default to slug-name lookup)
     3. Build FMIInputEnvelope
     4. Upload envelope to GCS
     5. Trigger Cloud Run Job
@@ -343,48 +325,11 @@ def launch_fmi_validation(
     ...
 ```
 
-### 3.5 Input Binding Resolution
+### 3.5 Catalog Bindings (Inputs)
 
-The workflow step stores input bindings in `config["input_bindings"]`:
-
-```python
-# Example step config
-{
-    "input_bindings": {
-        "outdoor_temp": {"source": "submission", "field": "design_temperature"},
-        "indoor_setpoint": {"source": "static", "value": 21.0},
-        "occupancy": {"source": "step", "step_id": "abc-123", "signal": "schedule"}
-    },
-    "simulation_config": {
-        "start_time": 0.0,
-        "stop_time": 3600.0,  # 1 hour
-        "step_size": 60.0  # 1 minute steps
-    }
-}
-```
-
-Resolution happens in the launcher:
-
-```python
-def _resolve_input_bindings(
-    bindings: dict[str, dict],
-    submission: Submission,
-    run: ValidationRun,
-) -> dict[str, Any]:
-    """Resolve input bindings to actual values."""
-    resolved = {}
-    for slug, binding in bindings.items():
-        source = binding["source"]
-        if source == "submission":
-            # Extract from submission content
-            resolved[slug] = submission.get_field(binding["field"])
-        elif source == "static":
-            resolved[slug] = binding["value"]
-        elif source == "step":
-            # Get from previous step's output signals
-            resolved[slug] = run.get_step_signal(binding["step_id"], binding["signal"])
-    return resolved
-```
+- Each input `ValidatorCatalogEntry` carries an optional binding path indicating where to pull the value from the submission payload (e.g., `design.temperature`).
+- If no binding path is provided, we default to a top-level key that matches the catalog slug.
+- Workflow authors cannot change bindings; they are fixed at validator-author time. Missing required inputs (catalog `is_required=True`) cause a pre-flight failure before triggering the Cloud Run Job.
 
 ### 3.6 FMI Engine Update
 
@@ -441,11 +386,6 @@ class FMIValidationEngine(BaseValidatorEngine):
 - **Phase 4 (this ADR):** Django-side plumbing (models, envelopes, bindings, callback handler, GCS storage) with FMU reads from `gcs_uri`. No Cloud Run Job container yet.
 - **Phase 4b:** Implement and deploy the FMI Cloud Run Job container and probe container, then switch execution to Cloud Run.
 - **Probe approvals while Modal is removed:** Until the probe container exists (Phase 4b), `create_fmi_validator()` should temporarily auto-approve FMUs after checksum/introspection to keep author flows unblocked. When Phase 4b ships, restore probe-based approval and stop auto-approving.
-- **Migration/compat checklist:**
-  - Add `gcs_uri` to `FMUModel`; keep `modal_volume_path` readable until backfill completes.
-  - Backfill job: iterate existing FMUs, upload to `gs://{GCS_VALIDATION_BUCKET}/fmus/{checksum}.fmu`, set `gcs_uri`.
-  - Dual-read in Django: prefer `gcs_uri`; fall back to `modal_volume_path` during the transition.
-  - Remove `modal_volume_path` only after all records have `gcs_uri` populated and callers use it.
 
 ---
 
@@ -526,7 +466,6 @@ Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way a
 ### Unit tests
 - FMI envelope serialization/deserialization
 - `build_fmi_input_envelope()` with mock data
-- `_resolve_input_bindings()` with various binding types
 - `launch_fmi_validation()` with mocked GCS/Cloud Tasks
 
 ### Integration tests
@@ -552,17 +491,15 @@ Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way a
 
 These questions have been resolved during ADR review:
 
-1. **Input binding resolution** - Bindings live in `WorkflowStep.config["input_bindings"]`, keyed by catalog entry slugs. Resolution happens in the launcher.
+1. **Input binding resolution** - Bindings live on `ValidatorCatalogEntry` (optional path); default is top-level key matching the catalog slug. Workflow authors cannot remap bindings. Required inputs must resolve or the launch fails fast.
 
-2. **FMU caching** - Jobs read directly from the canonical `gs://.../fmus/{checksum}.fmu` path; no per-run copy by default.
+2. **FMU caching** - Jobs read directly from the canonical `gs://.../fmus/{checksum}.fmu` path in cloud; local runs use filesystem storage.
 
 3. **Probe implementation** - Auto-approve post-introspection until Phase 4b delivers the probe container.
 
 4. **Security/IAM and job invocation** - Cloud Run Jobs execute under a dedicated service account with bucket read access (prefer CMEK-backed buckets). Callbacks must carry JWT claims for `run_id`, `step_run_id`, `validator_id`, and `org_id`; Django verifies all claims before processing. Jobs use `INPUT_URI` and load the FMU from the `input_files` entry (role=`fmu`), respecting `context.timeout_seconds` for max runtime. Status values map to `StepStatus`/`ValidationRunStatus` as in the Validator Job Interface ADR.
 
-5. **Binding validation and CEL assertions** - Required inputs (from catalog `is_required`) must be resolved before enqueueing a job; missing bindings fail fast. On callback, output values surface to CEL under the same catalog slugs (`signals.<slug>`), and findings/metrics are persisted the same way as basic validators.
-
-6. **Migration/compat** - Dual-read `modal_volume_path`/`gcs_uri` during transition; backfill legacy FMUs to `gs://.../fmus/{checksum}.fmu`, then retire `modal_volume_path` once populated.
+5. **Binding validation and CEL assertions** - Required inputs (catalog `is_required`) must resolve before enqueue. On callback, output values surface to CEL under the catalog slugs for the current step; downstream steps use a namespaced `steps.<step_id>.<slug>` to avoid collisions. Findings/metrics persist the same way as basic validators.
 
 ---
 

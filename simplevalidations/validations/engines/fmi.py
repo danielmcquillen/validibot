@@ -15,10 +15,8 @@ from typing import TYPE_CHECKING
 
 from django.utils.translation import gettext as _
 
-from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
-from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
 from simplevalidations.validations.engines.registry import register_engine
 
@@ -49,34 +47,35 @@ class FMIValidationEngine(BaseValidatorEngine):
         """
         Validate an FMI submission.
 
-        TODO: Phase 4 implementation:
-        1. Create ValidationRun instance
-        2. Build FMIInputEnvelope using envelope_builder
-        3. Upload envelope to GCS
-        4. Trigger Cloud Run Job via Cloud Tasks
-        5. Return ValidationResult with pending status
-        6. Callback will update ValidationRun when complete
-
-        For now, returns not-implemented error.
         """
         provider = self.resolve_provider(validator)
         if provider:
             provider.ensure_catalog_entries()
 
-        issues = [
-            ValidationIssue(
-                path="",
-                message=_(
-                    "FMI Cloud Run Jobs integration is not yet implemented. "
-                    "This will be completed in Phase 4.",
-                ),
-                severity=Severity.ERROR,
-            ),
-        ]
+        from django.conf import settings
 
-        stats = {
-            "implementation_status": "Phase 4 - Not yet implemented",
-            "planned_executor": "Cloud Run Jobs",
-        }
+        # Cloud Run configuration required
+        if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_FMI_JOB_NAME:
+            logger.warning(
+                "Cloud Run Jobs not configured for FMI - returning not-implemented error"
+            )
+            return ValidationResult(
+                passed=False,
+                issues=[],
+                stats={
+                    "implementation_status": "FMI Cloud Run not configured",
+                },
+            )
 
-        return ValidationResult(passed=False, issues=issues, stats=stats)
+        # Import here to avoid circular dependency
+        from simplevalidations.validations.services.cloud_run.launcher import (
+            launch_fmi_validation,
+        )
+
+        return launch_fmi_validation(
+            run=self.run_context.validation_run,
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
+            step=self.run_context.workflow_step,
+        )

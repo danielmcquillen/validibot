@@ -613,13 +613,13 @@ class FMUModel(TimeStampedModel):
         max_length=128,
         blank=True,
         default="",
-        help_text=_("SHA256 checksum used to reference cached FMUs in Modal."),
+        help_text=_("SHA256 checksum used to reference cached FMUs in storage."),
     )
-    modal_volume_path = models.CharField(
-        max_length=255,
+    gcs_uri = models.CharField(
+        max_length=512,
         blank=True,
         default="",
-        help_text=_("Path inside the Modal Volume cache for this FMU."),
+        help_text=_("GCS URI to the canonical FMU object (e.g., gs://bucket/fmus/<checksum>.fmu)."),
     )
     fmi_version = models.CharField(
         max_length=8,
@@ -1211,6 +1211,16 @@ class ValidatorCatalogEntry(TimeStampedModel):
         max_length=255,
         help_text=_(
             "Path used to locate this signal in the input or processor output."
+        ),
+    )
+    input_binding_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_(
+            "Optional path to the submission field used for this input signal. "
+            "If empty, the system uses the catalog slug as a top-level key. "
+            "Workflow authors cannot override this binding."
         ),
     )
 

@@ -25,9 +25,6 @@ class FMIProbeViewTests(TestCase):
         grant_role(self.user, self.org, RoleCode.OWNER)
         self.client.force_login(self.user)
         self.user.set_current_org(self.org)
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
         _prime_modal_cache_fake()
         self.validator = create_fmi_validator(
             org=self.org,
@@ -35,12 +32,6 @@ class FMIProbeViewTests(TestCase):
             name="Probe Validator",
             upload=_fake_fmu(),
         )
-
-    def tearDown(self):
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
     def test_probe_start_returns_queue_status(self):
         url = reverse("validations:fmi_probe_start", args=[self.validator.pk])

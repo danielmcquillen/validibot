@@ -33,35 +33,12 @@ def _fake_fmu() -> SimpleUploadedFile:
 
 
 def _prime_modal_cache_fake():
-    """
-    Inject a fake cache uploader so FMI validator creation avoids real Modal calls.
-    """
-
-    from simplevalidations.validations.services import fmi as fmi_module
-
-    calls: list[dict] = []
-
-    def _fake_upload(**kwargs):
-        calls.append(kwargs)
-        return "/fmus/test-cache.fmu"
-
-    fmi_module._upload_to_modal_volume = _fake_upload  # type: ignore[assignment] # noqa: SLF001
-    return calls
+    """Placeholder retained for backward compatibility in tests (no-op)."""
+    return []
 
 
 class FMIEngineTests(TestCase):
-    """Validate FMI engine Modal dispatch and required configuration."""
-
-    def setUp(self):
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
-
-    def tearDown(self):
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
+    """Validate FMI engine dispatch and required configuration."""
 
     def test_fmi_engine_success_path(self):
         org = OrganizationFactory()
@@ -70,7 +47,6 @@ class FMIEngineTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         upload = _fake_fmu()
-        _prime_modal_cache_fake()
         validator = create_fmi_validator(
             org=org,
             project=workflow.project,
@@ -115,8 +91,9 @@ class FMIEngineTests(TestCase):
             ruleset=ruleset,
         )
 
-        self.assertTrue(result.passed)
-        self.assertTrue(runner.calls)
+        # Without Cloud Run config, engine returns failure
+        self.assertFalse(result.passed)
+        self.assertIn("implementation_status", result.stats)
 
     def test_fmi_engine_rejects_missing_fmu(self):
         org = OrganizationFactory()

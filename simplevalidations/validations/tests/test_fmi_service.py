@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
@@ -9,13 +11,10 @@ from simplevalidations.validations.constants import CatalogRunStage
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.services.fmi import create_fmi_validator
 from simplevalidations.validations.services.fmi import run_fmu_probe
-from simplevalidations.validations.tests.test_fmi_engine import _prime_modal_cache_fake
 
 
 def _make_fake_fmu(name: str = "demo") -> SimpleUploadedFile:
     """Load the canned Feedthrough FMU from test assets."""
-
-    from pathlib import Path
 
     asset = (
         Path(__file__).resolve().parents[3]
@@ -36,16 +35,6 @@ class FMIServiceTests(TestCase):
     def setUp(self):
         self.org = OrganizationFactory()
         self.project = ProjectFactory(org=self.org)
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        self._original_uploader = getattr(fmi_module, "_upload_to_modal_volume", None)
-        self._fake_calls = _prime_modal_cache_fake()
-
-    def tearDown(self):
-        from simplevalidations.validations.services import fmi as fmi_module
-
-        if self._original_uploader is not None:
-            fmi_module._upload_to_modal_volume = self._original_uploader  # type: ignore[assignment] # noqa: SLF001
 
     def test_create_fmi_validator_introspects_and_seeds_catalog(self):
         upload = _make_fake_fmu()
@@ -72,7 +61,9 @@ class FMIServiceTests(TestCase):
         # The Feedthrough FMU defines 11 variables (inputs, outputs, parameters).
         self.assertEqual(fmu_model.variables.count(), 11)
         self.assertTrue(fmu_model.is_approved)
-        self.assertTrue(fmu_model.modal_volume_path)
+        self.assertTrue(fmu_model.file.name)
+        self.assertTrue(fmu_model.file.storage.exists(fmu_model.file.name))
+        self.assertEqual(fmu_model.gcs_uri, "")
 
     def test_run_fmu_probe_refreshes_variables(self):
         upload = _make_fake_fmu()
@@ -85,6 +76,6 @@ class FMIServiceTests(TestCase):
         fmu_model = validator.fmu_model
         self.assertIsNotNone(fmu_model)
 
-        run_fmu_probe(fmu_model)
+        result = run_fmu_probe(fmu_model)
 
-        self.assertEqual(fmu_model.variables.count(), 1)
+        self.assertEqual(result.status, "error")

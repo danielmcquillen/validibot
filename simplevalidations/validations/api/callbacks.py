@@ -19,6 +19,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from sv_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+from sv_shared.fmi.envelopes import FMIOutputEnvelope
 from sv_shared.validations.envelopes import ValidationCallback
 from sv_shared.validations.envelopes import ValidationStatus
 
@@ -210,6 +211,8 @@ class ValidationCallbackView(APIView):
             # Determine the envelope class based on validator type
             if validator.validation_type == "energyplus":
                 envelope_class = EnergyPlusOutputEnvelope
+            elif validator.validation_type == "fmi":
+                envelope_class = FMIOutputEnvelope
             else:
                 logger.error(
                     "Unsupported validator type: %s",
@@ -319,7 +322,21 @@ class ValidationCallbackView(APIView):
                     ),
                     0,
                 )
-            step_run.output = output_envelope.model_dump()
+            # Persist full envelope plus a signals namespace for downstream steps.
+            step_output = output_envelope.model_dump()
+            try:
+                # FMI envelopes expose output_values keyed by catalog slug
+                signals = getattr(output_envelope.outputs, "output_values", None)
+                if signals is None and hasattr(output_envelope.outputs, "outputs"):
+                    signals = getattr(output_envelope.outputs, "outputs", None)
+                if signals:
+                    step_output = {**step_output, "signals": signals}
+            except Exception:
+                logger.exception(
+                    "Failed to extract signals from output envelope",
+                    extra={"run_id": run.id},
+                )
+            step_run.output = step_output
             if output_envelope.status != ValidationStatus.SUCCESS:
                 step_run.error = run.error or ""
             step_run.save(

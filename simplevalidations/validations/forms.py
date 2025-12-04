@@ -1197,6 +1197,7 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             "run_stage",
             "slug",
             "target_field",
+            "input_binding_path",
             "label",
             "data_type",
             "description",

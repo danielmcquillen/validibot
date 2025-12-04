@@ -12,6 +12,9 @@ from typing import Protocol
 
 from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from sv_shared.energyplus.envelopes import EnergyPlusInputs
+from sv_shared.fmi.envelopes import FMIInputEnvelope
+from sv_shared.fmi.envelopes import FMIInputs
+from sv_shared.fmi.envelopes import FMISimulationConfig
 from sv_shared.validations.envelopes import ExecutionContext
 from sv_shared.validations.envelopes import InputFileItem
 from sv_shared.validations.envelopes import OrganizationInfo
@@ -228,8 +231,58 @@ def build_input_envelope(
             callback_url=callback_url,
             callback_token=callback_token,
             execution_bundle_uri=execution_bundle_uri,
-            timestep_per_hour=timestep_per_hour,
-            output_variables=output_variables,
+                timestep_per_hour=timestep_per_hour,
+                output_variables=output_variables,
+            )
+    if validator.validation_type == "fmi":
+        # FMU location: use gcs_uri when present, otherwise local file path
+        fmu_model = validator.fmu_model
+        if not fmu_model:
+            msg = f"Validator {validator.id} has no FMU model attached"
+            raise ValueError(msg)
+        fmu_uri = fmu_model.gcs_uri or getattr(fmu_model.file, "path", "")
+        if not fmu_uri:
+            msg = f"FMU model {fmu_model.id} has no storage URI or file path"
+            raise ValueError(msg)
+
+        # Resolve inputs keyed by catalog slug from the submission content based on catalog binding paths.
+        # Here we only carry the values; the launcher is responsible for resolution.
+        fmi_inputs = FMIInputs(
+            input_values={},
+            simulation=FMISimulationConfig(),
+            output_variables=[],
         )
+
+        input_files = [
+            InputFileItem(
+                name="model.fmu",
+                mime_type=SupportedMimeType.FMU,
+                role="fmu",
+                uri=fmu_uri,
+            )
+        ]
+        context = ExecutionContext(
+            callback_url=callback_url,
+            callback_token=callback_token,
+            execution_bundle_uri=execution_bundle_uri,
+        )
+        return FMIInputEnvelope(
+            run_id=str(run.id),
+            validator=ValidatorInfo(
+                id=str(validator.id),
+                type=validator.validation_type,
+                version=validator.version,
+            ),
+            org=OrganizationInfo(id=str(run.org.id), name=run.org.name),
+            workflow=WorkflowInfo(
+                id=str(run.workflow.id),
+                step_id=str(step.id),
+                step_name=step.name,
+            ),
+            input_files=input_files,
+            inputs=fmi_inputs,
+            context=context,
+        )
+
     msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)

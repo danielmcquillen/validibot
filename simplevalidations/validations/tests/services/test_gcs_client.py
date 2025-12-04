@@ -95,7 +95,7 @@ def test_download_envelope(mock_storage_client):
     # Verify result
     assert isinstance(envelope, TestModel)
     assert envelope.test_field == "world"
-    assert envelope.test_number == 99
+    assert envelope.test_number == 99  # noqa: PLR2004
 
     # Verify GCS calls
     mock_client.bucket.assert_called_once_with("test-bucket")

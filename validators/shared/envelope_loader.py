@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
-def load_input_envelope(envelope_class: type[T]) -> T:
+def load_input_envelope[T: BaseModel](envelope_class: type[T]) -> T:
     """
     Load input envelope from environment variable or command-line argument.
 
@@ -48,7 +48,8 @@ def load_input_envelope(envelope_class: type[T]) -> T:
 
     if not input_uri:
         raise ValueError(
-            "No input URI provided. Set INPUT_URI environment variable or pass as first argument."
+            "No input URI provided. Set INPUT_URI environment variable "
+            "or pass as first argument."
         )
 
     logger.info("Loading input envelope from %s", input_uri)

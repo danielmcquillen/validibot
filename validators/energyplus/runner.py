@@ -45,7 +45,7 @@ def run_energyplus_simulation(
     start_time = time.time()
 
     # Create working directory
-    work_dir = Path("/tmp/energyplus_run") / input_envelope.run_id
+    work_dir = Path("/tmp/energyplus_run") / input_envelope.run_id  # noqa: S108
     work_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("Working directory: %s", work_dir)
@@ -182,9 +182,9 @@ def _run_energyplus(
     logger.info("Executing: %s", " ".join(cmd))
 
     # Run EnergyPlus
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603
         cmd,
-        cwd=work_dir,
+        check=False, cwd=work_dir,
         capture_output=True,
         text=True,
         timeout=3600,  # 1 hour timeout

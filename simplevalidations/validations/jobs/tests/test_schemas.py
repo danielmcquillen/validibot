@@ -4,14 +4,13 @@
 import pytest
 from pydantic import ValidationError
 
-from simplevalidations.validations.jobs.schemas import InputItem
-from simplevalidations.validations.jobs.schemas import InputKind
+from simplevalidations.validations.jobs.schemas import InputFileItem
 from simplevalidations.validations.jobs.schemas import Severity
 from simplevalidations.validations.jobs.schemas import SupportedMimeType
 from simplevalidations.validations.jobs.schemas import ValidationCallback
 from simplevalidations.validations.jobs.schemas import ValidationInputEnvelope
 from simplevalidations.validations.jobs.schemas import ValidationMessage
-from simplevalidations.validations.jobs.schemas import ValidationResultEnvelope
+from simplevalidations.validations.jobs.schemas import ValidationOutputEnvelope
 from simplevalidations.validations.jobs.schemas import ValidationStatus
 from simplevalidations.validations.jobs.schemas import ValidatorInfo
 
@@ -31,7 +30,6 @@ class TestInputEnvelope:
             },
             "org": {"id": "org-123", "name": "Test Org"},
             "workflow": {"id": "wf-123", "step_id": "step-123"},
-            "inputs": [],
             "context": {
                 "callback_url": "https://example.com/callback",
                 "callback_token": "jwt-token",
@@ -43,8 +41,9 @@ class TestInputEnvelope:
         assert envelope.run_id == "run-123"
         assert envelope.validator.type == "energyplus"
         assert envelope.org.name == "Test Org"
+        assert len(envelope.input_files) == 0
         assert len(envelope.inputs) == 0
-        assert envelope.context.timeout_seconds == 3600  # default
+        assert envelope.context.timeout_seconds == 3600  # noqa: PLR2004
 
     def test_input_envelope_with_file_inputs(self):
         """Test input envelope with file inputs."""
@@ -58,17 +57,15 @@ class TestInputEnvelope:
             },
             "org": {"id": "org-123", "name": "Test Org"},
             "workflow": {"id": "wf-123", "step_id": "step-123"},
-            "inputs": [
+            "input_files": [
                 {
                     "name": "IDF File",
-                    "kind": "file",
                     "mime_type": SupportedMimeType.ENERGYPLUS_IDF.value,
                     "role": "primary-model",
                     "uri": "gs://bucket/model.idf",
                 },
                 {
                     "name": "Weather File",
-                    "kind": "file",
                     "mime_type": SupportedMimeType.ENERGYPLUS_EPW.value,
                     "role": "weather",
                     "uri": "gs://bucket/weather.epw",
@@ -84,15 +81,14 @@ class TestInputEnvelope:
         }
 
         envelope = ValidationInputEnvelope.model_validate(data)
-        assert len(envelope.inputs) == 2
-        assert envelope.inputs[0].kind == InputKind.FILE
-        assert envelope.inputs[0].role == "primary-model"
-        assert envelope.inputs[1].role == "weather"
-        assert envelope.context.timeout_seconds == 7200
+        assert len(envelope.input_files) == 2  # noqa: PLR2004
+        assert envelope.input_files[0].role == "primary-model"
+        assert envelope.input_files[1].role == "weather"
+        assert envelope.context.timeout_seconds == 7200  # noqa: PLR2004
         assert "production" in envelope.context.tags
 
-    def test_input_envelope_with_inline_values(self):
-        """Test input envelope with inline JSON/string/number values."""
+    def test_input_envelope_with_domain_config(self):
+        """Test input envelope with domain-specific configuration."""
         data = {
             "schema_version": "validibot.input.v1",
             "run_id": "run-123",
@@ -103,23 +99,11 @@ class TestInputEnvelope:
             },
             "org": {"id": "org-123", "name": "Test Org"},
             "workflow": {"id": "wf-123", "step_id": "step-123"},
-            "inputs": [
-                {
-                    "name": "Config",
-                    "kind": "json",
-                    "value": {"timestep": 3600, "duration": 86400},
-                },
-                {
-                    "name": "Description",
-                    "kind": "string",
-                    "value": "Test simulation",
-                },
-                {
-                    "name": "Tolerance",
-                    "kind": "number",
-                    "value": 0.001,
-                },
-            ],
+            "inputs": {
+                "timestep": 3600,
+                "duration": 86400,
+                "tolerance": 0.001,
+            },
             "context": {
                 "callback_url": "https://example.com/callback",
                 "callback_token": "jwt-token",
@@ -128,11 +112,9 @@ class TestInputEnvelope:
         }
 
         envelope = ValidationInputEnvelope.model_validate(data)
-        assert len(envelope.inputs) == 3
-        assert envelope.inputs[0].kind == InputKind.JSON
-        assert envelope.inputs[0].value == {"timestep": 3600, "duration": 86400}
-        assert envelope.inputs[1].kind == InputKind.STRING
-        assert envelope.inputs[2].kind == InputKind.NUMBER
+        assert envelope.inputs["timestep"] == 3600  # noqa: PLR2004
+        assert envelope.inputs["duration"] == 86400  # noqa: PLR2004
+        assert envelope.inputs["tolerance"] == 0.001
 
     def test_input_envelope_rejects_extra_fields(self):
         """Test that input envelope rejects extra fields."""
@@ -160,8 +142,8 @@ class TestInputEnvelope:
         assert "Extra inputs are not permitted" in str(exc_info.value)
 
 
-class TestResultEnvelope:
-    """Tests for ValidationResultEnvelope schema."""
+class TestOutputEnvelope:
+    """Tests for ValidationOutputEnvelope schema."""
 
     def test_minimal_success_result(self):
         """Test minimal success result envelope."""
@@ -180,7 +162,7 @@ class TestResultEnvelope:
             },
         }
 
-        envelope = ValidationResultEnvelope.model_validate(data)
+        envelope = ValidationOutputEnvelope.model_validate(data)
         assert envelope.run_id == "run-123"
         assert envelope.status == ValidationStatus.SUCCESS
         assert len(envelope.messages) == 0
@@ -222,9 +204,9 @@ class TestResultEnvelope:
             ],
         }
 
-        envelope = ValidationResultEnvelope.model_validate(data)
+        envelope = ValidationOutputEnvelope.model_validate(data)
         assert envelope.status == ValidationStatus.FAILED_VALIDATION
-        assert len(envelope.messages) == 2
+        assert len(envelope.messages) == 2  # noqa: PLR2004
         assert envelope.messages[0].severity == Severity.ERROR
         assert envelope.messages[0].code == "EP_OBJECT_REQUIRED"
         assert envelope.messages[0].location.file_role == "primary-model"
@@ -262,10 +244,10 @@ class TestResultEnvelope:
             ],
         }
 
-        envelope = ValidationResultEnvelope.model_validate(data)
-        assert len(envelope.metrics) == 2
+        envelope = ValidationOutputEnvelope.model_validate(data)
+        assert len(envelope.metrics) == 2  # noqa: PLR2004
         assert envelope.metrics[0].name == "zone_temp_max"
-        assert envelope.metrics[0].value == 28.5
+        assert envelope.metrics[0].value == 28.5  # noqa: PLR2004
         assert envelope.metrics[0].unit == "C"
         assert envelope.metrics[1].category == "energy"
 
@@ -305,10 +287,10 @@ class TestResultEnvelope:
             },
         }
 
-        envelope = ValidationResultEnvelope.model_validate(data)
-        assert len(envelope.artifacts) == 2
+        envelope = ValidationOutputEnvelope.model_validate(data)
+        assert len(envelope.artifacts) == 2  # noqa: PLR2004
         assert envelope.artifacts[0].name == "simulation_db"
-        assert envelope.artifacts[0].size_bytes == 12345678
+        assert envelope.artifacts[0].size_bytes == 12345678  # noqa: PLR2004
         assert envelope.raw_outputs.format == "directory"
 
 
@@ -330,30 +312,32 @@ class TestValidationCallback:
         assert "result.json" in callback.result_uri
 
 
-class TestInputItem:
-    """Tests for InputItem schema."""
+class TestInputFileItem:
+    """Tests for InputFileItem schema."""
 
-    def test_file_input_requires_uri(self):
-        """Test that file inputs should have URI."""
-        # This is valid but URI is None - validators should check this
+    def test_file_input_with_uri(self):
+        """Test file input with URI."""
         data = {
             "name": "Test File",
-            "kind": "file",
+            "mime_type": "application/vnd.energyplus.idf",
+            "uri": "gs://bucket/file.idf",
+            "role": "primary-model",
         }
-        item = InputItem.model_validate(data)
-        assert item.kind == InputKind.FILE
-        assert item.uri is None  # Allowed but should be checked by validator
+        item = InputFileItem.model_validate(data)
+        assert item.name == "Test File"
+        assert item.uri == "gs://bucket/file.idf"
+        assert item.role == "primary-model"
 
-    def test_inline_input_with_value(self):
-        """Test inline inputs with values."""
+    def test_file_input_minimal(self):
+        """Test minimal file input."""
         data = {
             "name": "Config",
-            "kind": "json",
-            "value": {"key": "value"},
+            "mime_type": "application/xml",
+            "uri": "gs://bucket/config.xml",
         }
-        item = InputItem.model_validate(data)
-        assert item.kind == InputKind.JSON
-        assert item.value == {"key": "value"}
+        item = InputFileItem.model_validate(data)
+        assert item.name == "Config"
+        assert item.role is None
 
 
 class TestValidatorInfo:
@@ -389,7 +373,7 @@ class TestValidationMessage:
         }
         msg = ValidationMessage.model_validate(data)
         assert msg.severity == Severity.ERROR
-        assert msg.location.line == 42
+        assert msg.location.line == 42  # noqa: PLR2004
         assert msg.location.path == "Building/Zone[1]"
 
     def test_message_without_location(self):

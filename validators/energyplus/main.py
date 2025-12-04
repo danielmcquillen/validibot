@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import UTC, datetime
-from pathlib import Path
+from datetime import UTC
+from datetime import datetime
 
+# Import runner after shared utilities
+from runner import run_energyplus_simulation
 from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from sv_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
 from sv_shared.energyplus.envelopes import EnergyPlusOutputs
@@ -25,9 +27,6 @@ from validators.shared.callback_client import post_callback
 from validators.shared.envelope_loader import get_output_uri
 from validators.shared.envelope_loader import load_input_envelope
 from validators.shared.gcs_client import upload_envelope
-
-# Import runner after shared utilities
-from runner import run_energyplus_simulation
 
 # Configure logging
 logging.basicConfig(
@@ -103,7 +102,7 @@ def main() -> int:
         )
 
         logger.info("Validation complete (status=%s)", status.value)
-        return 0
+        return 0  # noqa: TRY300
 
     except Exception:
         logger.exception("Validation failed with unexpected error")

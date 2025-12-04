@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import TypeVar
 
 from google.cloud import storage
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -39,14 +42,14 @@ def parse_gcs_uri(uri: str) -> tuple[str, str]:
     uri_without_scheme = uri[5:]  # Remove 'gs://'
     parts = uri_without_scheme.split("/", 1)
 
-    if len(parts) != 2:
+    if len(parts) != 2:  # noqa: PLR2004
         raise ValueError(f"Invalid GCS URI (missing path): {uri}")
 
     bucket_name, blob_path = parts
     return bucket_name, blob_path
 
 
-def download_envelope(uri: str, envelope_class: type[T]) -> T:
+def download_envelope[T: BaseModel](uri: str, envelope_class: type[T]) -> T:
     """
     Download and deserialize a Pydantic envelope from GCS.
 

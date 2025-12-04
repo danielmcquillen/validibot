@@ -23,9 +23,9 @@ def _energyplus_ruleset():
 
 def test_energyplus_engine_returns_not_implemented():
     """
-    Test that the EnergyPlus engine returns a not-implemented error.
+    Test that the EnergyPlus engine returns error when validate() called.
 
-    TODO: Phase 4 - Replace with real Cloud Run Jobs tests.
+    The engine now requires validate_with_run() for Cloud Run Jobs integration.
     """
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
     ruleset = _energyplus_ruleset()
@@ -41,9 +41,9 @@ def test_energyplus_engine_returns_not_implemented():
 
     assert result.passed is False
     assert any(
-        "not yet implemented" in issue.message.lower()
+        "validate_with_run" in issue.message.lower()
         and issue.severity == Severity.ERROR
         for issue in result.issues
     )
     assert result.stats is not None
-    assert result.stats["implementation_status"] == "Phase 4 - Not yet implemented"
+    assert result.stats["implementation_status"] == "Requires validate_with_run()"

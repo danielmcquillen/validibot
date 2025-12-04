@@ -28,14 +28,9 @@ from sv_shared.validations.envelopes import ValidationTiming
 from sv_shared.validations.envelopes import ValidatorInfo
 from sv_shared.validations.envelopes import WorkflowInfo
 
-# Backward compatibility aliases
-InputItem = InputFileItem  # Old name for backward compatibility
-ValidationResultEnvelope = ValidationOutputEnvelope  # Old name for backward compatibility
-
 __all__ = [
     "ExecutionContext",
     "InputFileItem",
-    "InputItem",  # Backward compatibility alias
     "MessageLocation",
     "OrganizationInfo",
     "RawOutputs",
@@ -47,7 +42,6 @@ __all__ = [
     "ValidationMessage",
     "ValidationMetric",
     "ValidationOutputEnvelope",
-    "ValidationResultEnvelope",  # Backward compatibility alias
     "ValidationStatus",
     "ValidationTiming",
     "ValidatorInfo",

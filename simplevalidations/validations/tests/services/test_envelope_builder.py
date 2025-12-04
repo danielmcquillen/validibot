@@ -35,7 +35,7 @@ def test_build_energyplus_input_envelope():
         callback_url="https://api.example.com/callbacks/",
         callback_token="test-token",  # noqa: S106
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
-        timestep_per_hour=4,  # noqa: PLR2004
+        timestep_per_hour=4,
         output_variables=["Zone Mean Air Temperature"],
     )
 

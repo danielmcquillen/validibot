@@ -15,7 +15,8 @@ router.register("workflows", WorkflowViewSet, basename="workflow")
 router.register("validation-runs", ValidationRunViewSet, basename="validation-runs")
 
 app_name = "api"
-urlpatterns = router.urls + [
+urlpatterns = [
+    *router.urls,
     path(
         "validation-callbacks/",
         ValidationCallbackView.as_view(),

@@ -7,8 +7,6 @@ when the runner logic is complete.
 
 from __future__ import annotations
 
-import pytest
-
 
 def test_placeholder():
     """Placeholder test to ensure pytest works."""

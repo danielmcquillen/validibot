@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import HttpUrl
 
+from simplevalidations.validations.constants import Severity  # noqa: TC001
+
 # ==============================================================================
 # Input Envelope (validibot.input.v1)
 # ==============================================================================
@@ -30,53 +32,110 @@ class InputKind(str, Enum):
     NUMBER = "number"
 
 
+class SupportedMimeType(str, Enum):
+    """
+    Supported MIME types for file inputs.
+
+    We only accept specific file types that our validators know how to process.
+    """
+
+    # XML documents
+    APPLICATION_XML = "application/xml"
+    TEXT_XML = "text/xml"
+
+    # EnergyPlus files
+    ENERGYPLUS_IDF = "application/vnd.energyplus.idf"  # IDF text format
+    ENERGYPLUS_EPJSON = "application/vnd.energyplus.epjson"  # epJSON format
+    ENERGYPLUS_EPW = "application/vnd.energyplus.epw"  # Weather data
+
+    # FMU files
+    FMU = "application/vnd.fmi.fmu"  # Functional Mock-up Unit
+
+
 class InputItem(BaseModel):
     """
     An input item for the validator.
 
-    Can be a file (stored in GCS), or an inline value (JSON/string/number).
+    Inputs can be either:
+    - Files stored in GCS (kind=file, uri points to gs://...)
+    - Inline values (kind=json/string/number, value contains the data)
+
+    The 'role' field allows validators to understand what each input is for
+    (e.g., 'primary-model' vs 'weather' for EnergyPlus).
     """
 
+    # Human-readable name for logging and debugging
     name: str = Field(description="Human-readable name of the input")
+
+    # Type of input (file vs inline data)
     kind: InputKind = Field(description="Type of input (file, json, string, number)")
-    mime_type: str | None = Field(
+
+    # MIME type is required for files to ensure we know how to process them
+    mime_type: SupportedMimeType | None = Field(
         default=None,
-        description="MIME type for file inputs (e.g., application/vnd.energyplus.idf)",
+        description="MIME type for file inputs (required for kind=file)",
     )
+
+    # Validator-specific role helps the validator understand what this input is
+    # e.g., EnergyPlus needs to know which file is the model vs weather data
     role: str | None = Field(
         default=None,
         description=(
             "Validator-specific role (e.g., 'primary-model', 'weather', 'config')"
         ),
     )
+
+    # GCS URI for file inputs (should be set when kind=file)
     uri: str | None = Field(
         default=None,
         description="GCS URI for file inputs (e.g., gs://bucket/path/to/file)",
     )
+
+    # Value for inline inputs (should be set when kind=json/string/number)
     value: Any | None = Field(
         default=None, description="Inline value for json/string/number inputs"
     )
 
+    # Reject any fields not defined above (security + correctness)
     model_config = {"extra": "forbid"}
 
 
 class ValidatorInfo(BaseModel):
-    """Information about the validator being executed."""
+    """
+    Information about the validator being executed.
 
-    id: str = Field(description="Validator UUID")
+    This identifies which validator container to run and which version.
+    The type must match a deployed Cloud Run Job
+    (e.g., 'validibot-validator-energyplus').
+    """
+
+    # Database ID of the validator configuration
+    id: str = Field(description="Validator UUID from Django database")
+
+    # Type determines which Cloud Run Job to trigger
     type: str = Field(
         description="Validator type (e.g., 'energyplus', 'fmu', 'xml', 'pdf')"
     )
-    version: str = Field(description="Validator version (semantic versioning)")
+
+    # Version for compatibility checking (semantic versioning)
+    version: str = Field(description="Validator version (e.g., '1.0.0')")
 
     model_config = {"extra": "forbid"}
 
 
 class OrganizationInfo(BaseModel):
-    """Information about the organization running the validation."""
+    """
+    Information about the organization running the validation.
 
-    id: str = Field(description="Organization UUID")
-    name: str = Field(description="Organization name")
+    Included for logging, debugging, and future multi-tenancy features.
+    The name is redundant with ID but helpful for human-readable logs.
+    """
+
+    # Organization database ID
+    id: str = Field(description="Organization UUID from Django database")
+
+    # Organization name for logging and debugging
+    name: str = Field(description="Organization name (for human-readable logs)")
 
     model_config = {"extra": "forbid"}
 
@@ -85,7 +144,9 @@ class WorkflowInfo(BaseModel):
     """Information about the workflow and step being executed."""
 
     id: str = Field(description="Workflow UUID")
+    
     step_id: str = Field(description="Workflow step UUID")
+    
     step_name: str | None = Field(
         default=None, description="Human-readable step name"
     )
@@ -99,15 +160,19 @@ class ExecutionContext(BaseModel):
     callback_url: HttpUrl = Field(
         description="URL to POST callback when validation completes"
     )
+    
     callback_token: str = Field(
         description="JWT token signed with GCP KMS for callback authentication"
     )
+    
     execution_bundle_uri: str = Field(
         description="GCS URI to the execution bundle directory (e.g., gs://bucket/org_id/run_id/)"
     )
+    
     timeout_seconds: int = Field(
         default=3600, description="Maximum execution time in seconds"
     )
+    
     tags: list[str] = Field(default_factory=list, description="Execution tags")
 
     model_config = {"extra": "forbid"}
@@ -121,19 +186,26 @@ class ValidationInputEnvelope(BaseModel):
     """
 
     schema_version: Literal["validibot.input.v1"] = "validibot.input.v1"
+    
     run_id: str = Field(description="Unique run identifier (UUID)")
+    
     validator: ValidatorInfo
+    
     org: OrganizationInfo
+    
     workflow: WorkflowInfo
+    
     inputs: list[InputItem] = Field(
         description="List of inputs for the validator (files, config, etc.)"
     )
+    
     config: dict[str, Any] = Field(
         default_factory=dict,
         description=(
             "Validator-specific configuration (validated by validator container)"
         ),
     )
+    
     context: ExecutionContext
 
     model_config = {"extra": "forbid"}
@@ -153,12 +225,8 @@ class ValidationStatus(str, Enum):
     CANCELLED = "cancelled"  # User or system cancelled the job
 
 
-class MessageSeverity(str, Enum):
-    """Severity level for validation messages."""
-
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
+# We reuse the existing Severity enum from validations.constants
+# instead of defining a duplicate MessageSeverity enum
 
 
 class MessageLocation(BaseModel):
@@ -179,7 +247,7 @@ class MessageLocation(BaseModel):
 class ValidationMessage(BaseModel):
     """A validation finding, warning, or error."""
 
-    severity: MessageSeverity
+    severity: Severity
     code: str | None = Field(
         default=None, description="Error code (e.g., 'EP001', 'FMU_INIT_ERROR')"
     )

@@ -4,9 +4,10 @@
 import pytest
 from pydantic import ValidationError
 
+from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.jobs.schemas import InputItem
 from simplevalidations.validations.jobs.schemas import InputKind
-from simplevalidations.validations.jobs.schemas import MessageSeverity
+from simplevalidations.validations.jobs.schemas import SupportedMimeType
 from simplevalidations.validations.jobs.schemas import ValidationCallback
 from simplevalidations.validations.jobs.schemas import ValidationInputEnvelope
 from simplevalidations.validations.jobs.schemas import ValidationMessage
@@ -61,14 +62,14 @@ class TestInputEnvelope:
                 {
                     "name": "IDF File",
                     "kind": "file",
-                    "mime_type": "application/vnd.energyplus.idf",
+                    "mime_type": SupportedMimeType.ENERGYPLUS_IDF.value,
                     "role": "primary-model",
                     "uri": "gs://bucket/model.idf",
                 },
                 {
                     "name": "Weather File",
                     "kind": "file",
-                    "mime_type": "application/vnd.energyplus.epw",
+                    "mime_type": SupportedMimeType.ENERGYPLUS_EPW.value,
                     "role": "weather",
                     "uri": "gs://bucket/weather.epw",
                 },
@@ -203,7 +204,7 @@ class TestResultEnvelope:
             },
             "messages": [
                 {
-                    "severity": "error",
+                    "severity": Severity.ERROR.value,
                     "code": "EP_OBJECT_REQUIRED",
                     "text": "Building object is required",
                     "location": {
@@ -214,7 +215,7 @@ class TestResultEnvelope:
                     "tags": ["syntax", "required-object"],
                 },
                 {
-                    "severity": "warning",
+                    "severity": Severity.WARNING.value,
                     "text": "Consider adding insulation",
                     "tags": ["performance"],
                 },
@@ -224,10 +225,10 @@ class TestResultEnvelope:
         envelope = ValidationResultEnvelope.model_validate(data)
         assert envelope.status == ValidationStatus.FAILED_VALIDATION
         assert len(envelope.messages) == 2
-        assert envelope.messages[0].severity == MessageSeverity.ERROR
+        assert envelope.messages[0].severity == Severity.ERROR
         assert envelope.messages[0].code == "EP_OBJECT_REQUIRED"
         assert envelope.messages[0].location.file_role == "primary-model"
-        assert envelope.messages[1].severity == MessageSeverity.WARNING
+        assert envelope.messages[1].severity == Severity.WARNING
 
     def test_result_with_metrics(self):
         """Test result envelope with metrics."""
@@ -376,7 +377,7 @@ class TestValidationMessage:
     def test_message_with_full_location(self):
         """Test message with complete location information."""
         data = {
-            "severity": "error",
+            "severity": Severity.ERROR.value,
             "code": "TEST001",
             "text": "Test error",
             "location": {
@@ -387,14 +388,14 @@ class TestValidationMessage:
             },
         }
         msg = ValidationMessage.model_validate(data)
-        assert msg.severity == MessageSeverity.ERROR
+        assert msg.severity == Severity.ERROR
         assert msg.location.line == 42
         assert msg.location.path == "Building/Zone[1]"
 
     def test_message_without_location(self):
         """Test message without location."""
         data = {
-            "severity": "warning",
+            "severity": Severity.WARNING.value,
             "text": "General warning",
         }
         msg = ValidationMessage.model_validate(data)

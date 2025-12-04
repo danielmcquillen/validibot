@@ -79,7 +79,7 @@ class ValidationCallbackView(APIView):
 
             # Verify JWT token
             try:
-                kms_key_name = settings.VALIDATOR_CALLBACK_KMS_KEY
+                kms_key_name = settings.GCS_CALLBACK_KMS_KEY
                 token_payload = verify_callback_token(
                     callback.callback_token,
                     kms_key_name,
@@ -113,14 +113,35 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            # Get the current step run to determine validator type
+            current_step_run = run.current_step_run
+            if not current_step_run:
+                logger.error("No active step run found for run: %s", run.id)
+                return Response(
+                    {"error": "No active step run found"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            validator = current_step_run.workflow_step.validator
+            if not validator:
+                logger.error("No validator found for step run: %s", current_step_run.id)
+                return Response(
+                    {"error": "No validator found for step"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Download the output envelope from GCS
             # Determine the envelope class based on validator type
-            if run.validator.type == "energyplus":
+            if validator.validation_type == "energyplus":
                 envelope_class = EnergyPlusOutputEnvelope
             else:
-                logger.error("Unsupported validator type: %s", run.validator.type)
+                logger.error(
+                    "Unsupported validator type: %s",
+                    validator.validation_type,
+                )
+                error_msg = f"Unsupported validator type: {validator.validation_type}"
                 return Response(
-                    {"error": f"Unsupported validator type: {run.validator.type}"},
+                    {"error": error_msg},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -151,9 +172,9 @@ class ValidationCallbackView(APIView):
             )
 
             # Set timestamps
-            if output_envelope.timing.completed_at:
+            if output_envelope.timing.finished_at:
                 run.ended_at = datetime.fromisoformat(
-                    output_envelope.timing.completed_at.replace("Z", "+00:00"),
+                    output_envelope.timing.finished_at.replace("Z", "+00:00"),
                 )
             else:
                 run.ended_at = datetime.now(tz=UTC)

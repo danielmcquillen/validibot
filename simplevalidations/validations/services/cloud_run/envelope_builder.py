@@ -162,7 +162,7 @@ def build_input_envelope(
     Build the appropriate input envelope based on validator type.
 
     This is the main entry point for envelope creation. It dispatches to
-    type-specific builders based on run.validator.type.
+    type-specific builders based on the current step's validator type.
 
     Args:
         run: ValidationRun Django model instance
@@ -174,7 +174,7 @@ def build_input_envelope(
         Typed envelope (EnergyPlusInputEnvelope, FMIInputEnvelope, etc.)
 
     Raises:
-        ValueError: If validator type is not supported
+        ValueError: If validator type is not supported or no active step run
 
     Example:
         >>> from simplevalidations.validations.models import ValidationRun
@@ -186,33 +186,43 @@ def build_input_envelope(
         ...     execution_bundle_uri="gs://bucket/runs/abc-123/",
         ... )
     """
-    if run.validator.type == "energyplus":
+    # Get the current step run to access validator and step info
+    current_step_run = run.current_step_run
+    if not current_step_run:
+        msg = f"No active step run found for ValidationRun {run.id}"
+        raise ValueError(msg)
+
+    step = current_step_run.workflow_step
+    validator = step.validator
+    if not validator:
+        msg = f"WorkflowStep {step.id} has no validator configured"
+        raise ValueError(msg)
+
+    if validator.validation_type == "energyplus":
         # Get model file URI (primary file from the workflow step)
-        model_file_uri = run.step.primary_file_uri
+        model_file_uri = step.config.get("primary_file_uri")
         if not model_file_uri:
-            msg = f"Step {run.step.id} has no primary_file_uri"
+            msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
-        # Get weather file URI (from step configuration or validator config)
-        # TODO: Need to determine where weather file is stored
-        # For now, assume it's in step.config or validator.config
-        weather_file_uri = run.step.config.get("weather_file_uri")
+        # Get weather file URI (from step configuration)
+        weather_file_uri = step.config.get("weather_file_uri")
         if not weather_file_uri:
-            msg = f"Step {run.step.id} has no weather_file_uri in config"
+            msg = f"Step {step.id} has no weather_file_uri in config"
             raise ValueError(msg)
 
-        # Get EnergyPlus-specific settings
-        timestep_per_hour = run.validator.config.get("timestep_per_hour", 4)
-        output_variables = run.validator.config.get("output_variables", [])
+        # Get EnergyPlus-specific settings from step config
+        timestep_per_hour = step.config.get("timestep_per_hour", 4)
+        output_variables = step.config.get("output_variables", [])
 
         return build_energyplus_input_envelope(
             run_id=str(run.id),
-            validator=run.validator,
+            validator=validator,
             org_id=str(run.org.id),
             org_name=run.org.name,
             workflow_id=str(run.workflow.id),
-            step_id=str(run.step.id),
-            step_name=run.step.name,
+            step_id=str(step.id),
+            step_name=step.name,
             model_file_uri=model_file_uri,
             weather_file_uri=weather_file_uri,
             callback_url=callback_url,
@@ -221,5 +231,5 @@ def build_input_envelope(
             timestep_per_hour=timestep_per_hour,
             output_variables=output_variables,
         )
-    msg = f"Unsupported validator type: {run.validator.type}"
+    msg = f"Unsupported validator type: {validator.validation_type}"
     raise ValueError(msg)

@@ -26,17 +26,23 @@ from google.cloud import kms
 def create_callback_token(
     *,
     run_id: str,
+    step_run_id: str,
+    validator_id: str,
+    org_id: str,
     kms_key_name: str,
     expires_hours: int = 24,
 ) -> str:
     """
     Create a JWT callback token signed with GCP KMS.
 
-    This function creates a JWT token containing the run_id and expiration time.
+    This function creates a JWT token containing run context and expiration time.
     The token is signed using a GCP KMS asymmetric signing key (RSA or ECDSA).
 
     Args:
         run_id: Validation run UUID
+        step_run_id: ValidationStepRun UUID (identifies which step this token is for)
+        validator_id: Validator UUID
+        org_id: Organization UUID
         kms_key_name: Full KMS key path (projects/.../keyRings/.../cryptoKeys/...)
         expires_hours: Token expiration in hours (default: 24)
 
@@ -49,6 +55,9 @@ def create_callback_token(
     Example:
         >>> token = create_callback_token(
         ...     run_id="abc-123",
+        ...     step_run_id="step-456",
+        ...     validator_id="val-789",
+        ...     org_id="org-012",
         ...     kms_key_name=(
         ...         "projects/my-project/locations/us/"
         ...         "keyRings/validibot/cryptoKeys/callback-token"
@@ -63,10 +72,13 @@ def create_callback_token(
         "typ": "JWT",
     }
 
-    # Create JWT payload
+    # Create JWT payload with full context for security and routing
     now = datetime.now(UTC)
     payload = {
         "run_id": run_id,
+        "step_run_id": step_run_id,
+        "validator_id": validator_id,
+        "org_id": org_id,
         "iat": int(now.timestamp()),  # Issued at
         "exp": int((now + timedelta(hours=expires_hours)).timestamp()),  # Expires
     }

@@ -1475,11 +1475,6 @@ class ValidationRun(TimeStampedModel):
         default="",
     )  # terminal error/trace if any
 
-    resolved_config = models.JSONField(
-        default=dict,
-        blank=True,
-    )  # effective per-run config snapshot
-
     source = models.CharField(
         max_length=32,
         choices=ValidationRunSource.choices,
@@ -1511,6 +1506,24 @@ class ValidationRun(TimeStampedModel):
             return None
         delta = self.ended_at - self.started_at
         return max(int(delta.total_seconds() * 1000), 0)
+
+    @property
+    def current_step_run(self) -> ValidationStepRun | None:
+        """
+        Returns the currently active ValidationStepRun for this run.
+
+        Active means status is PENDING or RUNNING. If multiple steps are active
+        (which shouldn't happen), returns the first one by step_order.
+        """
+        from simplevalidations.validations.constants import StepStatus
+
+        return (
+            self.step_runs.filter(
+                status__in=[StepStatus.PENDING, StepStatus.RUNNING],
+            )
+            .order_by("step_order")
+            .first()
+        )
 
 
 class ValidationRunSummary(TimeStampedModel):

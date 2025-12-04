@@ -121,8 +121,17 @@ def launch_energyplus_validation(
         )
 
         # 4. Create callback token
+        # Get the current step run to include in token claims
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run found for ValidationRun {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+
         callback_token = create_callback_token(
             run_id=run_id,
+            step_run_id=str(current_step_run.id),
+            validator_id=str(validator.id),
+            org_id=org_id,
             kms_key_name=settings.GCS_CALLBACK_KMS_KEY,
             expires_hours=24,
         )
@@ -131,7 +140,7 @@ def launch_energyplus_validation(
         callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
 
         # 6. Build typed input envelope
-        step_config = step.resolved_config or {}
+        step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
         output_variables = step_config.get("output_variables")
 
@@ -167,6 +176,28 @@ def launch_energyplus_validation(
             queue_name=queue_name,
             job_name=job_name,
             input_uri=input_envelope_uri,
+        )
+
+        # 8.5. Update run and step run status to RUNNING
+        from datetime import UTC
+        from datetime import datetime
+
+        from simplevalidations.validations.constants import StepStatus
+        from simplevalidations.validations.constants import ValidationRunStatus
+
+        now = datetime.now(UTC)
+        run.status = ValidationRunStatus.RUNNING
+        run.started_at = now
+        run.save(update_fields=["status", "started_at"])
+
+        current_step_run.status = StepStatus.RUNNING
+        current_step_run.started_at = now
+        current_step_run.save(update_fields=["status", "started_at"])
+
+        logger.info(
+            "Marked run %s and step run %s as RUNNING",
+            run.id,
+            current_step_run.id,
         )
 
         # 9. Return pending ValidationResult

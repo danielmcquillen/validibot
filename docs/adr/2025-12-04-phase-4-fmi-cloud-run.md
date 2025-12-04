@@ -558,6 +558,12 @@ These questions have been resolved during ADR review:
 
 3. **Probe implementation** - Auto-approve post-introspection until Phase 4b delivers the probe container.
 
+4. **Security/IAM and job invocation** - Cloud Run Jobs execute under a dedicated service account with bucket read access (prefer CMEK-backed buckets). Callbacks must carry JWT claims for `run_id`, `step_run_id`, `validator_id`, and `org_id`; Django verifies all claims before processing. Jobs use `INPUT_URI` and load the FMU from the `input_files` entry (role=`fmu`), respecting `context.timeout_seconds` for max runtime. Status values map to `StepStatus`/`ValidationRunStatus` as in the Validator Job Interface ADR.
+
+5. **Binding validation and CEL assertions** - Required inputs (from catalog `is_required`) must be resolved before enqueueing a job; missing bindings fail fast. On callback, output values surface to CEL under the same catalog slugs (`signals.<slug>`), and findings/metrics are persisted the same way as basic validators.
+
+6. **Migration/compat** - Dual-read `modal_volume_path`/`gcs_uri` during transition; backfill legacy FMUs to `gs://.../fmus/{checksum}.fmu`, then retire `modal_volume_path` once populated.
+
 ---
 
 ## 11. Next Steps After Phase 4

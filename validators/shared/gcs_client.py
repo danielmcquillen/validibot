@@ -144,7 +144,11 @@ def download_file(uri: str, destination: Path) -> None:
     # Download file
     blob.download_to_filename(str(destination))
 
-    logger.info("Successfully downloaded file to %s (%d bytes)", destination, destination.stat().st_size)
+    logger.info(
+        "Successfully downloaded file to %s (%d bytes)",
+        destination,
+        destination.stat().st_size,
+    )
 
 
 def upload_file(source: Path, uri: str, content_type: str | None = None) -> None:
@@ -175,10 +179,14 @@ def upload_file(source: Path, uri: str, content_type: str | None = None) -> None
         content_type=content_type,
     )
 
-    logger.info("Successfully uploaded file to %s (%d bytes)", uri, source.stat().st_size)
+    logger.info(
+        "Successfully uploaded file to %s (%d bytes)", uri, source.stat().st_size
+    )
 
 
-def upload_directory(source_dir: Path, base_uri: str, manifest_path: str = "manifest.json") -> dict:
+def upload_directory(
+    source_dir: Path, base_uri: str, manifest_path: str = "manifest.json"
+) -> dict:
     """
     Upload an entire directory to GCS and create a manifest.
 
@@ -214,11 +222,13 @@ def upload_directory(source_dir: Path, base_uri: str, manifest_path: str = "mani
             # Upload file
             upload_file(file_path, file_uri)
 
-            files_uploaded.append({
-                "name": rel_path.as_posix(),
-                "uri": file_uri,
-                "size_bytes": file_path.stat().st_size,
-            })
+            files_uploaded.append(
+                {
+                    "name": rel_path.as_posix(),
+                    "uri": file_uri,
+                    "size_bytes": file_path.stat().st_size,
+                }
+            )
 
     # Create manifest
     manifest = {

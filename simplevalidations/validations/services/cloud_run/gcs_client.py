@@ -133,7 +133,7 @@ def download_envelope(
     return envelope
 
 
-def upload_file(
+def upload_file_from_path(
     local_path: Path,
     uri: str,
     content_type: str | None = None,
@@ -153,7 +153,7 @@ def upload_file(
 
     Example:
         >>> from pathlib import Path
-        >>> upload_file(
+        >>> upload_file_from_path(
         ...     Path("/tmp/model.idf"),
         ...     "gs://my-bucket/models/abc-123.idf",
         ...     content_type="application/octet-stream",
@@ -173,6 +173,45 @@ def upload_file(
     # Upload file
     blob.upload_from_filename(
         str(local_path),
+        content_type=content_type,
+    )
+
+
+def upload_file(
+    content: bytes | str,
+    uri: str,
+    content_type: str | None = None,
+) -> None:
+    """
+    Upload file content (bytes or string) to GCS.
+
+    Args:
+        content: File content as bytes or string
+        uri: GCS URI destination
+        content_type: Optional MIME type
+
+    Raises:
+        ValueError: If URI is invalid
+        google.cloud.exceptions.GoogleCloudError: If upload fails
+
+    Example:
+        >>> content = b"Building data..."
+        >>> upload_file(
+        ...     content,
+        ...     "gs://my-bucket/models/abc-123.epjson",
+        ...     content_type="application/json",
+        ... )
+    """
+    bucket_name, blob_path = parse_gcs_uri(uri)
+
+    # Initialize GCS client
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_path)
+
+    # Upload content
+    blob.upload_from_string(
+        content,
         content_type=content_type,
     )
 

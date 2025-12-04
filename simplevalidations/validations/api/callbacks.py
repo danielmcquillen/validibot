@@ -9,6 +9,8 @@ Design: Simple APIView with clear error handling. No complex permissions.
 """
 
 import logging
+from datetime import UTC
+from datetime import datetime
 
 from django.conf import settings
 from rest_framework import status
@@ -16,7 +18,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from sv_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
 from sv_shared.validations.envelopes import ValidationCallback
+from sv_shared.validations.envelopes import ValidationStatus
 
+from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.models import ValidationRun
 from simplevalidations.validations.services.cloud_run.gcs_client import (
     download_envelope,
@@ -132,18 +136,45 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-            # Update the ValidationRun with results
-            run.status = callback.status
-            run.result_data = output_envelope.model_dump()
+            # Map ValidationStatus to ValidationRunStatus
+            status_mapping = {
+                ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
+                ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
+                ValidationStatus.FAILED_RUNTIME: ValidationRunStatus.FAILED,
+                ValidationStatus.CANCELLED: ValidationRunStatus.CANCELED,
+            }
 
-            # Extract specific fields for easier querying
-            if callback.status == "success":
-                run.completed_at = output_envelope.completed_at
-                # Store metrics, logs, etc. in appropriate fields
-                # TODO: Add these fields to ValidationRun model
-            elif callback.status == "failure":
-                run.error_message = output_envelope.error_message
-                run.failed_at = output_envelope.completed_at
+            # Update ValidationRun with results
+            run.status = status_mapping.get(
+                output_envelope.status,
+                ValidationRunStatus.FAILED,
+            )
+
+            # Set timestamps
+            if output_envelope.timing.completed_at:
+                run.ended_at = datetime.fromisoformat(
+                    output_envelope.timing.completed_at.replace("Z", "+00:00"),
+                )
+            else:
+                run.ended_at = datetime.now(tz=UTC)
+
+            # Calculate duration if we have both timestamps
+            if run.started_at and run.ended_at:
+                delta = run.ended_at - run.started_at
+                run.duration_ms = int(delta.total_seconds() * 1000)
+
+            # Store full envelope in summary field (for detailed analysis)
+            run.summary = output_envelope.model_dump()
+
+            # Extract error messages if validation failed
+            if output_envelope.status != ValidationStatus.SUCCESS:
+                error_messages = [
+                    msg.text
+                    for msg in output_envelope.messages
+                    if msg.severity == "ERROR"
+                ]
+                if error_messages:
+                    run.error = "\n".join(error_messages)
 
             run.save()
 

@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sv_shared.energyplus.envelopes import EnergyPlusOutputs
+from sv_shared.energyplus.models import STDOUT_TAIL_CHARS
 from sv_shared.energyplus.models import EnergyPlusSimulationLogs
 from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
 from sv_shared.energyplus.models import EnergyPlusSimulationOutputs
-from sv_shared.energyplus.models import STDOUT_TAIL_CHARS
 
 from validators.shared.gcs_client import download_file
 
@@ -26,7 +26,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def run_energyplus_simulation(input_envelope: EnergyPlusInputEnvelope) -> EnergyPlusOutputs:
+def run_energyplus_simulation(
+    input_envelope: EnergyPlusInputEnvelope,
+) -> EnergyPlusOutputs:
     """
     Run EnergyPlus simulation based on input envelope.
 
@@ -64,10 +66,18 @@ def run_energyplus_simulation(input_envelope: EnergyPlusInputEnvelope) -> Energy
 
     # Collect output file paths
     outputs = EnergyPlusSimulationOutputs(
-        eplusout_sql=work_dir / "eplusout.sql" if (work_dir / "eplusout.sql").exists() else None,
-        eplusout_err=work_dir / "eplusout.err" if (work_dir / "eplusout.err").exists() else None,
-        eplusout_csv=work_dir / "eplusout.csv" if (work_dir / "eplusout.csv").exists() else None,
-        eplusout_eso=work_dir / "eplusout.eso" if (work_dir / "eplusout.eso").exists() else None,
+        eplusout_sql=work_dir / "eplusout.sql"
+        if (work_dir / "eplusout.sql").exists()
+        else None,
+        eplusout_err=work_dir / "eplusout.err"
+        if (work_dir / "eplusout.err").exists()
+        else None,
+        eplusout_csv=work_dir / "eplusout.csv"
+        if (work_dir / "eplusout.csv").exists()
+        else None,
+        eplusout_eso=work_dir / "eplusout.eso"
+        if (work_dir / "eplusout.eso").exists()
+        else None,
     )
 
     # Extract metrics from SQL database
@@ -160,7 +170,8 @@ def _run_energyplus(
     # Build EnergyPlus command
     cmd = [
         "energyplus",
-        "--output-directory", str(work_dir),
+        "--output-directory",
+        str(work_dir),
     ]
 
     if weather_file:

@@ -286,3 +286,23 @@ SUPERUSER_USERNAME = env("SUPERUSER_USERNAME", default=None)
 SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default=None)
 SUPERUSER_EMAIL = env("SUPERUSER_EMAIL", default=None)
 SUPERUSER_NAME = env("SUPERUSER_NAME", default=None)
+
+# Cloud Run Job Validator Settings
+# ------------------------------------------------------------------------------
+# Production settings for Cloud Run Jobs infrastructure
+# Note: GCS_FILES_BUCKET is already defined above for file storage
+GCS_VALIDATION_BUCKET = GCS_FILES_BUCKET  # Use same bucket for validation files
+GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
+GCS_CALLBACK_KMS_KEY = env(
+    "GCS_CALLBACK_KMS_KEY",
+    default="projects/project-a509c806-3e21-4fbc-b19/locations/australia-southeast1/keyRings/validibot-keys/cryptoKeys/callback-token",
+)
+GCS_ENERGYPLUS_JOB_NAME = env(
+    "GCS_ENERGYPLUS_JOB_NAME",
+    default="validibot-validator-energyplus",
+)
+GCS_FMI_JOB_NAME = env(
+    "GCS_FMI_JOB_NAME",
+    default="validibot-validator-fmi",
+)
+SITE_URL = env("SITE_URL", default="https://simplevalidationsvalidator.com")

@@ -343,31 +343,6 @@ def launch_fmi_validation(
     ...
 ```
 
-## 4. Phase Scope and Interim Approvals
-
-- **Phase 4 (this ADR):** Django-side plumbing (models, envelopes, bindings, callback handler, GCS storage) with FMU reads from `gcs_uri`. No Cloud Run Job container yet.
-- **Phase 4b:** Implement and deploy the FMI Cloud Run Job container and probe container, then switch execution to Cloud Run.
-- **Probe approvals while Modal is removed:** Until the probe container exists (Phase 4b), `create_fmi_validator()` should temporarily auto-approve FMUs after checksum/introspection to keep author flows unblocked. When Phase 4b ships, restore probe-based approval and stop auto-approving.
-- **Migration/compat checklist:**
-  - Add `gcs_uri` to `FMUModel`; keep `modal_volume_path` readable until backfill completes.
-  - Backfill job: iterate existing FMUs, upload to `gs://{GCS_VALIDATION_BUCKET}/fmus/{checksum}.fmu`, set `gcs_uri`.
-  - Dual-read in Django: prefer `gcs_uri`; fall back to `modal_volume_path` during the transition.
-  - Remove `modal_volume_path` only after all records have `gcs_uri` populated and callers use it.
-
-## 5. Open Questions (resolved)
-
-- **Where to store input bindings?** Per-step bindings live in `WorkflowStep.config["input_bindings"]`, keyed by validator catalog entry slugs. Catalog entries describe exposed variables; bindings stay workflow-specific.
-- **FMU caching strategy?** Jobs read directly from the canonical `gs://.../fmus/{checksum}.fmu` path; no per-run copy by default. This minimizes duplication and keeps checksum-based caching intact.
-- **Probe behavior before the container exists?** Auto-approve post-introspection for now; move back to probe-gated approval once Phase 4b delivers the probe job.
-
-## 6. Error/Message Handling for Advanced Validators
-
-Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way as “simple” validators:
-
-- Validator jobs populate `messages` in the output envelope (severity INFO/WARNING/ERROR), plus optional `metrics` and `artifacts`.
-- The callback handler persists these messages as `ValidationFinding` rows, recomputes run/step summaries, and returns them to the launcher just like basic validations.
-- Consumers (API/UI) see a consistent error/info format regardless of validator type.
-
 ### 3.5 Input Binding Resolution
 
 The workflow step stores input bindings in `config["input_bindings"]`:
@@ -461,7 +436,20 @@ class FMIValidationEngine(BaseValidatorEngine):
 
 ---
 
-## 4. Implementation Plan
+## 4. Phase Scope and Interim Approvals
+
+- **Phase 4 (this ADR):** Django-side plumbing (models, envelopes, bindings, callback handler, GCS storage) with FMU reads from `gcs_uri`. No Cloud Run Job container yet.
+- **Phase 4b:** Implement and deploy the FMI Cloud Run Job container and probe container, then switch execution to Cloud Run.
+- **Probe approvals while Modal is removed:** Until the probe container exists (Phase 4b), `create_fmi_validator()` should temporarily auto-approve FMUs after checksum/introspection to keep author flows unblocked. When Phase 4b ships, restore probe-based approval and stop auto-approving.
+- **Migration/compat checklist:**
+  - Add `gcs_uri` to `FMUModel`; keep `modal_volume_path` readable until backfill completes.
+  - Backfill job: iterate existing FMUs, upload to `gs://{GCS_VALIDATION_BUCKET}/fmus/{checksum}.fmu`, set `gcs_uri`.
+  - Dual-read in Django: prefer `gcs_uri`; fall back to `modal_volume_path` during the transition.
+  - Remove `modal_volume_path` only after all records have `gcs_uri` populated and callers use it.
+
+---
+
+## 5. Implementation Plan
 
 ### Step 1: Create FMI envelope schemas (sv_shared)
 
@@ -511,7 +499,7 @@ Add `launch_fmi_validation()` to launcher.py:
 
 ---
 
-## 5. What's NOT in Phase 4
+## 6. What's NOT in Phase 4
 
 Deferred to Phase 4b or later:
 
@@ -523,7 +511,17 @@ Deferred to Phase 4b or later:
 
 ---
 
-## 6. Testing Strategy
+## 7. Error/Message Handling for Advanced Validators
+
+Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way as "simple" validators:
+
+- Validator jobs populate `messages` in the output envelope (severity INFO/WARNING/ERROR), plus optional `metrics` and `artifacts`.
+- The callback handler persists these messages as `ValidationFinding` rows, recomputes run/step summaries, and returns them to the launcher just like basic validations.
+- Consumers (API/UI) see a consistent error/info format regardless of validator type.
+
+---
+
+## 8. Testing Strategy
 
 ### Unit tests
 - FMI envelope serialization/deserialization
@@ -537,7 +535,7 @@ Deferred to Phase 4b or later:
 
 ---
 
-## 7. Success Criteria
+## 9. Success Criteria
 
 - [ ] FMI envelope schemas created and exported from sv_shared
 - [ ] `FMUModel.gcs_uri` field added with migration
@@ -550,17 +548,19 @@ Deferred to Phase 4b or later:
 
 ---
 
-## 8. Open Questions
+## 10. Open Questions (Resolved)
 
-1. **Input binding resolution** - Should binding resolution happen in the engine or launcher? Currently proposing launcher.
+These questions have been resolved during ADR review:
 
-2. **FMU caching** - Should we copy FMU to each execution bundle, or reference the canonical location? Proposing reference to avoid duplication.
+1. **Input binding resolution** - Bindings live in `WorkflowStep.config["input_bindings"]`, keyed by catalog entry slugs. Resolution happens in the launcher.
 
-3. **Probe implementation** - With Modal removed, should probes remain auto-approve until Phase 4b container exists?
+2. **FMU caching** - Jobs read directly from the canonical `gs://.../fmus/{checksum}.fmu` path; no per-run copy by default.
+
+3. **Probe implementation** - Auto-approve post-introspection until Phase 4b delivers the probe container.
 
 ---
 
-## 9. Next Steps After Phase 4
+## 11. Next Steps After Phase 4
 
 1. **Phase 4b: FMI Cloud Run Job Container**
    - Build container with FMPy

@@ -40,6 +40,35 @@ from simplevalidations.validations.services.cloud_run.token_service import (
 logger = logging.getLogger(__name__)
 
 
+def _coerce_finished_at(finished_at_candidate) -> datetime:
+    """Normalize finished_at to an aware datetime in UTC."""
+    if finished_at_candidate is None:
+        return datetime.now(tz=UTC)
+    if isinstance(finished_at_candidate, datetime):
+        dt_value = finished_at_candidate
+    elif isinstance(finished_at_candidate, str):
+        # Handle common ISO strings, including trailing Z
+        iso_value = finished_at_candidate.replace("Z", "+00:00")
+        try:
+            dt_value = datetime.fromisoformat(iso_value)
+        except ValueError:
+            logger.warning(
+                "Could not parse finished_at string '%s', defaulting to now",
+                finished_at_candidate,
+            )
+            return datetime.now(tz=UTC)
+    else:
+        logger.warning(
+            "Unexpected finished_at type %s, defaulting to now",
+            type(finished_at_candidate),
+        )
+        return datetime.now(tz=UTC)
+
+    if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=UTC)
+    return dt_value
+
+
 class ValidationCallbackView(APIView):
     """
     Handle validation completion callbacks from Cloud Run Jobs.
@@ -248,9 +277,7 @@ class ValidationCallbackView(APIView):
             )
 
             # Set timestamps
-            finished_at = output_envelope.timing.finished_at or datetime.now(tz=UTC)
-            if finished_at.tzinfo is None:
-                finished_at = finished_at.replace(tzinfo=UTC)
+            finished_at = _coerce_finished_at(output_envelope.timing.finished_at)
 
             run.ended_at = finished_at
 
@@ -340,15 +367,24 @@ class ValidationCallbackView(APIView):
                     finding._ensure_run_alignment()  # noqa: SLF001
                     finding._strip_payload_prefix()  # noqa: SLF001
                 except Exception:
-                    # Best-effort cleanup; continue even if helpers raise
-                    logger.exception("Finding cleanup failed for run %s", run.id)
+                    logger.warning(
+                        "Skipping finding due to cleanup failure",
+                        exc_info=True,
+                    )
+                    continue
                 findings_to_create.append(finding)
 
             if findings_to_create:
-                ValidationFinding.objects.bulk_create(
-                    findings_to_create,
-                    batch_size=500,
-                )
+                try:
+                    ValidationFinding.objects.bulk_create(
+                        findings_to_create,
+                        batch_size=500,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to persist findings for step_run %s; continuing",
+                        step_run.id,
+                    )
 
             # Rebuild summaries based on stored findings
             severity_counts_run: Counter[str] = Counter()
@@ -405,7 +441,6 @@ class ValidationCallbackView(APIView):
                     ),
                     "assertion_failure_count": 0,
                     "assertion_total_count": 0,
-                    "extras": {},
                 },
             )
 

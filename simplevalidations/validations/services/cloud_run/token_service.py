@@ -22,6 +22,8 @@ from datetime import timedelta
 
 from google.cloud import kms
 
+DEFAULT_KMS_KEY_VERSION = "1"
+
 
 def _build_kms_crypto_key_version(
     kms_key_name: str,
@@ -33,10 +35,13 @@ def _build_kms_crypto_key_version(
     If the caller passed a full version path (already contains /cryptoKeyVersions/),
     return it unchanged. Otherwise append the supplied version (default: "1").
     """
-    if "cryptoKeyVersions/" in kms_key_name:
-        return kms_key_name
-    version = kms_key_version or "1"
-    return f"{kms_key_name}/cryptoKeyVersions/{version}"
+    normalized = kms_key_name.rstrip("/")
+    segments = normalized.split("/")
+    if "cryptoKeyVersions" in segments:
+        return normalized
+
+    version = kms_key_version or DEFAULT_KMS_KEY_VERSION
+    return f"{normalized}/cryptoKeyVersions/{version}"
 
 
 def create_callback_token(

@@ -9,10 +9,12 @@ Design: Simple APIView with clear error handling. No complex permissions.
 """
 
 import logging
+from collections import Counter
 from datetime import UTC
 from datetime import datetime
 
 from django.conf import settings
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,8 +22,14 @@ from sv_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
 from sv_shared.validations.envelopes import ValidationCallback
 from sv_shared.validations.envelopes import ValidationStatus
 
+from simplevalidations.validations.constants import Severity
+from simplevalidations.validations.constants import StepStatus
 from simplevalidations.validations.constants import ValidationRunStatus
+from simplevalidations.validations.models import ValidationFinding
 from simplevalidations.validations.models import ValidationRun
+from simplevalidations.validations.models import ValidationRunSummary
+from simplevalidations.validations.models import ValidationStepRun
+from simplevalidations.validations.models import ValidationStepRunSummary
 from simplevalidations.validations.services.cloud_run.gcs_client import (
     download_envelope,
 )
@@ -80,9 +88,15 @@ class ValidationCallbackView(APIView):
             # Verify JWT token
             try:
                 kms_key_name = settings.GCS_CALLBACK_KMS_KEY
+                kms_key_version = getattr(
+                    settings,
+                    "GCS_CALLBACK_KMS_KEY_VERSION",
+                    None,
+                )
                 token_payload = verify_callback_token(
                     callback.callback_token,
                     kms_key_name,
+                    kms_key_version,
                 )
             except ValueError as e:
                 logger.warning("Invalid callback token: %s", e)
@@ -113,21 +127,54 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # Get the current step run to determine validator type
-            current_step_run = run.current_step_run
-            if not current_step_run:
-                logger.error("No active step run found for run: %s", run.id)
+            # Verify org claim
+            if str(run.org_id) != str(token_payload.get("org_id")):
+                logger.warning(
+                    "Token org_id mismatch: token=%s, run=%s",
+                    token_payload.get("org_id"),
+                    run.org_id,
+                )
                 return Response(
-                    {"error": "No active step run found"},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    {"error": "Token org mismatch"},
+                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            validator = current_step_run.workflow_step.validator
+            # Load the specific step run referenced in the token
+            try:
+                step_run = ValidationStepRun.objects.select_related(
+                    "workflow_step__validator",
+                ).get(
+                    id=token_payload.get("step_run_id"),
+                    validation_run=run,
+                )
+            except ValidationStepRun.DoesNotExist:
+                logger.warning(
+                    "Step run not found or not linked to run: run=%s step_run=%s",
+                    run.id,
+                    token_payload.get("step_run_id"),
+                )
+                return Response(
+                    {"error": "Step run not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            validator = step_run.workflow_step.validator
             if not validator:
-                logger.error("No validator found for step run: %s", current_step_run.id)
+                logger.error("No validator found for step run: %s", step_run.id)
                 return Response(
                     {"error": "No validator found for step"},
                     status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if str(validator.id) != str(token_payload.get("validator_id")):
+                logger.warning(
+                    "Token validator_id mismatch: token=%s, step=%s",
+                    token_payload.get("validator_id"),
+                    validator.id,
+                )
+                return Response(
+                    {"error": "Token validator mismatch"},
+                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
             # Download the output envelope from GCS
@@ -157,12 +204,41 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
+            # Double-check the envelope matches the expected validator
+            if str(output_envelope.validator.id) != str(validator.id):
+                logger.warning(
+                    "Envelope validator mismatch: envelope=%s expected=%s",
+                    output_envelope.validator.id,
+                    validator.id,
+                )
+                return Response(
+                    {"error": "Validator mismatch in output envelope"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if str(getattr(output_envelope.org, "id", "")) != str(run.org_id):
+                logger.warning(
+                    "Envelope org mismatch: envelope=%s run=%s",
+                    getattr(output_envelope.org, "id", ""),
+                    run.org_id,
+                )
+                return Response(
+                    {"error": "Org mismatch in output envelope"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             # Map ValidationStatus to ValidationRunStatus
             status_mapping = {
                 ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
                 ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
                 ValidationStatus.FAILED_RUNTIME: ValidationRunStatus.FAILED,
                 ValidationStatus.CANCELLED: ValidationRunStatus.CANCELED,
+            }
+            step_status_mapping = {
+                ValidationStatus.SUCCESS: StepStatus.PASSED,
+                ValidationStatus.FAILED_VALIDATION: StepStatus.FAILED,
+                ValidationStatus.FAILED_RUNTIME: StepStatus.FAILED,
+                ValidationStatus.CANCELLED: StepStatus.SKIPPED,
             }
 
             # Update ValidationRun with results
@@ -172,12 +248,11 @@ class ValidationCallbackView(APIView):
             )
 
             # Set timestamps
-            if output_envelope.timing.finished_at:
-                run.ended_at = datetime.fromisoformat(
-                    output_envelope.timing.finished_at.replace("Z", "+00:00"),
-                )
-            else:
-                run.ended_at = datetime.now(tz=UTC)
+            finished_at = output_envelope.timing.finished_at or datetime.now(tz=UTC)
+            if finished_at.tzinfo is None:
+                finished_at = finished_at.replace(tzinfo=UTC)
+
+            run.ended_at = finished_at
 
             # Calculate duration if we have both timestamps
             if run.started_at and run.ended_at:
@@ -196,8 +271,143 @@ class ValidationCallbackView(APIView):
                 ]
                 if error_messages:
                     run.error = "\n".join(error_messages)
+            else:
+                run.error = ""
 
             run.save()
+
+            # Update the step run with detailed status/timing/output
+            step_run.status = step_status_mapping.get(
+                output_envelope.status,
+                StepStatus.FAILED,
+            )
+            step_run.ended_at = finished_at
+            if not step_run.started_at:
+                step_run.started_at = finished_at
+            if step_run.started_at and step_run.ended_at:
+                step_run.duration_ms = max(
+                    int(
+                        (step_run.ended_at - step_run.started_at).total_seconds()
+                        * 1000,
+                    ),
+                    0,
+                )
+            step_run.output = output_envelope.model_dump()
+            if output_envelope.status != ValidationStatus.SUCCESS:
+                step_run.error = run.error or ""
+            step_run.save(
+                update_fields=[
+                    "status",
+                    "ended_at",
+                    "started_at",
+                    "duration_ms",
+                    "output",
+                    "error",
+                ],
+            )
+
+            # Replace existing findings for this step run with envelope messages
+            ValidationFinding.objects.filter(validation_step_run=step_run).delete()
+            findings_to_create: list[ValidationFinding] = []
+            for msg in output_envelope.messages:
+                severity_value = (
+                    msg.severity.value
+                    if hasattr(msg.severity, "value")
+                    else str(msg.severity)
+                )
+                location = getattr(msg, "location", None)
+                path = getattr(location, "path", None) or ""
+                meta: dict = {}
+                if location:
+                    meta.update(
+                        {
+                            "line": getattr(location, "line", None),
+                            "column": getattr(location, "column", None),
+                        }
+                    )
+                if msg.tags:
+                    meta["tags"] = msg.tags
+                finding = ValidationFinding(
+                    validation_run=run,
+                    validation_step_run=step_run,
+                    severity=severity_value,
+                    code=msg.code or "",
+                    message=msg.text,
+                    path=path,
+                    meta=meta,
+                )
+                try:
+                    finding._ensure_run_alignment()  # noqa: SLF001
+                    finding._strip_payload_prefix()  # noqa: SLF001
+                except Exception:
+                    # Best-effort cleanup; continue even if helpers raise
+                    logger.exception("Finding cleanup failed for run %s", run.id)
+                findings_to_create.append(finding)
+
+            if findings_to_create:
+                ValidationFinding.objects.bulk_create(
+                    findings_to_create,
+                    batch_size=500,
+                )
+
+            # Rebuild summaries based on stored findings
+            severity_counts_run: Counter[str] = Counter()
+            for row in (
+                ValidationFinding.objects.filter(validation_run=run)
+                .values("severity")
+                .annotate(count=Count("id"))
+            ):
+                severity_counts_run[row["severity"]] = row["count"]
+
+            severity_counts_step: Counter[str] = Counter()
+            for row in (
+                ValidationFinding.objects.filter(validation_step_run=step_run)
+                .values("severity")
+                .annotate(count=Count("id"))
+            ):
+                severity_counts_step[row["severity"]] = row["count"]
+
+            total_findings_run = sum(severity_counts_run.values())
+
+            run_summary, _ = ValidationRunSummary.objects.update_or_create(
+                run=run,
+                defaults={
+                    "status": run.status,
+                    "completed_at": run.ended_at,
+                    "total_findings": total_findings_run,
+                    "error_count": severity_counts_run.get(Severity.ERROR.value, 0),
+                    "warning_count": severity_counts_run.get(Severity.WARNING.value, 0),
+                    "info_count": severity_counts_run.get(Severity.INFO.value, 0),
+                    "assertion_failure_count": 0,
+                    "assertion_total_count": 0,
+                    "extras": {},
+                },
+            )
+
+            ValidationStepRunSummary.objects.update_or_create(
+                step_run=step_run,
+                defaults={
+                    "summary": run_summary,
+                    "step_name": getattr(step_run.workflow_step, "name", ""),
+                    "step_order": step_run.step_order or 0,
+                    "status": step_run.status,
+                    "error_count": severity_counts_step.get(
+                        Severity.ERROR.value,
+                        0,
+                    ),
+                    "warning_count": severity_counts_step.get(
+                        Severity.WARNING.value,
+                        0,
+                    ),
+                    "info_count": severity_counts_step.get(
+                        Severity.INFO.value,
+                        0,
+                    ),
+                    "assertion_failure_count": 0,
+                    "assertion_total_count": 0,
+                    "extras": {},
+                },
+            )
 
             logger.info(
                 "Successfully processed callback for run %s",

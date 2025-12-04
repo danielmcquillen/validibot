@@ -23,6 +23,22 @@ from datetime import timedelta
 from google.cloud import kms
 
 
+def _build_kms_crypto_key_version(
+    kms_key_name: str,
+    kms_key_version: str | None = None,
+) -> str:
+    """
+    Construct the full cryptoKeyVersion resource path.
+
+    If the caller passed a full version path (already contains /cryptoKeyVersions/),
+    return it unchanged. Otherwise append the supplied version (default: "1").
+    """
+    if "cryptoKeyVersions/" in kms_key_name:
+        return kms_key_name
+    version = kms_key_version or "1"
+    return f"{kms_key_name}/cryptoKeyVersions/{version}"
+
+
 def create_callback_token(
     *,
     run_id: str,
@@ -30,6 +46,7 @@ def create_callback_token(
     validator_id: str,
     org_id: str,
     kms_key_name: str,
+    kms_key_version: str | None = None,
     expires_hours: int = 24,
 ) -> str:
     """
@@ -44,6 +61,7 @@ def create_callback_token(
         validator_id: Validator UUID
         org_id: Organization UUID
         kms_key_name: Full KMS key path (projects/.../keyRings/.../cryptoKeys/...)
+        kms_key_version: Optional KMS key version (default: "1" when omitted)
         expires_hours: Token expiration in hours (default: 24)
 
     Returns:
@@ -106,9 +124,13 @@ def create_callback_token(
     digest_obj = {"sha256": digest}
 
     # Sign the digest using KMS
+    crypto_key_version = _build_kms_crypto_key_version(
+        kms_key_name,
+        kms_key_version,
+    )
     response = kms_client.asymmetric_sign(
         request={
-            "name": f"{kms_key_name}/cryptoKeyVersions/1",
+            "name": crypto_key_version,
             "digest": digest_obj,
         }
     )
@@ -123,6 +145,7 @@ def create_callback_token(
 def verify_callback_token(
     token: str,
     kms_key_name: str,
+    kms_key_version: str | None = None,
 ) -> dict:
     """
     Verify a JWT callback token using GCP KMS public key.
@@ -133,6 +156,7 @@ def verify_callback_token(
     Args:
         token: JWT token string (header.payload.signature)
         kms_key_name: Full KMS key path
+        kms_key_version: Optional key version (default: "1" when omitted)
 
     Returns:
         Token payload dict with 'run_id', 'exp', etc.
@@ -187,8 +211,12 @@ def verify_callback_token(
 
     # Get public key from KMS
     kms_client = kms.KeyManagementServiceClient()
+    crypto_key_version = _build_kms_crypto_key_version(
+        kms_key_name,
+        kms_key_version,
+    )
     public_key_response = kms_client.get_public_key(
-        request={"name": f"{kms_key_name}/cryptoKeyVersions/1"}
+        request={"name": crypto_key_version}
     )
 
     # Verify signature using cryptography library

@@ -133,6 +133,7 @@ def launch_energyplus_validation(
             validator_id=str(validator.id),
             org_id=org_id,
             kms_key_name=settings.GCS_CALLBACK_KMS_KEY,
+            kms_key_version=getattr(settings, "GCS_CALLBACK_KMS_KEY_VERSION", None),
             expires_hours=24,
         )
 

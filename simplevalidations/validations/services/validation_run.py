@@ -362,6 +362,7 @@ class ValidationRunService:
 
         workflow: Workflow = validation_run.workflow
         overall_failed = False
+        pending_async = False
         failing_step_id = None
         cancelled = False
         step_metrics: list[dict[str, Any]] = []
@@ -404,10 +405,15 @@ class ValidationRunService:
                     validation_result=validation_result,
                 )
                 step_metrics.append(metrics)
-                if not validation_result.passed:
+                if validation_result.passed is False:
                     overall_failed = True
                     failing_step_id = wf_step.id
                     # For now we stop on first failure.
+                    break
+                if validation_result.passed is None:
+                    # Async validator in progress; pause the workflow here and wait
+                    # for callback processing to finalize run/step state.
+                    pending_async = True
                     break
                 if _was_cancelled():
                     cancelled = True
@@ -465,6 +471,15 @@ class ValidationRunService:
                 run_id=validation_run.id,
                 status=ValidationRunStatus.CANCELED,
                 error=validation_run.error,
+            )
+
+        if pending_async:
+            # Leave run/step in RUNNING state. Callback processing will finalize
+            # statuses, findings, summaries, and end timestamps.
+            return ValidationRunTaskResult(
+                run_id=validation_run.id,
+                status=validation_run.status,
+                error="",
             )
 
         if overall_failed:
@@ -644,13 +659,24 @@ class ValidationRunService:
             issues=issues,
         )
         stats = validation_result.stats or {}
-        status = StepStatus.PASSED if validation_result.passed else StepStatus.FAILED
-        finalized_step = self._finalize_step_run(
-            step_run=step_run,
-            status=status,
-            stats=stats,
-            error=None,
-        )
+        if validation_result.passed is None:
+            # Async validator still running; keep status as RUNNING and persist
+            # any interim stats for observability.
+            step_run.output = stats
+            step_run.status = StepStatus.RUNNING
+            step_run.save(update_fields=["output", "status"])
+            finalized_step = step_run
+            status = StepStatus.RUNNING
+        else:
+            status = (
+                StepStatus.PASSED if validation_result.passed else StepStatus.FAILED
+            )
+            finalized_step = self._finalize_step_run(
+                step_run=step_run,
+                status=status,
+                stats=stats,
+                error=None,
+            )
         return {
             "step_run": finalized_step,
             "severity_counts": severity_counts,

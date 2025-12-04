@@ -268,22 +268,33 @@ def launch_fmi_validation(
             input_envelope_uri = f"{execution_bundle_uri}/input.json"
         else:
             # Local dev: store under media/files/runs/<org>/<run>/input.json
-            base_dir = settings.BASE_DIR / "media" / "files" / "runs" / org_id / run_id
+            from pathlib import Path
+
+            base_dir = Path(settings.MEDIA_ROOT) / "files" / "runs" / org_id / run_id
             base_dir.mkdir(parents=True, exist_ok=True)
             execution_bundle_uri = str(base_dir)
             input_envelope_uri = str(base_dir / "input.json")
 
         # Resolve inputs based on catalog binding paths
         submission_payload = submission.content if hasattr(submission, "content") else ""
+        if isinstance(submission_payload, str):
+            # Best effort: parse JSON when possible
+            import json
+
+            try:
+                submission_payload = json.loads(submission_payload)
+            except Exception:
+                submission_payload = {}
         input_values: dict[str, object] = {}
         for entry in validator.catalog_entries.filter(run_stage="INPUT"):
             binding_path = (entry.input_binding_path or "").strip()
             slug = entry.slug
             value = None
-            if binding_path:
-                value = submission_payload.get(binding_path) if isinstance(submission_payload, dict) else None
-            elif isinstance(submission_payload, dict):
-                value = submission_payload.get(slug)
+            if isinstance(submission_payload, dict):
+                if binding_path:
+                    value = submission_payload.get(binding_path)
+                else:
+                    value = submission_payload.get(slug)
             if value is None and entry.is_required:
                 msg = f"Missing required input '{slug}' for FMI validator."
                 raise ValueError(msg)  # noqa: TRY301

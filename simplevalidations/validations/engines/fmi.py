@@ -44,10 +44,7 @@ class FMIValidationEngine(BaseValidatorEngine):
         submission: Submission,
         ruleset: Ruleset | None,
     ) -> ValidationResult:
-        """
-        Validate an FMI submission.
-
-        """
+        """Validate without run context (compat shim)."""
         provider = self.resolve_provider(validator)
         if provider:
             provider.ensure_catalog_entries()
@@ -78,4 +75,26 @@ class FMIValidationEngine(BaseValidatorEngine):
             submission=submission,
             ruleset=ruleset,
             step=self.run_context.workflow_step,
+        )
+
+    def validate_with_run(
+        self,
+        validator: Validator,
+        submission: Submission,
+        ruleset: Ruleset | None,
+        run,
+        step,
+    ) -> ValidationResult:
+        """
+        Validate an FMI submission with ValidationRun/WorkflowStep context.
+
+        Mirrors the EnergyPlus pattern to enable Cloud Run Job launch with full
+        context (run/step IDs for envelope, binding resolution, callback tokens).
+        """
+        self.run_context.validation_run = run
+        self.run_context.workflow_step = step
+        return self.validate(
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
         )

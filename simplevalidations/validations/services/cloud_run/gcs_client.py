@@ -87,6 +87,18 @@ def upload_envelope(
     )
 
 
+def upload_envelope_local(envelope: BaseModel, path: Path) -> None:
+    """
+    Upload a Pydantic envelope to a local path as JSON.
+
+    Args:
+        envelope: Pydantic model instance
+        path: Filesystem path to write
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(envelope.model_dump_json(indent=2))
+
+
 def download_envelope(
     uri: str,
     envelope_class: type[BaseModel],

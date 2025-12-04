@@ -461,6 +461,17 @@ class ValidationCallbackView(APIView):
                 },
             )
 
+            # Make outputs available to downstream steps under a namespaced key
+            # on the run summary. We use step_run.id as the namespace to avoid
+            # collisions. Downstream resolvers can read from
+            # run.summary["steps"][<step_run_id>]["signals"].
+            summary_steps = run.summary.get("steps", {})
+            summary_steps[str(step_run.id)] = {
+                "signals": step_output.get("signals", {}),
+            }
+            run.summary["steps"] = summary_steps
+            run.save(update_fields=["summary"])
+
             logger.info(
                 "Successfully processed callback for run %s",
                 callback.run_id,

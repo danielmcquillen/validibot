@@ -4,9 +4,9 @@
 import pytest
 from pydantic import ValidationError
 
-from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.jobs.schemas import InputItem
 from simplevalidations.validations.jobs.schemas import InputKind
+from simplevalidations.validations.jobs.schemas import Severity
 from simplevalidations.validations.jobs.schemas import SupportedMimeType
 from simplevalidations.validations.jobs.schemas import ValidationCallback
 from simplevalidations.validations.jobs.schemas import ValidationInputEnvelope

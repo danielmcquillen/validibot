@@ -238,6 +238,383 @@ gcp-job-logs job="validibot-setup-all":
         --format="table(timestamp,textPayload)"
 
 # =============================================================================
+# Validation & Health Checks
+# =============================================================================
+
+# Validate entire GCP setup including KMS, JWKS, and infrastructure
+validate-all: validate-kms validate-jwks validate-gcp
+
+# Validate Google Cloud KMS setup
+validate-kms:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔐 Validating Google Cloud KMS Setup"
+    echo "======================================"
+    echo ""
+
+    TESTS_PASSED=0
+    TESTS_FAILED=0
+
+    # Colors
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    NC='\033[0m'
+
+    # Test 1: Check KMS key exists
+    echo "1. Checking KMS key exists..."
+    if gcloud kms keys describe credential-signing \
+        --keyring=validibot-keys \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} &>/dev/null; then
+        echo -e "${GREEN}✓${NC} KMS key 'credential-signing' exists"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} KMS key 'credential-signing' not found"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 2: Check key algorithm
+    echo "2. Checking KMS key algorithm..."
+    ALGORITHM=$(gcloud kms keys describe credential-signing \
+        --keyring=validibot-keys \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(versionTemplate.algorithm)")
+
+    if [[ "$ALGORITHM" == "EC_SIGN_P256_SHA256" ]]; then
+        echo -e "${GREEN}✓${NC} Correct algorithm: EC_SIGN_P256_SHA256 (for ES256)"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Algorithm is $ALGORITHM (expected EC_SIGN_P256_SHA256)"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 3: Check service account permissions
+    echo "3. Checking service account IAM permissions..."
+    IAM_POLICY=$(gcloud kms keys get-iam-policy credential-signing \
+        --keyring=validibot-keys \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format=json)
+
+    if echo "$IAM_POLICY" | jq -e ".bindings[] | select(.members[] | contains(\"serviceAccount:{{gcp_sa}}\"))" &>/dev/null; then
+        echo -e "${GREEN}✓${NC} Service account has KMS permissions"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Service account missing KMS permissions"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 4: Check public key can be retrieved
+    echo "4. Testing public key retrieval..."
+    if gcloud kms keys versions get-public-key 1 \
+        --key=credential-signing \
+        --keyring=validibot-keys \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} \
+        --output-file=/tmp/kms_public_key.pem &>/dev/null; then
+        echo -e "${GREEN}✓${NC} Successfully retrieved public key from KMS"
+        ((TESTS_PASSED++))
+
+        # Validate it's a valid EC key
+        if openssl ec -pubin -in /tmp/kms_public_key.pem -text -noout &>/dev/null; then
+            echo -e "${GREEN}✓${NC} Public key is valid EC P-256"
+            ((TESTS_PASSED++))
+        else
+            echo -e "${RED}✗${NC} Public key format invalid"
+            ((TESTS_FAILED++))
+        fi
+        rm -f /tmp/kms_public_key.pem
+    else
+        echo -e "${RED}✗${NC} Could not retrieve public key"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Summary
+    echo "======================================"
+    echo "KMS Validation Summary"
+    echo "======================================"
+    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
+    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+    echo ""
+
+    if [ $TESTS_FAILED -eq 0 ]; then
+        echo -e "${GREEN}✓ All KMS tests passed!${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Some KMS tests failed${NC}"
+        exit 1
+    fi
+
+# Validate JWKS endpoint is working correctly
+validate-jwks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔑 Validating JWKS Endpoint"
+    echo "======================================"
+    echo ""
+
+    TESTS_PASSED=0
+    TESTS_FAILED=0
+
+    # Colors
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m'
+
+    # Get production URL
+    PROD_URL=$(gcloud run services describe {{gcp_service}} \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)")
+
+    echo "Testing JWKS at: ${PROD_URL}/.well-known/jwks.json"
+    echo ""
+
+    # Test 1: Endpoint accessible
+    echo "1. Checking JWKS endpoint accessibility..."
+    JWKS_RESPONSE=$(curl -s "${PROD_URL}/.well-known/jwks.json")
+    CURL_STATUS=$?
+
+    if [ $CURL_STATUS -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} JWKS endpoint accessible"
+        ((TESTS_PASSED++))
+
+        # Test 2: Valid JSON structure
+        echo "2. Validating JSON structure..."
+        if echo "$JWKS_RESPONSE" | jq -e '.keys' &>/dev/null; then
+            echo -e "${GREEN}✓${NC} Valid JWKS structure (has 'keys' array)"
+            ((TESTS_PASSED++))
+
+            # Test 3: Key count
+            KEY_COUNT=$(echo "$JWKS_RESPONSE" | jq '.keys | length')
+            echo "3. Checking key count..."
+            if [ "$KEY_COUNT" -gt 0 ]; then
+                echo -e "${GREEN}✓${NC} Contains $KEY_COUNT key(s)"
+                ((TESTS_PASSED++))
+
+                # Test 4-8: Validate first key structure
+                echo "4. Validating first key structure..."
+                KTY=$(echo "$JWKS_RESPONSE" | jq -r '.keys[0].kty')
+                ALG=$(echo "$JWKS_RESPONSE" | jq -r '.keys[0].alg')
+                USE=$(echo "$JWKS_RESPONSE" | jq -r '.keys[0].use')
+                KID=$(echo "$JWKS_RESPONSE" | jq -r '.keys[0].kid')
+
+                if [[ "$KTY" == "EC" ]]; then
+                    echo -e "${GREEN}✓${NC} Key type: EC"
+                    ((TESTS_PASSED++))
+                else
+                    echo -e "${RED}✗${NC} Key type: $KTY (expected EC)"
+                    ((TESTS_FAILED++))
+                fi
+
+                if [[ "$ALG" == "ES256" ]]; then
+                    echo -e "${GREEN}✓${NC} Algorithm: ES256"
+                    ((TESTS_PASSED++))
+                else
+                    echo -e "${RED}✗${NC} Algorithm: $ALG (expected ES256)"
+                    ((TESTS_FAILED++))
+                fi
+
+                if [[ "$USE" == "sig" ]]; then
+                    echo -e "${GREEN}✓${NC} Use: sig"
+                    ((TESTS_PASSED++))
+                else
+                    echo -e "${RED}✗${NC} Use: $USE (expected sig)"
+                    ((TESTS_FAILED++))
+                fi
+
+                if [[ -n "$KID" && "$KID" != "null" ]]; then
+                    echo -e "${GREEN}✓${NC} Has key ID: ${KID:0:16}..."
+                    ((TESTS_PASSED++))
+                else
+                    echo -e "${RED}✗${NC} Missing key ID"
+                    ((TESTS_FAILED++))
+                fi
+
+                # Test EC coordinates
+                if echo "$JWKS_RESPONSE" | jq -e '.keys[0].x' &>/dev/null && \
+                   echo "$JWKS_RESPONSE" | jq -e '.keys[0].y' &>/dev/null; then
+                    echo -e "${GREEN}✓${NC} Has EC coordinates (x, y)"
+                    ((TESTS_PASSED++))
+                else
+                    echo -e "${RED}✗${NC} Missing EC coordinates"
+                    ((TESTS_FAILED++))
+                fi
+            else
+                echo -e "${RED}✗${NC} No keys in JWKS"
+                ((TESTS_FAILED++))
+            fi
+        else
+            echo -e "${RED}✗${NC} Invalid JSON structure"
+            ((TESTS_FAILED++))
+            echo "Response: $JWKS_RESPONSE"
+        fi
+    else
+        echo -e "${RED}✗${NC} JWKS endpoint not accessible"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test content type
+    echo "5. Checking Content-Type header..."
+    CONTENT_TYPE=$(curl -s -I "${PROD_URL}/.well-known/jwks.json" | grep -i "content-type:" | tr -d '\r')
+    if echo "$CONTENT_TYPE" | grep -qi "application/jwk-set+json"; then
+        echo -e "${GREEN}✓${NC} Correct Content-Type: application/jwk-set+json"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${YELLOW}⚠${NC} Content-Type: $CONTENT_TYPE"
+        echo "    (expected application/jwk-set+json)"
+    fi
+    echo ""
+
+    # Summary
+    echo "======================================"
+    echo "JWKS Validation Summary"
+    echo "======================================"
+    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
+    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+    echo ""
+
+    if [ $TESTS_FAILED -eq 0 ]; then
+        echo -e "${GREEN}✓ All JWKS tests passed!${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Some JWKS tests failed${NC}"
+        exit 1
+    fi
+
+# Validate GCP infrastructure is healthy
+validate-gcp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "☁️  Validating GCP Infrastructure"
+    echo "======================================"
+    echo ""
+
+    TESTS_PASSED=0
+    TESTS_FAILED=0
+
+    # Colors
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    NC='\033[0m'
+
+    # Test 1: Cloud Run service is deployed
+    echo "1. Checking Cloud Run service..."
+    if gcloud run services describe {{gcp_service}} \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} &>/dev/null; then
+        echo -e "${GREEN}✓${NC} Cloud Run service '{{gcp_service}}' exists"
+        ((TESTS_PASSED++))
+
+        # Get service URL
+        URL=$(gcloud run services describe {{gcp_service}} \
+            --region={{gcp_region}} \
+            --project={{gcp_project}} \
+            --format="value(status.url)")
+        echo "  URL: $URL"
+    else
+        echo -e "${RED}✗${NC} Cloud Run service not found"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 2: Service is healthy (responds to requests)
+    echo "2. Checking service health..."
+    URL=$(gcloud run services describe {{gcp_service}} \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)")
+
+    if curl -s --max-time 10 "$URL" &>/dev/null; then
+        echo -e "${GREEN}✓${NC} Service responds to requests"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Service not responding"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 3: Check for recent errors in logs
+    echo "3. Checking for recent errors in logs..."
+    ERROR_COUNT=$(gcloud logging read \
+        "resource.type=cloud_run_revision AND resource.labels.service_name={{gcp_service}} AND severity>=ERROR" \
+        --project={{gcp_project}} \
+        --limit=10 \
+        --format=json | jq '. | length')
+
+    if [ "$ERROR_COUNT" -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} No recent errors in logs"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Found $ERROR_COUNT recent errors"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 4: Check Cloud SQL connection
+    echo "4. Checking Cloud SQL instance..."
+    if gcloud sql instances describe validibot-db \
+        --project={{gcp_project}} &>/dev/null; then
+        echo -e "${GREEN}✓${NC} Cloud SQL instance exists"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Cloud SQL instance not found"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Test 5: Check storage buckets
+    echo "5. Checking GCS buckets..."
+    BUCKET_COUNT=$(gcloud storage buckets list \
+        --project={{gcp_project}} \
+        --format=json | jq '. | length')
+
+    if [ "$BUCKET_COUNT" -ge 2 ]; then
+        echo -e "${GREEN}✓${NC} Found $BUCKET_COUNT storage buckets"
+        ((TESTS_PASSED++))
+    else
+        echo -e "${RED}✗${NC} Expected at least 2 buckets, found $BUCKET_COUNT"
+        ((TESTS_FAILED++))
+    fi
+    echo ""
+
+    # Summary
+    echo "======================================"
+    echo "GCP Validation Summary"
+    echo "======================================"
+    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
+    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+    echo ""
+
+    if [ $TESTS_FAILED -eq 0 ]; then
+        echo -e "${GREEN}✓ All GCP tests passed!${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Some GCP tests failed${NC}"
+        exit 1
+    fi
+
+# Quick health check - just test if service is responding
+health-check:
+    #!/usr/bin/env bash
+    URL=$(gcloud run services describe {{gcp_service}} \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)")
+    echo "Checking: $URL"
+    curl -s -o /dev/null -w "HTTP Status: %{http_code}\nTime: %{time_total}s\n" "$URL"
+
+# =============================================================================
 # Helpers
 # =============================================================================
 

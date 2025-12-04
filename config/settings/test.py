@@ -34,5 +34,25 @@ TEMPLATES[0]["OPTIONS"]["debug"] = True  # type: ignore[index]
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#media-url
 MEDIA_URL = "http://media.testserver/"
+
+# STORAGES
+# ------------------------------------------------------------------------------
+# Configure storage backends for tests
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.InMemoryStorage",
+    },
+    "public": {
+        "BACKEND": "django.core.files.storage.InMemoryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+# JWKS
+# ------------------------------------------------------------------------------
+SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
+
 # Your stuff...
 # ------------------------------------------------------------------------------

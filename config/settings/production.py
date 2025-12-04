@@ -128,6 +128,28 @@ STORAGES = {
 # Media URL points to the public bucket
 MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
 
+# GOOGLE CLOUD KMS
+# ------------------------------------------------------------------------------
+# Configuration for credential signing using Google Cloud KMS.
+# See docs/dev_docs/google_cloud/kms.md for details.
+#
+# The signing key is the primary key used to sign credentials/badges.
+# The JWKS keys list includes all keys that should be published in the
+# /.well-known/jwks.json endpoint. During key rotation, this should include
+# both the new and previous key until old badges expire.
+
+GCP_KMS_SIGNING_KEY = env(
+    "GCP_KMS_SIGNING_KEY",
+    default="projects/project-a509c806-3e21-4fbc-b19/locations/australia-southeast1/keyRings/validibot-keys/cryptoKeys/credential-signing",
+)
+
+GCP_KMS_JWKS_KEYS = env.list(
+    "GCP_KMS_JWKS_KEYS",
+    default=[GCP_KMS_SIGNING_KEY],
+)
+
+SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
+
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#default-from-email

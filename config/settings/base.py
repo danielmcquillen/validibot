@@ -507,15 +507,6 @@ TEST_ENERGYPLUS_WEATHER_FILE = env(
 # PostHog (or other) tracker settings
 TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)
 
-# AWS / KMS
-KMS_KEY_ID = env("KMS_KEY_ID", default="alias/sv-credential-signing-prod")
-AWS_DEFAULT_REGION = env("AWS_DEFAULT_REGION", default="ap-southeast-2")
-SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
-SV_JWKS_KEYS = env.list(
-    "SV_JWKS_KEYS",
-    default=[KMS_KEY_ID],  # include prior key IDs during rotation
-)
-
 # EMAIL
 DEFAULT_FROM_EMAIL = env(
     "DJANGO_DEFAULT_FROM_EMAIL",

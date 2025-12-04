@@ -94,7 +94,7 @@ def _notify_admins(request: HttpRequest, form: SupportMessageForm) -> None:
 # Allow multiple keys (old + new) for rotation
 def _key_ids():
     # Add old key IDs during rotation so verifiers can see both keys.
-    keys = getattr(settings, "SV_JWKS_KEYS", [])
+    keys = getattr(settings, "GCP_KMS_JWKS_KEYS", [])
     return [key for key in keys if key]
 
 

@@ -68,26 +68,64 @@ SECURE_CONTENT_TYPE_NOSNIFF = env.bool(
 
 # STATIC & MEDIA (GCS)
 # ------------------------------------------------------------------------------
-# On Cloud Run, django-storages uses Application Default Credentials (ADC)
-# automatically via the service account attached to the Cloud Run service.
-# No explicit credentials needed - just set the bucket name.
+# File storage strategy for Google Cloud Storage.
+#
+# We use two separate buckets to handle different security requirements:
+#
+# 1. MEDIA BUCKET (public): Blog images, workflow featured images, and user
+#    avatars need to be publicly accessible so they can be displayed on public
+#    pages. This bucket is configured with public read permissions in GCP.
+#
+# 2. FILES BUCKET (private): User submissions, FMU uploads, and validation
+#    results contain sensitive data and should only be accessible to our
+#    application. This bucket has no public access.
+#
+# Authentication: When running on Cloud Run, Google automatically provides
+# credentials through the service account attached to the Cloud Run service.
+# We don't need to manage API keys or credential files - it just works.
+#
+# See docs/dev_docs/how-to/gcs-storage.md for complete details.
 GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
+GCS_FILES_BUCKET = env("GCS_FILES_BUCKET", default=None)
 
-if not GCS_MEDIA_BUCKET:
-    raise Exception("GCS_MEDIA_BUCKET is required in production.")  # noqa: TRY002
+if not GCS_MEDIA_BUCKET or not GCS_FILES_BUCKET:
+    raise Exception("GCS_MEDIA_BUCKET and GCS_FILES_BUCKET are required in production.")  # noqa: TRY002
 
 STORAGES = {
+    # "default" is used by FileFields that don't specify a storage parameter.
+    # This goes to the PRIVATE bucket since most file uploads (submissions,
+    # FMUs, validation artifacts) should not be publicly accessible.
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
-            "bucket_name": GCS_MEDIA_BUCKET,
+            "bucket_name": GCS_FILES_BUCKET,  # Private bucket
+            "file_overwrite": False,  # Keep old versions when same filename uploaded
+            # querystring_auth=False means we use direct URLs instead of signed URLs.
+            # This works because our Cloud Run service account has permission to
+            # access this bucket. If we needed temporary URLs for external users,
+            # we'd need signed URLs which require a service account key file.
+            "querystring_auth": False,
+        },
+    },
+    # "public" is explicitly specified on FileFields that need public access
+    # (blog images, workflow images, user avatars). This goes to the PUBLIC
+    # bucket which allows anyone on the internet to read files.
+    "public": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+        "OPTIONS": {
+            "bucket_name": GCS_MEDIA_BUCKET,  # Public bucket
             "file_overwrite": False,
+            # Direct URLs work here because the bucket has public read permissions
+            # configured in GCP (allUsers have objectViewer role).
+            "querystring_auth": False,
         },
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+# Media URL points to the public bucket
 MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
 
 # EMAIL

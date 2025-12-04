@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.files.storage import storages
 from django.db import models
 from django.db import transaction
 from django.db.models import Exists
@@ -34,6 +35,11 @@ if TYPE_CHECKING:
     from simplevalidations.users.constants import RoleCode
 
 logger = logging.getLogger(__name__)
+
+
+def select_public_storage():
+    """Return the public storage backend from STORAGES['public']."""
+    return storages["public"]
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -106,6 +112,8 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     featured_image = models.FileField(
         null=True,
         blank=True,
+        # Use public media bucket - references STORAGES["public"] from settings
+        storage=select_public_storage,
         help_text=_(
             "Optional image to represent the workflow Shown on the 'info' page.",
         ),

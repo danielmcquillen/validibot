@@ -295,3 +295,7 @@ sv_shared_dev
 sv_modal_dev
 tests/assets/fmu/*
 .modal.toml
+
+# Two-bucket local storage
+/media/files/
+/media/public/

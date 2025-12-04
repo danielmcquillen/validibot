@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.core.files.storage import storages
 from django.db import models
 from django.db.models import CharField
 from django.urls import reverse
@@ -15,6 +16,11 @@ from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
 from simplevalidations.users.constants import RoleCode
+
+
+def select_public_storage():
+    """Return the public storage backend from STORAGES['public']."""
+    return storages["public"]
 
 
 def _workspace_name_for(user: User) -> str:
@@ -173,6 +179,8 @@ class User(AbstractUser):
         upload_to="avatars/",
         blank=True,
         null=True,
+        # Use public media bucket - references STORAGES["public"] from settings
+        storage=select_public_storage,
         help_text=_("Square image works best across the app."),
     )
     job_title = models.CharField(

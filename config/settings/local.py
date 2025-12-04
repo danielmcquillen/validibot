@@ -27,17 +27,27 @@ CACHES = {
 # STORAGE
 # -------------------------------------------------------------------------------
 # By default, use local filesystem for media. To test GCS locally, set
-# GCS_MEDIA_BUCKET and run `gcloud auth application-default login`.
+# GCS_MEDIA_BUCKET and GCS_FILES_BUCKET and run `gcloud auth application-default login`.
 GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
+GCS_FILES_BUCKET = env("GCS_FILES_BUCKET", default=None)
 
-if GCS_MEDIA_BUCKET:
+if GCS_MEDIA_BUCKET and GCS_FILES_BUCKET:
     # Use GCS for media files (matches production)
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
             "OPTIONS": {
+                "bucket_name": GCS_FILES_BUCKET,
+                "file_overwrite": False,
+                "querystring_auth": False,
+            },
+        },
+        "public": {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {
                 "bucket_name": GCS_MEDIA_BUCKET,
                 "file_overwrite": False,
+                "querystring_auth": False,
             },
         },
         "staticfiles": {
@@ -47,10 +57,26 @@ if GCS_MEDIA_BUCKET:
     MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
 else:
     # Use local filesystem (default for local development)
-    MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
-    MEDIA_URL = "/media/"
+    # Two separate directories to mirror production's two-bucket strategy
+    FILES_ROOT = BASE_DIR / "media" / "files"  # noqa: F405 - Private files
+    MEDIA_ROOT = BASE_DIR / "media" / "public"  # noqa: F405 - Public media
+    MEDIA_URL = "/media/public/"
+
     STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(FILES_ROOT),
+                "base_url": "/media/files/",
+            },
+        },
+        "public": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(MEDIA_ROOT),
+                "base_url": "/media/public/",
+            },
+        },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },

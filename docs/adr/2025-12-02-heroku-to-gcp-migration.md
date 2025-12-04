@@ -236,8 +236,16 @@ We also use `django_celery_beat` for scheduled tasks, though currently we don't 
 **Cloud Storage**
 
 - Replaces AWS S3 for media files
-- Buckets already created: `validibot-au-media` (prod), `validibot-au-media-dev` (dev)
-- Used for user uploads, validation artifacts, reports
+- **Two-bucket strategy** for security and public access control:
+  - **Media buckets** (public): `validibot-media` (prod), `validibot-media-dev` (dev)
+    - Public read-only (`allUsers` have `objectViewer`)
+    - Used for blog images, workflow featured images, user avatars
+    - Direct public URLs (no signed URLs needed)
+  - **Files buckets** (private): `validibot-files` (prod), `validibot-files-dev` (dev)
+    - Private access only (Cloud Run service account has `objectAdmin`)
+    - Used for submissions, FMU uploads, validation artifacts, user data
+    - Private URLs (requires authentication)
+- Both bucket types use uniform bucket-level access (no per-object ACLs)
 
 **Secret Manager**
 

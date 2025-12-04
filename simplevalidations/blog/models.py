@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
+from django.core.files.storage import storages
 from django.db import models
 from django.db.models import TextField
 from django.urls import reverse
@@ -14,6 +15,11 @@ from simplevalidations.core.mixins import FeaturedImageMixin
 User = get_user_model()
 
 CONTENT_PREVIEW_MAX_LENGTH = 200
+
+
+def select_public_storage():
+    """Return the public storage backend from STORAGES['public']."""
+    return storages["public"]
 
 
 class BlogPost(FeaturedImageMixin, TimeStampedModel):
@@ -30,7 +36,12 @@ class BlogPost(FeaturedImageMixin, TimeStampedModel):
 
     slug = models.SlugField(max_length=250, unique=True)
 
-    featured_image = models.FileField(null=True, blank=True)
+    featured_image = models.FileField(
+        null=True,
+        blank=True,
+        # Use public media bucket - references STORAGES["public"] from settings
+        storage=select_public_storage,
+    )
 
     author = models.ForeignKey(
         User,

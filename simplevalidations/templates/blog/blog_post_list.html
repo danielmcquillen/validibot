@@ -30,9 +30,9 @@
                                 <a class="card feature-link-card blog-card h-100 text-decoration-none text-reset"
                                    href="{% url 'marketing:blog:blog_post_detail' blog_post.slug %}">
                                     <div class="blog-card__media">
-                                        {% if blog_post.featured_image %}
-                                            <img src="{{ blog_post.featured_image.url }}"
-                                                 alt="{{ blog_post.featured_image_alt|default:blog_post.title }}" />
+                                        {% if blog_post.has_featured_image %}
+                                            <img src="{{ blog_post.get_featured_image_url }}"
+                                                 alt="{{ blog_post.get_featured_image_alt }}" />
                                         {% else %}
                                             <span class="blog-card__media-placeholder">
                                                 {% trans "Validibot" %}

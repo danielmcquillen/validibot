@@ -43,10 +43,10 @@
 
       <div class="row mt-5">
         <div class="col-12 col-lg-8 ">
-          {% if blog_post.featured_image %}
+          {% if blog_post.has_featured_image %}
             <figure class="blog-article__figure mb-5">
-              <img src="{{ blog_post.featured_image.url }}"
-                   alt="{{ blog_post.featured_image_alt|default:blog_post.title }}"
+              <img src="{{ blog_post.get_featured_image_url }}"
+                   alt="{{ blog_post.get_featured_image_alt }}"
                    class="img-fluid rounded-4 w-100 shadow-sm" />
               {% if blog_post.featured_image_credit %}
                 <figcaption class="ms-2 text-muted small mt-2">
@@ -84,9 +84,9 @@
                 <a class="card feature-link-card blog-card h-100 text-decoration-none text-reset"
                    href="{% url 'marketing:blog:blog_post_detail' related.slug %}">
                   <div class="blog-card__media">
-                    {% if related.featured_image %}
-                      <img src="{{ related.featured_image.url }}"
-                           alt="{{ related.featured_image_alt|default:related.title }}" />
+                    {% if related.has_featured_image %}
+                      <img src="{{ related.get_featured_image_url }}"
+                           alt="{{ related.get_featured_image_alt }}" />
                     {% else %}
                       <span class="blog-card__media-placeholder">
                         {% trans "Validibot" %}

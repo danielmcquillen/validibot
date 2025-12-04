@@ -3,6 +3,7 @@ site_description: Internal documentation for Validibot contributors.
 site_url: https://danielmcquillen.github.io/simplevalidations/dev/
 
 docs_dir: docs/dev_docs
+site_dir: docs_build/dev
 use_directory_urls: true
 
 dev_addr: 127.0.0.1:9000

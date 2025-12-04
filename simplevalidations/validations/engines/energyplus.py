@@ -21,9 +21,14 @@ import os
 from typing import TYPE_CHECKING
 from typing import Any
 
+from pathlib import Path
+
 from django.utils.translation import gettext as _
+from pydantic import BaseModel
+from pydantic import Field
+from sv_shared.energyplus.models import EnergyPlusSimulationLogs
 from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
-from sv_shared.energyplus.models import EnergyPlusSimulationResult
+from sv_shared.energyplus.models import EnergyPlusSimulationOutputs
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.validations.constants import Severity
@@ -42,6 +47,36 @@ if TYPE_CHECKING:
     from simplevalidations.submissions.models import Submission
     from simplevalidations.validations.models import Ruleset
     from simplevalidations.validations.models import Validator
+
+
+# ==============================================================================
+# TODO (Phase 4): Temporary stub for backward compatibility
+# ==============================================================================
+# This class replicates the old EnergyPlusSimulationResult that was removed
+# from sv_shared. It will be completely replaced when we migrate to Cloud Run
+# Jobs using EnergyPlusOutputEnvelope.
+
+
+class EnergyPlusSimulationResult(BaseModel):
+    """
+    Temporary stub of the old Modal.com response model.
+
+    This will be removed in Phase 4 when we replace the entire Modal.com
+    execution path with Cloud Run Jobs using EnergyPlusOutputEnvelope.
+    """
+
+    simulation_id: str
+    status: str
+    outputs: EnergyPlusSimulationOutputs
+    metrics: EnergyPlusSimulationMetrics
+    logs: EnergyPlusSimulationLogs | None = None
+    messages: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    energyplus_returncode: int
+    execution_seconds: float
+    invocation_mode: str
+    energyplus_input_file_path: Path | None = None
+    energyplus_payload_format: str | None = None
 
 
 @register_engine(ValidationType.ENERGYPLUS)

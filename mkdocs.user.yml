@@ -3,6 +3,7 @@ site_description: Product tutorials and walkthroughs for Validibot users.
 site_url: https://docs.simplevalidations.app/
 
 docs_dir: docs/user_docs
+site_dir: docs_build/user
 use_directory_urls: true
 
 dev_addr: 127.0.0.1:9001

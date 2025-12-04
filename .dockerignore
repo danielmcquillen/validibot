@@ -24,3 +24,16 @@ venv
 # Exclude dev symlinks - these are volume-mounted at runtime
 sv_shared_dev
 sv_modal_dev
+# Exclude validator containers - they build separately
+validators/
+# Exclude generated documentation
+docs_build/
+# Exclude test and dev files
+tests/
+*.md
+README*
+LICENSE*
+# Exclude build artifacts
+dist/
+build/
+*.egg-info/

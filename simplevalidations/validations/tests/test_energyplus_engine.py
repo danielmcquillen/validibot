@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
 from sv_shared.energyplus.models import EnergyPlusSimulationOutputs
-from sv_shared.energyplus.models import EnergyPlusSimulationResult
 
 from simplevalidations.submissions.tests.factories import SubmissionFactory
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.energyplus import EnergyPlusSimulationResult
 from simplevalidations.validations.engines.energyplus import EnergyPlusValidationEngine
 from simplevalidations.validations.engines.energyplus import configure_modal_runner
 from simplevalidations.validations.tests.factories import RulesetFactory

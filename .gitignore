@@ -11,6 +11,9 @@ tmp/
 # We don't want uvlock to go to heroku
 uv.lock
 
+# MkDocs generated documentation
+docs_build/
+
 .envs/
 
 *.py[cod]

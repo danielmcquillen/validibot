@@ -13,7 +13,6 @@ from rest_framework.status import HTTP_201_CREATED
 from rest_framework.status import HTTP_202_ACCEPTED
 from sv_shared.energyplus.models import EnergyPlusSimulationMetrics
 from sv_shared.energyplus.models import EnergyPlusSimulationOutputs
-from sv_shared.energyplus.models import EnergyPlusSimulationResult
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.users.models import RoleCode
@@ -23,6 +22,7 @@ from simplevalidations.users.tests.factories import grant_role
 from simplevalidations.validations.constants import RulesetType
 from simplevalidations.validations.constants import ValidationRunStatus
 from simplevalidations.validations.constants import ValidationType
+from simplevalidations.validations.engines.energyplus import EnergyPlusSimulationResult
 from simplevalidations.validations.engines.energyplus import configure_modal_runner
 from simplevalidations.validations.tests.factories import RulesetFactory
 from simplevalidations.validations.tests.factories import ValidatorFactory

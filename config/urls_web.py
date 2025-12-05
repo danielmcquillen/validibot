@@ -101,11 +101,6 @@ if settings.ENABLE_APP:
 if settings.ACCOUNT_ALLOW_LOGIN:
     urlpatterns.append(path("accounts/", include("allauth.urls")))
 
-if getattr(settings, "GITHUB_APP_ENABLED", False):
-    from django_github_app.views import AsyncWebhookView
-
-    urlpatterns.append(path("gh/", AsyncWebhookView.as_view(), name="github-webhook"))
-
 # Public API surface (available on web). Internal-only endpoints are on worker.
 if settings.ENABLE_API:
     from drf_spectacular.views import SpectacularAPIView

@@ -107,8 +107,6 @@ THIRD_PARTY_APPS = [
     "markdownify",
     "django_cloud_tasks",
 ]
-if GITHUB_APP_ENABLED:
-    THIRD_PARTY_APPS.append("django_github_app")
 
 LOCAL_APPS = [
     "simplevalidations.core",
@@ -349,7 +347,8 @@ LOGGING = {
 
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
-# Redis is retained for potential caching integrations. Celery has been removed.
+
+# Redis is retained for potential caching integrations.
 # django-allauth
 # ------------------------------------------------------------------------------
 ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)

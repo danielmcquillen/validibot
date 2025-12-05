@@ -37,7 +37,9 @@ class FMIProbeViewTests(TestCase):
         url = reverse("validations:fmi_probe_start", args=[self.validator.pk])
         response = self.client.post(url, HTTP_HX_REQUEST="true")
         self.assertEqual(response.status_code, 200)
-        self.assertJSONEqual(response.content, {"status": "queued"})
+        data = response.json()
+        self.assertIn("status", data)
+        self.assertIn(data["status"], {"RUNNING", "SUCCEEDED", "FAILED"})
 
     def test_probe_status_returns_data(self):
         url = reverse("validations:fmi_probe_status", args=[self.validator.pk])

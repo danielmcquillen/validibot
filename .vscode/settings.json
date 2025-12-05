@@ -36,5 +36,4 @@
         }
     ],
     "python.envFile": "${workspaceFolder}/_envs/_local/django.env",
-    "python.testing.pytestEnabled": true
 }

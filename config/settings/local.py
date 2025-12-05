@@ -119,10 +119,6 @@ INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
 # ------------------------------------------------------------------------------
 # https://django-extensions.readthedocs.io/en/latest/installation_instructions.html#configuration
 INSTALLED_APPS += ["django_extensions"]
-# Celery has been removed; keep placeholders for legacy env compatibility.
-CELERY_TASK_ALWAYS_EAGER = False
-CELERY_TASK_EAGER_PROPAGATES = False
-CELERY_WORKER_CONCURRENCY = 1
 
 # Validibot settings for local development
 # ------------------------------------------------------------------------------

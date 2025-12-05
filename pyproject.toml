@@ -73,6 +73,7 @@ testpaths = [
 norecursedirs = [
   "sv_modal_dev",
   "sv_shared_dev",
+  "vb_validators_dev",
   "tests/tests_integration", # We run these manually
 ]
 
@@ -80,7 +81,7 @@ norecursedirs = [
 [tool.coverage.run]
 include = ["simplevalidations/**"]
 # We should run tests on sv_modal and sv_shared separately.
-omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "sv_shared_dev"]
+omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "sv_shared_dev", "vb_validators_dev"]
 plugins = ["django_coverage_plugin"]
 
 # ==== mypy ====

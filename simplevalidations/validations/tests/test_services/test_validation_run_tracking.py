@@ -23,7 +23,16 @@ def test_execute_logs_started_and_success(monkeypatch):
     WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def success_engine(self, validator, submission, ruleset=None, config=None):
+    def success_engine(
+        self,
+        validator,
+        submission,
+        ruleset=None,
+        config=None,
+        *,
+        validation_run=None,
+        step=None,
+    ):
         return DummyResult(passed=True, issues=[])
 
     monkeypatch.setattr(
@@ -56,7 +65,16 @@ def test_execute_logs_failure(monkeypatch):
     failing_step = WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def failure_engine(self, validator, submission, ruleset=None, config=None):
+    def failure_engine(
+        self,
+        validator,
+        submission,
+        ruleset=None,
+        config=None,
+        *,
+        validation_run=None,
+        step=None,
+    ):
         return DummyResult(passed=False, issues=["boom"])
 
     monkeypatch.setattr(

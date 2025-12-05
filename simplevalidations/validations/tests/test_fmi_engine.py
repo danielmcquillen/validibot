@@ -82,7 +82,7 @@ class FMIEngineTests(TestCase):
         fake_result = FMIRunResult.success(outputs={"y_out": 3.0}).model_dump(
             mode="json"
         )
-        runner = _FakeRunner(fake_result)
+        _FakeRunner(fake_result)
 
         engine = FMIValidationEngine(config={"inputs": {"u_in": 1.0}})
         result = engine.validate(

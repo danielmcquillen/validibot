@@ -16,6 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from sv_shared.fmi.envelopes import FMIInputEnvelope
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.engines.base import ValidationIssue
@@ -24,6 +25,9 @@ from simplevalidations.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
 from simplevalidations.validations.services.cloud_run.gcs_client import upload_envelope
+from simplevalidations.validations.services.cloud_run.gcs_client import (
+    upload_envelope_local,
+)
 from simplevalidations.validations.services.cloud_run.gcs_client import upload_file
 from simplevalidations.validations.services.cloud_run.job_client import (
     trigger_validator_job,
@@ -31,12 +35,9 @@ from simplevalidations.validations.services.cloud_run.job_client import (
 from simplevalidations.validations.services.cloud_run.token_service import (
     create_callback_token,
 )
-from sv_shared.fmi.envelopes import FMIInputEnvelope
-from sv_shared.fmi.envelopes import FMISimulationConfig
-from sv_shared.validations.envelopes import ValidationInputEnvelope
+from simplevalidations.validations.services.fmi_bindings import resolve_input_value
 
 if TYPE_CHECKING:
-
     from simplevalidations.submissions.models import Submission
     from simplevalidations.validations.models import Ruleset
     from simplevalidations.validations.models import ValidationRun
@@ -234,11 +235,11 @@ def launch_energyplus_validation(
 
 def launch_fmi_validation(
     *,
-    run: "ValidationRun",
-    validator: "Validator",
+    run: ValidationRun,
+    validator: Validator,
     submission,
     ruleset,
-    step: "WorkflowStep",
+    step: WorkflowStep,
 ) -> ValidationResult:
     """
     Launch an FMI validation via Cloud Run Jobs.
@@ -276,7 +277,9 @@ def launch_fmi_validation(
             input_envelope_uri = str(base_dir / "input.json")
 
         # Resolve inputs based on catalog binding paths
-        submission_payload = submission.content if hasattr(submission, "content") else ""
+        submission_payload = (
+            submission.content if hasattr(submission, "content") else ""
+        )
         if isinstance(submission_payload, str):
             # Best effort: parse JSON when possible
             import json
@@ -289,12 +292,11 @@ def launch_fmi_validation(
         for entry in validator.catalog_entries.filter(run_stage="INPUT"):
             binding_path = (entry.input_binding_path or "").strip()
             slug = entry.slug
-            value = None
-            if isinstance(submission_payload, dict):
-                if binding_path:
-                    value = submission_payload.get(binding_path)
-                else:
-                    value = submission_payload.get(slug)
+            value = resolve_input_value(
+                submission_payload,
+                binding_path=binding_path,
+                slug=slug,
+            )
             if value is None and entry.is_required:
                 msg = f"Missing required input '{slug}' for FMI validator."
                 raise ValueError(msg)  # noqa: TRY301
@@ -358,7 +360,7 @@ def launch_fmi_validation(
         else:
             from pathlib import Path
 
-            Path(input_envelope_uri).write_text(envelope.model_dump_json(indent=2))
+            upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # Trigger Cloud Run Job
         job_name = settings.GCS_FMI_JOB_NAME
@@ -376,7 +378,8 @@ def launch_fmi_validation(
         )
 
         # Mark run/step running
-        from datetime import UTC, datetime
+        from datetime import UTC
+        from datetime import datetime
 
         from simplevalidations.validations.constants import StepStatus
         from simplevalidations.validations.constants import ValidationRunStatus
@@ -395,6 +398,7 @@ def launch_fmi_validation(
             "task_name": task_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
+            "signals": {},  # populated on callback; reserved for downstream steps
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 

@@ -231,9 +231,9 @@ def build_input_envelope(
             callback_url=callback_url,
             callback_token=callback_token,
             execution_bundle_uri=execution_bundle_uri,
-                timestep_per_hour=timestep_per_hour,
-                output_variables=output_variables,
-            )
+            timestep_per_hour=timestep_per_hour,
+            output_variables=output_variables,
+        )
     if validator.validation_type == "fmi":
         # FMU location: use gcs_uri when present, otherwise local file path
         fmu_model = validator.fmu_model
@@ -245,8 +245,10 @@ def build_input_envelope(
             msg = f"FMU model {fmu_model.id} has no storage URI or file path"
             raise ValueError(msg)
 
-        # Resolve inputs keyed by catalog slug from the submission content based on catalog binding paths.
-        # Here we only carry the values; the launcher is responsible for resolution.
+        # Resolve inputs keyed by catalog slug from the submission content
+        # based on catalog binding paths.
+        # Here we only carry the values; the launcher is responsible
+        # for resolution.
         fmi_inputs = FMIInputs(
             input_values={},
             simulation=FMISimulationConfig(),

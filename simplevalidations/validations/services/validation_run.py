@@ -659,6 +659,15 @@ class ValidationRunService:
             issues=issues,
         )
         stats = validation_result.stats or {}
+        # Persist any signals for downstream steps in a namespaced structure.
+        # Callers can include a "signals" dict in stats with catalog slugs/values.
+        if "signals" in stats:
+            summary_steps = validation_run.summary.get("steps", {})
+            summary_steps[str(step_run.id)] = {
+                "signals": stats.get("signals", {}),
+            }
+            validation_run.summary["steps"] = summary_steps
+            validation_run.save(update_fields=["summary"])
         if validation_result.passed is None:
             # Async validator still running; keep status as RUNNING and persist
             # any interim stats for observability.
@@ -817,6 +826,8 @@ class ValidationRunService:
             submission=submission,
             ruleset=ruleset,
             config=step_config,
+            validation_run=validation_run,
+            step=step,
         )
         validation_result.workflow_step_name = step.name
 
@@ -848,6 +859,9 @@ class ValidationRunService:
         submission: Submission,
         ruleset: Ruleset | None = None,
         config: dict[str, Any] | None = None,
+        *,
+        validation_run: ValidationRun | None = None,
+        step: WorkflowStep | None = None,
     ) -> ValidationResult:
         """
         Execute the appropriate validator engine code for the given
@@ -880,13 +894,61 @@ class ValidationRunService:
         # needs either via the config dict or the ContentSource.
         # We don't pass in any model instances.
         validator_engine: BaseValidatorEngine = validator_cls(config=config)
-        validation_result = validator_engine.validate(
-            validator=validator,
-            submission=submission,
-            ruleset=ruleset,
-        )
+
+        signals = self._extract_downstream_signals(validation_run)
+        if getattr(validator_engine, "run_context", None) is None:
+            from types import SimpleNamespace
+
+            validator_engine.run_context = SimpleNamespace(
+                validation_run=validation_run,
+                workflow_step=step,
+                downstream_signals=signals,
+            )
+        else:
+            validator_engine.run_context.validation_run = validation_run
+            validator_engine.run_context.workflow_step = step
+            validator_engine.run_context.downstream_signals = signals
+
+        if hasattr(validator_engine, "validate_with_run"):
+            validation_result = validator_engine.validate_with_run(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run=validation_run,
+                step=step,
+            )
+        else:
+            validation_result = validator_engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+            )
 
         return validation_result
+
+    def _extract_downstream_signals(
+        self,
+        validation_run: ValidationRun | None,
+    ) -> dict[str, Any]:
+        """
+        Collect namespaced signals from prior steps so engines can expose them
+        to CEL assertions (steps.<step_run_id>.signals.<slug>).
+        """
+        if not validation_run:
+            return {}
+        summary = getattr(validation_run, "summary", None) or {}
+        if not isinstance(summary, dict):
+            return {}
+        steps = summary.get("steps", {}) or {}
+        if not isinstance(steps, dict):
+            return {}
+        scoped_signals: dict[str, Any] = {}
+        for key, value in steps.items():
+            if isinstance(value, dict):
+                scoped_signals[str(key)] = {
+                    "signals": value.get("signals", {}) or {},
+                }
+        return scoped_signals
 
     def _resolve_run_actor(
         self,

@@ -16,6 +16,7 @@ from abc import abstractmethod
 from dataclasses import asdict
 from dataclasses import dataclass
 from gettext import gettext as _
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -105,6 +106,13 @@ class BaseValidatorEngine(ABC):
         # Arbitrary configuration (e.g., schema, thresholds, flags)
         self.config: dict[str, Any] = config or {}
         self.processor_name: str = self.config.get("processor_name", "").strip()
+        # Run context is populated by ValidationRunService when a validator
+        # executes within a workflow. Engines can safely assume it exists.
+        self.run_context: SimpleNamespace = SimpleNamespace(
+            validation_run=None,
+            workflow_step=None,
+            downstream_signals={},
+        )
 
     def get_cel_helpers(self) -> dict[str, CelHelper]:
         """
@@ -159,6 +167,8 @@ class BaseValidatorEngine(ABC):
         """
         Build a context mapping catalog entry slugs to values resolved from payload.
         Include the raw payload so expressions can reference it directly if needed.
+        If run_context includes downstream signals from earlier steps, expose them
+        under a namespaced ``steps`` key to support cross-step assertions.
         """
         context: dict[str, Any] = {"payload": payload}
         derived_enabled = getattr(settings, "ENABLE_DERIVED_SIGNALS", False)
@@ -191,6 +201,26 @@ class BaseValidatorEngine(ABC):
                     context.setdefault(f"output.{entry.slug}", value)
             elif entry.is_required:
                 context[entry.slug] = None
+
+        # Surface downstream signals for CEL expressions 
+        # (e.g., steps.<id>.signals.<slug>).
+        steps_context: dict[str, Any] = {}
+        run_summary = getattr(
+            getattr(self, "run_context", None),
+            "validation_run",
+            None,
+        )
+        if isinstance(getattr(run_summary, "summary", None), dict):
+            steps_context = run_summary.summary.get("steps", {}) or {}
+        downstream_override = getattr(
+            getattr(self, "run_context", None),
+            "downstream_signals",
+            None,
+        )
+        if isinstance(downstream_override, dict) and downstream_override:
+            steps_context = downstream_override
+        if steps_context:
+            context["steps"] = steps_context
 
         def _collect_matches(data: Any, key: str) -> list[Any]:
             matches: list[Any] = []

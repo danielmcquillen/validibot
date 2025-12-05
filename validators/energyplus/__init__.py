@@ -1,1 +1,0 @@
-"""EnergyPlus validator container."""

@@ -13,8 +13,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from django.utils.translation import gettext as _
-
 from simplevalidations.validations.constants import ValidationType
 from simplevalidations.validations.engines.base import BaseValidatorEngine
 from simplevalidations.validations.engines.base import ValidationResult
@@ -54,7 +52,8 @@ class FMIValidationEngine(BaseValidatorEngine):
         # Cloud Run configuration required
         if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_FMI_JOB_NAME:
             logger.warning(
-                "Cloud Run Jobs not configured for FMI - returning not-implemented error"
+                "Cloud Run Jobs not configured for FMI - "
+                "returning not-implemented error"
             )
             return ValidationResult(
                 passed=False,

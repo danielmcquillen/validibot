@@ -32,9 +32,6 @@ from simplevalidations.validations.services.cloud_run.gcs_client import upload_f
 from simplevalidations.validations.services.cloud_run.job_client import (
     trigger_validator_job,
 )
-from simplevalidations.validations.services.cloud_run.token_service import (
-    create_callback_token,
-)
 from simplevalidations.validations.services.fmi_bindings import resolve_input_value
 
 if TYPE_CHECKING:
@@ -63,9 +60,8 @@ def launch_energyplus_validation(
     2. Upload submission file to GCS
     3. Build typed input envelope
     4. Upload envelope to GCS
-    5. Create callback JWT token
-    6. Trigger Cloud Run Job via Cloud Tasks
-    7. Return pending ValidationResult
+    5. Trigger Cloud Run Job via Cloud Tasks
+    6. Return pending ValidationResult
 
     Args:
         run: ValidationRun instance (already created in PENDING status)
@@ -124,27 +120,14 @@ def launch_energyplus_validation(
             content_type="application/json",
         )
 
-        # 4. Create callback token
-        # Get the current step run to include in token claims
+        # 4. Build callback URL (IAM protected worker service)
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run found for ValidationRun {run.id}"
             raise ValueError(msg)  # noqa: TRY301
-
-        callback_token = create_callback_token(
-            run_id=run_id,
-            step_run_id=str(current_step_run.id),
-            validator_id=str(validator.id),
-            org_id=org_id,
-            kms_key_name=settings.GCS_CALLBACK_KMS_KEY,
-            kms_key_version=getattr(settings, "GCS_CALLBACK_KMS_KEY_VERSION", None),
-            expires_hours=24,
-        )
-
-        # 5. Build callback URL
         callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
 
-        # 6. Build typed input envelope
+        # 5. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
         output_variables = step_config.get("output_variables")
@@ -160,17 +143,16 @@ def launch_energyplus_validation(
             model_file_uri=model_file_uri,
             weather_file_uri=weather_file_uri,
             callback_url=callback_url,
-            callback_token=callback_token,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
             output_variables=output_variables,
         )
 
-        # 7. Upload envelope to GCS
+        # 6. Upload envelope to GCS
         logger.info(f"Uploading input envelope to {input_envelope_uri}")
         upload_envelope(envelope, input_envelope_uri)
 
-        # 8. Trigger Cloud Run Job via Cloud Tasks
+        # 7. Trigger Cloud Run Job via Cloud Tasks
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
         queue_name = settings.GCS_TASK_QUEUE_NAME
 
@@ -183,7 +165,7 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
         )
 
-        # 8.5. Update run and step run status to RUNNING
+        # 7.5. Update run and step run status to RUNNING
         from datetime import UTC
         from datetime import datetime
 
@@ -205,7 +187,7 @@ def launch_energyplus_validation(
             current_step_run.id,
         )
 
-        # 9. Return pending ValidationResult
+        # 8. Return pending ValidationResult
         stats = {
             "status": "pending",
             "job_name": job_name,
@@ -303,18 +285,10 @@ def launch_fmi_validation(
             if value is not None:
                 input_values[slug] = value
 
-        # Build callback token
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run for run {run.id}"
             raise ValueError(msg)  # noqa: TRY301
-        callback_token = create_callback_token(
-            run_id=run_id,
-            step_run_id=str(current_step_run.id),
-            validator_id=str(validator.id),
-            org_id=org_id,
-            kms_key_name=settings.GCS_CALLBACK_KMS_KEY,
-        )
         callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
 
         # Build envelope
@@ -349,7 +323,6 @@ def launch_fmi_validation(
             },
             context={
                 "callback_url": callback_url,
-                "callback_token": callback_token,
                 "execution_bundle_uri": execution_bundle_uri,
             },
         )

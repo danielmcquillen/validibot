@@ -101,7 +101,6 @@ def build_energyplus_input_envelope(
     model_file_uri: str,
     weather_file_uri: str,
     callback_url: str,
-    callback_token: str,
     execution_bundle_uri: str,
     timestep_per_hour: int = 4,
     output_variables: list[str] | None = None,
@@ -122,8 +121,7 @@ def build_energyplus_input_envelope(
         step_name: Human-readable step name
         model_file_uri: GCS URI to IDF/epJSON file
         weather_file_uri: GCS URI to EPW weather file
-        callback_url: Django endpoint to POST results
-        callback_token: JWT token for callback authentication
+        callback_url: Django endpoint to POST results (IAM protected)
         execution_bundle_uri: GCS directory for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4)
         output_variables: EnergyPlus output variables to collect
@@ -148,7 +146,6 @@ def build_energyplus_input_envelope(
 def build_input_envelope(
     run,  # ValidationRun instance
     callback_url: str,
-    callback_token: str,
 ) -> ValidationInputEnvelope:
     """
     Build the appropriate input envelope based on validator type.
@@ -159,7 +156,6 @@ def build_input_envelope(
     Args:
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
-        callback_token: JWT token for callback authentication
 
     Returns:
         Typed envelope (EnergyPlusInputEnvelope, FMIInputEnvelope, etc.)

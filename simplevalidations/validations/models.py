@@ -619,7 +619,9 @@ class FMUModel(TimeStampedModel):
         max_length=512,
         blank=True,
         default="",
-        help_text=_("GCS URI to the canonical FMU object (e.g., gs://bucket/fmus/<checksum>.fmu)."),
+        help_text=_(
+            "GCS URI to the canonical FMU object (e.g., gs://bucket/fmus/<checksum>.fmu)."
+        ),
     )
     fmi_version = models.CharField(
         max_length=8,

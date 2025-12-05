@@ -92,7 +92,6 @@ input_envelope = EnergyPlusInputEnvelope(
     ),
     context=ExecutionContext(
         callback_url=HttpUrl("https://validibot.example.com/api/v1/validation-callbacks/"),
-        callback_token=create_jwt_token(run.id),
         execution_bundle_uri=f"gs://bucket/{org.id}/{run.id}/",
         timeout_seconds=3600
     )
@@ -185,7 +184,6 @@ upload_envelope(output_envelope, output_uri)
 # POST callback to Django
 post_callback(
     callback_url=input_envelope.context.callback_url,
-    callback_token=input_envelope.context.callback_token,
     run_id=input_envelope.run_id,
     status=ValidationStatus.SUCCESS,
     result_uri=output_uri
@@ -198,9 +196,8 @@ post_callback(
 # In Django callback endpoint
 @api_view(['POST'])
 def validation_callback(request):
-    # Validate JWT token
+    # IAM authentication is handled by Cloud Run (ID token)
     callback = ValidationCallback.model_validate(request.data)
-    verify_jwt_token(callback.callback_token)
 
     # Download full output envelope from GCS
     output_envelope = download_envelope(
@@ -340,47 +337,26 @@ gsutil lifecycle set lifecycle.json gs://PROJECT-validator-bundles
 
 ## Security
 
-### JWT Tokens for Callbacks
+### Callback authentication via Cloud Run IAM
+
+- The worker Cloud Run service is private and requires IAM authentication.
+- Validator jobs run with a dedicated service account that has `roles/run.invoker`
+  on the worker service.
+- The callback client mints a Google-signed ID token from the metadata server
+  (audience = callback URL) and includes it as the `Authorization: Bearer <token>`
+  header.
+- No JWT payload token or shared secret is exchanged in the envelope; IAM
+  enforces trust.
+
+Example:
 
 ```python
-# Django creates signed token
-import jwt
-from google.cloud import kms
-
-def create_callback_token(run_id: str) -> str:
-    payload = {
-        "run_id": run_id,
-        "exp": datetime.now(UTC) + timedelta(hours=24),
-        "iss": "validibot-django",
-    }
-
-    # Sign with GCP KMS
-    kms_client = kms.KeyManagementServiceClient()
-    key_name = f"projects/{PROJECT}/locations/{REGION}/keyRings/{KEYRING}/cryptoKeys/{KEY}"
-
-    # Create JWT and sign with KMS
-    token = jwt.encode(payload, key=None, algorithm="RS256")
-    signature = kms_client.asymmetric_sign(
-        request={"name": f"{key_name}/cryptoKeyVersions/1", "data": token.encode()}
-    )
-
-    return f"{token}.{signature.signature}"
-
-# Validator includes token in callback
 post_callback(
-    callback_url=callback_url,
-    callback_token=token,
-    ...
+    callback_url=input_envelope.context.callback_url,
+    run_id=input_envelope.run_id,
+    status=ValidationStatus.SUCCESS,
+    result_uri=output_uri,
 )
-
-# Django verifies token
-def verify_callback_token(token: str) -> dict:
-    # Verify with GCP KMS public key
-    kms_client = kms.KeyManagementServiceClient()
-    public_key = kms_client.get_public_key(...)
-
-    payload = jwt.decode(token, public_key, algorithms=["RS256"])
-    return payload
 ```
 
 ## Monitoring

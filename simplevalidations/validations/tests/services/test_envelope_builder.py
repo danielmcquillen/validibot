@@ -33,7 +33,6 @@ def test_build_energyplus_input_envelope():
         model_file_uri="gs://test-bucket/model.idf",
         weather_file_uri="gs://test-bucket/weather.epw",
         callback_url="https://api.example.com/callbacks/",
-        callback_token="test-token",  # noqa: S106
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
         timestep_per_hour=4,
         output_variables=["Zone Mean Air Temperature"],
@@ -70,7 +69,6 @@ def test_build_energyplus_input_envelope():
 
     # Verify execution context
     assert str(envelope.context.callback_url) == "https://api.example.com/callbacks/"
-    assert envelope.context.callback_token == "test-token"  # noqa: S105
     assert envelope.context.execution_bundle_uri == "gs://test-bucket/runs/run-123/"
 
     # Verify EnergyPlus-specific inputs
@@ -93,7 +91,6 @@ def test_build_energyplus_input_envelope_defaults():
         model_file_uri="gs://test-bucket/model.idf",
         weather_file_uri="gs://test-bucket/weather.epw",
         callback_url="https://api.example.com/callbacks/",
-        callback_token="test-token",  # noqa: S106
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
         # Use defaults for timestep_per_hour and output_variables
     )

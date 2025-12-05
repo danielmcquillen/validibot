@@ -35,3 +35,4 @@ Validator jobs (EnergyPlus, FMI, etc.) run as Cloud Run Jobs and call back to th
 - To inspect logs: open Cloud Logging and filter on `resource.type="cloud_run_job"` and
   `resource.labels.job_name` matching the validator. Fatal errors will include stack traces.
   If Sentry DSN is present in the container, `report_fatal` will forward the exception there.
+  (Sentry bootstrap for validator containers is planned; for now, errors always land in Cloud Logging.)

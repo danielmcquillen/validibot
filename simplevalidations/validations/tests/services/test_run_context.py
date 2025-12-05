@@ -76,4 +76,4 @@ def test_build_cel_context_exposes_downstream_signals():
     context = engine._build_cel_context({"input": 1}, validator)  # noqa: SLF001
 
     assert context["payload"] == {"input": 1}
-    assert context["steps"]["10"]["signals"]["output_temp"] == 18.5 # noqa: PLR2004
+    assert context["steps"]["10"]["signals"]["output_temp"] == 18.5  # noqa: PLR2004

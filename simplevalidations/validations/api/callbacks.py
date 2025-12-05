@@ -2,8 +2,9 @@
 Callback API endpoint for Cloud Run Job validators.
 
 This module handles ValidationCallback POSTs from validator containers.
-It verifies the JWT token, downloads the output envelope from GCS, and
-updates the ValidationRun in the database.
+It validates callback payloads, downloads the output envelope from GCS,
+and updates the ValidationRun in the database. Authentication is enforced
+by Cloud Run IAM; no shared secrets are required.
 
 Design: Simple APIView with clear error handling. No complex permissions.
 """
@@ -34,9 +35,6 @@ from simplevalidations.validations.models import ValidationStepRun
 from simplevalidations.validations.models import ValidationStepRunSummary
 from simplevalidations.validations.services.cloud_run.gcs_client import (
     download_envelope,
-)
-from simplevalidations.validations.services.cloud_run.token_service import (
-    verify_callback_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,20 +75,20 @@ class ValidationCallbackView(APIView):
 
     This endpoint receives POSTs from validator containers when they finish
     executing. The callback contains minimal data (run_id, status, result_uri)
-    and a JWT token for authentication.
+    and relies on Cloud Run IAM for authentication.
 
     The endpoint:
-    1. Verifies the JWT token
+    1. Validates the callback payload
     2. Downloads the full output envelope from GCS
     3. Updates the ValidationRun in the database
     4. Returns 200 OK
 
     URL: /api/v1/validation-callbacks/
     Method: POST
-    Authentication: JWT token in callback payload
+    Authentication: Cloud Run IAM (ID token)
     """
 
-    # Allow unauthenticated access - we verify via JWT token in payload
+    # Cloud Run IAM performs authentication; DRF auth is disabled here.
     authentication_classes = []
     permission_classes = []
 
@@ -100,7 +98,6 @@ class ValidationCallbackView(APIView):
 
         Expected payload (ValidationCallback):
         {
-            "callback_token": "jwt_token_here",
             "run_id": "abc-123",
             "status": "success",
             "result_uri": "gs://bucket/runs/abc-123/output.json"
@@ -120,38 +117,6 @@ class ValidationCallbackView(APIView):
                 callback.status,
             )
 
-            # Verify JWT token
-            try:
-                kms_key_name = settings.GCS_CALLBACK_KMS_KEY
-                kms_key_version = getattr(
-                    settings,
-                    "GCS_CALLBACK_KMS_KEY_VERSION",
-                    None,
-                )
-                token_payload = verify_callback_token(
-                    callback.callback_token,
-                    kms_key_name,
-                    kms_key_version,
-                )
-            except ValueError as e:
-                logger.warning("Invalid callback token: %s", e)
-                return Response(
-                    {"error": "Invalid or expired token"},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
-
-            # Verify run_id in token matches callback
-            if token_payload["run_id"] != callback.run_id:
-                logger.warning(
-                    "Token run_id mismatch: token=%s, callback=%s",
-                    token_payload["run_id"],
-                    callback.run_id,
-                )
-                return Response(
-                    {"error": "Token run_id mismatch"},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
-
             # Get the validation run
             try:
                 run = ValidationRun.objects.get(id=callback.run_id)
@@ -162,32 +127,23 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            # Verify org claim
-            if str(run.org_id) != str(token_payload.get("org_id")):
-                logger.warning(
-                    "Token org_id mismatch: token=%s, run=%s",
-                    token_payload.get("org_id"),
-                    run.org_id,
-                )
-                return Response(
-                    {"error": "Token org mismatch"},
-                    status=status.HTTP_401_UNAUTHORIZED,
+            # Locate the active step run (RUNNING/PENDING) for this validation.
+            step_run = run.current_step_run
+            if not step_run:
+                step_run = (
+                    ValidationStepRun.objects.select_related(
+                        "workflow_step__validator",
+                    )
+                    .filter(
+                        validation_run=run,
+                        status__in=[StepStatus.RUNNING, StepStatus.PENDING],
+                    )
+                    .order_by("step_order")
+                    .first()
                 )
 
-            # Load the specific step run referenced in the token
-            try:
-                step_run = ValidationStepRun.objects.select_related(
-                    "workflow_step__validator",
-                ).get(
-                    id=token_payload.get("step_run_id"),
-                    validation_run=run,
-                )
-            except ValidationStepRun.DoesNotExist:
-                logger.warning(
-                    "Step run not found or not linked to run: run=%s step_run=%s",
-                    run.id,
-                    token_payload.get("step_run_id"),
-                )
+            if not step_run:
+                logger.warning("No active step run found for run %s", run.id)
                 return Response(
                     {"error": "Step run not found"},
                     status=status.HTTP_404_NOT_FOUND,
@@ -199,17 +155,6 @@ class ValidationCallbackView(APIView):
                 return Response(
                     {"error": "No validator found for step"},
                     status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if str(validator.id) != str(token_payload.get("validator_id")):
-                logger.warning(
-                    "Token validator_id mismatch: token=%s, step=%s",
-                    token_payload.get("validator_id"),
-                    validator.id,
-                )
-                return Response(
-                    {"error": "Token validator mismatch"},
-                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
             # Download the output envelope from GCS
@@ -253,6 +198,17 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            if str(getattr(output_envelope, "run_id", "")) != str(run.id):
+                logger.warning(
+                    "Envelope run mismatch: envelope=%s expected=%s",
+                    getattr(output_envelope, "run_id", ""),
+                    run.id,
+                )
+                return Response(
+                    {"error": "Run mismatch in output envelope"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             if str(getattr(output_envelope.org, "id", "")) != str(run.org_id):
                 logger.warning(
                     "Envelope org mismatch: envelope=%s run=%s",
@@ -261,6 +217,20 @@ class ValidationCallbackView(APIView):
                 )
                 return Response(
                     {"error": "Org mismatch in output envelope"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if (
+                str(getattr(output_envelope.workflow, "step_id", ""))
+                != str(step_run.workflow_step_id)
+            ):
+                logger.warning(
+                    "Envelope step mismatch: envelope=%s expected=%s",
+                    getattr(output_envelope.workflow, "step_id", ""),
+                    step_run.workflow_step_id,
+                )
+                return Response(
+                    {"error": "Workflow step mismatch in output envelope"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

@@ -32,7 +32,6 @@ class TestInputEnvelope:
             "workflow": {"id": "wf-123", "step_id": "step-123"},
             "context": {
                 "callback_url": "https://example.com/callback",
-                "callback_token": "jwt-token",
                 "execution_bundle_uri": "gs://bucket/org/run",
             },
         }
@@ -73,7 +72,6 @@ class TestInputEnvelope:
             ],
             "context": {
                 "callback_url": "https://example.com/callback",
-                "callback_token": "jwt-token",
                 "execution_bundle_uri": "gs://bucket/org/run",
                 "timeout_seconds": 7200,
                 "tags": ["production", "nzeb"],
@@ -106,7 +104,6 @@ class TestInputEnvelope:
             },
             "context": {
                 "callback_url": "https://example.com/callback",
-                "callback_token": "jwt-token",
                 "execution_bundle_uri": "gs://bucket/org/run",
             },
         }
@@ -131,7 +128,6 @@ class TestInputEnvelope:
             "inputs": [],
             "context": {
                 "callback_url": "https://example.com/callback",
-                "callback_token": "jwt-token",
                 "execution_bundle_uri": "gs://bucket/org/run",
             },
             "extra_field": "should fail",
@@ -300,7 +296,6 @@ class TestValidationCallback:
     def test_valid_callback(self):
         """Test valid callback payload."""
         data = {
-            "callback_token": "jwt-token-here",
             "run_id": "run-123",
             "status": "success",
             "result_uri": "gs://bucket/org/run/result.json",

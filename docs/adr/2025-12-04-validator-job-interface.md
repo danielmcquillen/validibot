@@ -62,8 +62,8 @@ We adopt a **single canonical contract** for communication between Django and al
    - Job names follow convention: `validibot-validator-{type}` (e.g., `validibot-validator-energyplus`)
 
 5. **Callback Model**
-   - After writing results, the job POSTs a signed callback to Django
-   - Django verifies JWT token (signed with GCP KMS), then loads `result.json` from GCS
+   - After writing results, the job POSTs a callback to the private worker service
+   - Cloud Run IAM enforces authentication via a Google-signed ID token from the job's service account
    - Callback includes minimal payload: `run_id`, `status`, `result_uri`
 
 6. **Extensibility**
@@ -104,7 +104,6 @@ We adopt a **single canonical contract** for communication between Django and al
   },
   "context": {
     "callback_url": "https://validibot.com/api/v1/callbacks/validator",
-    "callback_token": "jwt-token-signed-by-kms",
     "execution_bundle_uri": "gs://bucket/org_id/run_id/",
     "timeout_seconds": 3600,
     "tags": ["tag1", "tag2"]
@@ -146,10 +145,11 @@ Validators interpret `role` based on their type. Django does not need to underst
 
 ### Security considerations
 
-- `callback_token` is a JWT signed with Google Cloud KMS (see [KMS ADR](2025-12-04-kms-migration.md))
-- Token includes: `run_id`, `validator.id`, `org.id`, `exp` (expiration)
-- Validator containers must include this token in callback requests
-- Django verifies signature before processing callback
+- Callback authentication is provided by Cloud Run IAM:
+  - The worker service requires authentication.
+  - Validator jobs use a dedicated service account with `roles/run.invoker` on the worker service.
+  - The callback client fetches a Google-signed ID token (audience = callback URL) and sends it in `Authorization: Bearer <token>`.
+- No shared secrets or JWT payload fields are exchanged in the envelope.
 
 ---
 
@@ -357,39 +357,17 @@ Cloud Run Jobs support:
 
 ### Token generation (Django)
 
-```python
-import jwt
-from django.conf import settings
+### Callback authentication (Django callback endpoint)
 
-token = jwt.encode(
-    {
-        "run_id": run.id,
-        "validator_id": validator.id,
-        "org_id": org.id,
-        "exp": datetime.utcnow() + timedelta(hours=24)
-    },
-    key=get_kms_signing_key(),  # GCP KMS key
-    algorithm="ES256"
-)
-```
-
-### Token verification (Django callback endpoint)
+Cloud Run IAM validates the caller before Django code runs. The job presents a
+Google-signed ID token (audience = callback URL) minted from its service
+account; Django only needs to validate the payload fields.
 
 ```python
 @api_view(['POST'])
 def validator_callback(request):
-    token = request.data.get('callback_token')
-
-    try:
-        payload = jwt.decode(
-            token,
-            key=get_kms_public_key(),
-            algorithms=["ES256"]
-        )
-    except jwt.InvalidTokenError:
-        return Response(status=401)
-
-    run_id = payload['run_id']
+    callback = ValidationCallback.model_validate(request.data)
+    run_id = callback.run_id
     # Load result.json from GCS and process
 ```
 
@@ -399,7 +377,6 @@ Minimal payload to avoid duplication:
 
 ```jsonc
 {
-  "callback_token": "jwt-token",
   "run_id": "uuid-string",
   "status": "success",
   "result_uri": "gs://bucket/org_id/run_id/result.json"

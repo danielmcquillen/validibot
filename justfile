@@ -39,6 +39,7 @@ gcp_region := "australia-southeast1"
 gcp_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
 gcp_sql := gcp_project + ":" + gcp_region + ":validibot-db"
 gcp_image := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
+gcp_worker_service := "validibot-worker"
 
 # Get git commit hash for image tagging
 git_sha := `git rev-parse --short HEAD`
@@ -119,12 +120,29 @@ gcp-deploy: gcp-build gcp-push
         --service-account {{gcp_sa}} \
         --add-cloudsql-instances {{gcp_sql}} \
         --set-secrets=/secrets/.env=django-env:latest \
+        --set-env-vars APP_ROLE=web \
         --min-instances 0 \
         --max-instances 4 \
         --memory 1Gi \
         --allow-unauthenticated \
         --project {{gcp_project}}
     @echo "Note: Cloud Run jobs will use :latest image when next executed"
+
+# Deploy worker service (IAM-only, API surface)
+gcp-deploy-worker: gcp-build gcp-push
+    @echo "Deploying worker to Cloud Run (private)..."
+    gcloud run deploy {{gcp_worker_service}} \
+        --image {{gcp_image}}:{{git_sha}} \
+        --region {{gcp_region}} \
+        --service-account {{gcp_sa}} \
+        --add-cloudsql-instances {{gcp_sql}} \
+        --set-secrets=/secrets/.env=django-env:latest \
+        --set-env-vars APP_ROLE=worker \
+        --no-allow-unauthenticated \
+        --min-instances 0 \
+        --max-instances 2 \
+        --memory 1Gi \
+        --project {{gcp_project}}
 
 # =============================================================================
 # GCP Cloud Run - Secrets Management
@@ -613,6 +631,48 @@ health-check:
         --format="value(status.url)")
     echo "Checking: $URL"
     curl -s -o /dev/null -w "HTTP Status: %{http_code}\nTime: %{time_total}s\n" "$URL"
+
+# =============================================================================
+# Validator Containers (Cloud Run Jobs)
+# =============================================================================
+
+# Base Artifact Registry path for validator images
+validator_repo := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot"
+
+# Build a specific validator container (energyplus, fmi, etc.)
+# Usage: just validator-build energyplus
+validator-build name:
+    docker build --platform linux/amd64 \
+        -f vb_validators_dev/{{name}}/Dockerfile \
+        -t {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
+        -t {{validator_repo}}/validibot-validator-{{name}}:latest \
+        vb_validators_dev/{{name}}
+
+# Push a validator container
+validator-push name:
+    docker push {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}}
+    docker push {{validator_repo}}/validibot-validator-{{name}}:latest
+
+# Build and push in one step
+validator-build-push name: validator-build name validator-push name
+
+# Deploy a Cloud Run Job for a validator
+# Usage: just validator-deploy energyplus
+validator-deploy name: validator-build-push name
+    gcloud run jobs deploy validibot-validator-{{name}} \
+        --image {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
+        --region {{gcp_region}} \
+        --service-account {{gcp_sa}} \
+        --max-retries 0 \
+        --task-timeout 3600 \
+        --set-env-vars VALIDATOR_VERSION={{git_sha}} \
+        --labels validator={{name}},version={{git_sha}} \
+        --project {{gcp_project}}
+
+# Build and deploy all validator jobs
+validators-deploy-all:
+    just validator-deploy energyplus
+    just validator-deploy fmi
 
 # =============================================================================
 # Helpers

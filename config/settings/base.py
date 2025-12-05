@@ -23,6 +23,12 @@ if READ_DOT_ENV_FILE:
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)
+# App role (web vs worker). Worker instances expose internal APIs only.
+APP_ROLE = env(
+    "APP_ROLE",
+    default="worker" if DEBUG else "web",
+)
+APP_IS_WORKER = APP_ROLE.lower() == "worker"
 # Local time zone. Choices are
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
 # though not all of them may be available with every OS.
@@ -484,6 +490,8 @@ WORKFLOW_RUN_POLL_INTERVAL_SECONDS = env(
 ACCOUNT_ALLOW_LOGIN = env.bool("DJANGO_ACCOUNT_ALLOW_LOGIN", True)
 
 ENABLE_APP = env.bool("ENABLE_APP", True)
+# API flag is a global admin switch; defaults to True. Route exposure is
+# controlled at the URLConf (web vs worker) rather than here.
 ENABLE_API = env.bool("ENABLE_API", True)
 
 ENABLE_FREE_TRIAL_SIGNUP = env.bool("ENABLE_FREE_TRIAL_SIGNUP", True)

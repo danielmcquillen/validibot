@@ -10,6 +10,18 @@
 
 This ADR proposes the Django-side architecture for triggering Cloud Run Job validators and receiving their results. The design prioritizes simplicity, testability, and clear separation of concerns.
 
+## Deployment Roles (web vs worker)
+
+We run the same Django image as two Cloud Run services:
+
+- `APP_ROLE=web` (public): marketing + UI only. No API routes are loaded.
+- `APP_ROLE=worker` (private/IAM): API-only surface, including `/api/v1/validation-callbacks/`. Cloud Run IAM `roles/run.invoker` on the worker service gates access; validator jobs call back with an ID token minted from their service account.
+
+Implications:
+- `ENABLE_API` is ignored unless `APP_ROLE=worker`.
+- The callback view 404s on non-worker instances as a defense-in-depth guard.
+- Deploy web with `--allow-unauthenticated APP_ROLE=web`; deploy worker with `--no-allow-unauthenticated APP_ROLE=worker`.
+
 ## Design Principles
 
 Per AGENTS.md and CLAUDE.md:

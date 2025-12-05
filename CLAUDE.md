@@ -113,6 +113,7 @@ uv run --extra dev mypy simplevalidations
 - No magic numbers - use HTTPStatus or define constants
 - Break up long strings with parentheses and newlines
 - Follow Python import order (ruff handles this)
+- **Prefer absolute imports** over relative imports (e.g., `from mypackage.module import foo` not `from .module import foo`)
 
 ## Documentation Style
 

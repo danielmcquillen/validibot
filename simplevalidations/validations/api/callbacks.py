@@ -296,6 +296,17 @@ class ValidationCallbackView(APIView):
 
             # Store full envelope in summary field (for detailed analysis)
             run.summary = output_envelope.model_dump()
+            # Add version metadata if the validator job provided it.
+            if callback_meta := getattr(output_envelope, "validator", None):
+                try:
+                    run.summary.setdefault("metadata", {})
+                    run.summary["metadata"]["validator_version"] = getattr(
+                        callback_meta,
+                        "version",
+                        None,
+                    )
+                except Exception:
+                    logger.debug("Unable to persist validator version metadata", exc_info=True)
 
             # Extract error messages if validation failed
             if output_envelope.status != ValidationStatus.SUCCESS:

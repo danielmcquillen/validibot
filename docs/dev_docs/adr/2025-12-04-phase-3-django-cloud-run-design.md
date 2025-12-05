@@ -22,6 +22,13 @@ Implications:
 - The callback view 404s on non-worker instances as a defense-in-depth guard.
 - Deploy web with `--allow-unauthenticated APP_ROLE=web`; deploy worker with `--no-allow-unauthenticated APP_ROLE=worker`.
 
+### Validator Job Metadata
+
+- Cloud Run Jobs should be labeled and env-tagged with version info:
+  - Labels: `validator=<name>,version=<git_sha>`
+  - Env: `VALIDATOR_VERSION=<git_sha>`
+- The Django callback layer can log/report the job version for traceability (optional).
+
 ## Design Principles
 
 Per AGENTS.md and CLAUDE.md:

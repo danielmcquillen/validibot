@@ -6,7 +6,10 @@ from django.views import defaults as default_views
 
 # Branch URLConf based on APP_ROLE. Web instances serve UI/marketing only;
 # worker instances expose only the API surface (IAM-gated).
-if settings.APP_IS_WORKER:
+_is_worker = bool(getattr(settings, "APP_IS_WORKER", False)) or (
+    getattr(settings, "APP_ROLE", "web").lower() == "worker"
+)
+if _is_worker:
     from config.urls_worker import urlpatterns
 else:
     from config.urls_web import urlpatterns

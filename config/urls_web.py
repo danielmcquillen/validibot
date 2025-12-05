@@ -10,7 +10,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
-from django.urls import include, path
+from django.urls import include
+from django.urls import path
 from django.views.decorators.cache import cache_page
 from django.views.generic import TemplateView
 
@@ -107,8 +108,9 @@ if getattr(settings, "GITHUB_APP_ENABLED", False):
 
 # Public API surface (available on web). Internal-only endpoints are on worker.
 if settings.ENABLE_API:
+    from drf_spectacular.views import SpectacularAPIView
+    from drf_spectacular.views import SpectacularSwaggerView
     from rest_framework.authtoken.views import obtain_auth_token
-    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
     urlpatterns += [
         path("api/v1/", include("config.api_router")),

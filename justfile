@@ -674,6 +674,10 @@ validators-deploy-all:
     just validator-deploy energyplus
     just validator-deploy fmi
 
+# Run validator container tests locally
+validators-test:
+    uv run --extra dev pytest vb_validators_dev
+
 # =============================================================================
 # Helpers
 # =============================================================================

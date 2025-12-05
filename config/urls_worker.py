@@ -5,10 +5,11 @@ The worker service is private (IAM-gated) and exposes only API routes, including
 the validator callback endpoint. Marketing/UI routes are intentionally omitted.
 """
 
-from django.urls import include, path
+from django.urls import include
+from django.urls import path
+from drf_spectacular.views import SpectacularAPIView
+from drf_spectacular.views import SpectacularSwaggerView
 from rest_framework.authtoken.views import obtain_auth_token
-
-from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 # Internal-only API surface
 urlpatterns = [

@@ -108,7 +108,7 @@ class ValidationCallbackView(APIView):
         """
         # Extra guardrail: only process callbacks on worker instances.
         if not getattr(settings, "APP_IS_WORKER", False):
-            raise Http404()
+            raise Http404
 
         try:
             # Parse and validate callback payload
@@ -306,7 +306,10 @@ class ValidationCallbackView(APIView):
                         None,
                     )
                 except Exception:
-                    logger.debug("Unable to persist validator version metadata", exc_info=True)
+                    logger.debug(
+                        "Unable to persist validator version metadata",
+                        exc_info=True,
+                    )
 
             # Extract error messages if validation failed
             if output_envelope.status != ValidationStatus.SUCCESS:

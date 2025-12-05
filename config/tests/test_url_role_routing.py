@@ -8,9 +8,13 @@ Worker role should expose internal callback but not UI routes.
 from __future__ import annotations
 
 import importlib
-from django.conf import settings
-from django.test import SimpleTestCase, override_settings
-from django.urls import resolve, Resolver404, clear_url_caches
+
+import pytest
+from django.test import SimpleTestCase
+from django.test import override_settings
+from django.urls import Resolver404
+from django.urls import clear_url_caches
+from django.urls import resolve
 
 
 class UrlRoleRoutingTests(SimpleTestCase):
@@ -27,7 +31,7 @@ class UrlRoleRoutingTests(SimpleTestCase):
         # Public API route should resolve
         self.assertEqual(resolve("/api/v1/workflows/").namespace, "api")
         # Internal callback should 404
-        with self.assertRaises(Resolver404):
+        with pytest.raises(Resolver404):
             resolve("/api/v1/validation-callbacks/")
 
     @override_settings(APP_ROLE="worker", APP_IS_WORKER=True, ENABLE_API=True)
@@ -37,5 +41,5 @@ class UrlRoleRoutingTests(SimpleTestCase):
         match = resolve("/api/v1/validation-callbacks/")
         self.assertEqual(match.url_name, "validation-callbacks")
         # UI route should 404
-        with self.assertRaises(Resolver404):
+        with pytest.raises(Resolver404):
             resolve("/")

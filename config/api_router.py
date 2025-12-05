@@ -7,8 +7,8 @@ config/api_internal_router.py and are exposed only on the worker service.
 """
 
 from django.conf import settings
-from django.urls import path
-from rest_framework.routers import DefaultRouter, SimpleRouter
+from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from simplevalidations.users.api.views import UserViewSet
 from simplevalidations.validations.views import ValidationRunViewSet

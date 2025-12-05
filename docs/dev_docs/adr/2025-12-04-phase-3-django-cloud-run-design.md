@@ -49,7 +49,7 @@ Cloud Run Service (new: simplevalidations/validations/services/cloud_run/)
     ├── envelope_builder.py    # Creates typed input envelopes
     ├── gcs_client.py          # Uploads/downloads envelopes to GCS
     ├── job_client.py          # Triggers Cloud Run Jobs via Cloud Tasks
-    └── token_service.py       # Creates JWT callback tokens
+    └── (IAM) Callback auth handled by Cloud Run ID tokens
     ↓
 Cloud Run Job Validator (validators/energyplus/)
     ↓
@@ -338,73 +338,15 @@ def trigger_validator_job(
 - Can control rate limiting per queue
 - Simple function call, not a complex client object
 
-### 4. Token Service (`token_service.py`)
+### 4. Callback authentication
 
-**Purpose:** Create JWT callback tokens signed with GCP KMS.
+**Purpose:** Secure callbacks without embedding shared secrets in envelopes.
 
-**Design Decision:** Use GCP KMS for signing, not local secrets.
-
-```python
-"""
-JWT token service using GCP KMS for signing.
-
-This module creates JWT tokens for validator callbacks. Tokens are signed
-using GCP KMS asymmetric keys, avoiding the need to store signing secrets
-in the Django app.
-
-Design: Simple functions for create/verify. No stateful objects.
-"""
-
-from datetime import datetime, timedelta, UTC
-from google.cloud import kms
-import jwt
-
-
-def create_callback_token(
-    *,
-    run_id: str,
-    kms_key_name: str,
-    expires_hours: int = 24,
-) -> str:
-    """
-    Create a JWT callback token signed with GCP KMS.
-
-    Args:
-        run_id: Validation run UUID
-        kms_key_name: Full KMS key path (projects/.../keys/...)
-        expires_hours: Token expiration in hours (default: 24)
-
-    Returns:
-        JWT token string
-
-    Example:
-        >>> token = create_callback_token(
-        ...     run_id="abc-123",
-        ...     kms_key_name="projects/my-project/locations/us/keyRings/..."
-        ... )
-    """
-    pass
-
-
-def verify_callback_token(
-    token: str,
-    kms_key_name: str,
-) -> dict:
-    """
-    Verify a JWT callback token using GCP KMS public key.
-
-    Args:
-        token: JWT token string
-        kms_key_name: Full KMS key path
-
-    Returns:
-        Token payload dict with 'run_id', 'exp', etc.
-
-    Raises:
-        jwt.InvalidTokenError: If token is invalid or expired
-    """
-    pass
-```
+**Design Decision:** Use Cloud Run IAM and Google-signed ID tokens. Validator
+jobs mint an ID token from the metadata server (audience = callback URL) using
+their service account identity. The worker service requires authentication, so
+no JWT payload token or KMS signing is necessary, and `token_service.py` was
+removed.
 
 ### 5. Callback API Endpoint (`api/callbacks.py`)
 
@@ -484,7 +426,6 @@ def test_upload_envelope(mock_storage_client):
 def test_validation_callback_success(api_client):
     """Test successful callback processing."""
     response = api_client.post("/api/v1/validation-callbacks/", {
-        "callback_token": "...",
         "run_id": "...",
         "status": "success",
         "result_uri": "...",
@@ -498,7 +439,7 @@ def test_validation_callback_success(api_client):
 - ✅ envelope_builder.py - Creates typed input envelopes
 - ✅ gcs_client.py - Upload/download envelopes to GCS
 - ✅ job_client.py - Trigger Cloud Run Jobs via Cloud Tasks
-- ✅ token_service.py - JWT tokens signed with GCP KMS
+- ✅ Callback authentication via Cloud Run IAM (ID tokens)
 - ✅ callbacks.py - DRF endpoint for validator callbacks
 - ✅ Tests for all services (7/7 passing)
 - ✅ Modal.com code removed (not needed - site not yet live)

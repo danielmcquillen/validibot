@@ -62,7 +62,7 @@ from simplevalidations.validations.models import (
 from simplevalidations.validations.serializers import ValidationRunSerializer
 from simplevalidations.validations.services.fmi import FMIIntrospectionError
 from simplevalidations.validations.services.fmi import create_fmi_validator
-from simplevalidations.validations.tasks import run_fmu_probe_task
+from simplevalidations.validations.services.fmi import run_fmu_probe
 from simplevalidations.validations.utils import create_custom_validator
 from simplevalidations.validations.utils import update_custom_validator
 from simplevalidations.workflows.models import Workflow
@@ -951,7 +951,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
 
 
 class FMIProbeStartView(CustomValidatorManageMixin, View):
-    """HTMX endpoint to kick off an FMU probe via Celery."""
+    """HTMX endpoint to kick off an FMU probe inline (Celery removed)."""
 
     def post(self, request, *args, **kwargs):
         validator = get_object_or_404(Validator, pk=kwargs["pk"])
@@ -966,8 +966,15 @@ class FMIProbeStartView(CustomValidatorManageMixin, View):
             probe.status = "PENDING"
             probe.last_error = ""
             probe.save(update_fields=["status", "last_error", "modified"])
-        run_fmu_probe_task.delay(fmu.id)
-        return JsonResponse({"status": "queued"})
+        result = run_fmu_probe(fmu)
+        # Refresh probe record to reflect latest status
+        probe = getattr(fmu, "probe_result", None)
+        payload = {
+            "status": getattr(probe, "status", getattr(result, "status", "unknown")),
+            "last_error": getattr(probe, "last_error", ""),
+            "details": getattr(probe, "details", {}),
+        }
+        return JsonResponse(payload)
 
 
 class FMIProbeStatusView(CustomValidatorManageMixin, View):

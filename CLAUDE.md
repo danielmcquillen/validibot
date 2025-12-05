@@ -25,7 +25,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - **Backend**: Django 5.2.8, Python 3.13
 - **Database**: PostgreSQL (via psycopg3)
 - **Frontend**: Bootstrap 5, HTMx, Chart.js
-- **Task Queue**: Celery with Redis
+- **Task Queue**: Cloud Tasks / Cloud Run Jobs (Celery removed)
 - **Package Management**: uv (fast Python package manager)
 - **Linting**: Ruff
 - **Type Checking**: mypy with django-stubs

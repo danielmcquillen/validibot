@@ -14,8 +14,8 @@ Validibot operates as an orchestration layer that coordinates validation engines
                                 │                       │
                                 ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Data Models   │    │   Submissions   │    │  Celery Task    │
-│   (Workflows,   │◄───│   & Validation  │◄───│     Queue       │
+│   Data Models   │    │   Submissions   │    │ Worker / Jobs   │
+│   (Workflows,   │◄───│   & Validation  │◄───│ (Cloud Run)     │
 │   Runs, etc.)   │    │      Runs       │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                        │
@@ -96,25 +96,18 @@ The `WorkflowViewSet.start_validation()` method processes the request:
    - Initializes with PENDING status
    - Records the user who triggered the validation
 
-#### 2.3 Async Task Dispatch
+#### 2.3 Execution Dispatch
 
-The validation work is handed off to Celery for asynchronous processing:
+The validation work now executes inline for simple validators or triggers a Cloud
+Run Job (via the Cloud Run launcher) for heavier workloads. Celery is no longer
+used. The API returns:
 
-```python
-async_result = execute_validation_run.apply_async(
-    args=[validation_run.id, user.id],
-    kwargs={"metadata": metadata}
-)
-```
-
-The API immediately returns either:
-
-- **201 Created**: If validation completes quickly (< timeout threshold)
-- **202 Accepted**: With a Location header for polling the result
+- **201 Created**: If validation completes quickly
+- **202 Accepted**: If a Cloud Run Job was launched or execution is still running; clients poll for status
 
 ### Phase 3: Validation Execution
 
-The `execute_validation_run` Celery task handles the actual validation work:
+The `ValidationRunService.execute` method handles the actual validation work (either inline or coordinating Cloud Run Jobs):
 
 #### 3.1 Execution Setup
 
@@ -220,17 +213,17 @@ sequenceDiagram
     actor Client
     participant API as WorkflowViewSet.start_validation()
     participant Service as ValidationRunService
-    participant Celery as execute_validation_run task
+    participant Worker as execute_validation_run
     participant Registry as Engine Registry
     participant Engine as BaseValidatorEngine
 
     Client->>API: POST /workflows/{id}/start
     API->>Service: launch(request, workflow, submission)
     Service->>Service: ValidationRun.objects.create(...)
-    Service-->>Celery: apply_async(run_id, user_id, metadata)
-    API-->>Client: 201 Created or 202 Accepted
+    Service->>Worker: execute(run_id, user_id, metadata)
+    API-->>Client: 201 Created or 202 Accepted (if still running)
 
-    Celery->>Service: execute(run_id, user_id)
+    Worker->>Service: execute(run_id, user_id)
     Service->>Service: mark run RUNNING\nlog start event
     Service->>Service: load ordered workflow steps
 
@@ -244,8 +237,8 @@ sequenceDiagram
     end
 
     Service->>Service: aggregate summary\nupdate ValidationRun status
-    Service-->>Celery: ValidationRunTaskResult
-    note over Client,Celery: Client polls run detail\nendpoint until status terminal
+    Service-->>Worker: ValidationRunTaskResult
+    note over Client,Worker: Client polls run detail\nendpoint until status terminal
 ```
 
 ### Phase 4: Result Aggregation

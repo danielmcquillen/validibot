@@ -1,5 +1,4 @@
 import pytest
-from celery.exceptions import TimeoutError as CeleryTimeout
 from rest_framework import status
 from rest_framework.test import APIRequestFactory
 
@@ -48,29 +47,6 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     request = factory.post("/api/v1/workflows/start/")
     request.user = user
 
-    recorded_run_ids: list[int] = []
-
-    def fake_apply_async(*, kwargs=None, **_):
-        run_id = kwargs["validation_run_id"]
-        assert ValidationRun.objects.filter(pk=run_id).exists()
-        recorded_run_ids.append(run_id)
-
-        class DummyResult:
-            def get(
-                self,
-                timeout=None,
-                *,
-                propagate: bool = False,
-            ):
-                raise CeleryTimeout
-
-        return DummyResult()
-
-    monkeypatch.setattr(
-        "simplevalidations.validations.tasks.execute_validation_run.apply_async",
-        fake_apply_async,
-    )
-
     service = ValidationRunService()
     response = service.launch(
         request=request,
@@ -81,7 +57,9 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
         metadata=None,
     )
 
-    assert recorded_run_ids, "Task should be enqueued after ValidationRun commit."
+    validation_run = response.validation_run
+    validation_run.refresh_from_db()
+    assert validation_run.pk
     assert response.status_code in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
 
 

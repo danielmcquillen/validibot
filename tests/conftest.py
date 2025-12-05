@@ -102,12 +102,3 @@ def load_dtd_asset():
 @pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
-
-
-@pytest.fixture(autouse=True)
-def celery_eager(settings):
-    """
-    Run Celery tasks synchronously during tests.
-    """
-    settings.CELERY_TASK_ALWAYS_EAGER = True
-    settings.CELERY_TASK_EAGER_PROPAGATES = True

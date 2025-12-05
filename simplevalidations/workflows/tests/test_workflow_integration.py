@@ -36,39 +36,8 @@ def api_client():
 @pytest.fixture
 def run_validation_tasks_inline(monkeypatch):
     """
-    Execute validation runs synchronously during tests so API responses include
-    the real ValidationRun payload instead of a pending status.
+    Validation runs now execute inline; fixture retained for compatibility.
     """
-    from simplevalidations.validations import tasks as validation_tasks
-    from simplevalidations.validations.services.validation_run import (
-        ValidationRunService,
-    )
-
-    def immediate_apply_async(*_, **kwargs):
-        task_kwargs = kwargs.get("kwargs") or {}
-        service = ValidationRunService()
-        execution_result = service.execute(
-            validation_run_id=task_kwargs.get("validation_run_id"),
-            user_id=task_kwargs.get("user_id"),
-            metadata=task_kwargs.get("metadata"),
-        )
-
-        class ImmediateResult:
-            def get(
-                self,
-                timeout=None,
-                *,
-                propagate=False,
-            ):
-                return execution_result
-
-        return ImmediateResult()
-
-    monkeypatch.setattr(
-        validation_tasks.execute_validation_run,
-        "apply_async",
-        immediate_apply_async,
-    )
 
 
 def _ensure_custom_validator():

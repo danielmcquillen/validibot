@@ -45,30 +45,7 @@ Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readt
 
 ### Celery
 
-This app comes with Celery.
-
-To run a celery worker:
-
-```bash
-cd simplevalidations
-celery -A config.celery_app worker -l info
-```
-
-Please note: For Celery's import magic to work, it is important _where_ the celery commands are run. If you are in the same folder with _manage.py_, you should be right.
-
-To run [periodic tasks](https://docs.celeryq.dev/en/stable/userguide/periodic-tasks.html), you'll need to start the celery beat scheduler service. You can start it as a standalone process:
-
-```bash
-cd simplevalidations
-celery -A config.celery_app beat
-```
-
-or you can embed the beat service inside a worker with the `-B` option (not recommended for production use):
-
-```bash
-cd simplevalidations
-celery -A config.celery_app worker -B -l info
-```
+Celery has been removed from the project. Validator execution now runs in-process or via Cloud Run Jobs; no worker/beat processes are required.
 
 ### Email Server
 

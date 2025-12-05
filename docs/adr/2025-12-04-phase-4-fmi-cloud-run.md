@@ -276,7 +276,6 @@ def build_fmi_input_envelope(
     input_values: dict[str, Any],  # Resolved input bindings
     output_variables: list[str],  # Catalog slugs to capture
     callback_url: str,
-    callback_token: str,
     execution_bundle_uri: str,
     start_time: float = 0.0,
     stop_time: float = 1.0,
@@ -291,7 +290,7 @@ def build_fmi_input_envelope(
 - Input envelope should include:
   - `input_files`: primary FMU file as `gs://.../fmus/{checksum}.fmu` with role `fmu`
   - `inputs`: simulation config + resolved `input_values` keyed by catalog slugs
-  - `context`: callback URL/token and execution bundle URI (for outputs)
+  - `context`: callback URL and execution bundle URI (for outputs)
 - Output envelope should include:
   - `messages`: validation findings (errors/warnings/info) for storage as `ValidationFinding`
   - `metrics`: any high-level metrics from the FMU run

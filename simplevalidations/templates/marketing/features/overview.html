@@ -103,7 +103,7 @@
         <figure class="text-center">
           <img src="{% static 'marketing/images/overview_validation_flow.png' %}" class="img-fluid rounded shadow-sm" alt="{% trans 'Illustration showing how submissions move through workflows, execution, and dashboards.' %}" />
           <figcaption class="text-muted small mt-2">
-            {% trans "Submissions flow through intake, workflow orchestration, the Celery execution layer, and into dashboards for review." %}
+            {% trans "Submissions flow through intake, workflow orchestration, async execution, and into dashboards for review." %}
           </figcaption>
         </figure>
         {% endcomment %}

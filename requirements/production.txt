@@ -328,10 +328,7 @@ django-environ==0.12.0 \
 django-filter==25.2 \
     --hash=sha256:760e984a931f4468d096f5541787efb8998c61217b73006163bf2f9523fe8f23 \
     --hash=sha256:9c0f8609057309bba611062fe1b720b4a873652541192d232dd28970383633e3
-django-github-app==0.9.0 \
-    --hash=sha256:1b168a4147a6b079d6232af1f59d5602059e8da19a6f36a8bc948e741140dcbf \
-    --hash=sha256:b2bdcc9c152d5bbd5517e013e15a93b45ca81b48273bde3cfc15029662af15d6
-django-markdownify==0.9.5 \
+jango-markdownify==0.9.5 \
     --hash=sha256:2c4ae44e386c209453caf5e9ea1b74f64535985d338ad2d5ad5e7089cc94be86 \
     --hash=sha256:34c34eba4a797282a5c5bd97b13cec84d6a4c0673ad47ce1c1d000d74dd8d4ab
 django-model-utils==5.0.0 \

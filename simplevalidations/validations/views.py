@@ -967,7 +967,8 @@ class FMIProbeStartView(CustomValidatorManageMixin, View):
             probe.last_error = ""
             probe.save(update_fields=["status", "last_error", "modified"])
         result = run_fmu_probe(fmu)
-        # Refresh probe record to reflect latest status
+        # Refresh probe record to reflect latest status written by run_fmu_probe
+        fmu.refresh_from_db(fields=["probe_result"])
         probe = getattr(fmu, "probe_result", None)
         payload = {
             "status": getattr(probe, "status", getattr(result, "status", "unknown")),

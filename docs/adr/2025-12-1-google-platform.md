@@ -437,9 +437,8 @@ Instead of implementing Cloud Tasks for all async work, we adopted a **hybrid ap
 2. **Cloud Run Job Launcher Service** ([launcher.py](../simplevalidations/validations/services/launcher.py)):
    - `launch_energyplus_validation()` - Orchestrates EnergyPlus Cloud Run Jobs
    - Uploads submission files to GCS
-   - Builds typed input envelopes with callback credentials
-   - Creates JWT callback tokens using GCP KMS
-   - Triggers Cloud Run Jobs via Cloud Tasks
+   - Builds typed input envelopes and callback URLs protected by Cloud Run IAM
+   - Triggers Cloud Run Jobs via Cloud Tasks (queue OIDC token invokes Cloud Run Jobs API)
 
 3. **GCS Integration** ([gcs_client.py](../simplevalidations/validations/services/gcs_client.py)):
    - `upload_envelope()` - Upload Pydantic envelopes as JSON to GCS
@@ -450,12 +449,12 @@ Instead of implementing Cloud Tasks for all async work, we adopted a **hybrid ap
 4. **Envelope Builder** ([envelope_builder.py](../simplevalidations/validations/services/envelope_builder.py)):
    - `build_energyplus_input_envelope()` - Construct typed input envelopes
    - Includes validator metadata, organization info, workflow context
-   - Generates callback URLs with authentication tokens
+   - Generates callback URLs scoped to the worker service (Cloud Run IAM)
    - Configures execution context (timeouts, tags, bundle URIs)
 
 5. **Callback Handler** ([callbacks.py](../simplevalidations/validations/api/callbacks.py)):
    - `ValidationCallbackView` - Django REST endpoint for validator callbacks
-   - Verifies JWT callback tokens
+   - Verifies Google-signed ID tokens from the validator job service account
    - Downloads full output envelope from GCS
    - Updates ValidationRun status and stores results
    - Maps validator status codes to ValidationRun status codes
@@ -475,7 +474,7 @@ Instead of implementing Cloud Tasks for all async work, we adopted a **hybrid ap
 **Architecture Benefits:**
 - No Celery/Redis infrastructure needed
 - Type-safe communication via Pydantic envelopes
-- Secure callbacks using GCP KMS-signed JWTs
+- Secure callbacks using Cloud Run IAM ID tokens (no shared secrets)
 - Clean separation: Django orchestrates, Cloud Run Jobs execute
 - GCS acts as durable state store for inputs/outputs
 

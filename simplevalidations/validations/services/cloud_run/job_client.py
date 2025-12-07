@@ -104,6 +104,10 @@ def trigger_validator_job(
                     service_account_email
                     or f"validibot-cloudrun-prod@{project_id}.iam.gserviceaccount.com"
                 ),
+                # NOTE: This OIDC approach doesn't work for Google APIs!
+                # Google APIs require OAuth access tokens, not OIDC tokens.
+                # Cloud Tasks can only generate OIDC tokens.
+                # See issue #64 for the fix.
             },
         },
         "dispatch_deadline": duration_pb2.Duration(seconds=timeout_seconds),

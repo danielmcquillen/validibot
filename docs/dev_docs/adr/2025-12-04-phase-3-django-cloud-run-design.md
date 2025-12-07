@@ -359,8 +359,8 @@ removed.
 Callback API endpoint for Cloud Run Job validators.
 
 This module handles ValidationCallback POSTs from validator containers.
-It verifies the JWT token, downloads the output envelope from GCS, and
-updates the ValidationRun in the database.
+It verifies the Google-signed ID token (Cloud Run IAM), downloads the output
+envelope from GCS, and updates the ValidationRun in the database.
 
 Design: Simple APIView with clear error handling. No complex permissions.
 """
@@ -377,23 +377,24 @@ class ValidationCallbackView(APIView):
 
     This endpoint receives POSTs from validator containers when they finish
     executing. The callback contains minimal data (run_id, status, result_uri)
-    and a JWT token for authentication.
+    and relies on Cloud Run IAM (Google-signed ID token from the job service
+    account) for authentication.
 
     The endpoint:
-    1. Verifies the JWT token
+    1. Verifies the Google-signed ID token (audience = callback URL)
     2. Downloads the full output envelope from GCS
     3. Updates the ValidationRun in the database
     4. Returns 200 OK
 
     URL: /api/v1/validation-callbacks/
     Method: POST
-    Authentication: JWT token in callback payload
+    Authentication: Google-signed ID token in Authorization header
     """
 
     def post(self, request):
         """Handle validation callback from Cloud Run Job."""
         # 1. Parse and validate callback
-        # 2. Verify JWT token
+        # 2. Verify Google-signed ID token
         # 3. Download output envelope from GCS
         # 4. Update ValidationRun
         # 5. Return success
@@ -475,7 +476,7 @@ run_client.execute_job(job_name, env={"INPUT_URI": uri})
 jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 ```
 
-**Rejected:** Requires storing secrets, less secure than KMS.
+**Rejected:** Requires storing and rotating secrets; Cloud Run IAM ID tokens remove that burden.
 
 ### Alternative 4: Feature flag for Modal.com migration
 ```python
@@ -491,7 +492,7 @@ else:
 ## Decision
 
 Proceed with the proposed design:
-- Simple functions for envelope building, GCS, and tokens
+- Simple functions for envelope building and GCS helpers; rely on Cloud Run IAM for auth
 - Cloud Tasks for job triggering
 - DRF APIView for callbacks
 - No feature flags (Cloud Run Jobs is the only implementation)
@@ -506,7 +507,7 @@ Proceed with the proposed design:
 
 **Negative:**
 - More files than a single service class
-- Requires GCP KMS setup for tokens
+- Cloud IAM roles must be kept in sync across web/worker queues and validator jobs
 - Slightly more boilerplate than clever solutions
 
 **Neutral:**

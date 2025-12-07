@@ -3,7 +3,7 @@
 **Status:** Proposed
 **Owner:** Platform / Validation Runtime
 **Created:** 2025-12-04
-**Related ADRs:** [2025-12-01: Google Cloud Platform Migration](2025-12-1-google-platform.md), [2025-12-04: KMS Migration](2025-12-04-kms-migration.md)
+**Related ADRs:** [2025-12-01: Google Cloud Platform Migration](2025-12-1-google-platform.md)
 
 ---
 
@@ -149,7 +149,7 @@ Validators interpret `role` based on their type. Django does not need to underst
   - The worker service requires authentication.
   - Validator jobs use a dedicated service account with `roles/run.invoker` on the worker service.
   - The callback client fetches a Google-signed ID token (audience = callback URL) and sends it in `Authorization: Bearer <token>`.
-- No shared secrets or JWT payload fields are exchanged in the envelope.
+- No shared secrets are exchanged in the envelope; callbacks rely on Google-signed ID tokens.
 
 ---
 
@@ -299,25 +299,23 @@ ENTRYPOINT ["python", "-m", "validator.main"]
 1. Django creates execution bundle in GCS:
    - Writes `input.json`
    - Uploads input files
-   - Generates callback token
+   - Records callback URL for the worker service (protected by Cloud Run IAM)
 
-2. Django triggers Cloud Run Job:
+2. Django enqueues a Cloud Task that triggers the Cloud Run Job (keeps retries and observability in Cloud Tasks):
    ```python
-   job_name = f"validibot-validator-{validator_type}"
-   execution = jobs_client.run_job(
-       name=job_name,
-       overrides={
-           "container_overrides": [{
-               "env": [
-                   {"name": "EXECUTION_BUNDLE_URI", "value": bundle_uri}
-               ]
-           }]
-       }
+   from simplevalidations.validations.services.cloud_run import job_client
+
+   task_name = job_client.trigger_validator_job(
+       project_id=project_id,
+       region=region,
+       queue_name="validator-jobs",
+       job_name=f"validibot-validator-{validator_type}",
+       input_uri=bundle_uri,
    )
    ```
 
 3. Job container starts:
-   - Reads `EXECUTION_BUNDLE_URI` from environment
+   - Reads `INPUT_URI` from environment
    - Downloads `input.json` from GCS
    - Validates input envelope schema
    - Downloads input files
@@ -327,7 +325,7 @@ ENTRYPOINT ["python", "-m", "validator.main"]
    - POSTs callback to Django
 
 4. Django processes callback:
-   - Verifies JWT signature
+   - Verifies Google-signed ID token
    - Downloads `result.json` from GCS
    - Updates workflow status
    - Processes messages, metrics, artifacts
@@ -356,6 +354,8 @@ Cloud Run Jobs support:
 ## 6. Callback Security Model
 
 ### Token generation (Django)
+
+No app-generated token is needed. Validator jobs mint a Google-signed ID token for the worker callback URL using their Cloud Run service account identity.
 
 ### Callback authentication (Django callback endpoint)
 
@@ -424,7 +424,7 @@ When introducing `v2`:
 - **GCS perfect for large files** — multi-GB artifacts handled naturally
 - **Clear contract** for third-party or customer-authored validators
 - **Type safety** via JSON schema + Pydantic models
-- **Security** via JWT callback tokens signed with GCP KMS
+- **Security** via Cloud Run IAM (Google-signed ID tokens; no shared secrets)
 
 ### Cons
 
@@ -462,7 +462,7 @@ When introducing `v2`:
 
 ### E. Message queue (Cloud Pub/Sub) for callbacks
 
-**Considered** — Could work well but adds complexity. HTTP callbacks with JWT are simpler and more debuggable.
+**Considered** — Could work well but adds complexity. HTTP callbacks with Cloud Run IAM ID tokens are simpler and more debuggable.
 
 ---
 
@@ -471,10 +471,10 @@ When introducing `v2`:
 ### Phase 1: Foundation (Week 1-2)
 
 1. ✅ Complete GCP platform migration
-2. ✅ Complete KMS migration for JWT signing
+2. ✅ Finalize Cloud Run IAM callback authentication (ID tokens)
 3. Create shared Pydantic models for input/output envelopes
 4. Add GCS execution bundle builder to Django
-5. Create validator callback endpoint with JWT verification
+5. Create validator callback endpoint with Cloud Run IAM ID token verification
 
 ### Phase 2: First validator (Week 3-4)
 
@@ -511,7 +511,7 @@ When introducing `v2`:
 - Validation runs complete successfully with new architecture
 - Job execution time comparable to Modal.com baseline
 - Cost per validation run reduced by 30%+ vs Modal.com
-- Zero callback token verification failures in production
+- Zero callback authentication failures in production
 - Third-party validator successfully integrated
 
 ---
@@ -530,10 +530,8 @@ These will be addressed in follow-up ADRs as implementation proceeds.
 ## 13. References
 
 - [ADR-2025-12-01: Google Cloud Platform Migration](2025-12-1-google-platform.md)
-- [ADR-2025-12-04: KMS Migration](2025-12-04-kms-migration.md)
 - [Cloud Run Jobs Documentation](https://cloud.google.com/run/docs/create-jobs)
-- [JSON Web Tokens (JWT)](https://jwt.io/)
-- [Google Cloud KMS](https://cloud.google.com/kms)
+- [Google Cloud Run IAM](https://cloud.google.com/run/docs/authenticating/service-to-service)
 
 ---
 

@@ -7,6 +7,32 @@ We deploy one Django image as two Cloud Run services:
 
 Validator jobs (EnergyPlus, FMI, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
 
+## Flow overview
+
+```mermaid
+sequenceDiagram
+    participant Web as web (APP_ROLE=web)
+    participant Worker as worker (APP_ROLE=worker)
+    participant Tasks as Cloud Tasks (queue SA)
+    participant JobsAPI as Cloud Run Jobs API
+    participant Job as Validator Job (SA)
+
+    Web->>Worker: Create Submission + ValidationRun
+    Worker->>Tasks: enqueue Cloud Task (job name, INPUT_URI, queue SA)
+    Tasks->>JobsAPI: POST jobs.run (OIDC from queue SA)
+    JobsAPI-->>Job: Start job with env INPUT_URI
+    Job->>Job: Download input.json + files from GCS
+    Job->>Worker: Callback with result_uri (ID token from job SA)
+    Worker->>Worker: Verify ID token + persist results
+```
+
+IAM roles involved:
+- **Queue service account**: `roles/run.invoker` on the validator job so Cloud Tasks can call the Jobs API with OIDC.
+- **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
+- **Worker**: private, only allows authenticated calls; rejects callbacks on web.
+
+Implementation note: Cloud Tasks can only mint OIDC tokens. The Cloud Run Jobs API expects an OAuth access token, so the queue should call a shim (e.g., worker endpoint) that exchanges its service account credentials for an access token before invoking `jobs.run` (see issue #64).
+
 ## Deployment steps
 
 1) Build/push Django image (same for web/worker)

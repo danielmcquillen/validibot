@@ -289,11 +289,11 @@ test-on-gcp *args:
 
     echo "Running tests against GCP..."
     echo ""
-    uv run pytest tests/tests_integration/ {{args}} -v
+    uv run pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
 
 # Run tests locally (default, no GCP)
 test *args:
-    uv run pytest {{args}}
+    uv run pytest {{args}} --log-cli-level=INFO
 
 # =============================================================================
 # Validation & Health Checks

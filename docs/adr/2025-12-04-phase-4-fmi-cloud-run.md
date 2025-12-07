@@ -129,7 +129,7 @@ Understanding FMI validation requires understanding three distinct user journeys
      - FMU file URI (from FMUModel.gcs_uri or local path in dev)
      - Resolved input values keyed by catalog slugs
      - Simulation config
-     - Callback URL and JWT token
+     - Callback URL (worker service, Cloud Run IAM-protected)
    - Uploads envelope to storage (GCS in cloud, local path in dev) as `input.json`
    - Triggers Cloud Run Job
    - Updates step status to RUNNING
@@ -139,10 +139,10 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Runs FMPy simulation with inputs
    - Captures output values
    - Writes `output.json` to GCS
-   - POSTs callback to Django
+   - POSTs callback to Django (ID token from job service account)
 
 5. **Django processes callback**
-   - Verifies JWT token
+   - Verifies Google-signed ID token
    - Downloads `output.json` from GCS
    - Extracts output values → creates signal values in context
   - Runs CEL assertions against outputs
@@ -496,7 +496,7 @@ These questions have been resolved during ADR review:
 
 3. **Probe implementation** - Auto-approve post-introspection until Phase 4b delivers the probe container.
 
-4. **Security/IAM and job invocation** - Cloud Run Jobs execute under a dedicated service account with bucket read access (prefer CMEK-backed buckets). Callbacks must carry JWT claims for `run_id`, `step_run_id`, `validator_id`, and `org_id`; Django verifies all claims before processing. Jobs use `INPUT_URI` and load the FMU from the `input_files` entry (role=`fmu`), respecting `context.timeout_seconds` for max runtime. Status values map to `StepStatus`/`ValidationRunStatus` as in the Validator Job Interface ADR.
+4. **Security/IAM and job invocation** - Cloud Run Jobs execute under a dedicated service account with bucket read access (prefer CMEK-backed buckets). Callbacks rely on Google-signed ID tokens from the job service account with audience = worker callback URL; Django verifies claims (`run_id`, `step_run_id`, `validator_id`, `org_id`) before processing. Jobs use `INPUT_URI` and load the FMU from the `input_files` entry (role=`fmu`), respecting `context.timeout_seconds` for max runtime. Status values map to `StepStatus`/`ValidationRunStatus` as in the Validator Job Interface ADR.
 
 5. **Binding validation and CEL assertions** - Required inputs (catalog `is_required`) must resolve before enqueue. On callback, output values surface to CEL under the catalog slugs for the current step; downstream steps use a namespaced `steps.<step_id>.<slug>` to avoid collisions. Findings/metrics persist the same way as basic validators.
 

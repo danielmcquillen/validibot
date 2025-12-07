@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     # Django translation compilation (compilemessages)
     gettext \
-    # Git for installing sv-shared from GitHub
+    # Git for installing vb-shared from GitHub
     git \
     && rm -rf /var/lib/apt/lists/*
 

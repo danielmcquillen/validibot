@@ -10,7 +10,7 @@ validibot/
 │   ├── simplevalidations/        # Main Django project
 │   └── ...
 │
-├── sv_shared/                    # Shared schemas (Python package)
+├── vb_shared/                    # Shared schemas (Python package)
 │   ├── validations/
 │   │   └── envelopes.py         # Base input/output envelopes
 │   ├── energyplus/
@@ -47,8 +47,8 @@ User → Django REST API
 
 ```python
 # In Django (Cloud Run Service)
-from sv_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
-from sv_shared.validations.envelopes import InputFileItem, ExecutionContext
+from vb_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
+from vb_shared.validations.envelopes import InputFileItem, ExecutionContext
 
 # Upload user's model to GCS
 model_uri = upload_to_gcs(submission.content, "model.idf")
@@ -121,7 +121,7 @@ create_cloud_task(
 
 ```python
 # In validators/energyplus/main.py
-from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusOutputEnvelope
+from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusOutputEnvelope
 from validators.shared.envelope_loader import load_input_envelope
 from validators.shared.gcs_client import upload_envelope
 from validators.shared.callback_client import post_callback
@@ -226,12 +226,12 @@ def validation_callback(request):
 ```python
 # Django knows which envelope type to use based on validator.type
 if validator.type == "energyplus":
-    from sv_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
+    from vb_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
     envelope = EnergyPlusInputEnvelope(
         inputs=EnergyPlusInputs(...)  # Fully typed!
     )
 elif validator.type == "fmi":
-    from sv_shared.fmi import FMIInputEnvelope, FMIInputs
+    from vb_shared.fmi import FMIInputEnvelope, FMIInputs
     envelope = FMIInputEnvelope(
         inputs=FMIInputs(...)  # Fully typed!
     )
@@ -244,7 +244,7 @@ upload_envelope(envelope, input_uri)
 
 ```python
 # Validator knows exact envelope type
-from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 
 # Load with full type information
 envelope = load_input_envelope(EnergyPlusInputEnvelope)
@@ -260,7 +260,7 @@ timestep = envelope.inputs.timestep_per_hour  # IDE autocomplete works!
 run = ValidationRun.objects.get(id=callback.run_id)
 
 if run.validator.type == "energyplus":
-    from sv_shared.energyplus import EnergyPlusOutputEnvelope
+    from vb_shared.energyplus import EnergyPlusOutputEnvelope
     output = download_envelope(callback.result_uri, EnergyPlusOutputEnvelope)
     # output.outputs is typed as EnergyPlusOutputs
     returncode = output.outputs.energyplus_returncode
@@ -402,9 +402,9 @@ Alert on:
 
 ## Adding New Validator Types
 
-1. **Create envelope schemas** in `sv_shared/{domain}/`:
+1. **Create envelope schemas** in `vb_shared/{domain}/`:
    ```python
-   # sv_shared/xml/envelopes.py
+   # vb_shared/xml/envelopes.py
    class XMLInputs(BaseModel):
        schema_uri: str
        validation_mode: Literal["strict", "lenient"]
@@ -429,6 +429,6 @@ Alert on:
    ```python
    # In Django validator factory
    if validator.type == "xml":
-       from sv_shared.xml import XMLInputEnvelope, XMLInputs
+       from vb_shared.xml import XMLInputEnvelope, XMLInputs
        envelope = XMLInputEnvelope(inputs=XMLInputs(...))
    ```

@@ -20,10 +20,10 @@ from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from sv_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
-from sv_shared.fmi.envelopes import FMIOutputEnvelope
-from sv_shared.validations.envelopes import ValidationCallback
-from sv_shared.validations.envelopes import ValidationStatus
+from vb_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+from vb_shared.fmi.envelopes import FMIOutputEnvelope
+from vb_shared.validations.envelopes import ValidationCallback
+from vb_shared.validations.envelopes import ValidationStatus
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.constants import StepStatus

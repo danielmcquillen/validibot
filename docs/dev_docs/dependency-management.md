@@ -104,23 +104,23 @@ uv export --extra dev --output-file requirements/local.txt
 
 These files are checked into version control and should be updated whenever `pyproject.toml` or `uv.lock` changes.
 
-## Working with sv_shared
+## Working with vb_shared
 
-The `sv-shared` package is a sibling project installed as an editable local dependency for development. In `pyproject.toml`:
+The `vb-shared` package is a sibling project installed as an editable local dependency for development. In `pyproject.toml`:
 
 ```toml
 [tool.uv.sources]
-sv-shared = { path = "sv_shared_dev", editable = true }
+vb-shared = { path = "vb_shared_dev", editable = true }
 ```
 
-The `sv_shared_dev` directory is a symlink to `../sv_shared`. When `sv_shared` changes:
+The `vb_shared_dev` directory is a symlink to `../vb_shared`. When `vb_shared` changes:
 
-1. Make changes in `../sv_shared`
-2. Bump the version in `sv_shared/pyproject.toml`
+1. Make changes in `../vb_shared`
+2. Bump the version in `vb_shared/pyproject.toml`
 3. Push the changes
-4. In this project, run: `uv lock --upgrade-package sv-shared && uv sync`
+4. In this project, run: `uv lock --upgrade-package vb-shared && uv sync`
 
-For Docker, the real `sv_shared` is volume-mounted at runtime (see `docker-compose.local.yml`).
+For Docker, the real `vb_shared` is volume-mounted at runtime (see `docker-compose.local.yml`).
 
 ## Common Workflows
 

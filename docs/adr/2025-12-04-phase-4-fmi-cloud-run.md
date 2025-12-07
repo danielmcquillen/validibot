@@ -187,7 +187,7 @@ Execution-time policy: Cloud Run Jobs should read the FMU directly from this can
 
 ### 3.2 FMI Envelope Schemas
 
-Create `sv_shared/fmi/envelopes.py` following the EnergyPlus pattern:
+Create `vb_shared/fmi/envelopes.py` following the EnergyPlus pattern:
 
 **FMIInputs (simulation configuration):**
 ```python
@@ -390,15 +390,15 @@ class FMIValidationEngine(BaseValidatorEngine):
 
 ## 5. Implementation Plan
 
-### Step 1: Create FMI envelope schemas (sv_shared)
+### Step 1: Create FMI envelope schemas (vb_shared)
 
-Create `sv_shared/fmi/envelopes.py`:
+Create `vb_shared/fmi/envelopes.py`:
 - `FMIInputs` - simulation configuration model
 - `FMIOutputs` - execution results model
 - `FMIInputEnvelope(ValidationInputEnvelope)` - typed input envelope
 - `FMIOutputEnvelope(ValidationOutputEnvelope)` - typed output envelope
 
-Update `sv_shared/fmi/__init__.py` exports.
+Update `vb_shared/fmi/__init__.py` exports.
 
 ### Step 2: Add GCS field to FMUModel (Django)
 
@@ -475,7 +475,7 @@ Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way a
 
 ## 9. Success Criteria
 
-- [ ] FMI envelope schemas created and exported from sv_shared
+- [ ] FMI envelope schemas created and exported from vb_shared
 - [ ] `FMUModel.gcs_uri` field added with migration
 - [ ] Modal code removed from `services/fmi.py`
 - [ ] `build_fmi_input_envelope()` works with test data

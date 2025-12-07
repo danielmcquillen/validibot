@@ -27,7 +27,8 @@ def trigger_validator_job(
     queue_name: str,
     job_name: str,
     input_uri: str,
-    timeout_seconds: int = 3600,
+    service_account_email: str | None = None,
+    timeout_seconds: int = 1800,  # Max allowed by Cloud Tasks is 30 minutes
 ) -> str:
     """
     Trigger a Cloud Run Job by creating a Cloud Task.
@@ -45,7 +46,10 @@ def trigger_validator_job(
         queue_name: Cloud Tasks queue name (e.g., 'validator-jobs')
         job_name: Cloud Run Job name (e.g., 'validibot-validator-energyplus')
         input_uri: GCS URI to input.json (e.g., 'gs://bucket/runs/abc/input.json')
-        timeout_seconds: Task timeout in seconds (default: 3600 = 1 hour)
+        service_account_email: Service account to use for OIDC authentication.
+            Defaults to 'validibot-cloudrun-prod@{project_id}.iam.gserviceaccount.com'
+        timeout_seconds: Task dispatch deadline in seconds (default: 1800 = 30 min).
+            Cloud Tasks allows max 30 minutes. The Cloud Run Job itself can run longer.
 
     Returns:
         Task name (can be used for tracking/monitoring)
@@ -94,10 +98,11 @@ def trigger_validator_job(
                 }
             }).encode(),
             "oidc_token": {
-                # Use the queue's service account to authenticate
+                # Use the provided service account to authenticate
                 # The service account must have roles/run.invoker on the job
                 "service_account_email": (
-                    f"validator-runner@{project_id}.iam.gserviceaccount.com"
+                    service_account_email
+                    or f"validibot-cloudrun-prod@{project_id}.iam.gserviceaccount.com"
                 ),
             },
         },

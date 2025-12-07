@@ -87,6 +87,33 @@ gcloud services enable \
 | `cloudtasks.googleapis.com`       | Cloud Tasks (async task queue)       |
 | `storage.googleapis.com`          | Cloud Storage (media files)          |
 
+## Create Cloud Tasks Queue
+
+Cloud Tasks is used to trigger Cloud Run Jobs for validation processing. Create the queue:
+
+```bash
+gcloud tasks queues create validibot-tasks \
+  --location=australia-southeast1 \
+  --project=project-a509c806-3e21-4fbc-b19
+```
+
+Verify the queue was created:
+
+```bash
+gcloud tasks queues list --location=australia-southeast1
+```
+
+### Grant permissions to create tasks
+
+The Cloud Run service account needs permission to add tasks to the queue:
+
+```bash
+gcloud tasks queues add-iam-policy-binding validibot-tasks \
+  --location=australia-southeast1 \
+  --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+  --role="roles/cloudtasks.enqueuer"
+```
+
 ## Next Steps
 
 After completing the above:
@@ -543,4 +570,5 @@ gcloud run services update validibot-web \
 | Secrets                | `django-env`, `db-password`                                                      |
 | GCS Bucket (prod)      | `validibot-media`                                                                |
 | GCS Bucket (dev)       | `validibot-media-dev`                                                            |
+| Cloud Tasks Queue      | `validibot-tasks`                                                                |
 | Service URL            | `https://validibot-web-220053993828.australia-southeast1.run.app`                |

@@ -17,7 +17,7 @@ services:
     volumes:
       - validibot_local_venv:/app/.venv
       - .:/app
-      - ../sv_shared:/app/sv_shared_dev
+      - ../vb_shared:/app/vb_shared_dev
       - media_volume:/app/media
     env_file:
       - .envs/.local/.django

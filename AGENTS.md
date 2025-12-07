@@ -19,7 +19,7 @@
 
 ## Cross-Repo Awareness
 
-- Always consider the neighbouring projects `../sv_modal` and `sv_shared` (installed here, source in `../sv_shared`) when assessing behaviour or authoring code, especially for integrations like EnergyPlus.
+- Always consider the neighbouring projects `../sv_modal` and `vb_shared` (installed here, source in `../vb_shared`) when assessing behaviour or authoring code, especially for integrations like EnergyPlus.
 - At the start of a task, open the relevant modules in those repos so their current contracts guide decisions made in `simplevalidations`.
 - When touching Dockerfiles or compose configs, cross-check the matching patterns in `../cookiecutter-django` to stay aligned.
 

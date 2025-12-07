@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
-from sv_shared.fmi import FMIRunResult
+from vb_shared.fmi import FMIRunResult
 
 from simplevalidations.submissions.constants import SubmissionFileType
 from simplevalidations.submissions.tests.factories import SubmissionFactory

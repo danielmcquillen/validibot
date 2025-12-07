@@ -52,7 +52,7 @@ How we interact with Modal from Validibot and the sibling `sv_modal` project.
 - Deploy from `sv_modal_dev`:
   - FMI runner: `modal deploy -m sv_fmi.modal_app`
   - EnergyPlus runner: `modal deploy -m sv_energyplus.modal_app`
-- Keep `sv_shared` versions in sync across repos; use `update_modal.sh` in `sv_modal_dev` to upgrade `sv_shared`, ensure volumes, and redeploy.
+- Keep `vb_shared` versions in sync across repos; use `update_modal.sh` in `sv_modal_dev` to upgrade `vb_shared`, ensure volumes, and redeploy.
 
 ## Tests
 

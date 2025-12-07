@@ -17,7 +17,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - `tests/` - Integration tests
 - `_envs/` - Local development environment files (non-Docker)
 - `.envs/` - Docker and cloud deployment environment files
-- `sv_shared_dev/` - Symlink to shared library code (../sv_shared)
+- `vb_shared_dev/` - Symlink to shared library code (../vb_shared)
 - `justfile` - Command runner (similar to Makefile)
 
 ## Tech Stack
@@ -36,9 +36,9 @@ Validibot is a Django-based data validation engine that helps users validate bui
 
 This project works alongside two related repositories:
 
-1. **sv_shared** - Shared library for integrations (EnergyPlus, etc.)
+1. **vb_shared** - Shared library for integrations (EnergyPlus, etc.)
    - Installed from Git in production
-   - Symlinked to `sv_shared_dev/` for local development
+   - Symlinked to `vb_shared_dev/` for local development
 2. **sv_modal** - Modal-based serverless compute functions
    - Located at `../sv_modal`
 

@@ -33,6 +33,7 @@ dependencies = [
   "drf-spectacular==0.29.0",
   "fmpy==0.3.26",
   "google-cloud-kms>=3.7.0",
+  "google-cloud-tasks>=2.20.0",
   "gunicorn==23.0.0",
   "hiredis==3.3.0",
   "jsonschema==4.25.1",
@@ -45,11 +46,11 @@ dependencies = [
   "python-slugify==8.0.4",
   "redis==7.1.0",
   "sentry-sdk==2.47.0",
-  # sv-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
+  # vb-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # This Git URL is used when building Docker images (local or production).
   # For local non-Docker development, see [tool.uv.sources] below which overrides
-  # this to use the local sv_shared_dev folder instead.
-  "sv-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/sv_shared.git@main",
+  # this to use the local vb_shared_dev folder instead.
+  "vb-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/vb_shared.git@main",
   "uvicorn-worker==0.4.0",
   "uvicorn[standard]==0.38.0",
   "whitenoise==6.11.0",
@@ -63,7 +64,7 @@ python_files = ["tests.py", "test_*.py"]
 testpaths = [
   "tests",
   "simplevalidations",
-] # exclude sibling dev repos (sv_modal_dev, sv_shared_dev) from discovery
+] # exclude sibling dev repos (sv_modal_dev, vb_shared_dev) from discovery
 markers = [
   "integration: marks tests as integration (may require platform-specific binaries)",
 ]
@@ -71,7 +72,7 @@ markers = [
 # ignore test_use_cases
 norecursedirs = [
   "sv_modal_dev",
-  "sv_shared_dev",
+  "vb_shared_dev",
   "vb_validators_dev",
   "tests/tests_integration", # We run these manually
 ]
@@ -79,8 +80,8 @@ norecursedirs = [
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["simplevalidations/**"]
-# We should run tests on sv_modal and sv_shared separately.
-omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "sv_shared_dev", "vb_validators_dev"]
+# We should run tests on sv_modal and vb_shared separately.
+omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "vb_shared_dev", "vb_validators_dev"]
 plugins = ["django_coverage_plugin"]
 
 # ==== mypy ====
@@ -216,14 +217,14 @@ force-single-line = true
 
 # ==== uv source overrides (local development only) ====
 # When developing locally WITHOUT Docker, uv uses this section to override
-# the sv-shared dependency. Instead of cloning from Git, it loads the package
-# from the sv_shared_dev folder (a symlink to ../sv_shared). This allows us to
-# edit sv-shared source code directly while working on Validibot.
+# the vb-shared dependency. Instead of cloning from Git, it loads the package
+# from the vb_shared_dev folder (a symlink to ../vb_shared). This allows us to
+# edit vb-shared source code directly while working on Validibot.
 #
 # When building Docker images, we pass `--no-sources` to uv sync, which skips
-# this override and installs sv-shared from the Git URL in [project.dependencies].
+# this override and installs vb-shared from the Git URL in [project.dependencies].
 [tool.uv.sources]
-sv-shared = { path = "sv_shared_dev", editable = true }
+vb-shared = { path = "vb_shared_dev", editable = true }
 
 [dependency-groups]
 dev = [
@@ -253,6 +254,6 @@ dev = [
   "mkdocs==1.6.1",
   "mkdocs-material==9.7.0",
   "mkdocs-print-site-plugin==2.8",
-  # Local sv-shared development (uses tool.uv.sources override)
-  "sv-shared",
+  # Local vb-shared development (uses tool.uv.sources override)
+  "vb-shared",
 ]

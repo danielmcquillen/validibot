@@ -10,18 +10,18 @@ builder function. This keeps the code straightforward and easy to test.
 
 from typing import Protocol
 
-from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope
-from sv_shared.energyplus.envelopes import EnergyPlusInputs
-from sv_shared.fmi.envelopes import FMIInputEnvelope
-from sv_shared.fmi.envelopes import FMIInputs
-from sv_shared.fmi.envelopes import FMISimulationConfig
-from sv_shared.validations.envelopes import ExecutionContext
-from sv_shared.validations.envelopes import InputFileItem
-from sv_shared.validations.envelopes import OrganizationInfo
-from sv_shared.validations.envelopes import SupportedMimeType
-from sv_shared.validations.envelopes import ValidationInputEnvelope
-from sv_shared.validations.envelopes import ValidatorInfo
-from sv_shared.validations.envelopes import WorkflowInfo
+from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from vb_shared.energyplus.envelopes import EnergyPlusInputs
+from vb_shared.fmi.envelopes import FMIInputEnvelope
+from vb_shared.fmi.envelopes import FMIInputs
+from vb_shared.fmi.envelopes import FMISimulationConfig
+from vb_shared.validations.envelopes import ExecutionContext
+from vb_shared.validations.envelopes import InputFileItem
+from vb_shared.validations.envelopes import OrganizationInfo
+from vb_shared.validations.envelopes import SupportedMimeType
+from vb_shared.validations.envelopes import ValidationInputEnvelope
+from vb_shared.validations.envelopes import ValidatorInfo
+from vb_shared.validations.envelopes import WorkflowInfo
 
 
 class ValidatorLike(Protocol):

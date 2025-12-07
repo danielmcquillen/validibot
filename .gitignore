@@ -294,7 +294,7 @@ simplevalidations/media/
 
 _envs
 _envs/*
-sv_shared_dev
+vb_shared_dev
 sv_modal_dev
 vb_validators_dev
 tests/assets/fmu/*

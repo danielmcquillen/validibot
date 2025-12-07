@@ -256,6 +256,46 @@ gcp-job-logs job="validibot-setup-all":
         --format="table(timestamp,textPayload)"
 
 # =============================================================================
+# Testing
+# =============================================================================
+
+# Run tests against live GCP infrastructure
+# Loads env from .envs/.test-on-gcp/.django and runs pytest
+# Usage:
+#   just test-on-gcp                           # Run all GCP integration tests
+#   just test-on-gcp -k "connectivity"         # Run only connectivity tests
+#   just test-on-gcp --collect-only            # See which tests would run
+test-on-gcp *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    ENV_FILE=".envs/.test-on-gcp/.django"
+
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "Error: $ENV_FILE not found"
+        echo "Create it first - see .envs/.test-on-gcp/.django.example"
+        exit 1
+    fi
+
+    echo "Loading environment from $ENV_FILE"
+
+    # Load env vars line by line to handle special characters like *
+    while IFS='=' read -r key value; do
+        # Skip empty lines and comments
+        [[ -z "$key" || "$key" =~ ^# ]] && continue
+        # Export the variable (value may contain special chars)
+        export "$key=$value"
+    done < "$ENV_FILE"
+
+    echo "Running tests against GCP..."
+    echo ""
+    uv run pytest tests/tests_integration/ {{args}} -v
+
+# Run tests locally (default, no GCP)
+test *args:
+    uv run pytest {{args}}
+
+# =============================================================================
 # Validation & Health Checks
 # =============================================================================
 
@@ -641,12 +681,13 @@ validator_repo := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/valid
 
 # Build a specific validator container (energyplus, fmi, etc.)
 # Usage: just validator-build energyplus
+# Note: Build context is vb_validators_dev/ to include shared core utilities
 validator-build name:
     docker build --platform linux/amd64 \
         -f vb_validators_dev/{{name}}/Dockerfile \
         -t {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
         -t {{validator_repo}}/validibot-validator-{{name}}:latest \
-        vb_validators_dev/{{name}}
+        vb_validators_dev
 
 # Push a validator container
 validator-push name:
@@ -654,11 +695,11 @@ validator-push name:
     docker push {{validator_repo}}/validibot-validator-{{name}}:latest
 
 # Build and push in one step
-validator-build-push name: validator-build name validator-push name
+validator-build-push name: (validator-build name) (validator-push name)
 
 # Deploy a Cloud Run Job for a validator
 # Usage: just validator-deploy energyplus
-validator-deploy name: validator-build-push name
+validator-deploy name: (validator-build-push name)
     gcloud run jobs deploy validibot-validator-{{name}} \
         --image {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
         --region {{gcp_region}} \

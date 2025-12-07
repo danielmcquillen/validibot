@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
-from sv_shared.fmi import FMIProbeResult
+from vb_shared.fmi import FMIProbeResult
 
 from simplevalidations.submissions.constants import SubmissionDataFormat
 from simplevalidations.submissions.constants import SubmissionFileType

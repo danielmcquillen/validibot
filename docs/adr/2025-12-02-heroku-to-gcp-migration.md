@@ -360,7 +360,7 @@ We've containerized the application for local development:
 
 - Base image: `ghcr.io/astral-sh/uv:python3.13-bookworm-slim`
 - Uses `uv` for fast dependency management
-- Includes `sv_shared` as local editable dependency
+- Includes `vb_shared` as local editable dependency
 
 **`docker-compose.local.yml`**:
 

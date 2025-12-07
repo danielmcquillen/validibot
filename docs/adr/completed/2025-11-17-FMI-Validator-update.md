@@ -12,7 +12,7 @@
   - Seeds validator catalog entries for inputs/outputs with stable slugs and type/unit metadata.
   - Records an initial probe status row to track approval.
 - Implemented probe flow:
-  - Modal `probe_fmu` function (in `sv_modal_dev/sv_fmi/modal_app.py`) validates the FMU archive, parses `ScalarVariable` entries, and returns `FMIProbeResult` using shared Pydantic models (`sv_shared_dev/sv_shared/fmi`).
+  - Modal `probe_fmu` function (in `sv_modal_dev/sv_fmi/modal_app.py`) validates the FMU archive, parses `ScalarVariable` entries, and returns `FMIProbeResult` using shared Pydantic models (`vb_shared_dev/vb_shared/fmi`).
   - Django service `run_fmu_probe` invokes the Modal probe, updates `FMUProbeResult`, refreshes variables/catalog entries, and marks FMUs approved on success.
   - Added Celery task `run_fmu_probe_task` and HTMX endpoints/buttons to trigger and poll probe status from the validator detail page.
 - Upgraded Modal “run” path:

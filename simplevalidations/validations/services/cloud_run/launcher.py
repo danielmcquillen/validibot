@@ -16,7 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
-from sv_shared.fmi.envelopes import FMIInputEnvelope
+from vb_shared.fmi.envelopes import FMIInputEnvelope
 
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.engines.base import ValidationIssue

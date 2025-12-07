@@ -430,7 +430,7 @@ Instead of implementing Cloud Tasks for all async work, we adopted a **hybrid ap
 **Implementation Details:**
 
 1. **Validator Job Interface** (See ADR 2025-12-04):
-   - Created `ValidationInputEnvelope` and `ValidationOutputEnvelope` schemas in `sv_shared`
+   - Created `ValidationInputEnvelope` and `ValidationOutputEnvelope` schemas in `vb_shared`
    - Defined typed subclasses for domain-specific validators (EnergyPlusInputEnvelope, etc.)
    - Implemented callback-based async pattern (POST callback when complete)
 

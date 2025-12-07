@@ -78,8 +78,8 @@ builder function. This keeps the code straightforward and easy to test.
 """
 
 from typing import Protocol
-from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusInputs
-from sv_shared.validations.envelopes import ValidationInputEnvelope
+from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusInputs
+from vb_shared.validations.envelopes import ValidationInputEnvelope
 
 
 class ValidatorLike(Protocol):
@@ -368,7 +368,7 @@ Design: Simple APIView with clear error handling. No complex permissions.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from sv_shared.validations.envelopes import ValidationCallback
+from vb_shared.validations.envelopes import ValidationCallback
 
 
 class ValidationCallbackView(APIView):

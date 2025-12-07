@@ -2,7 +2,7 @@
 Tests for envelope_builder service.
 """
 
-from sv_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 
 from simplevalidations.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,

@@ -91,6 +91,7 @@ DJANGO_APPS = [
     "django.contrib.sitemaps",
     "django.forms",
     "django.contrib.flatpages",
+    "django.contrib.postgres",
 ]
 THIRD_PARTY_APPS = [
     "crispy_forms",

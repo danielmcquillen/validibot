@@ -137,14 +137,6 @@ class CallbackIdempotencyTestCase(TestCase):
         # Reset mock call count
         mock_download.reset_mock()
 
-        # Create new step run for potential second processing
-        # (the first one was marked as completed)
-        self.step_run2 = ValidationStepRunFactory(
-            validation_run=self.run,
-            workflow_step=self.workflow_step,
-            status=StepStatus.RUNNING,
-        )
-
         # Second callback with same callback_id - should return early
         response2 = self.client.post(
             self.callback_url,

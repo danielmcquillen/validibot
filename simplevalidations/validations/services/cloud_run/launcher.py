@@ -4,8 +4,11 @@ Cloud Run Job launcher service.
 This module orchestrates the complete flow of triggering Cloud Run Jobs:
 1. Build typed input envelope
 2. Upload submission and envelope to GCS
-3. Trigger Cloud Run Job via Cloud Tasks
+3. Trigger Cloud Run Job directly via Jobs API
 4. Return ValidationResult with pending status
+
+Architecture:
+    Web -> Cloud Task -> Worker -> Cloud Run Job (this module) -> Callback
 
 Design: Simple function-based orchestration. No complex state management.
 """
@@ -18,6 +21,7 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from vb_shared.fmi.envelopes import FMIInputEnvelope
 
+from simplevalidations.validations.constants import CloudRunJobStatus
 from simplevalidations.validations.constants import Severity
 from simplevalidations.validations.engines.base import ValidationIssue
 from simplevalidations.validations.engines.base import ValidationResult
@@ -30,7 +34,7 @@ from simplevalidations.validations.services.cloud_run.gcs_client import (
 )
 from simplevalidations.validations.services.cloud_run.gcs_client import upload_file
 from simplevalidations.validations.services.cloud_run.job_client import (
-    trigger_validator_job,
+    run_validator_job,
 )
 from simplevalidations.validations.services.fmi_bindings import resolve_input_value
 
@@ -60,7 +64,7 @@ def launch_energyplus_validation(
     2. Upload submission file to GCS
     3. Build typed input envelope
     4. Upload envelope to GCS
-    5. Trigger Cloud Run Job via Cloud Tasks
+    5. Trigger Cloud Run Job directly via Jobs API
     6. Return pending ValidationResult
 
     Args:
@@ -152,15 +156,13 @@ def launch_energyplus_validation(
         logger.info(f"Uploading input envelope to {input_envelope_uri}")
         upload_envelope(envelope, input_envelope_uri)
 
-        # 7. Trigger Cloud Run Job via Cloud Tasks
+        # 7. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
-        queue_name = settings.GCS_TASK_QUEUE_NAME
 
         logger.info(f"Triggering Cloud Run Job: {job_name}")
-        task_name = trigger_validator_job(
+        execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            queue_name=queue_name,
             job_name=job_name,
             input_uri=input_envelope_uri,
         )
@@ -189,9 +191,9 @@ def launch_energyplus_validation(
 
         # 8. Return pending ValidationResult
         stats = {
-            "status": "pending",
+            "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
-            "task_name": task_name,
+            "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
         }
@@ -335,17 +337,15 @@ def launch_fmi_validation(
 
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
-        # Trigger Cloud Run Job
+        # Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_FMI_JOB_NAME
-        queue_name = settings.GCS_TASK_QUEUE_NAME
         if not job_name:
             msg = "GCS_FMI_JOB_NAME is not configured."
             raise ValueError(msg)  # noqa: TRY301
 
-        task_name = trigger_validator_job(
+        execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            queue_name=queue_name,
             job_name=job_name,
             input_uri=input_envelope_uri,
         )
@@ -366,9 +366,9 @@ def launch_fmi_validation(
         current_step_run.save(update_fields=["status", "started_at"])
 
         stats = {
-            "status": "pending",
+            "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
-            "task_name": task_name,
+            "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
             "signals": {},  # populated on callback; reserved for downstream steps

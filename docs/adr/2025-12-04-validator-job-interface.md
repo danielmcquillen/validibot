@@ -301,21 +301,20 @@ ENTRYPOINT ["python", "-m", "validator.main"]
    - Uploads input files
    - Records callback URL for the worker service (protected by Cloud Run IAM)
 
-2. Django enqueues a Cloud Task that triggers the Cloud Run Job (keeps retries and observability in Cloud Tasks):
+2. Worker calls the Cloud Run Jobs API directly (fast, non-blocking):
    ```python
    from simplevalidations.validations.services.cloud_run import job_client
 
-   task_name = job_client.trigger_validator_job(
+   execution_name = job_client.run_validator_job(
        project_id=project_id,
        region=region,
-       queue_name="validator-jobs",
-       job_name=f"validibot-validator-{validator_type}",
+       job_name=f"validibot-validator-{validator_type}",  # short name, not fully-qualified
        input_uri=bundle_uri,
    )
    ```
 
 3. Job container starts:
-   - Reads `INPUT_URI` from environment
+   - Reads `INPUT_URI` from environment (lightweight pointer; keeps large payload in GCS)
    - Downloads `input.json` from GCS
    - Validates input envelope schema
    - Downloads input files

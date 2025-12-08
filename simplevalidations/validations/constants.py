@@ -36,6 +36,14 @@ class StepStatus(TextChoices):
     SKIPPED = "SKIPPED", _("Skipped")
 
 
+class CloudRunJobStatus(TextChoices):
+    PENDING = "PENDING", _("Pending")
+    RUNNING = "RUNNING", _("Running")
+    SUCCEEDED = "SUCCEEDED", _("Succeeded")
+    FAILED = "FAILED", _("Failed")
+    CANCELLED = "CANCELLED", _("Cancelled")
+
+
 class RulesetType(TextChoices):
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")

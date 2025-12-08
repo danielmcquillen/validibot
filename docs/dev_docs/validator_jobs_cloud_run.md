@@ -18,8 +18,7 @@ sequenceDiagram
     participant Job as Validator Job (SA)
 
     Web->>Worker: Create Submission + ValidationRun
-    Worker->>Tasks: enqueue Cloud Task (job name, INPUT_URI, queue SA)
-    Tasks->>JobsAPI: POST jobs.run (OIDC from queue SA)
+    Worker->>JobsAPI: jobs.run (worker SA)
     JobsAPI-->>Job: Start job with env INPUT_URI
     Job->>Job: Download input.json + files from GCS
     Job->>Worker: Callback with result_uri (ID token from job SA)
@@ -27,11 +26,13 @@ sequenceDiagram
 ```
 
 IAM roles involved:
-- **Queue service account**: `roles/run.invoker` on the validator job so Cloud Tasks can call the Jobs API with OIDC.
+- **Worker service account**: `roles/run.invoker` on the validator job so the worker can call the Jobs API directly.
 - **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
-Implementation note: Cloud Tasks can only mint OIDC tokens. The Cloud Run Jobs API expects an OAuth access token, so the queue should call a shim (e.g., worker endpoint) that exchanges its service account credentials for an access token before invoking `jobs.run` (see issue #64).
+Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
+
+Status tracking: We record the Cloud Run execution name and a `job_status` using `CloudRunJobStatus` (PENDING/RUNNING/SUCCEEDED/FAILED/CANCELLED) in launch stats for observability and fallback polling; run/step lifecycle still uses `ValidationRunStatus`/`StepStatus`.
 
 ## Deployment steps
 

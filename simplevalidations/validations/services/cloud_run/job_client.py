@@ -1,154 +1,196 @@
 """
-Cloud Run Job client using Cloud Tasks for async execution.
+Cloud Run Job client for triggering validator jobs.
 
-This module triggers Cloud Run Jobs by creating Cloud Tasks that invoke
-the jobs. This provides better retry logic and decoupling than calling
-the Cloud Run Jobs API directly.
+This module triggers Cloud Run Jobs directly using the Jobs API client.
+The worker Django service calls this to start heavy validators (EnergyPlus, FMI).
 
-Design: Simple functions that create tasks. No complex state management.
+Architecture:
+    Web -> Cloud Task -> Worker -> Cloud Run Job (this module) -> Callback to Worker
 
-Why Cloud Tasks:
-- Built-in retry logic with exponential backoff
-- Rate limiting and quota management
-- Better observability via Cloud Tasks console
-- Decouples Django from job execution timing
+The worker already runs in an async context (triggered by Cloud Task) with retry
+semantics. Starting a job is a fast, non-blocking API call - the job runs in the
+background. No additional queue layer is needed between worker and job.
+
+See issue #64 for context on why we use direct API calls instead of Cloud Tasks.
 """
 
-import json
+from __future__ import annotations
 
-from google.cloud import tasks_v2
-from google.protobuf import duration_pb2
+import logging
+from typing import TYPE_CHECKING
+
+from google.cloud import run_v2
+
+if TYPE_CHECKING:
+    from google.api_core.operation import Operation
+
+logger = logging.getLogger(__name__)
 
 
+def run_validator_job(
+    *,
+    project_id: str,
+    region: str,
+    job_name: str,
+    input_uri: str,
+) -> str:
+    """
+    Start a Cloud Run Job for validation (non-blocking).
+
+    This function triggers a Cloud Run Job directly using the Jobs API and
+    returns immediately without waiting for the job to complete. The job
+    runs asynchronously and results are delivered via callback.
+
+    The worker's service account (which has roles/run.invoker) provides
+    authentication automatically via GCP's metadata service.
+
+    Args:
+        project_id: GCP project ID
+        region: GCP region (e.g., 'australia-southeast1')
+        job_name: Cloud Run Job short name (e.g., 'validibot-validator-energyplus').
+            Must NOT be fully-qualified (no 'projects/' prefix).
+        input_uri: GCS URI to input.json (e.g., 'gs://bucket/runs/abc/input.json')
+
+    Returns:
+        Execution name (e.g., 'projects/.../jobs/.../executions/...')
+        Can be used for status checks and debugging.
+
+    Raises:
+        ValueError: If job_name is fully-qualified (contains 'projects/')
+        google.api_core.exceptions.GoogleAPICallError: If job trigger fails
+
+    Example:
+        >>> execution_name = run_validator_job(
+        ...     project_id="my-project",
+        ...     region="australia-southeast1",
+        ...     job_name="validibot-validator-energyplus",
+        ...     input_uri="gs://my-bucket/runs/abc-123/input.json",
+        ... )
+        >>> print(f"Started execution: {execution_name}")
+    """
+    # Guard against fully-qualified job names to prevent double-prefixing
+    if job_name.startswith("projects/"):
+        msg = (
+            f"job_name must be short name (e.g., 'my-job'), "
+            f"not fully-qualified path. Got: {job_name}"
+        )
+        raise ValueError(msg)
+
+    client = run_v2.JobsClient()
+
+    job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
+
+    request = run_v2.RunJobRequest(
+        name=job_path,
+        overrides=run_v2.RunJobRequest.Overrides(
+            container_overrides=[
+                run_v2.RunJobRequest.Overrides.ContainerOverride(
+                    # Cloud Run Jobs only lets us pass run-time inputs via env
+                    # overrides (no CLI args). We keep the rest of the contract
+                    # in GCS (input_uri) to avoid large payloads in requests.
+                    env=[
+                        run_v2.EnvVar(name="INPUT_URI", value=input_uri),
+                    ],
+                ),
+            ],
+        ),
+    )
+
+    logger.info("Starting Cloud Run Job: %s with INPUT_URI=%s", job_name, input_uri)
+
+    # run_job returns a long-running operation. Do NOT call operation.result()
+    # which would block until the job completes (potentially minutes/hours).
+    # Instead, extract the execution name from the operation metadata and
+    # return immediately. Job completion is handled via callbacks.
+    operation: Operation = client.run_job(request=request)
+
+    # The operation metadata contains the execution info. Access it directly
+    # without blocking. The metadata is an Execution proto message.
+    if not operation.metadata or not operation.metadata.name:
+        # This shouldn't happen, but handle it defensively
+        logger.error(
+            "Cloud Run Job started but no execution name in metadata. "
+            "Operation: %s",
+            operation.operation.name if hasattr(operation, "operation") else "unknown",
+        )
+        msg = "Cloud Run Job started but execution name not available in metadata"
+        raise RuntimeError(msg)
+
+    execution_name = operation.metadata.name
+
+    logger.info("Started execution: %s", execution_name)
+
+    return execution_name
+
+
+def get_execution_status(execution_name: str) -> dict:
+    """
+    Get the status of a Cloud Run Job execution.
+
+    Args:
+        execution_name: Full execution name (returned from run_validator_job)
+
+    Returns:
+        Dictionary with execution status information
+
+    Raises:
+        google.api_core.exceptions.GoogleAPICallError: If status check fails
+
+    Example:
+        >>> status = get_execution_status(execution_name)
+        >>> print(status["completion_status"])  # SUCCEEDED, FAILED, CANCELLED, etc.
+    """
+    client = run_v2.ExecutionsClient()
+    execution = client.get_execution(name=execution_name)
+
+    # Map the condition to a simple status
+    completion_status = None
+    for condition in execution.conditions:
+        if condition.type_ == "Completed":
+            if condition.state == run_v2.Condition.State.CONDITION_SUCCEEDED:
+                completion_status = "SUCCEEDED"
+            elif condition.state == run_v2.Condition.State.CONDITION_FAILED:
+                completion_status = "FAILED"
+            break
+
+    return {
+        "name": execution.name,
+        "job": execution.job,
+        "create_time": execution.create_time,
+        "start_time": execution.start_time,
+        "completion_time": execution.completion_time,
+        "completion_status": completion_status,
+        "failed_count": execution.failed_count,
+        "succeeded_count": execution.succeeded_count,
+        "running_count": execution.running_count,
+    }
+
+
+# Backwards compatibility alias - deprecated, use run_validator_job instead
 def trigger_validator_job(
     *,
     project_id: str,
     region: str,
-    queue_name: str,
+    queue_name: str,  # Ignored - no longer using Cloud Tasks
     job_name: str,
     input_uri: str,
-    service_account_email: str | None = None,
-    timeout_seconds: int = 1800,  # Max allowed by Cloud Tasks is 30 minutes
+    service_account_email: str | None = None,  # Ignored - uses worker SA
+    timeout_seconds: int = 1800,  # Ignored - job has its own timeout
 ) -> str:
     """
-    Trigger a Cloud Run Job by creating a Cloud Task.
+    DEPRECATED: Use run_validator_job() instead.
 
-    This function creates a task that will execute the specified Cloud Run Job
-    with the given input URI as an environment variable.
-
-    The Cloud Task will invoke the Cloud Run Jobs Execution API to create a new
-    job execution. The job container will receive INPUT_URI as an environment
-    variable and load its input envelope from that GCS location.
-
-    Args:
-        project_id: GCP project ID
-        region: GCP region (e.g., 'us-central1')
-        queue_name: Cloud Tasks queue name (e.g., 'validator-jobs')
-        job_name: Cloud Run Job name (e.g., 'validibot-validator-energyplus')
-        input_uri: GCS URI to input.json (e.g., 'gs://bucket/runs/abc/input.json')
-        service_account_email: Service account to use for OIDC authentication.
-            Defaults to 'validibot-cloudrun-prod@{project_id}.iam.gserviceaccount.com'
-        timeout_seconds: Task dispatch deadline in seconds (default: 1800 = 30 min).
-            Cloud Tasks allows max 30 minutes. The Cloud Run Job itself can run longer.
-
-    Returns:
-        Task name (can be used for tracking/monitoring)
-
-    Raises:
-        google.cloud.exceptions.GoogleCloudError: If task creation fails
-
-    Example:
-        >>> task_name = trigger_validator_job(
-        ...     project_id="my-project",
-        ...     region="us-central1",
-        ...     queue_name="validator-jobs",
-        ...     job_name="validibot-validator-energyplus",
-        ...     input_uri="gs://my-bucket/runs/abc-123/input.json",
-        ... )
-        >>> print(f"Created task: {task_name}")
+    This function previously used Cloud Tasks but now calls run_validator_job()
+    directly. The queue_name, service_account_email, and timeout_seconds
+    parameters are ignored.
     """
-    # Initialize Cloud Tasks client
-    client = tasks_v2.CloudTasksClient()
-
-    # Construct the queue path
-    parent = client.queue_path(project_id, region, queue_name)
-
-    # Create the HTTP request task
-    # The Cloud Tasks queue should be configured to call the Cloud Run Jobs API
-    # using the queue's service account with roles/run.invoker permission
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"https://run.googleapis.com/v2/projects/{project_id}/locations/{region}/jobs/{job_name}:run",
-            "headers": {
-                "Content-Type": "application/json",
-            },
-            "body": json.dumps({
-                "overrides": {
-                    "container_overrides": [
-                        {
-                            "env": [
-                                {
-                                    "name": "INPUT_URI",
-                                    "value": input_uri,
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }).encode(),
-            "oidc_token": {
-                # Use the provided service account to authenticate
-                # The service account must have roles/run.invoker on the job
-                "service_account_email": (
-                    service_account_email
-                    or f"validibot-cloudrun-prod@{project_id}.iam.gserviceaccount.com"
-                ),
-                # NOTE: This OIDC approach doesn't work for Google APIs!
-                # Google APIs require OAuth access tokens, not OIDC tokens.
-                # Cloud Tasks can only generate OIDC tokens.
-                # See issue #64 for the fix.
-            },
-        },
-        "dispatch_deadline": duration_pb2.Duration(seconds=timeout_seconds),
-    }
-
-    # Create the task
-    response = client.create_task(
-        request={
-            "parent": parent,
-            "task": task,
-        }
+    logger.warning(
+        "trigger_validator_job is deprecated. Use run_validator_job() instead. "
+        "queue_name, service_account_email, and timeout_seconds are ignored.",
     )
-
-    return response.name
-
-
-def get_task_status(task_name: str) -> dict:
-    """
-    Get the status of a Cloud Task.
-
-    Args:
-        task_name: Full task name (returned from trigger_validator_job)
-
-    Returns:
-        Dictionary with task status information
-
-    Raises:
-        google.cloud.exceptions.GoogleCloudError: If status check fails
-
-    Example:
-        >>> status = get_task_status(task_name)
-        >>> print(status["state"])  # PENDING, RUNNING, SUCCEEDED, etc.
-    """
-    client = tasks_v2.CloudTasksClient()
-    task = client.get_task(name=task_name)
-
-    return {
-        "name": task.name,
-        "dispatch_count": task.dispatch_count,
-        "response_count": task.response_count,
-        "first_attempt": task.first_attempt,
-        "last_attempt": task.last_attempt,
-        "schedule_time": task.schedule_time,
-    }
+    return run_validator_job(
+        project_id=project_id,
+        region=region,
+        job_name=job_name,
+        input_uri=input_uri,
+    )

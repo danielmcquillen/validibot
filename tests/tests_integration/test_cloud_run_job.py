@@ -3,9 +3,15 @@ Integration tests for Cloud Run Job execution.
 
 These tests verify that the Cloud Run Job infrastructure works end-to-end:
 1. Upload input envelope to GCS
-2. Trigger Cloud Run Job via Cloud Tasks
+2. Trigger Cloud Run Job directly via Jobs API (no Cloud Tasks involved)
 3. Poll GCS for output envelope
 4. Verify output envelope structure
+
+Production Architecture:
+    Web -> Cloud Task -> Worker -> Cloud Run Job (direct API call) -> Callback
+
+Test Architecture (simplified):
+    Test -> Cloud Run Job (direct API call) -> GCS output
 
 Note: These tests require GCP credentials and deployed infrastructure.
 They will be skipped if the required environment variables are not set.
@@ -39,17 +45,16 @@ class CloudRunJobIntegrationTest(TestCase):
 
     These tests verify that we can:
     1. Upload an input envelope to GCS
-    2. Trigger a Cloud Run Job via Cloud Tasks
+    2. Trigger a Cloud Run Job directly via Jobs API
     3. Poll for and retrieve the output envelope
 
     Prerequisites:
     - GCP_PROJECT_ID environment variable set
     - GCS_VALIDATION_BUCKET environment variable set
     - GCS_ENERGYPLUS_JOB_NAME environment variable set
-    - GCS_TASK_QUEUE_NAME environment variable set
+    - GCP_REGION environment variable set
     - Valid GCP credentials (GOOGLE_APPLICATION_CREDENTIALS or default credentials)
     - Cloud Run Job deployed and ready
-    - Cloud Tasks queue configured
     """
 
     @classmethod
@@ -65,7 +70,6 @@ class CloudRunJobIntegrationTest(TestCase):
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
             "GCS_ENERGYPLUS_JOB_NAME",
-            "GCS_TASK_QUEUE_NAME",
             "GCP_REGION",
         ]
 
@@ -220,15 +224,20 @@ class CloudRunJobIntegrationTest(TestCase):
         """
         Test that we can connect to Cloud Tasks and access the queue.
 
-        This verifies the Cloud Tasks client can authenticate.
+        Note: Cloud Tasks is used for Web -> Worker communication, not for
+        triggering Cloud Run Jobs (which use direct API calls).
         """
+        queue_name = getattr(settings, "GCS_TASK_QUEUE_NAME", None)
+        if not queue_name:
+            self.skipTest("GCS_TASK_QUEUE_NAME not configured")
+
         from google.cloud import tasks_v2
 
         client = tasks_v2.CloudTasksClient()
         queue_path = client.queue_path(
             settings.GCP_PROJECT_ID,
             settings.GCP_REGION,
-            settings.GCS_TASK_QUEUE_NAME,
+            queue_name,
         )
 
         # Verify we can get queue metadata
@@ -330,9 +339,10 @@ Zone,
         # Upload the test model to GCS
         model_uri = self._upload_test_model(minimal_idf)
 
-        # Build a test input envelope
-        # Using a dummy callback URL since we're polling instead
+        # Build a test input envelope matching EnergyPlusInputEnvelope schema
+        # See vb_shared.energyplus.envelopes for the schema definition
         envelope = {
+            "schema_version": "validibot.input.v1",
             "run_id": self.test_run_id,
             "validator": {
                 "id": "test-validator",
@@ -351,19 +361,22 @@ Zone,
             "input_files": [
                 {
                     "name": "model.idf",
-                    "mime_type": "application/x-energyplus",
-                    "role": "model",
+                    "mime_type": "application/vnd.energyplus.idf",
+                    "role": "primary-model",
                     "uri": model_uri,
                 },
                 {
                     "name": "weather.epw",
-                    "mime_type": "application/x-epw",
+                    "mime_type": "application/vnd.energyplus.epw",
                     "role": "weather",
                     "uri": weather_uri,
                 },
             ],
-            "simulation_config": {
+            # inputs field matches EnergyPlusInputs schema
+            "inputs": {
                 "timestep_per_hour": 4,
+                "output_variables": [],
+                "invocation_mode": "cli",
             },
             "context": {
                 # Skip callback since we're polling GCS for results
@@ -378,20 +391,19 @@ Zone,
         # Upload the envelope
         input_uri = self._upload_test_envelope(envelope)
 
-        # Trigger the Cloud Run Job
+        # Trigger the Cloud Run Job directly via Jobs API
         from simplevalidations.validations.services.cloud_run.job_client import (
-            trigger_validator_job,
+            run_validator_job,
         )
 
         logger.info("Triggering EnergyPlus Cloud Run Job...")
-        task_name = trigger_validator_job(
+        execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            queue_name=settings.GCS_TASK_QUEUE_NAME,
             job_name=settings.GCS_ENERGYPLUS_JOB_NAME,
             input_uri=input_uri,
         )
-        logger.info("Created task: %s", task_name)
+        logger.info("Started execution: %s", execution_name)
 
         # Poll for output
         logger.info("Polling for output envelope...")

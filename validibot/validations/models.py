@@ -1983,3 +1983,68 @@ class Artifact(TimeStampedModel):
         super().clean()
         if self.org_id and self.run_id and self.org_id != self.run.org_id:
             raise ValidationError({"org": _("Artifact org must match run org.")})
+
+
+class CallbackReceipt(models.Model):
+    """
+    Tracks processed Cloud Run Job callbacks for idempotency.
+
+    When a Cloud Run Job completes, it POSTs a callback to the worker service.
+    Cloud Run may retry this callback if the initial delivery fails or times out,
+    which could cause duplicate processing (duplicate findings, incorrect status).
+
+    This model records each successfully processed callback. Before processing
+    a callback, the handler checks if a receipt exists for the callback_id:
+    - If found: return 200 OK immediately (already processed)
+    - If not found: process the callback and create a receipt
+
+    The callback_id is generated at job launch time and embedded in the input
+    envelope. The Cloud Run Job echoes it back in the callback payload.
+
+    Receipts are retained for debugging/audit purposes. A cleanup job can
+    delete old receipts after a retention period (e.g., 30 days).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    callback_id = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text=_("Unique callback identifier from the input envelope."),
+    )
+
+    validation_run = models.ForeignKey(
+        ValidationRun,
+        on_delete=models.CASCADE,
+        related_name="callback_receipts",
+        help_text=_("The validation run this callback was for."),
+    )
+
+    received_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text=_("When this callback was first processed."),
+    )
+
+    # Store minimal callback data for debugging
+    status = models.CharField(
+        max_length=50,
+        help_text=_("The validation status from the callback payload."),
+    )
+
+    result_uri = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_("GCS URI to the output envelope."),
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["callback_id"]),
+            models.Index(fields=["validation_run"]),
+            models.Index(fields=["received_at"]),
+        ]
+
+    def __str__(self):
+        short_id = self.callback_id[:8]
+        return f"CallbackReceipt({short_id}... for run {self.validation_run_id})"

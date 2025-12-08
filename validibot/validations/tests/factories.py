@@ -21,6 +21,7 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.models import Artifact
+from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import CustomValidator
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
@@ -207,3 +208,17 @@ class RulesetAssertionFactory(DjangoModelFactory):
     rhs = factory.Dict({"value": 100})
     options = factory.Dict({})
     message_template = "Peak too high."
+
+
+class CallbackReceiptFactory(DjangoModelFactory):
+    """Factory for CallbackReceipt model used in idempotency tests."""
+
+    class Meta:
+        model = CallbackReceipt
+
+    callback_id = factory.Sequence(lambda n: f"cb-uuid-{n}")
+    validation_run = factory.SubFactory(ValidationRunFactory)
+    status = "success"
+    result_uri = factory.LazyAttribute(
+        lambda o: f"gs://bucket/runs/{o.validation_run.id}/output.json"
+    )

@@ -10,6 +10,19 @@ Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When th
 
 You can submit content in three ways:
 
+## Idempotency keys: safer retries
+
+Add an `Idempotency-Key` header (a UUIDv4 is perfect) to every state-changing call so you can retry safely if the network drops:
+
+```
+-H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c"
+```
+
+What you get:
+- If the first request finishes, we cache its final response for 24 hours and return that same response on any repeat with the same key. You avoid duplicate runs, double billing, and noisy findings.
+- If a duplicate arrives while the first is still running, we return `409 Conflict` to say “still working on it; try again later” instead of starting another run.
+- If you skip the header, we still process the request, but retries can create duplicate runs because there is nothing to correlate them. Use a fresh UUID per request.
+
 ## Mode 1: Raw Body (Header-Driven)
 
 Body: raw bytes of the document.

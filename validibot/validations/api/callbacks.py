@@ -28,6 +28,7 @@ from vb_shared.validations.envelopes import ValidationStatus
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
@@ -97,6 +98,7 @@ class ValidationCallbackView(APIView):
         Expected payload (ValidationCallback):
         {
             "run_id": "abc-123",
+            "callback_id": "uuid-for-idempotency",
             "status": "success",
             "result_uri": "gs://bucket/runs/abc-123/output.json"
         }
@@ -110,12 +112,15 @@ class ValidationCallbackView(APIView):
             callback = ValidationCallback.model_validate(request.data)
 
             logger.info(
-                "Received callback for run %s with status %s",
+                "Received callback for run %s with status %s (callback_id=%s)",
                 callback.run_id,
                 callback.status,
+                callback.callback_id,
             )
 
-            # Get the validation run
+            # Get the validation run FIRST - before idempotency check.
+            # This ensures we return a clean 404 if the run doesn't exist,
+            # rather than an FK error when creating the receipt.
             try:
                 run = ValidationRun.objects.get(id=callback.run_id)
             except ValidationRun.DoesNotExist:
@@ -124,6 +129,39 @@ class ValidationCallbackView(APIView):
                     {"error": "Validation run not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+
+            # Idempotency check: reserve the receipt upfront to fence duplicates.
+            # Using get_or_create atomically prevents race conditions where two
+            # concurrent callbacks both pass a "no receipt exists" check.
+            receipt_created = False
+            if callback.callback_id:
+                from django.db import transaction
+
+                with transaction.atomic():
+                    receipt, receipt_created = CallbackReceipt.objects.get_or_create(
+                        callback_id=callback.callback_id,
+                        defaults={
+                            "validation_run": run,
+                            "status": "processing",
+                            "result_uri": callback.result_uri or "",
+                        },
+                    )
+                if not receipt_created:
+                    # Receipt already exists - this is a duplicate callback
+                    logger.info(
+                        "Callback %s already processed at %s, returning cached",
+                        callback.callback_id,
+                        receipt.received_at,
+                    )
+                    received_at_iso = receipt.received_at.isoformat()
+                    return Response(
+                        {
+                            "message": "Callback already processed",
+                            "idempotent_replayed": True,
+                            "original_received_at": received_at_iso,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
             # Locate the active step run (RUNNING/PENDING) for this validation.
             step_run = run.current_step_run
@@ -458,6 +496,31 @@ class ValidationCallbackView(APIView):
             }
             run.summary["steps"] = summary_steps
             run.save(update_fields=["summary"])
+
+            # Update the receipt status from "processing" to the final status.
+            # The receipt was created at the start to fence duplicate callbacks.
+            if callback.callback_id and receipt_created:
+                try:
+                    cb_status = callback.status
+                    if hasattr(cb_status, "value"):
+                        status_str = cb_status.value
+                    else:
+                        status_str = str(cb_status)
+                    receipt.status = status_str
+                    receipt.validation_run = run
+                    receipt.save(update_fields=["status", "validation_run"])
+                    logger.debug(
+                        "Updated callback receipt %s to status %s",
+                        callback.callback_id,
+                        status_str,
+                    )
+                except Exception:
+                    # If receipt update fails, log but don't fail the request.
+                    logger.warning(
+                        "Failed to update callback receipt for %s",
+                        callback.callback_id,
+                        exc_info=True,
+                    )
 
             logger.info(
                 "Successfully processed callback for run %s",

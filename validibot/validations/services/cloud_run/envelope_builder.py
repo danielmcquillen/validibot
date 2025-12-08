@@ -44,6 +44,7 @@ def build_energyplus_input_envelope(
     model_file_uri: str,
     weather_file_uri: str,
     callback_url: str,
+    callback_id: str | None,
     execution_bundle_uri: str,
     timestep_per_hour: int = 4,
     output_variables: list[str] | None = None,
@@ -65,6 +66,7 @@ def build_energyplus_input_envelope(
         model_file_uri: GCS URI to IDF/epJSON file
         weather_file_uri: GCS URI to EPW weather file
         callback_url: Django endpoint to POST results (IAM protected)
+        callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: GCS directory for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4)
         output_variables: EnergyPlus output variables to collect
@@ -133,6 +135,7 @@ def build_energyplus_input_envelope(
 
     # Build execution context
     execution_context = ExecutionContext(
+        callback_id=callback_id,
         callback_url=callback_url,
         execution_bundle_uri=execution_bundle_uri,
     )
@@ -154,6 +157,7 @@ def build_energyplus_input_envelope(
 def build_input_envelope(
     run,  # ValidationRun instance
     callback_url: str,
+    callback_id: str | None,
     execution_bundle_uri: str,
 ) -> ValidationInputEnvelope:
     """
@@ -165,6 +169,7 @@ def build_input_envelope(
     Args:
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
+        callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: GCS directory for this run's files
 
     Returns:
@@ -179,6 +184,7 @@ def build_input_envelope(
         >>> envelope = build_input_envelope(
         ...     run=run,
         ...     callback_url="https://api.example.com/callbacks/",
+        ...     callback_id="uuid-for-idempotency",
         ...     execution_bundle_uri="gs://bucket/runs/abc-123/",
         ... )
     """
@@ -222,6 +228,7 @@ def build_input_envelope(
             model_file_uri=model_file_uri,
             weather_file_uri=weather_file_uri,
             callback_url=callback_url,
+            callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
             output_variables=output_variables,
@@ -256,6 +263,7 @@ def build_input_envelope(
             )
         ]
         context = ExecutionContext(
+            callback_id=callback_id,
             callback_url=callback_url,
             execution_bundle_uri=execution_bundle_uri,
         )

@@ -39,10 +39,23 @@ This project works alongside two related repositories:
 1. **vb_shared** - Shared library for integrations (EnergyPlus, etc.)
    - Installed from Git in production
    - Symlinked to `vb_shared_dev/` for local development
-2. **sv_modal** - Modal-based serverless compute functions
+2. **vb_validators** - Cloud Run Job validator containers
+   - Located at `../vb_validators`
+   - Depends on vb_shared via Git URL
+3. **sv_modal** - Modal-based serverless compute functions
    - Located at `../sv_modal`
 
 Always consider these neighboring projects when working on integrations or modifying shared functionality.
+
+### vb_shared Workflow
+
+**IMPORTANT**: When making changes to vb_shared that other repos depend on (vb_validators, validibot):
+
+1. Make changes in `../vb_shared`
+2. Commit and push to GitHub
+3. Run `uv sync` in dependent repos to pull the new version
+
+Do NOT use local path overrides in pyproject.toml (`tool.uv.sources`) - this breaks Docker builds. Always go through Git.
 
 ## Environment Setup
 

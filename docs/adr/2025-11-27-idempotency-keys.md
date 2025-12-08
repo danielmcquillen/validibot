@@ -1,6 +1,6 @@
 # ADR-2025-11-27: Idempotency Keys for API Validation Requests
 
-**Status:** Proposed (2025-11-27)  
+**Status:** Accepted (2025-11-27) — implementation queued  
 **Owners:** Platform / API  
 **Related ADRs:** —  
 **Related docs:** `config/api_router.py`, `workflows/views.py`
@@ -8,6 +8,8 @@
 ---
 
 ## Context
+
+This revision folds in the decisions and clarifications from our later conversations: keys stay optional for now, they are expected on mutating calls, missing keys are processed normally but lose replay protection, and we will keep a runway to move to "required" after clients have time to adopt.
 
 ### The Problem
 
@@ -79,7 +81,7 @@ The standard solution, pioneered by Stripe and adopted by most modern payment/in
 | Same key, different request body | Return 422 error (key reuse violation) |
 | Key missing (optional mode)      | Process normally, no idempotency       |
 | Key missing (required mode)      | Return 400 error                       |
-| Request still processing         | Return 409 Conflict or block           |
+| Request still processing         | Return 409 Conflict (we will not block the duplicate) |
 | Key expired                      | Process as new request                 |
 
 ---
@@ -92,7 +94,7 @@ We will implement idempotency keys for the `POST /api/workflows/{id}/start/` end
 
 - **Header**: `Idempotency-Key` (industry standard)
 - **Format**: Any string, max 255 characters (UUIDv4 recommended)
-- **Required**: No (optional for MVP, can make required later)
+- **Required**: No (optional for MVP, can make required later). Expected on mutating calls (POST/PUT/PATCH/DELETE); not needed on GET/read-only requests.
 - **Scope**: Key uniqueness is scoped to `(organization_id, endpoint)`
 
 ### 2. Data Model
@@ -195,6 +197,8 @@ class IdempotencyKey(models.Model):
                                     └─────────────────┘
 ```
 
+We will return `409 Conflict` for duplicate requests while the original is still processing (we do not block/wait). Only once the original completes do we cache and replay its final response for subsequent uses of the same key.
+
 ### 4. Implementation Location
 
 We'll implement this as a DRF mixin that can be applied to any ViewSet action:
@@ -257,7 +261,15 @@ Schedule: Daily (or more frequently for high-volume deployments).
 
 ## MVP Scope
 
-For the January alpha, we will implement a minimal version:
+For the January alpha, we will implement a minimal version. If a mutating request arrives without `Idempotency-Key`, we will still process it, but the client loses replay protection and risks duplicate runs if they retry after a timeout. GET/read-only requests do not need the header.
+
+### Migration path to "required"
+
+We will stay optional for the January alpha, then move toward required keys with a gentle rollout:
+
+1. Document every mutating example with a UUIDv4 `Idempotency-Key`.
+2. Emit a warning header when mutating requests arrive without the key.
+3. After a deprecation window, return 400 for missing keys on mutating endpoints.
 
 ### In Scope
 

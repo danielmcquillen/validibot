@@ -33,6 +33,7 @@ def test_build_energyplus_input_envelope():
         model_file_uri="gs://test-bucket/model.idf",
         weather_file_uri="gs://test-bucket/weather.epw",
         callback_url="https://api.example.com/callbacks/",
+        callback_id="cb-test-123",
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
         timestep_per_hour=4,
         output_variables=["Zone Mean Air Temperature"],
@@ -91,6 +92,7 @@ def test_build_energyplus_input_envelope_defaults():
         model_file_uri="gs://test-bucket/model.idf",
         weather_file_uri="gs://test-bucket/weather.epw",
         callback_url="https://api.example.com/callbacks/",
+        callback_id=None,
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
         # Use defaults for timestep_per_hour and output_variables
     )
@@ -98,3 +100,50 @@ def test_build_energyplus_input_envelope_defaults():
     # Verify defaults
     assert envelope.inputs.timestep_per_hour == 4  # noqa: PLR2004
     assert envelope.inputs.output_variables == []
+
+
+def test_build_energyplus_input_envelope_with_callback_id():
+    """Test envelope builder includes callback_id for idempotency."""
+    validator = MockValidator()
+    callback_id = "cb-uuid-12345"
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        weather_file_uri="gs://test-bucket/weather.epw",
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=callback_id,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+    )
+
+    # Verify callback_id is included in the execution context
+    assert envelope.context.callback_id == callback_id
+
+
+def test_build_energyplus_input_envelope_without_callback_id():
+    """Test envelope builder works without callback_id (backwards compatibility)."""
+    validator = MockValidator()
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        weather_file_uri="gs://test-bucket/weather.epw",
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=None,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+    )
+
+    # Verify callback_id is None when not provided
+    assert envelope.context.callback_id is None

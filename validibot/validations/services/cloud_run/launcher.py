@@ -16,6 +16,7 @@ Design: Simple function-based orchestration. No complex state management.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -128,6 +129,9 @@ def launch_energyplus_validation(
             raise ValueError(msg)  # noqa: TRY301
         callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
 
+        # 4.5. Generate idempotency key for callback deduplication
+        callback_id = str(uuid.uuid4())
+
         # 5. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
@@ -144,6 +148,7 @@ def launch_energyplus_validation(
             model_file_uri=model_file_uri,
             weather_file_uri=weather_file_uri,
             callback_url=callback_url,
+            callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
             output_variables=output_variables,
@@ -290,6 +295,9 @@ def launch_fmi_validation(
             raise ValueError(msg)  # noqa: TRY301
         callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
 
+        # Generate idempotency key for callback deduplication
+        callback_id = str(uuid.uuid4())
+
         # Build envelope
         envelope = FMIInputEnvelope(
             run_id=run_id,
@@ -321,6 +329,7 @@ def launch_fmi_validation(
                 "output_variables": [],
             },
             context={
+                "callback_id": callback_id,
                 "callback_url": callback_url,
                 "execution_bundle_uri": execution_bundle_uri,
             },

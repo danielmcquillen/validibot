@@ -58,3 +58,14 @@ class PermissionCode(models.TextChoices):
     ANALYTICS_VIEW = "analytics_view", _("View analytics and reporting dashboards")
     ANALYTICS_REVIEW = "analytics_review", _("Review or approve analytics outputs")
     ADMIN_MANAGE_ORG = "admin_manage_org", _("Manage organization users and roles")
+
+
+# Reserved organization slugs that can only be created by superusers.
+# These are used for integration testing and system purposes.
+RESERVED_ORG_SLUGS = frozenset({
+    "test-org",
+    "test",
+    "admin",
+    "system",
+    "validibot",
+})

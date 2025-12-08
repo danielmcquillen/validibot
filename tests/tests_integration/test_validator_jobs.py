@@ -4,6 +4,25 @@ Validator-specific integration checks for Cloud Run Jobs.
 These tests exercise validator containers end-to-end and validate the
 result envelope shape beyond the generic job plumbing. They are opt-in
 and will skip if the required GCP configuration is missing.
+
+Testing Approach
+----------------
+In production, the validation flow works like this:
+
+    1. Django uploads input.json to GCS and triggers the Cloud Run Job
+    2. The job reads input.json, runs the simulation, writes output.json to GCS
+    3. The job POSTs a callback to Django's worker service with the result URI
+    4. Django reads output.json and updates the database
+
+These tests run the Cloud Run Job in isolation WITHOUT a Django app to receive
+callbacks. Instead of waiting for a callback, we poll GCS for the output.json
+file that the job writes before it would normally call back to Django. This
+lets us verify the job runs correctly and produces valid output envelopes
+without needing the full Django infrastructure.
+
+The input envelope includes `skip_callback: True` in the context to tell the
+job not to attempt the callback (which would fail since there's no Django
+endpoint listening).
 """
 
 from __future__ import annotations

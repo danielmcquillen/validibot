@@ -8,6 +8,7 @@ from django.contrib.auth import forms as admin_forms
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from simplevalidations.users.constants import RESERVED_ORG_SLUGS
 from simplevalidations.users.constants import RoleCode
 from simplevalidations.users.models import Membership
 from simplevalidations.users.models import Organization
@@ -237,10 +238,26 @@ class OrganizationForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user: User | None = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_method = "post"
         self.helper.form_tag = False
+
+    def clean_name(self):
+        """Validate that reserved slugs are only used by superusers."""
+        from django.utils.text import slugify
+
+        name = self.cleaned_data.get("name", "")
+        slug = slugify(name)
+
+        if slug in RESERVED_ORG_SLUGS:
+            is_superuser = self.user and self.user.is_superuser
+            if not is_superuser:
+                raise forms.ValidationError(
+                    _("This organization name is reserved. Please choose another."),
+                )
+        return name
 
 
 class OrganizationMemberForm(forms.Form):

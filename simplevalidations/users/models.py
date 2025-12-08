@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
+from simplevalidations.users.constants import RESERVED_ORG_SLUGS
 from simplevalidations.users.constants import RoleCode
 
 
@@ -141,8 +142,21 @@ class Organization(TimeStampedModel):
         ),
     )
 
+    # Set this to True to bypass reserved slug validation (for superuser/admin use)
+    _allow_reserved_slug: bool = False
+
     def __str__(self):
         return self.name
+
+    def clean(self):
+        """Validate organization data."""
+        super().clean()
+        # Auto-generate slug for validation if not set
+        slug = self.slug or slugify(self.name)
+        if slug in RESERVED_ORG_SLUGS and not self._allow_reserved_slug:
+            raise ValidationError(
+                {"name": _("This organization name is reserved.")},
+            )
 
     def save(self, *args, **kwargs):
         """Override save to ensure slug is set if not provided."""

@@ -298,6 +298,11 @@ class OrganizationCreateView(
             raise PermissionDenied("Administrator access required.")
         return super().dispatch(request, *args, **kwargs)
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
     def form_valid(self, form):
         response = super().form_valid(form)
         membership, _ = Membership.objects.get_or_create(
@@ -336,6 +341,11 @@ class OrganizationUpdateView(
     form_class = OrganizationForm
     template_name = "users/organizations/organization_form.html"
     success_message = _("Organization updated.")
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
 
     def get_breadcrumbs(self):
         organization = getattr(self, "organization", None) or self.get_object()

@@ -10,6 +10,6 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["simplevalidations/static/src/ts/**/*.ts"],
+  "include": ["validibot/static/src/ts/**/*.ts"],
   "exclude": ["node_modules"]
 }

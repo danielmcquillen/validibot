@@ -2,7 +2,7 @@
 
 Every workflow run begins with an HTTP request to `POST /api/workflows/<id>/start/`. Callers can shape that request three different ways, and the view layer auto-detects the correct parsing route.
 
-This page documents each "mode", the detection rules in `simplevalidations/workflows/request_utils.py`, and the expectations downstream services rely on.
+This page documents each "mode", the detection rules in `validibot/workflows/request_utils.py`, and the expectations downstream services rely on.
 
 ## Quick Reference Matrix
 
@@ -20,7 +20,7 @@ maintains the state of the run.
 ### Trigger & Requirements
 
 - Request is **not** `multipart/*`.
-- `Content-Type` header matches one of the entries in `SUPPORTED_CONTENT_TYPES` (`simplevalidations/workflows/constants.py`). If the header is missing or unknown, the system refuses to treat it as Mode 1.
+- `Content-Type` header matches one of the entries in `SUPPORTED_CONTENT_TYPES` (`validibot/workflows/constants.py`). If the header is missing or unknown, the system refuses to treat it as Mode 1.
 - When `Content-Type` is `application/json`, we inspect the first byte and (cheaply) parse JSON to ensure the payload is not actually a Mode-2 envelope.
 
 ### Optional Headers
@@ -130,9 +130,9 @@ Once a request flows into `_process_structured_payload` (either from the JSON en
 
 ## Testing & Tooling
 
-- End-to-end coverage lives in `simplevalidations/workflows/tests/test_workflow_start_api.py`.
-- Serializer unit tests: `simplevalidations/validations/tests/test_serializers.py`.
-- Mode detection helper tests: add to `simplevalidations/workflows/tests/test_request_utils.py` (TODO: create if we add more branching logic).
+- End-to-end coverage lives in `validibot/workflows/tests/test_workflow_start_api.py`.
+- Serializer unit tests: `validibot/validations/tests/test_serializers.py`.
+- Mode detection helper tests: add to `validibot/workflows/tests/test_request_utils.py` (TODO: create if we add more branching logic).
 
 ## Open Questions & Future Considerations
 
@@ -146,4 +146,4 @@ Once a request flows into `_process_structured_payload` (either from the JSON en
 - Payload-shape primer: `docs/user_docs/api/data-shapes.md`.
 - API how-to for customers: `docs/dev_docs/how-to/use-workflow.md`.
 
-Keep this page synchronized with `simplevalidations/workflows/request_utils.py` and `WorkflowViewSet`. Any time we add a new mode, change detection logic, or tweak serializer inputs, update this doc (and link to the relevant ADR if one exists).
+Keep this page synchronized with `validibot/workflows/request_utils.py` and `WorkflowViewSet`. Any time we add a new mode, change detection logic, or tweak serializer inputs, update this doc (and link to the relevant ADR if one exists).

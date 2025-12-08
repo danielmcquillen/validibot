@@ -40,14 +40,17 @@ We adopt a **single canonical contract** for communication between Django and al
 ### Components included in this decision
 
 1. **Input Envelope (`validibot.input.v1`)**
+
    - JSON document placed in GCS (`input.json`)
    - Lists validator type, job configuration, inputs, workflow step info, and callback metadata
 
 2. **Result Envelope (`validibot.result.v1`)**
+
    - JSON document written by validator containers (`result.json`)
    - Unified fields for status, messages, metrics, artifacts, timing
 
 3. **GCS Execution Bundle**
+
    ```
    gs://bucket/org_id/run_id/
        input.json
@@ -57,11 +60,13 @@ We adopt a **single canonical contract** for communication between Django and al
    ```
 
 4. **Cloud Run Job Execution Model**
+
    - Each validator type is a separate container image
    - Entry point reads `input.json`, pulls files, runs simulation, writes `result.json`
    - Job names follow convention: `validibot-validator-{type}` (e.g., `validibot-validator-energyplus`)
 
 5. **Callback Model**
+
    - After writing results, the job POSTs a callback to the private worker service
    - Cloud Run IAM enforces authentication via a Google-signed ID token from the job's service account
    - Callback includes minimal payload: `run_id`, `status`, `result_uri`
@@ -129,16 +134,19 @@ We adopt a **single canonical contract** for communication between Django and al
 Validators interpret `role` based on their type. Django does not need to understand these roles.
 
 **EnergyPlus validator:**
+
 - `primary-model` - The main IDF file
 - `weather` - EPW weather file
 - `config` - Additional configuration
 
 **FMU validator:**
+
 - `fmu` - The FMU file
 - `config` - Simulation configuration
 - `timeseries` - Input time series data
 
 **Future validators:**
+
 - XML: `xml-document`, `xml-schema`
 - PDF: `pdf-document`, `validation-rules`
 - AI models: `model`, `input-data`, `config`
@@ -213,6 +221,7 @@ Messages represent validation findings, warnings, and errors.
 ```
 
 **Example:**
+
 ```jsonc
 {
   "severity": "error",
@@ -242,6 +251,7 @@ Metrics represent computed values from the validation/simulation.
 ```
 
 **Common categories:**
+
 - `comfort` - Thermal comfort metrics
 - `energy` - Energy consumption
 - `performance` - Simulation performance
@@ -262,6 +272,7 @@ Artifacts are files produced by the validator.
 ```
 
 **Common artifact types:**
+
 - `simulation-db` - SQLite database with results
 - `report-html` - HTML report
 - `report-pdf` - PDF report
@@ -297,13 +308,15 @@ ENTRYPOINT ["python", "-m", "validator.main"]
 ### Execution flow
 
 1. Django creates execution bundle in GCS:
+
    - Writes `input.json`
    - Uploads input files
    - Records callback URL for the worker service (protected by Cloud Run IAM)
 
 2. Worker calls the Cloud Run Jobs API directly (fast, non-blocking):
+
    ```python
-   from simplevalidations.validations.services.cloud_run import job_client
+   from validibot.validations.services.cloud_run import job_client
 
    execution_name = job_client.run_validator_job(
        project_id=project_id,
@@ -314,6 +327,7 @@ ENTRYPOINT ["python", "-m", "validator.main"]
    ```
 
 3. Job container starts:
+
    - Reads `INPUT_URI` from environment (lightweight pointer; keeps large payload in GCS)
    - Downloads `input.json` from GCS
    - Validates input envelope schema
@@ -344,6 +358,7 @@ resources = {
 ```
 
 Cloud Run Jobs support:
+
 - Up to 8 vCPUs per task
 - Up to 32 GB RAM per task
 - Up to 24 hours execution time (extended quota available)
@@ -397,16 +412,19 @@ Django loads the full `result.json` from GCS after verifying the token.
 ### Evolution strategy
 
 **Non-breaking changes** (patch/minor versions):
+
 - Adding optional fields
 - Adding new enum values
 - Adding new validator types
 
 **Breaking changes** (major versions):
+
 - Removing required fields
 - Changing field semantics
 - Changing enum value meanings
 
 When introducing `v2`:
+
 - Django can write both `v1` and `v2` envelopes
 - Validators declare supported versions in metadata
 - Django selects appropriate version per validator

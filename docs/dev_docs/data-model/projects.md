@@ -26,14 +26,14 @@ auditable. See `docs/dev_docs/data-model/deletions.md` for the lifecycle.
 
 The project foreign key appears in all three layers intentionally:
 
-| Layer | Why Project Is Stored |
-| ----- | --------------------- |
-| `Workflow` | Records the *recommended* project for future runs. This is editable so teams can reorganize without cloning the workflow. |
-| `Submission` | Captures the project that was resolved at launch time. Submissions may override the workflow default through query params or UI selection, so the resolved value is not always equal to `workflow.project`. |
-| `ValidationRun` | Copies the submission’s project for immutable history. Runs often outlive the submission content and need to be filterable without joins. |
+| Layer           | Why Project Is Stored                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Workflow`      | Records the _recommended_ project for future runs. This is editable so teams can reorganize without cloning the workflow.                                                                                   |
+| `Submission`    | Captures the project that was resolved at launch time. Submissions may override the workflow default through query params or UI selection, so the resolved value is not always equal to `workflow.project`. |
+| `ValidationRun` | Copies the submission’s project for immutable history. Runs often outlive the submission content and need to be filterable without joins.                                                                   |
 
 The `ValidationRun` docstring summarizes this denormalization
-(`simplevalidations/validations/models.py:1105-1112`). Copying the project to
+(`validibot/validations/models.py:1105-1112`). Copying the project to
 both `Submission` and `ValidationRun` is what lets us:
 
 1. **Allow overrides:** `WorkflowViewSet.start_validation` accepts a
@@ -49,7 +49,7 @@ both `Submission` and `ValidationRun` is what lets us:
    simultaneously. Indexes on those fields in `Submission` and `ValidationRun`
    keep dashboards snappy and enforce tenant boundaries without extra joins.
 4. **Partition storage:** Upload paths incorporate `submission.project.slug`
-   (`simplevalidations/submissions/models.py:32-55`). The FK is part of how we
+   (`validibot/submissions/models.py:32-55`). The FK is part of how we
    spread files across buckets/prefixes.
 
 ## Project Resolution Flow
@@ -90,8 +90,8 @@ When workflows move between projects the data flow is:
   drift during refactors.
 - Prefer querying submission/run tables directly for reporting. They have
   indexes on `(org, project, workflow, created)` specifically to avoid
-  cross-table joins (`simplevalidations/submissions/models.py:64-80` and
-  `simplevalidations/validations/models.py:1115-1119`).
+  cross-table joins (`validibot/submissions/models.py:64-80` and
+  `validibot/validations/models.py:1115-1119`).
 - When writing migrations or cleanup jobs, detach project references by setting
   them to `NULL` rather than trying to infer a new project.
 - If integrations in `../sv_modal` or `../vb_shared` need project context,

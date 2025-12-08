@@ -15,12 +15,12 @@ from django.urls import path
 from django.views.decorators.cache import cache_page
 from django.views.generic import TemplateView
 
-from simplevalidations.blog.sitemaps import BlogPostSitemap
-from simplevalidations.core import views as core_views
-from simplevalidations.core.views import jwks_view
-from simplevalidations.marketing import views as marketing_views
-from simplevalidations.marketing.sitemaps import MarketingStaticViewSitemap
-from simplevalidations.workflows import views as workflow_views
+from validibot.blog.sitemaps import BlogPostSitemap
+from validibot.core import views as core_views
+from validibot.core.views import jwks_view
+from validibot.marketing import views as marketing_views
+from validibot.marketing.sitemaps import MarketingStaticViewSitemap
+from validibot.workflows import views as workflow_views
 
 sitemaps = {
     "marketing": MarketingStaticViewSitemap(),
@@ -29,7 +29,7 @@ sitemaps = {
 
 urlpatterns = [
     path(".well-known/jwks.json", jwks_view, name="jwks"),
-    path("", include("simplevalidations.marketing.urls", namespace="marketing")),
+    path("", include("validibot.marketing.urls", namespace="marketing")),
     path("robots.txt", marketing_views.robots_txt, name="robots"),
     path(
         "sitemap.xml",
@@ -53,7 +53,7 @@ urlpatterns = [
         name="workflow_public_info",
     ),
     path(settings.ADMIN_URL, admin.site.urls),
-    path("app/core/", include("simplevalidations.core.urls", namespace="core")),
+    path("app/core/", include("validibot.core.urls", namespace="core")),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),
 ]
 
@@ -62,39 +62,39 @@ if settings.ENABLE_APP:
         path("app/", core_views.app_home_redirect, name="app-home"),
         path(
             "app/dashboard/",
-            include("simplevalidations.dashboard.urls", namespace="dashboard"),
+            include("validibot.dashboard.urls", namespace="dashboard"),
         ),
         path(
             "app/users/",
-            include("simplevalidations.users.urls", namespace="users"),
+            include("validibot.users.urls", namespace="users"),
         ),
         path(
             "app/projects/",
-            include("simplevalidations.projects.urls", namespace="projects"),
+            include("validibot.projects.urls", namespace="projects"),
         ),
         path(
             "app/members/",
-            include("simplevalidations.members.urls", namespace="members"),
+            include("validibot.members.urls", namespace="members"),
         ),
         path(
             "app/workflows/",
-            include("simplevalidations.workflows.urls", namespace="workflows"),
+            include("validibot.workflows.urls", namespace="workflows"),
         ),
         path(
             "app/tracking/",
-            include("simplevalidations.tracking.urls", namespace="tracking"),
+            include("validibot.tracking.urls", namespace="tracking"),
         ),
         path(
             "app/validations/",
-            include("simplevalidations.validations.urls", namespace="validations"),
+            include("validibot.validations.urls", namespace="validations"),
         ),
         path(
             "app/help/",
-            include("simplevalidations.help.urls", namespace="help"),
+            include("validibot.help.urls", namespace="help"),
         ),
         path(
             "app/notifications/",
-            include("simplevalidations.notifications.urls", namespace="notifications"),
+            include("validibot.notifications.urls", namespace="notifications"),
         ),
     ]
 

@@ -9,8 +9,8 @@ import environ
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
-# simplevalidations/
-APPS_DIR = BASE_DIR / "simplevalidations"
+# validibot/
+APPS_DIR = BASE_DIR / "validibot"
 env = environ.Env()
 
 READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)
@@ -58,7 +58,7 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres:///simplevalidations",
+        default="postgres:///validibot",
     ),
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
@@ -110,23 +110,23 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
-    "simplevalidations.core",
-    "simplevalidations.users",
-    "simplevalidations.validations",
-    "simplevalidations.actions",
-    "simplevalidations.projects",
-    "simplevalidations.events",
-    "simplevalidations.tracking",
-    "simplevalidations.submissions",
-    "simplevalidations.integrations",
-    "simplevalidations.workflows",
-    "simplevalidations.billing",
-    "simplevalidations.dashboard",
-    "simplevalidations.marketing",
-    "simplevalidations.blog",
-    "simplevalidations.members",
-    "simplevalidations.help",
-    "simplevalidations.notifications",
+    "validibot.core",
+    "validibot.users",
+    "validibot.validations",
+    "validibot.actions",
+    "validibot.projects",
+    "validibot.events",
+    "validibot.tracking",
+    "validibot.submissions",
+    "validibot.integrations",
+    "validibot.workflows",
+    "validibot.billing",
+    "validibot.dashboard",
+    "validibot.marketing",
+    "validibot.blog",
+    "validibot.members",
+    "validibot.help",
+    "validibot.notifications",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -167,14 +167,14 @@ MARKDOWNIFY = {
 # MIGRATIONS
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#migration-modules
-MIGRATION_MODULES = {"sites": "simplevalidations.contrib.sites.migrations"}
+MIGRATION_MODULES = {"sites": "validibot.contrib.sites.migrations"}
 
 # AUTHENTICATION
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
-    "simplevalidations.users.permissions.OrgPermissionBackend",
+    "validibot.users.permissions.OrgPermissionBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
@@ -264,10 +264,10 @@ TEMPLATES = [
                 "django.template.context_processors.static",
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
-                "simplevalidations.users.context_processors.allauth_settings",
-                "simplevalidations.core.context_processors.site_feature_settings",
-                "simplevalidations.users.context_processors.organization_context",
-                "simplevalidations.notifications.context_processors.notifications_context",
+                "validibot.users.context_processors.allauth_settings",
+                "validibot.core.context_processors.site_feature_settings",
+                "validibot.users.context_processors.organization_context",
+                "validibot.notifications.context_processors.notifications_context",
             ],
         },
     },
@@ -360,27 +360,27 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_ADAPTER = "simplevalidations.users.adapters.AccountAdapter"
+ACCOUNT_ADAPTER = "validibot.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
-ACCOUNT_FORMS = {"signup": "simplevalidations.users.forms.UserSignupForm"}
+ACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSignupForm"}
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_ADAPTER = "simplevalidations.users.adapters.SocialAccountAdapter"
+SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
-SOCIALACCOUNT_FORMS = {"signup": "simplevalidations.users.forms.UserSocialSignupForm"}
+SOCIALACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSocialSignupForm"}
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
 # DMcQ: Using our our custom AgentAwareNegotiation so every API view gets the agent profile.
 REST_FRAMEWORK = {
-    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "simplevalidations.core.api.negotiation.AgentAwareNegotiation",
+    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "validibot.core.api.negotiation.AgentAwareNegotiation",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "DEFAULT_PAGINATION_CLASS": "simplevalidations.core.api.pagination.DefaultCursorPagination",
+    "DEFAULT_PAGINATION_CLASS": "validibot.core.api.pagination.DefaultCursorPagination",
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",

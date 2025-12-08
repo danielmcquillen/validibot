@@ -82,6 +82,7 @@ gcloud kms keys create credential-signing \
 ```
 
 **Key Parameters:**
+
 - `asymmetric-signing`: Key is used for digital signatures (not encryption)
 - `ec-sign-p256-sha256`: Elliptic Curve P-256 with SHA-256 (produces ES256 JWTs)
 - `software`: Key stored in software (HSM also available for higher security)
@@ -89,6 +90,7 @@ gcloud kms keys create credential-signing \
 - `next-rotation-time`: When the first rotation should occur
 
 **Why EC P-256 (ES256)?**
+
 - Smaller signatures than RSA (256 bits vs 2048+ bits)
 - Widely supported by JWT libraries
 - Industry standard for JWTs
@@ -97,6 +99,7 @@ gcloud kms keys create credential-signing \
 #### 3. Grant Cloud Run Service Account Access
 
 The Cloud Run service needs permission to:
+
 - Get the public key (for publishing in JWKS)
 - Use the private key to sign (asymmetric signing)
 
@@ -116,6 +119,7 @@ gcloud kms keys add-iam-policy-binding credential-signing \
 ```
 
 **Roles:**
+
 - `cloudkms.viewer`: Can list keys and get public keys
 - `cloudkms.signerVerifier`: Can sign data and verify signatures
 
@@ -242,12 +246,14 @@ Google Cloud KMS supports automatic key rotation:
 ### Automatic Rotation
 
 When a key rotates:
+
 1. Google creates a new CryptoKeyVersion
 2. New signatures use the new version
 3. Old versions remain active for verification
 4. JWKS endpoint publishes ALL active versions
 
 Our rotation policy:
+
 - **Production**: Every 90 days
 - **Development**: Manual only
 
@@ -321,7 +327,7 @@ export GCP_KMS_JWKS_KEYS="projects/PROJECT_ID/locations/australia-southeast1/key
 
 ```python
 import time
-from simplevalidations.validations.models import ValidationRun
+from validibot.validations.models import ValidationRun
 
 def create_credential_claims(validation_run: ValidationRun) -> dict:
     """Create JWT claims for a validation credential."""
@@ -473,6 +479,7 @@ cloudkms.googleapis.com/api/request_count (filtered by response_code >= 400)
 ### Audit Logging
 
 Review Cloud Audit Logs for:
+
 - Who accessed KMS keys (service accounts)
 - When keys were used for signing
 - Any failed authorization attempts
@@ -493,6 +500,7 @@ Google Cloud KMS pricing (as of 2025):
 - **Public Key Retrieval**: Free
 
 **Example Monthly Cost**:
+
 - 2 active key versions: $0.12/month
 - 10,000 credentials issued: $0.03/month
 - **Total**: ~$0.15/month
@@ -504,6 +512,7 @@ Significantly cheaper than AWS KMS ($1/key/month + $0.03/10k operations).
 See [ADR: AWS KMS to Google Cloud KMS Migration](../../adr/2025-12-04-kms-migration.md) for complete migration plan.
 
 **Key Steps**:
+
 1. Create Google Cloud KMS key
 2. Update Django code to use Google Cloud KMS SDK
 3. Deploy with both AWS and Google keys in JWKS (transition period)
@@ -517,6 +526,7 @@ See [ADR: AWS KMS to Google Cloud KMS Migration](../../adr/2025-12-04-kms-migrat
 **Cause**: `GCP_KMS_JWKS_KEYS` not set or service account lacks permissions
 
 **Solution**:
+
 ```bash
 # Verify environment variable
 echo $GCP_KMS_JWKS_KEYS
@@ -532,6 +542,7 @@ gcloud kms keys get-iam-policy credential-signing \
 **Cause**: Service account doesn't have `cloudkms.signerVerifier` role
 
 **Solution**:
+
 ```bash
 gcloud kms keys add-iam-policy-binding credential-signing \
   --location australia-southeast1 \
@@ -545,6 +556,7 @@ gcloud kms keys add-iam-policy-binding credential-signing \
 **Cause**: Public key not in JWKS or wrong algorithm
 
 **Solution**:
+
 1. Check JWKS endpoint manually: `curl https://app.validibot.com/.well-known/jwks.json`
 2. Verify `kid` in JWT header matches a key in JWKS
 3. Ensure verifier accepts ES256 algorithm

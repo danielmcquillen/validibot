@@ -82,7 +82,7 @@ We will implement invite-based signup with seat management as follows:
 Add seat tracking to `OrgQuota` (MVP) with a path to a dedicated `Subscription` model later:
 
 ```python
-# simplevalidations/billing/models.py
+# validibot/billing/models.py
 
 class OrgQuota(TimeStampedModel):
     """
@@ -152,10 +152,10 @@ Enforce seat limits at two points:
 #### 2.1 When Creating an Invite
 
 ```python
-# simplevalidations/members/services.py
+# validibot/members/services.py
 
 from django.core.exceptions import ValidationError
-from simplevalidations.billing.constants import SeatLimitError
+from validibot.billing.constants import SeatLimitError
 
 class InviteService:
     """
@@ -288,7 +288,7 @@ def accept(self, user: User | None = None, roles: list[str] | None = None) -> Me
 #### 3.1 URL Structure
 
 ```python
-# simplevalidations/users/urls.py (or accounts/urls.py)
+# validibot/users/urls.py (or accounts/urls.py)
 
 urlpatterns = [
     # Standard signup (creates personal workspace)
@@ -306,7 +306,7 @@ urlpatterns = [
 #### 3.2 View Implementation
 
 ```python
-# simplevalidations/users/views.py
+# validibot/users/views.py
 
 from django.views.generic import FormView
 from django.shortcuts import get_object_or_404, redirect
@@ -407,7 +407,7 @@ class InviteSignupView(FormView):
 #### 3.3 Form Implementation
 
 ```python
-# simplevalidations/users/forms.py
+# validibot/users/forms.py
 
 class InviteSignupForm(forms.Form):
     """
@@ -582,7 +582,7 @@ def ensure_personal_workspace(user: "User", *, force: bool = False) -> "Organiza
 When sending an invite to a non-existent user, include the signup link:
 
 ```python
-# simplevalidations/members/services.py
+# validibot/members/services.py
 
 def send_invite_email(invite: PendingInvite) -> None:
     """
@@ -628,7 +628,7 @@ def send_invite_email(invite: PendingInvite) -> None:
 Define a custom exception for seat limits:
 
 ```python
-# simplevalidations/billing/constants.py
+# validibot/billing/constants.py
 
 class SeatLimitError(Exception):
     """

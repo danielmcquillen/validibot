@@ -18,6 +18,7 @@ We run the same Django image as two Cloud Run services:
 - `APP_ROLE=worker` (private/IAM): API-only surface, including `/api/v1/validation-callbacks/`. Cloud Run IAM `roles/run.invoker` on the worker service gates access; validator jobs call back with an ID token minted from their service account.
 
 Implications:
+
 - `ENABLE_API` is ignored unless `APP_ROLE=worker`.
 - The callback view 404s on non-worker instances as a defense-in-depth guard.
 - Deploy web with `--allow-unauthenticated APP_ROLE=web`; deploy worker with `--no-allow-unauthenticated APP_ROLE=worker`.
@@ -32,6 +33,7 @@ Implications:
 ## Design Principles
 
 Per AGENTS.md and CLAUDE.md:
+
 - **Verbose and simple over clever tricks** - Straightforward code is better than complex patterns
 - **Elegant but not over-verbose** - Balance clarity with conciseness
 - **Django patterns** - Use standard Django approaches, document any advanced techniques
@@ -43,9 +45,9 @@ Per AGENTS.md and CLAUDE.md:
 ```
 User submits model
     ↓
-Validation Engine (simplevalidations/validations/engines/)
+Validation Engine (validibot/validations/engines/)
     ↓
-Cloud Run Service (new: simplevalidations/validations/services/cloud_run/)
+Cloud Run Service (new: validibot/validations/services/cloud_run/)
     ├── envelope_builder.py    # Creates typed input envelopes
     ├── gcs_client.py          # Uploads/downloads envelopes to GCS
     ├── job_client.py          # Triggers Cloud Run Jobs via Cloud Tasks
@@ -53,7 +55,7 @@ Cloud Run Service (new: simplevalidations/validations/services/cloud_run/)
     ↓
 Cloud Run Job Validator (validators/energyplus/)
     ↓
-Callback (new: simplevalidations/validations/api/callbacks.py)
+Callback (new: validibot/validations/api/callbacks.py)
     ↓
 Database updated with results
 ```
@@ -172,6 +174,7 @@ def build_input_envelope(
 ```
 
 **Why this design:**
+
 - Simple function calls, easy to understand
 - Each builder is independent and testable
 - Type hints make it clear what data is needed
@@ -261,6 +264,7 @@ def upload_file(
 ```
 
 **Why this design:**
+
 - Functions, not classes - simpler to test and use
 - Clear single responsibility
 - Reuses existing patterns from validators/shared/gcs_client.py
@@ -273,6 +277,7 @@ def upload_file(
 **Design Decision:** Use Cloud Tasks for async job triggering, not direct Cloud Run Jobs API.
 
 **Why Cloud Tasks:**
+
 - Built-in retry logic
 - Rate limiting
 - Better observability
@@ -333,6 +338,7 @@ def trigger_validator_job(
 ```
 
 **Why this design:**
+
 - Cloud Tasks handles retries automatically
 - Better observability via Cloud Tasks console
 - Can control rate limiting per queue
@@ -437,6 +443,7 @@ def test_validation_callback_success(api_client):
 ## Implementation Status
 
 **Phase 3 (Completed):**
+
 - ✅ envelope_builder.py - Creates typed input envelopes
 - ✅ gcs_client.py - Upload/download envelopes to GCS
 - ✅ job_client.py - Trigger Cloud Run Jobs via Cloud Tasks
@@ -446,6 +453,7 @@ def test_validation_callback_success(api_client):
 - ✅ Modal.com code removed (not needed - site not yet live)
 
 **Phase 4 (TODO):**
+
 - Update EnergyPlusValidationEngine to use Cloud Run Jobs
 - Create ValidationRun instances from workflow execution
 - Integrate envelope building with validation engine
@@ -454,6 +462,7 @@ def test_validation_callback_success(api_client):
 ## Alternatives Considered
 
 ### Alternative 1: Class-based service objects
+
 ```python
 class EnvelopeBuilder:
     def __init__(self, run):
@@ -465,6 +474,7 @@ class EnvelopeBuilder:
 **Rejected:** More complex, harder to test, adds unnecessary state.
 
 ### Alternative 2: Direct Cloud Run Jobs API
+
 ```python
 run_client.execute_job(job_name, env={"INPUT_URI": uri})
 ```
@@ -472,6 +482,7 @@ run_client.execute_job(job_name, env={"INPUT_URI": uri})
 **Rejected:** No retry logic, no rate limiting, harder to monitor.
 
 ### Alternative 3: Local secret signing
+
 ```python
 jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 ```
@@ -479,6 +490,7 @@ jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 **Rejected:** Requires storing and rotating secrets; Cloud Run IAM ID tokens remove that burden.
 
 ### Alternative 4: Feature flag for Modal.com migration
+
 ```python
 USE_CLOUD_RUN_JOBS = env.bool("USE_CLOUD_RUN_JOBS", default=False)
 if settings.USE_CLOUD_RUN_JOBS:
@@ -492,6 +504,7 @@ else:
 ## Decision
 
 Proceed with the proposed design:
+
 - Simple functions for envelope building and GCS helpers; rely on Cloud Run IAM for auth
 - Cloud Tasks for job triggering
 - DRF APIView for callbacks
@@ -500,23 +513,26 @@ Proceed with the proposed design:
 ## Consequences
 
 **Positive:**
+
 - Clear, maintainable code
 - Easy to test each component
 - Follows Django conventions
 - Simple to understand for future maintainers
 
 **Negative:**
+
 - More files than a single service class
 - Cloud IAM roles must be kept in sync across web/worker queues and validator jobs
 - Slightly more boilerplate than clever solutions
 
 **Neutral:**
+
 - Need to set up Cloud Tasks queue
 - Need to configure GCS bucket lifecycle
 
 ## Next Steps
 
-1. Create directory structure: `simplevalidations/validations/services/cloud_run/`
+1. Create directory structure: `validibot/validations/services/cloud_run/`
 2. Implement each service module with tests
 3. Add callback endpoint
 4. Update EnergyPlusValidationEngine with feature flag

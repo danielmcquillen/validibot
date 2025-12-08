@@ -138,7 +138,7 @@ We want to eventually offer regional deployments (AU, US, EU) for customers in d
 Looking at our codebase, we have these Celery tasks:
 
 ```python
-# simplevalidations/validations/tasks.py
+# validibot/validations/tasks.py
 @shared_task
 def execute_validation_run(validation_run_id, user_id, metadata):
     """Main task that executes a validation run."""
@@ -441,7 +441,7 @@ Added `django-cloud-tasks` package:
 3. **Create internal worker endpoints**:
 
    ```python
-   # simplevalidations/validations/views_internal.py
+   # validibot/validations/views_internal.py
    from django.views.decorators.csrf import csrf_exempt
    from django.http import JsonResponse
 
@@ -613,7 +613,7 @@ Added `django-cloud-tasks` package:
 3. **Update Django to Enqueue Tasks**:
 
    ```python
-   # simplevalidations/validations/services/task_queue.py
+   # validibot/validations/services/task_queue.py
    from google.cloud import tasks_v2
    from django.conf import settings
    import json
@@ -674,7 +674,7 @@ Added `django-cloud-tasks` package:
    New code:
 
    ```python
-   from simplevalidations.validations.services.task_queue import enqueue_validation_run
+   from validibot.validations.services.task_queue import enqueue_validation_run
 
    transaction.on_commit(lambda: enqueue_validation_run(
        validation_run_id=validation_run.id,
@@ -688,7 +688,7 @@ Added `django-cloud-tasks` package:
 3. **Worker Endpoint Views**:
 
    ```python
-   # simplevalidations/validations/views_internal.py
+   # validibot/validations/views_internal.py
 
    @csrf_exempt
    def run_validation(request, validation_run_id):
@@ -1221,7 +1221,7 @@ If fundamental issues require returning to Heroku:
 
 ### Events System
 
-Currently, `simplevalidations/events/` defines event types (`AppEventType`) but the models file is empty. Questions:
+Currently, `validibot/events/` defines event types (`AppEventType`) but the models file is empty. Questions:
 
 1. **Do we need a persistent event store?**
 
@@ -1298,9 +1298,9 @@ Not in scope for this migration, but architecture supports:
 
 1. `compose/production/django/Dockerfile` - Production Docker image
 2. `config/settings/gcp.py` - GCP-specific settings (or update `production.py`)
-3. `simplevalidations/validations/services/task_queue.py` - Cloud Tasks helpers
-4. `simplevalidations/validations/views_internal.py` - Worker endpoints
-5. `simplevalidations/validations/urls_internal.py` - Internal URL routes
+3. `validibot/validations/services/task_queue.py` - Cloud Tasks helpers
+4. `validibot/validations/views_internal.py` - Worker endpoints
+5. `validibot/validations/urls_internal.py` - Internal URL routes
 6. `cloudbuild.yaml` - Cloud Build configuration
 7. `docs/dev_docs/deployment/gcp.md` - GCP deployment guide
 
@@ -1308,8 +1308,8 @@ Not in scope for this migration, but architecture supports:
 
 1. `config/urls.py` - Add Cloud Tasks routes
 2. `config/settings/production.py` - GCP services configuration
-3. `simplevalidations/validations/services/validation_run.py` - Replace Celery with Cloud Tasks
-4. `simplevalidations/validations/tasks.py` - Deprecate, keep for reference
+3. `validibot/validations/services/validation_run.py` - Replace Celery with Cloud Tasks
+4. `validibot/validations/tasks.py` - Deprecate, keep for reference
 
 ### Files to Eventually Remove
 

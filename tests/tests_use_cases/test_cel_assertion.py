@@ -5,23 +5,23 @@ from pathlib import Path
 
 import pytest
 
-from simplevalidations.submissions.tests.factories import SubmissionFactory
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.validations.constants import AssertionOperator
-from simplevalidations.validations.constants import AssertionType
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.engines.basic import BasicValidatorEngine
-from simplevalidations.validations.models import ValidationRun
-from simplevalidations.validations.services.validation_run import ValidationRunService
-from simplevalidations.validations.tests.factories import RulesetAssertionFactory
-from simplevalidations.validations.tests.factories import RulesetFactory
-from simplevalidations.validations.tests.factories import ValidatorFactory
-from simplevalidations.workflows.tests.factories import WorkflowFactory
-from simplevalidations.workflows.tests.factories import WorkflowStepFactory
+from validibot.submissions.tests.factories import SubmissionFactory
+from validibot.users.constants import RoleCode
+from validibot.users.tests.factories import OrganizationFactory
+from validibot.users.tests.factories import UserFactory
+from validibot.users.tests.factories import grant_role
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
+from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationType
+from validibot.validations.engines.basic import BasicValidatorEngine
+from validibot.validations.models import ValidationRun
+from validibot.validations.services.validation_run import ValidationRunService
+from validibot.validations.tests.factories import RulesetAssertionFactory
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
 @pytest.mark.django_db(transaction=True)

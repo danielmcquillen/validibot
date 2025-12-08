@@ -51,16 +51,16 @@ See the [Go-Live Checklist](go-live-checklist.md) for pre-launch tasks.
 
 ## Config Vars Cheat Sheet
 
-| Key                        | Notes                                                                        |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `DJANGO_SECRET_KEY`        | Unique per environment; never reuse local keys.                              |
-| `DJANGO_ALLOWED_HOSTS`     | Comma-separated hosts, e.g. `simplevalidations.com,*.simplevalidations.com`. |
-| `DATABASE_URL`             | Managed by Postgres add-on.                                                  |
-| `REDIS_URL`                | Provided by Redis add-on; shared by Django cache and Celery.                 |
-| `DJANGO_AWS_*`             | S3 credentials and bucket info for media.                                    |
-| `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail.                               |
-| `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                                       |
-| `SENTRY_DSN`               | Optional but recommended.                                                    |
+| Key                        | Notes                                                        |
+| -------------------------- | ------------------------------------------------------------ |
+| `DJANGO_SECRET_KEY`        | Unique per environment; never reuse local keys.              |
+| `DJANGO_ALLOWED_HOSTS`     | Comma-separated hosts, e.g. `validibot.com,*.validibot.com`. |
+| `DATABASE_URL`             | Managed by Postgres add-on.                                  |
+| `REDIS_URL`                | Provided by Redis add-on; shared by Django cache and Celery. |
+| `DJANGO_AWS_*`             | S3 credentials and bucket info for media.                    |
+| `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail.               |
+| `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                       |
+| `SENTRY_DSN`               | Optional but recommended.                                    |
 
 Keep `_envs/production/django.env` updated with the canonical set; use it when
 you need to bootstrap a new Heroku app.

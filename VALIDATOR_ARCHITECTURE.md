@@ -15,7 +15,7 @@ This document describes the complete architecture for running validations using 
 ```
 validibot/
 ├── validibot/                    # Django app (Cloud Run Service)
-│   ├── simplevalidations/        # Main Django project
+│   ├── validibot/        # Main Django project
 │   └── ...
 │
 ├── vb_shared/                    # Shared schemas (Python package)
@@ -287,6 +287,7 @@ gcloud run deploy validibot \
 ```
 
 **Service Account Permissions:**
+
 - `roles/cloudstorage.objectAdmin` - Upload/download GCS files
 - `roles/cloudtasks.enqueuer` - Create Cloud Tasks
 - `roles/run.admin` - Trigger Cloud Run Jobs
@@ -312,6 +313,7 @@ gcloud run jobs create validibot-validator-energyplus \
 ```
 
 **Service Account Permissions:**
+
 - `roles/cloudstorage.objectAdmin` - Download inputs, upload outputs
 - `roles/run.invoker` - Self-invoke for retries (optional)
 
@@ -332,13 +334,16 @@ gsutil lifecycle set lifecycle.json gs://PROJECT-validator-bundles
 ```
 
 **Lifecycle policy (lifecycle.json):**
+
 ```json
 {
   "lifecycle": {
-    "rule": [{
-      "action": {"type": "Delete"},
-      "condition": {"age": 30}
-    }]
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": { "age": 30 }
+      }
+    ]
   }
 }
 ```
@@ -395,6 +400,7 @@ logger.info("Simulation complete", extra={
 ### Metrics
 
 Track in Cloud Monitoring:
+
 - Job execution duration (histogram)
 - Job success/failure rate (counter)
 - Callback latency (histogram)
@@ -403,6 +409,7 @@ Track in Cloud Monitoring:
 ### Alerting
 
 Alert on:
+
 - High job failure rate (>5% in 5min)
 - Long-running jobs (>1 hour)
 - Callback failures (>3 in 5min)
@@ -411,6 +418,7 @@ Alert on:
 ## Adding New Validator Types
 
 1. **Create envelope schemas** in `vb_shared/{domain}/`:
+
    ```python
    # vb_shared/xml/envelopes.py
    class XMLInputs(BaseModel):
@@ -422,12 +430,14 @@ Alert on:
    ```
 
 2. **Create validator container** in `validators/{domain}/`:
+
    - Copy `validators/energyplus/` as template
    - Update `Dockerfile` with domain-specific dependencies
    - Implement `runner.py` with validation logic
    - Update `main.py` to use your envelopes
 
 3. **Deploy container** as Cloud Run Job:
+
    ```bash
    gcloud builds submit --tag gcr.io/PROJECT/validibot-validator-xml validators/xml
    gcloud run jobs create validibot-validator-xml --image gcr.io/PROJECT/validibot-validator-xml ...

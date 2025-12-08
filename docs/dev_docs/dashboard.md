@@ -6,12 +6,12 @@ can ship additional widgets without revisiting the foundations each time.
 
 ## Architecture Overview
 
-- **Views** – `simplevalidations.dashboard.views.MyDashboardView` builds the
+- **Views** – `validibot.dashboard.views.MyDashboardView` builds the
   landing page, resolves the selected `time_range`, and queues the registered
   widgets for HTMX loading. `WidgetDetailView` is the single HTMX endpoint that
   renders widget bodies on demand using `TemplateResponse` so tests can easily
   inspect context.
-- **Widget registry** – `simplevalidations.dashboard.widgets.base` defines the
+- **Widget registry** – `validibot.dashboard.widgets.base` defines the
   `DashboardWidget` base-class, the registry, and validation during
   registration. Each widget subclass provides a slug, title, template, and
   `get_context_data` implementation. Built-ins live in
@@ -24,7 +24,7 @@ can ship additional widgets without revisiting the foundations each time.
   `build_chart_payload` shape ORM results into Chart.js config dictionaries and
   ensure gaps are zero-filled so the charts stay readable.
 
-The Django app auto-imports `simplevalidations.dashboard.widgets` in
+The Django app auto-imports `validibot.dashboard.widgets` in
 `DashboardConfig.ready()` to populate the registry during startup.
 
 ## Data Sources & Scoping
@@ -79,7 +79,7 @@ To add a new widget:
 1. Subclass `DashboardWidget`, populate the metadata, and implement
    `get_context_data`.
 2. Decorate the class with `@register_widget` inside a module that is imported
-   by `simplevalidations.dashboard.widgets`.
+   by `validibot.dashboard.widgets`.
 3. Create a template that extends `dashboard/widgets/base_widget.html`. Use the
    card structure to keep styling consistent.
 4. Prefer `dashboard.services.generate_time_series` and
@@ -91,14 +91,14 @@ To add new time ranges, edit `dashboard.time_ranges` and the select element in
 
 ## Testing
 
-`simplevalidations/dashboard/tests/test_views.py` exercises the HTMX endpoint
+`validibot/dashboard/tests/test_views.py` exercises the HTMX endpoint
 behaviour, org scoping, and aggregation logic. Use the existing factories and
 helpers when writing additional cases so test flows mirror production data
 relationships.
 
 ## Seeding Demo Data
 
-- Use `simplevalidations.tracking.sample_data.seed_sample_tracking_data()` when
+- Use `validibot.tracking.sample_data.seed_sample_tracking_data()` when
   tests need a handful of events without building full validation runs.
 - The `seed_tracking_events` management command wraps the helper so local
   development environments can populate meaningful dashboard data:

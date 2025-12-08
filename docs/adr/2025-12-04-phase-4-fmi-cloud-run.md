@@ -4,6 +4,7 @@
 **Owner:** Platform / Validation Runtime
 **Created:** 2025-12-04
 **Related ADRs:**
+
 - [2025-12-04: Validator Job Interface Contract](2025-12-04-validator-job-interface.md)
 - [2025-11-20: FMI Storage and Security Review](2025-11-20-fmi-storage-and-security-review.md)
 - [2025-11-17: FMI Validator](completed/2025-11-17-FMI-Validator.md)
@@ -25,11 +26,11 @@ The key value proposition: workflow authors can use FMUs to simulate building sy
 
 Understanding FMI validation requires understanding three distinct user journeys:
 
-| Role | What they do | Example |
-|------|--------------|---------|
-| **Validator Author** | Creates and configures the FMI validator by uploading an FMU, selecting which inputs/outputs to expose | An engineer uploads a heat pump FMU, exposes "outdoor_temp" as input and "COP" as output |
-| **Workflow Author** | Adds the FMI validator to a workflow step, binds inputs to submission fields, writes CEL assertions against outputs | Maps submission's "design_temperature" field to FMU's "outdoor_temp", adds assertion `COP > 3.0` |
-| **Workflow User** | Submits data to trigger the workflow, receives validation results | Submits a building design with design_temperature=-10°C, gets pass/fail based on COP assertion |
+| Role                 | What they do                                                                                                        | Example                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Validator Author** | Creates and configures the FMI validator by uploading an FMU, selecting which inputs/outputs to expose              | An engineer uploads a heat pump FMU, exposes "outdoor_temp" as input and "COP" as output         |
+| **Workflow Author**  | Adds the FMI validator to a workflow step, binds inputs to submission fields, writes CEL assertions against outputs | Maps submission's "design_temperature" field to FMU's "outdoor_temp", adds assertion `COP > 3.0` |
+| **Workflow User**    | Submits data to trigger the workflow, receives validation results                                                   | Submits a building design with design_temperature=-10°C, gets pass/fail based on COP assertion   |
 
 ---
 
@@ -42,15 +43,18 @@ Understanding FMI validation requires understanding three distinct user journeys
 **Steps:**
 
 1. **Create new FMI Validator** (Validator Library → New FMI Validator)
+
    - Enter name, description, project
    - Upload FMU file (e.g., `HeatPump.fmu`)
 
 2. **System introspects FMU**
+
    - Parses `modelDescription.xml` from the FMU ZIP
    - Extracts all `ScalarVariable` entries with causality (input/output/parameter)
    - Creates `FMIVariable` records for each variable
 
 3. **Select exposed variables**
+
    - Author sees all detected inputs and outputs
    - Selects which to expose in the validator catalog
    - For each exposed variable, a `ValidatorCatalogEntry` is created with:
@@ -61,6 +65,7 @@ Understanding FMI validation requires understanding three distinct user journeys
      - `is_hidden`: author can hide variables with default values
 
 4. **Run probe test**
+
    - Author provides test inputs (JSON)
    - Author provides expected outputs (JSON)
    - System runs short probe simulation via Cloud Run Job
@@ -72,6 +77,7 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Workflow authors can now add it to workflow steps
 
 **Data created:**
+
 - `Validator` (type=FMI, linked to FMUModel)
 - `FMUModel` (file stored in GCS, checksum, metadata)
 - `FMIVariable` (one per variable in modelDescription.xml)
@@ -85,14 +91,17 @@ Understanding FMI validation requires understanding three distinct user journeys
 **Steps:**
 
 1. **Add FMI step to workflow**
+
    - Workflow editor → Add Step → Select FMI validator
    - Step is created with reference to the validator
 
 2. **Review inputs/outputs** (no custom signals)
+
    - Inputs/outputs (and optional bindings) are defined by the validator author during FMU introspection. Workflow authors cannot add or rename signals.
    - For each required input catalog entry, the binding path is taken from the catalog entry. If no binding is provided, we default to matching the top-level submission key with the catalog slug (UI should remind authors of this default).
 
 3. **Create ruleset with assertions**
+
    - Create or select a Ruleset for this step
    - Write CEL assertions referencing output catalog entries:
      ```cel
@@ -106,6 +115,7 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Users can submit data to trigger validation runs
 
 **Data created/modified:**
+
 - `ValidatorCatalogEntry` rows define the exposed signals (inputs/outputs) for the validator (one per exposed FMU variable). These are created during validator authoring. Each input entry carries an optional binding path (submission field path). If omitted, the binding defaults to the catalog slug as a top-level submission key.
 - `Ruleset` (CEL assertions referencing catalog entry slugs)
 
@@ -116,14 +126,17 @@ Understanding FMI validation requires understanding three distinct user journeys
 **Steps:**
 
 1. **User submits data**
+
    - Uploads file or submits JSON via API
    - Creates `Submission` record
 
 2. **Workflow execution starts**
+
    - Creates `ValidationRun` (status=PENDING)
    - Creates `StepRun` for the FMI step (status=PENDING)
 
 3. **FMI engine prepares execution**
+
    - Resolves input values using catalog entry bindings (or slug-name defaults) against the submission payload. No per-step remapping.
    - Builds `FMIInputEnvelope` with:
      - FMU file URI (from FMUModel.gcs_uri or local path in dev)
@@ -135,6 +148,7 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Updates step status to RUNNING
 
 4. **Cloud Run Job executes** (async)
+
    - Downloads FMU from GCS
    - Runs FMPy simulation with inputs
    - Captures output values
@@ -145,9 +159,10 @@ Understanding FMI validation requires understanding three distinct user journeys
    - Verifies Google-signed ID token
    - Downloads `output.json` from GCS
    - Extracts output values → creates signal values in context
-  - Runs CEL assertions against outputs
-  - Updates `StepRun` with pass/fail and issues (persists messages as ValidationFindings and recomputes summaries)
-  - Updates `ValidationRun` status
+
+- Runs CEL assertions against outputs
+- Updates `StepRun` with pass/fail and issues (persists messages as ValidationFindings and recomputes summaries)
+- Updates `ValidationRun` status
 
 6. **User sees results**
    - Validation run shows pass/fail
@@ -161,11 +176,13 @@ Understanding FMI validation requires understanding three distinct user journeys
 ### 3.1 FMU Storage Migration (Modal → GCS)
 
 **New flow (GCS/local):**
+
 ```
 Upload FMU → Validate ZIP → Upload to GCS → Store gcs_uri
 ```
 
 **Model changes to FMUModel:**
+
 ```python
 class FMUModel(models.Model):
     # Existing fields remain
@@ -190,6 +207,7 @@ Execution-time policy: Cloud Run Jobs should read the FMU directly from this can
 Create `vb_shared/fmi/envelopes.py` following the EnergyPlus pattern:
 
 **FMIInputs (simulation configuration):**
+
 ```python
 class FMIInputs(BaseModel):
     """FMI simulation configuration parameters."""
@@ -216,6 +234,7 @@ class FMIInputs(BaseModel):
 ```
 
 **FMIOutputs (execution results):**
+
 ```python
 class FMIOutputs(BaseModel):
     """FMI simulation outputs and execution information."""
@@ -240,6 +259,7 @@ class FMIOutputs(BaseModel):
 ```
 
 **Input file roles:**
+
 ```python
 # Primary FMU file
 InputFileItem(
@@ -260,7 +280,7 @@ InputFileItem(
 
 ### 3.3 Envelope Builder
 
-Add to `simplevalidations/validations/services/cloud_run/envelope_builder.py`:
+Add to `validibot/validations/services/cloud_run/envelope_builder.py`:
 
 ```python
 def build_fmi_input_envelope(
@@ -299,7 +319,7 @@ def build_fmi_input_envelope(
 
 ### 3.4 Launcher Function
 
-Add to `simplevalidations/validations/services/cloud_run/launcher.py`:
+Add to `validibot/validations/services/cloud_run/launcher.py`:
 
 ```python
 def launch_fmi_validation(
@@ -332,7 +352,7 @@ def launch_fmi_validation(
 
 ### 3.6 FMI Engine Update
 
-Update `simplevalidations/validations/engines/fmi.py`:
+Update `validibot/validations/engines/fmi.py`:
 
 ```python
 @register_engine(ValidationType.FMI)
@@ -365,7 +385,7 @@ class FMIValidationEngine(BaseValidatorEngine):
                 stats={"status": "not_configured"},
             )
 
-        from simplevalidations.validations.services.cloud_run.launcher import (
+        from validibot.validations.services.cloud_run.launcher import (
             launch_fmi_validation,
         )
 
@@ -393,6 +413,7 @@ class FMIValidationEngine(BaseValidatorEngine):
 ### Step 1: Create FMI envelope schemas (vb_shared)
 
 Create `vb_shared/fmi/envelopes.py`:
+
 - `FMIInputs` - simulation configuration model
 - `FMIOutputs` - execution results model
 - `FMIInputEnvelope(ValidationInputEnvelope)` - typed input envelope
@@ -414,6 +435,7 @@ Add `build_fmi_input_envelope()` to envelope_builder.py following EnergyPlus pat
 ### Step 4: Implement FMI launcher (Django)
 
 Add `launch_fmi_validation()` to launcher.py:
+
 - Resolve input bindings
 - Upload FMU to GCS execution bundle (copy from FMUModel.gcs_uri)
 - Build envelope
@@ -463,11 +485,13 @@ Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way a
 ## 8. Testing Strategy
 
 ### Unit tests
+
 - FMI envelope serialization/deserialization
 - `build_fmi_input_envelope()` with mock data
 - `launch_fmi_validation()` with mocked GCS/Cloud Tasks
 
 ### Integration tests
+
 - FMU upload to GCS flow
 - End-to-end test with mocked Cloud Run Job callback
 
@@ -505,11 +529,13 @@ These questions have been resolved during ADR review:
 ## 11. Next Steps After Phase 4
 
 1. **Phase 4b: FMI Cloud Run Job Container**
+
    - Build container with FMPy
    - Implement envelope parsing
    - Test with real FMU simulations
 
 2. **Phase 4c: FMU Probe via Cloud Run**
+
    - Implement real probe using container
    - Update probe status flow
 

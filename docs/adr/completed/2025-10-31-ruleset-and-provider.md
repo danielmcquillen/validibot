@@ -236,7 +236,7 @@ class BaseValidatorEngine:
     validation_type: str
     version: str
     def resolve_provider(self):
-        from simplevalidations.providers.registry import get_provider
+        from validibot.providers.registry import get_provider
         return get_provider(self.validation_type, self.version)
 ```
 

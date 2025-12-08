@@ -2,7 +2,7 @@
 # ==== Project metadata ====
 
 [project]
-name = "simplevalidations"
+name = "validibot"
 version = "0.1.0"
 description = "A simple data validation service"
 readme = "README.md"
@@ -64,7 +64,7 @@ addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib"
 python_files = ["tests.py", "test_*.py"]
 testpaths = [
   "tests",
-  "simplevalidations",
+  "validibot",
 ] # exclude sibling dev repos (sv_modal_dev, vb_shared_dev) from discovery
 markers = [
   "integration: marks tests as integration (may require platform-specific binaries)",
@@ -80,7 +80,7 @@ norecursedirs = [
 
 # ==== Coverage ====
 [tool.coverage.run]
-include = ["simplevalidations/**"]
+include = ["validibot/**"]
 # We should run tests on sv_modal and vb_shared separately.
 omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "vb_shared_dev", "vb_validators_dev"]
 plugins = ["django_coverage_plugin"]

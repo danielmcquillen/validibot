@@ -42,7 +42,7 @@ Metrics to track for product-market fit: time-to-first-validated-run, validation
 
 Colleague 2
 
-Kicking things off: Validibot is a Django 6 + DRF backend with HTMx/Bootstrap UI, now pivoting from Celery to Cloud Run Jobs/Tasks for heavy lifting. Core domain lives in `simplevalidations/` (workflows, validations, engines), with shared integration code nearby (`vb_shared`/`sv_modal`). The new `validations/services/cloud_run/` layer (launcher, envelope builder, job client) is the bridge to GCP; `ValidationRunService` now runs inline and orchestrates steps, while HTMx views keep UX snappy. Tests sit under `tests/` plus app-level `simplevalidations/**/tests`.
+Kicking things off: Validibot is a Django 6 + DRF backend with HTMx/Bootstrap UI, now pivoting from Celery to Cloud Run Jobs/Tasks for heavy lifting. Core domain lives in `validibot/` (workflows, validations, engines), with shared integration code nearby (`vb_shared`/`sv_modal`). The new `validations/services/cloud_run/` layer (launcher, envelope builder, job client) is the bridge to GCP; `ValidationRunService` now runs inline and orchestrates steps, while HTMx views keep UX snappy. Tests sit under `tests/` plus app-level `validibot/**/tests`.
 
 Near-term delivery ideas: harden the Cloud Run job path (retries, id token auth, clearer status transitions), tighten probe and validator telemetry (structured logs + metrics per run), and add crisp API docs/schemas via drf-spectacular for partner integrations. On the UX side, make HTMx modals the default for validator CRUD, with real-time run progress fed by polling or server-sent events.
 
@@ -62,7 +62,7 @@ This is an incredibly rich roadmap. I want to zoom in on a few threads that I th
 
 **On the Three-Layer Architecture:**
 
-I love the runtime → orchestration → marketplace split. It maps cleanly to how we'd price and position. But there's a subtle question: where does the *intelligence* live? Right now, rulesets are essentially configuration - they define what validators to run and what thresholds to check. But the real competitive moat might be in making rulesets *smart*:
+I love the runtime → orchestration → marketplace split. It maps cleanly to how we'd price and position. But there's a subtle question: where does the _intelligence_ live? Right now, rulesets are essentially configuration - they define what validators to run and what thresholds to check. But the real competitive moat might be in making rulesets _smart_:
 
 - **Adaptive thresholds**: A ruleset that knows "this is a hospital in climate zone 4B" and automatically adjusts HVAC efficiency requirements
 - **Cross-validation inference**: "Your envelope U-values are compliant, but your window-to-wall ratio combined with orientation will likely fail Title 24 - here's why"
@@ -150,18 +150,21 @@ Great - let me get concrete on the stability sprint since that's the immediate b
 Looking at the current Cloud Run integration, here's what I'd prioritize:
 
 1. **Idempotent Callbacks** (Week 1)
+
    - Add a `callback_id` (UUID) to each job envelope
    - Store callback receipts in DB with unique constraint
    - Handler checks "have I seen this ID?" before processing
    - This prevents duplicate findings if Cloud Run retries delivery
 
 2. **Correlation IDs & Structured Logging** (Week 1-2)
+
    - Generate a `run_correlation_id` at job launch
    - Pass it through envelope → Cloud Run → callback
    - All log entries tagged with this ID
    - One-liner to grep all logs for a failed run: `gcloud logging read "labels.correlation_id=abc123"`
 
 3. **Error Categorization** (Week 2)
+
    - Define error taxonomy: `TIMEOUT`, `OOM`, `VALIDATION_EXCEPTION`, `SYSTEM_ERROR`
    - Cloud Run wrapper catches exceptions, categorizes, and includes in callback
    - UI shows human-friendly messages: "Your model took too long to simulate (>10 min). Try reducing zone count or simplifying schedules."
@@ -172,6 +175,7 @@ Looking at the current Cloud Run integration, here's what I'd prioritize:
    - Not fancy - just enough to debug a partner's failed job on a call
 
 **What We're NOT Doing This Sprint:**
+
 - Auto-retry (defer to v2 - need to think about idempotency of simulations)
 - Cost tracking (nice-to-have, not blocking)
 - SSE/WebSocket for real-time updates (HTMx polling is fine for now)
@@ -223,6 +227,7 @@ For Title 24, our wedge might be different - less about "assessor-ready bundle" 
 Right now, this feels like a 1-2 person operation. The stability sprint, NABERS starter pack, assessor listening sessions, Title 24 scoping - that's a lot. How do we think about sequencing vs. parallelism?
 
 My suggestion:
+
 - **Developer focus (you?)**: Stability sprint weeks 1-3, then NABERS ruleset refinement
 - **Business focus (partner?)**: Assessor listening sessions can happen during the sprint, Title 24 scoping call in week 3-4
 - **Shared**: Evidence bundle template - needs both technical (what's possible) and business (what assessors want) input
@@ -238,10 +243,11 @@ On the “debug a run” doc, let’s keep it concise and friendly—screenshots
 Title 24 wedge: agree the value is pre-submission hygiene. Maybe we start with a “CF1R sanity check” pack—validate cross-field consistency, required attachments, and a handful of gotchas that trigger rejections. That’s scoped enough to learn without boiling the ocean, and reuses our evidence bundle pattern.
 
 Resource reality: If bandwidth is tight, propose this order:
-1) Stability sprint (2–3 weeks, no distractions).
-2) NABERS bundle + assessor-ready doc (1 week polish, using stability gains).
-3) Parallel: one weekly partner call (assessor + US consultant) to collect requirements.
-4) Title 24 "sanity check" starter scoped from those calls.
+
+1. Stability sprint (2–3 weeks, no distractions).
+2. NABERS bundle + assessor-ready doc (1 week polish, using stability gains).
+3. Parallel: one weekly partner call (assessor + US consultant) to collect requirements.
+4. Title 24 "sanity check" starter scoped from those calls.
 
 That keeps momentum while avoiding too many half-finished threads.
 
@@ -313,15 +319,19 @@ That's a tight 2-3 weeks. Anything missing?
 Let me play devil's advocate. Here are the risks I'd want us to have answers for:
 
 1. **"Why not just run EnergyPlus locally?"**
+
    - The value isn't in running EnergyPlus - it's in the rulesets, evidence chain, and submission-ready output. But we need to articulate this clearly.
 
 2. **"CBECC-Com already does Title 24 compliance"**
+
    - True, but CBECC is a monolith. We're positioned as the validation/evidence layer that sits downstream of any simulation tool. Different value prop.
 
 3. **"What if NABERS changes their requirements?"**
+
    - Rulesets are versioned. We can publish a new version and let users choose. But we need to be fast - if NABERS releases new guidance and we're slow to update, trust erodes.
 
 4. **"What about liability?"**
+
    - If someone submits a Validibot-validated model and it's wrong, who's responsible? We need clear Terms of Service that position us as a tool, not a certifier. "Validibot helps you validate - you're still responsible for accuracy."
 
 5. **"This is a niche - where's the growth?"**
@@ -334,11 +344,12 @@ Colleague 2
 The stability checklist looks solid. Only minor add: make sure the Python example includes both polling and webhook variants so partners can copy/paste either path.
 
 Risks to add and counter:
-1) **Data handling/privacy**: Models can embed sensitive design data. We should state storage/retention clearly (e.g., auto-delete artifacts after X days, or offer a “no persistence” mode for drafts). That reassures enterprise and public-sector folks.
-2) **Runtime cost/latency**: If Cloud Run jobs get pricey or slow for large models, partners may balk. We should surface run duration in the operator view and consider a soft size guardrail (“expect longer/extra cost above N MB”). Longer term, think about tiering or “large job” warnings.
-3) **Support load**: A solo team can get swamped. The “debug a run” doc plus clearer error taxonomy helps, but we might also set expectations (response windows) and keep a tiny FAQ to deflect common issues.
-4) **API change management**: Versioning helps, but we should also write a short deprecation policy (even if informal) so partners trust us not to break them suddenly.
-5) **Jurisdictional drift**: Standards evolve. We should track a lightweight “ruleset currency” status (e.g., “Validated against NABERS 2025-01 guidance”) so customers see freshness at a glance.
+
+1. **Data handling/privacy**: Models can embed sensitive design data. We should state storage/retention clearly (e.g., auto-delete artifacts after X days, or offer a “no persistence” mode for drafts). That reassures enterprise and public-sector folks.
+2. **Runtime cost/latency**: If Cloud Run jobs get pricey or slow for large models, partners may balk. We should surface run duration in the operator view and consider a soft size guardrail (“expect longer/extra cost above N MB”). Longer term, think about tiering or “large job” warnings.
+3. **Support load**: A solo team can get swamped. The “debug a run” doc plus clearer error taxonomy helps, but we might also set expectations (response windows) and keep a tiny FAQ to deflect common issues.
+4. **API change management**: Versioning helps, but we should also write a short deprecation policy (even if informal) so partners trust us not to break them suddenly.
+5. **Jurisdictional drift**: Standards evolve. We should track a lightweight “ruleset currency” status (e.g., “Validated against NABERS 2025-01 guidance”) so customers see freshness at a glance.
 
 On the "why not local" objection: emphasize that we're not selling compute—we're selling curated rulesets, evidence-grade outputs, and a smoother submission path. Also, sandboxing third-party validators safely is non-trivial; Cloud Run isolation plus signed outputs is a differentiator.
 
@@ -351,6 +362,7 @@ These are excellent additions. Let me dig into a few of them since they have imm
 This is more urgent than it might seem. Government clients (think: state energy offices, public universities) often have strict data residency requirements. And even private firms may hesitate if they think their building designs are sitting on someone else's server indefinitely.
 
 Concrete actions:
+
 - **Default retention policy**: Auto-delete uploaded models and artifacts after 30 days. Keep findings/evidence bundles longer (they're the value).
 - **"Ephemeral mode"** for drafts: Model never touches disk, results returned inline, nothing persisted. Fast but no audit trail.
 - **Data residency**: For now, "data stays in GCP region X" is probably sufficient. True multi-region comes later if we land a government contract that demands it.
@@ -388,6 +400,7 @@ On data handling, let’s make the defaults explicit in product copy: 30-day ret
 Ruleset currency UX sounds great—badges plus a gentle upgrade prompt. Maybe also emit a “ruleset_version_used” in evidence bundles so assessors can see exactly what was applied.
 
 Near-term actionables from this round:
+
 - Write the short Privacy & Data Handling page (retention, region, ephemeral mode).
 - Add ruleset freshness fields and badges (even if static at first) and include version in evidence output.
 - For the Python example, include polling and webhook flows.
@@ -402,11 +415,13 @@ Good call on the regulator endorsement milestone - that's the kind of credibilit
 There are a few paths, each with different effort/payoff:
 
 1. **NABERS Administrator (NSW Office of Environment)**
+
    - Pitch: "We're building tooling to help assessors receive higher-quality, more consistent submissions"
    - Ask: Would they review our evidence bundle format? Would they consider a pilot where we validate submissions before they hit the official queue?
    - Timeline: Start conversation in Month 3-4, aim for pilot by Month 9
 
 2. **California Energy Commission (Title 24)**
+
    - Harder to crack - larger bureaucracy, more stakeholders
    - Better path might be through CBECC developers or a progressive building department (SF, LA)
    - Pitch: "Pre-submission validation reduces rejection rates and speeds permitting"
@@ -453,6 +468,7 @@ Signature: even a simple HMAC over the manifest with a server-held key is a good
 Regulator outreach: agree on NABERS first, utilities second. Let’s prepare a one-page “assessor bundle” explainer with the structure above and a short pitch on how it saves them rework. For utilities, the angle is “fewer back-and-forth cycles, faster incentive processing.”
 
 Scope guard for v1 bundle:
+
 - Required: manifest (metadata, hashes), findings (JSON + PDF), provenance (ruleset version, signature, timestamps).
 - Optional: inputs/outputs files; include only when user opts in (non-ephemeral, agrees to retention).
 - Size guardrails: if attachments exceed a threshold, store links rather than embedding.
@@ -470,13 +486,16 @@ Let me circle back to something we touched on earlier but didn't fully explore: 
 Right now, a finding might say: "LPD exceeds limit in Zone 3 (1.2 W/ft² vs 0.9 W/ft² allowed)". That's useful, but we can do better:
 
 1. **Severity + Confidence**: Is this a hard fail or a warning? How certain are we?
+
    - `FAIL` (blocks compliance), `WARNING` (may block depending on context), `INFO` (advisory)
 
 2. **Location in Model**: Where exactly is the problem?
+
    - Zone name, surface ID, schedule name - whatever the ruleset can extract
    - Ideally, a pointer to the IDF line number or object name
 
 3. **Remediation Guidance**: What should they do?
+
    - "Reduce LPD in Zone 3 by 0.3 W/ft² to meet the 0.9 W/ft² limit"
    - "Consider switching to LED fixtures (typical LPD: 0.6-0.7 W/ft²)"
 
@@ -566,14 +585,14 @@ Colleague 2
 
 Yes—here’s a concise action plan we can execute against:
 
-1) Stability sprint (2–3 weeks): idempotent callbacks; correlation IDs; structured logging/query; error taxonomy + friendly UI copy; minimal operator dashboard; “debug a run” doc; `/api/v1/` prefix; API key auth; drf-spectacular docs; Python example (polling + webhook); simple signed `callback_url`.
-2) Evidence bundle v1: manifest + findings (JSON/PDF) + provenance (ruleset_version, signature, timestamps); optional inputs/outputs based on retention/ephemeral mode; HMAC signature; include ruleset_version_used, valid_as_of, run_correlation_id.
-3) Findings UX/schema: fields for severity/category/location/measured/allowed/why_it_matters/remediation/next_check/code_reference/ruleset_version/run_correlation_id; hygiene/lint category; stable finding_id (hash of location/category/rule) for comparisons; PDF with one-page summary + detail pages.
-4) Data handling: default 30-day artifact retention; longer for findings/evidence; explicit region note; ephemeral draft mode (no persistence); document in a short Privacy & Data Handling page.
-5) Ruleset freshness: valid_as_of/optional expires_on; badges (Current/Update Available/Outdated); upgrade prompt; ruleset_version_used in evidence.
-6) API basics: versioned endpoints, API keys, docs, example with polling/webhook; light deprecation policy.
-7) Outreach: one-page “assessor bundle” explainer; start NABERS admin convo; approach a utility rebate program; line up a Title 24-friendly building dept/consultant for a scoping call.
-8) Sequencing: run stability sprint → ship NABERS bundle + assessor-ready doc → weekly partner calls (assessor + US consultant) → Title 24 “CF1R sanity check” starter → hygiene checks and findings/report refinements.
+1. Stability sprint (2–3 weeks): idempotent callbacks; correlation IDs; structured logging/query; error taxonomy + friendly UI copy; minimal operator dashboard; “debug a run” doc; `/api/v1/` prefix; API key auth; drf-spectacular docs; Python example (polling + webhook); simple signed `callback_url`.
+2. Evidence bundle v1: manifest + findings (JSON/PDF) + provenance (ruleset_version, signature, timestamps); optional inputs/outputs based on retention/ephemeral mode; HMAC signature; include ruleset_version_used, valid_as_of, run_correlation_id.
+3. Findings UX/schema: fields for severity/category/location/measured/allowed/why_it_matters/remediation/next_check/code_reference/ruleset_version/run_correlation_id; hygiene/lint category; stable finding_id (hash of location/category/rule) for comparisons; PDF with one-page summary + detail pages.
+4. Data handling: default 30-day artifact retention; longer for findings/evidence; explicit region note; ephemeral draft mode (no persistence); document in a short Privacy & Data Handling page.
+5. Ruleset freshness: valid_as_of/optional expires_on; badges (Current/Update Available/Outdated); upgrade prompt; ruleset_version_used in evidence.
+6. API basics: versioned endpoints, API keys, docs, example with polling/webhook; light deprecation policy.
+7. Outreach: one-page “assessor bundle” explainer; start NABERS admin convo; approach a utility rebate program; line up a Title 24-friendly building dept/consultant for a scoping call.
+8. Sequencing: run stability sprint → ship NABERS bundle + assessor-ready doc → weekly partner calls (assessor + US consultant) → Title 24 “CF1R sanity check” starter → hygiene checks and findings/report refinements.
 
 If this looks good, we can turn it into a checklist and start knocking items down.
 
@@ -639,11 +658,13 @@ Perfect. Backlog locked. Let's close this out with a summary for the record.
 **Beachhead**: NABERS Energy in Australia. Smaller market, less competition, strong regulatory push. Prove the model here, then expand to Title 24 and beyond.
 
 **3-Year Trajectory**:
+
 - Year 1: 5-10 NABERS customers, Title 24 starter pack, stable platform
 - Year 2: Title 24 traction, first portfolio customer, regulator endorsement
 - Year 3: Marketplace live, 50+ orgs, expansion to ASHRAE/EPBD
 
 **Key Decisions Made**:
+
 1. Three-layer architecture: runtime → orchestration → marketplace
 2. Draft/official pricing split (unlimited drafts, metered official runs)
 3. NABERS first, Title 24 parallel track, marketplace deferred
@@ -653,12 +674,14 @@ Perfect. Backlog locked. Let's close this out with a summary for the record.
 7. API-first: versioned endpoints, API keys, drf-spectacular docs
 
 **Immediate Next Steps**:
+
 1. Stability sprint (2-3 weeks) - 12 deliverables locked
 2. Assessor bundle one-pager + Privacy & Data Handling doc
 3. NABERS partner outreach
 4. Week 4: Demo to partners, collect feedback
 
 **What We're NOT Doing (v1)**:
+
 - Full marketplace
 - What-if parameter sweeps
 - Multi-region data residency

@@ -135,7 +135,7 @@ Each workflow is classified based on the compute intensity of its validators.
 This classification is recalculated whenever the workflow's validators change.
 
 ```python
-# simplevalidations/workflows/constants.py
+# validibot/workflows/constants.py
 
 class WorkflowType(models.TextChoices):
     """
@@ -153,7 +153,7 @@ class WorkflowType(models.TextChoices):
 Each validator has a `compute_tier` that indicates its resource intensity:
 
 ```python
-# simplevalidations/validations/constants.py
+# validibot/validations/constants.py
 
 class ComputeTier(models.TextChoices):
     """
@@ -177,7 +177,7 @@ class ComputeTier(models.TextChoices):
 | Any HIGH compute tier validator (AI, sim, etc.) | ADVANCED       |
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class Workflow(FeaturedImageMixin, TimeStampedModel):
 
@@ -267,7 +267,7 @@ As explained in the Context section, we use two different metering approaches be
 Basic workflows run on our fixed-cost Heroku infrastructure. We enforce hard monthly limits with configurable warning notifications:
 
 ```python
-# simplevalidations/billing/metering.py
+# validibot/billing/metering.py
 
 class BasicWorkflowLimitExceeded(Exception):
     """Raised when an org has exhausted their basic workflow quota."""
@@ -359,7 +359,7 @@ Credit-based metering tied to actual compute cost:
 #### Credit Calculation
 
 ```python
-# simplevalidations/billing/credits.py
+# validibot/billing/credits.py
 
 from enum import IntEnum
 from math import ceil
@@ -398,7 +398,7 @@ def calculate_credits_used(
 #### Credit Consumption Flow
 
 ```python
-# simplevalidations/billing/metering.py
+# validibot/billing/metering.py
 
 class AdvancedWorkflowMeter:
     """
@@ -504,7 +504,7 @@ Stripe Products:
 ### Subscription Model
 
 ```python
-# simplevalidations/billing/models.py
+# validibot/billing/models.py
 
 class PricingPlan(models.TextChoices):
     """Available pricing plans."""
@@ -538,7 +538,7 @@ class Subscription(TimeStampedModel):
     """
 
     org = models.OneToOneField(
-        "users.Organization",  # Lives in simplevalidations.users app
+        "users.Organization",  # Lives in validibot.users app
         on_delete=models.CASCADE,
         related_name="subscription",
     )
@@ -658,10 +658,10 @@ The existing OrgQuota model will be merged into Subscription. Subscription becom
 ### Organization Model Extension
 
 The billing system requires a few additions to the existing Organization model
-in `simplevalidations.users.models`:
+in `validibot.users.models`:
 
 ```python
-# simplevalidations/users/models.py (additions to existing Organization model)
+# validibot/users/models.py (additions to existing Organization model)
 
 class Organization(models.Model):
     """
@@ -679,8 +679,8 @@ class Organization(models.Model):
         creating one if it doesn't exist (for Free plan orgs that
         haven't gone through Stripe checkout).
         """
-        from simplevalidations.billing.models import UsageCounter
-        from simplevalidations.billing.plans import PLAN_LIMITS
+        from validibot.billing.models import UsageCounter
+        from validibot.billing.plans import PLAN_LIMITS
 
         today = timezone.now().date()
 
@@ -713,7 +713,7 @@ class Organization(models.Model):
 ### Plan Configuration
 
 ```python
-# simplevalidations/billing/plans.py
+# validibot/billing/plans.py
 
 from dataclasses import dataclass
 from typing import Optional
@@ -819,7 +819,7 @@ PLAN_LIMITS = {
 ### Stripe Webhook Handling
 
 ```python
-# simplevalidations/billing/webhooks.py
+# validibot/billing/webhooks.py
 
 import stripe
 from django.conf import settings
@@ -827,8 +827,8 @@ from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from simplevalidations.billing.models import Subscription
-from simplevalidations.billing.services import BillingService
+from validibot.billing.models import Subscription
+from validibot.billing.services import BillingService
 
 
 @csrf_exempt
@@ -977,7 +977,7 @@ Data residency rules: data stays in the org’s region unless a compute provider
 ### Checkout Flow
 
 ```python
-# simplevalidations/billing/services.py
+# validibot/billing/services.py
 
 import stripe
 from django.conf import settings
@@ -1004,8 +1004,8 @@ def get_billing_contact_email(org: Organization) -> str:
         return org.billing_email
 
     # Find owner membership
-    from simplevalidations.users.models import Membership
-    from simplevalidations.users.constants import RoleCode
+    from validibot.users.models import Membership
+    from validibot.users.constants import RoleCode
 
     owner_membership = Membership.objects.filter(
         org=org,
@@ -1214,12 +1214,12 @@ class BillingService:
 Features are enforced at multiple points:
 
 ```python
-# simplevalidations/billing/enforcement.py
+# validibot/billing/enforcement.py
 
 from functools import wraps
 from django.core.exceptions import PermissionDenied
 
-from simplevalidations.billing.plans import PLAN_LIMITS, PricingPlan
+from validibot.billing.plans import PLAN_LIMITS, PricingPlan
 
 
 class FeatureNotAvailable(PermissionDenied):
@@ -1333,7 +1333,7 @@ Each threshold fires once per billing period unless reset by a new period or by 
 ### Usage Tracking Model
 
 ```python
-# simplevalidations/billing/models.py
+# validibot/billing/models.py
 
 class UsageCounter(TimeStampedModel):
     """
@@ -1349,7 +1349,7 @@ class UsageCounter(TimeStampedModel):
     """
 
     org = models.ForeignKey(
-        "users.Organization",  # Lives in simplevalidations.users app
+        "users.Organization",  # Lives in validibot.users app
         on_delete=models.CASCADE,
         related_name="usage_counters",
     )
@@ -1401,9 +1401,9 @@ class UsageCounter(TimeStampedModel):
 ### Notification Service
 
 ```python
-# simplevalidations/billing/notifications.py
+# validibot/billing/notifications.py
 
-from simplevalidations.notifications.models import Notification
+from validibot.notifications.models import Notification
 
 
 # Default warning thresholds by plan (users can customize on Starter+)
@@ -1568,7 +1568,7 @@ This is documented in detail in ADR-2025-11-28-public-workflow-access.
 ### High-Compute Validator Tracking
 
 ```python
-# simplevalidations/billing/tracking.py
+# validibot/billing/tracking.py
 
 
 class ComputeUsageTracker:
@@ -1644,7 +1644,7 @@ This avoids polling and guarantees we meter every advanced run as soon as Modal 
 ### Validator Model Additions
 
 ```python
-# simplevalidations/validations/models.py
+# validibot/validations/models.py
 
 class Validator(TimeStampedModel):
     # ... existing fields ...

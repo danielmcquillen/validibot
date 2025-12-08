@@ -5,13 +5,13 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from simplevalidations.events.constants import AppEventType
-from simplevalidations.notifications.models import Notification
-from simplevalidations.tracking.constants import TrackingEventType
-from simplevalidations.tracking.models import TrackingEvent
-from simplevalidations.users.constants import RoleCode
-from simplevalidations.users.models import PendingInvite
-from simplevalidations.users.tests.factories import UserFactory
+from validibot.events.constants import AppEventType
+from validibot.notifications.models import Notification
+from validibot.tracking.constants import TrackingEventType
+from validibot.tracking.models import TrackingEvent
+from validibot.users.constants import RoleCode
+from validibot.users.models import PendingInvite
+from validibot.users.tests.factories import UserFactory
 
 
 @pytest.mark.django_db

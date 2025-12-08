@@ -7,7 +7,7 @@ validator callbacks.
 
 from django.urls import path
 
-from simplevalidations.validations.api.callbacks import ValidationCallbackView
+from validibot.validations.api.callbacks import ValidationCallbackView
 
 app_name = "api-internal"
 urlpatterns = [

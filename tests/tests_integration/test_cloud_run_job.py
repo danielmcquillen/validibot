@@ -373,7 +373,7 @@ class CloudRunJobIntegrationTest(TestCase):
         input_uri = self._upload_test_envelope(envelope)
 
         # Trigger the Cloud Run Job directly via Jobs API
-        from simplevalidations.validations.services.cloud_run.job_client import (
+        from validibot.validations.services.cloud_run.job_client import (
             run_validator_job,
         )
 

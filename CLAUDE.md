@@ -10,7 +10,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 
 ## Project Structure
 
-- `simplevalidations/` - Main Django application code
+- `validibot/` - Main Django application code
 - `config/` - Django settings and configuration
 - `docs/dev_docs/` - Developer documentation (start with `docs/dev_docs/index.md`)
 - `docs/user_docs/` - End-user documentation
@@ -61,36 +61,40 @@ uv run --extra dev pytest
 uv run --extra dev ruff check
 
 # Run type checker
-uv run --extra dev mypy simplevalidations
+uv run --extra dev mypy validibot
 ```
 
 ### Environment Files
 
-| Directory | Purpose | Used By |
-|-----------|---------|---------|
-| `_envs/` | Local development WITHOUT Docker | `set-env.sh`, direct `uv run` commands |
-| `.envs/` | Docker and cloud deployments | Docker Compose, GCP Secret Manager |
+| Directory | Purpose                          | Used By                                |
+| --------- | -------------------------------- | -------------------------------------- |
+| `_envs/`  | Local development WITHOUT Docker | `set-env.sh`, direct `uv run` commands |
+| `.envs/`  | Docker and cloud deployments     | Docker Compose, GCP Secret Manager     |
 
 **Never confuse these**: Always use `.envs/` for deployment, never `_envs/`.
 
 ## Django Conventions
 
 ### Forms
+
 - Default to Django Crispy Forms with crispy-bootstrap5
 - Use Bootstrap 5 styling
 - See `docs/dev_docs/how-to/add-a-form.md` for detailed guidance
 
 ### HTMx + Bootstrap Modal Pattern
+
 - Follow the two-template pattern documented in AGENTS.md
 - Use `innerHTML` swap, never `outerHTML` on modals
 - Return 200 status for validation errors (not 400)
 - Implement GET handler for fresh form content
 
 ### Constants
+
 - Define constants in `constants.py` using `TextChoices` or `Enum`
 - Never use string literals for comparisons
 
 ### Code Documentation
+
 - Follow Google Python Style Guide
 - All classes must have docstrings explaining purpose and context
 - Include examples where helpful
@@ -106,7 +110,7 @@ uv run --extra dev mypy simplevalidations
 ## Coding Standards
 
 - **Documentation**: All classes need docstrings explaining purpose and context (Google style)
-- **Code comments**: Explain *why* and *how it relates to wider context*, not just *what*
+- **Code comments**: Explain _why_ and _how it relates to wider context_, not just _what_
 - **Settings files**: Add explanatory comments for non-obvious configuration
 - Run `uv run --extra dev ruff check` before finishing any code changes
 - Always include trailing commas (avoid COM812 lint error)

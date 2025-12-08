@@ -102,7 +102,7 @@ JSON is pure data with no executable code. Python's `json.loads()` and DRF's bui
 | **Key spoofing**       | Disallow `__proto__`, `constructor` keys (relevant if data reaches JS)  |
 
 ```python
-# simplevalidations/core/validators.py
+# validibot/core/validators.py
 
 MAX_JSON_DEPTH = 20
 MAX_JSON_SIZE_BYTES = 1_048_576  # 1 MB
@@ -142,7 +142,7 @@ XML has historically been more dangerous due to entity expansion attacks (XXE, "
 | **Oversized payloads**          | Same size limits as JSON           |
 
 ```python
-# simplevalidations/core/validators.py
+# validibot/core/validators.py
 
 from defusedxml.ElementTree import fromstring as safe_xml_parse
 from defusedxml import DefusedXmlException
@@ -265,13 +265,13 @@ All API routes are scoped by organization slug to ensure clear ownership and quo
 
 ```bash
 # Authenticated user launching a workflow (Phase 1+)
-curl -X POST https://simplevalidations.com/api/v1/acme-corp/internal/workflows/123/start/ \
+curl -X POST https://validibot.com/api/v1/acme-corp/internal/workflows/123/start/ \
   -H "Authorization: Bearer sv_user_abc123..." \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 
 # Anonymous user launching a public workflow (Phase 2 only)
-curl -X POST https://simplevalidations.com/api/v1/acme-corp/public/workflows/abc123token/start/ \
+curl -X POST https://validibot.com/api/v1/acme-corp/public/workflows/abc123token/start/ \
   -H "Content-Type: application/json" \
   -d '{"input": {...}}'
 ```
@@ -287,12 +287,12 @@ urlpatterns = [
     # Phase 1+: Authenticated API (internal)
     path(
         "api/v1/<slug:org_slug>/internal/",
-        include("simplevalidations.api.internal.urls"),
+        include("validibot.api.internal.urls"),
     ),
     # Phase 2: Public API (anonymous, behind feature flag)
     path(
         "api/v1/<slug:org_slug>/public/",
-        include("simplevalidations.api.public.urls"),
+        include("validibot.api.public.urls"),
     ),
 ]
 ```
@@ -302,7 +302,7 @@ Public URLs use an **obfuscated token** (long random identifier) rather than the
 #### 1.3 New Workflow Fields
 
 ```python
-# simplevalidations/workflows/constants.py
+# validibot/workflows/constants.py
 
 class WorkflowAccessType(models.TextChoices):
     """
@@ -332,7 +332,7 @@ class PublicChannelMode(models.TextChoices):
 ```
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class Workflow(FeaturedImageMixin, TimeStampedModel):
     # ... existing fields ...
@@ -430,9 +430,9 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 #### 1.4 Access Check Logic
 
 ```python
-# simplevalidations/workflows/permissions.py
+# validibot/workflows/permissions.py
 
-from simplevalidations.workflows.constants import WorkflowAccessLevel
+from validibot.workflows.constants import WorkflowAccessLevel
 
 class WorkflowLaunchPermission:
     """
@@ -637,7 +637,7 @@ This is fair because:
 Implement rate limits at multiple levels to prevent abuse:
 
 ```python
-# simplevalidations/workflows/rate_limiting.py
+# validibot/workflows/rate_limiting.py
 
 from django.core.cache import cache
 from django.conf import settings
@@ -748,7 +748,7 @@ X-RateLimit-Reset: 1732800000
 Integrate Cloudflare Turnstile (privacy-friendly alternative to reCAPTCHA):
 
 ```python
-# simplevalidations/core/captcha.py
+# validibot/core/captcha.py
 
 import httpx
 from django.conf import settings
@@ -801,7 +801,7 @@ async def verify_turnstile_token(token: str, client_ip: str) -> bool:
 #### 4.2 Workflow-Level CAPTCHA Settings
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class CaptchaRequirement(models.TextChoices):
     """When to require CAPTCHA for public launches."""
@@ -829,7 +829,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 Add invisible honeypot fields to web forms:
 
 ```python
-# simplevalidations/workflows/forms.py
+# validibot/workflows/forms.py
 
 class PublicLaunchForm(forms.Form):
     """Form for public workflow launches with anti-spam measures."""
@@ -871,7 +871,7 @@ class PublicLaunchForm(forms.Form):
 For embedded forms, allow workflow authors to restrict submissions to specific referrer domains:
 
 ```python
-# simplevalidations/workflows/security.py
+# validibot/workflows/security.py
 
 from urllib.parse import urlparse
 
@@ -935,7 +935,7 @@ def check_domain_restriction(
 For API access, require a public API token (distinct from user API keys):
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class Workflow(FeaturedImageMixin, TimeStampedModel):
     # ... existing fields ...
@@ -987,7 +987,7 @@ This differs from the authenticated API:
 Track detailed metrics for public launches:
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class PublicLaunchMetrics(TimeStampedModel):
     """
@@ -1029,7 +1029,7 @@ class PublicLaunchMetrics(TimeStampedModel):
 #### 7.2 Anomaly Detection and Alerts
 
 ```python
-# simplevalidations/workflows/monitoring.py
+# validibot/workflows/monitoring.py
 
 class PublicUsageMonitor:
     """
@@ -1085,7 +1085,7 @@ def send_abuse_alert(workflow: Workflow, alerts: list[str]) -> None:
     """
     Notify the workflow owner of potential abuse.
     """
-    from simplevalidations.notifications.models import Notification
+    from validibot.notifications.models import Notification
 
     Notification.objects.create(
         user=workflow.user,
@@ -1106,7 +1106,7 @@ def send_abuse_alert(workflow: Workflow, alerts: list[str]) -> None:
 Extend `PublicWorkflowInfoView` to include the launch form:
 
 ```python
-# simplevalidations/workflows/views.py
+# validibot/workflows/views.py
 
 class PublicWorkflowInfoView(DetailView):
     """
@@ -1291,7 +1291,7 @@ Add public launch settings to the workflow edit form:
 #### 9.1 Dedicated Public ViewSet
 
 ```python
-# simplevalidations/workflows/views.py
+# validibot/workflows/views.py
 
 class PublicWorkflowLaunchViewSet(viewsets.ViewSet):
     """
@@ -1375,7 +1375,7 @@ class PublicWorkflowLaunchViewSet(viewsets.ViewSet):
 ```python
 # config/api_router.py
 
-from simplevalidations.workflows.views import PublicWorkflowLaunchViewSet
+from validibot.workflows.views import PublicWorkflowLaunchViewSet
 
 # Authenticated API
 router.register("workflows", WorkflowViewSet, basename="workflow")
@@ -1461,7 +1461,7 @@ WORKFLOW_PUBLIC_ACCESS_ENABLED = env.bool(
 **Enforcement:**
 
 ```python
-# simplevalidations/workflows/models.py
+# validibot/workflows/models.py
 
 class Workflow(FeaturedImageMixin, TimeStampedModel):
 
@@ -1634,14 +1634,14 @@ This allows the workflow author to search and select specific users who can acce
 ### API Routes (Phase 1)
 
 - [ ] Set up `/api/v1/<org_slug>/internal/` route namespace
-- [ ] Create `simplevalidations/api/internal/urls.py` with workflow endpoints
+- [ ] Create `validibot/api/internal/urls.py` with workflow endpoints
 - [ ] Ensure all internal API endpoints require authentication
 - [ ] Verify org slug matches authenticated user's org membership
 
 ### API Routes (Phase 2 - Public)
 
 - [ ] Set up `/api/v1/<org_slug>/public/` route namespace (behind feature flag)
-- [ ] Create `simplevalidations/api/public/urls.py` with public workflow endpoints
+- [ ] Create `validibot/api/public/urls.py` with public workflow endpoints
 - [ ] Public routes use obfuscated token instead of workflow ID
 - [ ] Public routes do NOT require authentication
 - [ ] Guard public routes with `WORKFLOW_PUBLIC_ACCESS_ENABLED` feature flag

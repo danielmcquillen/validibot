@@ -15,7 +15,7 @@ It records:
 
 ## Step Definitions (WorkflowStep)
 
-`WorkflowStep` rows (`simplevalidations/workflows/models.py:490-575`) describe the
+`WorkflowStep` rows (`validibot/workflows/models.py:490-575`) describe the
 authored workflow. Key relationships:
 
 - Each step belongs to a workflow and has an `order` field that determines the
@@ -35,7 +35,7 @@ authored workflow. Key relationships:
 
 ## Rulesets, Validators, and Actions
 
-- **Validators** (`simplevalidations/validations/models.py:562-760`) encapsulate a
+- **Validators** (`validibot/validations/models.py:562-760`) encapsulate a
   validation engine plus its catalog. They may declare a `default_ruleset` that
   ships with baseline assertions.
 - **Rulesets** capture the assertions that workflow authors want to execute for a
@@ -43,7 +43,7 @@ authored workflow. Key relationships:
   many workflows with different policies. Rulesets must match the validator’s
   `validation_type` (enforced in `WorkflowStep.clean()`), which keeps JSON steps
   from referencing XML rules, etc.
-- **Actions** (`simplevalidations/validations/models.py` subclasses under
+- **Actions** (`validibot/validations/models.py` subclasses under
   `Action`) represent non-validation steps. They persist their own structured
   configuration (Slack message body, certificate template, etc.) and are linked
   from `WorkflowStep.action`.

@@ -225,7 +225,7 @@ def set_content(
     - NONE: Store in Redis, mark is_ephemeral=True
     - DAYS_10/DAYS_30: Store in content/input_file as before
     """
-    from simplevalidations.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
+    from validibot.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
 
     # Compute content and checksum (same as before)
     if inline_text:
@@ -261,7 +261,7 @@ def get_content(self) -> str:
     - Persistent: Read from content or input_file
     """
     if self.is_ephemeral:
-        from simplevalidations.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
+        from validibot.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
         content = EphemeralSubmissionStorage.retrieve(self.id)
         if content is None:
             raise ValueError(
@@ -375,7 +375,7 @@ def execute(
 
         # NEW: Cleanup ephemeral submissions after execution
         if validation_run.submission.is_ephemeral:
-            from simplevalidations.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
+            from validibot.submissions.services.ephemeral_storage import EphemeralSubmissionStorage
             EphemeralSubmissionStorage.delete(validation_run.submission.id)
             logger.info(
                 "Deleted ephemeral content for submission %s",
@@ -399,8 +399,8 @@ from datetime import timedelta
 @shared_task
 def cleanup_expired_submissions():
     """Delete submission content that has exceeded retention period."""
-    from simplevalidations.submissions.models import Submission
-    from simplevalidations.workflows.models import SubmissionRetentionPolicy
+    from validibot.submissions.models import Submission
+    from validibot.workflows.models import SubmissionRetentionPolicy
 
     now = timezone.now()
 
@@ -449,7 +449,7 @@ def _delete_submission_content(submission: Submission):
 CELERY_BEAT_SCHEDULE = {
     # ... existing tasks ...
     'cleanup-expired-submissions': {
-        'task': 'simplevalidations.submissions.tasks.cleanup_expired_submissions',
+        'task': 'validibot.submissions.tasks.cleanup_expired_submissions',
         'schedule': crontab(hour=2, minute=0),  # Run daily at 2 AM
     },
 }

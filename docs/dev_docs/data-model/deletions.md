@@ -21,7 +21,7 @@ We treat Project / Workflow / WorkflowStep as definitions, and Validation / Vali
 ### Why Projects Track `deleted_at`
 
 Projects are the only definition model with both `is_active` **and** `deleted_at`
-(`simplevalidations/projects/models.py:92-186`) because organizations reshuffle
+(`validibot/projects/models.py:92-186`) because organizations reshuffle
 project boundaries frequently. We need to:
 
 - Hide inactive projects immediately (`is_active=False`) so workflows stop
@@ -31,7 +31,7 @@ project boundaries frequently. We need to:
   storage paths.
 
 Workflows and workflow steps, by contrast, are already versioned objects. They
-use an `is_active` flag (`simplevalidations/workflows/models.py:92-205`) plus
+use an `is_active` flag (`validibot/workflows/models.py:92-205`) plus
 `is_locked` to prevent edits but are never physically deleted; version history
 is part of the product. Validators follow the same pattern. If we ever need to
 retire a workflow entirely we mark it inactive (so it cannot execute) and rely

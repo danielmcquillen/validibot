@@ -8,16 +8,16 @@ Only the system administrator (the person with access to Django admin) can edit 
 - The project creates a single row (slug `default`). Leave the slug alone; edit the JSON field to adjust configuration.
 - When fields are missing or invalid, the application falls back to safe defaults and rewrites the stored JSON so everything stays normalized.
 
-All settings are loaded into typed Pydantic models (`simplevalidations/core/site_settings.py`), so consider this file the source of truth for available options.
+All settings are loaded into typed Pydantic models (`validibot/core/site_settings.py`), so consider this file the source of truth for available options.
 
 ## API Submission Policies
 
 Two knobs currently ship for managing workflow start requests:
 
-| Setting | Default | Purpose |
-| ------- | ------- | ------- |
+| Setting                   | Default | Purpose                                                                                                                                                                                   |
+| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `metadata_key_value_only` | `false` | When `true`, metadata submitted in Modes 2 and 3 must be a flat dictionary of scalar values (strings/numbers/bools/null). Nested lists or dicts trigger a `400 INVALID_PAYLOAD` response. |
-| `metadata_max_bytes` | `4096` | Maximum size (UTF-8 bytes) for stored metadata after the system adds derived keys (like `sha256`). Set to `0` to disable the limit. |
+| `metadata_max_bytes`      | `4096`  | Maximum size (UTF-8 bytes) for stored metadata after the system adds derived keys (like `sha256`). Set to `0` to disable the limit.                                                       |
 
 These settings apply to both JSON envelopes and multipart submissions. Raw-body Mode 1 currently ignores metadata because it does not accept metadata input.
 

@@ -1,6 +1,6 @@
 site_name: Validibot Developer Docs
 site_description: Internal documentation for Validibot contributors.
-site_url: https://danielmcquillen.github.io/simplevalidations/dev/
+site_url: https://danielmcquillen.github.io/validibot/dev/
 
 docs_dir: docs/dev_docs
 site_dir: docs_build/dev
@@ -8,8 +8,8 @@ use_directory_urls: true
 
 dev_addr: 127.0.0.1:9000
 
-repo_url: https://github.com/danielmcquillen/simplevalidations
-repo_name: danielmcquillen/simplevalidations
+repo_url: https://github.com/danielmcquillen/validibot
+repo_name: danielmcquillen/validibot
 
 theme:
   name: material
@@ -36,7 +36,7 @@ nav:
       - Quick Reference: quick_reference.md
       - Related Libraries: related_libraries.md
   - Cheat Sheets:
-      - Architecture: cheat_sheets/architecture-overview-simplevalidations-modal.md
+      - Architecture: cheat_sheets/architecture-overview-validibot-modal.md
   - Overview:
       - Platform Overview: overview/platform_overview.md
       - Terminology: overview/terminology.md

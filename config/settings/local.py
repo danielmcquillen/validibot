@@ -141,7 +141,7 @@ LONG_TASK_DELAY_SECONDS = env.int("LONG_TASK_DELAY_SECONDS", default=5)
 # ------------------------------------------------------------------------------
 # Make local development chatty so timing diagnostics show up immediately.
 LOGGING["root"]["level"] = "DEBUG"  # noqa: F405
-LOGGING["loggers"]["simplevalidations"] = {  # noqa: F405
+LOGGING["loggers"]["validibot"] = {  # noqa: F405
     "handlers": ["console"],
     "level": "DEBUG",
     "propagate": False,

@@ -10,18 +10,18 @@ from rest_framework.status import HTTP_200_OK
 from rest_framework.status import HTTP_201_CREATED
 from rest_framework.status import HTTP_202_ACCEPTED
 
-from simplevalidations.submissions.constants import SubmissionFileType
-from simplevalidations.users.models import RoleCode
-from simplevalidations.users.tests.factories import OrganizationFactory
-from simplevalidations.users.tests.factories import UserFactory
-from simplevalidations.users.tests.factories import grant_role
-from simplevalidations.validations.constants import ValidationRunStatus
-from simplevalidations.validations.constants import ValidationType
-from simplevalidations.validations.constants import XMLSchemaType
-from simplevalidations.validations.tests.factories import RulesetFactory
-from simplevalidations.validations.tests.factories import ValidatorFactory
-from simplevalidations.workflows.tests.factories import WorkflowFactory
-from simplevalidations.workflows.tests.factories import WorkflowStepFactory
+from validibot.submissions.constants import SubmissionFileType
+from validibot.users.models import RoleCode
+from validibot.users.tests.factories import OrganizationFactory
+from validibot.users.tests.factories import UserFactory
+from validibot.users.tests.factories import grant_role
+from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationType
+from validibot.validations.constants import XMLSchemaType
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
 
 logger = logging.getLogger(__name__)
 

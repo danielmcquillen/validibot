@@ -235,12 +235,12 @@ LOGGING = {
             "handlers": ["console"],
             "propagate": False,
         },
-        "simplevalidations.users": {
+        "validibot.users": {
             "level": "INFO",
             "handlers": ["console"],
             "propagate": False,
         },
-        "simplevalidations.validations": {
+        "validibot.validations": {
             "level": "INFO",
             "handlers": ["console"],
             "propagate": False,
@@ -273,7 +273,7 @@ sentry_sdk.init(
 # Tools that generate code samples can use SERVERS to point to the correct domain
 SPECTACULAR_SETTINGS["SERVERS"] = [
     {
-        "url": "https://simplevalidationsvalidator.com",
+        "url": "https://validibotvalidator.com",
         "description": "Production server",
     },
 ]
@@ -301,4 +301,4 @@ GCS_FMI_JOB_NAME = env(
     "GCS_FMI_JOB_NAME",
     default="validibot-validator-fmi",
 )
-SITE_URL = env("SITE_URL", default="https://simplevalidationsvalidator.com")
+SITE_URL = env("SITE_URL", default="https://validi.com")

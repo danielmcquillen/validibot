@@ -10,9 +10,9 @@ from django.conf import settings
 from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
-from simplevalidations.users.api.views import UserViewSet
-from simplevalidations.validations.views import ValidationRunViewSet
-from simplevalidations.workflows.views import WorkflowViewSet
+from validibot.users.api.views import UserViewSet
+from validibot.validations.views import ValidationRunViewSet
+from validibot.workflows.views import WorkflowViewSet
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 

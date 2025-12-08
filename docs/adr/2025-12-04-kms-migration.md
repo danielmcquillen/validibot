@@ -18,7 +18,7 @@ We currently use **AWS KMS** to sign validation credentials (JWT badges):
 - **AWS KMS Key**: Multi-region key with alias `alias/sv-credential-signing-prod`
 - **Algorithm**: ECDSA with P-256 curve (ES256 JWTs)
 - **Region**: `us-west-1` (primary), replicated to `ap-southeast-2`
-- **Code**: `simplevalidations/core/jwks.py` uses `boto3` to interact with AWS KMS
+- **Code**: `validibot/core/jwks.py` uses `boto3` to interact with AWS KMS
 - **JWKS Endpoint**: `/.well-known/jwks.json` publishes public keys for signature verification
 
 ### Why Migrate?
@@ -38,6 +38,7 @@ We will **completely replace** AWS KMS with Google Cloud KMS for all credential 
 ### Migration Strategy
 
 **Gradual cutover with dual-key publication**:
+
 1. Create Google Cloud KMS key
 2. Update code to support both AWS and Google Cloud KMS
 3. Publish BOTH keys in JWKS endpoint (transition period)
@@ -152,6 +153,7 @@ gcloud kms keys add-iam-policy-binding credential-signing-dev \
 ```
 
 **Deliverables**:
+
 - ✅ Production KMS key created in `australia-southeast1`
 - ✅ Development KMS key created
 - ✅ Service accounts granted appropriate IAM roles
@@ -179,6 +181,7 @@ dependencies = [
 ```
 
 Run:
+
 ```bash
 uv lock
 uv sync
@@ -186,7 +189,7 @@ uv sync
 
 #### Step 2.2: Create New Google Cloud KMS Module
 
-**File**: `simplevalidations/core/gcp_kms.py` (NEW)
+**File**: `validibot/core/gcp_kms.py` (NEW)
 
 ```python
 """Google Cloud KMS integration for credential signing."""
@@ -313,7 +316,7 @@ def sign_data(key_resource_name: str, data: bytes) -> bytes:
 
 #### Step 2.3: Update JWKS Module to Support Both Providers
 
-**File**: `simplevalidations/core/jwks.py`
+**File**: `validibot/core/jwks.py`
 
 ```python
 # core/jwks.py
@@ -345,7 +348,7 @@ def get_jwks_keys() -> list[dict]:
     # Google Cloud KMS keys (preferred)
     gcp_keys = getattr(settings, "GCP_KMS_JWKS_KEYS", [])
     if gcp_keys:
-        from simplevalidations.core.gcp_kms import jwk_from_gcp_key
+        from validibot.core.gcp_kms import jwk_from_gcp_key
 
         for key_name in gcp_keys:
             try:
@@ -362,7 +365,7 @@ def get_jwks_keys() -> list[dict]:
     if aws_keys:
         try:
             import boto3
-            from simplevalidations.core.aws_kms import jwk_from_kms_key
+            from validibot.core.aws_kms import jwk_from_kms_key
 
             for key_id in aws_keys:
                 try:
@@ -381,7 +384,7 @@ def get_jwks_keys() -> list[dict]:
 
 #### Step 2.4: Rename and Preserve AWS KMS Code
 
-**File**: `simplevalidations/core/aws_kms.py` (RENAME from `jwks.py`)
+**File**: `validibot/core/aws_kms.py` (RENAME from `jwks.py`)
 
 Move the existing AWS KMS code to a separate module for the transition period:
 
@@ -442,11 +445,11 @@ def jwk_from_kms_key(key_id_or_alias: str, alg: str):
 
 #### Step 2.5: Update JWKS View
 
-**File**: `simplevalidations/marketing/views.py` (or wherever JWKS view is)
+**File**: `validibot/marketing/views.py` (or wherever JWKS view is)
 
 ```python
 from django.http import JsonResponse
-from simplevalidations.core.jwks import get_jwks_keys
+from validibot.core.jwks import get_jwks_keys
 
 
 def jwks_view(request):
@@ -505,6 +508,7 @@ AWS_KMS_JWKS_KEYS = []
 ```
 
 **Deliverables**:
+
 - ✅ New `gcp_kms.py` module created
 - ✅ Updated `jwks.py` to support both providers
 - ✅ AWS code moved to `aws_kms.py`
@@ -567,6 +571,7 @@ gcloud run services logs read validibot-web \
 ```
 
 **Deliverables**:
+
 - ✅ Staging deployment successful
 - ✅ JWKS publishes both AWS and GCP keys
 - ✅ Production deployment successful
@@ -580,9 +585,10 @@ gcloud run services logs read validibot-web \
 
 #### Step 4.1: Update Signing Code to Use Google Cloud KMS
 
-**File**: `simplevalidations/validations/services/credential.py` (or wherever signing happens)
+**File**: `validibot/validations/services/credential.py` (or wherever signing happens)
 
 Before:
+
 ```python
 # OLD: Using AWS KMS
 import boto3
@@ -595,9 +601,10 @@ def sign_credential(claims: dict) -> str:
 ```
 
 After:
+
 ```python
 # NEW: Using Google Cloud KMS
-from simplevalidations.core.gcp_kms import sign_data
+from validibot.core.gcp_kms import sign_data
 from django.conf import settings
 
 def sign_credential(claims: dict) -> str:
@@ -637,6 +644,7 @@ gcloud monitoring time-series list \
 ```
 
 **Deliverables**:
+
 - ✅ All new credentials signed with Google Cloud KMS
 - ✅ AWS KMS no longer used for signing
 - ✅ JWKS still publishes both keys (for existing credentials)
@@ -666,11 +674,13 @@ unset AWS_DEFAULT_REGION
 ```
 
 Deploy:
+
 ```bash
 just gcp-deploy
 ```
 
 Verify:
+
 ```bash
 # JWKS should only show GCP key
 curl https://app.validibot.com/.well-known/jwks.json | jq '.keys | length'
@@ -681,7 +691,7 @@ curl https://app.validibot.com/.well-known/jwks.json | jq '.keys | length'
 
 ```bash
 # Delete AWS KMS module
-rm simplevalidations/core/aws_kms.py
+rm validibot/core/aws_kms.py
 
 # Update jwks.py to remove AWS support
 # (Remove aws_keys logic)
@@ -723,6 +733,7 @@ aws kms schedule-key-deletion \
 ```
 
 **Deliverables**:
+
 - ✅ AWS code and dependencies removed
 - ✅ JWKS only publishes Google Cloud KMS key
 - ✅ Documentation updated
@@ -734,12 +745,12 @@ aws kms schedule-key-deletion \
 
 ### Unit Tests
 
-**File**: `simplevalidations/core/tests/test_gcp_kms.py` (NEW)
+**File**: `validibot/core/tests/test_gcp_kms.py` (NEW)
 
 ```python
 import pytest
 from unittest.mock import Mock, patch
-from simplevalidations.core.gcp_kms import (
+from validibot.core.gcp_kms import (
     jwk_from_gcp_key,
     sign_data,
     kid_from_der,
@@ -748,7 +759,7 @@ from simplevalidations.core.gcp_kms import (
 
 @pytest.fixture
 def mock_kms_client():
-    with patch("simplevalidations.core.gcp_kms.kms.KeyManagementServiceClient") as mock:
+    with patch("validibot.core.gcp_kms.kms.KeyManagementServiceClient") as mock:
         yield mock.return_value
 
 
@@ -759,7 +770,7 @@ def test_get_public_key_der(mock_kms_client):
     mock_response.pem = b"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
     mock_kms_client.get_public_key.return_value = mock_response
 
-    from simplevalidations.core.gcp_kms import get_public_key_der
+    from validibot.core.gcp_kms import get_public_key_der
 
     der = get_public_key_der("projects/test/locations/us/keyRings/test/cryptoKeys/test")
 
@@ -787,7 +798,7 @@ def test_sign_data(mock_kms_client):
 
 ### Integration Tests
 
-**File**: `simplevalidations/core/tests/test_jwks_integration.py`
+**File**: `validibot/core/tests/test_jwks_integration.py`
 
 ```python
 import pytest
@@ -902,17 +913,20 @@ No rollback possible. If Google Cloud KMS fails:
 ### Key Metrics to Monitor
 
 1. **KMS Request Success Rate**
+
    ```
    cloudkms.googleapis.com/api/request_count
    (filter: response_code < 400)
    ```
 
 2. **KMS Request Latency**
+
    ```
    cloudkms.googleapis.com/api/request_latencies
    ```
 
 3. **JWKS Endpoint Availability**
+
    ```
    Cloud Monitoring uptime check on /.well-known/jwks.json
    ```
@@ -933,13 +947,13 @@ No rollback possible. If Google Cloud KMS fails:
 
 ## Timeline Summary
 
-| Phase | Duration | Status |
-|-------|----------|--------|
-| Phase 1: Infrastructure Setup | Day 1 | Not Started |
-| Phase 2: Code Migration | Days 1-2 | Not Started |
-| Phase 3: Transition Deployment | Day 2 | Not Started |
-| Phase 4: Cutover to GCP | Day 3 | Not Started |
-| Phase 5: AWS Sunset | Day 90+ | Not Started |
+| Phase                          | Duration | Status      |
+| ------------------------------ | -------- | ----------- |
+| Phase 1: Infrastructure Setup  | Day 1    | Not Started |
+| Phase 2: Code Migration        | Days 1-2 | Not Started |
+| Phase 3: Transition Deployment | Day 2    | Not Started |
+| Phase 4: Cutover to GCP        | Day 3    | Not Started |
+| Phase 5: AWS Sunset            | Day 90+  | Not Started |
 
 **Total Migration Time**: 3 days active work + 90-day transition period
 

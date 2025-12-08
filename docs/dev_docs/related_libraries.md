@@ -13,7 +13,7 @@ sv_modal installs vb_shared via a github reference. Do not change this. When vb_
 
 ## vb_shared
 
-`vb_shared` defines payload schemas, enums, and helpers used by both the Django app and Modal workers. When implementing features in `simplevalidations`:
+`vb_shared` defines payload schemas, enums, and helpers used by both the Django app and Modal workers. When implementing features in `validibot`:
 
 - Inspect the authoritative models (for example, `../vb_shared/energyplus/models.py`) before changing serializers or engine payloads.
 - If a contract change is required, update `vb_shared` first, publish a compatible version, and run `uv lock --upgrade-package vb-shared && uv sync` in this project.
@@ -21,10 +21,10 @@ sv_modal installs vb_shared via a github reference. Do not change this. When vb_
 
 ## sv_modal
 
-`sv_modal` hosts the Modal.com workflow runners. Engines in `simplevalidations` (such as `EnergyPlusEngine`) communicate with this project via API calls, queues, or job triggers defined there.
+`sv_modal` hosts the Modal.com workflow runners. Engines in `validibot` (such as `EnergyPlusEngine`) communicate with this project via API calls, queues, or job triggers defined there.
 
 - Before editing engine code, review the corresponding handler in `../sv_modal` to confirm expected input/output contracts.
-- When adding new engine features, implement and test the Modal-side worker in `sv_modal` first, then update `simplevalidations` to call the new behavior.
+- When adding new engine features, implement and test the Modal-side worker in `sv_modal` first, then update `validibot` to call the new behavior.
 - Capture any cross-repo assumptions in docstrings or comments so future developers know where to look if behavior changes.
 
 ## Working Across Repos

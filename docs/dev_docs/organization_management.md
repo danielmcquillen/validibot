@@ -58,6 +58,6 @@ management links.
   “Manage organizations” and “Manage projects”.
 - Non-admins only see the picker and their standard navigation items.
 
-See the tests under `simplevalidations/users/tests/test_organization_management.py`
-and `simplevalidations/projects/tests/test_project_management.py` for examples of
+See the tests under `validibot/users/tests/test_organization_management.py`
+and `validibot/projects/tests/test_project_management.py` for examples of
 expected behaviour and permission boundaries.

@@ -200,7 +200,7 @@ class IdempotencyKey(models.Model):
 We'll implement this as a DRF mixin that can be applied to any ViewSet action:
 
 ```python
-# simplevalidations/core/idempotency.py
+# validibot/core/idempotency.py
 
 class IdempotencyMixin:
     """

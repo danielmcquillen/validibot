@@ -36,9 +36,7 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from django.test import TestCase
 
-from simplevalidations.validations.services.cloud_run.job_client import (
-    run_validator_job,
-)
+from validibot.validations.services.cloud_run.job_client import run_validator_job
 
 # Configure logging for verbose test output
 logger = logging.getLogger(__name__)

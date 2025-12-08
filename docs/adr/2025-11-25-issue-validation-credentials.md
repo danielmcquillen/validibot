@@ -87,10 +87,10 @@ We will:
    {
      "@context": [
        "https://www.w3.org/ns/credentials/v2",
-       "https://www.simplevalidations.com/credentials/validation/v1"
+       "https://www.validibot.com/credentials/validation/v1"
      ],
      "type": ["VerifiableCredential", "ValidationCredential"],
-     "issuer": "https://www.simplevalidations.com/issuers/platform",
+     "issuer": "https://www.validibot.com/issuers/platform",
      "issuanceDate": "2025-11-25T12:34:56Z",
      "credentialSubject": {
        "id": "urn:sv:submission:<submission_ulid>",
@@ -118,7 +118,7 @@ We will:
        }
      },
      "credentialStatus": {
-       "id": "https://www.simplevalidations.com/credentials/status/<credential_ulid>",
+       "id": "https://www.validibot.com/credentials/status/<credential_ulid>",
        "type": "ValidibotStatusList2025"
      }
    }
@@ -266,14 +266,14 @@ For the January alpha, we explicitly do not implement:
 
 ### Services and libraries
 
-- Add a `credentials` service module, e.g. `simplevalidations/credentials/services.py`, that handles:
+- Add a `credentials` service module, e.g. `validibot/credentials/services.py`, that handles:
 
   - `build_vc_payload(run, step_run, action)` – builds the VC JSON structure.
   - `sign_vc_payload(vc_payload)` – uses AWS KMS `Sign` API and a JOSE library to produce a JWS string with `kid` referencing the KMS key.
   - `issue_credential(run, step_run, action)` – composes the above, creates `IssuedCredential`, and returns it.
 
 - Reuse existing JWKS code:
-  - `simplevalidations.core.jwks.jwk_from_kms_key` to export public key(s).
+  - `validibot.core.jwks.jwk_from_kms_key` to export public key(s).
   - `/.well-known/jwks.json` to publish the current and past signing keys with their `kid`s.
 
 ### Execution flow
@@ -332,10 +332,10 @@ For the MVP, we adopt these rules:
 
 1. **Per-organization issuers**
 
-   - MVP uses a single `issuer` (`https://www.simplevalidations.com/issuers/platform`).
+   - MVP uses a single `issuer` (`https://www.validibot.com/issuers/platform`).
    - Later, we may introduce:
      - `IssuerKey` model per org.
-     - Org-specific issuer IDs and JWKS endpoints (e.g. `https://org.simplevalidations.com/.well-known/jwks.json`).
+     - Org-specific issuer IDs and JWKS endpoints (e.g. `https://org.validibot.com/.well-known/jwks.json`).
 
 2. **Additional VC representations**
 

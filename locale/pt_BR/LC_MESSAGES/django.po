@@ -11,56 +11,56 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
-#: simplevalidations/templates/account/account_inactive.html:5
-#: simplevalidations/templates/account/account_inactive.html:8
+#: validibot/templates/account/account_inactive.html:5
+#: validibot/templates/account/account_inactive.html:8
 msgid "Account Inactive"
 msgstr "Conta Inativa"
 
-#: simplevalidations/templates/account/account_inactive.html:10
+#: validibot/templates/account/account_inactive.html:10
 msgid "This account is inactive."
 msgstr "Esta conta está inativa."
 
-#: simplevalidations/templates/account/email.html:7
+#: validibot/templates/account/email.html:7
 msgid "Account"
 msgstr "Conta"
 
-#: simplevalidations/templates/account/email.html:10
+#: validibot/templates/account/email.html:10
 msgid "E-mail Addresses"
 msgstr "Endereços de E-mail"
 
-#: simplevalidations/templates/account/email.html:13
+#: validibot/templates/account/email.html:13
 msgid "The following e-mail addresses are associated with your account:"
 msgstr "Os seguintes endereços de e-mail estão associados à sua conta:"
 
-#: simplevalidations/templates/account/email.html:27
+#: validibot/templates/account/email.html:27
 msgid "Verified"
 msgstr "Verificado"
 
-#: simplevalidations/templates/account/email.html:29
+#: validibot/templates/account/email.html:29
 msgid "Unverified"
 msgstr "Não verificado"
 
-#: simplevalidations/templates/account/email.html:31
+#: validibot/templates/account/email.html:31
 msgid "Primary"
 msgstr "Primário"
 
-#: simplevalidations/templates/account/email.html:37
+#: validibot/templates/account/email.html:37
 msgid "Make Primary"
 msgstr "Tornar Primário"
 
-#: simplevalidations/templates/account/email.html:38
+#: validibot/templates/account/email.html:38
 msgid "Re-send Verification"
 msgstr "Reenviar verificação"
 
-#: simplevalidations/templates/account/email.html:39
+#: validibot/templates/account/email.html:39
 msgid "Remove"
 msgstr "Remover"
 
-#: simplevalidations/templates/account/email.html:46
+#: validibot/templates/account/email.html:46
 msgid "Warning:"
 msgstr "Aviso:"
 
-#: simplevalidations/templates/account/email.html:46
+#: validibot/templates/account/email.html:46
 msgid ""
 "You currently do not have any e-mail address set up. You should really add "
 "an e-mail address so you can receive notifications, reset your password, etc."
@@ -69,24 +69,24 @@ msgstr ""
 "realmente deve adicionar um endereço de e-mail para receber notificações, "
 "redefinir sua senha etc."
 
-#: simplevalidations/templates/account/email.html:51
+#: validibot/templates/account/email.html:51
 msgid "Add E-mail Address"
 msgstr "Adicionar Endereço de E-mail"
 
-#: simplevalidations/templates/account/email.html:56
+#: validibot/templates/account/email.html:56
 msgid "Add E-mail"
 msgstr "Adicionar E-mail"
 
-#: simplevalidations/templates/account/email.html:66
+#: validibot/templates/account/email.html:66
 msgid "Do you really want to remove the selected e-mail address?"
 msgstr "Você realmente deseja remover o endereço de e-mail selecionado?"
 
-#: simplevalidations/templates/account/email_confirm.html:6
-#: simplevalidations/templates/account/email_confirm.html:10
+#: validibot/templates/account/email_confirm.html:6
+#: validibot/templates/account/email_confirm.html:10
 msgid "Confirm E-mail Address"
 msgstr "Confirme o endereço de e-mail"
 
-#: simplevalidations/templates/account/email_confirm.html:16
+#: validibot/templates/account/email_confirm.html:16
 #, python-format
 msgid ""
 "Please confirm that <a href=\"mailto:%(email)s\">%(email)s</a> is an e-mail "
@@ -95,11 +95,11 @@ msgstr ""
 "Confirme se <a href=\"mailto:%(email)s\">%(email)s</a> é um endereço de "
 "e-mail do usuário %(user_display)s."
 
-#: simplevalidations/templates/account/email_confirm.html:20
+#: validibot/templates/account/email_confirm.html:20
 msgid "Confirm"
 msgstr "Confirmar"
 
-#: simplevalidations/templates/account/email_confirm.html:27
+#: validibot/templates/account/email_confirm.html:27
 #, python-format
 msgid ""
 "This e-mail confirmation link expired or is invalid. Please <a href="
@@ -107,29 +107,29 @@ msgid ""
 msgstr "Este link de confirmação de e-mail expirou ou é inválido. "
 "Por favor, <a href=\"%(email_url)s\">emita um novo pedido de confirmação por e-mail</a>."
 
-#: simplevalidations/templates/account/login.html:7
-#: simplevalidations/templates/account/login.html:11
-#: simplevalidations/templates/account/login.html:56
-#: simplevalidations/templates/base.html:72
+#: validibot/templates/account/login.html:7
+#: validibot/templates/account/login.html:11
+#: validibot/templates/account/login.html:56
+#: validibot/templates/base.html:72
 msgid "Sign In"
 msgstr "Entrar"
 
-#: simplevalidations/templates/account/login.html:17
+#: validibot/templates/account/login.html:17
 msgid "Please sign in with one of your existing third party accounts:"
 msgstr "Faça login com uma de suas contas de terceiros existentes:"
 
-#: simplevalidations/templates/account/login.html:19
+#: validibot/templates/account/login.html:19
 #, python-format
 msgid ""
 "Or, <a href=\"%(signup_url)s\">sign up</a> for a %(site_name)s account and "
 "sign in below:"
 msgstr "Ou, <a href=\"%(signup_url)s\">cadastre-se</a> para uma conta em %(site_name)s e entre abaixo:"
 
-#: simplevalidations/templates/account/login.html:32
+#: validibot/templates/account/login.html:32
 msgid "or"
 msgstr "ou"
 
-#: simplevalidations/templates/account/login.html:41
+#: validibot/templates/account/login.html:41
 #, python-format
 msgid ""
 "If you have not created an account yet, then please <a href=\"%(signup_url)s"
@@ -137,63 +137,63 @@ msgid ""
 msgstr "Se você ainda não criou uma conta, <a href=\"%(signup_url)s"
 "\">registre-se primeiro</a>."
 
-#: simplevalidations/templates/account/login.html:55
+#: validibot/templates/account/login.html:55
 msgid "Forgot Password?"
 msgstr "Esqueceu sua senha?"
 
-#: simplevalidations/templates/account/logout.html:5
-#: simplevalidations/templates/account/logout.html:8
-#: simplevalidations/templates/account/logout.html:17
-#: simplevalidations/templates/base.html:61
+#: validibot/templates/account/logout.html:5
+#: validibot/templates/account/logout.html:8
+#: validibot/templates/account/logout.html:17
+#: validibot/templates/base.html:61
 msgid "Sign Out"
 msgstr "Sair"
 
-#: simplevalidations/templates/account/logout.html:10
+#: validibot/templates/account/logout.html:10
 msgid "Are you sure you want to sign out?"
 msgstr "Você tem certeza que deseja sair?"
 
-#: simplevalidations/templates/account/password_change.html:6
-#: simplevalidations/templates/account/password_change.html:9
-#: simplevalidations/templates/account/password_change.html:14
-#: simplevalidations/templates/account/password_reset_from_key.html:5
-#: simplevalidations/templates/account/password_reset_from_key.html:8
-#: simplevalidations/templates/account/password_reset_from_key_done.html:4
-#: simplevalidations/templates/account/password_reset_from_key_done.html:7
+#: validibot/templates/account/password_change.html:6
+#: validibot/templates/account/password_change.html:9
+#: validibot/templates/account/password_change.html:14
+#: validibot/templates/account/password_reset_from_key.html:5
+#: validibot/templates/account/password_reset_from_key.html:8
+#: validibot/templates/account/password_reset_from_key_done.html:4
+#: validibot/templates/account/password_reset_from_key_done.html:7
 msgid "Change Password"
 msgstr "Alterar Senha"
 
-#: simplevalidations/templates/account/password_reset.html:7
-#: simplevalidations/templates/account/password_reset.html:11
-#: simplevalidations/templates/account/password_reset_done.html:6
-#: simplevalidations/templates/account/password_reset_done.html:9
+#: validibot/templates/account/password_reset.html:7
+#: validibot/templates/account/password_reset.html:11
+#: validibot/templates/account/password_reset_done.html:6
+#: validibot/templates/account/password_reset_done.html:9
 msgid "Password Reset"
 msgstr "Redefinição de senha"
 
-#: simplevalidations/templates/account/password_reset.html:16
+#: validibot/templates/account/password_reset.html:16
 msgid ""
 "Forgotten your password? Enter your e-mail address below, and we'll send you "
 "an e-mail allowing you to reset it."
 msgstr "Esqueceu sua senha? Digite seu endereço de e-mail abaixo e enviaremos um e-mail permitindo que você o redefina."
 
-#: simplevalidations/templates/account/password_reset.html:21
+#: validibot/templates/account/password_reset.html:21
 msgid "Reset My Password"
 msgstr "Redefinir minha senha"
 
-#: simplevalidations/templates/account/password_reset.html:24
+#: validibot/templates/account/password_reset.html:24
 msgid "Please contact us if you have any trouble resetting your password."
 msgstr "Entre em contato conosco se tiver algum problema para redefinir sua senha."
 
-#: simplevalidations/templates/account/password_reset_done.html:15
+#: validibot/templates/account/password_reset_done.html:15
 msgid ""
 "We have sent you an e-mail. Please contact us if you do not receive it "
 "within a few minutes."
 msgstr "Enviamos um e-mail para você. Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: simplevalidations/templates/account/password_reset_from_key.html:8
+#: validibot/templates/account/password_reset_from_key.html:8
 msgid "Bad Token"
 msgstr "Token Inválido"
 
-#: simplevalidations/templates/account/password_reset_from_key.html:12
+#: validibot/templates/account/password_reset_from_key.html:12
 #, python-format
 msgid ""
 "The password reset link was invalid, possibly because it has already been "
@@ -202,61 +202,61 @@ msgid ""
 msgstr "O link de redefinição de senha era inválido, possivelmente porque já foi usado. "
 "<a href=\"%(passwd_reset_url)s\">Solicite uma nova redefinição de senha</a>."
 
-#: simplevalidations/templates/account/password_reset_from_key.html:18
+#: validibot/templates/account/password_reset_from_key.html:18
 msgid "change password"
 msgstr "alterar senha"
 
-#: simplevalidations/templates/account/password_reset_from_key.html:21
-#: simplevalidations/templates/account/password_reset_from_key_done.html:8
+#: validibot/templates/account/password_reset_from_key.html:21
+#: validibot/templates/account/password_reset_from_key_done.html:8
 msgid "Your password is now changed."
 msgstr "Sua senha agora foi alterada."
 
-#: simplevalidations/templates/account/password_set.html:6
-#: simplevalidations/templates/account/password_set.html:9
-#: simplevalidations/templates/account/password_set.html:14
+#: validibot/templates/account/password_set.html:6
+#: validibot/templates/account/password_set.html:9
+#: validibot/templates/account/password_set.html:14
 msgid "Set Password"
 msgstr "Definir Senha"
 
-#: simplevalidations/templates/account/signup.html:6
+#: validibot/templates/account/signup.html:6
 msgid "Signup"
 msgstr "Cadastro"
 
-#: simplevalidations/templates/account/signup.html:9
-#: simplevalidations/templates/account/signup.html:19
-#: simplevalidations/templates/base.html:67
+#: validibot/templates/account/signup.html:9
+#: validibot/templates/account/signup.html:19
+#: validibot/templates/base.html:67
 msgid "Sign Up"
 msgstr "Cadastro"
 
-#: simplevalidations/templates/account/signup.html:11
+#: validibot/templates/account/signup.html:11
 #, python-format
 msgid ""
 "Already have an account? Then please <a href=\"%(login_url)s\">sign in</a>."
 msgstr "já tem uma conta? Então, por favor, faça <a href=\"%(login_url)s\">login</a>."
 
-#: simplevalidations/templates/account/signup_closed.html:5
-#: simplevalidations/templates/account/signup_closed.html:8
+#: validibot/templates/account/signup_closed.html:5
+#: validibot/templates/account/signup_closed.html:8
 msgid "Sign Up Closed"
 msgstr "Inscrições encerradas"
 
-#: simplevalidations/templates/account/signup_closed.html:10
+#: validibot/templates/account/signup_closed.html:10
 msgid "We are sorry, but the sign up is currently closed."
 msgstr "Lamentamos, mas as inscrições estão encerradas no momento."
 
-#: simplevalidations/templates/account/verification_sent.html:5
-#: simplevalidations/templates/account/verification_sent.html:8
-#: simplevalidations/templates/account/verified_email_required.html:5
-#: simplevalidations/templates/account/verified_email_required.html:8
+#: validibot/templates/account/verification_sent.html:5
+#: validibot/templates/account/verification_sent.html:8
+#: validibot/templates/account/verified_email_required.html:5
+#: validibot/templates/account/verified_email_required.html:8
 msgid "Verify Your E-mail Address"
 msgstr "Verifique seu endereço de e-mail"
 
-#: simplevalidations/templates/account/verification_sent.html:10
+#: validibot/templates/account/verification_sent.html:10
 msgid ""
 "We have sent an e-mail to you for verification. Follow the link provided to "
 "finalize the signup process. Please contact us if you do not receive it "
 "within a few minutes."
 msgstr "Enviamos um e-mail para você para verificação. Siga o link fornecido para finalizar o processo de inscrição. Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: simplevalidations/templates/account/verified_email_required.html:12
+#: validibot/templates/account/verified_email_required.html:12
 msgid ""
 "This part of the site requires us to verify that\n"
 "you are who you claim to be. For this purpose, we require that you\n"
@@ -265,7 +265,7 @@ msgstr "Esta parte do site exige que verifiquemos se você é quem afirma ser.\n
 "Para esse fim, exigimos que você verifique a propriedade\n"
 "do seu endereço de e-mail."
 
-#: simplevalidations/templates/account/verified_email_required.html:16
+#: validibot/templates/account/verified_email_required.html:16
 msgid ""
 "We have sent an e-mail to you for\n"
 "verification. Please click on the link inside this e-mail. Please\n"
@@ -274,42 +274,42 @@ msgstr "Enviamos um e-mail para você para verificação.\n"
 "Por favor, clique no link dentro deste e-mail.\n"
 "Entre em contato conosco se você não recebê-lo dentro de alguns minutos."
 
-#: simplevalidations/templates/account/verified_email_required.html:20
+#: validibot/templates/account/verified_email_required.html:20
 #, python-format
 msgid ""
 "<strong>Note:</strong> you can still <a href=\"%(email_url)s\">change your e-"
 "mail address</a>."
 msgstr "<strong>Nota</strong>: você ainda pode <a href=\"%(email_url)s\">alterar seu endereço de e-mail</a>."
 
-#: simplevalidations/templates/base.html:57
+#: validibot/templates/base.html:57
 msgid "My Profile"
 msgstr "Meu perfil"
 
-#: simplevalidations/users/admin.py:17
+#: validibot/users/admin.py:17
 msgid "Personal info"
 msgstr "Informação pessoal"
 
-#: simplevalidations/users/admin.py:19
+#: validibot/users/admin.py:19
 msgid "Permissions"
 msgstr "Permissões"
 
-#: simplevalidations/users/admin.py:30
+#: validibot/users/admin.py:30
 msgid "Important dates"
 msgstr "Datas importantes"
 
-#: simplevalidations/users/apps.py:7
+#: validibot/users/apps.py:7
 msgid "Users"
 msgstr "Usuários"
 
-#: simplevalidations/users/forms.py:24
-#: simplevalidations/users/tests/test_forms.py:36
+#: validibot/users/forms.py:24
+#: validibot/users/tests/test_forms.py:36
 msgid "This username has already been taken."
 msgstr "Este nome de usuário já foi usado."
 
-#: simplevalidations/users/models.py:15
+#: validibot/users/models.py:15
 msgid "Name of User"
 msgstr "Nome do Usuário"
 
-#: simplevalidations/users/views.py:23
+#: validibot/users/views.py:23
 msgid "Information successfully updated"
 msgstr "Informação atualizada com sucesso"

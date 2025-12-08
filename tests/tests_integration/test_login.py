@@ -20,7 +20,7 @@ from selenium.webdriver.support.expected_conditions import presence_of_element_l
 from selenium.webdriver.support.expected_conditions import url_contains
 from selenium.webdriver.support.ui import WebDriverWait
 
-from simplevalidations.users.models import User
+from validibot.users.models import User
 
 # Test password for Selenium tests - not a real secret
 TEST_USER_PASSWORD = "SecureTestPassword123!"  # noqa: S105

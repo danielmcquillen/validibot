@@ -14,7 +14,7 @@ def _pretty_title_from_stem(stem: str) -> str:
 
     Examples:
       "basic_concepts" -> "Basic Concepts"
-      "how_simple_validations_works" -> "How Simple Validations Works"
+      "how_validibot_works" -> "How Validibot Works"
       "validators-overview" -> "Validators Overview"
     """
     return stem.replace("_", " ").replace("-", " ").title()

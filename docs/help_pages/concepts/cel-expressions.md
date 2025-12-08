@@ -95,7 +95,7 @@ The following CEL statements are supported in Validibot
 | Timestamp comparison            | Compare datetimes via CEL `timestamp()`.                     | `event_time < timestamp("2024-12-31T23:59:59Z")`                                      |
 | Range / between                 | Combine comparisons to enforce bounds.                       | `my_value > 10 && my_value < 20`                                                      |
 
-#### SimpleValidation Helpers
+#### Validibot Helpers
 
 | Syntax name                   | Description                                              | Example                                 |
 | ----------------------------- | -------------------------------------------------------- | --------------------------------------- |

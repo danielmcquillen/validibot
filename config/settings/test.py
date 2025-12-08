@@ -56,3 +56,8 @@ SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
 
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Test environment should mimic public/web surface so login and UI routes exist.
+APP_ROLE = "web"
+APP_IS_WORKER = False
+ACCOUNT_ALLOW_LOGIN = True

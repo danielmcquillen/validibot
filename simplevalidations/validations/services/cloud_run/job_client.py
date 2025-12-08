@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 
 from google.cloud import run_v2
 
+from simplevalidations.validations.constants import CloudRunJobStatus
+
 if TYPE_CHECKING:
     from google.api_core.operation import Operation
 
@@ -68,17 +70,15 @@ def run_validator_job(
         ... )
         >>> print(f"Started execution: {execution_name}")
     """
-    # Guard against fully-qualified job names to prevent double-prefixing
+    # Allow either short job name ("my-job") or fully-qualified path.
+    # If fully-qualified is provided, prefer that to avoid mismatch with args.
+    job_path: str
     if job_name.startswith("projects/"):
-        msg = (
-            f"job_name must be short name (e.g., 'my-job'), "
-            f"not fully-qualified path. Got: {job_name}"
-        )
-        raise ValueError(msg)
+        job_path = job_name
+    else:
+        job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
 
     client = run_v2.JobsClient()
-
-    job_path = f"projects/{project_id}/locations/{region}/jobs/{job_name}"
 
     request = run_v2.RunJobRequest(
         name=job_path,
@@ -105,18 +105,21 @@ def run_validator_job(
     operation: Operation = client.run_job(request=request)
 
     # The operation metadata contains the execution info. Access it directly
-    # without blocking. The metadata is an Execution proto message.
-    if not operation.metadata or not operation.metadata.name:
-        # This shouldn't happen, but handle it defensively
-        logger.error(
-            "Cloud Run Job started but no execution name in metadata. "
-            "Operation: %s",
-            operation.operation.name if hasattr(operation, "operation") else "unknown",
-        )
-        msg = "Cloud Run Job started but execution name not available in metadata"
-        raise RuntimeError(msg)
-
-    execution_name = operation.metadata.name
+    # without blocking. If metadata is missing, fall back to a short wait on
+    # the operation to populate the Execution resource.
+    execution_name = getattr(operation.metadata, "name", None)
+    if not execution_name:
+        try:
+            execution = operation.result(timeout=30)
+            execution_name = execution.name
+        except Exception as exc:
+            logger.exception(
+                "Cloud Run Job started but execution name unavailable; "
+                "operation metadata missing. Operation: %s",
+                getattr(operation, "operation", None),
+            )
+            msg = "Cloud Run Job started but execution name not available in metadata"
+            raise RuntimeError(msg) from exc
 
     logger.info("Started execution: %s", execution_name)
 
@@ -144,14 +147,21 @@ def get_execution_status(execution_name: str) -> dict:
     execution = client.get_execution(name=execution_name)
 
     # Map the condition to a simple status
-    completion_status = None
+    completion_status: CloudRunJobStatus | None = None
     for condition in execution.conditions:
         if condition.type_ == "Completed":
             if condition.state == run_v2.Condition.State.CONDITION_SUCCEEDED:
-                completion_status = "SUCCEEDED"
+                completion_status = CloudRunJobStatus.SUCCEEDED
             elif condition.state == run_v2.Condition.State.CONDITION_FAILED:
-                completion_status = "FAILED"
+                completion_status = CloudRunJobStatus.FAILED
             break
+
+    # If no completion condition yet, infer running/pending
+    if completion_status is None:
+        if execution.start_time and not execution.completion_time:
+            completion_status = CloudRunJobStatus.RUNNING
+        else:
+            completion_status = CloudRunJobStatus.PENDING
 
     return {
         "name": execution.name,

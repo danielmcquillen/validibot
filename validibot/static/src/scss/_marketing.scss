@@ -1,3 +1,4 @@
+@use "sass:color";
 @use "settings";
 
 // Marketing-specific styles for Validibot
@@ -397,6 +398,7 @@
   }
 }
 
+
 // Call-to-Action Section
 // ========================================
 .cta-section {
@@ -419,8 +421,8 @@
     radial-gradient(circle at 80% 0%, rgba(6, 111, 209, 0.2), transparent 50%),
     linear-gradient(
       135deg,
-      lighten(settings.$blue, 5%),
-      lighten(settings.$azure, 6%)
+      color.adjust(settings.$blue, $lightness: 5%),
+      color.adjust(settings.$azure, $lightness: 6%)
     );
   box-shadow: inset 0 12px 32px rgba(6, 111, 209, 0.2),
     inset 0 -12px 32px rgba(66, 153, 225, 0.18);

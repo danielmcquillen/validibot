@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -188,7 +188,7 @@ class CloudRunJobIntegrationTest(TestCase):
         while time.time() - start_time < timeout_seconds:
             blob = bucket.blob(output_path)
             if blob.exists():
-                content = blob.download_as_string()
+                content = blob.download_as_bytes()
                 logger.info("Found output envelope at %s", output_path)
                 return json.loads(content)
 
@@ -267,77 +267,58 @@ class CloudRunJobIntegrationTest(TestCase):
             self.skipTest("GCS_ENERGYPLUS_JOB_NAME not configured")
 
         # Check for a test weather file - skip if not available
-        weather_file = os.environ.get(
-            "TEST_WEATHER_FILE",
+        weather_file = getattr(
+            settings,
+            "TEST_ENERGYPLUS_WEATHER_FILE",
             "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
         )
-        weather_uri = f"gs://{settings.GCS_VALIDATION_BUCKET}/assets/weather/{weather_file}"
+        weather_uri = (
+            f"gs://{settings.GCS_VALIDATION_BUCKET}/"
+            f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+        )
 
-        # Create a minimal but valid IDF content
-        # This is the simplest possible EnergyPlus model
-        minimal_idf = """
-!-Generator IDFEditor 1.0
-!-NOTE: All comments with '!-' are ignored by the IDFEditor
+        # Ensure weather file exists in the catalog (seed fixture in non-prod)
+        from google.cloud import storage
 
-Version,
-    24.1;                    !- Version Identifier
+        weather_blob_path = f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+        client = storage.Client()
+        bucket = client.bucket(settings.GCS_VALIDATION_BUCKET)
+        blob = bucket.blob(weather_blob_path)
 
-Building,
-    Minimal Test Building,   !- Name
-    0,                       !- North Axis {deg}
-    Suburbs,                 !- Terrain
-    0.04,                    !- Loads Convergence Tolerance Value {W}
-    0.4,                     !- Temperature Convergence Tolerance Value {deltaC}
-    FullInteriorAndExterior, !- Solar Distribution
-    25,                      !- Maximum Number of Warmup Days
-    6;                       !- Minimum Number of Warmup Days
+        if not blob.exists():
+            local_weather = (
+                Path(settings.BASE_DIR)
+                / "tests"
+                / "data"
+                / "energyplus"
+                / "test_weather.epw"
+            )
+            if not local_weather.exists():
+                self.skipTest(
+                    "Weather file missing in catalog and no local fixture to seed it.",
+                )
+            blob.upload_from_filename(
+                filename=str(local_weather),
+                content_type="application/vnd.energyplus.epw",
+            )
+            logger.info("Seeded weather file to %s", weather_blob_path)
 
-GlobalGeometryRules,
-    UpperLeftCorner,         !- Starting Vertex Position
-    Counterclockwise,        !- Vertex Entry Direction
-    Relative;                !- Coordinate System
-
-SimulationControl,
-    No,                      !- Do Zone Sizing Calculation
-    No,                      !- Do System Sizing Calculation
-    No,                      !- Do Plant Sizing Calculation
-    No,                      !- Run Simulation for Sizing Periods
-    Yes,                     !- Run Simulation for Weather File Run Periods
-    No,                      !- Do HVAC Sizing Simulation for Sizing Periods
-    1;                       !- Maximum Number of HVAC Sizing Simulation Passes
-
-RunPeriod,
-    Annual,                  !- Name
-    1,                       !- Begin Month
-    1,                       !- Begin Day of Month
-    ,                        !- Begin Year
-    1,                       !- End Month
-    2,                       !- End Day of Month
-    ,                        !- End Year
-    Sunday,                  !- Day of Week for Start Day
-    No,                      !- Use Weather File Holidays and Special Days
-    No,                      !- Use Weather File Daylight Saving Period
-    No,                      !- Apply Weekend Holiday Rule
-    Yes,                     !- Use Weather File Rain Indicators
-    Yes;                     !- Use Weather File Snow Indicators
-
-Timestep,
-    4;                       !- Number of Timesteps per Hour
-
-Zone,
-    TestZone,                !- Name
-    0,                       !- Direction of Relative North {deg}
-    0,                       !- X Origin {m}
-    0,                       !- Y Origin {m}
-    0,                       !- Z Origin {m}
-    1,                       !- Type
-    1,                       !- Multiplier
-    autocalculate,           !- Ceiling Height {m}
-    autocalculate;           !- Volume {m3}
-"""
+        # Use the shipped sample epJSON submission to mimic a real user payload
+        sample_path = (
+            Path(settings.BASE_DIR)
+            / "tests"
+            / "data"
+            / "energyplus"
+            / "example_epjson.json"
+        )
+        sample_content = sample_path.read_text()
 
         # Upload the test model to GCS
-        model_uri = self._upload_test_model(minimal_idf)
+        model_uri = self._upload_test_model(
+            sample_content,
+            filename="model.epjson",
+            content_type="application/json",
+        )
 
         # Build a test input envelope matching EnergyPlusInputEnvelope schema
         # See vb_shared.energyplus.envelopes for the schema definition
@@ -360,8 +341,8 @@ Zone,
             },
             "input_files": [
                 {
-                    "name": "model.idf",
-                    "mime_type": "application/vnd.energyplus.idf",
+                    "name": "model.epjson",
+                    "mime_type": "application/vnd.energyplus.epjson",
                     "role": "primary-model",
                     "uri": model_uri,
                 },
@@ -424,10 +405,16 @@ Zone,
         self.assertEqual(output["run_id"], self.test_run_id)
 
         # Log the result for debugging
-        logger.info(
-            "EnergyPlus job completed with status: %s",
-            output.get("status"),
-        )
+        logger.info("EnergyPlus job completed with status: %s", output.get("status"))
+        messages = output.get("messages") or []
+        outputs = output.get("outputs") or {}
+        logs = outputs.get("logs") or {}
+        err_tail = logs.get("err_tail") or logs.get("stderr_tail") or ""
+        logger.info("EnergyPlus returncode: %s", outputs.get("energyplus_returncode"))
+        if messages:
+            logger.info("EnergyPlus messages: %s", messages)
+        if err_tail:
+            logger.info("EnergyPlus err tail:\n%s", err_tail)
 
         # We expect the job to succeed with our minimal model
         # But even a failure is "working" from an infrastructure perspective
@@ -438,16 +425,22 @@ Zone,
             f"Unexpected status: {status}",
         )
 
-    def _upload_test_model(self, content: str) -> str:
+    def _upload_test_model(
+        self,
+        content: str,
+        *,
+        filename: str = "model.idf",
+        content_type: str = "text/plain",
+    ) -> str:
         """Upload test model content to GCS."""
         from google.cloud import storage
 
         client = storage.Client()
         bucket = client.bucket(settings.GCS_VALIDATION_BUCKET)
 
-        blob_path = f"runs/{self.test_org_id}/{self.test_run_id}/model.idf"
+        blob_path = f"runs/{self.test_org_id}/{self.test_run_id}/{filename}"
         blob = bucket.blob(blob_path)
-        blob.upload_from_string(content, content_type="text/plain")
+        blob.upload_from_string(content, content_type=content_type)
 
         uri = f"gs://{settings.GCS_VALIDATION_BUCKET}/{blob_path}"
         logger.info("Uploaded test model to %s", uri)

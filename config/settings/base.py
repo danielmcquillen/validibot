@@ -468,6 +468,10 @@ TEST_ENERGYPLUS_WEATHER_FILE = env(
     "TEST_ENERGYPLUS_WEATHER_FILE",
     default="USA_CA_SF.epw",
 )
+GCS_WEATHER_PREFIX = env(
+    "GCS_WEATHER_PREFIX",
+    default="assets/weather",
+)
 
 # PostHog (or other) tracker settings
 TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)

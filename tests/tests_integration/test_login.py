@@ -6,7 +6,10 @@ test the login form with a browser via Selenium WebDriver.
 """
 
 import logging
+import os
+import uuid
 
+import pytest
 from allauth.account.models import EmailAddress
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.urls import reverse
@@ -25,6 +28,10 @@ TEST_USER_PASSWORD = "SecureTestPassword123!"  # noqa: S105
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skipif(
+    os.getenv("SKIP_SELENIUM_LOGIN_TESTS"),
+    reason="Selenium login tests skipped by environment flag.",
+)
 class LoginFormTests(StaticLiveServerTestCase):
     """
     Integration tests for the login form using Selenium.
@@ -65,9 +72,11 @@ class LoginFormTests(StaticLiveServerTestCase):
         super().setUp()
         # Create a test user with a known password
         self.test_password = TEST_USER_PASSWORD
+        username = f"testuser-{uuid.uuid4().hex[:8]}"
+        User.objects.filter(username=username).delete()
         self.test_user = User.objects.create_user(
-            username="testuser",
-            email="testuser@example.com",
+            username=username,
+            email=f"{username}@example.com",
             password=self.test_password,
             is_active=True,
         )

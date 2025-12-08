@@ -19,6 +19,7 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidationStepRunFactory
@@ -36,7 +37,7 @@ class CallbackIdempotencyTestCase(TestCase):
 
         # Create a validator
         self.validator = ValidatorFactory(
-            validation_type="energyplus",
+            validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
 
@@ -82,7 +83,7 @@ class CallbackIdempotencyTestCase(TestCase):
         mock_envelope.model_dump = MagicMock(return_value={})
         return mock_envelope
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.api.callbacks.download_envelope")
     def test_first_callback_processed_successfully(self, mock_download):
         """Test that the first callback with a callback_id is processed."""
@@ -112,7 +113,7 @@ class CallbackIdempotencyTestCase(TestCase):
         # Receipt should be updated from "processing" to final status
         self.assertEqual(receipt.status, "success")
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.api.callbacks.download_envelope")
     def test_duplicate_callback_returns_early(self, mock_download):
         """Test that duplicate callbacks with same callback_id are not reprocessed."""
@@ -158,7 +159,7 @@ class CallbackIdempotencyTestCase(TestCase):
         ).count()
         self.assertEqual(receipt_count, 1)
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.api.callbacks.download_envelope")
     def test_callback_without_id_still_processed(self, mock_download):
         """Test that callbacks without callback_id are processed (no idempotency)."""
@@ -183,7 +184,7 @@ class CallbackIdempotencyTestCase(TestCase):
         # No receipt created when callback_id is missing
         self.assertEqual(CallbackReceipt.objects.count(), 0)
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.api.callbacks.download_envelope")
     def test_different_callback_ids_processed_separately(self, mock_download):
         """Test that different callback_ids are processed independently."""

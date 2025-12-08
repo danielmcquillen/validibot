@@ -28,6 +28,7 @@ from vb_shared.validations.envelopes import ValidationStatus
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
@@ -195,9 +196,9 @@ class ValidationCallbackView(APIView):
 
             # Download the output envelope from GCS
             # Determine the envelope class based on validator type
-            if validator.validation_type == "energyplus":
+            if validator.validation_type == ValidationType.ENERGYPLUS:
                 envelope_class = EnergyPlusOutputEnvelope
-            elif validator.validation_type == "fmi":
+            elif validator.validation_type == ValidationType.FMI:
                 envelope_class = FMIOutputEnvelope
             else:
                 logger.error(

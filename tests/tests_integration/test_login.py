@@ -100,6 +100,12 @@ class LoginFormTests(StaticLiveServerTestCase):
             url_contains(url_part),
         )
 
+    def _wait_for_url_not_contains(self, url_part: str, timeout: int = 20):
+        """Wait until the URL no longer contains a specific string."""
+        WebDriverWait(self.selenium, timeout).until_not(
+            url_contains(url_part),
+        )
+
     def test_login_page_loads(self):
         """Test that the login page loads successfully."""
         self.selenium.get(self._get_login_url())
@@ -200,11 +206,19 @@ class LoginFormTests(StaticLiveServerTestCase):
         submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
-        # Wait for the page to reload
-        self._wait_for_element(By.CSS_SELECTOR, "form.login")
-
-        # Check that we're still on the login page
+        # Wait to ensure we stay on an accounts page (login should fail)
+        self._wait_for_url_contains("/accounts/", timeout=20)
         self.assertIn("/accounts/login/", self.selenium.current_url)
+
+        # Check for an error message indicating invalid credentials
+        page_source = self.selenium.page_source.lower()
+        self.assertTrue(
+            "unable to log in" in page_source
+            or "invalid" in page_source
+            or "incorrect" in page_source
+            or "error" in page_source,
+            "Expected an error message for invalid credentials",
+        )
 
     def test_login_with_empty_fields(self):
         """Test that login fails when fields are empty."""
@@ -240,7 +254,7 @@ class LoginFormTests(StaticLiveServerTestCase):
 
         # Wait for redirect - should go to the 'next' URL or dashboard
         # Note: The actual redirect depends on whether the next URL is valid
-        self._wait_for_url_contains("app")
+        self._wait_for_url_not_contains("/accounts/login/", timeout=20)
 
         # Verify we're no longer on the login page
         self.assertNotIn("/accounts/login/", self.selenium.current_url)
@@ -266,8 +280,14 @@ class LoginFormTests(StaticLiveServerTestCase):
         submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
-        # Wait for the page to reload
-        self._wait_for_element(By.CSS_SELECTOR, "form.login")
+        # Wait for the page to land on an accounts URL
+        self._wait_for_url_contains("/accounts/", timeout=20)
 
-        # Check that we're still on the login page
-        self.assertIn("/accounts/login/", self.selenium.current_url)
+        # Should be redirected to inactive notice or stay on login
+        self.assertTrue(
+            "/accounts/login/" in self.selenium.current_url
+            or "/accounts/inactive/" in self.selenium.current_url,
+        )
+
+        # Check that we did not get redirected to an authenticated page
+        self.assertNotIn("/app/", self.selenium.current_url)

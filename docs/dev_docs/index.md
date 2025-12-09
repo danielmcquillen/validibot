@@ -68,6 +68,21 @@ docker compose -f docker-compose.local.yml run --rm -e DJANGO_SETTINGS_MODULE=co
 docker compose -f docker-compose.local.yml stop postgres mailpit
 ```
 
+#### psycopg3 + live_server threading fix
+
+Django's `live_server` fixture runs a threaded WSGI server. psycopg3 connections are **not** thread-safe, so after a Selenium test makes HTTP requests to the live server, the database connection can become corrupted (status = BAD). Django's `DatabaseWrapper` still holds a reference to this dead connection, and when pytest-django tries to flush the database during teardown, it fails with `OperationalError: the connection is closed`.
+
+The fix lives in [tests/tests_integration/conftest.py](../../tests/tests_integration/conftest.py):
+
+1. **Autouse fixture** - Resets any BAD psycopg3 connections before and after each test
+2. **Monkey-patched flush command** - Resets connections before Django's flush runs during teardown
+
+When resetting a BAD connection, we must also clear Django's internal state (`closed_in_transaction`, `in_atomic_block`, `savepoint_ids`, `needs_rollback`) or Django will refuse to create new connections.
+
+Additionally, [config/settings/test.py](../../config/settings/test.py) sets `CONN_MAX_AGE = 0` to disable persistent connections for tests.
+
+This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #35455).
+
 ### Deployment
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist

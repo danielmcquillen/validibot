@@ -17,6 +17,9 @@ SECRET_KEY = env(
 TEST_RUNNER = "django.test.runner.DiscoverRunner"
 # For threaded live server tests, force new DB connections per request/test.
 DATABASES["default"]["CONN_MAX_AGE"] = 0  # type: ignore[name-defined]
+# https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
+# live_server fixture uses localhost with a random port
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 
 # PASSWORDS
 # ------------------------------------------------------------------------------

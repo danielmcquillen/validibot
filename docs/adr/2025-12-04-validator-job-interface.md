@@ -88,7 +88,7 @@ We adopt a **single canonical contract** for communication between Django and al
   "run_id": "uuid-string",
   "validator": {
     "id": "validator-uuid",
-    "type": "energyplus" | "fmu" | "xml" | "pdf" | ...,
+    "type": "ENERGYPLUS" | "FMI" | "JSON_SCHEMA" | "XML_SCHEMA" | ...,
     "version": "semver-string"
   },
   "org": {
@@ -169,7 +169,7 @@ Validators interpret `role` based on their type. Django does not need to underst
   "run_id": "uuid-string",
   "validator": {
     "id": "validator-uuid",
-    "type": "energyplus",
+    "type": "ENERGYPLUS",
     "version": "semver-string"
   },
   "status": "success" | "failed_validation" | "failed_runtime" | "cancelled",

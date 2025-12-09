@@ -215,7 +215,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
             "run_id": self.test_run_id,
             "validator": {
                 "id": "test-validator",
-                "type": "energyplus",
+                "type": "ENERGYPLUS",
                 "version": "24.1",
             },
             "org": {
@@ -281,7 +281,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
             ["validibot.result.v1", "validibot.output.v1"],
         )
         self.assertEqual(output.get("run_id"), self.test_run_id)
-        self.assertEqual(output.get("validator", {}).get("type"), "energyplus")
+        self.assertEqual(output.get("validator", {}).get("type"), "ENERGYPLUS")
         status = output.get("status")
         if status != "success":
             self.skipTest(
@@ -520,7 +520,7 @@ class FMIValidatorE2ETest(TestCase):
             "run_id": self.test_run_id,
             "validator": {
                 "id": "test-fmi-validator",
-                "type": "fmi",
+                "type": "FMI",
                 "version": "1.0.0",
             },
             "org": {
@@ -709,7 +709,7 @@ class FMIValidatorE2ETest(TestCase):
             "run_id": run_id,
             "validator": {
                 "id": "test-fmi-validator",
-                "type": "fmi",
+                "type": "FMI",
                 "version": "1.0.0",
             },
             "org": {

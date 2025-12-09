@@ -327,7 +327,7 @@ class CloudRunJobIntegrationTest(TestCase):
             "run_id": self.test_run_id,
             "validator": {
                 "id": "test-validator",
-                "type": "energyplus",
+                "type": "ENERGYPLUS",
                 "version": "24.1",
             },
             "org": {

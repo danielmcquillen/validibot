@@ -1,9 +1,9 @@
 # ADR-2025-11-27: Idempotency Keys for API Validation Requests
 
-**Status:** Accepted (2025-11-27) — implementation queued  
-**Owners:** Platform / API  
-**Related ADRs:** —  
-**Related docs:** `config/api_router.py`, `workflows/views.py`
+**Status:** Implemented (2025-12-09)
+**Owners:** Platform / API
+**Related ADRs:** —
+**Related docs:** `config/api_router.py`, `workflows/views.py`, `core/idempotency.py`
 
 ---
 
@@ -316,15 +316,18 @@ We will stay optional for the January alpha, then move toward required keys with
 
 ## Implementation Checklist
 
-- [ ] Create `IdempotencyKey` model and migration
-- [ ] Implement `IdempotencyMixin` for DRF views
-- [ ] Apply mixin to `WorkflowViewSet.start_validation`
-- [ ] Add `cleanup_expired_idempotency_keys` Celery task
-- [ ] Add tests:
-  - [ ] Duplicate request returns cached response
-  - [ ] Different body with same key returns 422
-  - [ ] Expired key allows reprocessing
-  - [ ] Missing key processes normally
+- [x] Create `IdempotencyKey` model and migration (`core/models.py`, `core/migrations/0005_idempotency_key.py`)
+- [x] Implement `@idempotent` decorator for DRF views (`core/idempotency.py`)
+- [x] Apply decorator to `WorkflowViewSet.start_validation` (`workflows/views.py`)
+- [x] Add `cleanup_idempotency_keys` management command (Django mgmt command, not Celery)
+- [x] Add tests:
+  - [x] Duplicate request returns cached response
+  - [x] Different body with same key returns 422
+  - [x] Expired key allows reprocessing
+  - [x] Missing key processes normally
+  - [x] In-flight request returns 409 Conflict
+  - [x] Key too long returns 400
+  - [x] Different orgs can use same key
 - [ ] Update API documentation
 - [ ] Add `Idempotency-Key` to API reference examples
 

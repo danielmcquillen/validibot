@@ -38,6 +38,7 @@ from validibot.actions.models import ActionDefinition
 from validibot.actions.models import SignedCertificateAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
+from validibot.core.idempotency import idempotent
 from validibot.core.utils import pretty_json
 from validibot.core.utils import pretty_xml
 from validibot.core.utils import reverse_with_org
@@ -179,6 +180,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         url_path="start",
         url_name="start",
     )
+    @idempotent
     def start_validation(self, request, pk=None, *args, **kwargs):
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)

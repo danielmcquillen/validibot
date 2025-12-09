@@ -780,3 +780,12 @@ gcp-open:
         --format="value(status.url)")
     echo "Opening: $URL"
     open "$URL"
+# Run integration tests end-to-end (starts/stops local Postgres + mailpit)
+# Prereqs: Docker Compose available; env from set-env.sh for local settings.
+test-integration *args:
+    @echo "Starting integration dependencies (postgres, mailpit)..."
+    docker compose -f docker-compose.local.yml up -d postgres mailpit
+    @echo "Running integration tests..."
+    . ./set-env.sh && uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
+    @echo "Stopping integration dependencies..."
+    docker compose -f docker-compose.local.yml stop postgres mailpit

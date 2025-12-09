@@ -46,19 +46,14 @@ This site describes the core concepts, data model, and API for working with vali
 
 ### Testing
 
-Pytest ignores `tests_integration` by default (see `pyproject.toml`). Run them manually when you need the end-to-end checks:
+Pytest ignores `tests_integration` by default (see `pyproject.toml`). Use `just test-integration` for the end-to-end suite; it will:
 
-```sh
-uv run --extra dev pytest tests_integration
-```
+- start Postgres + Mailpit (`docker compose -f docker-compose.local.yml up -d postgres mailpit`)
+- load local env (`. ./set-env.sh`)
+- run `uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`
+- stop the containers when done
 
-You can run tests either on the host or inside the local Docker stack. On the host, load the local env vars (`source set-env.sh`) and run `uv run --extra dev pytest`. To keep everything inside Docker, use the same command via the app container:
-
-```sh
-docker compose -f docker-compose.local.yml run --rm django uv run --extra dev pytest
-```
-
-Append `tests_integration` to include the end-to-end suite in either case.
+If you prefer to run manually: `docker compose -f docker-compose.local.yml up -d postgres mailpit && . ./set-env.sh && uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`.
 
 ### Deployment
 

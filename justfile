@@ -32,17 +32,80 @@ export PATH := env_var("HOME") + "/google-cloud-sdk/bin:" + env_var("PATH")
 # Configuration Variables
 # =============================================================================
 
-# GCP Project Settings
-gcp_service := "validibot-web"
+# GCP Project Settings (shared across all stages)
 gcp_project := "project-a509c806-3e21-4fbc-b19"
 gcp_region := "australia-southeast1"
-gcp_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
-gcp_sql := gcp_project + ":" + gcp_region + ":validibot-db"
 gcp_image := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
-gcp_worker_service := "validibot-worker"
 
 # Get git commit hash for image tagging
 git_sha := `git rev-parse --short HEAD`
+
+# =============================================================================
+# Multi-Environment Configuration
+# =============================================================================
+#
+# This project supports multiple deployment stages: dev, staging, prod
+#
+# Usage:
+#   just gcp-deploy dev       # Deploy to development
+#   just gcp-deploy prod      # Deploy to production
+#   just gcp-status dev       # Check dev status
+#   just gcp-logs prod        # View prod logs
+#
+# Resource naming convention:
+#   dev:     validibot-web-dev, validibot-worker-dev, validibot-db-dev
+#   staging: validibot-web-staging, validibot-worker-staging, validibot-db-staging
+#   prod:    validibot-web, validibot-worker, validibot-db
+#
+# Each stage has:
+#   - Separate Cloud Run services (web + worker)
+#   - Separate Cloud Run validator jobs
+#   - Separate Cloud SQL instance
+#   - Separate secrets in Secret Manager
+#   - Shared GCS bucket with stage prefix (gs://bucket/dev/, gs://bucket/prod/)
+#
+# =============================================================================
+
+# Helper to compute service suffix (empty for prod, -dev/-staging otherwise)
+# Usage in recipes: {{_suffix(stage)}}
+[private]
+_suffix stage:
+    @if [ "{{stage}}" = "prod" ]; then echo ""; else echo "-{{stage}}"; fi
+
+# Helper to compute full web service name
+[private]
+_web_service stage:
+    @if [ "{{stage}}" = "prod" ]; then echo "validibot-web"; else echo "validibot-web-{{stage}}"; fi
+
+# Helper to compute full worker service name
+[private]
+_worker_service stage:
+    @if [ "{{stage}}" = "prod" ]; then echo "validibot-worker"; else echo "validibot-worker-{{stage}}"; fi
+
+# Helper to compute database instance name
+[private]
+_db_instance stage:
+    @if [ "{{stage}}" = "prod" ]; then echo "validibot-db"; else echo "validibot-db-{{stage}}"; fi
+
+# Helper to compute secret name
+[private]
+_secret_name stage:
+    @if [ "{{stage}}" = "prod" ]; then echo "django-env"; else echo "django-env-{{stage}}"; fi
+
+# Helper to compute service account
+[private]
+_service_account stage:
+    @if [ "{{stage}}" = "prod" ]; then \
+        echo "validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"; \
+    else \
+        echo "validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"; \
+    fi
+
+# Legacy variables for backwards compatibility (default to prod)
+gcp_service := "validibot-web"
+gcp_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
+gcp_sql := gcp_project + ":" + gcp_region + ":validibot-db"
+gcp_worker_service := "validibot-worker"
 
 # =============================================================================
 # Default Command - Show Help
@@ -110,163 +173,621 @@ gcp-push:
     docker push {{gcp_image}}:{{git_sha}}
     docker push {{gcp_image}}:latest
 
-# Full deployment: build, push, and deploy to Cloud Run
-# Also updates the Cloud Run job to use the new image
-gcp-deploy: gcp-build gcp-push
-    @echo "Deploying to Cloud Run..."
-    gcloud run deploy {{gcp_service}} \
+# Deploy web service to a specific stage
+# Usage: just gcp-deploy dev | just gcp-deploy prod
+gcp-deploy stage: gcp-build gcp-push
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute environment-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="validibot-web"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SECRET="django-env"
+        MAX_INSTANCES=4
+    else
+        SERVICE="validibot-web-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+        MAX_INSTANCES=2
+    fi
+
+    echo "Deploying $SERVICE to Cloud Run ({{stage}})..."
+    gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
         --region {{gcp_region}} \
-        --service-account {{gcp_sa}} \
-        --add-cloudsql-instances {{gcp_sql}} \
-        --set-secrets=/secrets/.env=django-env:latest \
-        --set-env-vars APP_ROLE=web \
+        --service-account "$SA" \
+        --add-cloudsql-instances "$DB" \
+        --set-secrets=/secrets/.env="$SECRET":latest \
+        --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}} \
         --min-instances 0 \
-        --max-instances 4 \
+        --max-instances $MAX_INSTANCES \
         --memory 1Gi \
         --allow-unauthenticated \
         --project {{gcp_project}}
-    @echo "Note: Cloud Run jobs will use :latest image when next executed"
 
-# Deploy worker service (IAM-only, API surface)
-gcp-deploy-worker: gcp-build gcp-push
-    @echo "Deploying worker to Cloud Run (private)..."
-    gcloud run deploy {{gcp_worker_service}} \
+    echo ""
+    echo "✓ Web service deployed to {{stage}}"
+
+# Deploy worker service to a specific stage
+# Usage: just gcp-deploy-worker dev | just gcp-deploy-worker prod
+gcp-deploy-worker stage: gcp-build gcp-push
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute environment-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="validibot-worker"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SECRET="django-env"
+    else
+        SERVICE="validibot-worker-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    echo "Deploying $SERVICE to Cloud Run ({{stage}}, private)..."
+    gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
         --region {{gcp_region}} \
-        --service-account {{gcp_sa}} \
-        --add-cloudsql-instances {{gcp_sql}} \
-        --set-secrets=/secrets/.env=django-env:latest \
-        --set-env-vars APP_ROLE=worker \
+        --service-account "$SA" \
+        --add-cloudsql-instances "$DB" \
+        --set-secrets=/secrets/.env="$SECRET":latest \
+        --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}} \
         --no-allow-unauthenticated \
         --min-instances 0 \
         --max-instances 2 \
         --memory 1Gi \
         --project {{gcp_project}}
 
-# Full environment setup: deploy all services and configure scheduler
-# Use this for initial deployment of a new environment (dev, staging, production)
-gcp-setup-all: gcp-deploy gcp-deploy-worker gcp-scheduler-setup
+    echo ""
+    echo "✓ Worker service deployed to {{stage}}"
+
+# Deploy both web and worker to a stage
+# Usage: just gcp-deploy-all dev | just gcp-deploy-all prod
+gcp-deploy-all stage: (gcp-deploy stage) (gcp-deploy-worker stage)
     @echo ""
-    @echo "============================================="
-    @echo "✓ Full environment setup complete"
-    @echo "============================================="
-    @echo "  • Web service:      deployed"
-    @echo "  • Worker service:   deployed"
-    @echo "  • Scheduled jobs:   configured"
-    @echo ""
-    @echo "Run 'just gcp-scheduler-list' to verify scheduled jobs."
+    @echo "✓ All services deployed to {{stage}}"
 
 # =============================================================================
 # GCP Cloud Run - Secrets Management
 # =============================================================================
 
-# Upload .envs/.production/.django to Secret Manager
-# Run this after editing the production environment file
-gcp-secrets:
-    @echo "Uploading secrets from .envs/.production/.django..."
-    gcloud secrets versions add django-env \
-        --data-file=.envs/.production/.django \
+# Upload secrets for a specific stage
+# Usage: just gcp-secrets dev | just gcp-secrets prod
+# Files: .envs/.dev/.django, .envs/.production/.django
+gcp-secrets stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute secret name and source file
+    if [ "{{stage}}" = "prod" ]; then
+        SECRET_NAME="django-env"
+        ENV_FILE=".envs/.production/.django"
+    else
+        SECRET_NAME="django-env-{{stage}}"
+        ENV_FILE=".envs/.{{stage}}/.django"
+    fi
+
+    # Check if env file exists
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "Error: $ENV_FILE not found"
+        echo ""
+        echo "Create the environment file first. For dev, copy from production:"
+        echo "  mkdir -p .envs/.dev"
+        echo "  cp .envs/.production/.django .envs/.dev/.django"
+        echo "  # Then edit .envs/.dev/.django with dev-specific values"
+        exit 1
+    fi
+
+    # Check if secret exists, create if not
+    if ! gcloud secrets describe "$SECRET_NAME" --project={{gcp_project}} &>/dev/null; then
+        echo "Creating new secret: $SECRET_NAME"
+        gcloud secrets create "$SECRET_NAME" \
+            --replication-policy="user-managed" \
+            --locations="{{gcp_region}}" \
+            --project={{gcp_project}}
+    fi
+
+    echo "Uploading secrets from $ENV_FILE to $SECRET_NAME..."
+    gcloud secrets versions add "$SECRET_NAME" \
+        --data-file="$ENV_FILE" \
         --project {{gcp_project}}
-    @echo ""
-    @echo "✓ Secret updated. Run 'just gcp-deploy' to apply changes."
+
+    echo ""
+    echo "✓ Secret $SECRET_NAME updated."
+    echo "  Run 'just gcp-deploy {{stage}}' to apply changes."
+
+# Create an environment file template for dev or staging
+# Usage: just gcp-secrets-init dev | just gcp-secrets-init staging
+gcp-secrets-init stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{stage}}" =~ ^(dev|staging)$ ]]; then
+        echo "Error: stage must be 'dev' or 'staging'"
+        exit 1
+    fi
+    TARGET_DIR=".envs/.{{stage}}"
+    TARGET_FILE="$TARGET_DIR/.django"
+    PROD_FILE=".envs/.production/.django"
+    if [ ! -f "$PROD_FILE" ]; then
+        echo "Error: Production file not found at $PROD_FILE"
+        exit 1
+    fi
+    mkdir -p "$TARGET_DIR"
+    if [ -s "$TARGET_FILE" ]; then
+        echo "Error: $TARGET_FILE already exists and is not empty"
+        echo "Edit it directly or remove it first."
+        exit 1
+    fi
+    echo "Creating {{stage}} environment file from production template..."
+    cp "$PROD_FILE" "$TARGET_FILE"
+    echo ""
+    echo "Created $TARGET_FILE (copy of production)"
+    echo ""
+    echo "IMPORTANT - Edit the following values for {{stage}}:"
+    echo "  - DATABASE_URL: Update to use validibot-db-{{stage}}"
+    echo "  - DJANGO_ALLOWED_HOSTS: Add the {{stage}} service URL"
+    echo "  - CLOUD_SQL_CONNECTION_NAME: Change to validibot-db-{{stage}}"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit $TARGET_FILE"
+    echo "  2. Run: just gcp-secrets {{stage}}"
+    echo "  3. Then: just gcp-deploy {{stage}}"
 
 # =============================================================================
 # GCP Cloud Run - Operations
 # =============================================================================
 
 # View recent Cloud Run logs (last 50 entries)
-gcp-logs:
-    gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name={{gcp_service}}" \
+# Usage: just gcp-logs dev | just gcp-logs prod
+gcp-logs stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE" \
         --project {{gcp_project}} \
         --limit 50 \
         --format="table(timestamp,severity,textPayload)"
 
 # View logs and follow (stream new logs as they arrive)
-gcp-logs-follow:
-    gcloud logging tail "resource.type=cloud_run_revision AND resource.labels.service_name={{gcp_service}}" \
+# Usage: just gcp-logs-follow dev | just gcp-logs-follow prod
+gcp-logs-follow stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    gcloud logging tail "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE" \
         --project {{gcp_project}} \
         --format="table(timestamp,severity,textPayload)"
 
 # Pause the service (block public access, but keep it deployed)
-gcp-pause:
-    gcloud run services update {{gcp_service}} \
+# Usage: just gcp-pause dev | just gcp-pause prod
+gcp-pause stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    gcloud run services update "$SERVICE" \
         --region {{gcp_region}} \
         --ingress internal \
         --project {{gcp_project}}
-    @echo "✓ Service paused. Public access blocked."
+    echo "✓ $SERVICE paused. Public access blocked."
 
 # Resume the service (restore public access)
-gcp-resume:
-    gcloud run services update {{gcp_service}} \
+# Usage: just gcp-resume dev | just gcp-resume prod
+gcp-resume stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    gcloud run services update "$SERVICE" \
         --region {{gcp_region}} \
         --ingress all \
         --project {{gcp_project}}
-    @echo "✓ Service resumed. Public access restored."
+    echo "✓ $SERVICE resumed. Public access restored."
 
 # Show current service status and URL
-gcp-status:
-    gcloud run services describe {{gcp_service}} \
+# Usage: just gcp-status dev | just gcp-status prod
+gcp-status stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    echo "Web service: $SERVICE"
+    gcloud run services describe "$SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
-        --format="table(status.url,status.conditions[0].status,spec.template.spec.containerConcurrency)"
+        --format="table(status.url,status.conditions[0].status,spec.template.spec.containerConcurrency)" 2>/dev/null || echo "  (not deployed)"
+
+# Show status of all stages
+gcp-status-all:
+    @echo "=== DEV ===" && just gcp-status dev 2>/dev/null || echo "(not deployed)"
+    @echo ""
+    @echo "=== STAGING ===" && just gcp-status staging 2>/dev/null || echo "(not deployed)"
+    @echo ""
+    @echo "=== PROD ===" && just gcp-status prod 2>/dev/null || echo "(not deployed)"
 
 # =============================================================================
 # GCP Cloud Run - Management Commands
 # =============================================================================
 
-# Run setup_all to initialize database with default data
-gcp-setup-all:
-    @echo "Running setup_all on Cloud Run..."
-    -gcloud run jobs delete validibot-setup-all --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
-    gcloud run jobs create validibot-setup-all \
-        --image {{gcp_image}}:latest \
-        --region {{gcp_region}} \
-        --service-account {{gcp_sa}} \
-        --set-cloudsql-instances {{gcp_sql}} \
-        --set-secrets=/secrets/.env=django-env:latest \
-        --memory 1Gi \
-        --command "/bin/bash" \
-        --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
-        --project {{gcp_project}}
-    gcloud run jobs execute validibot-setup-all \
-        --region {{gcp_region}} \
-        --wait \
-        --project {{gcp_project}}
-    @echo ""
-    @echo "✓ setup_all completed. Check logs with: just gcp-job-logs validibot-setup-all"
+# Run database migrations for a stage
+# Usage: just gcp-migrate dev | just gcp-migrate prod
+gcp-migrate stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
 
-# Run database migrations
-gcp-migrate:
-    @echo "Running migrate on Cloud Run..."
-    -gcloud run jobs delete validibot-migrate --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
-    gcloud run jobs create validibot-migrate \
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute environment-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_NAME="validibot-migrate"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SECRET="django-env"
+    else
+        JOB_NAME="validibot-migrate-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    echo "Running migrate on {{stage}}..."
+
+    # Delete existing job if present
+    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
+
+    # Create and run job
+    gcloud run jobs create "$JOB_NAME" \
         --image {{gcp_image}}:latest \
         --region {{gcp_region}} \
-        --service-account {{gcp_sa}} \
-        --set-cloudsql-instances {{gcp_sql}} \
-        --set-secrets=/secrets/.env=django-env:latest \
+        --service-account "$SA" \
+        --set-cloudsql-instances "$DB" \
+        --set-secrets=/secrets/.env="$SECRET":latest \
         --memory 1Gi \
         --command "/bin/bash" \
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput" \
         --project {{gcp_project}}
-    gcloud run jobs execute validibot-migrate \
+
+    gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --wait \
         --project {{gcp_project}}
-    @echo ""
-    @echo "✓ migrate completed. Check logs with: just gcp-job-logs validibot-migrate"
+
+    echo ""
+    echo "✓ migrate completed on {{stage}}. Check logs with: just gcp-job-logs $JOB_NAME"
+
+# Run setup_all to initialize database with default data
+# Usage: just gcp-setup-data dev | just gcp-setup-data prod
+gcp-setup-data stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute environment-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_NAME="validibot-setup-all"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SECRET="django-env"
+    else
+        JOB_NAME="validibot-setup-all-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    echo "Running setup_all on {{stage}}..."
+
+    # Delete existing job if present
+    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
+
+    # Create and run job
+    gcloud run jobs create "$JOB_NAME" \
+        --image {{gcp_image}}:latest \
+        --region {{gcp_region}} \
+        --service-account "$SA" \
+        --set-cloudsql-instances "$DB" \
+        --set-secrets=/secrets/.env="$SECRET":latest \
+        --memory 1Gi \
+        --command "/bin/bash" \
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
+        --project {{gcp_project}}
+
+    gcloud run jobs execute "$JOB_NAME" \
+        --region {{gcp_region}} \
+        --wait \
+        --project {{gcp_project}}
+
+    echo ""
+    echo "✓ setup_all completed on {{stage}}. Check logs with: just gcp-job-logs $JOB_NAME"
 
 # View logs from a Cloud Run job execution
-# Usage: just gcp-job-logs [job-name]
-# Examples:
-#   just gcp-job-logs validibot-setup-all
-#   just gcp-job-logs validibot-migrate
-gcp-job-logs job="validibot-setup-all":
+# Usage: just gcp-job-logs validibot-migrate-dev
+gcp-job-logs job:
     gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name={{job}}" \
         --project {{gcp_project}} \
         --limit 50 \
         --format="table(timestamp,textPayload)"
+
+# =============================================================================
+# GCP Initial Stage Setup
+# =============================================================================
+#
+# Use these commands to set up a new environment (dev, staging) from scratch.
+# Production (prod) is assumed to already exist.
+#
+# Full setup workflow:
+#   1. just gcp-init-stage dev          # Create infrastructure
+#   2. just gcp-secrets-init-dev        # Create env file template
+#   3. Edit .envs/.dev/.django          # Configure dev-specific values
+#   4. just gcp-secrets dev             # Upload secrets
+#   5. just gcp-deploy-all dev          # Deploy services
+#   6. just gcp-migrate dev             # Run migrations
+#   7. just gcp-setup-data dev          # Seed initial data
+#
+# =============================================================================
+
+# Initialize infrastructure for a new stage (creates service account, database, etc.)
+# Usage: just gcp-init-stage dev
+# Note: Run this ONCE when setting up a new environment
+gcp-init-stage stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Only allow dev and staging (prod should already exist)
+    if [[ ! "{{stage}}" =~ ^(dev|staging)$ ]]; then
+        echo "Error: stage must be 'dev' or 'staging'"
+        echo "Production (prod) infrastructure is managed separately."
+        exit 1
+    fi
+
+    echo "============================================="
+    echo "Initializing GCP infrastructure for: {{stage}}"
+    echo "============================================="
+    echo ""
+
+    SA_NAME="validibot-cloudrun-{{stage}}"
+    SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
+    DB_INSTANCE="validibot-db-{{stage}}"
+    SECRET_NAME="django-env-{{stage}}"
+
+    # Step 1: Create service account
+    echo "1. Creating service account: $SA_NAME"
+    if gcloud iam service-accounts describe "$SA_EMAIL" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Service account already exists"
+    else
+        gcloud iam service-accounts create "$SA_NAME" \
+            --display-name="Validibot {{stage}} Cloud Run" \
+            --project={{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # Step 2: Grant IAM roles to service account
+    echo "2. Granting IAM roles to service account"
+    ROLES=(
+        "roles/cloudsql.client"
+        "roles/secretmanager.secretAccessor"
+        "roles/storage.objectUser"
+        "roles/run.invoker"
+        "roles/cloudtasks.enqueuer"
+    )
+    for role in "${ROLES[@]}"; do
+        echo "   Adding $role..."
+        gcloud projects add-iam-policy-binding {{gcp_project}} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="$role" \
+            --condition=None \
+            --quiet &>/dev/null || true
+    done
+    echo "   ✓ Roles granted"
+    echo ""
+
+    # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)
+    echo "3. Creating Cloud SQL instance: $DB_INSTANCE"
+    if gcloud sql instances describe "$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Database instance already exists"
+    else
+        TIER="db-f1-micro"
+        if [ "{{stage}}" = "staging" ]; then
+            TIER="db-g1-small"
+        fi
+        echo "   Creating $TIER instance (this may take several minutes)..."
+        gcloud sql instances create "$DB_INSTANCE" \
+            --database-version=POSTGRES_16 \
+            --edition=ENTERPRISE \
+            --tier="$TIER" \
+            --region={{gcp_region}} \
+            --storage-type=SSD \
+            --storage-size=10GB \
+            --storage-auto-increase \
+            --backup \
+            --project={{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # Step 4: Create database and user
+    echo "4. Creating database and user"
+    # Use stage-specific database name (validibot_dev, validibot_staging, validibot)
+    if [ "{{stage}}" = "prod" ]; then
+        DB_NAME="validibot"
+    else
+        DB_NAME="validibot_{{stage}}"
+    fi
+    DB_USER="validibot_user"
+
+    # Check if database exists
+    if gcloud sql databases describe "$DB_NAME" --instance="$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Database '$DB_NAME' already exists"
+    else
+        gcloud sql databases create "$DB_NAME" \
+            --instance="$DB_INSTANCE" \
+            --project={{gcp_project}}
+        echo "   ✓ Database created"
+    fi
+
+    # Check if user exists
+    if gcloud sql users describe "$DB_USER" --instance="$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ User '$DB_USER' already exists"
+    else
+        # Generate random password
+        DB_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+        gcloud sql users create "$DB_USER" \
+            --instance="$DB_INSTANCE" \
+            --password="$DB_PASSWORD" \
+            --project={{gcp_project}}
+        echo "   ✓ User created"
+        echo ""
+        echo "   ⚠️  SAVE THIS PASSWORD - it won't be shown again:"
+        echo "   Password: $DB_PASSWORD"
+        echo ""
+        echo "   DATABASE_URL for .envs/.{{stage}}/.django:"
+        echo "   postgres://$DB_USER:$DB_PASSWORD@//$DB_NAME?host=/cloudsql/{{gcp_project}}:{{gcp_region}}:$DB_INSTANCE"
+    fi
+    echo ""
+
+    # Step 5: Create Cloud Tasks queue
+    echo "5. Creating Cloud Tasks queue"
+    QUEUE_NAME="validibot-validation-queue-{{stage}}"
+    if gcloud tasks queues describe "$QUEUE_NAME" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Queue '$QUEUE_NAME' already exists"
+    else
+        gcloud tasks queues create "$QUEUE_NAME" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}}
+        echo "   ✓ Queue created"
+    fi
+    echo ""
+
+    # Step 6: Create GCS buckets
+    echo "6. Creating GCS buckets"
+    if [ "{{stage}}" = "prod" ]; then
+        MEDIA_BUCKET="validibot-media"
+        FILES_BUCKET="validibot-files"
+    else
+        MEDIA_BUCKET="validibot-media-{{stage}}"
+        FILES_BUCKET="validibot-files-{{stage}}"
+    fi
+
+    for BUCKET in "$MEDIA_BUCKET" "$FILES_BUCKET"; do
+        if gcloud storage buckets describe "gs://$BUCKET" --project={{gcp_project}} &>/dev/null; then
+            echo "   ✓ Bucket '$BUCKET' already exists"
+        else
+            gcloud storage buckets create "gs://$BUCKET" \
+                --location={{gcp_region}} \
+                --project={{gcp_project}}
+            echo "   ✓ Bucket '$BUCKET' created"
+        fi
+    done
+    echo ""
+
+    # Step 7: Create secret placeholder
+    echo "7. Creating secret in Secret Manager"
+    if gcloud secrets describe "$SECRET_NAME" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Secret '$SECRET_NAME' already exists"
+    else
+        # Create empty secret
+        echo "placeholder" | gcloud secrets create "$SECRET_NAME" \
+            --replication-policy="user-managed" \
+            --locations="{{gcp_region}}" \
+            --data-file=- \
+            --project={{gcp_project}}
+        echo "   ✓ Secret created (placeholder)"
+    fi
+    echo ""
+
+    # Summary
+    echo "============================================="
+    echo "✓ Infrastructure setup complete for {{stage}}"
+    echo "============================================="
+    echo ""
+    echo "Resources created:"
+    echo "  • Service account: $SA_EMAIL"
+    echo "  • Cloud SQL: $DB_INSTANCE (database: $DB_NAME)"
+    echo "  • Cloud Tasks queue: $QUEUE_NAME"
+    echo "  • GCS buckets: $MEDIA_BUCKET, $FILES_BUCKET"
+    echo "  • Secret: $SECRET_NAME"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Create env file:     just gcp-secrets-init-dev"
+    echo "  2. Edit env file:       Edit .envs/.{{stage}}/.django with:"
+    echo "                          - DATABASE_URL (shown above if new)"
+    echo "                          - DJANGO_ALLOWED_HOSTS"
+    echo "                          - Other {{stage}}-specific values"
+    echo "  3. Upload secrets:      just gcp-secrets {{stage}}"
+    echo "  4. Deploy services:     just gcp-deploy-all {{stage}}"
+    echo "  5. Run migrations:      just gcp-migrate {{stage}}"
+    echo "  6. Seed data:           just gcp-setup-data {{stage}}"
+    echo ""
+
+# List all resources for a stage (useful for verification)
+gcp-list-resources stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Resources for stage: {{stage}}"
+    echo "================================"
+    echo ""
+
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="validibot-web"
+        WORKER="validibot-worker"
+        DB="validibot-db"
+        SECRET="django-env"
+        SA="validibot-cloudrun-prod"
+    else
+        SERVICE="validibot-web-{{stage}}"
+        WORKER="validibot-worker-{{stage}}"
+        DB="validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}"
+    fi
+
+    echo "Cloud Run Services:"
+    gcloud run services describe "$SERVICE" --region={{gcp_region}} --project={{gcp_project}} --format="value(status.url)" 2>/dev/null && echo "  ✓ $SERVICE" || echo "  ✗ $SERVICE (not deployed)"
+    gcloud run services describe "$WORKER" --region={{gcp_region}} --project={{gcp_project}} --format="value(status.url)" 2>/dev/null && echo "  ✓ $WORKER" || echo "  ✗ $WORKER (not deployed)"
+    echo ""
+
+    echo "Cloud SQL:"
+    gcloud sql instances describe "$DB" --project={{gcp_project}} --format="value(state)" 2>/dev/null && echo "  ✓ $DB" || echo "  ✗ $DB (not found)"
+    echo ""
+
+    echo "Secrets:"
+    gcloud secrets describe "$SECRET" --project={{gcp_project}} &>/dev/null && echo "  ✓ $SECRET" || echo "  ✗ $SECRET (not found)"
+    echo ""
+
+    echo "Service Account:"
+    gcloud iam service-accounts describe "$SA@{{gcp_project}}.iam.gserviceaccount.com" --project={{gcp_project}} &>/dev/null && echo "  ✓ $SA" || echo "  ✗ $SA (not found)"
 
 # =============================================================================
 # Testing
@@ -812,6 +1333,23 @@ test-integration *args:
         uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
     @echo "Stopping integration dependencies..."
     docker compose -f docker-compose.local.yml stop postgres mailpit
+
+# Run E2E tests against deployed staging environment
+# Tests the full flow: API -> Cloud Tasks -> Worker -> Cloud Run Job -> Callback
+# Requires environment variables (see tests/tests_integration/test_e2e_workflow.py)
+test-e2e *args:
+    @if [ -z "${E2E_TEST_API_URL:-}" ]; then \
+        echo "Error: E2E_TEST_API_URL not set"; \
+        echo ""; \
+        echo "Usage:"; \
+        echo "  E2E_TEST_API_URL=https://your-staging-url.run.app/api/v1 \\"; \
+        echo "  E2E_TEST_API_TOKEN=your-api-token \\"; \
+        echo "  E2E_TEST_WORKFLOW_ID=workflow-uuid \\"; \
+        echo "  just test-e2e"; \
+        exit 1; \
+    fi
+    @echo "Running E2E tests against: ${E2E_TEST_API_URL}"
+    uv run --extra dev pytest tests/tests_integration/test_e2e_workflow.py {{args}} -v --log-cli-level=INFO
 
 # =============================================================================
 # Cloud Scheduler - Scheduled Task Setup

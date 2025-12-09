@@ -50,6 +50,8 @@ nav:
       - Author Workflow Steps: how-to/author-workflow-steps.md
       - Add a Form: how-to/add-a-form.md
       - Configure the Badge JWKS Endpoint: how-to/configure-jwks.md
+      - Run Integration Tests: how-to/run-integration-tests.md
+      - Debug a Run: how-to/debug-a-run.md
       - Manage Organizations & Projects: organization_management.md
   - Integrations:
       - EnergyPlus Modal: integrations/energyplus_modal.md
@@ -57,6 +59,7 @@ nav:
       - Overview: google_cloud/index.md
       - Setup Cheatsheet: google_cloud/setup-cheatsheet.md
       - Deployment: google_cloud/deployment.md
+      - Logging: google_cloud/logging.md
       - Storage (GCS): google_cloud/storage.md
       - IAM & Service Accounts: google_cloud/iam.md
   - Marketing:

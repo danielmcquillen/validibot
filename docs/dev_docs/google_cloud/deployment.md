@@ -1,37 +1,150 @@
 # Google Cloud Deployment
 
-This guide covers deploying Validibot to Google Cloud Run.
+This guide covers deploying Validibot to Google Cloud Run with support for multiple environments (dev, staging, prod).
+
+## Multi-Environment Architecture
+
+Validibot supports three deployment stages:
+
+| Stage | Purpose | Resource Naming |
+|-------|---------|-----------------|
+| **dev** | Development testing, feature validation | `validibot-web-dev`, `validibot-db-dev` |
+| **staging** | Pre-production testing, E2E tests | `validibot-web-staging`, `validibot-db-staging` |
+| **prod** | Production environment | `validibot-web`, `validibot-db` |
+
+Each stage has isolated:
+- Cloud Run services (web + worker)
+- Cloud SQL database instance
+- Secrets in Secret Manager
+- Cloud Tasks queue
+- Service account
+
+Shared across stages:
+- GCS buckets (with stage prefixes in paths)
+- Artifact Registry (same images, different services)
+- Cloud KMS keys
 
 ## Quick Start with justfile
 
-The easiest way to deploy is using the `justfile` commands:
+All deployment commands accept a stage parameter:
 
 ```bash
-# Code deployment only (use for updates after initial setup)
-just gcp-deploy
+# Deploy to dev
+just gcp-deploy dev
+just gcp-deploy-worker dev
 
-# Full environment setup (use for NEW environments)
-just gcp-setup-all
+# Deploy to production
+just gcp-deploy prod
+just gcp-deploy-worker prod
 
-# Run migrations after deployment
-just gcp-migrate
+# Deploy both services at once
+just gcp-deploy-all dev
+
+# Run migrations
+just gcp-migrate dev
 
 # View logs
-just gcp-logs
+just gcp-logs dev
+just gcp-logs prod
 ```
 
-Run `just` to see all available commands. The rest of this document explains what happens under the hood.
+Run `just` to see all available commands.
 
-### gcp-deploy vs gcp-setup-all
+## Setting Up a New Environment
 
-| Command | What it does | When to use |
-|---------|--------------|-------------|
-| `gcp-deploy` | Builds image, pushes to registry, deploys **web service only** | Regular code deployments (daily/weekly) |
-| `gcp-setup-all` | Runs `gcp-deploy` + `gcp-deploy-worker` + `gcp-scheduler-setup` | Initial environment setup (once per environment) |
+To create a new dev or staging environment from scratch:
 
-**Use `gcp-deploy`** for routine code updates. It only touches the web service and is fast.
+### Step 1: Initialize Infrastructure
 
-**Use `gcp-setup-all`** when setting up a new environment (dev, staging, production) for the first time. It deploys both services and configures Cloud Scheduler jobs for background tasks like session cleanup and expired key removal. See [Scheduled Jobs](scheduled-jobs.md) for details on the scheduled tasks.
+```bash
+# Creates service account, database, Cloud Tasks queue, and secret placeholder
+just gcp-init-stage dev
+```
+
+This command creates:
+- Service account: `validibot-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
+- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier)
+- Database and user with generated password
+- Cloud Tasks queue: `validibot-validation-queue-dev`
+- Secret placeholder: `django-env-dev`
+
+**Important**: Save the database password shown in the output!
+
+### Step 2: Configure Environment Secrets
+
+```bash
+# Copy template and edit
+just gcp-secrets-init dev
+
+# Or manually edit the existing file
+vim .envs/.dev/.django
+```
+
+Update these values in `.envs/.dev/.django`:
+- `DJANGO_SECRET_KEY`: Generate a new key
+- `DATABASE_URL`: Use the password from Step 1
+- `POSTGRES_PASSWORD`: Same password
+- `CLOUD_SQL_CONNECTION_NAME`: Should be `validibot-db-dev`
+- `DJANGO_ALLOWED_HOSTS`: Add the dev service URL after first deploy
+
+### Step 3: Upload Secrets
+
+```bash
+just gcp-secrets dev
+```
+
+### Step 4: Deploy Services
+
+```bash
+# Deploy both web and worker
+just gcp-deploy-all dev
+
+# Or deploy separately
+just gcp-deploy dev
+just gcp-deploy-worker dev
+```
+
+### Step 5: Run Migrations and Seed Data
+
+```bash
+# Run database migrations
+just gcp-migrate dev
+
+# Seed initial data (validators, default org, etc.)
+just gcp-setup-data dev
+```
+
+### Step 6: Verify Deployment
+
+```bash
+# Check status
+just gcp-status dev
+
+# View logs
+just gcp-logs dev
+
+# List all resources
+just gcp-list-resources dev
+```
+
+## Regular Deployments
+
+For routine code updates after initial setup:
+
+```bash
+# Deploy code changes to dev
+just gcp-deploy dev
+
+# Deploy to both web and worker
+just gcp-deploy-all dev
+
+# Run migrations if needed
+just gcp-migrate dev
+
+# Deploy to production
+just gcp-deploy-all prod
+just gcp-migrate prod
+```
 
 ## Architecture Overview
 
@@ -70,11 +183,13 @@ Before deploying, ensure you have completed the [Setup Cheatsheet](setup-cheatsh
 - [x] gcloud CLI installed and authenticated
 - [x] Project configured (`project-a509c806-3e21-4fbc-b19`)
 - [x] Required APIs enabled
-- [x] Cloud SQL instance created (`validibot-db`)
-- [x] Database and user created
-- [x] Secret Manager configured (`db-password`)
 - [x] Artifact Registry created (`validibot`)
 - [x] Docker authentication configured
+
+For production, also ensure:
+- [x] Cloud SQL instance created (`validibot-db`)
+- [x] Database and user created
+- [x] Secret Manager configured (`django-env`)
 
 ## Pre-Deployment Checks
 
@@ -95,232 +210,131 @@ Optionally, run Django's deployment security checks against production settings:
 uv run python manage.py check --deploy --settings=config.settings.production
 ```
 
-This checks for common security misconfigurations (DEBUG=True, missing HTTPS settings, etc.).
-Note: This may fail locally if production-only environment variables aren't set.
+## Secrets Management
 
-All tests must pass before deploying to production.
+Each stage has its own secrets file and Secret Manager entry:
+
+| Stage | Local File | Secret Name |
+|-------|------------|-------------|
+| dev | `.envs/.dev/.django` | `django-env-dev` |
+| staging | `.envs/.staging/.django` | `django-env-staging` |
+| prod | `.envs/.production/.django` | `django-env` |
+
+To update secrets:
+
+```bash
+# Edit the file
+vim .envs/.dev/.django
+
+# Upload to Secret Manager
+just gcp-secrets dev
+
+# Redeploy to pick up changes
+just gcp-deploy dev
+```
+
+## Operations
+
+### View Logs
+
+```bash
+# Recent logs
+just gcp-logs dev
+
+# Follow logs in real-time
+just gcp-logs-follow dev
+
+# View job logs (migrations, setup)
+just gcp-job-logs validibot-migrate-dev
+```
+
+### Check Status
+
+```bash
+# Single stage
+just gcp-status dev
+
+# All stages
+just gcp-status-all
+```
+
+### Pause/Resume Service
+
+```bash
+# Block public access (useful during maintenance)
+just gcp-pause dev
+
+# Restore public access
+just gcp-resume dev
+```
+
+### List Resources
+
+```bash
+# See all resources for a stage
+just gcp-list-resources dev
+```
 
 ## Build and Push Docker Image
 
-### 1. Test the production Dockerfile locally (optional)
-
-Before pushing to GCP, verify the image builds correctly:
+The `gcp-deploy` commands handle this automatically, but you can also run manually:
 
 ```bash
-# Build the production image locally
-docker build \
-  -f compose/production/django/Dockerfile \
-  -t validibot-test \
-  .
+# Build for Cloud Run (linux/amd64)
+just gcp-build
 
-# Verify it built successfully
-docker images | grep validibot-test
-```
-
-This catches build errors before pushing to Artifact Registry.
-
-### 2. Build and tag for Artifact Registry
-
-```bash
-# Set variables
-PROJECT_ID="project-a509c806-3e21-4fbc-b19"
-REGION="australia-southeast1"
-IMAGE_NAME="validibot-web"
-TAG="latest"  # or use git SHA: $(git rev-parse --short HEAD)
-
-# Build with the full Artifact Registry path
-docker build \
-  --platform linux/amd64
-  -f compose/production/django/Dockerfile \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
-  .
-```
-
-### 3. Push to Artifact Registry
-
-```bash
-docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG}
-```
-
-### 4. Verify the image was pushed
-
-```bash
-gcloud artifacts docker images list \
-  ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot
-```
-
-## Deploy to Cloud Run
-
-### 1. Create a service account for Cloud Run
-
-```bash
-# Create service account
-gcloud iam service-accounts create validibot-cloudrun \
-  --display-name="Validibot Cloud Run Service Account"
-
-# Grant Cloud SQL Client role
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/cloudsql.client"
-
-# Grant Secret Manager access
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-
-# Grant Cloud Storage access (for media files)
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-  --member="serviceAccount:validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/storage.objectAdmin"
-```
-
-### 2. Deploy the web service
-
-```bash
-gcloud run deploy validibot-web \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
-  --region=${REGION} \
-  --platform=managed \
-  --allow-unauthenticated \
-  --service-account=validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com \
-  --add-cloudsql-instances=${PROJECT_ID}:${REGION}:validibot-db \
-  --set-env-vars="DJANGO_SETTINGS_MODULE=config.settings.production" \
-  --set-env-vars="DJANGO_ALLOWED_HOSTS=*.run.app" \
-  --set-env-vars="GCS_MEDIA_BUCKET=validibot-au-media" \
-  --set-secrets="DATABASE_URL=db-url:latest" \
-  --set-secrets="DJANGO_SECRET_KEY=django-secret-key:latest" \
-  --port=8000 \
-  --memory=512Mi \
-  --cpu=1 \
-  --min-instances=0 \
-  --max-instances=10
-```
-
-### 3. Deploy the worker service
-
-```bash
-gcloud run deploy validibot-worker \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
-  --region=${REGION} \
-  --platform=managed \
-  --no-allow-unauthenticated \
-  --service-account=validibot-cloudrun@${PROJECT_ID}.iam.gserviceaccount.com \
-  --add-cloudsql-instances=${PROJECT_ID}:${REGION}:validibot-db \
-  --set-env-vars="DJANGO_SETTINGS_MODULE=config.settings.production" \
-  --set-secrets="DATABASE_URL=db-url:latest" \
-  --set-secrets="DJANGO_SECRET_KEY=django-secret-key:latest" \
-  --command="/start-worker" \
-  --port=8001 \
-  --memory=512Mi \
-  --cpu=1 \
-  --min-instances=0 \
-  --max-instances=5
-```
-
-## Required Secrets
-
-Validibot uses a single `.env` file stored in Secret Manager. See the [Setup Cheatsheet](setup-cheatsheet.md#set-up-secrets) for details on creating and updating secrets.
-
-To update secrets after editing `.envs/.production/.django`:
-
-```bash
-just gcp-secrets
-just gcp-deploy  # Redeploy to pick up changes
-```
-
-## Run Migrations
-
-After deploying, run migrations using Cloud Run Jobs. The easiest way:
-
-```bash
-just gcp-migrate
-```
-
-Or manually with the correct command format:
-
-```bash
-gcloud run jobs create validibot-migrate \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${TAG} \
-  --region=${REGION} \
-  --service-account=validibot-cloudrun-prod@${PROJECT_ID}.iam.gserviceaccount.com \
-  --set-cloudsql-instances=${PROJECT_ID}:${REGION}:validibot-db \
-  --set-secrets=/secrets/.env=django-env:latest \
-  --memory=1Gi \
-  --command="/bin/bash" \
-  --args="-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput"
-
-# Execute the job
-gcloud run jobs execute validibot-migrate --region=${REGION} --wait
-```
-
-**Important notes for Cloud Run Jobs:**
-
-- Use `--set-cloudsql-instances` (not `--add-cloudsql-instances`)
-- Use `--command "/bin/bash"` with `--args "-c,..."` to run shell commands
-- Must source `/secrets/.env` because `--command` bypasses the container entrypoint
-
-## Verify Deployment
-
-```bash
-# Get the service URL
-gcloud run services describe validibot-web --region=${REGION} --format='value(status.url)'
-
-# Check service status
-gcloud run services list --region=${REGION}
-
-# View logs
-gcloud run services logs read validibot-web --region=${REGION} --limit=50
-```
-
-## Update Deployment
-
-To deploy a new version:
-
-```bash
-# Build new image with new tag
-NEW_TAG=$(git rev-parse --short HEAD)
-docker build \
-  --platform linux/amd64
-  -f compose/production/django/Dockerfile \
-  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${NEW_TAG} \
-  .
-
-# Push
-docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${NEW_TAG}
-
-# Update the service
-gcloud run services update validibot-web \
-  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/validibot/${IMAGE_NAME}:${NEW_TAG} \
-  --region=${REGION}
-
-# Run migrations if needed
-gcloud run jobs execute validibot-migrate --region=${REGION} --wait
+# Push to Artifact Registry
+just gcp-push
 ```
 
 ## Troubleshooting
 
-### View logs
+### View detailed logs
 
 ```bash
-# Real-time logs
-gcloud run services logs tail validibot-web --region=${REGION}
+# Real-time logs for web service
+gcloud run services logs tail validibot-web-dev --region=australia-southeast1
 
-# Historical logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-web" --limit=100
+# Historical logs with filtering
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-web-dev" --limit=100
 ```
 
 ### Connect to Cloud SQL directly
 
 ```bash
 # Using Cloud SQL Auth Proxy
-gcloud sql connect validibot-db --user=validibot_user --database=validibot
+gcloud sql connect validibot-db-dev --user=validibot_user --database=validibot
 ```
 
 ### Check secret values
 
 ```bash
-gcloud secrets versions access latest --secret=db-password
-gcloud secrets versions access latest --secret=django-secret-key
+gcloud secrets versions access latest --secret=django-env-dev
+```
+
+### Common issues
+
+**"Secret not found" error:**
+```bash
+# Ensure secret exists
+gcloud secrets describe django-env-dev
+
+# If not, create it
+just gcp-secrets dev
+```
+
+**"Service account not found" error:**
+```bash
+# Re-run infrastructure setup
+just gcp-init-stage dev
+```
+
+**Database connection errors:**
+```bash
+# Verify Cloud SQL instance is running
+gcloud sql instances describe validibot-db-dev --format="value(state)"
+
+# Check connection name in secrets matches instance
 ```
 
 ## Local vs Production
@@ -334,3 +348,15 @@ gcloud secrets versions access latest --secret=django-secret-key
 | Scaling       | Single container                 | Auto-scaled (0-N)      |
 
 There is no `docker-compose.production.yml` — production runs on Cloud Run, not Docker Compose.
+
+## Cost Estimates
+
+Monthly costs per stage (approximate, Australia region):
+
+| Stage | Cloud Run | Cloud SQL | Total |
+|-------|-----------|-----------|-------|
+| dev | ~$5-15 | ~$10 | ~$15-25 |
+| staging | ~$5-15 | ~$25 | ~$30-40 |
+| prod | ~$10-30 | ~$50 | ~$60-80 |
+
+Dev uses smaller database tiers to minimize costs. All environments scale to zero when not in use.

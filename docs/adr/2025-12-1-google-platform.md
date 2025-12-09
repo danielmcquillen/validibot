@@ -619,10 +619,9 @@ Celery’s chains/chords are not the product; Validibot needs its own workflow e
 - `run-step` view:
   - Executes the step:
     - Simple validators inline.
-    - Modal steps: kick off Modal job, mark `WAITING_FOR_MODAL`.
     - Actions (Slack/NFT/VC): call external API with retries, update status.
   - Marks step success/fail; if completion unblocks others, enqueue `advance-workflow` again.
-- Modal callback (or poller) marks Modal steps done/failed and re-enqueues `advance-workflow`.
+- Callback handlers mark long-running steps done/failed and re-enqueue `advance-workflow`.
 
 ### Why this replaces Celery chains
 
@@ -657,7 +656,7 @@ Celery’s chains/chords are not the product; Validibot needs its own workflow e
   - Cloud Tasks: queue name(s), location, OIDC service account, target URLs; verification of `Authorization` header audience in worker views.
   - Secrets: load from env (populated from Secret Manager). Keep `DJANGO_SECRET_KEY`, DB credentials, API keys out of source.
   - Logging: JSON/structured logging to stdout for Cloud Logging; Sentry DSN if enabled.
-  - Security: HMAC/oidc check for Modal/compute callbacks; set appropriate CORS if needed for uploads.
+  - Security: HMAC/oidc check for worker/compute callbacks; set appropriate CORS if needed for uploads.
 
 - **Dev/prod parity**:
 

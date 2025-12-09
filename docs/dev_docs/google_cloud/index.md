@@ -4,14 +4,14 @@ This section documents Validibot's integration with Google Cloud Platform (GCP).
 
 ## Quick Start
 
-The `justfile` provides all common deployment operations:
+All deployment commands require a stage parameter (`dev`, `staging`, or `prod`):
 
 ```bash
-just gcp-deploy      # Build, push, and deploy web service (routine updates)
-just gcp-setup-all   # Full environment setup: web + worker + scheduler (first time)
-just gcp-migrate     # Run database migrations
-just gcp-logs        # View recent logs
-just gcp-status      # Show service URL and status
+just gcp-deploy dev       # Deploy web service to dev
+just gcp-deploy-all dev   # Deploy web + worker to dev
+just gcp-migrate dev      # Run database migrations on dev
+just gcp-logs dev         # View recent logs for dev
+just gcp-status dev       # Show dev service URL and status
 ```
 
 Run `just` (with no arguments) to see all available commands.

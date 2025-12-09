@@ -304,10 +304,10 @@ This scope will be communicated in UI copy and documentation, as well as enforce
    - Parse variables, store full parsed IO set as JSON on `FMUModel` (Pydantic-backed getter), and synthesize proposed catalog entries (inputs/outputs).
    - Apply limits: `MAX_FMU_SIZE`, `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`.
 
-4. **Probe/test execution service (Modal + Celery)**
+4. **Probe/test execution service**
 
-   - Add a dedicated service class to run probes on Modal (separate from the validation-run executor, but with similar task/status shape for clarity).
-   - Inputs: FMU storage key, selected variables, test input JSON, simulation config (t_start/t_end/step), timeout (`MAX_MODAL_COMPUTE_TIME`), expected outputs.
+   - Add a dedicated service class to run probes on the compute plane (separate from the validation-run executor, but with similar task/status shape for clarity).
+   - Inputs: FMU storage key, selected variables, test input JSON, simulation config (t_start/t_end/step), timeout (`MAX_COMPUTE_TIME`), expected outputs.
    - Behavior: download FMU, run short simulation, return outputs; compare to expected (exact match for MVP); set probe status (pending/running/succeeded/failed) on the draft validator.
    - Errors/violations: fail the probe, surface clear messages via an HTMX-poll status endpoint.
 
@@ -319,7 +319,7 @@ This scope will be communicated in UI copy and documentation, as well as enforce
 
 6. **Constants**
 
-   - Define in settings/constants: `MAX_FMU_SIZE`, `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`, `MAX_MODAL_COMPUTE_TIME`, default probe horizon/step size, Modal CPU/memory limits, and per-FMU simulation horizon settings (`t_start`, `t_end_default`, `max_t_end`). Enforce on upload/probe and reject author configs that exceed FMU limits.
+   - Define in settings/constants: `MAX_FMU_SIZE`, `MAX_FMU_INPUTS`, `MAX_FMU_OUTPUTS`, `MAX_COMPUTE_TIME`, default probe horizon/step size, compute CPU/memory limits, and per-FMU simulation horizon settings (`t_start`, `t_end_default`, `max_t_end`). Enforce on upload/probe and reject author configs that exceed FMU limits.
 
 7. **Documentation & UX**
    - Document supported FMI versions/kinds, limits, as-is naming (no renaming), probe flow, and required roles/org scoping.

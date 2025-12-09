@@ -638,12 +638,8 @@ gcp-init-stage stage:
 
     # Step 4: Create database and user
     echo "4. Creating database and user"
-    # Use stage-specific database name (validibot_dev, validibot_staging, validibot)
-    if [ "{{stage}}" = "prod" ]; then
-        DB_NAME="validibot"
-    else
-        DB_NAME="validibot_{{stage}}"
-    fi
+    # Database name is always 'validibot' - isolation is at instance level
+    DB_NAME="validibot"
     DB_USER="validibot_user"
 
     # Check if database exists
@@ -1231,23 +1227,40 @@ validator-push name:
 # Build and push in one step
 validator-build-push name: (validator-build name) (validator-push name)
 
-# Deploy a Cloud Run Job for a validator
-# Usage: just validator-deploy energyplus
-validator-deploy name: (validator-build-push name)
-    gcloud run jobs deploy validibot-validator-{{name}} \
+# Deploy a Cloud Run Job for a validator to a specific stage
+# Usage: just validator-deploy energyplus dev | just validator-deploy fmi prod
+validator-deploy name stage: (validator-build-push name)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+    # Compute stage-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_NAME="validibot-validator-{{name}}"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+    else
+        JOB_NAME="validibot-validator-{{name}}-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+    fi
+    echo "Deploying $JOB_NAME..."
+    gcloud run jobs deploy "$JOB_NAME" \
         --image {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
         --region {{gcp_region}} \
-        --service-account {{gcp_sa}} \
+        --service-account "$SA" \
         --max-retries 0 \
         --task-timeout 3600 \
-        --set-env-vars VALIDATOR_VERSION={{git_sha}} \
-        --labels validator={{name}},version={{git_sha}} \
+        --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}} \
+        --labels validator={{name}},version={{git_sha}},stage={{stage}} \
         --project {{gcp_project}}
+    echo "✓ $JOB_NAME deployed"
 
-# Build and deploy all validator jobs
-validators-deploy-all:
-    just validator-deploy energyplus
-    just validator-deploy fmi
+# Build and deploy all validator jobs to a stage
+# Usage: just validators-deploy-all dev | just validators-deploy-all prod
+validators-deploy-all stage:
+    just validator-deploy energyplus {{stage}}
+    just validator-deploy fmi {{stage}}
 
 # Run validator container tests locally
 validators-test:
@@ -1366,8 +1379,6 @@ test-e2e *args:
 # Jobs are configured in Australia/Sydney timezone by default.
 # =============================================================================
 
-# Service account for Cloud Scheduler to invoke worker endpoints
-gcp_scheduler_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
 gcp_scheduler_timezone := "Australia/Sydney"
 
 # List all Cloud Scheduler jobs for this project
@@ -1376,23 +1387,42 @@ gcp-scheduler-list:
         --project {{gcp_project}} \
         --location {{gcp_region}}
 
-# Set up all scheduled jobs (run once per environment)
-gcp-scheduler-setup:
+# Set up all scheduled jobs for a stage (dev, staging, prod)
+gcp-scheduler-setup stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "Setting up Cloud Scheduler jobs for {{gcp_project}}..."
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute stage-specific values
+    if [ "{{stage}}" = "prod" ]; then
+        WORKER_SERVICE="validibot-worker"
+        SCHEDULER_SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_SUFFIX=""
+    else
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+        SCHEDULER_SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "Setting up Cloud Scheduler jobs for {{stage}} environment..."
+    echo "Worker service: $WORKER_SERVICE"
+    echo "Service account: $SCHEDULER_SA"
     echo ""
 
     # Get the worker service URL
-    WORKER_URL=$(gcloud run services describe {{gcp_worker_service}} \
+    WORKER_URL=$(gcloud run services describe "$WORKER_SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --format="value(status.url)" 2>/dev/null || echo "")
 
     if [ -z "$WORKER_URL" ]; then
-        echo "ERROR: Worker service {{gcp_worker_service}} not found."
-        echo "Deploy the worker service first with: just gcp-deploy-worker"
+        echo "ERROR: Worker service $WORKER_SERVICE not found."
+        echo "Deploy the worker service first with: just gcp-deploy-worker {{stage}}"
         exit 1
     fi
 
@@ -1422,7 +1452,7 @@ gcp-scheduler-setup:
                 --time-zone "{{gcp_scheduler_timezone}}" \
                 --uri "${WORKER_URL}${endpoint}" \
                 --http-method POST \
-                --oidc-service-account-email {{gcp_scheduler_sa}} \
+                --oidc-service-account-email "$SCHEDULER_SA" \
                 --description "$description"
         else
             echo "   Creating new job..."
@@ -1433,7 +1463,7 @@ gcp-scheduler-setup:
                 --time-zone "{{gcp_scheduler_timezone}}" \
                 --uri "${WORKER_URL}${endpoint}" \
                 --http-method POST \
-                --oidc-service-account-email {{gcp_scheduler_sa}} \
+                --oidc-service-account-email "$SCHEDULER_SA" \
                 --description "$description"
         fi
         echo "   ✓ Done"
@@ -1442,26 +1472,26 @@ gcp-scheduler-setup:
 
     # Job 1: Clear expired sessions (daily at 2 AM)
     create_or_update_job \
-        "validibot-clear-sessions" \
+        "validibot-clear-sessions${JOB_SUFFIX}" \
         "0 2 * * *" \
         "/api/v1/scheduled/clear-sessions/" \
-        "Clear expired Django sessions"
+        "Clear expired Django sessions ({{stage}})"
 
     # Job 2: Cleanup idempotency keys (daily at 3 AM)
     create_or_update_job \
-        "validibot-cleanup-idempotency-keys" \
+        "validibot-cleanup-idempotency-keys${JOB_SUFFIX}" \
         "0 3 * * *" \
         "/api/v1/scheduled/cleanup-idempotency-keys/" \
-        "Delete expired API idempotency keys (24h TTL)"
+        "Delete expired API idempotency keys - 24h TTL ({{stage}})"
 
     # Job 3: Cleanup callback receipts (weekly Sunday at 4 AM)
     create_or_update_job \
-        "validibot-cleanup-callback-receipts" \
+        "validibot-cleanup-callback-receipts${JOB_SUFFIX}" \
         "0 4 * * 0" \
         "/api/v1/scheduled/cleanup-callback-receipts/" \
-        "Delete old validator callback receipts (30 day retention)"
+        "Delete old validator callback receipts - 30 day retention ({{stage}})"
 
-    echo "✅ All scheduler jobs configured!"
+    echo "✅ All scheduler jobs configured for {{stage}}!"
     echo ""
     echo "View jobs: just gcp-scheduler-list"
     echo "Run a job manually: just gcp-scheduler-run <job-name>"
@@ -1472,17 +1502,31 @@ gcp-scheduler-run job_name:
         --project {{gcp_project}} \
         --location {{gcp_region}}
 
-# Delete all scheduler jobs (use with caution)
-gcp-scheduler-delete-all:
+# Delete all scheduler jobs for a stage (use with caution)
+gcp-scheduler-delete-all stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "⚠️  This will delete ALL scheduler jobs for {{gcp_project}}"
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute job suffix
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_SUFFIX=""
+    else
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "⚠️  This will delete ALL scheduler jobs for {{stage}} environment"
     read -p "Are you sure? (y/N) " -n 1 -r
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+            job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \
                 --project {{gcp_project}} \

@@ -21,11 +21,15 @@ Cloud Scheduler replaces Celery Beat for running periodic tasks. Each job sends 
 
 ## Scheduled Jobs
 
-| Job Name | Schedule (Sydney) | Endpoint | Purpose |
-|----------|-------------------|----------|---------|
+Each stage has its own set of scheduler jobs with stage-specific names:
+
+| Job Name (prod) | Schedule (Sydney) | Endpoint | Purpose |
+|-----------------|-------------------|----------|---------|
 | `validibot-clear-sessions` | Daily at 2:00 AM | `/api/v1/scheduled/clear-sessions/` | Remove expired Django sessions from the database |
 | `validibot-cleanup-idempotency-keys` | Daily at 3:00 AM | `/api/v1/scheduled/cleanup-idempotency-keys/` | Delete expired API idempotency keys (24h TTL) |
 | `validibot-cleanup-callback-receipts` | Weekly Sunday 4:00 AM | `/api/v1/scheduled/cleanup-callback-receipts/` | Delete old validator callback receipts (30 day retention) |
+
+For dev/staging, job names include the stage suffix (e.g., `validibot-clear-sessions-dev`).
 
 ## Setup
 
@@ -40,49 +44,53 @@ Cloud Scheduler replaces Celery Beat for running periodic tasks. Each job sends 
 
 ### Creating Jobs
 
-Use the justfile command to create all scheduled jobs:
+Use the justfile command to create all scheduled jobs for a stage:
 
 ```bash
-# Set up all jobs (creates or updates)
-just gcp-scheduler-setup
+# Set up all jobs for dev (creates or updates)
+just gcp-scheduler-setup dev
+
+# Set up all jobs for production
+just gcp-scheduler-setup prod
 ```
 
 This command:
-- Detects the worker service URL automatically
+- Detects the worker service URL automatically for the given stage
 - Creates jobs if they don't exist, or updates them if they do
-- Uses OIDC authentication with the configured service account
+- Uses OIDC authentication with the stage's service account
 
 ### Managing Jobs
 
 ```bash
-# List all scheduler jobs
+# List all scheduler jobs (all stages)
 just gcp-scheduler-list
 
 # Run a job manually (for testing)
-just gcp-scheduler-run validibot-cleanup-idempotency-keys
+just gcp-scheduler-run validibot-cleanup-idempotency-keys-dev
 
 # Pause a job
-just gcp-scheduler-pause validibot-clear-sessions
+just gcp-scheduler-pause validibot-clear-sessions-dev
 
 # Resume a paused job
-just gcp-scheduler-resume validibot-clear-sessions
+just gcp-scheduler-resume validibot-clear-sessions-dev
 
-# Delete all scheduler jobs (use with caution)
-just gcp-scheduler-delete-all
+# Delete all scheduler jobs for a stage (use with caution)
+just gcp-scheduler-delete-all dev
 ```
 
 ## Environment-Specific Setup
 
-When setting up a new environment (dev, staging, production), use the combined setup command:
+When setting up a new environment, deploy the services and then set up the scheduler:
 
 ```bash
-# Deploy everything: web service, worker service, and scheduled jobs
-just gcp-setup-all
+# Deploy web and worker services
+just gcp-deploy-all dev
+
+# Set up scheduler jobs
+just gcp-scheduler-setup dev
 ```
 
-This runs `gcp-deploy`, `gcp-deploy-worker`, and `gcp-scheduler-setup` in sequence.
-
-For subsequent deployments (code updates only), use `just gcp-deploy` or `just gcp-deploy-worker` as needed—the scheduler jobs don't need to be recreated unless their configuration changes.
+For subsequent deployments (code updates only), use `just gcp-deploy dev` or `just gcp-deploy-all dev` as needed—the scheduler jobs don't need to be recreated unless their configuration changes.
 
 ## Adding New Scheduled Jobs
 

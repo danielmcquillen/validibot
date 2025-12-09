@@ -52,42 +52,51 @@ Run `just` to see all available commands.
 
 ## Setting Up a New Environment
 
+The `gcp-init-stage` command works for all stages (dev, staging, prod). Production was provisioned manually before this tooling existed, but the command would work for a fresh prod setup too.
+
+**Already provisioned (prod):**
+- Service account: `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
+- Cloud SQL: `validibot-db`
+- Cloud Tasks queue: `validibot-validation-queue`
+- GCS buckets: `validibot-media`, `validibot-files`
+- Secret: `django-env`
+
 To create a new dev or staging environment from scratch:
 
 ### Step 1: Initialize Infrastructure
 
 ```bash
-# Creates service account, database, Cloud Tasks queue, and secret placeholder
+# Creates service account, database, Cloud Tasks queue, GCS buckets, and secret placeholder
 just gcp-init-stage dev
 ```
 
 This command creates:
 - Service account: `validibot-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
-- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier)
-- Database and user with generated password
+- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier for dev, db-g1-small for staging)
+- Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `validibot-validation-queue-dev`
+- GCS buckets: `validibot-media-dev`, `validibot-files-dev`
 - Secret placeholder: `django-env-dev`
 
-**Important**: Save the database password shown in the output!
+!!! warning "Save the database password!"
+    The command outputs a generated password for the database user. **Copy this password immediately** - you'll need it in the next step. If you lose it, you'll need to reset the database user password manually.
 
-### Step 2: Configure Environment Secrets
+### Step 2: Update Environment File with Password
+
+Edit `.envs/.dev/.django` and replace `PASSWORD_FROM_GCP_INIT` with the actual password from Step 1:
 
 ```bash
-# Copy template and edit
-just gcp-secrets-init dev
-
-# Or manually edit the existing file
 vim .envs/.dev/.django
 ```
 
-Update these values in `.envs/.dev/.django`:
-- `DJANGO_SECRET_KEY`: Generate a new key
-- `DATABASE_URL`: Use the password from Step 1
-- `POSTGRES_PASSWORD`: Same password
-- `CLOUD_SQL_CONNECTION_NAME`: Should be `validibot-db-dev`
-- `DJANGO_ALLOWED_HOSTS`: Add the dev service URL after first deploy
+Update these two lines (remember to URL-encode special characters like `/` → `%2F`, `=` → `%3D`):
 
-### Step 3: Upload Secrets
+```
+POSTGRES_PASSWORD=<actual-password-here>
+DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db-dev
+```
+
+### Step 3: Upload Secrets to Secret Manager
 
 ```bash
 just gcp-secrets dev
@@ -98,10 +107,6 @@ just gcp-secrets dev
 ```bash
 # Deploy both web and worker
 just gcp-deploy-all dev
-
-# Or deploy separately
-just gcp-deploy dev
-just gcp-deploy-worker dev
 ```
 
 ### Step 5: Run Migrations and Seed Data
@@ -114,10 +119,24 @@ just gcp-migrate dev
 just gcp-setup-data dev
 ```
 
-### Step 6: Verify Deployment
+### Step 6: Deploy Validators
 
 ```bash
-# Check status
+# Deploy EnergyPlus and FMI validators
+just validators-deploy-all dev
+```
+
+### Step 7: Set Up Scheduled Jobs
+
+```bash
+# Create Cloud Scheduler jobs for cleanup tasks
+just gcp-scheduler-setup dev
+```
+
+### Step 8: Verify Deployment
+
+```bash
+# Check status and get service URL
 just gcp-status dev
 
 # View logs
@@ -126,6 +145,8 @@ just gcp-logs dev
 # List all resources
 just gcp-list-resources dev
 ```
+
+Optionally, update `DJANGO_ALLOWED_HOSTS` in `.envs/.dev/.django` with the service URL, then run `just gcp-secrets dev` and `just gcp-deploy dev` again.
 
 ## Regular Deployments
 
@@ -273,6 +294,34 @@ just gcp-resume dev
 ```bash
 # See all resources for a stage
 just gcp-list-resources dev
+```
+
+### Scheduled Jobs (Cloud Scheduler)
+
+```bash
+# Set up scheduled jobs for a stage
+just gcp-scheduler-setup dev
+just gcp-scheduler-setup prod
+
+# List all scheduler jobs
+just gcp-scheduler-list
+
+# Run a job manually (for testing)
+just gcp-scheduler-run validibot-clear-sessions-dev
+
+# Delete all scheduler jobs for a stage
+just gcp-scheduler-delete-all dev
+```
+
+### Validator Jobs
+
+```bash
+# Deploy a validator job for a stage
+just validator-deploy energyplus dev
+just validator-deploy energyplus prod
+
+# List validator jobs
+just gcp-jobs-list
 ```
 
 ## Build and Push Docker Image

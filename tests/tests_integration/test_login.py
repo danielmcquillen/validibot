@@ -1,8 +1,8 @@
 """
 Selenium-based integration tests for the login flow.
 
-These tests use StaticLiveServerTestCase to spin up a real server and
-test the login form with a browser via Selenium WebDriver.
+These tests use pytest-django's live_server fixture with Selenium WebDriver.
+This approach handles psycopg3 connection threading properly.
 """
 
 import logging
@@ -12,8 +12,6 @@ from pathlib import Path
 
 import pytest
 from allauth.account.models import EmailAddress
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.db import connections
 from django.urls import reverse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -39,11 +37,101 @@ def _first_existing_path(*candidates: str) -> str | None:
     return None
 
 
+def _get_chrome_options() -> Options:
+    """Configure Chrome options for headless testing."""
+    chrome_options = Options()
+    use_headless = os.getenv("SELENIUM_HEADLESS", "1") != "0"
+    if use_headless:
+        chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+
+    chrome_binary = _first_existing_path(
+        os.getenv("CHROME_BIN"),
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+    )
+    if chrome_binary:
+        chrome_options.binary_location = chrome_binary
+
+    return chrome_options
+
+
+def _get_chromedriver_path() -> str:
+    """Get the path to chromedriver, raising if not found."""
+    chromedriver_path = _first_existing_path(
+        os.getenv("CHROMEDRIVER_PATH"),
+        "/usr/bin/chromedriver",
+        "/usr/lib/chromium/chromedriver",
+    )
+    if not chromedriver_path:
+        raise RuntimeError(
+            "Chromedriver not found. Run integration tests via "
+            "`just test-integration` to use the container with Chrome "
+            "preinstalled, or set CHROMEDRIVER_PATH to a valid binary.",
+        )
+    return chromedriver_path
+
+
+@pytest.fixture(scope="module")
+def selenium_driver():
+    """Create a Selenium WebDriver for the test module."""
+    driver = webdriver.Chrome(
+        service=Service(executable_path=_get_chromedriver_path()),
+        options=_get_chrome_options(),
+    )
+    driver.implicitly_wait(10)
+    yield driver
+    try:
+        driver.quit()
+    except Exception:
+        logger.exception("Error quitting Selenium WebDriver")
+
+
+@pytest.fixture
+def test_user(db):
+    """Create a test user with verified email for each test."""
+    username = f"testuser-{uuid.uuid4().hex[:8]}"
+    user = User.objects.create_user(
+        username=username,
+        email=f"{username}@example.com",
+        password=TEST_USER_PASSWORD,
+        is_active=True,
+    )
+    EmailAddress.objects.create(
+        user=user,
+        email=user.email,
+        verified=True,
+        primary=True,
+    )
+    return user
+
+
+def _wait_for_element(driver, by: By, value: str, timeout: int = 10):
+    """Wait for an element to be present and return it."""
+    return WebDriverWait(driver, timeout).until(
+        presence_of_element_located((by, value)),
+    )
+
+
+def _wait_for_url_contains(driver, url_part: str, timeout: int = 10):
+    """Wait until the URL contains a specific string."""
+    WebDriverWait(driver, timeout).until(url_contains(url_part))
+
+
+def _wait_for_url_not_contains(driver, url_part: str, timeout: int = 20):
+    """Wait until the URL no longer contains a specific string."""
+    WebDriverWait(driver, timeout).until_not(url_contains(url_part))
+
+
 @pytest.mark.skipif(
     os.getenv("SKIP_SELENIUM_LOGIN_TESTS"),
     reason="Selenium login tests skipped by environment flag.",
 )
-class LoginFormTests(StaticLiveServerTestCase):
+@pytest.mark.django_db(transaction=True)
+class TestLoginForm:
     """
     Integration tests for the login form using Selenium.
 
@@ -51,296 +139,209 @@ class LoginFormTests(StaticLiveServerTestCase):
     and successful authentication with redirect.
     """
 
-    @classmethod
-    def setUpClass(cls):
-        """Set up the Selenium WebDriver for all tests in this class."""
-        connections.close_all()
-        super().setUpClass()
-
-        # Configure Chrome options for headless testing
-        chrome_options = Options()
-        use_headless = os.getenv("SELENIUM_HEADLESS", "1") != "0"
-        if use_headless:
-            chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-
-        chrome_binary = _first_existing_path(
-            os.getenv("CHROME_BIN"),
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-        )
-        if chrome_binary:
-            chrome_options.binary_location = chrome_binary
-
-        chromedriver_path = _first_existing_path(
-            os.getenv("CHROMEDRIVER_PATH"),
-            "/usr/bin/chromedriver",
-            "/usr/lib/chromium/chromedriver",
-        )
-        if not chromedriver_path:
-            raise RuntimeError(
-                "Chromedriver not found. Run integration tests via "
-                "`just test-integration` to use the container with Chrome "
-                "preinstalled, or set CHROMEDRIVER_PATH to a valid binary.",
-            )
-
-        # Initialize the WebDriver
-        cls.selenium = webdriver.Chrome(
-            service=Service(executable_path=chromedriver_path),
-            options=chrome_options,
-        )
-        cls.selenium.implicitly_wait(10)
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up the Selenium WebDriver after all tests."""
-        try:
-            cls.selenium.quit()
-        except Exception:
-            logger.exception("Error quitting Selenium WebDriver")
-        finally:
-            connections.close_all()
-            super().tearDownClass()
-
-    def setUp(self):
-        """Set up test data for each test."""
-        # StaticLiveServerTestCase uses a threaded server; close ALL connections
-        # (not just current thread's) to avoid psycopg3 stale-connection errors.
-        # See: https://code.djangoproject.com/ticket/32416
-        connections.close_all()
-        super().setUp()
-        # Create a test user with a known password
-        self.test_password = TEST_USER_PASSWORD
-        username = f"testuser-{uuid.uuid4().hex[:8]}"
-        User.objects.filter(username=username).delete()
-        self.test_user = User.objects.create_user(
-            username=username,
-            email=f"{username}@example.com",
-            password=self.test_password,
-            is_active=True,
-        )
-        EmailAddress.objects.create(
-            user=self.test_user,
-            email=self.test_user.email,
-            verified=True,
-            primary=True,
-        )
-
-    def tearDown(self):
-        """Clean up after each test."""
-        # Close all connections before Django's teardown/flush runs.
-        connections.close_all()
-        super().tearDown()
-        # Clear cookies between tests
-        self.selenium.delete_all_cookies()
-
-    def _get_login_url(self) -> str:
+    def _get_login_url(self, live_server) -> str:
         """Return the full login URL including the live server address."""
-        return f"{self.live_server_url}{reverse('account_login')}"
+        return f"{live_server.url}{reverse('account_login')}"
 
-    def _wait_for_element(self, by: By, value: str, timeout: int = 10):
-        """Wait for an element to be present and return it."""
-        return WebDriverWait(self.selenium, timeout).until(
-            presence_of_element_located((by, value)),
-        )
-
-    def _wait_for_url_contains(self, url_part: str, timeout: int = 10):
-        """Wait until the URL contains a specific string."""
-        WebDriverWait(self.selenium, timeout).until(
-            url_contains(url_part),
-        )
-
-    def _wait_for_url_not_contains(self, url_part: str, timeout: int = 20):
-        """Wait until the URL no longer contains a specific string."""
-        WebDriverWait(self.selenium, timeout).until_not(
-            url_contains(url_part),
-        )
-
-    def test_login_page_loads(self):
+    def test_login_page_loads(self, selenium_driver, live_server, test_user):
         """Test that the login page loads successfully."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Check that the page title or a key element is present
-        self.assertIn("Sign In", self.selenium.page_source)
+        assert "Sign In" in selenium_driver.page_source
 
         # Check that the login form is present
-        form = self.selenium.find_element(By.CSS_SELECTOR, "form.login")
-        self.assertIsNotNone(form)
+        form = selenium_driver.find_element(By.CSS_SELECTOR, "form.login")
+        assert form is not None
 
-    def test_login_form_has_required_fields(self):
+    def test_login_form_has_required_fields(
+        self,
+        selenium_driver,
+        live_server,
+        test_user,
+    ):
         """Test that the login form contains username and password fields."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Find the username/login field (allauth uses 'login' as the field name)
-        login_field = self.selenium.find_element(By.NAME, "login")
-        self.assertIsNotNone(login_field)
+        login_field = selenium_driver.find_element(By.NAME, "login")
+        assert login_field is not None
 
         # Find the password field
-        password_field = self.selenium.find_element(By.NAME, "password")
-        self.assertIsNotNone(password_field)
+        password_field = selenium_driver.find_element(By.NAME, "password")
+        assert password_field is not None
 
         # Find the submit button
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
-        self.assertIsNotNone(submit_btn)
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
+        assert submit_btn is not None
 
-    def test_successful_login(self):
+    def test_successful_login(self, selenium_driver, live_server, test_user):
         """Test that a user can log in with valid credentials."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Fill in the login form
-        login_field = self.selenium.find_element(By.NAME, "login")
+        login_field = selenium_driver.find_element(By.NAME, "login")
         login_field.clear()
-        login_field.send_keys(self.test_user.username)
+        login_field.send_keys(test_user.username)
 
-        password_field = self.selenium.find_element(By.NAME, "password")
+        password_field = selenium_driver.find_element(By.NAME, "password")
         password_field.clear()
-        password_field.send_keys(self.test_password)
+        password_field.send_keys(TEST_USER_PASSWORD)
 
         # Submit the form
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Wait for redirect (successful login should redirect away from login page)
-        self._wait_for_url_contains("dashboard")
+        _wait_for_url_contains(selenium_driver, "dashboard")
 
         # Verify we're no longer on the login page
-        self.assertNotIn("/accounts/login/", self.selenium.current_url)
+        assert "/accounts/login/" not in selenium_driver.current_url
 
-    def test_login_with_invalid_password(self):
+    def test_login_with_invalid_password(
+        self,
+        selenium_driver,
+        live_server,
+        test_user,
+    ):
         """Test that login fails with an incorrect password."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Fill in the login form with wrong password
-        login_field = self.selenium.find_element(By.NAME, "login")
+        login_field = selenium_driver.find_element(By.NAME, "login")
         login_field.clear()
-        login_field.send_keys(self.test_user.username)
+        login_field.send_keys(test_user.username)
 
-        password_field = self.selenium.find_element(By.NAME, "password")
+        password_field = selenium_driver.find_element(By.NAME, "password")
         password_field.clear()
         password_field.send_keys("WrongPassword123!")
 
         # Submit the form
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Wait for the page to reload with error
-        self._wait_for_element(By.CSS_SELECTOR, "form.login")
+        _wait_for_element(selenium_driver, By.CSS_SELECTOR, "form.login")
 
         # Check that we're still on the login page
-        self.assertIn("/accounts/login/", self.selenium.current_url)
+        assert "/accounts/login/" in selenium_driver.current_url
 
         # Check for error message in the page
-        page_source = self.selenium.page_source.lower()
-        self.assertTrue(
-            "unable to log in" in page_source
-            or "invalid" in page_source
-            or "incorrect" in page_source
-            or "error" in page_source,
-            "Expected an error message for invalid credentials",
-        )
+        page_source = selenium_driver.page_source.lower()
+        assert any(
+            msg in page_source
+            for msg in ["unable to log in", "invalid", "incorrect", "error"]
+        ), "Expected an error message for invalid credentials"
 
-    def test_login_with_nonexistent_user(self):
+    def test_login_with_nonexistent_user(self, selenium_driver, live_server, test_user):
         """Test that login fails for a user that doesn't exist."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Fill in the login form with non-existent user
-        login_field = self.selenium.find_element(By.NAME, "login")
+        login_field = selenium_driver.find_element(By.NAME, "login")
         login_field.clear()
         login_field.send_keys("nonexistentuser")
 
-        password_field = self.selenium.find_element(By.NAME, "password")
+        password_field = selenium_driver.find_element(By.NAME, "password")
         password_field.clear()
         password_field.send_keys("SomePassword123!")
 
         # Submit the form
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Wait to ensure we stay on an accounts page (login should fail)
-        self._wait_for_url_contains("/accounts/", timeout=20)
-        self.assertIn("/accounts/login/", self.selenium.current_url)
+        _wait_for_url_contains(selenium_driver, "/accounts/", timeout=20)
+        assert "/accounts/login/" in selenium_driver.current_url
 
         # Check for an error message indicating invalid credentials
-        page_source = self.selenium.page_source.lower()
-        self.assertTrue(
-            "unable to log in" in page_source
-            or "invalid" in page_source
-            or "incorrect" in page_source
-            or "error" in page_source,
-            "Expected an error message for invalid credentials",
-        )
+        page_source = selenium_driver.page_source.lower()
+        assert any(
+            msg in page_source
+            for msg in ["unable to log in", "invalid", "incorrect", "error"]
+        ), "Expected an error message for invalid credentials"
 
-    def test_login_with_empty_fields(self):
+    def test_login_with_empty_fields(self, selenium_driver, live_server, test_user):
         """Test that login fails when fields are empty."""
-        self.selenium.get(self._get_login_url())
+        selenium_driver.delete_all_cookies()
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Submit the form without filling in any fields
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Check that we're still on the login page
         # (form validation should prevent submission)
-        self.assertIn("/accounts/login/", self.selenium.current_url)
+        assert "/accounts/login/" in selenium_driver.current_url
 
-    def test_login_preserves_next_parameter(self):
+    def test_login_preserves_next_parameter(
+        self,
+        selenium_driver,
+        live_server,
+        test_user,
+    ):
         """Test that login redirects to the 'next' URL after successful login."""
+        selenium_driver.delete_all_cookies()
         # Navigate to login with a next parameter
         next_url = "/app/workflows/"
-        login_url = f"{self._get_login_url()}?next={next_url}"
-        self.selenium.get(login_url)
+        login_url = f"{self._get_login_url(live_server)}?next={next_url}"
+        selenium_driver.get(login_url)
 
         # Fill in the login form
-        login_field = self.selenium.find_element(By.NAME, "login")
+        login_field = selenium_driver.find_element(By.NAME, "login")
         login_field.clear()
-        login_field.send_keys(self.test_user.username)
+        login_field.send_keys(test_user.username)
 
-        password_field = self.selenium.find_element(By.NAME, "password")
+        password_field = selenium_driver.find_element(By.NAME, "password")
         password_field.clear()
-        password_field.send_keys(self.test_password)
+        password_field.send_keys(TEST_USER_PASSWORD)
 
         # Submit the form
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Wait for redirect - should go to the 'next' URL or dashboard
         # Note: The actual redirect depends on whether the next URL is valid
-        self._wait_for_url_not_contains("/accounts/login/", timeout=20)
+        _wait_for_url_not_contains(selenium_driver, "/accounts/login/", timeout=20)
 
         # Verify we're no longer on the login page
-        self.assertNotIn("/accounts/login/", self.selenium.current_url)
+        assert "/accounts/login/" not in selenium_driver.current_url
 
-    def test_inactive_user_cannot_login(self):
+    def test_inactive_user_cannot_login(self, selenium_driver, live_server, test_user):
         """Test that an inactive user cannot log in."""
+        selenium_driver.delete_all_cookies()
         # Deactivate the test user
-        self.test_user.is_active = False
-        self.test_user.save()
+        test_user.is_active = False
+        test_user.save()
 
-        self.selenium.get(self._get_login_url())
+        selenium_driver.get(self._get_login_url(live_server))
 
         # Fill in the login form
-        login_field = self.selenium.find_element(By.NAME, "login")
+        login_field = selenium_driver.find_element(By.NAME, "login")
         login_field.clear()
-        login_field.send_keys(self.test_user.username)
+        login_field.send_keys(test_user.username)
 
-        password_field = self.selenium.find_element(By.NAME, "password")
+        password_field = selenium_driver.find_element(By.NAME, "password")
         password_field.clear()
-        password_field.send_keys(self.test_password)
+        password_field.send_keys(TEST_USER_PASSWORD)
 
         # Submit the form
-        submit_btn = self.selenium.find_element(By.ID, "sign_in_btn")
+        submit_btn = selenium_driver.find_element(By.ID, "sign_in_btn")
         submit_btn.click()
 
         # Wait for the page to land on an accounts URL
-        self._wait_for_url_contains("/accounts/", timeout=20)
+        _wait_for_url_contains(selenium_driver, "/accounts/", timeout=20)
 
         # Should be redirected to inactive notice or stay on login
-        self.assertTrue(
-            "/accounts/login/" in self.selenium.current_url
-            or "/accounts/inactive/" in self.selenium.current_url,
+        assert (
+            "/accounts/login/" in selenium_driver.current_url
+            or "/accounts/inactive/" in selenium_driver.current_url
         )
 
         # Check that we did not get redirected to an authenticated page
-        self.assertNotIn("/app/", self.selenium.current_url)
+        assert "/app/" not in selenium_driver.current_url

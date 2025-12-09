@@ -48,12 +48,25 @@ This site describes the core concepts, data model, and API for working with vali
 
 Pytest ignores `tests_integration` by default (see `pyproject.toml`). Use `just test-integration` for the end-to-end suite; it will:
 
-- start Postgres + Mailpit (`docker compose -f docker-compose.local.yml up -d postgres mailpit`)
-- load local env (`. ./set-env.sh`)
-- run `uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`
+- ensure the `django` image exists (Chromium + chromedriver are baked in for Selenium UI flows). Set `BUILD_DJANGO_IMAGE=1` if you need to force a rebuild after changing the Dockerfile.
+- reset and start Postgres + Mailpit (`docker compose -f docker-compose.local.yml down -v && ... up -d postgres mailpit`)
+- run the tests inside the Django container (service DNS `postgres` resolves; no host browser/driver needed):
+  `docker compose -f docker-compose.local.yml run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test django uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`
 - stop the containers when done
 
-If you prefer to run manually: `docker compose -f docker-compose.local.yml up -d postgres mailpit && . ./set-env.sh && uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`.
+Notes:
+- Selenium login tests run headless by default. Set `SELENIUM_HEADLESS=0` if you want to watch the browser.
+- If you are running outside Docker for some reason, you must provide a working Chrome/Chromedriver pair and set `CHROME_BIN`/`CHROMEDRIVER_PATH`, or the tests will fail fast with a clear error.
+
+Manual equivalent:
+```
+docker compose -f docker-compose.local.yml down -v
+# Optional rebuild if you changed Dockerfile/deps:
+# BUILD_DJANGO_IMAGE=1 docker compose -f docker-compose.local.yml build django
+docker compose -f docker-compose.local.yml up -d postgres mailpit
+docker compose -f docker-compose.local.yml run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test django uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO
+docker compose -f docker-compose.local.yml stop postgres mailpit
+```
 
 ### Deployment
 

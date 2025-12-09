@@ -15,6 +15,8 @@ SECRET_KEY = env(
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#test-runner
 TEST_RUNNER = "django.test.runner.DiscoverRunner"
+# For threaded live server tests, force new DB connections per request/test.
+DATABASES["default"]["CONN_MAX_AGE"] = 0  # type: ignore[name-defined]
 
 # PASSWORDS
 # ------------------------------------------------------------------------------

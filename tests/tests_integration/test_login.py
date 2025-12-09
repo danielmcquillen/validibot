@@ -8,13 +8,16 @@ test the login form with a browser via Selenium WebDriver.
 import logging
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 from allauth.account.models import EmailAddress
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
+from django.db import connections
 from django.urls import reverse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.expected_conditions import presence_of_element_located
 from selenium.webdriver.support.expected_conditions import url_contains
@@ -26,6 +29,14 @@ from validibot.users.models import User
 TEST_USER_PASSWORD = "SecureTestPassword123!"  # noqa: S105
 
 logger = logging.getLogger(__name__)
+
+
+def _first_existing_path(*candidates: str) -> str | None:
+    """Return the first existing path from the provided candidates."""
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return None
 
 
 @pytest.mark.skipif(
@@ -43,18 +54,44 @@ class LoginFormTests(StaticLiveServerTestCase):
     @classmethod
     def setUpClass(cls):
         """Set up the Selenium WebDriver for all tests in this class."""
+        connections.close_all()
         super().setUpClass()
 
         # Configure Chrome options for headless testing
         chrome_options = Options()
-        # chrome_options.add_argument("--headless")
+        use_headless = os.getenv("SELENIUM_HEADLESS", "1") != "0"
+        if use_headless:
+            chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
 
+        chrome_binary = _first_existing_path(
+            os.getenv("CHROME_BIN"),
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+        )
+        if chrome_binary:
+            chrome_options.binary_location = chrome_binary
+
+        chromedriver_path = _first_existing_path(
+            os.getenv("CHROMEDRIVER_PATH"),
+            "/usr/bin/chromedriver",
+            "/usr/lib/chromium/chromedriver",
+        )
+        if not chromedriver_path:
+            raise RuntimeError(
+                "Chromedriver not found. Run integration tests via "
+                "`just test-integration` to use the container with Chrome "
+                "preinstalled, or set CHROMEDRIVER_PATH to a valid binary.",
+            )
+
         # Initialize the WebDriver
-        cls.selenium = webdriver.Chrome(options=chrome_options)
+        cls.selenium = webdriver.Chrome(
+            service=Service(executable_path=chromedriver_path),
+            options=chrome_options,
+        )
         cls.selenium.implicitly_wait(10)
 
     @classmethod
@@ -65,10 +102,15 @@ class LoginFormTests(StaticLiveServerTestCase):
         except Exception:
             logger.exception("Error quitting Selenium WebDriver")
         finally:
+            connections.close_all()
             super().tearDownClass()
 
     def setUp(self):
         """Set up test data for each test."""
+        # StaticLiveServerTestCase uses a threaded server; close ALL connections
+        # (not just current thread's) to avoid psycopg3 stale-connection errors.
+        # See: https://code.djangoproject.com/ticket/32416
+        connections.close_all()
         super().setUp()
         # Create a test user with a known password
         self.test_password = TEST_USER_PASSWORD
@@ -89,6 +131,8 @@ class LoginFormTests(StaticLiveServerTestCase):
 
     def tearDown(self):
         """Clean up after each test."""
+        # Close all connections before Django's teardown/flush runs.
+        connections.close_all()
         super().tearDown()
         # Clear cookies between tests
         self.selenium.delete_all_cookies()

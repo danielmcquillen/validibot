@@ -784,8 +784,18 @@ gcp-open:
 # Prereqs: Docker Compose available; env from set-env.sh for local settings.
 test-integration *args:
     @echo "Starting integration dependencies (postgres, mailpit)..."
+    @echo "Ensuring django image (with Chromium & chromedriver) exists..."
+    @if [ "${BUILD_DJANGO_IMAGE:-0}" -eq 1 ] || ! docker image inspect validibot-django:latest >/dev/null 2>&1; then \
+        docker compose -f docker-compose.local.yml build django; \
+    else \
+        echo "✓ Reusing existing validibot-django image (set BUILD_DJANGO_IMAGE=1 to force rebuild)"; \
+    fi
+    docker compose -f docker-compose.local.yml down -v
     docker compose -f docker-compose.local.yml up -d postgres mailpit
     @echo "Running integration tests..."
-    . ./set-env.sh && uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
+    docker compose -f docker-compose.local.yml run --rm \
+        -e DJANGO_SETTINGS_MODULE=config.settings.test \
+        django \
+        uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
     @echo "Stopping integration dependencies..."
     docker compose -f docker-compose.local.yml stop postgres mailpit

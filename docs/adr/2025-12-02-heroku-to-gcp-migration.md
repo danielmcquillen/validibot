@@ -716,16 +716,28 @@ Added `django-cloud-tasks` package:
 
 **Goal**: Set up scheduled tasks.
 
-Currently, we use `django_celery_beat` but don't have many scheduled tasks defined. When we add them:
+**Status**: Implemented. See [docs/dev_docs/google_cloud/scheduled-jobs.md](../docs/dev_docs/google_cloud/scheduled-jobs.md) for full documentation.
 
+Cloud Scheduler calls HTTP endpoints on the worker service. Authentication uses OIDC tokens that Cloud Run verifies automatically.
+
+**Scheduled Jobs**:
+
+| Job Name | Schedule | Endpoint | Purpose |
+|----------|----------|----------|---------|
+| `validibot-clear-sessions` | Daily 2 AM | `/api/v1/scheduled/clear-sessions/` | Clear expired Django sessions |
+| `validibot-cleanup-idempotency-keys` | Daily 3 AM | `/api/v1/scheduled/cleanup-idempotency-keys/` | Delete expired API idempotency keys |
+| `validibot-cleanup-callback-receipts` | Weekly Sun 4 AM | `/api/v1/scheduled/cleanup-callback-receipts/` | Delete old callback receipts |
+
+**Setup**:
 ```bash
-# Example: Daily cleanup job at 3 AM Sydney time
-gcloud scheduler jobs create http cleanup-old-runs \
-  --schedule "0 3 * * *" \
-  --time-zone "Australia/Sydney" \
-  --uri "https://validibot-worker.run.app/internal/cleanup/" \
-  --oidc-service-account-email cloud-tasks-invoker@PROJECT.iam.gserviceaccount.com \
-  --location australia-southeast1
+# Set up all scheduled jobs (run once per environment)
+just gcp-scheduler-setup
+
+# View existing jobs
+just gcp-scheduler-list
+
+# Run a job manually (for testing)
+just gcp-scheduler-run validibot-cleanup-idempotency-keys
 ```
 
 ### Phase 7: Advanced Validators (Modal Integration)

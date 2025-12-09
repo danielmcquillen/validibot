@@ -799,3 +799,158 @@ test-integration *args:
         uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
     @echo "Stopping integration dependencies..."
     docker compose -f docker-compose.local.yml stop postgres mailpit
+
+# =============================================================================
+# Cloud Scheduler - Scheduled Task Setup
+# =============================================================================
+#
+# Cloud Scheduler replaces Celery Beat for periodic tasks. Each job calls an
+# HTTP endpoint on the worker service using OIDC authentication.
+#
+# Prerequisites:
+#   - Worker service deployed (validibot-worker)
+#   - Cloud Scheduler API enabled: gcloud services enable cloudscheduler.googleapis.com
+#   - Service account with Cloud Run Invoker role
+#
+# Jobs are configured in Australia/Sydney timezone by default.
+# =============================================================================
+
+# Service account for Cloud Scheduler to invoke worker endpoints
+gcp_scheduler_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
+gcp_scheduler_timezone := "Australia/Sydney"
+
+# List all Cloud Scheduler jobs for this project
+gcp-scheduler-list:
+    gcloud scheduler jobs list \
+        --project {{gcp_project}} \
+        --location {{gcp_region}}
+
+# Set up all scheduled jobs (run once per environment)
+gcp-scheduler-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Setting up Cloud Scheduler jobs for {{gcp_project}}..."
+    echo ""
+
+    # Get the worker service URL
+    WORKER_URL=$(gcloud run services describe {{gcp_worker_service}} \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null || echo "")
+
+    if [ -z "$WORKER_URL" ]; then
+        echo "ERROR: Worker service {{gcp_worker_service}} not found."
+        echo "Deploy the worker service first with: just gcp-deploy-worker"
+        exit 1
+    fi
+
+    echo "Worker URL: $WORKER_URL"
+    echo ""
+
+    # Helper function to create or update a scheduler job
+    create_or_update_job() {
+        local job_name=$1
+        local schedule=$2
+        local endpoint=$3
+        local description=$4
+
+        echo "📅 Setting up: $job_name"
+        echo "   Schedule: $schedule"
+        echo "   Endpoint: $endpoint"
+
+        # Check if job exists
+        if gcloud scheduler jobs describe "$job_name" \
+            --project {{gcp_project}} \
+            --location {{gcp_region}} &>/dev/null; then
+            echo "   Updating existing job..."
+            gcloud scheduler jobs update http "$job_name" \
+                --project {{gcp_project}} \
+                --location {{gcp_region}} \
+                --schedule "$schedule" \
+                --time-zone "{{gcp_scheduler_timezone}}" \
+                --uri "${WORKER_URL}${endpoint}" \
+                --http-method POST \
+                --oidc-service-account-email {{gcp_scheduler_sa}} \
+                --description "$description"
+        else
+            echo "   Creating new job..."
+            gcloud scheduler jobs create http "$job_name" \
+                --project {{gcp_project}} \
+                --location {{gcp_region}} \
+                --schedule "$schedule" \
+                --time-zone "{{gcp_scheduler_timezone}}" \
+                --uri "${WORKER_URL}${endpoint}" \
+                --http-method POST \
+                --oidc-service-account-email {{gcp_scheduler_sa}} \
+                --description "$description"
+        fi
+        echo "   ✓ Done"
+        echo ""
+    }
+
+    # Job 1: Clear expired sessions (daily at 2 AM)
+    create_or_update_job \
+        "validibot-clear-sessions" \
+        "0 2 * * *" \
+        "/api/v1/scheduled/clear-sessions/" \
+        "Clear expired Django sessions"
+
+    # Job 2: Cleanup idempotency keys (daily at 3 AM)
+    create_or_update_job \
+        "validibot-cleanup-idempotency-keys" \
+        "0 3 * * *" \
+        "/api/v1/scheduled/cleanup-idempotency-keys/" \
+        "Delete expired API idempotency keys (24h TTL)"
+
+    # Job 3: Cleanup callback receipts (weekly Sunday at 4 AM)
+    create_or_update_job \
+        "validibot-cleanup-callback-receipts" \
+        "0 4 * * 0" \
+        "/api/v1/scheduled/cleanup-callback-receipts/" \
+        "Delete old validator callback receipts (30 day retention)"
+
+    echo "✅ All scheduler jobs configured!"
+    echo ""
+    echo "View jobs: just gcp-scheduler-list"
+    echo "Run a job manually: just gcp-scheduler-run <job-name>"
+
+# Run a scheduler job manually (useful for testing)
+gcp-scheduler-run job_name:
+    gcloud scheduler jobs run {{job_name}} \
+        --project {{gcp_project}} \
+        --location {{gcp_region}}
+
+# Delete all scheduler jobs (use with caution)
+gcp-scheduler-delete-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "⚠️  This will delete ALL scheduler jobs for {{gcp_project}}"
+    read -p "Are you sure? (y/N) " -n 1 -r
+    echo
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        for job in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+            echo "Deleting $job..."
+            gcloud scheduler jobs delete "$job" \
+                --project {{gcp_project}} \
+                --location {{gcp_region}} \
+                --quiet || echo "  (job not found)"
+        done
+        echo "Done."
+    else
+        echo "Cancelled."
+    fi
+
+# Pause a scheduler job
+gcp-scheduler-pause job_name:
+    gcloud scheduler jobs pause {{job_name}} \
+        --project {{gcp_project}} \
+        --location {{gcp_region}}
+
+# Resume a paused scheduler job
+gcp-scheduler-resume job_name:
+    gcloud scheduler jobs resume {{job_name}} \
+        --project {{gcp_project}} \
+        --location {{gcp_region}}

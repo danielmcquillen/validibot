@@ -34,10 +34,10 @@ Implementation landed in `core/idempotency.py` (decorator/mixin), `core/models.p
 
 ## Rollout and Next Steps
 
-- Update API examples to always show `Idempotency-Key` and note the replay headers. (Docs updated in `docs/dev_docs/how-to/use-workflow.md`.)
-- If new mutating endpoints are added, wrap them with `@idempotent` and extend the tests.
-- Consider a lightweight scheduler/cron to run `cleanup_idempotency_keys` daily.
-- Revisit “required header” once clients have adopted the pattern.
+- [x] Update API examples to always show `Idempotency-Key` and note the replay headers. (Docs updated in `docs/dev_docs/how-to/use-workflow.md`.)
+- [ ] If new mutating endpoints are added, wrap them with `@idempotent` and extend the tests.
+- [x] Scheduled cleanup via Cloud Scheduler. Run `just gcp-scheduler-setup` to create the `validibot-cleanup-idempotency-keys` job (daily at 3 AM). See [docs/dev_docs/google_cloud/scheduled-jobs.md](../docs/dev_docs/google_cloud/scheduled-jobs.md).
+- [ ] Revisit "required header" once clients have adopted the pattern.
 
 ## References
 

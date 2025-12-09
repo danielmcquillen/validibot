@@ -1,5 +1,12 @@
 # Heroku Deployment
 
+!!! warning "Archived - December 2024"
+    **This guide is no longer maintained.** Validibot migrated from Heroku to Google Cloud Platform in December 2024. See [Google Cloud Deployment](../google_cloud/deployment.md) for current deployment instructions.
+
+---
+
+*The content below is retained for historical reference only.*
+
 This guide assumes you deploy from the `main` branch to a single Heroku app that
 hosts the web process, Celery worker, and Celery beat. Adjust the commands if you
 operate multiple environments.

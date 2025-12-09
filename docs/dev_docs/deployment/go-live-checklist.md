@@ -138,7 +138,7 @@ This checklist covers tasks to complete before launching Validibot to production
 
 - [ ] **Monitor database performance** - watch for slow queries
 
-- [ ] **Verify all scheduled tasks** are running (Celery Beat)
+- [ ] **Verify all scheduled tasks** are running (Cloud Scheduler → see [scheduled-jobs.md](../google_cloud/scheduled-jobs.md))
 
 - [ ] **Test user registration and login flow**
 

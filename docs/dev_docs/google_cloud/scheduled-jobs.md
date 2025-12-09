@@ -73,18 +73,16 @@ just gcp-scheduler-delete-all
 
 ## Environment-Specific Setup
 
-When setting up a new environment (dev, staging, production), run the scheduler setup after deploying the worker service:
+When setting up a new environment (dev, staging, production), use the combined setup command:
 
 ```bash
-# 1. Deploy the worker service
-just gcp-deploy-worker
-
-# 2. Set up scheduled jobs
-just gcp-scheduler-setup
-
-# 3. Verify jobs were created
-just gcp-scheduler-list
+# Deploy everything: web service, worker service, and scheduled jobs
+just gcp-setup-all
 ```
+
+This runs `gcp-deploy`, `gcp-deploy-worker`, and `gcp-scheduler-setup` in sequence.
+
+For subsequent deployments (code updates only), use `just gcp-deploy` or `just gcp-deploy-worker` as needed—the scheduler jobs don't need to be recreated unless their configuration changes.
 
 ## Adding New Scheduled Jobs
 

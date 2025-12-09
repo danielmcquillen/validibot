@@ -7,20 +7,31 @@ This guide covers deploying Validibot to Google Cloud Run.
 The easiest way to deploy is using the `justfile` commands:
 
 ```bash
-# Full deployment: build, push, and deploy
+# Code deployment only (use for updates after initial setup)
 just gcp-deploy
+
+# Full environment setup (use for NEW environments)
+just gcp-setup-all
 
 # Run migrations after deployment
 just gcp-migrate
-
-# Seed default data and create superuser
-just gcp-setup-all
 
 # View logs
 just gcp-logs
 ```
 
 Run `just` to see all available commands. The rest of this document explains what happens under the hood.
+
+### gcp-deploy vs gcp-setup-all
+
+| Command | What it does | When to use |
+|---------|--------------|-------------|
+| `gcp-deploy` | Builds image, pushes to registry, deploys **web service only** | Regular code deployments (daily/weekly) |
+| `gcp-setup-all` | Runs `gcp-deploy` + `gcp-deploy-worker` + `gcp-scheduler-setup` | Initial environment setup (once per environment) |
+
+**Use `gcp-deploy`** for routine code updates. It only touches the web service and is fast.
+
+**Use `gcp-setup-all`** when setting up a new environment (dev, staging, production) for the first time. It deploys both services and configures Cloud Scheduler jobs for background tasks like session cleanup and expired key removal. See [Scheduled Jobs](scheduled-jobs.md) for details on the scheduled tasks.
 
 ## Architecture Overview
 
@@ -34,17 +45,20 @@ Run `just` to see all available commands. The rest of this document explains wha
 │  │  (web)       │───▶│  (worker)    │───▶│  PostgreSQL  │   │
 │  │  Port 8000   │    │  Port 8001   │    │              │   │
 │  └──────────────┘    └──────────────┘    └──────────────┘   │
-│         │                   │                               │
-│         ▼                   ▼                               │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   │
-│  │  Cloud       │    │  Cloud       │    │  Cloud       │   │
-│  │  Storage     │    │  Tasks       │    │  Secret Mgr  │   │
-│  │  (media)     │    │  (async)     │    │  (secrets)   │   │
-│  └──────────────┘    └──────────────┘    └──────────────┘   │
+│         │                   ▲                               │
+│         │                   │ OIDC                          │
+│         ▼            ┌──────┴───────┐                       │
+│  ┌──────────────┐    │  Cloud       │    ┌──────────────┐   │
+│  │  Cloud       │    │  Scheduler   │    │  Cloud       │   │
+│  │  Storage     │    │  (cron)      │    │  Secret Mgr  │   │
+│  │  (media)     │    └──────────────┘    │  (secrets)   │   │
+│  └──────────────┘                        └──────────────┘   │
 │                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Artifact Registry (Docker images)        │   │
-│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────┐    ┌──────────────────────────────────┐   │
+│  │  Cloud       │    │  Artifact Registry (Docker)       │   │
+│  │  Tasks       │    └──────────────────────────────────┘   │
+│  │  (async)     │                                           │
+│  └──────────────┘                                           │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```

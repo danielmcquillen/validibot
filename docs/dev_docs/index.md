@@ -86,7 +86,9 @@ This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #3
 ### Deployment
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
-- [Heroku Deployment](deployment/heroku.md) - Step-by-step commands for the Heroku app
+- [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp-deploy`
+- [Scheduled Jobs](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for background tasks
+- [Go-Live Checklist](deployment/go-live-checklist.md) - Pre-launch tasks for production
 
 ### Data Model
 

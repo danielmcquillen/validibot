@@ -144,6 +144,19 @@ gcp-deploy-worker: gcp-build gcp-push
         --memory 1Gi \
         --project {{gcp_project}}
 
+# Full environment setup: deploy all services and configure scheduler
+# Use this for initial deployment of a new environment (dev, staging, production)
+gcp-setup-all: gcp-deploy gcp-deploy-worker gcp-scheduler-setup
+    @echo ""
+    @echo "============================================="
+    @echo "✓ Full environment setup complete"
+    @echo "============================================="
+    @echo "  • Web service:      deployed"
+    @echo "  • Worker service:   deployed"
+    @echo "  • Scheduled jobs:   configured"
+    @echo ""
+    @echo "Run 'just gcp-scheduler-list' to verify scheduled jobs."
+
 # =============================================================================
 # GCP Cloud Run - Secrets Management
 # =============================================================================

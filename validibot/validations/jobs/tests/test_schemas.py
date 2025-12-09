@@ -13,6 +13,7 @@ from validibot.validations.jobs.schemas import ValidationMessage
 from validibot.validations.jobs.schemas import ValidationOutputEnvelope
 from validibot.validations.jobs.schemas import ValidationStatus
 from validibot.validations.jobs.schemas import ValidatorInfo
+from validibot.validations.jobs.schemas import ValidatorType
 
 
 class TestInputEnvelope:
@@ -25,7 +26,7 @@ class TestInputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "org": {"id": "org-123", "name": "Test Org"},
@@ -38,7 +39,7 @@ class TestInputEnvelope:
 
         envelope = ValidationInputEnvelope.model_validate(data)
         assert envelope.run_id == "run-123"
-        assert envelope.validator.type == "energyplus"
+        assert envelope.validator.type == ValidatorType.ENERGYPLUS
         assert envelope.org.name == "Test Org"
         assert len(envelope.input_files) == 0
         assert len(envelope.inputs) == 0
@@ -51,7 +52,7 @@ class TestInputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "org": {"id": "org-123", "name": "Test Org"},
@@ -92,7 +93,7 @@ class TestInputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "fmu",
+                "type": ValidatorType.FMI,
                 "version": "1.0.0",
             },
             "org": {"id": "org-123", "name": "Test Org"},
@@ -120,7 +121,7 @@ class TestInputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "org": {"id": "org-123", "name": "Test Org"},
@@ -148,7 +149,7 @@ class TestOutputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "status": "success",
@@ -172,7 +173,7 @@ class TestOutputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "status": "failed_validation",
@@ -215,7 +216,7 @@ class TestOutputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "status": "success",
@@ -254,7 +255,7 @@ class TestOutputEnvelope:
             "run_id": "run-123",
             "validator": {
                 "id": "val-123",
-                "type": "energyplus",
+                "type": ValidatorType.ENERGYPLUS,
                 "version": "1.0.0",
             },
             "status": "success",
@@ -342,11 +343,11 @@ class TestValidatorInfo:
         """Test valid validator info."""
         data = {
             "id": "val-123",
-            "type": "energyplus",
+            "type": ValidatorType.ENERGYPLUS,
             "version": "1.0.0",
         }
         info = ValidatorInfo.model_validate(data)
-        assert info.type == "energyplus"
+        assert info.type == ValidatorType.ENERGYPLUS
         assert info.version == "1.0.0"
 
 

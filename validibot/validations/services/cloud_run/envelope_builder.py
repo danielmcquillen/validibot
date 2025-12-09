@@ -21,14 +21,16 @@ from vb_shared.validations.envelopes import OrganizationInfo
 from vb_shared.validations.envelopes import SupportedMimeType
 from vb_shared.validations.envelopes import ValidationInputEnvelope
 from vb_shared.validations.envelopes import ValidatorInfo
+from vb_shared.validations.envelopes import ValidatorType
 from vb_shared.validations.envelopes import WorkflowInfo
+from validibot.validations.constants import ValidationType
 
 
 class ValidatorLike(Protocol):
     """Protocol for validator-like objects (duck typing for easier testing)."""
 
     id: str
-    type: str
+    validation_type: str
     version: str
 
 
@@ -92,9 +94,10 @@ def build_energyplus_input_envelope(
         ... )
     """
     # Build validator info
+    validator_type = ValidatorType(getattr(validator, "validation_type", ""))
     validator_info = ValidatorInfo(
         id=str(validator.id),
-        type=validator.type,
+        type=validator_type,
         version=validator.version,
     )
 
@@ -200,7 +203,7 @@ def build_input_envelope(
         msg = f"WorkflowStep {step.id} has no validator configured"
         raise ValueError(msg)
 
-    if validator.validation_type == "energyplus":
+    if validator.validation_type == ValidationType.ENERGYPLUS:
         # Get model file URI (primary file from the workflow step)
         model_file_uri = step.config.get("primary_file_uri")
         if not model_file_uri:
@@ -233,7 +236,7 @@ def build_input_envelope(
             timestep_per_hour=timestep_per_hour,
             output_variables=output_variables,
         )
-    if validator.validation_type == "fmi":
+    if validator.validation_type == ValidationType.FMI:
         # FMU location: use gcs_uri when present, otherwise local file path
         fmu_model = validator.fmu_model
         if not fmu_model:
@@ -271,7 +274,7 @@ def build_input_envelope(
             run_id=str(run.id),
             validator=ValidatorInfo(
                 id=str(validator.id),
-                type=validator.validation_type,
+                type=ValidatorType(validator.validation_type),
                 version=validator.version,
             ),
             org=OrganizationInfo(id=str(run.org.id), name=run.org.name),

@@ -14,6 +14,7 @@ from django.test import TestCase
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
+from vb_shared.validations.envelopes import ValidationStatus
 
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
@@ -64,23 +65,36 @@ class CallbackIdempotencyTestCase(TestCase):
         self.callback_url = "/api/v1/validation-callbacks/"
 
     def _make_mock_envelope(self):
-        """Create a mock output envelope for testing."""
+        """Create a mock output envelope for testing.
+
+        Uses proper enum values and serializable types to match what
+        the callback handler expects and stores.
+        """
         mock_envelope = MagicMock()
-        mock_envelope.status = MagicMock()
-        mock_envelope.status.value = "success"
+        # Use actual enum - the handler uses this as a dict key
+        mock_envelope.status = ValidationStatus.SUCCESS
+        # Validator info - must have string values (stored in JSONField)
         mock_envelope.validator = MagicMock()
         mock_envelope.validator.id = str(self.validator.id)
+        mock_envelope.validator.version = "1.0.0"
+        # Run/org/workflow identifiers
         mock_envelope.run_id = str(self.run.id)
         mock_envelope.org = MagicMock()
         mock_envelope.org.id = str(self.org.id)
         mock_envelope.workflow = MagicMock()
         mock_envelope.workflow.step_id = str(self.workflow_step.id)
+        # Timing info
         mock_envelope.timing = MagicMock()
         mock_envelope.timing.finished_at = None
+        # Messages and outputs - empty for success case
         mock_envelope.messages = []
         mock_envelope.outputs = MagicMock()
         mock_envelope.outputs.output_values = {}
-        mock_envelope.model_dump = MagicMock(return_value={})
+        # model_dump returns JSON-serializable dict (stored in run.summary)
+        mock_envelope.model_dump.return_value = {
+            "status": "success",
+            "run_id": str(self.run.id),
+        }
         return mock_envelope
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
@@ -187,11 +201,15 @@ class CallbackIdempotencyTestCase(TestCase):
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.api.callbacks.download_envelope")
     def test_different_callback_ids_processed_separately(self, mock_download):
-        """Test that different callback_ids are processed independently."""
+        """Test that different callback_ids are processed independently.
+
+        Each callback_id creates its own receipt. Sending two callbacks with
+        different callback_ids should create two separate receipts, not trigger
+        idempotent replay.
+        """
         mock_download.return_value = self._make_mock_envelope()
 
         callback_id_1 = str(uuid.uuid4())
-        callback_id_2 = str(uuid.uuid4())
 
         # First callback
         payload1 = {
@@ -202,17 +220,36 @@ class CallbackIdempotencyTestCase(TestCase):
         }
         response1 = self.client.post(self.callback_url, data=payload1, format="json")
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        self.assertNotIn("idempotent_replayed", response1.data)
 
-        # Create new step run for second callback
-        self.step_run2 = ValidationStepRunFactory(
-            validation_run=self.run,
-            workflow_step=self.workflow_step,
+        # Create a second run with its own step run for the second callback
+        run2 = ValidationRunFactory(
+            org=self.org,
+            user=self.user,
+            status=ValidationRunStatus.RUNNING,
+        )
+        workflow_step2 = WorkflowStepFactory(
+            workflow=run2.workflow,
+            validator=self.validator,
+        )
+        ValidationStepRunFactory(
+            validation_run=run2,
+            workflow_step=workflow_step2,
             status=StepStatus.RUNNING,
         )
 
+        # Update mock envelope for run2
+        mock_envelope2 = self._make_mock_envelope()
+        mock_envelope2.run_id = str(run2.id)
+        mock_envelope2.org.id = str(self.org.id)
+        mock_envelope2.workflow.step_id = str(workflow_step2.id)
+        mock_download.return_value = mock_envelope2
+
+        callback_id_2 = str(uuid.uuid4())
+
         # Second callback with different callback_id
         payload2 = {
-            "run_id": str(self.run.id),
+            "run_id": str(run2.id),
             "callback_id": callback_id_2,
             "status": "success",
             "result_uri": "gs://bucket/output2.json",
@@ -223,6 +260,12 @@ class CallbackIdempotencyTestCase(TestCase):
 
         # Both receipts should exist
         self.assertEqual(CallbackReceipt.objects.count(), 2)
+        self.assertTrue(
+            CallbackReceipt.objects.filter(callback_id=callback_id_1).exists()
+        )
+        self.assertTrue(
+            CallbackReceipt.objects.filter(callback_id=callback_id_2).exists()
+        )
 
     @override_settings(APP_IS_WORKER=False)
     def test_callback_rejected_on_non_worker(self):

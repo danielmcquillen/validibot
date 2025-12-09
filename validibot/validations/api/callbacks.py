@@ -482,8 +482,6 @@ class ValidationCallbackView(APIView):
                         Severity.INFO.value,
                         0,
                     ),
-                    "assertion_failure_count": 0,
-                    "assertion_total_count": 0,
                 },
             )
 

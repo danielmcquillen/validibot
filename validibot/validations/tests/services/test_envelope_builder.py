@@ -3,6 +3,7 @@ Tests for envelope_builder service.
 """
 
 from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from vb_shared.validations.envelopes import ValidatorType
 
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
@@ -14,7 +15,7 @@ class MockValidator:
 
     def __init__(self):
         self.id = "validator-123"
-        self.type = "energyplus"
+        self.validation_type = "ENERGYPLUS"
         self.version = "24.2.0"
 
 
@@ -47,7 +48,7 @@ def test_build_energyplus_input_envelope():
 
     # Verify validator info
     assert envelope.validator.id == "validator-123"
-    assert envelope.validator.type == "energyplus"
+    assert envelope.validator.type == ValidatorType.ENERGYPLUS
     assert envelope.validator.version == "24.2.0"
 
     # Verify organization info

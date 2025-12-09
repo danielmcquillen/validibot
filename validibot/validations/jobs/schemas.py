@@ -26,6 +26,7 @@ from vb_shared.validations.envelopes import ValidationOutputEnvelope
 from vb_shared.validations.envelopes import ValidationStatus
 from vb_shared.validations.envelopes import ValidationTiming
 from vb_shared.validations.envelopes import ValidatorInfo
+from vb_shared.validations.envelopes import ValidatorType
 from vb_shared.validations.envelopes import WorkflowInfo
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     "ValidationStatus",
     "ValidationTiming",
     "ValidatorInfo",
+    "ValidatorType",
     "WorkflowInfo",
 ]

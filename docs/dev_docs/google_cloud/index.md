@@ -31,6 +31,7 @@ The GCP architecture includes:
 ## Documentation
 
 - [Deployment Guide](deployment.md) - How to deploy to Cloud Run
+- [Logging](logging.md) - Cloud Logging setup and searching logs
 - [Scheduled Jobs](scheduled-jobs.md) - Cloud Scheduler configuration
 - [Setup Cheatsheet](setup-cheatsheet.md) - Initial GCP setup steps and reference
 - [Storage (GCS)](storage.md) - Cloud Storage configuration for media files
@@ -38,4 +39,4 @@ The GCP architecture includes:
 
 ## Related
 
-- [ADR: Heroku to GCP Migration](../../adr/2025-12-02-heroku-to-gcp-migration.md) - Migration plan and rationale
+- [ADR: Google Cloud Platform Architecture](../../adr/2025-12-02-google-cloud-platform.md) - Platform architecture and implementation

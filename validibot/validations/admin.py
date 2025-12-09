@@ -4,6 +4,7 @@ from validibot.validations.models import CustomValidator
 from validibot.validations.models import Ruleset
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
+from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
 
@@ -98,17 +99,171 @@ class CustomValidatorAdmin(admin.ModelAdmin):
     search_fields = ("validator__name", "org__name")
 
 
+class ValidationStepRunInline(admin.TabularInline):
+    """Inline view of step runs for a validation run."""
+
+    model = ValidationStepRun
+    extra = 0
+    readonly_fields = (
+        "workflow_step",
+        "status",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "error",
+    )
+    fields = (
+        "step_order",
+        "workflow_step",
+        "status",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "error",
+    )
+    ordering = ("step_order",)
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(ValidationRun)
 class ValidationRunAdmin(admin.ModelAdmin):
+    """
+    Admin view for ValidationRun with operator-focused features.
+
+    Provides quick access to run status, error details, and step information
+    for debugging failed validations.
+    """
+
     list_display = (
-        "id",
-        "submission",
-        "workflow",
+        "short_id",
+        "workflow_name",
         "org",
         "status",
+        "error_category",
+        "duration_display",
+        "created",
+    )
+    list_filter = (
+        "status",
+        "error_category",
+        "source",
+        "org",
+        ("created", admin.DateFieldListFilter),
+    )
+    search_fields = (
+        "id",
+        "submission__id",
+        "workflow__name",
+        "org__name",
+        "error",
+    )
+    ordering = ("-created",)
+    readonly_fields = (
+        "id",
+        "org",
+        "workflow",
+        "project",
+        "user",
+        "submission",
+        "status",
+        "error_category",
+        "error",
+        "user_friendly_error",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "source",
         "created",
         "modified",
     )
-    list_filter = ("org", "status", "created", "modified")
-    search_fields = ("submission__id", "workflow__name", "org__name")
-    ordering = ("-created",)
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "id",
+                    "status",
+                    "error_category",
+                    "user_friendly_error",
+                ),
+            },
+        ),
+        (
+            "Details",
+            {
+                "fields": (
+                    "org",
+                    "workflow",
+                    "project",
+                    "user",
+                    "submission",
+                    "source",
+                ),
+            },
+        ),
+        (
+            "Timing",
+            {
+                "fields": (
+                    "started_at",
+                    "ended_at",
+                    "duration_ms",
+                ),
+            },
+        ),
+        (
+            "Error Details",
+            {
+                "fields": ("error",),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created", "modified"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+    inlines = [ValidationStepRunInline]
+    date_hierarchy = "created"
+    list_per_page = 50
+
+    @admin.display(description="ID")
+    def short_id(self, obj):
+        """Display shortened UUID for readability."""
+        return str(obj.id)[:8]
+
+    @admin.display(description="Workflow")
+    def workflow_name(self, obj):
+        """Display workflow name."""
+        return obj.workflow.name if obj.workflow else "-"
+
+    @admin.display(description="Duration")
+    def duration_display(self, obj):
+        """Display duration in human-readable format."""
+        ms_per_second = 1000
+        ms_per_minute = 60000
+        if not obj.duration_ms:
+            return "-"
+        if obj.duration_ms < ms_per_second:
+            return f"{obj.duration_ms}ms"
+        if obj.duration_ms < ms_per_minute:
+            return f"{obj.duration_ms / ms_per_second:.1f}s"
+        return f"{obj.duration_ms / ms_per_minute:.1f}m"
+
+    def has_add_permission(self, request):
+        """Runs are created by the system, not manually."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Runs are read-only for operators."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Allow superusers to delete runs for cleanup."""
+        return request.user.is_superuser

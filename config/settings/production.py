@@ -193,11 +193,26 @@ else:
 # https://docs.djangoproject.com/en/dev/ref/settings/#logging
 # See https://docs.djangoproject.com/en/dev/topics/logging for
 # more details on how to customize your logging configuration.
+#
+# We use structured JSON logging in production so that Cloud Logging can parse
+# and index log fields, making them searchable and filterable. Cloud Run
+# automatically captures stdout and sends it to Cloud Logging.
+#
+# See docs/dev_docs/google_cloud/logging.md for usage details.
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
+        # JSON formatter for Cloud Logging integration
+        # Fields like severity, message, module, etc. become queryable
+        "json": {
+            "()": "pythonjsonlogger.json.JsonFormatter",
+            "format": "%(asctime)s %(levelname)s %(name)s %(module)s %(funcName)s %(message)s",
+            # Cloud Logging expects "severity" instead of "levelname"
+            "rename_fields": {"levelname": "severity"},
+        },
+        # Keep verbose formatter for local debugging if needed
         "verbose": {
             "format": "%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s",
         },
@@ -206,11 +221,11 @@ LOGGING = {
         "console": {
             "level": "DEBUG",
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "formatter": "json",  # Use JSON for Cloud Logging
         },
     },
     "root": {
-        "level": "DEBUG",
+        "level": "INFO",  # INFO in production (DEBUG is too verbose)
         "handlers": ["console"],
     },
     "loggers": {

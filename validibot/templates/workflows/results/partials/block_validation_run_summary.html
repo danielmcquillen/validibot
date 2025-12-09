@@ -11,13 +11,11 @@ This template lists out the summary results of the validation workflow run.
     </div>
     <div class="card-body">
 
-        {% comment %}
-        {% if run.error %}
-            <div class="alert alert-danger small w-100 text-center" role="alert">
-                <i class="bi-exclamation-octagon me-2"></i>{{ run.error }}
+        {% if run.user_friendly_error %}
+            <div class="alert alert-danger small w-100" role="alert">
+                <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
             </div>
         {% endif %}
-        {% endcomment %}
 
         <section>
             {% if run.submission.name or run.short_description %}

@@ -27,6 +27,7 @@ from vb_shared.validations.envelopes import ValidationStatus
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
@@ -271,7 +272,7 @@ class ValidationCallbackView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Map ValidationStatus to ValidationRunStatus
+            # Map ValidationStatus to ValidationRunStatus and ErrorCategory
             status_mapping = {
                 ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
                 ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
@@ -284,11 +285,26 @@ class ValidationCallbackView(APIView):
                 ValidationStatus.FAILED_RUNTIME: StepStatus.FAILED,
                 ValidationStatus.CANCELLED: StepStatus.SKIPPED,
             }
+            # Map to human-friendly error categories
+            error_category_mapping = {
+                ValidationStatus.SUCCESS: "",
+                ValidationStatus.FAILED_VALIDATION: (
+                    ValidationRunErrorCategory.VALIDATION_FAILED
+                ),
+                ValidationStatus.FAILED_RUNTIME: (
+                    ValidationRunErrorCategory.RUNTIME_ERROR
+                ),
+                ValidationStatus.CANCELLED: "",
+            }
 
             # Update ValidationRun with results
             run.status = status_mapping.get(
                 output_envelope.status,
                 ValidationRunStatus.FAILED,
+            )
+            run.error_category = error_category_mapping.get(
+                output_envelope.status,
+                ValidationRunErrorCategory.RUNTIME_ERROR,
             )
 
             # Set timestamps

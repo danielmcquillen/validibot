@@ -976,6 +976,6 @@ Migration is considered successful when:
 ## References
 
 - [Google Cloud KMS Documentation](../dev_docs/google_cloud/kms.md)
-- [ADR: Heroku to GCP Migration](2025-12-02-heroku-to-gcp-migration.md)
+- [ADR: Google Cloud Platform Architecture](2025-12-02-google-cloud-platform.md)
 - [Google Cloud KMS API Reference](https://cloud.google.com/kms/docs/reference/rest)
 - [JWT Best Practices RFC 8725](https://datatracker.ietf.org/doc/html/rfc8725)

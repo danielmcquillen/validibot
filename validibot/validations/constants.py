@@ -19,6 +19,53 @@ VALIDATION_RUN_TERMINAL_STATUSES = [
 ]
 
 
+class ValidationRunErrorCategory(TextChoices):
+    """
+    Top-level classification of why a validation run failed.
+
+    This categorizes the overall run outcome, not individual step findings.
+    Used to provide human-friendly error messages and enable filtering
+    in dashboards. The 'error' field on ValidationRun contains the detailed
+    message; error_category classifies the type of failure.
+
+    VALIDATION_FAILED: The validator ran successfully but found validation errors
+    TIMEOUT: The validator exceeded the time limit
+    OOM: The validator exceeded memory limits (container killed)
+    RUNTIME_ERROR: The validator encountered an unexpected error
+    SYSTEM_ERROR: Infrastructure/platform issues (GCS, Cloud Run, etc.)
+    """
+
+    VALIDATION_FAILED = "VALIDATION_FAILED", _("Validation Failed")
+    TIMEOUT = "TIMEOUT", _("Timed Out")
+    OOM = "OOM", _("Out of Memory")
+    RUNTIME_ERROR = "RUNTIME_ERROR", _("Runtime Error")
+    SYSTEM_ERROR = "SYSTEM_ERROR", _("System Error")
+
+
+# Human-friendly error messages by category
+VALIDATION_RUN_ERROR_MESSAGES = {
+    ValidationRunErrorCategory.VALIDATION_FAILED: (
+        "The validation found issues with your file."
+    ),
+    ValidationRunErrorCategory.TIMEOUT: (
+        "The validation took too long and was stopped. "
+        "Try a smaller file or contact support for larger models."
+    ),
+    ValidationRunErrorCategory.OOM: (
+        "The validation ran out of memory. "
+        "Try a smaller file or contact support for larger models."
+    ),
+    ValidationRunErrorCategory.RUNTIME_ERROR: (
+        "An unexpected error occurred during validation. "
+        "Please try again or contact support if the problem persists."
+    ),
+    ValidationRunErrorCategory.SYSTEM_ERROR: (
+        "A system error prevented the validation from completing. "
+        "Please try again in a few minutes."
+    ),
+}
+
+
 class LibraryLayout(TextChoices):
     GRID = "grid", _("Grid")
     LIST = "list", _("List")

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Validibot is a Django-based data validation engine that helps users validate building energy models and other technical data. The project uses Django 5.2, Python 3.13, Bootstrap 5, HTMx for dynamic interactions, and integrates with external services like Modal for serverless compute.
+Validibot is a Django-based data validation engine that helps users validate building energy models and other technical data. The project uses Django 5.2, Python 3.13, Bootstrap 5, HTMx for dynamic interactions, and runs on Google Cloud Platform.
 
 ## Critical: Always Check AGENTS.md
 
@@ -36,14 +36,12 @@ Validibot is a Django-based data validation engine that helps users validate bui
 
 This project works alongside two related repositories:
 
-1. **vb_shared** - Shared library for integrations (EnergyPlus, etc.)
+1. **vb_shared** - Shared library for integrations (EnergyPlus, FMI, etc.)
    - Installed from Git in production
    - Symlinked to `vb_shared_dev/` for local development
 2. **vb_validators** - Cloud Run Job validator containers
    - Located at `../vb_validators`
    - Depends on vb_shared via Git URL
-3. **sv_modal** - Modal-based serverless compute functions
-   - Located at `../sv_modal`
 
 Always consider these neighboring projects when working on integrations or modifying shared functionality.
 

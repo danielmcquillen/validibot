@@ -33,6 +33,7 @@ from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
@@ -1487,6 +1488,14 @@ class ValidationRun(TimeStampedModel):
         default="",
     )  # terminal error/trace if any
 
+    error_category = models.CharField(
+        max_length=32,
+        choices=ValidationRunErrorCategory.choices,
+        blank=True,
+        default="",
+        help_text=_("Classification of why the run failed (TIMEOUT, OOM, etc.)."),
+    )
+
     source = models.CharField(
         max_length=32,
         choices=ValidationRunSource.choices,
@@ -1536,6 +1545,23 @@ class ValidationRun(TimeStampedModel):
             .order_by("step_order")
             .first()
         )
+
+    @property
+    def user_friendly_error(self) -> str:
+        """
+        Returns a human-friendly error message based on error_category.
+
+        Falls back to the raw error text if no category is set, or empty
+        string if there's no error at all.
+        """
+        from validibot.validations.constants import VALIDATION_RUN_ERROR_MESSAGES
+
+        if self.error_category:
+            return VALIDATION_RUN_ERROR_MESSAGES.get(
+                self.error_category,
+                self.error or "",
+            )
+        return self.error or ""
 
 
 class ValidationRunSummary(TimeStampedModel):

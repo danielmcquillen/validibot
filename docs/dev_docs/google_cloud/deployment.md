@@ -52,101 +52,115 @@ Run `just` to see all available commands.
 
 ## Setting Up a New Environment
 
-The `gcp-init-stage` command works for all stages (dev, staging, prod). Production was provisioned manually before this tooling existed, but the command would work for a fresh prod setup too.
+The `gcp-init-stage` command works for all stages (dev, staging, prod). The command is idempotent - it checks for existing resources and only creates what's missing, making it safe to re-run.
 
-**Already provisioned (prod):**
+**Current production resources:**
+
 - Service account: `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `validibot-db`
 - Cloud Tasks queue: `validibot-validation-queue`
 - GCS buckets: `validibot-media`, `validibot-files`
 - Secret: `django-env`
 
-To create a new dev or staging environment from scratch:
+To create a new environment from scratch (or verify existing resources):
 
 ### Step 1: Initialize Infrastructure
 
 ```bash
 # Creates service account, database, Cloud Tasks queue, GCS buckets, and secret placeholder
-just gcp-init-stage dev
+just gcp-init-stage dev      # For dev environment
+just gcp-init-stage staging  # For staging environment
+just gcp-init-stage prod     # For production environment
 ```
 
-This command creates:
+This command creates (example for dev):
+
 - Service account: `validibot-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
-- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier for dev, db-g1-small for staging)
+- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `validibot-validation-queue-dev`
 - GCS buckets: `validibot-media-dev`, `validibot-files-dev`
 - Secret placeholder: `django-env-dev`
 
+For production, resource names have no suffix (e.g., `validibot-db`, `validibot-media`).
+
 !!! warning "Save the database password!"
     The command outputs a generated password for the database user. **Copy this password immediately** - you'll need it in the next step. If you lose it, you'll need to reset the database user password manually.
 
+??? info "Cloud SQL connectivity and public IP"
+    The deploys use the Cloud SQL Auth Proxy via `--add-cloudsql-instances`, which authenticates with IAM instead of IP allowlisting and encrypts traffic. This is a reasonable default for dev/staging and avoids VPC connector costs. If you need network isolation in production, plan a migration to Private IP + Serverless VPC Access and point Cloud Run at the connector; that adds cost/complexity but removes the public IP.
+
 ### Step 2: Update Environment File with Password
 
-Edit `.envs/.dev/.django` and replace `PASSWORD_FROM_GCP_INIT` with the actual password from Step 1:
+Edit the appropriate environment file for your stage:
 
-```bash
-vim .envs/.dev/.django
-```
+| Stage | Environment File |
+|-------|------------------|
+| dev | `.envs/.dev/.django` |
+| staging | `.envs/.staging/.django` |
+| prod | `.envs/.production/.django` |
 
-Update these two lines (remember to URL-encode special characters like `/` → `%2F`, `=` → `%3D`):
+Replace `PASSWORD_FROM_GCP_INIT` with the actual password from Step 1. Remember to URL-encode special characters in DATABASE_URL (`/` → `%2F`, `=` → `%3D`):
 
 ```
 POSTGRES_PASSWORD=<actual-password-here>
-DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db-dev
+DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/project-a509c806-3e21-4fbc-b19:australia-southeast1:<db-instance>
 ```
+
+Where `<db-instance>` is `validibot-db-dev`, `validibot-db-staging`, or `validibot-db` (for prod).
 
 ### Step 3: Upload Secrets to Secret Manager
 
 ```bash
-just gcp-secrets dev
+just gcp-secrets <stage>  # e.g., just gcp-secrets dev|staging|prod
 ```
 
 ### Step 4: Deploy Services
 
 ```bash
 # Deploy both web and worker
-just gcp-deploy-all dev
+just gcp-deploy-all <stage>
+# e.g., just gcp-deploy-all dev|staging|prod
 ```
 
 ### Step 5: Run Migrations and Seed Data
 
 ```bash
 # Run database migrations
-just gcp-migrate dev
+just gcp-migrate <stage>
 
 # Seed initial data (validators, default org, etc.)
-just gcp-setup-data dev
+just gcp-setup-data <stage>
 ```
 
 ### Step 6: Deploy Validators
 
 ```bash
 # Deploy EnergyPlus and FMI validators
-just validators-deploy-all dev
+just validators-deploy-all <stage>
 ```
 
 ### Step 7: Set Up Scheduled Jobs
 
 ```bash
 # Create Cloud Scheduler jobs for cleanup tasks
-just gcp-scheduler-setup dev
+just gcp-scheduler-setup <stage>
 ```
 
 ### Step 8: Verify Deployment
 
 ```bash
 # Check status and get service URL
-just gcp-status dev
+just gcp-status <stage>
 
 # View logs
-just gcp-logs dev
+just gcp-logs <stage>
 
 # List all resources
-just gcp-list-resources dev
+just gcp-list-resources <stage>
 ```
 
-Optionally, update `DJANGO_ALLOWED_HOSTS` in `.envs/.dev/.django` with the service URL, then run `just gcp-secrets dev` and `just gcp-deploy dev` again.
+Optionally, update `DJANGO_ALLOWED_HOSTS` in your stage's env file with the service URL, then run `just gcp-secrets <stage>` and `just gcp-deploy <stage>` again.
 
 ## Regular Deployments
 

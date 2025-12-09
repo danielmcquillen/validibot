@@ -6,6 +6,8 @@ This checklist covers tasks to complete before launching Validibot to production
 
 ### Infrastructure Upgrades
 
+> Note: `just gcp-init-stage prod` currently provisions the smallest shared-core tier (`db-f1-micro`). Before serving real traffic, bump the prod instance to a larger tier as outlined below.
+
 - [ ] **Upgrade Cloud SQL instance from `db-f1-micro` to `db-g1-small`**
 
   The `db-f1-micro` tier (0.6 GB RAM) is suitable for development but not production. Upgrade to `db-g1-small` (1.7 GB RAM) before go-live.
@@ -38,6 +40,8 @@ This checklist covers tasks to complete before launching Validibot to production
   gcloud sql instances patch validibot-db \
     --no-assign-ip
   ```
+
+  *Note:* Current deployments use the Cloud SQL Auth Proxy (`--add-cloudsql-instances`), which authenticates via IAM and encrypts traffic. That is acceptable for dev/staging and many prod setups. If your production policy requires no public IP, you’ll need to add Private IP + Serverless VPC Access and point Cloud Run at the connector before disabling the public IP.
 
 - [ ] **Review Secret Manager access** - Ensure only production service accounts have access
 

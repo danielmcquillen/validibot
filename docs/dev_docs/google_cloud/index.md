@@ -33,6 +33,7 @@ The GCP architecture includes:
 - [Deployment Guide](deployment.md) - How to deploy to Cloud Run
 - [Logging](logging.md) - Cloud Logging setup and searching logs
 - [Scheduled Jobs](scheduled-jobs.md) - Cloud Scheduler configuration
+- [Security](security.md) - Cloud SQL networking, database access, secrets
 - [Setup Cheatsheet](setup-cheatsheet.md) - Initial GCP setup steps and reference
 - [Storage (GCS)](storage.md) - Cloud Storage configuration for media files
 - [IAM & Service Accounts](iam.md) - Identity and access management setup

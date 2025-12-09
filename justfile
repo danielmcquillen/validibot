@@ -204,6 +204,7 @@ gcp-deploy stage: gcp-build gcp-push
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
         --region {{gcp_region}} \
+        --port 8000 \
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
@@ -246,6 +247,7 @@ gcp-deploy-worker stage: gcp-build gcp-push
     gcloud run deploy "$SERVICE" \
         --image {{gcp_image}}:{{git_sha}} \
         --region {{gcp_region}} \
+        --port 8000 \
         --service-account "$SA" \
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
@@ -542,8 +544,7 @@ gcp-job-logs job:
 # GCP Initial Stage Setup
 # =============================================================================
 #
-# Use these commands to set up a new environment (dev, staging) from scratch.
-# Production (prod) is assumed to already exist.
+# Use these commands to set up a new environment (dev, stagin, prod) from scratch.
 #
 # Full setup workflow:
 #   1. just gcp-init-stage dev          # Create infrastructure
@@ -558,15 +559,14 @@ gcp-job-logs job:
 
 # Initialize infrastructure for a new stage (creates service account, database, etc.)
 # Usage: just gcp-init-stage dev
-# Note: Run this ONCE when setting up a new environment
+# Note: Run this ONCE when setting up a new environment. Idempotent - safe to re-run.
 gcp-init-stage stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # Only allow dev and staging (prod should already exist)
-    if [[ ! "{{stage}}" =~ ^(dev|staging)$ ]]; then
-        echo "Error: stage must be 'dev' or 'staging'"
-        echo "Production (prod) infrastructure is managed separately."
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
 
@@ -575,10 +575,19 @@ gcp-init-stage stage:
     echo "============================================="
     echo ""
 
-    SA_NAME="validibot-cloudrun-{{stage}}"
+    # Prod uses names without suffix, dev/staging use stage suffix
+    if [ "{{stage}}" = "prod" ]; then
+        SA_NAME="validibot-cloudrun-prod"
+        DB_INSTANCE="validibot-db"
+        SECRET_NAME="django-env"
+        QUEUE_NAME="validibot-validation-queue"
+    else
+        SA_NAME="validibot-cloudrun-{{stage}}"
+        DB_INSTANCE="validibot-db-{{stage}}"
+        SECRET_NAME="django-env-{{stage}}"
+        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+    fi
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
-    DB_INSTANCE="validibot-db-{{stage}}"
-    SECRET_NAME="django-env-{{stage}}"
 
     # Step 1: Create service account
     echo "1. Creating service account: $SA_NAME"
@@ -602,14 +611,21 @@ gcp-init-stage stage:
         "roles/cloudtasks.enqueuer"
     )
     for role in "${ROLES[@]}"; do
-        echo "   Adding $role..."
-        gcloud projects add-iam-policy-binding {{gcp_project}} \
-            --member="serviceAccount:$SA_EMAIL" \
-            --role="$role" \
-            --condition=None \
-            --quiet &>/dev/null || true
+        # Check if binding already exists
+        if gcloud projects get-iam-policy {{gcp_project}} \
+            --flatten="bindings[].members" \
+            --filter="bindings.role=$role AND bindings.members=serviceAccount:$SA_EMAIL" \
+            --format="value(bindings.role)" 2>/dev/null | grep -q .; then
+            echo "   ✓ $role (already bound)"
+        else
+            gcloud projects add-iam-policy-binding {{gcp_project}} \
+                --member="serviceAccount:$SA_EMAIL" \
+                --role="$role" \
+                --condition=None \
+                --quiet &>/dev/null || true
+            echo "   ✓ $role (added)"
+        fi
     done
-    echo "   ✓ Roles granted"
     echo ""
 
     # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)
@@ -622,8 +638,11 @@ gcp-init-stage stage:
             TIER="db-g1-small"
         fi
         echo "   Creating $TIER instance (this may take several minutes)..."
+        # Note: Uses public IP with IAM-only auth (no IP allowlisting).
+        # Cloud Run connects via Cloud SQL Auth Proxy which authenticates via IAM.
+        # See docs/dev_docs/google_cloud/security.md for Private IP setup if needed.
         gcloud sql instances create "$DB_INSTANCE" \
-            --database-version=POSTGRES_16 \
+            --database-version=POSTGRES_17 \
             --edition=ENTERPRISE \
             --tier="$TIER" \
             --region={{gcp_region}} \
@@ -674,7 +693,6 @@ gcp-init-stage stage:
 
     # Step 5: Create Cloud Tasks queue
     echo "5. Creating Cloud Tasks queue"
-    QUEUE_NAME="validibot-validation-queue-{{stage}}"
     if gcloud tasks queues describe "$QUEUE_NAME" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
         echo "   ✓ Queue '$QUEUE_NAME' already exists"
     else
@@ -734,16 +752,24 @@ gcp-init-stage stage:
     echo "  • GCS buckets: $MEDIA_BUCKET, $FILES_BUCKET"
     echo "  • Secret: $SECRET_NAME"
     echo ""
+    # Determine correct env file path (prod uses .production, others use stage name)
+    if [ "{{stage}}" = "prod" ]; then
+        ENV_PATH=".envs/.production/.django"
+    else
+        ENV_PATH=".envs/.{{stage}}/.django"
+    fi
+
     echo "Next steps:"
-    echo "  1. Create env file:     just gcp-secrets-init-dev"
-    echo "  2. Edit env file:       Edit .envs/.{{stage}}/.django with:"
-    echo "                          - DATABASE_URL (shown above if new)"
-    echo "                          - DJANGO_ALLOWED_HOSTS"
-    echo "                          - Other {{stage}}-specific values"
-    echo "  3. Upload secrets:      just gcp-secrets {{stage}}"
-    echo "  4. Deploy services:     just gcp-deploy-all {{stage}}"
-    echo "  5. Run migrations:      just gcp-migrate {{stage}}"
-    echo "  6. Seed data:           just gcp-setup-data {{stage}}"
+    echo "  1. Edit env file:       Edit $ENV_PATH with:"
+    echo "                          - POSTGRES_PASSWORD and DATABASE_URL (use password shown above)"
+    echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
+    echo "                          - DJANGO_SECRET_KEY (generate a new one)"
+    echo "  2. Upload secrets:      just gcp-secrets {{stage}}"
+    echo "  3. Deploy services:     just gcp-deploy-all {{stage}}"
+    echo "  4. Run migrations:      just gcp-migrate {{stage}}"
+    echo "  5. Seed data:           just gcp-setup-data {{stage}}"
+    echo "  6. Set up scheduler:    just gcp-scheduler-setup {{stage}}"
+    echo "  7. Deploy validators:   just validators-deploy-all {{stage}}"
     echo ""
 
 # List all resources for a stage (useful for verification)

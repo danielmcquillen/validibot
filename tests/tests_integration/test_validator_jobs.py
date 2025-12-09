@@ -63,6 +63,10 @@ class EnergyPlusValidatorE2ETest(TestCase):
     @classmethod
     def _check_prerequisites(cls) -> None:
         """Verify GCP settings needed for the test are present."""
+        logger.info("=" * 60)
+        logger.info("ENERGYPLUS E2E TEST: Checking prerequisites")
+        logger.info("=" * 60)
+
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
@@ -71,19 +75,27 @@ class EnergyPlusValidatorE2ETest(TestCase):
         ]
         missing = [s for s in required_settings if not getattr(settings, s, None)]
         if missing:
-            raise cls.skipTest(
-                cls,
-                f"EnergyPlus E2E skipped: missing settings {missing}",
-            )
+            reason = f"EnergyPlus E2E skipped: missing settings {missing}"
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason)
+
+        # Log the settings we're using
+        logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
+        logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
+        logger.info("GCS_ENERGYPLUS_JOB_NAME: %s", settings.GCS_ENERGYPLUS_JOB_NAME)
+        logger.info("GCP_REGION: %s", settings.GCP_REGION)
+
         try:
             from google.auth import default
 
-            default()
+            credentials, project = default()
+            logger.info("GCP credentials: OK (project=%s)", project)
         except Exception as exc:
-            raise cls.skipTest(
-                cls,
-                f"EnergyPlus E2E skipped: GCP credentials not configured: {exc}",
-            ) from None
+            reason = f"EnergyPlus E2E skipped: GCP credentials not configured: {exc}"
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason) from None
+
+        logger.info("Prerequisites check: PASSED")
 
     @classmethod
     def _ensure_weather_file_in_bucket(cls) -> None:

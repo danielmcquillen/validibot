@@ -66,6 +66,10 @@ class CloudRunJobIntegrationTest(TestCase):
     @classmethod
     def _check_prerequisites(cls) -> None:
         """Verify all required GCP settings are configured."""
+        logger.info("=" * 60)
+        logger.info("CLOUD RUN JOB TEST: Checking prerequisites")
+        logger.info("=" * 60)
+
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
@@ -80,21 +84,28 @@ class CloudRunJobIntegrationTest(TestCase):
                 missing.append(setting_name)
 
         if missing:
-            raise cls.skipTest(
-                cls,
-                f"Cloud Run integration test skipped: missing settings {missing}",
-            )
+            reason = f"Cloud Run test skipped: missing settings {missing}"
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason)
+
+        # Log the settings we're using
+        logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
+        logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
+        logger.info("GCS_ENERGYPLUS_JOB_NAME: %s", settings.GCS_ENERGYPLUS_JOB_NAME)
+        logger.info("GCP_REGION: %s", settings.GCP_REGION)
 
         # Check for GCP credentials
         try:
             from google.auth import default
 
-            default()
+            credentials, project = default()
+            logger.info("GCP credentials: OK (project=%s)", project)
         except Exception as e:
-            raise cls.skipTest(
-                cls,
-                f"Cloud Run test skipped: GCP credentials not configured: {e}",
-            ) from None
+            reason = f"Cloud Run test skipped: GCP credentials not configured: {e}"
+            logger.warning(reason)
+            raise cls.skipTest(cls, reason) from None
+
+        logger.info("Prerequisites check: PASSED")
 
     def setUp(self) -> None:
         """Set up test fixtures."""

@@ -21,7 +21,10 @@ Add an `Idempotency-Key` header (a UUIDv4 is perfect) to every state-changing ca
 What you get:
 - If the first request finishes, we cache its final response for 24 hours and return that same response on any repeat with the same key. You avoid duplicate runs, double billing, and noisy findings.
 - If a duplicate arrives while the first is still running, we return `409 Conflict` to say “still working on it; try again later” instead of starting another run.
+- When a cached response is replayed you’ll see headers: `Idempotent-Replayed: true` and `Original-Request-Id: <uuid>`.
 - If you skip the header, we still process the request, but retries can create duplicate runs because there is nothing to correlate them. Use a fresh UUID per request.
+
+Developer policy: every mutating API endpoint should be wrapped with the idempotency decorator; keep the header optional for now but always include it in examples so clients adopt it.
 
 ## Mode 1: Raw Body (Header-Driven)
 
@@ -35,18 +38,21 @@ Content-Type: application/json | application/xml | text/plain | text/x-idf
 Example (raw JSON):
 curl -X POST https://api.example.com/api/workflows/42/start \
  -H "Authorization: Bearer <token>" \
+ -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/json" \
  --data-binary @building.json
 
 Example (raw XML):
 curl -X POST https://api.example.com/api/workflows/42/start \
  -H "Authorization: Bearer <token>" \
+ -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/xml" \
  --data-binary '<root><item>1</item></root>'
 
 Base64 (when necessary):
 curl -X POST https://api.example.com/api/workflows/42/start \
  -H "Authorization: Bearer <token>" \
+ -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: text/x-idf" \
  -H "Content-Encoding: base64" \
  --data "$(base64 building.idf)"
@@ -66,6 +72,7 @@ Body JSON:
 Example:
 curl -X POST https://api.example.com/api/workflows/42/start \
  -H "Authorization: Bearer <token>" \
+ -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/json" \
  -d '{
 "content": "{\"building\":\"A\"}",
@@ -87,6 +94,7 @@ content_type: (optional override)
 Example:
 curl -X POST https://api.example.com/api/workflows/42/start \
  -H "Authorization: Bearer <token>" \
+ -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -F "file=@building.idf" \
  -F 'metadata={\"source\":\"browser\"}' \
  -F "filename=building.idf" \

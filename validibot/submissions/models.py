@@ -19,6 +19,7 @@ from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
 from validibot.projects.models import Project
+from validibot.submissions.constants import DataRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.models import Organization
 from validibot.users.models import User
@@ -90,20 +91,29 @@ class Submission(TimeStampedModel):
             ),
         ]
         constraints = [
-            # At least one of content or input_file
+            # At least one of content or input_file (unless purged)
             models.CheckConstraint(
                 name="submission_content_present",
                 condition=(
-                    Q(content__gt="")
+                    Q(content_purged_at__isnull=False)  # Purged - no content needed
+                    | Q(content__gt="")
                     | (Q(input_file__isnull=False) & ~Q(input_file=""))
                 ),
             ),
-            # Not both
+            # Not both content and input_file
             models.CheckConstraint(
                 name="submission_content_not_both",
                 condition=~(
                     Q(content__gt="")
                     & (Q(input_file__isnull=False) & ~Q(input_file=""))
+                ),
+            ),
+            # Purged submissions must have content cleared
+            models.CheckConstraint(
+                name="submission_purged_content_cleared",
+                condition=(
+                    Q(content_purged_at__isnull=True)
+                    | (Q(content="") & Q(input_file=""))
                 ),
             ),
         ]
@@ -205,6 +215,33 @@ class Submission(TimeStampedModel):
         blank=True,
         related_name="+",
     )
+
+    # Retention fields
+    # ~---------------------------------------------------------------
+
+    retention_policy = models.CharField(
+        max_length=32,
+        choices=DataRetention.choices,
+        default=DataRetention.DO_NOT_STORE,
+        help_text=_("Snapshot of workflow's retention policy at submission time."),
+    )
+
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=_(
+            "When content should be purged (null = already purged or DO_NOT_STORE)."
+        ),
+    )
+
+    content_purged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("When content was purged (for audit trail)."),
+    )
+
+    # ~---------------------------------------------------------------
 
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -314,9 +351,13 @@ class Submission(TimeStampedModel):
         Retrieve the actual content of this submission, whether stored
         inline or in the FileField.
 
+        Returns empty string if content has been purged.
+
         Returns:
-            str: The content as a string.
+            str: The content as a string, or empty string if purged/unavailable.
         """
+        if self.content_purged_at:
+            return ""  # Content has been purged
         if self.content:
             return self.content
         if self.input_file:
@@ -334,6 +375,11 @@ class Submission(TimeStampedModel):
             )
         return ""
 
+    @property
+    def is_content_available(self) -> bool:
+        """Check if content is still available (not purged)."""
+        return self.content_purged_at is None
+
     def clean(self, *args, **kwargs):
         errors = {}
 
@@ -349,10 +395,12 @@ class Submission(TimeStampedModel):
             errors["user"] = _("User must belong to the same organization.")
 
         # Content presence: require exactly one of (content, input_file)
-        has_doc = bool(self.content)
-        has_file = bool(self.input_file)
-        if not (has_doc ^ has_file):
-            errors["content"] = _("Provide exactly one of content or input_file.")
+        # unless content has been purged
+        if not self.content_purged_at:
+            has_doc = bool(self.content)
+            has_file = bool(self.input_file)
+            if not (has_doc ^ has_file):
+                errors["content"] = _("Provide exactly one of content or input_file.")
 
         if errors:
             raise ValidationError(errors)
@@ -411,6 +459,133 @@ class Submission(TimeStampedModel):
 
     def _compute_checksum(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
+
+    def purge_content(self) -> None:
+        """
+        Remove submission content while preserving the record and metadata.
+
+        This method is idempotent - calling it on an already-purged submission
+        is a no-op.
+
+        Keeps: id, checksum_sha256, original_filename, size_bytes, file_type,
+               metadata, created, retention_policy
+        Clears: content, input_file
+        Sets: content_purged_at
+        Also cleans up: GCS execution bundle folders for all related runs
+
+        Raises:
+            Exception: If file deletion fails (caller should handle retry)
+        """
+        if self.content_purged_at:
+            return  # Already purged (idempotent)
+
+        # Delete file from storage
+        if self.input_file:
+            try:
+                self.input_file.delete(save=False)
+            except Exception:
+                logger.exception(
+                    "Failed to delete submission file",
+                    extra={"id": str(self.id)},
+                )
+                raise
+
+        # Delete execution bundle folders for all runs
+        for run in self.runs.all():
+            try:
+                _delete_execution_bundle(run)
+            except Exception:
+                logger.exception(
+                    "Failed to delete execution bundle",
+                    extra={"submission_id": str(self.id), "run_id": str(run.id)},
+                )
+                # Continue with other runs - don't fail entire purge
+
+        # Clear content
+        self.content = ""
+        self.input_file = None
+        self.content_purged_at = now()
+        self.expires_at = None  # No longer pending
+        self.save(
+            update_fields=["content", "input_file", "content_purged_at", "expires_at"],
+        )
+
+        logger.info(
+            "Purged submission content",
+            extra={
+                "submission_id": str(self.id),
+                "retention_policy": self.retention_policy,
+            },
+        )
+
+
+def _delete_execution_bundle(run) -> None:
+    """
+    Delete the GCS execution bundle folder for a validation run.
+
+    Uses prefix deletion to remove all objects under the run's folder.
+    This function is called during submission content purge to remove
+    all associated files from cloud storage.
+
+    Args:
+        run: ValidationRun instance with summary containing execution_bundle_uri
+
+    Note:
+        - Safe to call if bundle doesn't exist (no-op)
+        - Logs but doesn't raise on individual blob deletion failures
+    """
+    from urllib.parse import urlparse
+
+    if not run.summary:
+        return
+
+    # Get execution bundle URI from run summary (set by launcher)
+    bundle_uri = run.summary.get("execution_bundle_uri")
+    if not bundle_uri or not bundle_uri.startswith("gs://"):
+        return
+
+    # Parse bucket and prefix from URI
+    # gs://bucket/runs/org_id/run_id/ -> bucket, runs/org_id/run_id/
+    parsed = urlparse(bundle_uri)
+    bucket_name = parsed.netloc
+    prefix = parsed.path.lstrip("/")
+
+    try:
+        from google.cloud import storage
+
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blobs = list(bucket.list_blobs(prefix=prefix))
+
+        for blob in blobs:
+            try:
+                blob.delete()
+                logger.debug("Deleted GCS object: %s", blob.name)
+            except Exception:
+                logger.exception("Failed to delete GCS object: %s", blob.name)
+                raise
+
+        if blobs:
+            logger.info(
+                "Deleted execution bundle",
+                extra={
+                    "run_id": str(run.id),
+                    "bundle_uri": bundle_uri,
+                    "objects_deleted": len(blobs),
+                },
+            )
+    except ImportError:
+        # google-cloud-storage not installed (local dev without GCS)
+        logger.warning(
+            "google-cloud-storage not available, skipping execution bundle cleanup",
+            extra={"run_id": str(run.id), "bundle_uri": bundle_uri},
+        )
+    except Exception:
+        logger.exception(
+            "Failed to delete execution bundle",
+            extra={"run_id": str(run.id), "bundle_uri": bundle_uri},
+        )
+        raise
 
 
 def detect_file_type(

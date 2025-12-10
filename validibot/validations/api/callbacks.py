@@ -542,6 +542,11 @@ class ValidationCallbackView(APIView):
                 callback.run_id,
             )
 
+            # Purge submission content if retention policy is DO_NOT_STORE
+            # This happens after all processing is complete to ensure data
+            # integrity during the validation run.
+            self._purge_if_do_not_store(run)
+
             return Response(
                 {"message": "Callback processed successfully"},
                 status=status.HTTP_200_OK,
@@ -553,3 +558,47 @@ class ValidationCallbackView(APIView):
                 {"error": f"Internal server error: {e}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def _purge_if_do_not_store(self, run: ValidationRun) -> None:
+        """
+        Purge submission content if the retention policy is DO_NOT_STORE.
+
+        This is called after all callback processing is complete. Failures
+        are logged but don't fail the callback - a retry mechanism will
+        handle orphaned submissions.
+
+        Args:
+            run: The ValidationRun that just completed
+        """
+        from validibot.submissions.constants import DataRetention
+
+        submission = run.submission
+        if not submission:
+            return
+
+        if submission.retention_policy != DataRetention.DO_NOT_STORE:
+            return
+
+        if submission.content_purged_at:
+            # Already purged (shouldn't happen, but idempotent)
+            return
+
+        try:
+            submission.purge_content()
+            logger.info(
+                "Purged DO_NOT_STORE submission after run completion",
+                extra={
+                    "submission_id": str(submission.id),
+                    "run_id": str(run.id),
+                },
+            )
+        except Exception:
+            # Log but don't fail - retry mechanism will handle this
+            logger.exception(
+                "Failed to purge DO_NOT_STORE submission",
+                extra={
+                    "submission_id": str(submission.id),
+                    "run_id": str(run.id),
+                },
+            )
+            # TODO: Queue for retry via PurgeRetry model when implemented

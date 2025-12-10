@@ -23,6 +23,7 @@ from validibot.actions.models import Action
 from validibot.core.mixins import FeaturedImageMixin
 from validibot.core.utils import render_markdown_safe
 from validibot.projects.models import Project
+from validibot.submissions.constants import DataRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.models import Membership
 from validibot.users.models import Organization
@@ -243,6 +244,16 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
+    data_retention = models.CharField(
+        max_length=32,
+        choices=DataRetention.choices,
+        default=DataRetention.DO_NOT_STORE,
+        help_text=_(
+            "How long to keep submission data after validation completes. "
+            "DO_NOT_STORE purges immediately after run completion."
+        ),
+    )
+
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -386,6 +397,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             is_locked=False,
             is_active=self.is_active,
             allowed_file_types=list(self.allowed_file_types or []),
+            data_retention=self.data_retention,
         )
         steps = []
         for step in self.steps.all().order_by("order"):

@@ -2,6 +2,19 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
+class DataRetention(models.TextChoices):
+    """
+    Retention policy for submission data.
+
+    Controls how long user-submitted content is stored before being purged.
+    The actual record is preserved for audit trail; only the content is removed.
+    """
+
+    DO_NOT_STORE = "DO_NOT_STORE", _("Do not store (delete after validation)")
+    STORE_10_DAYS = "STORE_10_DAYS", _("Store for 10 days")
+    STORE_30_DAYS = "STORE_30_DAYS", _("Store for 30 days")
+
+
 class SubmissionFileType(models.TextChoices):
     """
     The file type of the initial submission sent

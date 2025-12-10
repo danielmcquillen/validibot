@@ -1458,8 +1458,14 @@ class ValidationRun(TimeStampedModel):
 
     submission = models.ForeignKey(
         Submission,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="runs",
+        help_text=_(
+            "Can be NULL if submission record was deleted. "
+            "Code accessing this field must handle the None case."
+        ),
     )
 
     status = models.CharField(

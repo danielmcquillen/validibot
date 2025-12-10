@@ -839,10 +839,16 @@ def test_jwks_endpoint_returns_keys(client: Client):
 - [x] Unit tests for JWKS endpoint
 
 **Environment Verification:**
-- [x] Dev: JWKS endpoint returns GCP key (verified 2025-12-10)
+- [x] Dev: JWKS endpoint returns GCP key using `credential-signing-dev` (verified 2025-12-10)
 - [x] Dev: KMS permissions configured for service account
-- [ ] Staging: JWKS endpoint returns GCP key (configure when staging deployed)
-- [ ] Production: JWKS endpoint returns GCP key (configure when prod deployed)
+- [ ] Staging: JWKS endpoint returns GCP key using `credential-signing-staging` (configure when staging deployed)
+- [ ] Production: JWKS endpoint returns GCP key using `credential-signing` (configure when prod deployed)
+
+**Stage Isolation:**
+Each stage has its own signing key in the shared `validibot-keys` keyring:
+- `credential-signing-dev` - Dev environment
+- `credential-signing-staging` - Staging environment
+- `credential-signing` - Production environment
 
 **Post-Migration Cleanup:**
 - [x] Remove boto3 from requirements (removed s3 extra from django-storages, 2025-12-10)

@@ -4,7 +4,7 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
-- [ADR-2025-11-20: FMI Storage and Security Review](2025-11-20-fmi-storage-and-security-review.md)
+- [ADR-2025-11-20: FMI Storage and Security Review](completed/2025-11-20-fmi-storage-and-security-review.md)
 - [ADR-2025-11-23: Ephemeral Submission Retention](2025-11-23-ephemeral-submission-retention.md)
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)
 - [ADR-2025-11-28: Invite-Based Signup and Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)

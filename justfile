@@ -1714,6 +1714,20 @@ gcp-scheduler-setup stage:
         "/api/v1/scheduled/cleanup-callback-receipts/" \
         "Delete old validator callback receipts - 30 day retention ({{stage}})"
 
+    # Job 4: Purge expired submissions (hourly at :00)
+    create_or_update_job \
+        "validibot-purge-expired-submissions${JOB_SUFFIX}" \
+        "0 * * * *" \
+        "/api/v1/scheduled/purge-expired-submissions/" \
+        "Purge submission content past retention period ({{stage}})"
+
+    # Job 5: Process purge retries (every 5 minutes)
+    create_or_update_job \
+        "validibot-process-purge-retries${JOB_SUFFIX}" \
+        "*/5 * * * *" \
+        "/api/v1/scheduled/process-purge-retries/" \
+        "Retry failed submission purges ({{stage}})"
+
     echo "✅ All scheduler jobs configured for {{stage}}!"
     echo ""
     echo "View jobs: just gcp-scheduler-list"
@@ -1748,7 +1762,7 @@ gcp-scheduler-delete-all stage:
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries; do
             job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \

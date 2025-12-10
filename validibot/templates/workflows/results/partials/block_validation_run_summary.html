@@ -18,9 +18,9 @@ This template lists out the summary results of the validation workflow run.
         {% endif %}
 
         <section>
-            {% if run.submission.name or run.short_description %}
+            {% if run.submission and run.submission.name or run.short_description %}
                 <dl class="row small">
-                    {% if run.submission.name %}
+                    {% if run.submission and run.submission.name %}
                         <dt class="col-sm-4">
                             {% trans "Submission name" %}
                         </dt>
@@ -128,7 +128,7 @@ This template lists out the summary results of the validation workflow run.
         </section>
 
         <section>
-            {% if run.submission.metadata %}
+            {% if run.submission and run.submission.metadata %}
 
                 <h6 class="fw-semibold">
                     {% trans "Submission metadata" %}

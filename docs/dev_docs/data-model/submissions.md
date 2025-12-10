@@ -41,3 +41,62 @@ scheduled, retried by Celery, or invoked via an API key, the run user may be
 `NULL` or different from the submission user. Treat the submission record as the
 ownership anchor for the payload itself, and the run record as the executor
 context for a single processing attempt.
+
+## Data Retention
+
+Submissions support configurable retention policies that control how long the
+actual content (file or inline text) is stored. This supports compliance requirements
+and reduces storage costs for workflows that don't need to retain user data.
+
+### Retention Policies
+
+| Policy | Behavior |
+|--------|----------|
+| `DO_NOT_STORE` | Content purged immediately after validation completes |
+| `STORE_10_DAYS` | Content retained for 10 days after submission |
+| `STORE_30_DAYS` | Content retained for 30 days after submission |
+
+### Key Fields
+
+- `retention_policy`: Snapshot of the workflow's retention setting at submission time
+- `expires_at`: When content should be purged (null for DO_NOT_STORE or already purged)
+- `content_purged_at`: Timestamp when content was purged (audit trail)
+
+### Content Purge vs Record Deletion
+
+When a submission's retention expires, we **purge the content** but **preserve the record**.
+This means:
+
+- The `Submission` row remains in the database with its metadata intact
+- `content` is cleared to empty string
+- `input_file` is deleted from storage
+- `checksum_sha256`, `original_filename`, `size_bytes` are preserved for audit
+- Associated GCS execution bundles (`gs://bucket/runs/{org}/{run}/`) are deleted
+
+This approach preserves the audit trail while removing the actual user data.
+
+### Defensive FK: ValidationRun.submission
+
+`ValidationRun.submission` uses `SET_NULL` instead of `CASCADE`. This means:
+
+- If a Submission record is accidentally deleted, the ValidationRun survives
+- Code accessing `run.submission` must handle `None`
+- API responses show `"submission": null` when unavailable
+
+### Management Commands
+
+Two commands handle retention:
+
+```bash
+# Purge submissions past their expires_at date (run hourly)
+python manage.py purge_expired_submissions --batch-size 100
+
+# Process failed purge attempts (run every 5 minutes)
+python manage.py process_purge_retries --batch-size 50
+```
+
+### PurgeRetry Model
+
+When a purge fails (e.g., GCS unavailable), a `PurgeRetry` record is created
+for automatic retry with exponential backoff. After 5 failed attempts, manual
+intervention is required.

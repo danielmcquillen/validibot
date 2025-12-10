@@ -222,6 +222,7 @@ class WorkflowForm(forms.ModelForm):
             "slug",
             "project",
             "allowed_file_types",
+            "data_retention",
             "allow_submission_name",
             "allow_submission_meta_data",
             "allow_submission_short_description",
@@ -238,6 +239,10 @@ class WorkflowForm(forms.ModelForm):
                 "Choose the submission file types this workflow accepts. "
                 "Launchers can only upload/run content using these formats."
             ),
+            "data_retention": _(
+                "Controls how long submission content is kept after validation. "
+                "The submission record is always preserved for audit purposes."
+            ),
         }
 
     def __init__(self, *args, user=None, **kwargs):
@@ -250,6 +255,7 @@ class WorkflowForm(forms.ModelForm):
             Field("slug", placeholder=""),
             Field("project"),
             Field("allowed_file_types"),
+            Field("data_retention"),
             Field("allow_submission_name"),
             Field("allow_submission_meta_data"),
             Field("allow_submission_short_description"),
@@ -274,6 +280,9 @@ class WorkflowForm(forms.ModelForm):
             allowed_field.initial = list(self.instance.allowed_file_types or [])
         elif not allowed_field.initial:
             allowed_field.initial = [SubmissionFileType.JSON]
+        # Configure data retention field
+        self.fields["data_retention"].label = _("Data retention")
+        self.fields["data_retention"].widget.attrs.update({"class": "form-select"})
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()

@@ -592,13 +592,28 @@ class ValidationCallbackView(APIView):
                     "run_id": str(run.id),
                 },
             )
-        except Exception:
-            # Log but don't fail - retry mechanism will handle this
+        except Exception as e:
+            # Log but don't fail - queue for retry
             logger.exception(
-                "Failed to purge DO_NOT_STORE submission",
+                "Failed to purge DO_NOT_STORE submission, queuing for retry",
                 extra={
                     "submission_id": str(submission.id),
                     "run_id": str(run.id),
                 },
             )
-            # TODO: Queue for retry via PurgeRetry model when implemented
+            # Queue for retry via PurgeRetry model
+            try:
+                from django.utils import timezone
+
+                from validibot.submissions.models import PurgeRetry
+
+                retry, created = PurgeRetry.objects.get_or_create(
+                    submission=submission,
+                    defaults={"next_retry_at": timezone.now()},
+                )
+                retry.record_failure(str(e))
+            except Exception:
+                logger.exception(
+                    "Failed to create PurgeRetry record",
+                    extra={"submission_id": str(submission.id)},
+                )

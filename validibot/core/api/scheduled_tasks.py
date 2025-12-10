@@ -10,12 +10,12 @@ Usage:
     verifies automatically. No application-level authentication is required.
 
 Example Cloud Scheduler setup:
-    gcloud scheduler jobs create http cleanup-idempotency-keys \
-      --schedule "0 3 * * *" \
-      --time-zone "Australia/Sydney" \
-      --uri "https://validibot-worker.run.app/api/v1/scheduled/cleanup-idempotency-keys/" \
-      --http-method POST \
-      --oidc-service-account-email cloud-scheduler@PROJECT.iam.gserviceaccount.com \
+    gcloud scheduler jobs create http cleanup-idempotency-keys \\
+      --schedule "0 3 * * *" \\
+      --time-zone "Australia/Sydney" \\
+      --uri "https://worker.run.app/api/v1/scheduled/cleanup-idempotency-keys/" \\
+      --http-method POST \\
+      --oidc-service-account-email scheduler@PROJECT.iam.gserviceaccount.com \\
       --location australia-southeast1
 """
 
@@ -177,6 +177,126 @@ class ClearSessionsView(ScheduledTaskBaseView):
             return Response(
                 {
                     "task": "clearsessions",
+                    "status": "failed",
+                    "error": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class PurgeExpiredSubmissionsView(ScheduledTaskBaseView):
+    """
+    Purge submission content that has passed its retention period.
+
+    This endpoint triggers the purge_expired_submissions management command,
+    which removes content from submissions where expires_at < now while
+    preserving the submission record for audit purposes.
+
+    URL: POST /api/v1/scheduled/purge-expired-submissions/
+    Recommended schedule: Hourly at :00
+    """
+
+    def post(self, request):
+        self.check_worker_mode()
+
+        # Allow overriding batch parameters via request body
+        batch_size = request.data.get("batch_size", 100)
+        max_batches = request.data.get("max_batches", 10)
+
+        logger.info(
+            "Starting scheduled purge of expired submissions "
+            "(batch_size=%d, max_batches=%d)",
+            batch_size,
+            max_batches,
+        )
+
+        try:
+            out = StringIO()
+            err = StringIO()
+            call_command(
+                "purge_expired_submissions",
+                f"--batch-size={batch_size}",
+                f"--max-batches={max_batches}",
+                stdout=out,
+                stderr=err,
+            )
+            output = out.getvalue()
+            errors = err.getvalue()
+
+            logger.info("Expired submission purge completed: %s", output.strip())
+
+            response_data = {
+                "task": "purge_expired_submissions",
+                "status": "completed",
+                "output": output.strip(),
+            }
+            if errors:
+                response_data["errors"] = errors.strip()
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception("Failed to purge expired submissions")
+            return Response(
+                {
+                    "task": "purge_expired_submissions",
+                    "status": "failed",
+                    "error": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class ProcessPurgeRetriesView(ScheduledTaskBaseView):
+    """
+    Process failed submission purge retries.
+
+    This endpoint triggers the process_purge_retries management command,
+    which retries purging submissions that failed on previous attempts
+    (e.g., due to GCS unavailability).
+
+    URL: POST /api/v1/scheduled/process-purge-retries/
+    Recommended schedule: Every 5 minutes
+    """
+
+    def post(self, request):
+        self.check_worker_mode()
+
+        # Allow overriding batch size via request body
+        batch_size = request.data.get("batch_size", 50)
+
+        logger.info(
+            "Starting scheduled processing of purge retries (batch_size=%d)",
+            batch_size,
+        )
+
+        try:
+            out = StringIO()
+            err = StringIO()
+            call_command(
+                "process_purge_retries",
+                f"--batch-size={batch_size}",
+                stdout=out,
+                stderr=err,
+            )
+            output = out.getvalue()
+            errors = err.getvalue()
+
+            logger.info("Purge retry processing completed: %s", output.strip())
+
+            response_data = {
+                "task": "process_purge_retries",
+                "status": "completed",
+                "output": output.strip(),
+            }
+            if errors:
+                response_data["errors"] = errors.strip()
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception("Failed to process purge retries")
+            return Response(
+                {
+                    "task": "process_purge_retries",
                     "status": "failed",
                     "error": str(e),
                 },

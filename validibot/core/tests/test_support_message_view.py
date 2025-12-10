@@ -10,7 +10,7 @@ from validibot.core.models import SupportMessage
 
 @pytest.mark.django_db
 def test_support_message_htmx_success(client, settings):
-    settings.ADMINS = [("Support", "support@example.com")]
+    settings.ADMINS = ["support@example.com"]
     user = get_user_model().objects.create_user(
         username="supporter",
         email="supporter@example.com",

@@ -52,11 +52,12 @@ def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
     user_part = f"u{instance.user_id}" if instance.user_id else "uanon"
     date_part = now().strftime("%Y%m%d")
 
-    # Slugify filename for URL-safe storage paths while preserving extension
-    name_stem = Path(filename).stem  # e.g., "My Building (v2) — Final"
-    ext = Path(filename).suffix.lower()  # e.g., ".idf"
-    safe_stem = slugify(name_stem)[:50] or "file"  # e.g., "my-building-v2-final"
-    safe_name = f"{safe_stem}{ext}"  # e.g., "my-building-v2-final.idf"
+    # Slugify filename for URL-safe storage paths while preserving extension.
+    # Avoid trusting user-supplied characters; cap the stem length to keep paths sane.
+    name_path = Path(filename)
+    ext = name_path.suffix.lower()
+    safe_stem = slugify(name_path.stem)[:50] or "file"
+    safe_name = f"{safe_stem}{ext}"
 
     unique = uuid.uuid4().hex[:12]
     p = (
@@ -611,3 +612,89 @@ def detect_file_type(
         if s.startswith(("---", "- ")):
             return SubmissionFileType.YAML
     return SubmissionFileType.UNKNOWN  # default fallback
+
+
+class PurgeRetry(models.Model):
+    """
+    Track submissions that failed to purge and need retry.
+
+    When a purge operation fails (e.g., GCS unavailable, file locked),
+    we record it here for later retry. A scheduled job processes
+    these records and attempts to complete the purge.
+
+    This ensures data retention policies are eventually enforced
+    even when transient failures occur.
+    """
+
+    MAX_ATTEMPTS = 5
+    RETRY_DELAYS = [60, 300, 3600, 21600, 86400]  # 1m, 5m, 1h, 6h, 24h
+
+    submission = models.ForeignKey(
+        Submission,
+        on_delete=models.CASCADE,
+        related_name="purge_retries",
+        help_text=_("Submission that failed to purge."),
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text=_("When the initial purge failure occurred."),
+    )
+
+    last_attempt_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("When the last retry attempt was made."),
+    )
+
+    next_retry_at = models.DateTimeField(
+        db_index=True,
+        help_text=_("When to attempt the next retry."),
+    )
+
+    attempt_count = models.PositiveIntegerField(
+        default=0,
+        help_text=_("Number of retry attempts made."),
+    )
+
+    last_error = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Error message from the last failed attempt."),
+    )
+
+    class Meta:
+        verbose_name_plural = "Purge retries"
+        indexes = [
+            models.Index(fields=["next_retry_at", "attempt_count"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PurgeRetry({self.submission_id}, attempts={self.attempt_count})"
+
+    def record_failure(self, error: str) -> None:
+        """
+        Record a failed purge attempt and schedule the next retry.
+
+        Uses exponential backoff with the delays defined in RETRY_DELAYS.
+        After MAX_ATTEMPTS, no more retries are scheduled (requires manual
+        intervention).
+        """
+        from django.utils import timezone
+
+        self.attempt_count += 1
+        self.last_attempt_at = timezone.now()
+        self.last_error = str(error)[:2000]  # Truncate long errors
+
+        if self.attempt_count < self.MAX_ATTEMPTS:
+            delay_seconds = self.RETRY_DELAYS[
+                min(self.attempt_count - 1, len(self.RETRY_DELAYS) - 1)
+            ]
+            self.next_retry_at = timezone.now() + timezone.timedelta(
+                seconds=delay_seconds,
+            )
+        else:
+            # Max attempts reached - set far future date to stop retries
+            self.next_retry_at = timezone.now() + timezone.timedelta(days=365)
+
+        self.save()

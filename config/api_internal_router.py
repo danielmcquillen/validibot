@@ -10,6 +10,8 @@ from django.urls import path
 from validibot.core.api.scheduled_tasks import CleanupCallbackReceiptsView
 from validibot.core.api.scheduled_tasks import CleanupIdempotencyKeysView
 from validibot.core.api.scheduled_tasks import ClearSessionsView
+from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
+from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
 from validibot.validations.api.callbacks import ValidationCallbackView
 
 app_name = "api-internal"
@@ -35,5 +37,15 @@ urlpatterns = [
         "scheduled/clear-sessions/",
         ClearSessionsView.as_view(),
         name="scheduled-clear-sessions",
+    ),
+    path(
+        "scheduled/purge-expired-submissions/",
+        PurgeExpiredSubmissionsView.as_view(),
+        name="scheduled-purge-expired-submissions",
+    ),
+    path(
+        "scheduled/process-purge-retries/",
+        ProcessPurgeRetriesView.as_view(),
+        name="scheduled-process-purge-retries",
     ),
 ]

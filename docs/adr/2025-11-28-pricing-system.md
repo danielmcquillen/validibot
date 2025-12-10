@@ -1,6 +1,6 @@
 # ADR-2025-11-28: Pricing System and Stripe Integration
 
-**Status:** Proposed (2025-11-28)  
+**Status:** Accepted (2025-12-11) - Implementation in progress  
 **Owners:** Platform / Billing / Infrastructure  
 **Related ADRs:** 2025-11-28-public-workflow-access  
 **Related docs:** `dev_docs/overview/how_it_works.md`, `billing/models.py`
@@ -11,7 +11,7 @@
 
 Validibot needs a pricing and billing system that:
 
-1. **Supports tiered plans** – Free, Starter, Team, Enterprise with different feature sets.
+1. **Supports tiered plans** – Starter, Team, Enterprise with different feature sets (no free tier; 2-week trial for new orgs).
 2. **Meters usage appropriately** – Different metering for different cost structures (see below).
 3. **Integrates with Stripe** – Subscription management, credit purchases, invoicing.
 4. **Provides usage visibility** – Dashboards and notifications that scale with plan tier.
@@ -38,29 +38,31 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Tier Summary
 
-|             | Free | Starter | Team    | Enterprise       |
-| ----------- | ---- | ------- | ------- | ---------------- |
-| **Price**   | $0   | $25/mo  | $100/mo | Contact us       |
-| **Seats**   | 1    | 2       | 10      | Custom           |
-| **Support** | None | None    | Email   | Priority + Slack |
+|             | Starter | Team    | Enterprise       |
+| ----------- | ------- | ------- | ---------------- |
+| **Price**   | $29/mo  | $99/mo  | Contact us       |
+| **Seats**   | 2       | 10      | Custom           |
+| **Support** | Email   | Email   | Priority + Slack |
+
+**Trial:** All new organizations receive a 14-day free trial on Starter plan features. When the trial expires, users must subscribe to continue using the platform.
 
 ### Authoring Features
 
-|                              | Free   | Starter | Team    | Enterprise |
-| ---------------------------- | ------ | ------- | ------- | ---------- |
-| **Author workflows**         | ✅ Yes | ✅ Yes  | ✅ Yes  | ✅ Yes     |
-| **Use basic validators**     | ✅ Yes | ✅ Yes  | ✅ Yes  | ✅ Yes     |
-| **Use advanced validators**  | ❌ No  | ✅ Yes  | ✅ Yes  | ✅ Yes     |
-| **Create custom validators** | 0      | 10      | 100     | Unlimited  |
-| **Validation workflows**     | 2      | 10      | 100     | Unlimited  |
-| **Payload size limit**       | ≤ 1 MB | ≤ 5 MB  | ≤ 20 MB | ≤ 100 MB   |
+|                              | Starter | Team    | Enterprise |
+| ---------------------------- | ------- | ------- | ---------- |
+| **Author workflows**         | ✅ Yes  | ✅ Yes  | ✅ Yes     |
+| **Use basic validators**     | ✅ Yes  | ✅ Yes  | ✅ Yes     |
+| **Use advanced validators**  | ✅ Yes  | ✅ Yes  | ✅ Yes     |
+| **Create custom validators** | 10      | 100     | Unlimited  |
+| **Validation workflows**     | 10      | 100     | Unlimited  |
+| **Payload size limit**       | ≤ 5 MB  | ≤ 20 MB | ≤ 100 MB   |
 
 ### Usage Quotas
 
-|                                             | Free | Starter | Team    | Enterprise |
-| ------------------------------------------- | ---- | ------- | ------- | ---------- |
-| **Basic workflow launches** (per month)     | 500  | 10,000  | 100,000 | Unlimited  |
-| **Advanced workflow credits** (included/mo) | 0    | 200     | 1,000   | 5,000+     |
+|                                             | Starter | Team    | Enterprise |
+| ------------------------------------------- | ------- | ------- | ---------- |
+| **Basic workflow launches** (per month)     | 10,000  | 100,000 | Unlimited  |
+| **Advanced workflow credits** (included/mo) | 200     | 1,000   | 5,000+     |
 
 **Basic workflow limits:** Hard monthly limits. When reached, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom percentage thresholds.
 
@@ -68,23 +70,23 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Platform Features
 
-|                        | Free  | Starter | Team     | Enterprise         |
-| ---------------------- | ----- | ------- | -------- | ------------------ |
-| **Integrations**       | ❌ No | ❌ No   | ✅ Yes   | ✅ Yes             |
-| **Audit logs**         | ❌ No | ❌ No   | ✅ Yes   | ✅ Yes             |
-| **Billing dashboard**  | None  | Basic   | Extended | Comprehensive      |
-| **Analytics**          | None  | Basic   | Extended | Comprehensive      |
-| **Deployment options** | Cloud | Cloud   | Cloud    | On-prem / regional |
+|                        | Starter | Team     | Enterprise         |
+| ---------------------- | ------- | -------- | ------------------ |
+| **Integrations**       | ❌ No   | ✅ Yes   | ✅ Yes             |
+| **Audit logs**         | ❌ No   | ✅ Yes   | ✅ Yes             |
+| **Billing dashboard**  | Basic   | Extended | Comprehensive      |
+| **Analytics**          | Basic   | Extended | Comprehensive      |
+| **Deployment options** | Cloud   | Cloud    | On-prem / regional |
 
 **Audit logs (Team/Enterprise):** Immutable, append-only records of every sensitive action (workflow edits/publishes, validator changes, permission changes, billing events, API launches, credential/integration updates). Each entry captures who, what, when, where (IP/UA), and the before/after payload hashes. Audit logs differ from basic usage tracking: usage counters summarize volume, while audit logs capture actor-level provenance needed for compliance (SOC 2), incident response, and customer attestations. Team users get 90-day retention and CSV export; Enterprise adds 1-year retention, tamper-evident hashing, and export to SIEM (syslog/S3 webhook).
 
 ### Overage (Credit Packs)
 
-|                              | Free | Starter          | Team            | Enterprise  |
-| ---------------------------- | ---- | ---------------- | --------------- | ----------- |
-| **Purchase overage credits** | ❌   | Manual           | Manual/Auto     | Manual/Auto |
-| **Pack size**                | n/a  | 100 credits      | 500 credits     | Negotiated  |
-| **Pack price**               | n/a  | $10 (10¢/credit) | $25 (5¢/credit) | Negotiated  |
+|                              | Starter          | Team            | Enterprise  |
+| ---------------------------- | ---------------- | --------------- | ----------- |
+| **Purchase overage credits** | Manual           | Manual/Auto     | Manual/Auto |
+| **Pack size**                | 100 credits      | 500 credits     | Negotiated  |
+| **Pack price**               | $10 (10¢/credit) | $25 (5¢/credit) | Negotiated  |
 
 ### Cost Analysis
 
@@ -507,8 +509,7 @@ Stripe Products:
 # validibot/billing/models.py
 
 class PricingPlan(models.TextChoices):
-    """Available pricing plans."""
-    FREE = "FREE", _("Free")
+    """Available pricing plans (no free tier - 2-week trial instead)."""
     STARTER = "STARTER", _("Starter")
     TEAM = "TEAM", _("Team")
     ENTERPRISE = "ENTERPRISE", _("Enterprise")
@@ -546,7 +547,7 @@ class Subscription(TimeStampedModel):
     plan = models.CharField(
         max_length=20,
         choices=PricingPlan.choices,
-        default=PricingPlan.FREE,
+        default=PricingPlan.STARTER,
     )
 
     # Stripe integration
@@ -647,13 +648,19 @@ class CreditPurchase(TimeStampedModel):
 
 ### Legacy OrgQuota migration
 
-The existing OrgQuota model will be merged into Subscription. Subscription becomes the single source of truth for plan selection, included/purchased credits, usage thresholds, and limits. OrgQuota data will be migrated and the model removed once roll-out is complete.
+The existing `OrgQuota` model will be deleted. Its fields are replaced by:
+- **Plan limits** (`max_submissions_per_day`, etc.) → `Plan` model (lookup table with FK from Subscription)
+- **Per-org state** (credit balances) → `Subscription` model
+- **Enterprise overrides** → nullable `custom_*` fields on `Subscription`
 
-### Subscription lifecycle (including Free)
+`Subscription` becomes the single source of truth for plan selection, included/purchased credits, and limits. Access limits via `subscription.plan.<field>` or `subscription.get_effective_limit("<field>")`.
 
-- Creation: A Subscription record is created when an organization is created (for personal orgs, Free tier by default). Free will be feature-gated off for the MVP, but we are building the code paths now.
-- Stripe-backed plans: Subscription holds the Stripe IDs and balances; renewals reset included credits and roll usage counters.
-- No orphaned orgs: Code should not assume `org.subscription` is missing; creation happens at org creation time.
+### Subscription Lifecycle (with 2-Week Trial)
+
+- **Creation:** A Subscription record is created when an organization is created, defaulting to Starter plan with TRIALING status and a 14-day trial period.
+- **Trial expiry:** When trial expires and no payment method is on file, status becomes TRIAL_EXPIRED. Users are hard-blocked and redirected to a conversion page until they subscribe.
+- **Stripe-backed plans:** Subscription holds the Stripe IDs and balances; renewals reset included credits and roll usage counters.
+- **No orphaned orgs:** Code should not assume `org.subscription` is missing; creation happens at org creation time.
 
 ### Organization Model Extension
 
@@ -676,8 +683,8 @@ class Organization(models.Model):
         Get the current billing period's usage counter.
 
         Returns the UsageCounter for the current billing period,
-        creating one if it doesn't exist (for Free plan orgs that
-        haven't gone through Stripe checkout).
+        creating one if it doesn't exist (for trial orgs that
+        haven't gone through Stripe checkout yet).
         """
         from validibot.billing.models import UsageCounter
         from validibot.billing.plans import PLAN_LIMITS
@@ -693,7 +700,7 @@ class Organization(models.Model):
         if counter:
             return counter
 
-        # Create counter for Free tier orgs (no Stripe subscription)
+        # Create counter for trial orgs (no Stripe subscription yet)
         plan_limits = PLAN_LIMITS[self.subscription.plan]
         period_start = today.replace(day=1)  # First of current month
 
@@ -749,22 +756,6 @@ class PlanLimits:
 
 
 PLAN_LIMITS = {
-    PricingPlan.FREE: PlanLimits(
-        can_author_workflows=True,
-        max_workflows=2,
-        max_custom_validators=0,
-        max_payload_mb=1,
-        basic_launches_limit=500,
-        advanced_credits_per_month=0,
-        included_seats=1,
-        has_integrations=False,
-        has_audit_logs=False,
-        dashboard_level="none",
-        analytics_level="none",
-        can_purchase_credits=False,
-        credits_per_pack=0,
-        pack_price_cents=0,
-    ),
     PricingPlan.STARTER: PlanLimits(
         can_author_workflows=True,
         max_workflows=10,
@@ -924,19 +915,19 @@ def stripe_webhook(request):
 ### Seat model and limits
 
 - Seats are consumed by active memberships on an organization (one seat per active membership).
-- Plan entitlements define the included seat count; enforce via a `max_seats` limit on `OrgQuota` for MVP, with a path to a dedicated `Subscription` model as billing matures.
+- Plan entitlements define the included seat count; enforce via `subscription.get_effective_limit("max_seats")` which looks up the Plan FK (or Enterprise custom override on Subscription).
 - When at or above the seat limit, block new invites/membership activations until seats are freed or the plan is upgraded. No per-seat auto-billing in MVP; revisit per-seat add-ons when Stripe plans are stable.
 
 ### Payment failures and dunning
 
 - On `invoice.payment_failed`: send in-app warning + email; start grace period (configurable, default 7 days). During grace, allow existing users to view but block new launches of advanced workflows; optionally reduce basic limit.
-- On final failure/cancellation: set plan to Free (or suspend if Free is gated), keep data but block launches until payment is fixed.
+- On final failure/cancellation: set status to `SUSPENDED`, keep data but block all launches and redirect to billing page until payment is fixed.
 
 ### MVP rollout (Heroku/Modal in AU)
 
 - Start AU-only: price in AUD, apply 10% GST, and limit Checkout to AU billing addresses.
 - Run Heroku and Modal in AU regions where possible; if any Modal jobs execute outside AU, disclose data egress in ToS/privacy and in the billing dashboard.
-- Keep plans simple (e.g., Starter + credit packs); gate Team/Enterprise and Free until tax/FX and seats are ready.
+- Keep plans simple (e.g., Starter + credit packs); gate Team/Enterprise until tax/FX and seats are ready.
 - Use Stripe Billing Portal for payment updates; limit distribution to an allowlist while metering and webhooks stabilize.
 
 ### Phase 2: Launching to other markets
@@ -976,9 +967,10 @@ Data residency rules: data stays in the org’s region unless a compute provider
 - Use Stripe Tax if enabled; collect billing address/VAT in Checkout.
 - Expose invoice PDFs and payment history via Billing Portal; for custom billing (Enterprise), attach invoices manually in Stripe and sync status via webhook.
 
-### Trials and promos
+### Trials and Promos
 
-- MVP: no free trials or promo codes. Note in ADR; can enable via Checkout `discounts` later.
+- **Trial period:** All new organizations receive a 14-day free trial with Starter plan features. After trial expiry, users must subscribe to continue.
+- **Promo codes:** Not enabled for MVP. Can enable via Stripe Checkout `discounts` later.
 
 ### Checkout Flow
 
@@ -1322,7 +1314,6 @@ Users can configure up to five custom warning thresholds (per org) to be notifie
 
 | Plan       | Default Thresholds | Customizable | Dashboard Features         |
 | ---------- | ------------------ | ------------ | -------------------------- |
-| Free       | 80%, 90%           | No           | None                       |
 | Starter    | 50%, 80%, 90%      | Yes          | Basic usage charts         |
 | Team       | 50%, 75%, 90%      | Yes          | Extended analytics, trends |
 | Enterprise | 50%, 75%, 90%      | Yes + Slack  | Full analytics, exports    |
@@ -1412,9 +1403,8 @@ class UsageCounter(TimeStampedModel):
 from validibot.notifications.models import Notification
 
 
-# Default warning thresholds by plan (users can customize on Starter+)
+# Default warning thresholds by plan (users can customize)
 DEFAULT_WARNING_THRESHOLDS = {
-    PricingPlan.FREE: [80, 90],
     PricingPlan.STARTER: [50, 80, 90],
     PricingPlan.TEAM: [50, 75, 90],
     PricingPlan.ENTERPRISE: [50, 75, 90],

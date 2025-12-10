@@ -1,8 +1,8 @@
 # ADR: Per-Workflow Submission Retention and Ephemeral Handling
 
 - **Date:** 2025-11-23
-- **Updated:** 2025-12-10
-- **Status:** Proposed
+- **Updated:** 2025-12-11
+- **Status:** Completed
 - **Owners:** Validations team
 - **Related ADRs:** 2025-11-11-submission-file-type, 2025-11-20-fmi-storage-and-security-review, 2025-11-16-CEL-implementation, 2025-11-28-pricing-system
 
@@ -545,16 +545,16 @@ models.CheckConstraint(
 
 ## Success Criteria
 
-- [ ] Workflows can specify retention policy
-- [ ] Retention options respect org plan availability
-- [ ] Submissions correctly set `expires_at` based on retention
-- [ ] DO_NOT_STORE submissions purged after run completion
-- [ ] Scheduled job purges expired submissions
-- [ ] Purge failures are retried automatically
-- [ ] UI shows retention policy in workflow forms
-- [ ] API responses include content availability status
-- [ ] GCS execution bundles deleted when submission purged
-- [ ] ValidationRun.submission changed to SET_NULL
-- [ ] Code handles `run.submission is None` gracefully
-- [ ] All existing tests pass
-- [ ] No cascading deletes of ValidationRun records
+- [x] Workflows can specify retention policy
+- [ ] Retention options respect org plan availability *(deferred to pricing ADR)*
+- [x] Submissions correctly set `expires_at` based on retention
+- [x] DO_NOT_STORE submissions purged after run completion
+- [x] Scheduled job purges expired submissions
+- [x] Purge failures are retried automatically
+- [x] UI shows retention policy in workflow forms
+- [x] API responses include content availability status
+- [x] GCS execution bundles deleted when submission purged
+- [x] ValidationRun.submission changed to SET_NULL
+- [x] Code handles `run.submission is None` gracefully
+- [x] All existing tests pass
+- [x] No cascading deletes of ValidationRun records

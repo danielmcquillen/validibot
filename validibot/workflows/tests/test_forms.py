@@ -385,3 +385,212 @@ def test_energyplus_form_accepts_simulation_checks_when_enabled():
     )
 
     assert form.is_valid(), form.errors
+
+
+# ==============================================================================
+# Tests for optional submission fields (allow_submission_name, etc.)
+# ==============================================================================
+
+
+class TestWorkflowLaunchFormOptionalFields:
+    """Tests for optional submission fields controlled by workflow settings."""
+
+    def test_name_field_visible_when_allowed(self):
+        """Name field should be visible when allow_submission_name=True."""
+        workflow = WorkflowFactory(allow_submission_name=True)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "filename": "my-submission",
+            },
+            workflow=workflow,
+        )
+
+        # Field should NOT be hidden
+        assert form.fields["filename"].widget.__class__.__name__ != "HiddenInput"
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["filename"] == "my-submission"
+
+    def test_name_field_hidden_when_not_allowed(self):
+        """Name field should be hidden when allow_submission_name=False."""
+        workflow = WorkflowFactory(allow_submission_name=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+            },
+            workflow=workflow,
+        )
+
+        # Field should be hidden
+        assert form.fields["filename"].widget.__class__.__name__ == "HiddenInput"
+
+    def test_name_cleared_when_not_allowed(self):
+        """Name value should be cleared even if submitted when not allowed."""
+        workflow = WorkflowFactory(allow_submission_name=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "filename": "sneaky-name",  # Try to submit anyway
+            },
+            workflow=workflow,
+        )
+
+        assert form.is_valid(), form.errors
+        # Value should be cleared by clean()
+        assert form.cleaned_data["filename"] == ""
+
+    def test_metadata_field_visible_when_allowed(self):
+        """Metadata field should be visible when allow_submission_meta_data=True."""
+        workflow = WorkflowFactory(allow_submission_meta_data=True)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "metadata": '{"key": "value"}',
+            },
+            workflow=workflow,
+        )
+
+        # Field should NOT be hidden
+        assert form.fields["metadata"].widget.__class__.__name__ != "HiddenInput"
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["metadata"] == {"key": "value"}
+
+    def test_metadata_field_hidden_when_not_allowed(self):
+        """Metadata field should be hidden when allow_submission_meta_data=False."""
+        workflow = WorkflowFactory(allow_submission_meta_data=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+            },
+            workflow=workflow,
+        )
+
+        # Field should be hidden
+        assert form.fields["metadata"].widget.__class__.__name__ == "HiddenInput"
+
+    def test_metadata_cleared_when_not_allowed(self):
+        """Metadata value should be cleared even if submitted when not allowed."""
+        workflow = WorkflowFactory(allow_submission_meta_data=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "metadata": '{"sneaky": "data"}',  # Try to submit anyway
+            },
+            workflow=workflow,
+        )
+
+        assert form.is_valid(), form.errors
+        # Value should be empty dict
+        assert form.cleaned_data["metadata"] == {}
+
+    def test_short_description_field_visible_when_allowed(self):
+        """Short description field should be visible when allowed."""
+        workflow = WorkflowFactory(allow_submission_short_description=True)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "short_description": "My submission description",
+            },
+            workflow=workflow,
+        )
+
+        # Field should NOT be hidden
+        widget_name = form.fields["short_description"].widget.__class__.__name__
+        assert widget_name != "HiddenInput"
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["short_description"] == "My submission description"
+
+    def test_short_description_field_hidden_when_not_allowed(self):
+        """Short description field should be hidden when not allowed."""
+        workflow = WorkflowFactory(allow_submission_short_description=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+            },
+            workflow=workflow,
+        )
+
+        # Field should be hidden
+        widget_name = form.fields["short_description"].widget.__class__.__name__
+        assert widget_name == "HiddenInput"
+
+    def test_short_description_cleared_when_not_allowed(self):
+        """Short description should be cleared even if submitted when not allowed."""
+        workflow = WorkflowFactory(allow_submission_short_description=False)
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": "{}",
+                "short_description": "Sneaky description",  # Try to submit anyway
+            },
+            workflow=workflow,
+        )
+
+        assert form.is_valid(), form.errors
+        # Value should be empty string
+        assert form.cleaned_data["short_description"] == ""
+
+    def test_all_optional_fields_work_together(self):
+        """All optional fields should work when all are enabled."""
+        workflow = WorkflowFactory(
+            allow_submission_name=True,
+            allow_submission_meta_data=True,
+            allow_submission_short_description=True,
+        )
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": '{"test": "data"}',
+                "filename": "my-test-file",
+                "metadata": '{"source": "test"}',
+                "short_description": "Test submission for validation",
+            },
+            workflow=workflow,
+        )
+
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["filename"] == "my-test-file"
+        assert form.cleaned_data["metadata"] == {"source": "test"}
+        assert form.cleaned_data["short_description"] == "Test submission for validation"
+
+    def test_all_optional_fields_cleared_when_disabled(self):
+        """All optional fields should be cleared when all are disabled."""
+        workflow = WorkflowFactory(
+            allow_submission_name=False,
+            allow_submission_meta_data=False,
+            allow_submission_short_description=False,
+        )
+
+        form = WorkflowLaunchForm(
+            data={
+                "file_type": SubmissionFileType.JSON,
+                "payload": '{"test": "data"}',
+                "filename": "sneaky-name",
+                "metadata": '{"sneaky": "data"}',
+                "short_description": "Sneaky description",
+            },
+            workflow=workflow,
+        )
+
+        assert form.is_valid(), form.errors
+        assert form.cleaned_data["filename"] == ""
+        assert form.cleaned_data["metadata"] == {}
+        assert form.cleaned_data["short_description"] == ""

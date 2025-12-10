@@ -101,11 +101,10 @@ _service_account stage:
         echo "validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"; \
     fi
 
-# Legacy variables for backwards compatibility (default to prod)
+# Production-only variables (used by validate-* and health-check commands)
 gcp_service := "validibot-web"
 gcp_sa := "validibot-cloudrun-prod@" + gcp_project + ".iam.gserviceaccount.com"
 gcp_sql := gcp_project + ":" + gcp_region + ":validibot-db"
-gcp_worker_service := "validibot-worker"
 
 # =============================================================================
 # Default Command - Show Help
@@ -895,10 +894,15 @@ test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
 # =============================================================================
-# Validation & Health Checks
+# Validation & Health Checks (Production)
 # =============================================================================
+#
+# These commands validate production infrastructure. They use the legacy
+# gcp_service variable which points to the prod web service.
+#
+# For stage-specific checks, use: just gcp-status <stage>
 
-# Validate entire GCP setup including KMS, JWKS, and infrastructure
+# Validate entire GCP setup including KMS, JWKS, and infrastructure (prod only)
 validate-all: validate-kms validate-jwks validate-gcp
 
 # Validate Google Cloud KMS setup
@@ -1262,9 +1266,16 @@ validate-gcp:
     fi
 
 # Quick health check - just test if service is responding
-health-check:
+# Usage: just health-check dev | just health-check prod
+health-check stage:
     #!/usr/bin/env bash
-    URL=$(gcloud run services describe {{gcp_service}} \
+    set -euo pipefail
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    URL=$(gcloud run services describe "$SERVICE" \
         --region={{gcp_region}} \
         --project={{gcp_project}} \
         --format="value(status.url)")
@@ -1339,36 +1350,60 @@ validators-test:
 # Helpers
 # =============================================================================
 
-# Connect local Django shell to production Cloud SQL database
-# This is the recommended way to run arbitrary Django commands against prod.
+# Connect local Django shell to a Cloud SQL database via proxy
 # Uses Cloud SQL Proxy for secure connection.
-# Press Ctrl+D to exit shell, then Ctrl+C to stop proxy
-local-to-gcp-shell:
+# Usage: just local-to-gcp-shell dev | just local-to-gcp-shell prod
+# Requires: DATABASE_PASSWORD environment variable set
+local-to-gcp-shell stage:
     #!/usr/bin/env bash
     set -euo pipefail
-    
-    echo "Starting Cloud SQL Proxy in background..."
-    cloud-sql-proxy {{gcp_sql}} &
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Require password to be set
+    if [ -z "${DATABASE_PASSWORD:-}" ]; then
+        echo "Error: DATABASE_PASSWORD environment variable not set"
+        echo ""
+        echo "Usage:"
+        echo "  DATABASE_PASSWORD='your-password' just local-to-gcp-shell {{stage}}"
+        echo ""
+        echo "Get the password from Secret Manager or your .envs/.{{stage}}/.django file"
+        exit 1
+    fi
+
+    # Compute stage-specific values
+    if [ "{{stage}}" = "prod" ]; then
+        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:validibot-db"
+    else
+        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+    fi
+
+    echo "Starting Cloud SQL Proxy for {{stage}}..."
+    cloud-sql-proxy "$DB_INSTANCE" &
     PROXY_PID=$!
-    
+
     # Give proxy time to start
     sleep 2
-    
-    # Set up environment for production database via localhost
-    export DATABASE_URL="postgres://validibot_user:93BkiwfnpYYbQujc6%2FwPkGzpgcYEPxF2FJzvMIHEJ0Y%3D@localhost:5432/validibot"
+
+    # Set up environment for database via localhost
+    export DATABASE_URL="postgres://validibot_user:${DATABASE_PASSWORD}@localhost:5432/validibot"
     export DJANGO_SETTINGS_MODULE="config.settings.local"
-    
+
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║  Connected to PRODUCTION database via Cloud SQL Proxy        ║"
+    echo "║  Connected to {{stage}} database via Cloud SQL Proxy              ║"
     echo "║  Be careful - changes affect live data!                      ║"
     echo "║  Press Ctrl+D to exit shell, then Ctrl+C to stop proxy       ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo ""
-    
+
     # Run Django shell
     uv run python manage.py shell || true
-    
+
     # Clean up proxy
     echo "Stopping Cloud SQL Proxy..."
     kill $PROXY_PID 2>/dev/null || true
@@ -1382,9 +1417,17 @@ show-sha:
 gcp-auth:
     gcloud auth configure-docker australia-southeast1-docker.pkg.dev
 
-# Open the Cloud Run console in browser
-gcp-console:
-    open "https://console.cloud.google.com/run/detail/{{gcp_region}}/{{gcp_service}}/metrics?project={{gcp_project}}"
+# Open the Cloud Run console in browser for a stage
+# Usage: just gcp-console dev | just gcp-console prod
+gcp-console stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    open "https://console.cloud.google.com/run/detail/{{gcp_region}}/$SERVICE/metrics?project={{gcp_project}}"
 
 # Run integration tests end-to-end (starts/stops local Postgres + mailpit)
 # Prereqs: Docker Compose available; env from set-env.sh for local settings.
@@ -1608,3 +1651,280 @@ gcp-scheduler-resume job_name:
     gcloud scheduler jobs resume {{job_name}} \
         --project {{gcp_project}} \
         --location {{gcp_region}}
+
+# =============================================================================
+# Maintenance Mode
+# =============================================================================
+#
+# Put a stage into maintenance mode to save costs when not in use.
+# This pauses/scales down resources without deleting them.
+#
+# Usage:
+#   just gcp-maintenance-on dev    # Put dev into maintenance mode
+#   just gcp-maintenance-off dev   # Bring dev back online
+#
+# What gets paused:
+#   - Cloud Run services: Ingress set to 'internal' (blocks public traffic)
+#   - Cloud SQL: Instance stopped (takes ~1 min to restart)
+#   - Cloud Scheduler: All jobs paused
+#   - Cloud Tasks queue: Paused
+#
+# Note: Cloud Run will still scale to 0 when idle, but maintenance mode
+# ensures no traffic can reach the services and stops the database.
+# =============================================================================
+
+# Put a stage into maintenance mode (pause all resources)
+# Usage: just gcp-maintenance-on dev
+gcp-maintenance-on stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Safety check for prod
+    if [ "{{stage}}" = "prod" ]; then
+        echo "⚠️  WARNING: You are about to put PRODUCTION into maintenance mode!"
+        echo "This will make the site unavailable to all users."
+        read -p "Are you absolutely sure? Type 'yes' to confirm: " -r
+        if [[ ! "$REPLY" == "yes" ]]; then
+            echo "Cancelled."
+            exit 1
+        fi
+    fi
+
+    # Compute stage-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        WORKER_SERVICE="validibot-worker"
+        DB_INSTANCE="validibot-db"
+        QUEUE_NAME="validibot-validation-queue"
+        JOB_SUFFIX=""
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+        DB_INSTANCE="validibot-db-{{stage}}"
+        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "🔧 Putting {{stage}} into maintenance mode..."
+    echo ""
+
+    # 1. Block public traffic to web service
+    echo "1. Blocking public traffic to $WEB_SERVICE..."
+    gcloud run services update "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --ingress internal \
+        --project {{gcp_project}} \
+        --quiet
+    echo "   ✓ Web service set to internal-only"
+
+    # 2. Worker is already internal-only, but ensure it's set
+    echo "2. Confirming $WORKER_SERVICE is internal-only..."
+    gcloud run services update "$WORKER_SERVICE" \
+        --region {{gcp_region}} \
+        --ingress internal \
+        --project {{gcp_project}} \
+        --quiet 2>/dev/null || echo "   (worker not found or already internal)"
+    echo "   ✓ Worker service confirmed internal-only"
+
+    # 3. Pause Cloud Scheduler jobs
+    echo "3. Pausing Cloud Scheduler jobs..."
+    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+        job="${job_base}${JOB_SUFFIX}"
+        gcloud scheduler jobs pause "$job" \
+            --project {{gcp_project}} \
+            --location {{gcp_region}} \
+            --quiet 2>/dev/null && echo "   ✓ Paused $job" || echo "   - $job (not found)"
+    done
+
+    # 4. Pause Cloud Tasks queue
+    echo "4. Pausing Cloud Tasks queue..."
+    gcloud tasks queues pause "$QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --quiet 2>/dev/null && echo "   ✓ Queue paused" || echo "   - Queue not found"
+
+    # 5. Stop Cloud SQL instance
+    echo "5. Stopping Cloud SQL instance $DB_INSTANCE..."
+    echo "   (This saves the most cost but takes ~1 min to restart)"
+    gcloud sql instances patch "$DB_INSTANCE" \
+        --activation-policy NEVER \
+        --project {{gcp_project}} \
+        --quiet
+    echo "   ✓ Database stopped"
+
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║  {{stage}} is now in MAINTENANCE MODE                              ║"
+    echo "║                                                               ║"
+    echo "║  Resources paused (not deleted):                              ║"
+    echo "║  • Web service: internal-only (no public traffic)             ║"
+    echo "║  • Worker service: internal-only                              ║"
+    echo "║  • Scheduler jobs: paused                                     ║"
+    echo "║  • Task queue: paused                                         ║"
+    echo "║  • Database: stopped                                          ║"
+    echo "║                                                               ║"
+    echo "║  To bring back online: just gcp-maintenance-off {{stage}}          ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+
+# Bring a stage out of maintenance mode (resume all resources)
+# Usage: just gcp-maintenance-off dev
+gcp-maintenance-off stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute stage-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        WORKER_SERVICE="validibot-worker"
+        DB_INSTANCE="validibot-db"
+        QUEUE_NAME="validibot-validation-queue"
+        JOB_SUFFIX=""
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+        DB_INSTANCE="validibot-db-{{stage}}"
+        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "🚀 Bringing {{stage}} out of maintenance mode..."
+    echo ""
+
+    # 1. Start Cloud SQL instance first (takes longest)
+    echo "1. Starting Cloud SQL instance $DB_INSTANCE..."
+    echo "   (This may take 1-2 minutes)"
+    gcloud sql instances patch "$DB_INSTANCE" \
+        --activation-policy ALWAYS \
+        --project {{gcp_project}} \
+        --quiet
+    echo "   ✓ Database starting..."
+
+    # 2. Resume Cloud Tasks queue
+    echo "2. Resuming Cloud Tasks queue..."
+    gcloud tasks queues resume "$QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --quiet 2>/dev/null && echo "   ✓ Queue resumed" || echo "   - Queue not found"
+
+    # 3. Resume Cloud Scheduler jobs
+    echo "3. Resuming Cloud Scheduler jobs..."
+    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts; do
+        job="${job_base}${JOB_SUFFIX}"
+        gcloud scheduler jobs resume "$job" \
+            --project {{gcp_project}} \
+            --location {{gcp_region}} \
+            --quiet 2>/dev/null && echo "   ✓ Resumed $job" || echo "   - $job (not found)"
+    done
+
+    # 4. Restore public traffic to web service
+    echo "4. Restoring public traffic to $WEB_SERVICE..."
+    gcloud run services update "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --ingress all \
+        --project {{gcp_project}} \
+        --quiet
+    echo "   ✓ Web service accepting public traffic"
+
+    # 5. Worker stays internal-only (that's correct)
+    echo "5. Worker service remains internal-only (correct configuration)"
+
+    # Wait for database to be ready
+    echo ""
+    echo "6. Waiting for database to be ready..."
+    for i in {1..30}; do
+        STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+            --project {{gcp_project}} \
+            --format="value(state)" 2>/dev/null)
+        if [ "$STATUS" = "RUNNABLE" ]; then
+            echo "   ✓ Database is ready!"
+            break
+        fi
+        echo "   Waiting... ($STATUS)"
+        sleep 5
+    done
+
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║  {{stage}} is now ONLINE                                           ║"
+    echo "║                                                               ║"
+    echo "║  All resources resumed:                                       ║"
+    echo "║  • Web service: accepting public traffic                      ║"
+    echo "║  • Worker service: internal-only (correct)                    ║"
+    echo "║  • Scheduler jobs: running                                    ║"
+    echo "║  • Task queue: running                                        ║"
+    echo "║  • Database: running                                          ║"
+    echo "║                                                               ║"
+    echo "║  Check status: just gcp-status {{stage}}                           ║"
+    echo "║  Open site: just gcp-open {{stage}}                                ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+
+# Check maintenance status for a stage
+gcp-maintenance-status stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute stage-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        DB_INSTANCE="validibot-db"
+        QUEUE_NAME="validibot-validation-queue"
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        DB_INSTANCE="validibot-db-{{stage}}"
+        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+    fi
+
+    echo "Maintenance status for {{stage}}:"
+    echo "=================================="
+    echo ""
+
+    # Check web service ingress
+    INGRESS=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(spec.template.metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
+    if [ "$INGRESS" = "all" ]; then
+        echo "Web service:  ✓ ONLINE (public traffic allowed)"
+    else
+        echo "Web service:  ⏸ MAINTENANCE ($INGRESS)"
+    fi
+
+    # Check database status
+    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$DB_STATUS" = "RUNNABLE" ]; then
+        echo "Database:     ✓ ONLINE ($DB_STATUS)"
+    else
+        echo "Database:     ⏸ MAINTENANCE ($DB_STATUS)"
+    fi
+
+    # Check queue status
+    QUEUE_STATUS=$(gcloud tasks queues describe "$QUEUE_NAME" \
+        --location {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$QUEUE_STATUS" = "RUNNING" ]; then
+        echo "Task queue:   ✓ ONLINE ($QUEUE_STATUS)"
+    else
+        echo "Task queue:   ⏸ MAINTENANCE ($QUEUE_STATUS)"
+    fi
+
+    echo ""

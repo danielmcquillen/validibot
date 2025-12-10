@@ -62,7 +62,7 @@ git_sha := `git rev-parse --short HEAD`
 #   - Separate Cloud Run validator jobs
 #   - Separate Cloud SQL instance
 #   - Separate secrets in Secret Manager
-#   - Shared GCS bucket with stage prefix (gs://bucket/dev/, gs://bucket/prod/)
+#   - Separate GCS buckets (validibot-media-dev, validibot-files-dev, etc.)
 #
 # =============================================================================
 
@@ -428,6 +428,27 @@ gcp-status-all:
     @echo ""
     @echo "=== PROD ===" && just gcp-status prod 2>/dev/null || echo "(not deployed)"
 
+# Open the web service URL in browser
+# Usage: just gcp-open dev | just gcp-open prod
+gcp-open stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    URL=$(gcloud run services describe "$SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null)
+    if [ -z "$URL" ]; then
+        echo "Error: Could not get URL for $SERVICE"
+        exit 1
+    fi
+    echo "Opening $URL"
+    open "$URL"
+
 # =============================================================================
 # GCP Cloud Run - Management Commands
 # =============================================================================
@@ -474,13 +495,24 @@ gcp-migrate stage:
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput" \
         --project {{gcp_project}}
 
-    gcloud run jobs execute "$JOB_NAME" \
+    # Execute and capture the execution name
+    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
-        --wait \
-        --project {{gcp_project}}
+        --project {{gcp_project}} \
+        --format="value(metadata.name)")
+
+    echo "Execution: $EXECUTION"
+    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
+    echo ""
+
+    # Stream logs until job completes
+    gcloud beta run jobs executions logs "$EXECUTION" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --follow
 
     echo ""
-    echo "✓ migrate completed on {{stage}}. Check logs with: just gcp-job-logs $JOB_NAME"
+    echo "✓ migrate completed on {{stage}}"
 
 # Run setup_all to initialize database with default data
 # Usage: just gcp-setup-data dev | just gcp-setup-data prod
@@ -524,13 +556,24 @@ gcp-setup-data stage:
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_all" \
         --project {{gcp_project}}
 
-    gcloud run jobs execute "$JOB_NAME" \
+    # Execute and capture the execution name
+    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
-        --wait \
-        --project {{gcp_project}}
+        --project {{gcp_project}} \
+        --format="value(metadata.name)")
+
+    echo "Execution: $EXECUTION"
+    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
+    echo ""
+
+    # Stream logs until job completes
+    gcloud beta run jobs executions logs "$EXECUTION" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --follow
 
     echo ""
-    echo "✓ setup_all completed on {{stage}}. Check logs with: just gcp-job-logs $JOB_NAME"
+    echo "✓ setup_all completed on {{stage}}"
 
 # View logs from a Cloud Run job execution
 # Usage: just gcp-job-logs validibot-migrate-dev
@@ -544,7 +587,7 @@ gcp-job-logs job:
 # GCP Initial Stage Setup
 # =============================================================================
 #
-# Use these commands to set up a new environment (dev, stagin, prod) from scratch.
+# Use these commands to set up a new environment (dev, staging, prod) from scratch.
 #
 # Full setup workflow:
 #   1. just gcp-init-stage dev          # Create infrastructure
@@ -1240,7 +1283,7 @@ validator_repo := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/valid
 # Note: Build context is vb_validators_dev/ to include shared core utilities
 validator-build name:
     docker build --platform linux/amd64 \
-        -f vb_validators_dev/{{name}}/Dockerfile \
+        -f vb_validators_dev/validators/{{name}}/Dockerfile \
         -t {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
         -t {{validator_repo}}/validibot-validator-{{name}}:latest \
         vb_validators_dev
@@ -1343,16 +1386,6 @@ gcp-auth:
 gcp-console:
     open "https://console.cloud.google.com/run/detail/{{gcp_region}}/{{gcp_service}}/metrics?project={{gcp_project}}"
 
-# Open the deployed app URL in browser
-gcp-open:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    URL=$(gcloud run services describe {{gcp_service}} \
-        --region {{gcp_region}} \
-        --project {{gcp_project}} \
-        --format="value(status.url)")
-    echo "Opening: $URL"
-    open "$URL"
 # Run integration tests end-to-end (starts/stops local Postgres + mailpit)
 # Prereqs: Docker Compose available; env from set-env.sh for local settings.
 test-integration *args:

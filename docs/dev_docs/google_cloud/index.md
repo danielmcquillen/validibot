@@ -40,4 +40,5 @@ The GCP architecture includes:
 
 ## Related
 
+- [Validator Jobs (Cloud Run)](../validator_jobs_cloud_run.md) - Validator container architecture and multi-environment deployment
 - [ADR: Google Cloud Platform Architecture](../../adr/2025-12-02-google-cloud-platform.md) - Platform architecture and implementation

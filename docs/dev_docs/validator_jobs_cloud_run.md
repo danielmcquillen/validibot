@@ -56,6 +56,56 @@ The launcher generates a unique `callback_id` for each job execution and puts it
    - Env: `VALIDATOR_VERSION=<git_sha>`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
 
+## Multi-Environment Architecture
+
+Validator containers are **stage-agnostic**: the same container image is deployed to dev, staging, and prod. All stage-specific configuration is passed at runtime, not build time.
+
+### What's baked into the container (build time)
+
+Nothing stage-specific. The container includes:
+
+- EnergyPlus binary (or FMU runtime for FMI)
+- Python dependencies
+- Validator code
+
+### What's passed at runtime (job execution)
+
+When Django creates a Cloud Tasks job to run a validator, it passes:
+
+| Source | Data | Example |
+|--------|------|---------|
+| `INPUT_URI` env var | GCS path to input envelope | `gs://validibot-files-dev/org123/run456/input.json` |
+| Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validator-callback/` |
+| Input envelope | `context.execution_bundle_uri` | `gs://validibot-files-dev/org123/run456/` |
+| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-files-dev/org123/run456/model.idf` |
+
+The validator reads the input envelope, downloads files from the provided GCS URIs, runs the simulation, uploads outputs to the execution bundle URI, and POSTs results to the callback URL.
+
+### Stage isolation
+
+Stage isolation is enforced by:
+
+1. **Django** creates envelopes with stage-appropriate bucket names and callback URLs
+2. **Service accounts** - each stage's validator job uses a stage-specific SA that only has access to its own buckets
+3. **GCS bucket permissions** - `validibot-cloudrun-dev` can only access `validibot-files-dev`, not prod buckets
+
+### Deploy-time environment variables
+
+The only env vars set at deploy time are for observability:
+
+```bash
+VALIDATOR_VERSION=<git_sha>   # For version tracking in logs
+VALIDIBOT_STAGE=dev           # For log filtering (doesn't affect behavior)
+```
+
+These don't affect which buckets or URLs are used - that's all driven by the input envelope.
+
+### Implications
+
+- **One build, deploy everywhere**: Build once with `just validator-build energyplus`, then deploy to any stage
+- **No secrets in containers**: Validators use ADC (Application Default Credentials) from the attached service account
+- **Safe rollbacks**: Rolling back a validator version doesn't affect stage isolation
+
 ## Local vs cloud storage
 
 - Cloud: GCS URIs for envelopes/artifacts.

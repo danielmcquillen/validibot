@@ -352,11 +352,14 @@ gcp-secrets-init stage:
     echo "  - DATABASE_URL: Update to use validibot-db-{{stage}}"
     echo "  - DJANGO_ALLOWED_HOSTS: Add the {{stage}} service URL"
     echo "  - CLOUD_SQL_CONNECTION_NAME: Change to validibot-db-{{stage}}"
+    echo "  - GCP_KMS_SIGNING_KEY: Change 'credential-signing' to 'credential-signing-{{stage}}'"
+    echo "  - GCP_KMS_JWKS_KEYS: Change 'credential-signing' to 'credential-signing-{{stage}}'"
     echo ""
     echo "Next steps:"
-    echo "  1. Edit $TARGET_FILE"
-    echo "  2. Run: just gcp-secrets {{stage}}"
-    echo "  3. Then: just gcp-deploy {{stage}}"
+    echo "  1. Run: just gcp-kms-setup {{stage}}    # Create the signing key"
+    echo "  2. Edit $TARGET_FILE                   # Update stage-specific values"
+    echo "  3. Run: just gcp-secrets {{stage}}      # Upload secrets"
+    echo "  4. Run: just gcp-deploy {{stage}}       # Deploy"
 
 # =============================================================================
 # GCP Cloud Run - Operations
@@ -770,9 +773,14 @@ gcp-init-stage stage:
     # Step 7: Grant KMS permissions for credential signing
     echo "7. Granting KMS permissions"
     KMS_KEYRING="validibot-keys"
-    KMS_KEY="credential-signing"
-    # Check if keyring exists
-    if gcloud kms keyrings describe "$KMS_KEYRING" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+    # Each stage has its own signing key (prod = credential-signing, others = credential-signing-{stage})
+    if [ "{{stage}}" = "prod" ]; then
+        KMS_KEY="credential-signing"
+    else
+        KMS_KEY="credential-signing-{{stage}}"
+    fi
+    # Check if the key exists
+    if gcloud kms keys describe "$KMS_KEY" --location={{gcp_region}} --keyring="$KMS_KEYRING" --project={{gcp_project}} &>/dev/null; then
         # Grant viewer permission (for JWKS endpoint)
         gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
             --location={{gcp_region}} \
@@ -789,10 +797,10 @@ gcp-init-stage stage:
             --member="serviceAccount:$SA_EMAIL" \
             --role=roles/cloudkms.signerVerifier \
             --quiet &>/dev/null || true
-        echo "   ✓ KMS permissions granted"
+        echo "   ✓ KMS permissions granted for $KMS_KEY"
     else
-        echo "   ⚠️  KMS keyring '$KMS_KEYRING' not found"
-        echo "      Run 'just gcp-kms-setup' first to create the keyring and signing key"
+        echo "   ⚠️  KMS key '$KMS_KEY' not found"
+        echo "      Run 'just gcp-kms-setup {{stage}}' first to create the signing key"
     fi
     echo ""
 
@@ -924,29 +932,46 @@ test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
 # =============================================================================
-# KMS Setup (One-Time)
+# KMS Setup (Per Stage)
 # =============================================================================
 #
-# Create the KMS keyring and signing key. Run this ONCE for the entire project
-# (not per stage). Per-stage service accounts get permissions via gcp-init-stage.
+# Create the KMS keyring and stage-specific signing keys.
+# Each stage (dev, staging, prod) gets its own signing key for isolation.
 #
 # The signing key is used for:
 # - JWKS endpoint (/.well-known/jwks.json) - publishes public key
 # - Credential signing (validation badges)
+#
+# Usage:
+#   just gcp-kms-setup dev      # Create dev signing key
+#   just gcp-kms-setup staging  # Create staging signing key
+#   just gcp-kms-setup prod     # Create prod signing key
 
-# Create KMS keyring and signing key (one-time setup)
-gcp-kms-setup:
+# Create KMS keyring and signing key for a stage
+# Usage: just gcp-kms-setup dev | just gcp-kms-setup prod
+gcp-kms-setup stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "🔐 Setting up Google Cloud KMS"
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    echo "🔐 Setting up Google Cloud KMS for {{stage}}"
     echo "======================================"
     echo ""
 
     KEYRING="validibot-keys"
-    KEYNAME="credential-signing"
+    # Prod uses base name, others get stage suffix
+    if [ "{{stage}}" = "prod" ]; then
+        KEYNAME="credential-signing"
+    else
+        KEYNAME="credential-signing-{{stage}}"
+    fi
 
-    # Step 1: Create keyring (idempotent - can't be deleted)
+    # Step 1: Create keyring (idempotent - can't be deleted, shared across stages)
     echo "1. Creating keyring: $KEYRING"
     if gcloud kms keyrings describe "$KEYRING" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
         echo "   ✓ Keyring already exists"
@@ -958,7 +983,7 @@ gcp-kms-setup:
     fi
     echo ""
 
-    # Step 2: Create signing key
+    # Step 2: Create signing key for this stage
     echo "2. Creating signing key: $KEYNAME"
     if gcloud kms keys describe "$KEYNAME" --location={{gcp_region}} --keyring="$KEYRING" --project={{gcp_project}} &>/dev/null; then
         echo "   ✓ Key already exists"
@@ -977,17 +1002,17 @@ gcp-kms-setup:
     # Step 3: Show key resource name for secrets
     KEY_PATH="projects/{{gcp_project}}/locations/{{gcp_region}}/keyRings/$KEYRING/cryptoKeys/$KEYNAME"
     echo "============================================="
-    echo "✓ KMS setup complete"
+    echo "✓ KMS setup complete for {{stage}}"
     echo "============================================="
     echo ""
-    echo "Add these to your environment secrets (.envs/.*/django):"
+    echo "Add these to your {{stage}} environment secrets:"
     echo ""
     echo "  GCP_KMS_SIGNING_KEY=\"$KEY_PATH\""
     echo "  GCP_KMS_JWKS_KEYS=\"$KEY_PATH\""
     echo "  SV_JWKS_ALG=\"ES256\""
     echo ""
-    echo "Then run 'just gcp-init-stage <stage>' to grant KMS permissions"
-    echo "to each stage's service account."
+    echo "Next: run 'just gcp-init-stage {{stage}}' to grant KMS permissions"
+    echo "to the {{stage}} service account."
 
 # =============================================================================
 # Validation & Health Checks (Production)

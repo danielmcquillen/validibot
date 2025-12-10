@@ -1,6 +1,6 @@
 # ADR-2025-12-04: Phase 4 - FMI Cloud Run Jobs Implementation
 
-**Status:** Proposed
+**Status:** Implemented (2025-12-09)
 **Owner:** Platform / Validation Runtime
 **Created:** 2025-12-04
 **Related ADRs:**
@@ -499,14 +499,14 @@ Advanced validators (FMI, EnergyPlus, etc.) must surface findings the same way a
 
 ## 9. Success Criteria
 
-- [ ] FMI envelope schemas created and exported from vb_shared
-- [ ] `FMUModel.gcs_uri` field added with migration
-- [ ] Modal code removed from `services/fmi.py`
-- [ ] `build_fmi_input_envelope()` works with test data
-- [ ] `launch_fmi_validation()` uploads envelope and triggers job
-- [ ] `FMIValidationEngine.validate_with_run()` returns pending result
-- [ ] All existing tests pass
-- [ ] Documentation updated
+- [x] FMI envelope schemas created and exported from vb_shared
+- [x] `FMUModel.gcs_uri` field added with migration
+- [x] Modal code removed from `services/fmi.py`
+- [x] `build_fmi_input_envelope()` works with test data
+- [x] `launch_fmi_validation()` uploads envelope and triggers job
+- [x] `FMIValidationEngine.validate_with_run()` returns pending result
+- [x] All existing tests pass
+- [x] Documentation updated
 
 ---
 

@@ -2,8 +2,10 @@
 
 **Status:** Proposed (2025-11-25)  
 **Owners:** Platform / Validations  
-**Related ADRs:** 2025-10-31-ruleset-and-provider, 2025-11-07-assertion-creation-format, 2025-11-16-CEL-implementation  
-**Related docs:** `dev_docs/how-to/configure-jwks.md`, `dev_docs/data-model/steps.md`
+**Related ADRs:** 2025-10-31-ruleset-and-provider, 2025-11-07-assertion-creation-format, 2025-11-16-CEL-implementation, 2025-12-04-kms-migration
+**Related docs:** `dev_docs/how-to/configure-jwks.md`, `dev_docs/data-model/steps.md`, `dev_docs/google_cloud/kms.md`
+
+> **Note (2025-12-10):** This ADR references AWS KMS as that was the infrastructure at time of writing. Signing has since migrated to Google Cloud KMS - see [ADR: KMS Migration](2025-12-04-kms-migration.md) and [GCP KMS documentation](../dev_docs/google_cloud/kms.md).
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-2025-12-04: Migrate from AWS KMS to Google Cloud KMS
 
-**Status:** In Progress
-**Date:** 2025-12-04
+**Status:** Code Complete (Pending Production Verification)
+**Date:** 2025-12-04 (Updated: 2025-12-10)
 **Owner:** Daniel / Validibot Platform
 **Related ADRs:** 2025-12-02 Heroku to GCP Migration
 
@@ -829,17 +829,26 @@ def test_jwks_endpoint_returns_keys(client: Client):
         assert "kid" in key  # Key ID
 ```
 
-### Manual Testing Checklist
+### Implementation Checklist
 
-- [ ] Staging: JWKS endpoint returns both keys
+**Code Implementation (Complete):**
+- [x] Create `validibot/core/gcp_kms.py` module
+- [x] Update `validibot/core/jwks.py` to use GCP KMS
+- [x] Remove AWS KMS code from application
+- [x] Unit tests for GCP KMS functions (8 tests passing)
+- [x] Unit tests for JWKS endpoint
+
+**Production Verification (After Go-Live):**
+- [ ] Staging: JWKS endpoint returns GCP key
 - [ ] Staging: Can sign credential with GCP KMS
 - [ ] Staging: Can verify credential with published JWK
-- [ ] Production: JWKS endpoint returns both keys
+- [ ] Production: JWKS endpoint returns GCP key
 - [ ] Production: Can sign credential with GCP KMS
 - [ ] Production: Can verify credential with published JWK
-- [ ] After cutover: New credentials use GCP kid
-- [ ] After 90 days: JWKS only shows GCP key
-- [ ] After 90 days: No AWS dependencies remain
+
+**Post-Migration Cleanup:**
+- [x] Remove boto3 from requirements (removed s3 extra from django-storages, 2025-12-10)
+- [x] Update documentation to remove AWS KMS references (added note to validation credentials ADR, 2025-12-10)
 
 ---
 

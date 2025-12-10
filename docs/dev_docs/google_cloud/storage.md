@@ -108,7 +108,7 @@ The GCS backend requires `django-storages` with the Google extra:
 
 ```toml
 # pyproject.toml
-"django-storages[google,s3]==1.14.6"
+"django-storages[google]==1.14.6"
 ```
 
 This pulls in `google-cloud-storage` and related dependencies automatically.

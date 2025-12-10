@@ -921,6 +921,12 @@ def stripe_webhook(request):
 - Downgrades: effective at period end; on downgrade, enforce lower limits (seats, integrations, audit logs) at the new period. Included credits reset to the downgraded amount; purchased credits stay.
 - Seat overages: block new invites when above plan’s included seats; do not auto-bill per-seat in MVP.
 
+### Seat model and limits
+
+- Seats are consumed by active memberships on an organization (one seat per active membership).
+- Plan entitlements define the included seat count; enforce via a `max_seats` limit on `OrgQuota` for MVP, with a path to a dedicated `Subscription` model as billing matures.
+- When at or above the seat limit, block new invites/membership activations until seats are freed or the plan is upgraded. No per-seat auto-billing in MVP; revisit per-seat add-ons when Stripe plans are stable.
+
 ### Payment failures and dunning
 
 - On `invoice.payment_failed`: send in-app warning + email; start grace period (configurable, default 7 days). During grace, allow existing users to view but block new launches of advanced workflows; optionally reduce basic limit.

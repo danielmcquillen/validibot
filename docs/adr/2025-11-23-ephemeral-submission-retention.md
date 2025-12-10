@@ -1,13 +1,14 @@
 # ADR: Per-Workflow Submission Retention and Ephemeral Handling
 
 - **Date:** 2025-11-23
+- **Updated:** 2025-12-10
 - **Status:** Proposed
 - **Owners:** Validations team
-- **Related ADRs:** 2025-11-11-submission-file-type, 2025-11-20-fmi-storage-and-security-review, 2025-11-16-CEL-implementation
+- **Related ADRs:** 2025-11-11-submission-file-type, 2025-11-20-fmi-storage-and-security-review, 2025-11-16-CEL-implementation, 2025-11-28-pricing-system
 
 ## Context
 
-We currently persist user submissions by default (FileField backed by S3). That increases blast radius for privacy and compliance. Product asks for per-workflow retention controls that default to *not* storing submissions. Authors must choose:
+We currently persist user submissions by default (FileField backed by GCS). That increases blast radius for privacy and compliance. Product asks for per-workflow retention controls that default to *not* storing submissions. Authors must choose:
 
 - Not saved (ephemeral for the run only)
 - Saved for 10 days
@@ -16,7 +17,7 @@ We currently persist user submissions by default (FileField backed by S3). That 
 Regardless of retention, we must:
 
 - Hash every submission payload and return the hash in validation status responses.
-- Supply validators with content even when not persisted to S3.
+- Supply validators with content even when not persisted long-term.
 - Delete ephemeral payloads as soon as a validation run concludes (success or fail).
 - Keep behavior consistent across validators (including FMI/EnergyPlus that may pull content).
 
@@ -25,101 +26,535 @@ Regardless of retention, we must:
 Introduce a per-workflow `DataRetention` policy and route submission handling accordingly:
 
 - **Retention policy (Workflow-level):** Add `data_retention` choice field (`DO_NOT_STORE`, `STORE_10_DAYS`, `STORE_30_DAYS`; default `DO_NOT_STORE`).
-- **Hashing:** Compute SHA-256 over the raw submitted bytes for every submission, persist the hash on the submission/run record, and surface it in status/read APIs and UI. Never log raw content.
-- **Ephemeral path (DO_NOT_STORE):**
-  - Store submission bytes in Redis under a namespaced key (e.g., `validation:submission:{submission_id}`) with TTL covering max expected run duration plus buffer.
-  - Skip FileField/S3 writes entirely.
-  - Django-side executors read from Redis; Modal.com runners do not need Redis access because Django sends payloads over the wire as part of the engine request.
-  - On completion (success/fail) delete the key (TTL is a fallback); allow TTL extension for long-running jobs.
-  - Status responses include `content_hash` and do not reference S3/file URLs.
-- **Persistent path (STORE_10_DAYS / STORE_30_DAYS):**
-  - Keep existing FileField/S3 storage.
-  - Persist `expires_at` based on retention window.
-  - Status responses include `content_hash` and existing file references.
-  - Background job enforces deletion after the window (belt-and-suspenders with S3 lifecycle if configured).
-- **Backwards compatibility:** Existing workflows default to DO_NOT_STORE after migration; authors must opt into persistence.
+- **Hashing:** Compute SHA-256 over the raw submitted bytes for every submission, persist the hash on the submission record, and surface it in status/read APIs and UI. Never log raw content.
+- **All submissions stored in database:** For this phase, all submissions are stored in the database/GCS during execution. The retention policy controls *when content is purged*, not whether it's stored initially.
+- **Content purge (not record deletion):** When retention expires, we purge the content (clear `content` field, delete `input_file`) but **keep the Submission record** to preserve audit trail and avoid cascading deletes to ValidationRun records.
 
-## Options Considered
+### Deferred: Truly Ephemeral (Memory-Only) Option
 
-- **A) Always store in S3, add a flag to hide references.** Rejected: still retains sensitive data and violates “do not store”.
-- **B) Allow authors to choose full persistence, Redis-only, or bring-your-own storage.** Too much complexity; Redis-only meets requirements and keeps data path simple.
-- **C) Encrypt-everything-in-S3 with short TTL.** Still stores data and adds KMS/key-rotation overhead without eliminating data at rest.
+A future ADR will address truly ephemeral handling where submission content is never written to persistent storage. This would require:
 
-## Scope of Changes
+- Google Cloud Memorystore (Redis/Valkey) for temporary storage
+- Memory-only path during validation execution
+- Additional infrastructure cost (~$35+/month minimum)
 
-- **Models:** Add `data_retention` to `Workflow`; add `content_hash` and `expires_at` (for stored submissions) to the submission/run model; ensure validators can proceed without a stored file.
-- **Forms/UI:** Workflow create/update forms expose retention selector (default “Not saved”). Status/detail views show hash + retention policy; never raw content for “Not saved”.
-- **Views/Services:** Submission intake computes hash; branches to Redis or S3 depending on retention. Completion hooks delete Redis entry for ephemeral runs.
-- **Executors:** Consumers that load submission content must check Redis first when the workflow retention is DO_NOT_STORE. For persistent paths, continue current S3 reads.
-- **APIs:** Include `content_hash` in run status/read endpoints. Omit S3 URLs for ephemeral runs.
-- **Background jobs:** Add periodic cleanup for:
-  - Redis keys (safety sweep; TTL should handle most cases).
-  - S3 objects past `expires_at` (10/30 days) plus DB record clean-up.
-- **Configuration:** New settings for Redis namespace and TTL (e.g., `VALIDATION_EPHEMERAL_TTL_SECONDS`), retention windows (10d/30d), and optional S3 lifecycle integration.
+For now, even `DO_NOT_STORE` submissions are temporarily stored in the database during execution, then purged immediately upon run completion.
 
-## Detailed Implications
+## Retention Policy Availability by Plan
 
-- **Hashing:**
-  - Use SHA-256 over the exact byte stream; stream hashing for large uploads to avoid memory spikes.
-  - Persist hash even when payload is stored; always return hash in user-facing status.
-  - Use hash-only in logs/metrics to avoid leaking payloads.
-- **Redis path:**
-  - Requires Redis availability along validator execution path. Fail the run with a clear error if the key is missing/expired.
-  - Namespace keys, limit max payload size; enforce upload size guards. If above a configured cap, require a stored retention option or reject.
-  - Use `SETEX` with TTL = `max_run_time_buffered` (e.g., max expected validation runtime + 15 minutes); expose a TTL-extension hook for long-running validations.
-  - Modal.com runners (FMI/EnergyPlus) do not fetch from Redis; Django must pull from Redis, then send bytes to Modal in the runner payload.
-- **S3 path:**
-  - Continue FileField writes via boto. Set `expires_at` and schedule deletion; configure S3 lifecycle rules on the submissions prefix for 10-day and 30-day expiration (e.g., distinct prefixes or tagged objects), with abort-incomplete-multipart uploads enabled and public access blocked.
-  - Require server-side encryption (SSE-S3 or SSE-KMS) and least-privilege IAM: upload roles limited to `s3:PutObject`/`s3:DeleteObject`/`s3:GetObject` on the submissions prefix; deny `s3:ListBucket` outside the prefix; enforce `aws:SecureTransport`.
-  - Rotate IAM access keys periodically (per org policy; monthly/quarterly) and prefer instance/role credentials over static keys. Enable S3 access logging for the submissions prefix. In boto uploads, set `ExtraArgs={"ServerSideEncryption": "AES256"}` (or `SSEKMSKeyId` if KMS).
-  - Consider KMS key rotation (annual, automatic) if SSE-KMS is used; keep CMK aliases stable. Document key alias and rotation cadence in ops runbooks.
-  - Ensure downstream tasks that assumed perpetual availability now handle 404 gracefully after expiry.
-- **Executors/validators:**
-  - FMI/EnergyPlus or other engines that fetch submission content must branch on retention: Redis fetch for ephemeral, existing fetch for stored. If content is absent, fail with actionable messaging.
-  - CEL assertions already operate on parsed content; ensure parsing services can accept file-like objects from Redis bytes.
-- **S3 setup checklist (limited persistence):**
-  - Dedicated submissions prefix; lifecycle rules: Expiration 10 days for `submissions/10d/`, 30 days for `submissions/30d/`; AbortIncompleteMultipartUploads after 7 days.
-  - Bucket policy: block public access; require TLS (`aws:SecureTransport`); restrict principals to app roles; scope to prefixes.
-  - Encryption: SSE-S3 as baseline; SSE-KMS for tighter controls; enable automatic CMK rotation; record CMK alias in settings.
-  - Credentials: favor IAM roles/instance profiles; if static keys, store in env, rotate on a fixed cadence, and monitor access logs.
-  - boto settings: region-correct clients, signature v4, `ExtraArgs` for SSE, and short-lived presigned URLs if exposed (avoid exposing for ephemeral runs).
-- **API/UX:**
-  - Status/Run detail: show `content_hash`, retention choice, and whether payload is stored or ephemeral; never expose raw content when ephemeral.
-  - Launch forms unchanged; authors pick retention during workflow authoring, not at launch time.
-- **Testing:**
-  - Unit: hash always present; DO_NOT_STORE skips FileField; TTL set; cleanup on completion removes Redis key.
-  - Integration: launch per retention setting; validate engines can read; verify status payloads; confirm deletions at end.
-  - Cleanup jobs: verify S3 deletion after window; Redis sweep removes stragglers.
+Different retention options will be available based on the organization's subscription plan. This enables tiered pricing where longer retention is a premium feature.
 
-## Risks and Mitigations
+### Data Model for Plan-Based Availability
 
-- **Missing Redis data (TTL too short or eviction):** Mitigate with generous TTL (buffered), eviction-resistant Redis config, and explicit delete-on-completion to keep footprint small. Surface clear errors.
-- **Large payloads in Redis:** Enforce upload size limits for DO_NOT_STORE; require persistence for oversized content.
-- **Validator incompatibility:** Some engines may assume file paths; provide a temporary file adapter or in-memory file-like wrapper for Redis bytes; add regression tests for FMI/EnergyPlus flows.
-- **Operational drift:** S3 lifecycle rules not aligned with `expires_at`. Keep a Celery cleanup job as source of truth; treat bucket lifecycle as a safety net.
-- **Privacy leaks in logs:** Audit code paths to ensure only hashes are logged. Add linters/tests for accidental content logging where feasible.
-- **Throughput/load:** Redis must handle burst of uploads; estimate memory: `concurrent_runs * avg_submission_size`. For example, 100 concurrent runs with 1 MB payloads ≈ 100 MB in Redis (plus overhead). Size TTL and memory accordingly; cap upload size for ephemeral mode to protect cache.
-- **Credential hygiene (S3/boto):** Use role-based creds wherever possible. If static keys are unavoidable, store in env vars (not code), rotate on schedule, and monitor `AccessDenied`/`ListBucket` anomalies via CloudWatch/S3 server access logs.
+```python
+class OrgPlan(models.Model):
+    """Organization subscription plan."""
 
-## Load and Capacity Considerations
+    # List of retention policies available on this plan
+    # E.g., ["DO_NOT_STORE"] for free tier
+    # E.g., ["DO_NOT_STORE", "STORE_10_DAYS", "STORE_30_DAYS"] for premium
+    available_retention_policies = ArrayField(
+        models.CharField(max_length=32),
+        default=list,
+        help_text="Retention policies available on this plan",
+    )
+```
 
-- **Redis footprint:** `payload_size * concurrent_active_runs`. Set `VALIDATION_EPHEMERAL_MAX_SIZE_MB` to keep Redis bounded. Prefer `maxmemory-policy` that avoids evicting these keys; monitor hit/miss.
-- **Hashing cost:** SHA-256 streaming is O(n); for large files, ensure chunked reads to avoid RAM spikes.
-- **Cleanup churn:** Completion deletes reduce steady-state Redis usage; periodic sweep should be lightweight if TTL is set.
-- **S3 churn:** Additional delete operations for 10/30-day windows; ensure Celery workers can handle periodic batch deletions without throttling S3.
+### Validation
 
-## Rollout Plan
+When creating/editing a workflow:
 
-1. Schema migration: add `data_retention`, `content_hash`, `expires_at`.
-2. Default existing workflows to DO_NOT_STORE.
-3. Implement hashing + branching storage logic; add feature flag to gate rollout if needed.
-4. Update executor paths (including FMI/EnergyPlus) to read from Redis for ephemeral runs.
-5. Add cleanup jobs and settings; configure S3 lifecycle if desired.
-6. UI: workflow form retention selector; status views show hash + retention.
-7. Testing and smoke in lower envs with all retention modes; load-test Redis path with realistic payload sizes.
+1. Look up the organization's current plan
+2. Validate that selected `data_retention` is in `plan.available_retention_policies`
+3. If not available, show user-friendly error: "X-day retention requires [Plan Name]. Upgrade to enable this feature."
+
+### Default Behavior
+
+- Free/basic plans: Only `DO_NOT_STORE` available
+- Premium plans: All options available
+- If an org downgrades, existing workflows keep their settings but cannot be changed to unavailable options
+
+## Content Purge Strategy (Safe Deletion)
+
+### Critical Design Decision: Purge Content, Don't Delete Records
+
+We never delete `Submission` records - we only purge the content. The record stays in the database with metadata preserved for audit trail. This avoids any cascading issues with related models.
+
+### Defensive FK: Change ValidationRun to SET_NULL
+
+As a defensive measure, change `ValidationRun.submission` from `CASCADE` to `SET_NULL`. This protects against accidental record deletions:
+
+```python
+# In ValidationRun model - change from CASCADE to SET_NULL
+submission = models.ForeignKey(
+    Submission,
+    on_delete=models.SET_NULL,  # Changed from CASCADE
+    null=True,
+    blank=True,
+    related_name="runs",
+)
+```
+
+**Why SET_NULL instead of CASCADE:**
+- Protects ValidationRun history if Submission is accidentally deleted
+- Admin actions or cleanup scripts won't cascade unexpectedly
+- ValidationRun remains queryable even if submission reference is lost
+- Code that accesses `run.submission` must handle `None` case
+
+**Code paths to update:**
+- Any code assuming `run.submission` is always set must check for `None`
+- API serializers should handle missing submission gracefully
+- UI should show "Submission data unavailable" when `submission is None`
+
+### Purge Content While Preserving Record
+
+```python
+class Submission(TimeStampedModel):
+    # Existing fields...
+    content = models.TextField(blank=True, default="")
+    input_file = models.FileField(...)
+    checksum_sha256 = models.CharField(...)
+
+    # New fields for retention
+    retention_policy = models.CharField(
+        max_length=32,
+        choices=DataRetention.choices,
+        help_text="Snapshot of workflow's retention policy at submission time",
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When content should be purged (null = already purged or DO_NOT_STORE)",
+    )
+    content_purged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When content was purged (for audit trail)",
+    )
+
+    def purge_content(self):
+        """
+        Remove submission content while preserving the record and metadata.
+
+        Keeps: id, checksum_sha256, original_filename, size_bytes, file_type, metadata
+        Clears: content, input_file
+        Sets: content_purged_at
+        Also cleans up: GCS execution bundle folders for all related runs
+        """
+        if self.content_purged_at:
+            return  # Already purged (idempotent)
+
+        # Delete file from storage
+        if self.input_file:
+            try:
+                self.input_file.delete(save=False)
+            except Exception:
+                logger.exception("Failed to delete submission file", extra={"id": self.id})
+                raise
+
+        # Delete execution bundle folders for all runs
+        for run in self.runs.all():
+            try:
+                _delete_execution_bundle(run)
+            except Exception:
+                logger.exception(
+                    "Failed to delete execution bundle",
+                    extra={"submission_id": self.id, "run_id": run.id},
+                )
+                # Continue with other runs - don't fail entire purge
+
+        # Clear content
+        self.content = ""
+        self.input_file = None
+        self.content_purged_at = timezone.now()
+        self.expires_at = None  # No longer pending
+        self.save(update_fields=["content", "input_file", "content_purged_at", "expires_at"])
+
+    def get_content(self) -> str:
+        """Retrieve content, handling purged submissions gracefully."""
+        if self.content_purged_at:
+            return ""  # Content has been purged
+        # ... existing logic ...
+
+    @property
+    def is_content_available(self) -> bool:
+        """Check if content is still available (not purged)."""
+        return self.content_purged_at is None
+```
+
+### What's Preserved After Purge
+
+| Field | Preserved? | Purpose |
+|-------|------------|---------|
+| `id` | ✅ | Record identity |
+| `checksum_sha256` | ✅ | Proof of what was submitted |
+| `original_filename` | ✅ | Audit trail |
+| `size_bytes` | ✅ | Audit trail |
+| `file_type` | ✅ | Context |
+| `metadata` | ✅ | Any additional context |
+| `created` | ✅ | When submitted |
+| `content_purged_at` | ✅ | When purged (compliance) |
+| `content` | ❌ Cleared | User data removed |
+| `input_file` | ❌ Deleted | User data removed |
+| Execution bundles | ❌ Deleted | GCS folders removed |
+
+### Execution Bundle Cleanup
+
+When validators run (FMI, EnergyPlus, etc.), files are uploaded to GCS execution bundles:
+
+```
+gs://{bucket}/runs/{org_id}/{run_id}/
+    input.json          # Input envelope
+    output.json         # Output envelope
+    model.epjson        # Uploaded submission content
+    model.fmu           # FMU file (if applicable)
+    (other artifacts)
+```
+
+These folders must also be deleted when purging submission content:
+
+```python
+def _delete_execution_bundle(run: ValidationRun) -> None:
+    """
+    Delete the GCS execution bundle folder for a validation run.
+
+    Uses prefix deletion to remove all objects under the run's folder.
+    """
+    if not run.summary:
+        return
+
+    # Get execution bundle URI from run summary (set by launcher)
+    bundle_uri = run.summary.get("execution_bundle_uri")
+    if not bundle_uri or not bundle_uri.startswith("gs://"):
+        return
+
+    # Parse bucket and prefix from URI
+    # gs://bucket/runs/org_id/run_id/ -> bucket, runs/org_id/run_id/
+    from urllib.parse import urlparse
+    parsed = urlparse(bundle_uri)
+    bucket_name = parsed.netloc
+    prefix = parsed.path.lstrip("/")
+
+    # Delete all objects with this prefix
+    from google.cloud import storage
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blobs = bucket.list_blobs(prefix=prefix)
+
+    for blob in blobs:
+        try:
+            blob.delete()
+            logger.debug("Deleted GCS object: %s", blob.name)
+        except Exception:
+            logger.exception("Failed to delete GCS object: %s", blob.name)
+            raise
+
+    logger.info(
+        "Deleted execution bundle",
+        extra={"run_id": run.id, "bundle_uri": bundle_uri},
+    )
+```
+
+**What gets deleted:**
+- `input.json` - Input envelope with submission content references
+- `output.json` - Output envelope with results
+- Uploaded files (model files, weather files, etc.)
+- Any artifacts produced by the validator
+
+**What's preserved:**
+- ValidationRun record in database (with summary metadata)
+- ValidationFinding records
+- ValidationRunSummary record
+
+## Deletion Mechanism
+
+### DO_NOT_STORE: Immediate Purge
+
+For `DO_NOT_STORE` retention, purge content immediately after the validation run completes:
+
+```python
+# In validation completion handler (e.g., callback processing)
+def on_validation_complete(run: ValidationRun):
+    submission = run.submission
+    if submission.retention_policy == DataRetention.DO_NOT_STORE:
+        try:
+            submission.purge_content()
+            logger.info("Purged ephemeral submission", extra={"id": submission.id})
+        except Exception:
+            # Queue for retry - don't fail the callback
+            queue_purge_retry(submission.id)
+```
+
+### Time-Bound Retention: Scheduled Purge Job
+
+For `STORE_10_DAYS` and `STORE_30_DAYS`, a scheduled background job handles purging:
+
+```python
+# Cloud Scheduler triggers this endpoint daily (or more frequently)
+@require_worker
+def purge_expired_submissions():
+    """
+    Purge submissions past their retention window.
+
+    Runs as a Cloud Run Job or scheduled Cloud Task.
+    Processes in batches to avoid timeouts.
+    """
+    batch_size = 100
+    max_batches = 50  # Safety limit per run
+
+    for _ in range(max_batches):
+        # Find expired submissions not yet purged
+        expired = Submission.objects.filter(
+            expires_at__lte=timezone.now(),
+            content_purged_at__isnull=True,
+        ).select_for_update(skip_locked=True)[:batch_size]
+
+        if not expired:
+            break
+
+        for submission in expired:
+            try:
+                submission.purge_content()
+                logger.info("Purged expired submission", extra={
+                    "id": submission.id,
+                    "retention": submission.retention_policy,
+                    "expired_at": submission.expires_at,
+                })
+            except Exception:
+                logger.exception("Failed to purge submission", extra={"id": submission.id})
+                # Will be retried on next job run
+
+    return {"processed": count, "remaining": Submission.objects.filter(...).count()}
+```
+
+### Job Scheduling
+
+| Job | Frequency | Trigger |
+|-----|-----------|---------|
+| Purge expired submissions | Every 6 hours | Cloud Scheduler → Cloud Tasks |
+| Retry failed purges | Every 1 hour | Cloud Scheduler → Cloud Tasks |
+| Cleanup orphaned files | Weekly | Cloud Scheduler → Cloud Tasks |
+
+### Setting `expires_at`
+
+```python
+# When creating a submission
+def create_submission(workflow, content, ...):
+    retention = workflow.data_retention
+
+    if retention == DataRetention.DO_NOT_STORE:
+        expires_at = None  # Handled by completion callback
+    elif retention == DataRetention.STORE_10_DAYS:
+        expires_at = timezone.now() + timedelta(days=10)
+    elif retention == DataRetention.STORE_30_DAYS:
+        expires_at = timezone.now() + timedelta(days=30)
+
+    submission = Submission.objects.create(
+        retention_policy=retention,
+        expires_at=expires_at,
+        ...
+    )
+```
+
+## Error Handling
+
+### Purge Failures
+
+When content purge fails (e.g., GCS unavailable):
+
+1. **Log the error** with submission ID and error details
+2. **Don't fail the parent operation** (e.g., don't fail the validation callback)
+3. **Queue for retry** via dedicated retry job
+4. **Alert on repeated failures** (>3 failures for same submission)
+
+### Retry Queue
+
+```python
+class PurgeRetry(models.Model):
+    """Track submissions that failed to purge."""
+
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_attempt_at = models.DateTimeField(null=True)
+    attempt_count = models.IntegerField(default=0)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["attempt_count", "last_attempt_at"]),
+        ]
+```
+
+### Monitoring and Alerts
+
+- **Metric:** `submissions_pending_purge` - count of expired but not-yet-purged
+- **Metric:** `purge_failures_total` - count of purge errors
+- **Alert:** If `submissions_pending_purge > 100` for >1 hour
+- **Alert:** If same submission fails purge >3 times
+
+## UI Requirements
+
+### Workflow Authoring (Create/Edit)
+
+Add retention policy selector to workflow form:
+
+- **Field:** Dropdown with available options based on org plan
+- **Label:** "Submission Data Retention"
+- **Help text:** "How long to keep submitted data after validation completes"
+- **Options:**
+  - "Do not store (delete after validation)" - default
+  - "Store for 10 days"
+  - "Store for 30 days"
+- **Disabled options:** Grey out options not available on current plan with upgrade prompt
+
+### Workflow Detail (Read-Only)
+
+Display retention policy in workflow detail views:
+
+- Show selected retention policy
+- For public workflows, clearly indicate data handling
+
+### Submission/Run Detail Views
+
+- Show `content_hash` (always available)
+- Show retention policy that was in effect
+- If content purged: "Content removed on [date] per retention policy"
+- If content available: Normal content display
+
+### API Responses
+
+```json
+{
+  "submission": {
+    "id": "uuid",
+    "content_hash": "sha256:abc123...",
+    "retention_policy": "STORE_10_DAYS",
+    "content_available": true,
+    "content_purged_at": null,
+    "expires_at": "2025-01-20T00:00:00Z"
+  }
+}
+```
+
+After purge:
+
+```json
+{
+  "submission": {
+    "id": "uuid",
+    "content_hash": "sha256:abc123...",
+    "retention_policy": "STORE_10_DAYS",
+    "content_available": false,
+    "content_purged_at": "2025-01-20T06:15:00Z",
+    "expires_at": null
+  }
+}
+```
+
+## Secondary Effects and Safety
+
+### Cascading Relationships
+
+| Model | Relationship | Impact of Purge |
+|-------|--------------|-----------------|
+| `ValidationRun` | FK to Submission (SET_NULL) | **Safe:** Submission reference set to NULL if record deleted |
+| `ValidationStepRun` | FK to ValidationRun | **Safe:** No direct link to Submission |
+| `ValidationFinding` | FK to ValidationRun | **Safe:** No direct link to Submission |
+| `Submission.latest_run` | OneToOne to ValidationRun | **Safe:** Reference preserved |
+| GCS execution bundles | Referenced in run.summary | **Deleted:** All files in bundle folder removed |
+
+### Code Paths That Access Submission Content
+
+All code that calls `submission.get_content()` must handle the purged case:
+
+1. **Validation engines:** Content needed at execution time only - safe if purge happens after completion
+2. **API endpoints:** Return appropriate error if content requested but purged
+3. **Export/download features:** Check `is_content_available` before attempting
+4. **Re-run features:** Cannot re-run if content purged - show clear message
+
+### GCS/Storage Cleanup
+
+When `input_file.delete()` is called:
+
+- Django's storage backend handles the actual GCS delete
+- If GCS delete fails, the model save is rolled back
+- Orphaned files (if any) cleaned up by weekly job
+
+### Database Constraint
+
+Add constraint to ensure purged submissions have no content:
+
+```python
+models.CheckConstraint(
+    name="submission_purged_content_cleared",
+    condition=(
+        Q(content_purged_at__isnull=True) |  # Not purged, or
+        (Q(content="") & Q(input_file=""))    # Purged and content cleared
+    ),
+)
+```
+
+## Migration Strategy
+
+### Existing Submissions
+
+1. **Backfill `retention_policy`:** Set to `STORE_30_DAYS` for all existing submissions (preserve current behavior)
+2. **Backfill `expires_at`:** Set to `created + 30 days` for existing submissions
+3. **No content purge:** Existing submissions keep their content unless past the backfilled expiry
+
+### Existing Workflows
+
+1. **Default to `DO_NOT_STORE`:** New behavior for new submissions
+2. **Communicate change:** Notify users that new submissions won't be stored by default
+3. **Opt-in for retention:** Authors must explicitly choose retention if needed
+
+## Testing Strategy
+
+### Unit Tests
+
+- `purge_content()` clears content and file, sets timestamp
+- `purge_content()` is idempotent (safe to call twice)
+- `purge_content()` deletes execution bundle from GCS
+- `get_content()` returns empty string after purge
+- `is_content_available` returns False after purge
+- Retention policy validation respects plan availability
+- `run.submission` can be None (SET_NULL) - code handles gracefully
+
+### Integration Tests
+
+- DO_NOT_STORE submission purged after run completes
+- STORE_10_DAYS submission not purged before expiry
+- STORE_10_DAYS submission purged by scheduled job after expiry
+- Failed purge queued for retry
+- API responses reflect purge state correctly
+- GCS execution bundle deleted when submission purged
+- ValidationRun preserved when Submission record deleted (SET_NULL)
+
+### Load Tests
+
+- Scheduled purge job handles large batches
+- Concurrent purge operations don't conflict
+- GCS bulk deletion doesn't hit rate limits
 
 ## Open Questions
 
-- Should we allow per-launch overrides of retention, or keep it strictly per-workflow? (Current plan: workflow-level only.)
-- Do we need client-visible “payload stored/ephemeral” flags in API responses beyond the hash? (Recommended for clarity.)
-- Should we encrypt Redis payloads at the application layer, or rely on network-level encryption + ACLs? (Current plan: rely on TLS/ACL; optional app-level encryption could be added if required by policy.)
+1. ~~Should we allow per-launch overrides of retention, or keep it strictly per-workflow?~~ **Resolved:** Workflow-level only.
+2. ~~Do we need client-visible "payload stored/ephemeral" flags in API responses beyond the hash?~~ **Resolved:** Yes, include `content_available` and `content_purged_at`.
+3. **Should we support user-initiated early deletion?** E.g., "Delete my submission now" even if retention hasn't expired. (Defer to GDPR/privacy ADR if needed.)
+4. **Should we allow extending retention?** E.g., user requests to keep submission longer. (Defer - adds complexity.)
+
+## Success Criteria
+
+- [ ] Workflows can specify retention policy
+- [ ] Retention options respect org plan availability
+- [ ] Submissions correctly set `expires_at` based on retention
+- [ ] DO_NOT_STORE submissions purged after run completion
+- [ ] Scheduled job purges expired submissions
+- [ ] Purge failures are retried automatically
+- [ ] UI shows retention policy in workflow forms
+- [ ] API responses include content availability status
+- [ ] GCS execution bundles deleted when submission purged
+- [ ] ValidationRun.submission changed to SET_NULL
+- [ ] Code handles `run.submission is None` gracefully
+- [ ] All existing tests pass
+- [ ] No cascading deletes of ValidationRun records

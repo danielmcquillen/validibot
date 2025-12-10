@@ -4,19 +4,19 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
-- [ADR-2025-11-20: FMI Storage and Security Review](completed/2025-11-20-fmi-storage-and-security-review.md)
 - [ADR-2025-11-23: Ephemeral Submission Retention](2025-11-23-ephemeral-submission-retention.md)
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)
 - [ADR-2025-11-28: Invite-Based Signup and Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)
 - [ADR-2025-11-28: Pricing System](2025-11-28-pricing-system.md)
 - [ADR-2025-11-28: Public Workflow Access](2025-11-28-public-workflow-access.md)
-- [ADR-2025-12-04: Phase 4 FMI Cloud Run](completed/2025-12-04-phase-4-fmi-cloud-run.md)
-- [ADR-2025-12-04: Validator Job Interface](2025-12-04-validator-job-interface.md)
 
 ## Completed
 
 See [completed/](completed/) for implemented ADRs including:
 
+- Validator Job Interface Contract
+- Phase 4 FMI Cloud Run
+- FMI Storage and Security Review
 - Google Cloud Platform Architecture
 - KMS Migration (AWS to GCP)
 - Idempotency Keys for API Requests

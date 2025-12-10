@@ -13,6 +13,7 @@ from django.core.files.base import ContentFile
 from django.core.files.base import File
 from django.db import models
 from django.db.models import Q
+from django.utils.text import slugify
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
@@ -49,7 +50,13 @@ def submission_input_file_upload_to(instance: Submission, filename: str) -> str:
     proj_part = f"p{proj_slug[:16]}"
     user_part = f"u{instance.user_id}" if instance.user_id else "uanon"
     date_part = now().strftime("%Y%m%d")
-    safe_name = Path(filename).name
+
+    # Slugify filename for URL-safe storage paths while preserving extension
+    name_stem = Path(filename).stem  # e.g., "My Building (v2) — Final"
+    ext = Path(filename).suffix.lower()  # e.g., ".idf"
+    safe_stem = slugify(name_stem)[:50] or "file"  # e.g., "my-building-v2-final"
+    safe_name = f"{safe_stem}{ext}"  # e.g., "my-building-v2-final.idf"
+
     unique = uuid.uuid4().hex[:12]
     p = (
         f"submissions/{org_part}/{proj_part}/"

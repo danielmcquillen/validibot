@@ -1,9 +1,9 @@
 # ADR-2025-12-04: Validator Job Interface Contract
 
-**Status:** Proposed
+**Status:** Implemented (2025-12-10)
 **Owner:** Platform / Validation Runtime
 **Created:** 2025-12-04
-**Related ADRs:** [2025-12-01: Google Cloud Platform Migration](2025-12-1-google-platform.md)
+**Related ADRs:** [2025-12-01: Google Cloud Platform Migration](2025-12-01-google-platform.md)
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Status:** Proposed (2025-11-28)  
 **Owners:** Platform / Users  
-**Related ADRs:** —  
+**Related ADRs:** 2025-11-28 Pricing System (seats/limits), 2025-11-28 Public Workflow Access  
 **Related docs:** `dev_docs/data-model/users_roles.md`, `dev_docs/organization_management.md`
 
 ---
@@ -74,6 +74,8 @@ What's missing:
 ---
 
 ## Decision
+
+> Note: This ADR depends on the Pricing System ADR to define how seats are sold and metered. Seat limits and billing enforcement should follow the plan definitions there. Implement pricing first, then wire the seat model here.
 
 We will implement invite-based signup with seat management as follows:
 

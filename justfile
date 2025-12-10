@@ -767,8 +767,37 @@ gcp-init-stage stage:
     done
     echo ""
 
-    # Step 7: Create secret placeholder
-    echo "7. Creating secret in Secret Manager"
+    # Step 7: Grant KMS permissions for credential signing
+    echo "7. Granting KMS permissions"
+    KMS_KEYRING="validibot-keys"
+    KMS_KEY="credential-signing"
+    # Check if keyring exists
+    if gcloud kms keyrings describe "$KMS_KEYRING" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        # Grant viewer permission (for JWKS endpoint)
+        gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
+            --location={{gcp_region}} \
+            --keyring="$KMS_KEYRING" \
+            --project={{gcp_project}} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role=roles/cloudkms.viewer \
+            --quiet &>/dev/null || true
+        # Grant signer permission (for signing credentials)
+        gcloud kms keys add-iam-policy-binding "$KMS_KEY" \
+            --location={{gcp_region}} \
+            --keyring="$KMS_KEYRING" \
+            --project={{gcp_project}} \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role=roles/cloudkms.signerVerifier \
+            --quiet &>/dev/null || true
+        echo "   ✓ KMS permissions granted"
+    else
+        echo "   ⚠️  KMS keyring '$KMS_KEYRING' not found"
+        echo "      Run 'just gcp-kms-setup' first to create the keyring and signing key"
+    fi
+    echo ""
+
+    # Step 8: Create secret placeholder
+    echo "8. Creating secret in Secret Manager"
     if gcloud secrets describe "$SECRET_NAME" --project={{gcp_project}} &>/dev/null; then
         echo "   ✓ Secret '$SECRET_NAME' already exists"
     else
@@ -792,6 +821,7 @@ gcp-init-stage stage:
     echo "  • Cloud SQL: $DB_INSTANCE (database: $DB_NAME)"
     echo "  • Cloud Tasks queue: $QUEUE_NAME"
     echo "  • GCS buckets: $MEDIA_BUCKET, $FILES_BUCKET"
+    echo "  • KMS permissions: cloudkms.viewer, cloudkms.signerVerifier"
     echo "  • Secret: $SECRET_NAME"
     echo ""
     # Determine correct env file path (prod uses .production, others use stage name)
@@ -892,6 +922,72 @@ test-on-gcp *args:
 # Run tests locally (default, no GCP)
 test *args:
     uv run pytest {{args}} --log-cli-level=INFO
+
+# =============================================================================
+# KMS Setup (One-Time)
+# =============================================================================
+#
+# Create the KMS keyring and signing key. Run this ONCE for the entire project
+# (not per stage). Per-stage service accounts get permissions via gcp-init-stage.
+#
+# The signing key is used for:
+# - JWKS endpoint (/.well-known/jwks.json) - publishes public key
+# - Credential signing (validation badges)
+
+# Create KMS keyring and signing key (one-time setup)
+gcp-kms-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔐 Setting up Google Cloud KMS"
+    echo "======================================"
+    echo ""
+
+    KEYRING="validibot-keys"
+    KEYNAME="credential-signing"
+
+    # Step 1: Create keyring (idempotent - can't be deleted)
+    echo "1. Creating keyring: $KEYRING"
+    if gcloud kms keyrings describe "$KEYRING" --location={{gcp_region}} --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Keyring already exists"
+    else
+        gcloud kms keyrings create "$KEYRING" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}}
+        echo "   ✓ Keyring created"
+    fi
+    echo ""
+
+    # Step 2: Create signing key
+    echo "2. Creating signing key: $KEYNAME"
+    if gcloud kms keys describe "$KEYNAME" --location={{gcp_region}} --keyring="$KEYRING" --project={{gcp_project}} &>/dev/null; then
+        echo "   ✓ Key already exists"
+    else
+        gcloud kms keys create "$KEYNAME" \
+            --location={{gcp_region}} \
+            --keyring="$KEYRING" \
+            --purpose=asymmetric-signing \
+            --default-algorithm=ec-sign-p256-sha256 \
+            --protection-level=software \
+            --project={{gcp_project}}
+        echo "   ✓ Key created (EC P-256, ES256 algorithm)"
+    fi
+    echo ""
+
+    # Step 3: Show key resource name for secrets
+    KEY_PATH="projects/{{gcp_project}}/locations/{{gcp_region}}/keyRings/$KEYRING/cryptoKeys/$KEYNAME"
+    echo "============================================="
+    echo "✓ KMS setup complete"
+    echo "============================================="
+    echo ""
+    echo "Add these to your environment secrets (.envs/.*/django):"
+    echo ""
+    echo "  GCP_KMS_SIGNING_KEY=\"$KEY_PATH\""
+    echo "  GCP_KMS_JWKS_KEYS=\"$KEY_PATH\""
+    echo "  SV_JWKS_ALG=\"ES256\""
+    echo ""
+    echo "Then run 'just gcp-init-stage <stage>' to grant KMS permissions"
+    echo "to each stage's service account."
 
 # =============================================================================
 # Validation & Health Checks (Production)

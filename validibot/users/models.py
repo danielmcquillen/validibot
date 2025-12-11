@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
@@ -68,6 +69,15 @@ def ensure_default_project(organization: Organization):
 
 
 def ensure_personal_workspace(user: User) -> Organization:
+    """
+    Ensure the user has a personal workspace organization.
+
+    If the user already has a personal workspace, returns it.
+    Otherwise, creates a new organization with:
+    - A membership for the user (owner/admin roles)
+    - A default project
+    - A subscription on the Starter plan with 14-day trial
+    """
     existing = (
         user.orgs.filter(is_personal=True, membership__is_active=True)
         .distinct()
@@ -86,6 +96,10 @@ def ensure_personal_workspace(user: User) -> Organization:
         slug=slug,
         is_personal=True,
     )
+
+    # Create subscription with trial on Starter plan
+    _create_trial_subscription(personal_org)
+
     membership = Membership.objects.create(
         user=user,
         org=personal_org,
@@ -95,6 +109,33 @@ def ensure_personal_workspace(user: User) -> Organization:
     ensure_default_project(personal_org)
     user.set_current_org(personal_org)
     return personal_org
+
+
+def _create_trial_subscription(org: Organization) -> None:
+    """
+    Create a trial subscription for a new organization.
+
+    New orgs start with a 14-day trial on the Starter plan.
+    Uses local imports to avoid circular dependencies with billing app.
+    """
+    # Local imports to avoid circular dependency
+    from validibot.billing.constants import TRIAL_DURATION_DAYS
+    from validibot.billing.constants import PlanCode
+    from validibot.billing.constants import SubscriptionStatus
+    from validibot.billing.models import Plan
+    from validibot.billing.models import Subscription
+
+    now = datetime.now(tz=UTC)
+    starter_plan = Plan.objects.get(code=PlanCode.STARTER)
+
+    Subscription.objects.create(
+        org=org,
+        plan=starter_plan,
+        status=SubscriptionStatus.TRIALING,
+        trial_started_at=now,
+        trial_ends_at=now + timedelta(days=TRIAL_DURATION_DAYS),
+        included_credits_remaining=starter_plan.included_credits,
+    )
 
 
 class Role(models.Model):

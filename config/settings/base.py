@@ -107,6 +107,7 @@ THIRD_PARTY_APPS = [
     "django_filters",
     "markdownify",
     "django_cloud_tasks",
+    "djstripe",
 ]
 
 LOCAL_APPS = [
@@ -219,6 +220,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "validibot.billing.middleware.TrialExpiryMiddleware",
 ]
 
 # STATIC
@@ -502,3 +504,24 @@ SITE_URL = env("SITE_URL", default="http://localhost:8000")
 
 # FEATURES
 ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
+
+# STRIPE / DJ-STRIPE
+# ------------------------------------------------------------------------------
+# Stripe API keys (set in environment)
+# Test mode keys start with sk_test_ and pk_test_
+# Live mode keys start with sk_live_ and pk_live_
+STRIPE_TEST_SECRET_KEY = env("STRIPE_TEST_SECRET_KEY", default="")
+STRIPE_LIVE_SECRET_KEY = env("STRIPE_LIVE_SECRET_KEY", default="")
+STRIPE_TEST_PUBLIC_KEY = env("STRIPE_TEST_PUBLIC_KEY", default="")
+STRIPE_LIVE_PUBLIC_KEY = env("STRIPE_LIVE_PUBLIC_KEY", default="")
+STRIPE_LIVE_MODE = env.bool("STRIPE_LIVE_MODE", default=False)
+
+# dj-stripe configuration
+# https://dj-stripe.dev/reference/settings/
+DJSTRIPE_WEBHOOK_SECRET = env("DJSTRIPE_WEBHOOK_SECRET", default="")
+DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"  # Use Stripe IDs as FKs (recommended)
+DJSTRIPE_USE_NATIVE_JSONFIELD = True  # Use native JSONField
+
+# Define which Stripe key to use based on live mode
+STRIPE_SECRET_KEY = STRIPE_LIVE_SECRET_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_SECRET_KEY
+STRIPE_PUBLIC_KEY = STRIPE_LIVE_PUBLIC_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_PUBLIC_KEY

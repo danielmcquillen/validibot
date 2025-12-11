@@ -1,0 +1,148 @@
+{% extends "app_base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Billing - {{ org.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-4">Billing & Subscription</h1>
+    </div>
+  </div>
+
+  <!-- Subscription Status Card -->
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Current Plan</h5>
+        </div>
+        <div class="card-body">
+          <h3 class="mb-2">{{ plan.name }}</h3>
+          <p class="text-muted">{{ plan.description }}</p>
+
+          {% if is_trial %}
+          <div class="alert alert-info">
+            <strong>Trial Period:</strong> {{ trial_days_remaining }} days remaining
+          </div>
+          {% endif %}
+
+          <dl class="row mb-0">
+            <dt class="col-sm-6">Status</dt>
+            <dd class="col-sm-6">
+              <span class="badge {% if subscription.status == 'ACTIVE' %}bg-success{% elif is_trial %}bg-info{% else %}bg-warning{% endif %}">
+                {{ subscription.get_status_display }}
+              </span>
+            </dd>
+
+            {% if plan.monthly_price_cents %}
+            <dt class="col-sm-6">Price</dt>
+            <dd class="col-sm-6">${{ plan.monthly_price_cents|floatformat:-2 }}/month</dd>
+            {% endif %}
+          </dl>
+        </div>
+        <div class="card-footer">
+          {% if can_upgrade %}
+          <a href="{% url 'billing:checkout' %}?plan=TEAM" class="btn btn-primary">
+            Upgrade Plan
+          </a>
+          {% endif %}
+          {% if subscription.stripe_customer_id %}
+          <a href="{% url 'billing:portal' %}" class="btn btn-outline-secondary">
+            Manage Subscription
+          </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage Card -->
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Usage This Period</h5>
+        </div>
+        <div class="card-body">
+          <h6>Basic Workflow Launches</h6>
+          {% if basic_usage.unlimited %}
+          <p class="h4">{{ basic_usage.used|default:0 }} <small class="text-muted">/ Unlimited</small></p>
+          {% else %}
+          <p class="h4">{{ basic_usage.used|default:0 }} <small class="text-muted">/ {{ basic_usage.limit }}</small></p>
+          <div class="progress mb-3">
+            {% with percent=basic_usage.used|default:0|divisibleby:basic_usage.limit|default:1 %}
+            <div class="progress-bar" role="progressbar" style="width: {{ percent }}%"></div>
+            {% endwith %}
+          </div>
+          {% endif %}
+
+          <h6 class="mt-4">Credits Balance</h6>
+          <p class="h4">{{ credits_balance }}</p>
+          <small class="text-muted">
+            {{ subscription.included_credits_remaining }} included +
+            {{ subscription.purchased_credits_balance }} purchased
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Plan Comparison -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Available Plans</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Plan</th>
+                  <th>Basic Launches/mo</th>
+                  <th>Credits Included</th>
+                  <th>Seats</th>
+                  <th>Price</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in all_plans %}
+                <tr {% if p.code == plan.code %}class="table-active"{% endif %}>
+                  <td>
+                    <strong>{{ p.name }}</strong>
+                    {% if p.code == plan.code %}<span class="badge bg-primary ms-2">Current</span>{% endif %}
+                  </td>
+                  <td>{% if p.basic_launches_limit %}{{ p.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %}</td>
+                  <td>{{ p.included_credits|intcomma }}</td>
+                  <td>{% if p.max_seats %}{{ p.max_seats }}{% else %}Unlimited{% endif %}</td>
+                  <td>
+                    {% if p.monthly_price_cents %}
+                    ${{ p.monthly_price_cents|floatformat:-2 }}/mo
+                    {% else %}
+                    Contact Sales
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if p.code != plan.code and p.stripe_price_id %}
+                    <a href="{% url 'billing:checkout' %}?plan={{ p.code }}" class="btn btn-sm btn-outline-primary">
+                      Select
+                    </a>
+                    {% elif p.code == "ENTERPRISE" %}
+                    <a href="mailto:sales@validibot.com" class="btn btn-sm btn-outline-secondary">
+                      Contact Us
+                    </a>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -10,6 +10,31 @@ from validibot.users.permissions import PermissionCode
 from validibot.users.scoping import ensure_active_org_scope
 
 
+class OrgMixin:
+    """
+    Mixin providing self.org from the request's active organization.
+
+    Requires that ensure_active_org_scope has been called (typically by the
+    organization_context context processor) to set request.active_org.
+
+    Usage:
+        class MyView(LoginRequiredMixin, OrgMixin, TemplateView):
+            def get_context_data(self, **kwargs):
+                context = super().get_context_data(**kwargs)
+                context["subscription"] = self.org.subscription
+                return context
+    """
+
+    org = None
+
+    def dispatch(self, request, *args, **kwargs):
+        """Set self.org from request.active_org."""
+        # Call ensure_active_org_scope to set request.active_org
+        ensure_active_org_scope(request)
+        self.org = getattr(request, "active_org", None)
+        return super().dispatch(request, *args, **kwargs)
+
+
 class OrganizationAdminRequiredMixin(LoginRequiredMixin):
     """Mixin ensuring the user has admin rights on the target organization."""
 

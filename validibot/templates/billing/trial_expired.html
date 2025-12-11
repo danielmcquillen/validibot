@@ -1,0 +1,65 @@
+{% extends "app_base.html" %}
+
+{% block title %}Trial Expired - Validibot{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+      <h1 class="mb-4">Your Trial Has Ended</h1>
+      <p class="lead mb-4">
+        Thank you for trying Validibot! Your 14-day trial has concluded.
+        Subscribe now to continue using all features.
+      </p>
+
+      {% if usage %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5>During your trial, you used:</h5>
+          <p class="h3 mb-0">{{ usage.used|default:0 }} workflow launches</p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="row justify-content-center mb-4">
+        {% for plan in all_plans %}
+        {% if plan.stripe_price_id %}
+        <div class="col-md-4 mb-3">
+          <div class="card h-100">
+            <div class="card-header">
+              <h5 class="mb-0">{{ plan.name }}</h5>
+            </div>
+            <div class="card-body">
+              <p class="h3">
+                {% if plan.monthly_price_cents %}
+                ${{ plan.monthly_price_cents|floatformat:-2 }}<small>/mo</small>
+                {% else %}
+                Contact Us
+                {% endif %}
+              </p>
+              <ul class="list-unstyled text-start">
+                <li>{% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} launches/mo</li>
+                <li>{{ plan.included_credits|intcomma }} credits included</li>
+                <li>{% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats</li>
+              </ul>
+            </div>
+            <div class="card-footer">
+              <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}" class="btn btn-primary w-100">
+                Subscribe Now
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      <p class="text-muted">
+        Need a custom solution?
+        <a href="mailto:sales@validibot.com">Contact our sales team</a>
+        for Enterprise pricing.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

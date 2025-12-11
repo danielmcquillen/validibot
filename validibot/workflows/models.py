@@ -435,6 +435,23 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         return "1"
 
     @property
+    def is_advanced(self) -> bool:
+        """
+        Check if this workflow uses any advanced (high-compute) validators.
+
+        Advanced workflows consume credits instead of basic launch quota.
+        This is used by billing enforcement to determine which meter to use.
+
+        Returns:
+            True if any step uses an advanced validator type.
+        """
+        from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
+
+        return self.steps.filter(
+            validator__validation_type__in=ADVANCED_VALIDATION_TYPES,
+        ).exists()
+
+    @property
     def get_public_info(self) -> WorkflowPublicInfo:
         public_info, _ = WorkflowPublicInfo.objects.get_or_create(workflow=self)
         return public_info

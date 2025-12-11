@@ -105,6 +105,11 @@ class Plan(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    @property
+    def monthly_price_dollars(self) -> int:
+        """Monthly price in whole dollars for display."""
+        return self.monthly_price_cents // 100 if self.monthly_price_cents else 0
+
 
 class Subscription(TimeStampedModel):
     """

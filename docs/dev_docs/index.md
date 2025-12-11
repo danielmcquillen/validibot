@@ -35,6 +35,11 @@ This site describes the core concepts, data model, and API for working with vali
 - [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
 - [Configure the Badge JWKS Endpoint](how-to/configure-jwks.md) - Publish KMS-backed signing keys
 
+### Integrations
+
+- [Stripe Billing](integrations/stripe.md) - Subscription billing, webhooks, and payment processing
+- [EnergyPlus Modal](integrations/energyplus_modal.md) - Modal-backed EnergyPlus simulation runner
+
 ### Marketing
 
 - [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card

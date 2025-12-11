@@ -14,6 +14,7 @@ from django.shortcuts import redirect
 from django.utils import timezone
 
 from validibot.billing.constants import SubscriptionStatus
+from validibot.users.scoping import ensure_active_org_scope
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -58,8 +59,9 @@ class TrialExpiryMiddleware:
         if self._is_exempt_path(request.path):
             return self.get_response(request)
 
-        # Skip if no current org (shouldn't happen but be safe)
-        org = getattr(request.user, "current_org", None)
+        # Use ensure_active_org_scope for consistent org resolution
+        # This syncs request.active_org with session and user.current_org
+        _, org, _ = ensure_active_org_scope(request)
         if not org:
             return self.get_response(request)
 

@@ -616,6 +616,14 @@ class PendingInvite(TimeStampedModel):
         membership_roles = roles or self.roles or []
         if self.invitee_user is None:
             raise ValueError("Invitee user is not set; cannot accept without user.")
+
+        # Check seat limit before accepting (seats may have filled since invite
+        # was sent). Local import to avoid circular dependency.
+        from validibot.billing.metering import SeatEnforcer
+
+        if hasattr(self.org, "subscription"):
+            SeatEnforcer().check_can_add_member(self.org)
+
         membership, _ = Membership.objects.get_or_create(
             user=self.invitee_user,
             org=self.org,

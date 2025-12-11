@@ -9,9 +9,9 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
+from validibot.billing.constants import TRIAL_DURATION_DAYS
 from validibot.billing.constants import PlanCode
 from validibot.billing.constants import SubscriptionStatus
-from validibot.billing.constants import TRIAL_DURATION_DAYS
 from validibot.billing.models import Plan
 from validibot.billing.models import Subscription
 
@@ -105,7 +105,7 @@ class SubscriptionModelTests(TestCase):
         # Create a user and organization
         cls.user = User.objects.create_user(
             email="test@example.com",
-            password="testpass123",
+            password="testpass123",  # noqa: S106
         )
         cls.org = Organization.objects.create(
             name="Test Org",

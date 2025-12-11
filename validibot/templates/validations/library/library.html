@@ -134,7 +134,7 @@
                                   true
                                 {% endif %}">
                 <div class="mb-3 text-muted">
-                  View or edit your custom validators, or create a new one.
+                  Create or edit your custom validators. After creating a custom validator, you can use it in your workfows.
                 </div>
 
                 {% include "validations/library/partials/validator_library_list.html" with validators=custom_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("You have not created any custom validators yet.") empty_cta_url=custom_validators_empty_cta_url empty_cta_label=custom_validators_empty_cta_label empty_cta_modal_target=custom_validators_empty_cta_modal_target %}

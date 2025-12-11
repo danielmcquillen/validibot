@@ -343,6 +343,13 @@ class PricingPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     )
     breadcrumbs = []
 
+    def get_context_data(self, **kwargs):
+        from validibot.billing.models import Plan
+
+        context = super().get_context_data(**kwargs)
+        context["all_plans"] = Plan.objects.all()
+        return context
+
 
 class PricingDetailPageView(MarketingMetadataMixin, BreadcrumbMixin, TemplateView):
     template_name: str = ""
@@ -374,11 +381,11 @@ class PricingStarterPageView(PricingDetailPageView):
     )
 
 
-class PricingGrowthPageView(PricingDetailPageView):
-    template_name = "marketing/pricing/growth.html"
-    page_title = _("Growth Plan")
+class PricingTeamPageView(PricingDetailPageView):
+    template_name = "marketing/pricing/team.html"
+    page_title = _("Team Plan")
     meta_description = _(
-        "Growth adds collaboration tooling and advanced automation "
+        "Team adds collaboration tooling and advanced automation "
         "for teams scaling complex validation programs.",
     )
 

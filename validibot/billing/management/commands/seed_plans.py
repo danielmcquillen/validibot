@@ -14,7 +14,6 @@ from django.core.management.base import BaseCommand
 from validibot.billing.constants import PlanCode
 from validibot.billing.models import Plan
 
-
 # Plan configuration from ADR-2025-11-28
 PLAN_CONFIG = {
     PlanCode.STARTER: {
@@ -58,11 +57,11 @@ PLAN_CONFIG = {
             "For organizations with advanced requirements. Custom limits, "
             "priority support, and dedicated account management."
         ),
-        "basic_launches_limit": None,  # Unlimited
+        "basic_launches_limit": 1_000_000,  # 10x Team
         "included_credits": 5_000,
-        "max_workflows": None,  # Unlimited
-        "max_custom_validators": None,  # Unlimited
-        "max_seats": None,  # Unlimited (custom)
+        "max_workflows": 1_000,  # 10x Team
+        "max_custom_validators": 1_000,  # 10x Team
+        "max_seats": 100,  # 10x Team
         "max_payload_mb": 100,
         "has_integrations": True,
         "has_audit_logs": True,
@@ -116,9 +115,12 @@ class Command(BaseCommand):
         self.stdout.write("\nPlan Summary:")
         self.stdout.write("-" * 60)
         for plan in Plan.objects.all():
-            launches = plan.basic_launches_limit or "Unlimited"
-            seats = plan.max_seats or "Unlimited"
-            price = f"${plan.monthly_price_cents / 100:.0f}/mo" if plan.monthly_price_cents else "Contact us"
+            launches = f"{plan.basic_launches_limit:,}"
+            seats = plan.max_seats
+            if plan.monthly_price_cents:
+                price = f"${plan.monthly_price_cents / 100:.0f}/mo"
+            else:
+                price = "Contact us"
             self.stdout.write(
                 f"  {plan.name}: {launches} launches, {seats} seats, {price}",
             )

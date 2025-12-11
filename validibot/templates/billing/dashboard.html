@@ -70,19 +70,15 @@
           <p class="h4">{{ basic_usage.used|default:0|intcomma }} <small class="text-muted">/ Unlimited</small></p>
           {% else %}
           <p class="h4">{{ basic_usage.used|default:0|intcomma }} <small class="text-muted">/ {{ basic_usage.limit|intcomma }}</small></p>
-          {% with usage_percent=basic_usage.used|default:0 %}
-          {% with limit=basic_usage.limit|default:1 %}
           <div class="progress mb-3" style="height: 8px;">
-            <div class="progress-bar {% if usage_percent > limit|multiply:0.9 %}bg-danger{% elif usage_percent > limit|multiply:0.75 %}bg-warning{% else %}bg-success{% endif %}"
+            <div class="progress-bar bg-primary"
                  role="progressbar"
-                 style="width: {% widthratio usage_percent limit 100 %}%"
-                 aria-valuenow="{{ usage_percent }}"
+                 style="width: {% widthratio basic_usage.used basic_usage.limit 100 %}%"
+                 aria-valuenow="{{ basic_usage.used }}"
                  aria-valuemin="0"
-                 aria-valuemax="{{ limit }}">
+                 aria-valuemax="{{ basic_usage.limit }}">
             </div>
           </div>
-          {% endwith %}
-          {% endwith %}
           {% endif %}
 
           <h6 class="mt-4">Credits Balance</h6>
@@ -96,218 +92,110 @@
     </div>
   </div>
 
-  <!-- Current Plan Features -->
+  <!-- Plan Cards -->
   <div class="row mb-4">
     <div class="col-12">
-      <div class="card">
-        <div class="card-header">
-          <h5 class="mb-0">Your Plan Features</h5>
-        </div>
-        <div class="card-body">
-          <div class="row">
-            <div class="col-md-4">
-              <h6 class="text-muted mb-3">Usage Limits</h6>
-              <ul class="list-unstyled">
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} basic launches/month
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {{ plan.included_credits|intcomma }} credits included/month
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats
-                </li>
-              </ul>
-            </div>
-            <div class="col-md-4">
-              <h6 class="text-muted mb-3">Authoring Limits</h6>
-              <ul class="list-unstyled">
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% if plan.max_workflows %}{{ plan.max_workflows }}{% else %}Unlimited{% endif %} workflows
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% if plan.max_custom_validators %}{{ plan.max_custom_validators }}{% else %}Unlimited{% endif %} custom validators
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {{ plan.max_payload_mb }} MB max payload size
-                </li>
-              </ul>
-            </div>
-            <div class="col-md-4">
-              <h6 class="text-muted mb-3">Features</h6>
-              <ul class="list-unstyled">
-                <li class="mb-2">
-                  {% if plan.has_integrations %}
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% else %}
-                  <i class="bi bi-x-circle text-muted me-2"></i>
-                  {% endif %}
-                  Third-party integrations
-                </li>
-                <li class="mb-2">
-                  {% if plan.has_audit_logs %}
-                  <i class="bi bi-check-circle text-success me-2"></i>
-                  {% else %}
-                  <i class="bi bi-x-circle text-muted me-2"></i>
-                  {% endif %}
-                  Audit logs
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
+      <h2 class="h4 mb-3">Choose a Plan</h2>
+      <p class="text-muted mb-4">Simple, transparent pricing for teams of every size.</p>
     </div>
   </div>
 
-  <!-- Plan Comparison -->
   <div class="row">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-header">
-          <h5 class="mb-0">Compare Plans</h5>
+    {% for p in all_plans %}
+    <div class="col-md-4 mb-4">
+      <div class="card h-100 {% if p.code == plan.code %}border-primary{% endif %}">
+        <!-- Card Header -->
+        <div class="card-header text-center py-3 {% if p.code == 'TEAM' %}bg-primary text-white{% else %}bg-light{% endif %}">
+          <h5 class="mb-0">{{ p.name }}</h5>
         </div>
-        <div class="card-body">
-          <div class="table-responsive">
-            <table class="table table-hover">
-              <thead class="table-light">
-                <tr>
-                  <th style="width: 20%">Feature</th>
-                  {% for p in all_plans %}
-                  <th class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {{ p.name }}
-                    {% if p.code == plan.code %}<br><span class="badge bg-primary">Current</span>{% endif %}
-                  </th>
-                  {% endfor %}
-                </tr>
-              </thead>
-              <tbody>
-                <!-- Price -->
-                <tr>
-                  <td><strong>Price</strong></td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.monthly_price_dollars %}
-                    <strong>${{ p.monthly_price_dollars }}</strong>/mo
-                    {% else %}
-                    <strong>Contact us</strong>
-                    {% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Basic Launches -->
-                <tr>
-                  <td>Basic launches/month</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.basic_launches_limit %}{{ p.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Credits -->
-                <tr>
-                  <td>Credits included/month</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {{ p.included_credits|intcomma }}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Seats -->
-                <tr>
-                  <td>Team seats</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.max_seats %}{{ p.max_seats }}{% else %}Unlimited{% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Workflows -->
-                <tr>
-                  <td>Workflows</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.max_workflows %}{{ p.max_workflows }}{% else %}Unlimited{% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Custom Validators -->
-                <tr>
-                  <td>Custom validators</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.max_custom_validators %}{{ p.max_custom_validators }}{% else %}Unlimited{% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Payload Size -->
-                <tr>
-                  <td>Max payload size</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {{ p.max_payload_mb }} MB
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Integrations -->
-                <tr>
-                  <td>Integrations</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.has_integrations %}
-                    <i class="bi bi-check-lg text-success"></i>
-                    {% else %}
-                    <i class="bi bi-x-lg text-muted"></i>
-                    {% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Audit Logs -->
-                <tr>
-                  <td>Audit logs</td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.has_audit_logs %}
-                    <i class="bi bi-check-lg text-success"></i>
-                    {% else %}
-                    <i class="bi bi-x-lg text-muted"></i>
-                    {% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-                <!-- Action Row -->
-                <tr>
-                  <td></td>
-                  {% for p in all_plans %}
-                  <td class="text-center {% if p.code == plan.code %}table-primary{% endif %}">
-                    {% if p.code == plan.code %}
-                    <span class="text-muted">Current plan</span>
-                    {% elif p.code == "ENTERPRISE" %}
-                    <a href="mailto:hello@validibot.com?subject=Enterprise%20Plan%20Inquiry" class="btn btn-outline-secondary btn-sm">
-                      Contact Us
-                    </a>
-                    {% elif p.stripe_price_id %}
-                    <a href="{% url 'billing:checkout' %}?plan={{ p.code }}" class="btn btn-primary btn-sm">
-                      {% if p.display_order > plan.display_order %}Upgrade{% else %}Select{% endif %}
-                    </a>
-                    {% else %}
-                    <span class="text-muted">Coming soon</span>
-                    {% endif %}
-                  </td>
-                  {% endfor %}
-                </tr>
-              </tbody>
-            </table>
+
+        <div class="card-body d-flex flex-column">
+          <!-- Price -->
+          <div class="text-center mb-4">
+            {% if p.monthly_price_dollars %}
+            <span class="display-5 fw-bold">${{ p.monthly_price_dollars }}</span>
+            <span class="text-muted">/month</span>
+            {% else %}
+            <span class="h3 fw-bold">Contact Us</span>
+            <br><small class="text-muted">Custom pricing</small>
+            {% endif %}
+          </div>
+
+          <!-- Current Plan Badge -->
+          {% if p.code == plan.code %}
+          <div class="text-center mb-3">
+            <span class="badge bg-primary">Current Plan</span>
+          </div>
+          {% endif %}
+
+          <!-- Description -->
+          <p class="text-muted small mb-4">{{ p.description }}</p>
+
+          <!-- Features List -->
+          <ul class="list-unstyled flex-grow-1">
+            <!-- Usage Limits -->
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% if p.basic_launches_limit %}{{ p.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} basic validation launches/mo
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {{ p.included_credits|intcomma }} advanced validation credits/mo
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% if p.max_seats %}{{ p.max_seats }}{% else %}Unlimited{% endif %} team seats
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% if p.max_workflows %}{{ p.max_workflows }}{% else %}Unlimited{% endif %} workflows
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% if p.max_custom_validators %}{{ p.max_custom_validators }}{% else %}Unlimited{% endif %} custom validators
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {{ p.max_payload_mb }} MB max payload
+            </li>
+            <li class="mb-2">
+              {% if p.has_integrations %}
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% else %}
+              <i class="bi bi-x-circle text-muted me-2"></i>
+              {% endif %}
+              Third-party integrations
+            </li>
+            <li class="mb-2">
+              {% if p.has_audit_logs %}
+              <i class="bi bi-check-circle-fill text-success me-2"></i>
+              {% else %}
+              <i class="bi bi-x-circle text-muted me-2"></i>
+              {% endif %}
+              Audit logs
+            </li>
+          </ul>
+
+          <!-- Action Button -->
+          <div class="mt-auto pt-3">
+            {% if p.code == plan.code %}
+            <button class="btn btn-outline-secondary w-100" disabled>Current Plan</button>
+            {% elif p.code == "ENTERPRISE" %}
+            <a href="mailto:hello@validibot.com?subject=Enterprise%20Plan%20Inquiry" class="btn btn-outline-primary w-100">
+              Contact Sales
+            </a>
+            {% elif p.stripe_price_id %}
+            <a href="{% url 'billing:checkout' %}?plan={{ p.code }}" class="btn {% if p.display_order > plan.display_order %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+              {% if p.display_order > plan.display_order %}Upgrade{% else %}Switch Plan{% endif %}
+            </a>
+            {% else %}
+            <button class="btn btn-outline-secondary w-100" disabled>Coming Soon</button>
+            {% endif %}
           </div>
         </div>
       </div>
     </div>
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

@@ -1,6 +1,7 @@
 {% extends "marketing_base.html" %}
 
 {% load i18n %}
+{% load humanize %}
 
 {% block content %}
   <section class="container marketing-page pricing-page">
@@ -14,114 +15,93 @@
     </div>
 
     <div class="row g-4 justify-content-center">
+      {% for plan in all_plans %}
       <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-header text-bg-light text-center">
+        <div class="card h-100 shadow-sm {% if plan.code == 'TEAM' %}border-primary{% endif %}">
+          <div class="card-header {% if plan.code == 'TEAM' %}text-bg-primary{% else %}text-bg-light{% endif %} text-center">
             <h2 class="h5 mb-0">
-              {% trans "Starter" %}
+              {{ plan.name }}
             </h2>
           </div>
-          <div class="card-body text-center">
-            <div class="pricing-content">
+          <div class="card-body text-center d-flex flex-column">
+            <div class="pricing-content flex-grow-1">
+              {% if plan.monthly_price_dollars %}
               <p class="display-6 fw-bold mb-0">
-                $15
+                ${{ plan.monthly_price_dollars }}
               </p>
               <p class="text-muted">
                 {% trans "Per month" %}
               </p>
-              <ul class="list-unstyled text-start">
-                <li>
-                  {% trans "Up to 3 active workflows" %}
-                </li>
-                <li>
-                  {% trans "Community support" %}
-                </li>
-                <li>
-                  {% trans "Unlimited validation history" %}
-                </li>
-              </ul>
-            </div>
-            <div class="d-flex flex-row ">
-              <a class="btn btn-link" href="{% url 'marketing:pricing_starter' %}">{% trans "View plan details" %}</a>
-              {% if ACCOUNT_ALLOW_LOGIN %}
-                <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm  border-primary">
-          <div class="card-header text-bg-primary text-center">
-            <h2 class="h5 mb-0">
-              {% trans "Growth" %}
-            </h2>
-          </div>
-          <div class="card-body text-center">
-
-            <div class="pricing-content">
-              <p class="display-6 fw-bold mb-0">
-                $79
-              </p>
-              <p class="text-muted">
-                {% trans "Per month" %}
-              </p>
-              <ul class="list-unstyled text-start">
-                <li>
-                  {% trans "Unlimited workflows" %}
-                </li>
-                <li>
-                  {% trans "Advanced analytics" %}
-                </li>
-                <li>
-                  {% trans "Priority email support" %}
-                </li>
-              </ul>
-            </div>
-            <div class="d-flex flex-row ">
-              <a class="btn btn-link" href="{% url 'marketing:pricing_growth' %}">{% trans "View plan details" %}</a>
-              {% if ACCOUNT_ALLOW_LOGIN %}
-                <a class="btn btn-success  ms-auto" href="{% url 'account_signup' %}">{% trans "Start trial" %}</a>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm">
-          <div class="card-header text-bg-light text-center">
-            <h2 class="h5 mb-0">
-              {% trans "Enterprise" %}
-            </h2>
-          </div>
-          <div class="card-body text-center">
-
-            <div class="pricing-content">
+              {% else %}
               <p class="display-6 fw-bold mb-0">
                 {% trans "Contact Us" %}
               </p>
               <p class="text-muted">
-                {% trans "Custom billing" %}
+                {% trans "Custom pricing" %}
               </p>
+              {% endif %}
+
+              <p class="text-muted small mb-3">{{ plan.description }}</p>
+
               <ul class="list-unstyled text-start">
-                <li>
-                  {% trans "Dedicated onboarding" %}
+                <li class="mb-2">
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "basic validation launches/mo" %}
                 </li>
-                <li>
-                  {% trans "OAuth SSO" %}
+                <li class="mb-2">
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {{ plan.included_credits|intcomma }} {% trans "advanced validation credits/mo" %}
                 </li>
-                <li>
-                  {% trans "24/7 support" %}
+                <li class="mb-2">
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "team seats" %}
+                </li>
+                <li class="mb-2">
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {% if plan.max_workflows %}{{ plan.max_workflows }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "workflows" %}
+                </li>
+                <li class="mb-2">
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {{ plan.max_payload_mb }} MB {% trans "max payload" %}
+                </li>
+                <li class="mb-2">
+                  {% if plan.has_integrations %}
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {% else %}
+                  <i class="bi bi-x-circle text-muted me-2"></i>
+                  {% endif %}
+                  {% trans "Third-party integrations" %}
+                </li>
+                <li class="mb-2">
+                  {% if plan.has_audit_logs %}
+                  <i class="bi bi-check-circle-fill text-success me-2"></i>
+                  {% else %}
+                  <i class="bi bi-x-circle text-muted me-2"></i>
+                  {% endif %}
+                  {% trans "Audit logs" %}
                 </li>
               </ul>
             </div>
-            <div class="d-flex flex-row ">
-              <a class="btn btn-link" href="{% url 'marketing:pricing_enterprise' %}">{% trans "View plan details" %}</a>
+            <div class="d-flex flex-row mt-3">
+              {% if plan.code == "ENTERPRISE" %}
               <a class="btn btn-success ms-auto" href="{% url 'marketing:contact' %}">{% trans "Contact sales" %}</a>
+              {% elif ACCOUNT_ALLOW_LOGIN %}
+              <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
+              {% endif %}
             </div>
           </div>
         </div>
       </div>
+      {% endfor %}
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="text-center mt-5 pt-4">
+      <h2 class="h4 mb-3">{% trans "Questions?" %}</h2>
+      <p class="text-muted">
+        {% trans "Check out our" %} <a href="{% url 'marketing:faq' %}">{% trans "FAQ" %}</a>
+        {% trans "or" %} <a href="{% url 'marketing:contact' %}">{% trans "contact us" %}</a>.
+      </p>
     </div>
   </section>
 {% endblock content %}

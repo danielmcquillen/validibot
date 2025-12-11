@@ -38,11 +38,11 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Tier Summary
 
-|             | Starter | Team    | Enterprise       |
-| ----------- | ------- | ------- | ---------------- |
-| **Price**   | $29/mo  | $99/mo  | Contact us       |
-| **Seats**   | 2       | 10      | Custom           |
-| **Support** | Email   | Email   | Priority + Slack |
+|             | Starter | Team    | Enterprise         |
+| ----------- | ------- | ------- | ------------------ |
+| **Price**   | $29/mo  | $99/mo  | Contact us         |
+| **Seats**   | 2       | 10      | 100                |
+| **Support** | Email   | Email   | Priority + Slack   |
 
 **Trial:** All new organizations receive a 14-day free trial on Starter plan features. When the trial expires, users must subscribe to continue using the platform.
 
@@ -53,16 +53,16 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 | **Author workflows**         | ✅ Yes  | ✅ Yes  | ✅ Yes     |
 | **Use basic validators**     | ✅ Yes  | ✅ Yes  | ✅ Yes     |
 | **Use advanced validators**  | ✅ Yes  | ✅ Yes  | ✅ Yes     |
-| **Create custom validators** | 10      | 100     | Unlimited  |
-| **Validation workflows**     | 10      | 100     | Unlimited  |
+| **Create custom validators** | 10      | 100     | 1,000      |
+| **Validation workflows**     | 10      | 100     | 1,000      |
 | **Payload size limit**       | ≤ 5 MB  | ≤ 20 MB | ≤ 100 MB   |
 
 ### Usage Quotas
 
-|                                             | Starter | Team    | Enterprise |
-| ------------------------------------------- | ------- | ------- | ---------- |
-| **Basic workflow launches** (per month)     | 10,000  | 100,000 | Unlimited  |
-| **Advanced workflow credits** (included/mo) | 200     | 1,000   | 5,000+     |
+|                                             | Starter   | Team    | Enterprise  |
+| ------------------------------------------- | --------- | ------- | ----------- |
+| **Basic workflow launches** (per month)     | 10,000    | 100,000 | 1,000,000   |
+| **Advanced workflow credits** (included/mo) | 200       | 1,000   | 5,000       |
 
 **Basic workflow limits:** Hard monthly limits. When reached, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom percentage thresholds.
 
@@ -302,8 +302,8 @@ class BasicWorkflowMeter:
         counter = self._get_or_create_monthly_counter(org)
         limit = self._get_limit(org)
 
-        # Unlimited plans (Enterprise) have limit=None
-        if limit is not None and counter.basic_launches >= limit:
+        # All plans have concrete limits (Enterprise: 1M)
+        if counter.basic_launches >= limit:
             raise BasicWorkflowLimitExceeded(
                 detail=_(
                     "You've reached your monthly limit of %(limit)s basic workflow "
@@ -318,20 +318,18 @@ class BasicWorkflowMeter:
         # Check if any warning thresholds were crossed
         self._check_warning_thresholds(org, counter, limit)
 
-    def _get_limit(self, org: Organization) -> int | None:
-        """Get the basic workflow limit for an org (None = unlimited)."""
+    def _get_limit(self, org: Organization) -> int:
+        """Get the basic workflow limit for an org."""
         plan_limits = PLAN_LIMITS[org.subscription.plan]
         return plan_limits.basic_launches_limit
 
-    def _check_warning_thresholds(self, org: Organization, counter, limit: int | None) -> None:
+    def _check_warning_thresholds(self, org: Organization, counter, limit: int) -> None:
         """
         Send notifications when user-configured warning thresholds are crossed.
 
         Users can configure thresholds like [50, 80, 90] to get notified
         at 50%, 80%, and 90% of their limit.
         """
-        if limit is None:
-            return  # Unlimited plan, no warnings
 
         usage_percent = (counter.basic_launches / limit) * 100
         thresholds = org.subscription.warning_thresholds or [80, 90]
@@ -732,12 +730,12 @@ class PlanLimits:
 
     # Authoring limits
     can_author_workflows: bool
-    max_workflows: Optional[int]  # None = unlimited
-    max_custom_validators: Optional[int]
+    max_workflows: int
+    max_custom_validators: int
     max_payload_mb: int
 
     # Usage limits
-    basic_launches_limit: Optional[int]  # None = unlimited, hard cap blocks at limit
+    basic_launches_limit: int  # Hard cap blocks at limit
     advanced_credits_per_month: int
 
     # Seats
@@ -790,12 +788,12 @@ PLAN_LIMITS = {
     ),
     PricingPlan.ENTERPRISE: PlanLimits(
         can_author_workflows=True,
-        max_workflows=None,  # Unlimited
-        max_custom_validators=None,
+        max_workflows=1_000,  # 10× Team
+        max_custom_validators=1_000,  # 10× Team
         max_payload_mb=100,
-        basic_launches_limit=None,  # Unlimited
+        basic_launches_limit=1_000_000,  # 10× Team
         advanced_credits_per_month=5_000,  # Baseline, negotiable
-        included_seats=0,  # Custom, negotiated
+        included_seats=100,  # 10× Team
         has_integrations=True,
         has_audit_logs=True,
         dashboard_level="comprehensive",

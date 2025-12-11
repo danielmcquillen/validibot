@@ -148,9 +148,9 @@ if settings.ENABLE_PRICING_SECTION:
             name="pricing_starter",
         ),
         path(
-            "pricing/growth/",
-            views.PricingGrowthPageView.as_view(),
-            name="pricing_growth",
+            "pricing/team/",
+            views.PricingTeamPageView.as_view(),
+            name="pricing_team",
         ),
         path(
             "pricing/enterprise/",

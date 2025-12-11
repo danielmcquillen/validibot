@@ -55,6 +55,11 @@ nav:
       - Manage Organizations & Projects: organization_management.md
   - Integrations:
       - EnergyPlus Modal: integrations/energyplus_modal.md
+  - Billing & Stripe:
+      - Overview: billing/index.md
+      - Setup: billing/setup.md
+      - Testing: billing/testing.md
+      - Management: billing/management.md
   - Google Cloud:
       - Overview: google_cloud/index.md
       - Setup Cheatsheet: google_cloud/setup-cheatsheet.md

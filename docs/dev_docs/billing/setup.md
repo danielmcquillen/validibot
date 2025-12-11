@@ -1,35 +1,6 @@
-# Stripe Billing Integration
+# Stripe Setup
 
-Validibot uses Stripe for subscription billing, payment processing, and customer management.
-
-## Architecture Overview
-
-The billing system uses:
-
-- **dj-stripe** – Django library that syncs Stripe data to local models and handles webhooks
-- **Stripe Checkout** – Hosted payment pages (PCI compliant, no card handling)
-- **Stripe Customer Portal** – Self-service subscription management
-- **Django signals** – Webhook handlers respond to Stripe events
-
-### Key Models
-
-| Model | Purpose |
-|-------|---------|
-| `Plan` | Lookup table with plan limits (Starter, Team, Enterprise) |
-| `Subscription` | 1:1 with Organization, tracks status and credits |
-| `CreditPurchase` | Audit trail for credit pack purchases |
-| `UsageCounter` | Monthly usage tracking per organization |
-
-### Data Flow
-
-```
-User clicks "Subscribe"
-    → CheckoutStartView creates Stripe Checkout session
-    → User completes payment on Stripe
-    → Stripe sends webhook (checkout.session.completed)
-    → Webhook handler updates Subscription status to ACTIVE
-    → User redirected to success page
-```
+This guide covers setting up Stripe for both local development and production.
 
 ## Test Mode vs Live Mode
 
@@ -41,12 +12,13 @@ Stripe accounts have two completely separate modes:
 | **Live** | `pk_live_...`, `sk_live_...` | Production only. Real charges. |
 
 Each mode has its own:
+
 - API keys
 - Products and Prices (create separately in each mode)
 - Webhook endpoints
 - Customer and transaction data
 
-**Use test mode** for local dev and staging. **Use live mode** only in production.
+Use test mode for local dev and staging. Use live mode only in production.
 
 ## Environment Variables
 
@@ -65,11 +37,13 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD=id
 
 For local development, add these to `_envs/local/.django`.
 
+---
+
 ## Local Development Setup
 
 There are two parts to local Stripe setup:
 
-1. **API Keys** – Authenticate your Django app to call Stripe APIs (create checkouts, etc.)
+1. **API Keys** – Authenticate your Django app to call Stripe APIs
 2. **Webhook forwarding** – Route Stripe's webhook callbacks to your localhost
 
 ### 1. Get Stripe Test Keys
@@ -82,6 +56,7 @@ These keys let Django make API calls to Stripe.
 4. Copy the **Publishable key** (`pk_test_...`) and **Secret key** (`sk_test_...`)
 
 Add to `_envs/local/.django`:
+
 ```bash
 STRIPE_PUBLIC_KEY=pk_test_your_key_here
 STRIPE_SECRET_KEY=sk_test_your_key_here
@@ -110,6 +85,7 @@ stripe listen --forward-to localhost:8000/stripe/webhook/
 ```
 
 The CLI will display:
+
 ```
 > Ready! Your webhook signing secret is whsec_abc123...
 ```
@@ -123,7 +99,8 @@ The CLI will display:
    ```
 3. Then start Django (it needs this secret to verify incoming webhooks)
 
-**Note:** This secret changes each time you run `stripe listen`. If you restart the CLI, you'll need to update your env file and restart Django.
+!!! warning "Secret changes on restart"
+    This secret changes each time you run `stripe listen`. If you restart the CLI, you'll need to update your env file and restart Django.
 
 ### 4. Create Test Products and Prices
 
@@ -168,6 +145,8 @@ Plan.objects.filter(code="TEAM").update(stripe_price_id="price_yyy")
 
 Use any future expiry date and any 3-digit CVC.
 
+---
+
 ## Production Setup
 
 ### 1. Switch to Live Mode
@@ -176,11 +155,12 @@ In Stripe Dashboard, toggle to **Live mode** (top-right).
 
 ### 2. Create Live Products
 
-Repeat the product creation process in Live mode. Products and prices don't transfer between modes - you must create them separately.
+Repeat the product creation process in Live mode. Products and prices don't transfer between modes—you must create them separately.
 
 ### 3. Get Live API Keys
 
 Go to **Developers → API Keys** (in Live mode) and copy:
+
 - Publishable key (`pk_live_...`)
 - Secret key (`sk_live_...`)
 
@@ -221,33 +201,7 @@ DJSTRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_LIVE_MODE=True
 ```
 
-## Webhook Handlers
-
-Webhooks are handled in `validibot/billing/webhooks.py` using dj-stripe signals:
-
-| Event | Handler | Action |
-|-------|---------|--------|
-| `checkout.session.completed` | `handle_checkout_completed` | Activate subscription |
-| `customer.subscription.trial_will_end` | `handle_trial_ending` | (Future: send notification) |
-| `customer.subscription.updated` | `handle_subscription_updated` | Sync status changes |
-| `customer.subscription.deleted` | `handle_subscription_deleted` | Mark as canceled |
-| `invoice.paid` | `handle_invoice_paid` | Reset monthly credits |
-| `invoice.payment_failed` | `handle_payment_failed` | Mark as past due |
-
-### Testing Webhooks with CLI
-
-Trigger test events:
-
-```bash
-# Simulate successful checkout
-stripe trigger checkout.session.completed
-
-# Simulate payment failure
-stripe trigger invoice.payment_failed
-
-# Simulate subscription cancellation
-stripe trigger customer.subscription.deleted
-```
+---
 
 ## Troubleshooting
 
@@ -256,6 +210,7 @@ stripe trigger customer.subscription.deleted
 **Symptom**: 400 error on webhook endpoint
 
 **Causes**:
+
 1. Wrong `DJSTRIPE_WEBHOOK_SECRET` – ensure it matches (CLI secret for local, Dashboard secret for production)
 2. Secret changed – if you restarted `stripe listen`, the secret changed
 3. Using Dashboard secret locally – local dev must use the CLI secret
@@ -265,6 +220,7 @@ stripe trigger customer.subscription.deleted
 **Symptom**: Error when clicking Subscribe
 
 **Causes**:
+
 1. Missing `stripe_price_id` on Plan – update Plan with the Price ID from Stripe
 2. Invalid API key – verify `STRIPE_SECRET_KEY` is correct for the mode (test/live)
 3. Price not active – ensure the Price is active in Stripe Dashboard
@@ -274,6 +230,7 @@ stripe trigger customer.subscription.deleted
 **Symptom**: Payment succeeds but subscription stays in TRIALING
 
 **Causes**:
+
 1. Webhook not received – check `stripe listen` output or Dashboard → Webhooks
 2. Wrong webhook secret – verify `DJSTRIPE_WEBHOOK_SECRET`
 3. Handler error – check Django logs for exceptions
@@ -284,13 +241,13 @@ stripe trigger customer.subscription.deleted
 
 **Fix**: Enable Customer Portal in Settings → Billing → Customer portal
 
-## Code References
+### dj-stripe API Key Warning
 
-- [validibot/billing/models.py](../../../validibot/billing/models.py) – Plan, Subscription, UsageCounter models
-- [validibot/billing/webhooks.py](../../../validibot/billing/webhooks.py) – Webhook signal handlers
-- [validibot/billing/services.py](../../../validibot/billing/services.py) – BillingService for Stripe operations
-- [validibot/billing/metering.py](../../../validibot/billing/metering.py) – Usage enforcement
-- [validibot/billing/views.py](../../../validibot/billing/views.py) – Billing dashboard and checkout views
+**Symptom**: INFO message about missing API keys in database
+
+This is just informational. Environment variables are sufficient for basic use. Database key storage is only needed for advanced multi-tenant setups.
+
+---
 
 ## External Documentation
 

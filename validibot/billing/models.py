@@ -149,6 +149,19 @@ class Subscription(TimeStampedModel):
         default=SubscriptionStatus.TRIALING,
     )
 
+    # Signup intent tracking
+    # Stores the plan the user selected from pricing page during signup.
+    # Useful for: analytics, pre-selecting plan on trial-expired page,
+    # and understanding conversion intent vs actual subscription.
+    intended_plan = models.ForeignKey(
+        Plan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="intended_subscriptions",
+        help_text="Plan user selected from pricing page (may differ from actual plan).",
+    )
+
     # Trial tracking
     trial_started_at = models.DateTimeField(
         null=True,

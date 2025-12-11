@@ -86,9 +86,69 @@ Organization ──1:1── Subscription ──N:1── Plan
 - **Basic workflows**: Simple validations that count against the monthly limit. No credits consumed.
 - **Advanced workflows**: Compute-intensive operations (EnergyPlus, FMI) that consume credits.
 
+## Plan Model vs dj-stripe Models
+
+The billing system uses two separate data stores for plan information:
+
+| Model | Source | Purpose |
+|-------|--------|---------|
+| **Plan** (our model) | Django database | App-specific config: limits, features, display order |
+| **Product/Price** (dj-stripe) | Synced from Stripe | Payment processing: price IDs, billing intervals |
+
+There is **no foreign key** between them. The connection is a string reference:
+
+```python
+# Plan.stripe_price_id = "price_1ABC..." matches Stripe's Price ID
+```
+
+This separation is intentional:
+
+- **Plan** defines what customers get (10,000 launches, 2 seats)
+- **Price** defines what they pay ($29/month)
+- We control Plan; Stripe controls Price
+
+When creating a checkout session, we look up `plan.stripe_price_id` and pass it to Stripe. The enforcement logic only uses our Plan model—it never queries dj-stripe.
+
 ## Key Flows
 
-### Subscription Signup
+### Pricing → Signup → Checkout Flow
+
+The optimal conversion flow preserves plan selection through the signup process:
+
+```
+Pricing Page: User clicks "Start free trial" on Team plan
+    → /accounts/signup/?plan=TEAM
+
+Signup Page: Shows "You selected Team Plan" context card
+    → User creates account
+    → Plan stored in session, then on Subscription.intended_plan
+
+Post-Signup Redirect: AccountAdapter.get_signup_redirect_url()
+    → /app/billing/checkout/?plan=TEAM
+
+Checkout Page: Pre-selected Team plan, "Start 14-day free trial"
+    → Creates Stripe Checkout session with trial_period_days=14
+
+Trial Period: Full access for 14 days
+    → No payment collected yet
+
+Trial Ends: If not converted, redirect to trial-expired page
+    → Shows the intended_plan highlighted for easy conversion
+```
+
+This flow is handled by:
+
+- [validibot/users/adapters.py](../../../validibot/users/adapters.py) – `AccountAdapter` captures plan and redirects
+- [validibot/users/context_processors.py](../../../validibot/users/context_processors.py) – `signup_plan_context()` adds plan to templates
+- [validibot/templates/account/signup.html](../../../validibot/templates/account/signup.html) – Two-column signup with plan card
+
+The `intended_plan` field on Subscription stores which plan the user selected from pricing, even if they don't immediately subscribe. This helps with:
+
+- Highlighting their original choice on trial-expired page
+- Analytics on conversion by plan selection
+- Personalized follow-up messaging
+
+### Direct Subscription Signup
 
 ```
 User clicks "Subscribe"

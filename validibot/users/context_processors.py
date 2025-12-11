@@ -90,3 +90,28 @@ def allauth_settings(request):
     return {
         "ACCOUNT_ALLOW_REGISTRATION": settings.ACCOUNT_ALLOW_REGISTRATION,
     }
+
+
+def signup_plan_context(request):
+    """
+    Provide selected plan context for signup/login pages.
+
+    When users come from the pricing page with a ?plan= parameter,
+    this captures the plan info and makes it available in templates
+    to show "You selected the Team plan" messaging.
+    """
+    from validibot.users.adapters import SELECTED_PLAN_SESSION_KEY
+    from validibot.users.adapters import get_selected_plan_from_session
+
+    # Capture plan from URL if present (GET request to signup page)
+    plan_code = request.GET.get("plan")
+    if plan_code:
+        request.session[SELECTED_PLAN_SESSION_KEY] = plan_code
+
+    # Get plan details from session for template
+    selected_plan = get_selected_plan_from_session(request)
+
+    return {
+        "signup_selected_plan": selected_plan,
+        "signup_selected_plan_code": request.session.get(SELECTED_PLAN_SESSION_KEY),
+    }

@@ -86,7 +86,7 @@
               {% if plan.code == "ENTERPRISE" %}
               <a class="btn btn-success ms-auto" href="{% url 'marketing:contact' %}">{% trans "Contact sales" %}</a>
               {% elif ACCOUNT_ALLOW_LOGIN %}
-              <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}">{% trans "Get started" %}</a>
+              <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}?plan={{ plan.code }}">{% trans "Start free trial" %}</a>
               {% endif %}
             </div>
           </div>

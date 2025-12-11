@@ -1,11 +1,12 @@
 {% extends "app_base.html" %}
+{% load humanize %}
 
 {% block title %}Trial Expired - Validibot{% endblock %}
 
 {% block content %}
 <div class="container py-5">
   <div class="row justify-content-center">
-    <div class="col-md-8 text-center">
+    <div class="col-md-10 text-center">
       <h1 class="mb-4">Your Trial Has Ended</h1>
       <p class="lead mb-4">
         Thank you for trying Validibot! Your 14-day trial has concluded.
@@ -13,7 +14,7 @@
       </p>
 
       {% if usage %}
-      <div class="card mb-4">
+      <div class="card mb-4 mx-auto" style="max-width: 400px;">
         <div class="card-body">
           <h5>During your trial, you used:</h5>
           <p class="h3 mb-0">{{ usage.used|default:0 }} workflow launches</p>
@@ -21,34 +22,64 @@
       </div>
       {% endif %}
 
+      {% if subscription.intended_plan %}
+      <div class="alert alert-info mb-4">
+        <i class="bi bi-info-circle me-2"></i>
+        You originally selected the <strong>{{ subscription.intended_plan.name }}</strong> plan.
+        We've highlighted it below.
+      </div>
+      {% endif %}
+
       <div class="row justify-content-center mb-4">
         {% for plan in all_plans %}
         {% if plan.stripe_price_id %}
         <div class="col-md-4 mb-3">
-          <div class="card h-100">
-            <div class="card-header">
-              <h5 class="mb-0">{{ plan.name }}</h5>
+          {# Highlight the intended plan with a border and badge #}
+          {% with is_intended=subscription.intended_plan and plan.code == subscription.intended_plan.code %}
+          <div class="card h-100 {% if is_intended %}border-primary border-2{% endif %}">
+            <div class="card-header {% if is_intended %}bg-primary text-white{% endif %}">
+              <h5 class="mb-0">
+                {{ plan.name }}
+                {% if is_intended %}
+                <span class="badge bg-white text-primary ms-2">Your Selection</span>
+                {% endif %}
+              </h5>
             </div>
             <div class="card-body">
               <p class="h3">
-                {% if plan.monthly_price_cents %}
-                ${{ plan.monthly_price_cents|floatformat:-2 }}<small>/mo</small>
+                {% if plan.monthly_price_dollars %}
+                ${{ plan.monthly_price_dollars }}<small class="text-muted">/mo</small>
                 {% else %}
                 Contact Us
                 {% endif %}
               </p>
               <ul class="list-unstyled text-start">
-                <li>{% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} launches/mo</li>
-                <li>{{ plan.included_credits|intcomma }} credits included</li>
-                <li>{% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats</li>
+                <li class="mb-1">
+                  <i class="bi bi-check text-success me-1"></i>
+                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} launches/mo
+                </li>
+                <li class="mb-1">
+                  <i class="bi bi-check text-success me-1"></i>
+                  {{ plan.included_credits|intcomma }} credits included
+                </li>
+                <li class="mb-1">
+                  <i class="bi bi-check text-success me-1"></i>
+                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats
+                </li>
               </ul>
             </div>
-            <div class="card-footer">
-              <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}" class="btn btn-primary w-100">
-                Subscribe Now
+            <div class="card-footer bg-transparent">
+              <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}"
+                 class="btn {% if is_intended %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                {% if is_intended %}
+                  Continue with {{ plan.name }}
+                {% else %}
+                  Subscribe Now
+                {% endif %}
               </a>
             </div>
           </div>
+          {% endwith %}
         </div>
         {% endif %}
         {% endfor %}

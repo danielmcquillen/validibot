@@ -26,6 +26,11 @@ a {
       height: 100%;
     }
   }
+
+  // Wider variant for signup with plan context (two-column layout)
+  &--wide .card {
+    max-width: 56rem;
+  }
 }
 
 #messages {

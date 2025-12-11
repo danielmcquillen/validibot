@@ -84,10 +84,11 @@ else:
 
 # EMAIL
 # ------------------------------------------------------------------------------
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-host
-EMAIL_HOST = "localhost"
-# https://docs.djangoproject.com/en/dev/ref/settings/#email-port
-EMAIL_PORT = 1025
+# Console backend prints emails to terminal (no mail server needed)
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# To use Mailpit instead, comment above and uncomment below, then run `mailpit`
+# EMAIL_HOST = "localhost"
+# EMAIL_PORT = 1025
 
 # WhiteNoise
 # ------------------------------------------------------------------------------

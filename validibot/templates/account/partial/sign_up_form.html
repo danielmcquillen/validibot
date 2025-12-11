@@ -13,7 +13,15 @@
                name="{{ redirect_field_name }}"
                value="{{ redirect_field_value }}" />
     {% endif %}
+    {% if signup_selected_plan_code %}
+        {# Preserve selected plan through form submission for post-signup redirect #}
+        <input type="hidden" name="plan" value="{{ signup_selected_plan_code }}" />
+    {% endif %}
     <button id="sign_up_btn" class="btn btn-primary" type="submit">
-        {% trans "Sign Up" %} »
+        {% if signup_selected_plan %}
+            {% trans "Create Account & Start Trial" %} »
+        {% else %}
+            {% trans "Sign Up" %} »
+        {% endif %}
     </button>
 </form>

@@ -267,6 +267,7 @@ TEMPLATES = [
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
                 "validibot.users.context_processors.allauth_settings",
+                "validibot.users.context_processors.signup_plan_context",
                 "validibot.core.context_processors.site_feature_settings",
                 "validibot.users.context_processors.organization_context",
                 "validibot.notifications.context_processors.notifications_context",

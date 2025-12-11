@@ -243,9 +243,23 @@ STRIPE_LIVE_MODE=True
 
 ### dj-stripe API Key Warning
 
-**Symptom**: INFO message about missing API keys in database
+**Symptom**: INFO message like "Could not find an API key for stripe. Add one to your database."
 
-This is just informational. Environment variables are sufficient for basic use. Database key storage is only needed for advanced multi-tenant setups.
+dj-stripe can optionally store API keys in the database (for multi-tenant setups). For single-tenant use, you can ignore this warning—the `STRIPE_SECRET_KEY` environment variable is sufficient.
+
+If you want to silence the warning, add the key to the database:
+
+```bash
+# Via Django admin
+# Go to /admin/djstripe/apikey/ and add your key
+
+# Or via shell
+uv run python manage.py shell
+>>> from djstripe.models import APIKey
+>>> APIKey.objects.create(secret="sk_test_...", livemode=False)
+```
+
+The `livemode=False` is important for test keys. For production, use `livemode=True` with your `sk_live_...` key.
 
 ---
 

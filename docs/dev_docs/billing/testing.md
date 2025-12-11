@@ -29,7 +29,23 @@ stripe listen --forward-to localhost:8000/stripe/webhook/
 
 Use any future expiry date and any 3-digit CVC.
 
-### Testing Checkout Flow
+### Testing Pricing → Signup → Checkout Flow
+
+This tests the full conversion funnel from pricing page through signup to checkout:
+
+1. Visit `/pricing/` (not logged in)
+2. Click "Start free trial" on a plan (e.g., Team)
+3. Verify you're redirected to `/accounts/signup/?plan=TEAM`
+4. On signup page, verify:
+   - Right column shows "You selected Team Plan" with plan details
+   - "What happens next" steps are visible
+5. Complete signup with email/password
+6. Verify you're redirected to `/app/billing/checkout/?plan=TEAM`
+7. Verify checkout page has Team plan pre-selected
+8. Complete checkout with test card
+9. Verify subscription is now ACTIVE
+
+### Testing Checkout Flow (Direct)
 
 1. Log in and navigate to `/app/billing/`
 2. Click "Upgrade" on a plan with a `stripe_price_id`
@@ -60,18 +76,27 @@ stripe trigger customer.subscription.trial_will_end
 !!! note "CLI triggers vs real events"
     CLI-triggered events have synthetic data that won't match your database. Use them to verify webhook handlers work, but test the full flow for end-to-end validation.
 
-### Testing Trial Expiration
+### Testing Trial Expiration and Intended Plan
 
 1. Create an org with a subscription in TRIALING status
-2. Set `trial_ends_at` to a past date:
+2. Set an intended plan (simulating user came from pricing page):
+   ```python
+   from validibot.billing.models import Plan
+   sub.intended_plan = Plan.objects.get(code="TEAM")
+   sub.save()
+   ```
+3. Set `trial_ends_at` to a past date:
    ```python
    from django.utils import timezone
-   sub = org.subscription
    sub.trial_ends_at = timezone.now() - timezone.timedelta(days=1)
    sub.save()
    ```
-3. Try to access any `/app/` page
-4. Verify redirect to `/app/billing/trial-expired/`
+4. Try to access any `/app/` page
+5. Verify redirect to `/app/billing/trial-expired/`
+6. Verify the intended plan (Team) is highlighted with:
+   - Blue border (`border-primary`)
+   - "Your Selection" badge
+   - "Continue with Team" button text
 
 ### Testing Billing Limits
 
@@ -270,6 +295,14 @@ class TestCheckoutCompletedWebhook:
 ## Testing Checklist
 
 Use this checklist when testing billing changes:
+
+### Signup & Conversion Flow
+- [ ] Pricing page "Start free trial" links include `?plan=CODE`
+- [ ] Signup page shows plan context card when `?plan=` present
+- [ ] Hidden `plan` input preserved through signup form POST
+- [ ] Post-signup redirect goes to `/app/billing/checkout/?plan=CODE`
+- [ ] `intended_plan` saved on Subscription after signup
+- [ ] Trial-expired page highlights intended plan
 
 ### Subscription Flow
 - [ ] New org starts with TRIALING status

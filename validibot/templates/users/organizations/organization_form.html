@@ -11,24 +11,65 @@
 
 {% block app_content %}
   <div class="container-fluid" id="organization-form">
+    <div class="app-content-header-bar row align-items-center mb-3">
+      <div class="col-12 col-lg-8">
+        {% if object %}
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item">
+              <a href="{% url 'users:organization-detail' object.pk %}">{{ object.name }}</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{% trans "Edit" %}</li>
+          </ol>
+        </nav>
+        {% endif %}
+        <h1 class="app-page-title mb-1">
+          {% if object %}
+            {% blocktrans with name=object.name %}Edit {{ name }}{% endblocktrans %}
+          {% else %}
+            {% trans "Create organization" %}
+          {% endif %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% if object %}
+            {% trans "Update organization settings" %}
+          {% else %}
+            {% trans "Set up a new organization" %}
+          {% endif %}
+        </p>
+      </div>
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
+        {% if object %}
+        <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>
+          {% trans "Back" %}
+        </a>
+        {% else %}
+        <a href="{% url 'users:organization-list' %}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>
+          {% trans "Back" %}
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="row">
       <div class="col-12 col-lg-8">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h1 class="h4 mb-3">
-              {% if object %}
-                {% blocktrans with name=object.name %}Edit {{ name }}{% endblocktrans %}
-              {% else %}
-                {% trans "Create organization" %}
-              {% endif %}
-            </h1>
             <form method="post" novalidate>
               {% csrf_token %}
               {{ form|crispy }}
               <div class="d-flex justify-content-end gap-2 mt-3">
+                {% if object %}
+                <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-outline-secondary">
+                  {% trans "Cancel" %}
+                </a>
+                {% else %}
                 <a href="{% url 'users:organization-list' %}" class="btn btn-outline-secondary">
                   {% trans "Cancel" %}
                 </a>
+                {% endif %}
                 <button type="submit" class="btn btn-primary">
                   {% trans "Save" %}
                 </button>

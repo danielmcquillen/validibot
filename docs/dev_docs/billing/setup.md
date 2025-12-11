@@ -107,23 +107,50 @@ The CLI will display:
 In the Stripe Dashboard (ensure **Test mode** is active):
 
 1. Go to **Product catalog → Add product**
-2. Create products for each plan:
 
-| Product Name | Price | Billing |
-|--------------|-------|---------|
-| Validibot Starter | $29/month | Recurring |
-| Validibot Team | $99/month | Recurring |
+2. Create the **Starter** product:
+   - Name: `Validibot Starter`
+   - Pricing: `$29/month`, Recurring
+   - **Metadata** (expand "Additional options" section):
+     - Key: `plan_code`
+     - Value: `STARTER`
 
-3. After creating each product, copy the **Price ID** (`price_...`) from the product details page
+3. Create the **Team** product:
+   - Name: `Validibot Team`
+   - Pricing: `$99/month`, Recurring
+   - **Metadata**:
+     - Key: `plan_code`
+     - Value: `TEAM`
 
-4. Update the Plan records in Django:
+!!! tip "Adding Metadata in Stripe Dashboard"
+    When creating or editing a product, scroll down to find **Additional options** or **Metadata**. Click to expand, then add a key-value pair. The `plan_code` metadata is how our `link_stripe_prices` command matches Stripe prices to Validibot plans.
 
-```python
-# In Django shell: uv run python manage.py shell
-from validibot.billing.models import Plan
+4. Sync Stripe data to Django and link prices:
 
-Plan.objects.filter(code="STARTER").update(stripe_price_id="price_xxx")
-Plan.objects.filter(code="TEAM").update(stripe_price_id="price_yyy")
+```bash
+# Sync Stripe Products/Prices to dj-stripe models
+uv run python manage.py djstripe_sync_models Price
+
+# Link Stripe Prices to our Plan model (preview first)
+uv run python manage.py link_stripe_prices --dry-run
+
+# Apply the linking
+uv run python manage.py link_stripe_prices
+```
+
+You should see output like:
+
+```
+Found price for STARTER: price_1ABC... ($29.00/month)
+Found price for TEAM: price_1XYZ... ($99.00/month)
+
+Linking Plans to Prices:
+------------------------------------------------------------
+  Starter: (none) → price_1ABC...
+  Team: (none) → price_1XYZ...
+  Enterprise: Skipped (no price - contact sales)
+
+Done!
 ```
 
 ### 5. Test the Flow
@@ -156,6 +183,15 @@ In Stripe Dashboard, toggle to **Live mode** (top-right).
 ### 2. Create Live Products
 
 Repeat the product creation process in Live mode. Products and prices don't transfer between modes—you must create them separately.
+
+Create the same products with metadata:
+
+| Product | Price | Metadata |
+|---------|-------|----------|
+| Validibot Starter | $29/month | `plan_code: STARTER` |
+| Validibot Team | $99/month | `plan_code: TEAM` |
+
+Then run `link_stripe_prices` in production to connect them.
 
 ### 3. Get Live API Keys
 
@@ -214,6 +250,37 @@ STRIPE_LIVE_MODE=True
 1. Wrong `DJSTRIPE_WEBHOOK_SECRET` – ensure it matches (CLI secret for local, Dashboard secret for production)
 2. Secret changed – if you restarted `stripe listen`, the secret changed
 3. Using Dashboard secret locally – local dev must use the CLI secret
+
+### Checkout Redirects Back to Plans Page
+
+**Symptom**: Clicking "Subscribe" redirects back to the Plans page with an error message
+
+**Causes**:
+
+1. **Missing `stripe_price_id` on Plan** – Most common cause. Link Plan to Stripe Price:
+   ```bash
+   # Sync Stripe data, then link
+   uv run python manage.py djstripe_sync_models Price
+   uv run python manage.py link_stripe_prices
+
+   # Or via Django shell
+   from validibot.billing.models import Plan
+   Plan.objects.filter(code="TEAM").update(stripe_price_id="price_xxx")
+   ```
+
+2. **Missing `STRIPE_SECRET_KEY`** – Verify the key is set:
+   ```python
+   from django.conf import settings
+   print(settings.STRIPE_SECRET_KEY[:10])  # Should show sk_test_... or sk_live_...
+   ```
+
+3. **Invalid Stripe Price ID** – The Price ID must exist and be active in Stripe Dashboard
+
+**Error messages you might see**:
+
+- "This plan is not yet available for purchase" – Missing `stripe_price_id`
+- "Payment processing is not currently available" – Missing `STRIPE_SECRET_KEY`
+- "Unable to start checkout" – Stripe API error (check logs for details)
 
 ### Checkout Session Not Creating
 

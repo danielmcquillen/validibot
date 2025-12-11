@@ -111,7 +111,7 @@ When creating a checkout session, we look up `plan.stripe_price_id` and pass it 
 
 ## Key Flows
 
-### Pricing → Signup → Checkout Flow
+### Pricing → Signup → Billing Flow
 
 The optimal conversion flow preserves plan selection through the signup process:
 
@@ -124,12 +124,15 @@ Signup Page: Shows "You selected Team Plan" context card
     → Plan stored in session, then on Subscription.intended_plan
 
 Post-Signup Redirect: AccountAdapter.get_signup_redirect_url()
-    → /app/billing/checkout/?plan=TEAM
+    → /app/billing/?welcome=1&plan=TEAM
 
-Checkout Page: Pre-selected Team plan, "Start 14-day free trial"
-    → Creates Stripe Checkout session with trial_period_days=14
+Billing Dashboard: Shows welcome message and plan options
+    → User sees trial countdown (14 days)
+    → Can "Subscribe Now" to skip trial, or continue free trial
+    → Persistent trial banner shown on all app pages
 
 Trial Period: Full access for 14 days
+    → Trial banner shows days remaining
     → No payment collected yet
 
 Trial Ends: If not converted, redirect to trial-expired page
@@ -140,13 +143,19 @@ This flow is handled by:
 
 - [validibot/users/adapters.py](../../../validibot/users/adapters.py) – `AccountAdapter` captures plan and redirects
 - [validibot/users/context_processors.py](../../../validibot/users/context_processors.py) – `signup_plan_context()` adds plan to templates
+- [validibot/billing/context_processors.py](../../../validibot/billing/context_processors.py) – `trial_banner_context()` provides trial status
 - [validibot/templates/account/signup.html](../../../validibot/templates/account/signup.html) – Two-column signup with plan card
+- [validibot/templates/billing/partial/trial_banner.html](../../../validibot/templates/billing/partial/trial_banner.html) – Persistent trial banner
 
 The `intended_plan` field on Subscription stores which plan the user selected from pricing, even if they don't immediately subscribe. This helps with:
 
 - Highlighting their original choice on trial-expired page
 - Analytics on conversion by plan selection
 - Personalized follow-up messaging
+
+### Skip Trial Option
+
+Users can skip the 14-day trial and pay immediately by clicking "Subscribe Now" on the billing dashboard. This passes `skip_trial=1` to the checkout URL, which creates a Stripe subscription without a trial period.
 
 ### Direct Subscription Signup
 

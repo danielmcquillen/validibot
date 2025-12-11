@@ -1,73 +1,133 @@
 {% extends "app_base.html" %}
-{% load crispy_forms_tags %}
-{% load humanize %}
+{% load i18n crispy_forms_tags humanize %}
 
-{% block title %}Billing - {{ org.name }}{% endblock %}
+{% block title %}Subscription - {{ org.name }}{% endblock %}
 
-{% block content %}
-<div class="container-fluid py-4">
-  <div class="row">
-    <div class="col-12">
-      <h1 class="mb-4">Billing & Subscription</h1>
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+<div class="container-fluid" id="billing-dashboard">
+  {% if is_welcome %}
+  <!-- Welcome Banner for New Signups -->
+  <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+    <div class="d-flex align-items-center">
+      <i class="bi bi-check-circle-fill fs-3 me-3"></i>
+      <div>
+        <h4 class="alert-heading mb-1">{% trans "Welcome to Validibot!" %}</h4>
+        <p class="mb-0">
+          {% blocktrans trimmed with days=trial_days_remaining %}
+            Your account is ready. You have <strong>{{ days }} days</strong> to explore
+            all features with your free trial.
+          {% endblocktrans %}
+          {% if selected_plan_code %}
+            {% blocktrans with plan=selected_plan_code %}
+              You selected the <strong>{{ plan }}</strong> plan.
+            {% endblocktrans %}
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+  </div>
+  {% endif %}
+
+  <div class="app-content-header-bar row">
+    <div class="app-content-header col-12 col-lg-6 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+      <h1 class="app-page-title">
+        <i class="bi bi-credit-card me-2"></i>
+        {% trans "Subscription" %}
+      </h1>
+    </div>
+    <div class="col-12 col-lg-6 d-flex justify-content-lg-end gap-2 p-0">
+      {% if is_trial and can_upgrade %}
+      <a href="{% url 'billing:plans' %}" class="btn btn-primary">
+        <i class="bi bi-arrow-up-circle me-1"></i>
+        {% trans "View Plans" %}
+      </a>
+      {% endif %}
+      {% if subscription.stripe_customer_id %}
+      <a href="{% url 'billing:portal' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-gear me-1"></i>
+        {% trans "Manage Subscription" %}
+      </a>
+      {% endif %}
     </div>
   </div>
 
-  <!-- Subscription Status Card -->
-  <div class="row mb-4">
-    <div class="col-md-6">
-      <div class="card">
+  <div class="row g-4">
+    <!-- Subscription Status Card -->
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100">
         <div class="card-header">
-          <h5 class="mb-0">Current Plan</h5>
+          <h5 class="mb-0">{% trans "Current Plan" %}</h5>
         </div>
         <div class="card-body">
           <h3 class="mb-2">{{ plan.name }}</h3>
           <p class="text-muted">{{ plan.description }}</p>
 
           {% if is_trial %}
-          <div class="alert alert-info">
-            <strong>Trial Period:</strong> {{ trial_days_remaining }} days remaining
+          <div class="alert alert-info mb-3">
+            <i class="bi bi-clock me-2"></i>
+            <strong>{% trans "Trial Period:" %}</strong>
+            {% blocktrans count days=trial_days_remaining %}
+              {{ days }} day remaining
+            {% plural %}
+              {{ days }} days remaining
+            {% endblocktrans %}
           </div>
           {% endif %}
 
           <dl class="row mb-0">
-            <dt class="col-sm-6">Status</dt>
-            <dd class="col-sm-6">
+            <dt class="col-sm-5 text-muted">{% trans "Status" %}</dt>
+            <dd class="col-sm-7">
               <span class="badge {% if subscription.status == 'ACTIVE' %}bg-success{% elif is_trial %}bg-info{% else %}bg-warning{% endif %}">
                 {{ subscription.get_status_display }}
               </span>
             </dd>
 
             {% if plan.monthly_price_dollars %}
-            <dt class="col-sm-6">Price</dt>
-            <dd class="col-sm-6">${{ plan.monthly_price_dollars }}/month</dd>
+            <dt class="col-sm-5 text-muted">{% trans "Price" %}</dt>
+            <dd class="col-sm-7">${{ plan.monthly_price_dollars }}/{% trans "month" %}</dd>
             {% endif %}
+
+            <dt class="col-sm-5 text-muted">{% trans "Team Seats" %}</dt>
+            <dd class="col-sm-7">
+              {% if plan.max_seats %}{{ plan.max_seats }}{% else %}{% trans "Unlimited" %}{% endif %}
+            </dd>
+
+            <dt class="col-sm-5 text-muted">{% trans "Launches/month" %}</dt>
+            <dd class="col-sm-7">
+              {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}{% trans "Unlimited" %}{% endif %}
+            </dd>
           </dl>
         </div>
+        {% if is_trial and can_upgrade %}
         <div class="card-footer">
-          {% if can_upgrade %}
-          <a href="{% url 'billing:checkout' %}?plan=TEAM" class="btn btn-primary">
-            Upgrade Plan
+          <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}&skip_trial=1" class="btn btn-primary">
+            <i class="bi bi-arrow-up-circle me-1"></i>
+            {% trans "Subscribe Now" %}
           </a>
-          {% endif %}
-          {% if subscription.stripe_customer_id %}
-          <a href="{% url 'billing:portal' %}" class="btn btn-outline-secondary">
-            Manage Subscription
+          <a href="{% url 'billing:plans' %}" class="btn btn-outline-secondary ms-2">
+            <i class="bi bi-grid me-1"></i>
+            {% trans "View Plans" %}
           </a>
-          {% endif %}
         </div>
+        {% endif %}
       </div>
     </div>
 
     <!-- Usage Card -->
-    <div class="col-md-6">
-      <div class="card">
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm h-100">
         <div class="card-header">
-          <h5 class="mb-0">Usage This Period</h5>
+          <h5 class="mb-0">{% trans "Usage This Period" %}</h5>
         </div>
         <div class="card-body">
-          <h6>Basic Workflow Launches</h6>
+          <h6>{% trans "Basic Workflow Launches" %}</h6>
           {% if basic_usage.unlimited %}
-          <p class="h4">{{ basic_usage.used|default:0|intcomma }} <small class="text-muted">/ Unlimited</small></p>
+          <p class="h4">{{ basic_usage.used|default:0|intcomma }} <small class="text-muted">/ {% trans "Unlimited" %}</small></p>
           {% else %}
           <p class="h4">{{ basic_usage.used|default:0|intcomma }} <small class="text-muted">/ {{ basic_usage.limit|intcomma }}</small></p>
           <div class="progress mb-3" style="height: 8px;">
@@ -81,121 +141,15 @@
           </div>
           {% endif %}
 
-          <h6 class="mt-4">Credits Balance</h6>
+          <h6 class="mt-4">{% trans "Credits Balance" %}</h6>
           <p class="h4">{{ credits_balance|intcomma }}</p>
           <small class="text-muted">
-            {{ subscription.included_credits_remaining|intcomma }} included +
-            {{ subscription.purchased_credits_balance|intcomma }} purchased
+            {{ subscription.included_credits_remaining|intcomma }} {% trans "included" %} +
+            {{ subscription.purchased_credits_balance|intcomma }} {% trans "purchased" %}
           </small>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- Plan Cards -->
-  <div class="row mb-4">
-    <div class="col-12">
-      <h2 class="h4 mb-3">Choose a Plan</h2>
-      <p class="text-muted mb-4">Simple, transparent pricing for teams of every size.</p>
-    </div>
-  </div>
-
-  <div class="row">
-    {% for p in all_plans %}
-    <div class="col-md-4 mb-4">
-      <div class="card h-100 {% if p.code == plan.code %}border-primary{% endif %}">
-        <!-- Card Header -->
-        <div class="card-header text-center py-3 {% if p.code == 'TEAM' %}bg-primary text-white{% else %}bg-light{% endif %}">
-          <h5 class="mb-0">{{ p.name }}</h5>
-        </div>
-
-        <div class="card-body d-flex flex-column">
-          <!-- Price -->
-          <div class="text-center mb-4">
-            {% if p.monthly_price_dollars %}
-            <span class="display-5 fw-bold">${{ p.monthly_price_dollars }}</span>
-            <span class="text-muted">/month</span>
-            {% else %}
-            <span class="h3 fw-bold">Contact Us</span>
-            <br><small class="text-muted">Custom pricing</small>
-            {% endif %}
-          </div>
-
-          <!-- Current Plan Badge -->
-          {% if p.code == plan.code %}
-          <div class="text-center mb-3">
-            <span class="badge bg-primary">Current Plan</span>
-          </div>
-          {% endif %}
-
-          <!-- Description -->
-          <p class="text-muted small mb-4">{{ p.description }}</p>
-
-          <!-- Features List -->
-          <ul class="list-unstyled flex-grow-1">
-            <!-- Usage Limits -->
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% if p.basic_launches_limit %}{{ p.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} basic validation launches/mo
-            </li>
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {{ p.included_credits|intcomma }} advanced validation credits/mo
-            </li>
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% if p.max_seats %}{{ p.max_seats }}{% else %}Unlimited{% endif %} team seats
-            </li>
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% if p.max_workflows %}{{ p.max_workflows }}{% else %}Unlimited{% endif %} workflows
-            </li>
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% if p.max_custom_validators %}{{ p.max_custom_validators }}{% else %}Unlimited{% endif %} custom validators
-            </li>
-            <li class="mb-2">
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {{ p.max_payload_mb }} MB max payload
-            </li>
-            <li class="mb-2">
-              {% if p.has_integrations %}
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% else %}
-              <i class="bi bi-x-circle text-muted me-2"></i>
-              {% endif %}
-              Third-party integrations
-            </li>
-            <li class="mb-2">
-              {% if p.has_audit_logs %}
-              <i class="bi bi-check-circle-fill text-success me-2"></i>
-              {% else %}
-              <i class="bi bi-x-circle text-muted me-2"></i>
-              {% endif %}
-              Audit logs
-            </li>
-          </ul>
-
-          <!-- Action Button -->
-          <div class="mt-auto pt-3">
-            {% if p.code == plan.code %}
-            <button class="btn btn-outline-secondary w-100" disabled>Current Plan</button>
-            {% elif p.code == "ENTERPRISE" %}
-            <a href="mailto:hello@validibot.com?subject=Enterprise%20Plan%20Inquiry" class="btn btn-outline-primary w-100">
-              Contact Sales
-            </a>
-            {% elif p.stripe_price_id %}
-            <a href="{% url 'billing:checkout' %}?plan={{ p.code }}" class="btn {% if p.display_order > plan.display_order %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
-              {% if p.display_order > plan.display_order %}Upgrade{% else %}Switch Plan{% endif %}
-            </a>
-            {% else %}
-            <button class="btn btn-outline-secondary w-100" disabled>Coming Soon</button>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
 </div>
-{% endblock %}
+{% endblock app_content %}

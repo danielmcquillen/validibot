@@ -67,7 +67,40 @@ PLAN_CONFIG = {
 
 ## Managing Stripe Price IDs
 
-After creating products in Stripe, you need to link them to plans.
+The `seed_plans` command handles both plan creation AND Stripe linking in one step.
+
+After creating products in Stripe with proper metadata, just run:
+
+```bash
+uv run python manage.py djstripe_sync_models Price  # Sync from Stripe
+uv run python manage.py seed_plans                   # Seed plans + link
+```
+
+### How Stripe Linking Works
+
+The command matches Stripe Prices to Plans via product metadata:
+
+| Stripe Product | Metadata | Links To |
+|----------------|----------|----------|
+| Validibot Starter | `plan_code: STARTER` | Starter plan |
+| Validibot Team | `plan_code: TEAM` | Team plan |
+
+### Command Options
+
+```bash
+uv run python manage.py seed_plans              # Seed plans + link Stripe
+uv run python manage.py seed_plans --force      # Update existing plan limits
+uv run python manage.py seed_plans --skip-stripe  # Skip Stripe linking
+uv run python manage.py seed_plans --list-stripe  # List available Stripe prices
+```
+
+### Via Django Admin
+
+1. Navigate to `/admin/billing/plan/`
+2. Click on the plan to edit
+3. Copy the Price ID from Stripe Dashboard (`price_xxx`)
+4. Paste into `stripe_price_id` field
+5. Save
 
 ### Via Django Shell
 
@@ -87,15 +120,8 @@ for plan in Plan.objects.all():
     print(f"{plan.name}: {plan.stripe_price_id or 'Not configured'}")
 ```
 
-### Via Django Admin
-
-1. Navigate to `/admin/billing/plan/`
-2. Click on the plan to edit
-3. Enter the `stripe_price_id` from Stripe Dashboard
-4. Save
-
 !!! warning "Test vs Live Price IDs"
-    Remember that test mode and live mode have different Price IDs. Update the correct database for each environment.
+    Test mode and live mode have different Price IDs. Each environment (local, staging, production) needs its own linking.
 
 ---
 

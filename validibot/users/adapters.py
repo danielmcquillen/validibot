@@ -105,13 +105,15 @@ class AccountAdapter(DefaultAccountAdapter):
 
     def get_signup_redirect_url(self, request: HttpRequest) -> str:
         """
-        Redirect to checkout if user selected a plan from pricing page.
+        Redirect to billing dashboard after signup.
 
-        Creates a smooth flow: Pricing → Signup → Checkout → Trial
-        Instead of: Pricing → Signup → Dashboard (loses purchase intent)
+        Creates a smooth flow: Pricing → Signup → Billing Dashboard
+        The billing dashboard shows trial status and allows users to:
+        - See their trial countdown
+        - Review plan options
+        - Subscribe immediately (skip trial) or continue with trial
 
-        Also stores the intended plan on the subscription for analytics
-        and for pre-selecting on trial-expired page.
+        Also stores the intended plan on the subscription for analytics.
         """
         selected_plan = request.session.get(SELECTED_PLAN_SESSION_KEY)
 
@@ -127,8 +129,8 @@ class AccountAdapter(DefaultAccountAdapter):
                 # Store the intended plan on the subscription for analytics
                 self._store_intended_plan(request.user, selected_plan)
 
-                # Redirect to checkout with the selected plan
-                return f"{reverse('billing:checkout')}?plan={selected_plan}"
+                # Redirect to billing dashboard with welcome flag
+                return f"{reverse('billing:dashboard')}?welcome=1&plan={selected_plan}"
 
         # Default: redirect to standard login redirect
         return settings.LOGIN_REDIRECT_URL

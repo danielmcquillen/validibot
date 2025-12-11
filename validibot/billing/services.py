@@ -91,6 +91,7 @@ class BillingService:
         plan: Plan,
         success_url: str,
         cancel_url: str,
+        skip_trial: bool = False,
     ) -> str:
         """
         Create a Stripe Checkout session for subscription signup.
@@ -102,6 +103,7 @@ class BillingService:
             plan: The plan to subscribe to
             success_url: URL to redirect to after successful payment
             cancel_url: URL to redirect to if user cancels
+            skip_trial: If True, start subscription immediately without trial
 
         Raises:
             ValueError: If plan has no stripe_price_id configured
@@ -111,6 +113,18 @@ class BillingService:
             raise ValueError(msg)
 
         customer_id = self.get_or_create_stripe_customer(org)
+
+        # Build subscription_data based on whether user wants trial or not
+        subscription_data = {
+            "metadata": {
+                "org_id": str(org.id),
+                "plan_code": plan.code,
+            },
+        }
+
+        if not skip_trial:
+            # Default: 14-day free trial
+            subscription_data["trial_period_days"] = 14
 
         session = stripe.checkout.Session.create(
             customer=customer_id,
@@ -129,7 +143,9 @@ class BillingService:
             metadata={
                 "org_id": str(org.id),
                 "plan_code": plan.code,
+                "skip_trial": "1" if skip_trial else "0",
             },
+            subscription_data=subscription_data,
             # Allow promotion codes
             allow_promotion_codes=True,
             # Collect billing address for tax purposes
@@ -137,10 +153,11 @@ class BillingService:
         )
 
         logger.info(
-            "Created checkout session %s for org %s, plan %s",
+            "Created checkout session %s for org %s, plan %s, skip_trial=%s",
             session.id,
             org.name,
             plan.code,
+            skip_trial,
         )
 
         return session.url

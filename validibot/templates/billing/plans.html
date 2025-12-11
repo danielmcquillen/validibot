@@ -1,0 +1,166 @@
+{% extends "app_base.html" %}
+{% load i18n humanize %}
+
+{% block title %}Plans - {{ org.name }}{% endblock %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+<div class="container-fluid" id="billing-plans">
+  <div class="app-content-header-bar row">
+    <div class="app-content-header col-12 col-lg-6 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+      <h1 class="app-page-title">
+        <i class="bi bi-arrow-up-circle me-2"></i>
+        {% trans "Plans" %}
+      </h1>
+    </div>
+    <div class="col-12 col-lg-6 d-flex justify-content-lg-end gap-2 p-0">
+      <a href="{% url 'billing:dashboard' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>
+        {% trans "Back" %}
+      </a>
+    </div>
+  </div>
+
+  {% if is_trial %}
+  <div class="alert alert-info mb-4">
+    <i class="bi bi-clock me-2"></i>
+    {% blocktrans count days=trial_days_remaining %}
+      You have {{ days }} day remaining on your free trial.
+    {% plural %}
+      You have {{ days }} days remaining on your free trial.
+    {% endblocktrans %}
+    {% trans "Subscribe now to ensure uninterrupted access." %}
+  </div>
+  {% endif %}
+
+  <div class="row g-4 justify-content-center">
+    {% for p in all_plans %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card h-100 shadow-sm {% if p.code == plan.code %}border-primary{% endif %}">
+        <div class="card-header {% if p.code == plan.code %}text-bg-primary{% else %}text-bg-light{% endif %} text-center">
+          <h2 class="h5 mb-0">
+            {{ p.name }}
+            {% if p.code == plan.code %}
+            <span class="badge bg-light text-primary ms-2">{% trans "Current" %}</span>
+            {% endif %}
+          </h2>
+        </div>
+        <div class="card-body text-center d-flex flex-column">
+          <div class="pricing-content flex-grow-1">
+            {% if p.monthly_price_dollars %}
+            <p class="display-6 fw-bold mb-0">
+              ${{ p.monthly_price_dollars }}
+            </p>
+            <p class="text-muted">
+              {% trans "per month" %}
+            </p>
+            {% else %}
+            <p class="display-6 fw-bold mb-0">
+              {% trans "Contact Us" %}
+            </p>
+            <p class="text-muted">
+              {% trans "Custom pricing" %}
+            </p>
+            {% endif %}
+
+            <p class="text-muted small mb-3">{{ p.description }}</p>
+
+            <ul class="list-unstyled text-start">
+              <li class="mb-2">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {% if p.basic_launches_limit %}{{ p.basic_launches_limit|intcomma }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "basic launches/mo" %}
+              </li>
+              <li class="mb-2">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {{ p.included_credits|intcomma }} {% trans "advanced credits/mo" %}
+              </li>
+              <li class="mb-2">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {% if p.max_seats %}{{ p.max_seats }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "team seats" %}
+              </li>
+              <li class="mb-2">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {% if p.max_workflows %}{{ p.max_workflows }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "workflows" %}
+              </li>
+              <li class="mb-2">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {{ p.max_payload_mb }} MB {% trans "max payload" %}
+              </li>
+              <li class="mb-2">
+                {% if p.has_integrations %}
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {% else %}
+                <i class="bi bi-x-circle text-muted me-2"></i>
+                {% endif %}
+                {% trans "Third-party integrations" %}
+              </li>
+              <li class="mb-2">
+                {% if p.has_audit_logs %}
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                {% else %}
+                <i class="bi bi-x-circle text-muted me-2"></i>
+                {% endif %}
+                {% trans "Audit logs" %}
+              </li>
+            </ul>
+          </div>
+
+          <div class="mt-auto pt-3">
+            {% if p.code == plan.code %}
+              {# Current plan - show manage or current status #}
+              {% if subscription.stripe_subscription_id %}
+              <a href="{% url 'billing:portal' %}" class="btn btn-outline-primary w-100">
+                <i class="bi bi-gear me-1"></i>
+                {% trans "Manage Subscription" %}
+              </a>
+              {% else %}
+              <button class="btn btn-outline-secondary w-100" disabled>
+                <i class="bi bi-check me-1"></i>
+                {% trans "Current Plan" %}
+              </button>
+              {% endif %}
+            {% elif p.code == "ENTERPRISE" %}
+              {# Enterprise - contact sales #}
+              <a href="{% url 'marketing:contact' %}" class="btn btn-outline-primary w-100">
+                <i class="bi bi-envelope me-1"></i>
+                {% trans "Contact Sales" %}
+              </a>
+            {% elif p.stripe_price_id %}
+              {# Other plans with Stripe pricing #}
+              {% if subscription.stripe_subscription_id %}
+                {# Already paying - use portal to change plans #}
+                <a href="{% url 'billing:portal' %}" class="btn btn-primary w-100">
+                  <i class="bi bi-arrow-up-circle me-1"></i>
+                  {% trans "Change Plan" %}
+                </a>
+              {% else %}
+                {# Not yet paying - subscribe via checkout #}
+                <a href="{% url 'billing:checkout' %}?plan={{ p.code }}&skip_trial=1" class="btn btn-primary w-100">
+                  <i class="bi bi-credit-card me-1"></i>
+                  {% trans "Subscribe" %}
+                </a>
+              {% endif %}
+            {% else %}
+              {# Plan not yet available #}
+              <button class="btn btn-secondary w-100" disabled>
+                {% trans "Coming Soon" %}
+              </button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="text-center mt-5">
+    <p class="text-muted">
+      {% trans "Questions about pricing?" %}
+      <a href="{% url 'marketing:contact' %}">{% trans "Contact us" %}</a>
+    </p>
+  </div>
+</div>
+{% endblock app_content %}

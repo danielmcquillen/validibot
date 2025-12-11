@@ -1,0 +1,73 @@
+{# Trial banner - shown at bottom of app pages for users on trial #}
+{% load i18n %}
+
+{% if show_trial_banner %}
+<div class="trial-banner fixed-bottom bg-primary text-white py-2 px-3">
+  <div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <i class="bi bi-clock me-2"></i>
+        <strong>{% trans "Free Trial" %}:</strong>
+        {% if trial_days_remaining > 1 %}
+          {% blocktrans count days=trial_days_remaining %}
+            {{ days }} day remaining
+          {% plural %}
+            {{ days }} days remaining
+          {% endblocktrans %}
+        {% elif trial_days_remaining == 1 %}
+          {% trans "Last day!" %}
+        {% else %}
+          {% trans "Trial ending soon" %}
+        {% endif %}
+        {% if trial_plan_name %}
+          <span class="ms-2 d-none d-md-inline text-white-50">
+            ({{ trial_plan_name }} {% trans "plan" %})
+          </span>
+        {% endif %}
+      </div>
+      <div>
+        <a href="{% url 'billing:plans' %}" class="btn btn-sm btn-light me-2">
+          <i class="bi bi-credit-card me-1"></i>
+          {% trans "View Plans" %}
+        </a>
+        <button type="button"
+                class="btn btn-sm btn-outline-light trial-banner-dismiss"
+                data-bs-dismiss="alert"
+                aria-label="{% trans 'Dismiss' %}">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .trial-banner {
+    z-index: 1030;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+  }
+  /* Add padding to body to prevent content being hidden behind banner */
+  body.has-trial-banner {
+    padding-bottom: 60px;
+  }
+</style>
+
+<script>
+  // Add class to body for padding
+  document.body.classList.add('has-trial-banner');
+
+  // Handle dismiss (hide for current session)
+  document.querySelector('.trial-banner-dismiss')?.addEventListener('click', function() {
+    document.querySelector('.trial-banner')?.remove();
+    document.body.classList.remove('has-trial-banner');
+    // Store dismissal in session storage (reappears on new session)
+    sessionStorage.setItem('trial_banner_dismissed', 'true');
+  });
+
+  // Check if dismissed this session
+  if (sessionStorage.getItem('trial_banner_dismissed') === 'true') {
+    document.querySelector('.trial-banner')?.remove();
+    document.body.classList.remove('has-trial-banner');
+  }
+</script>
+{% endif %}

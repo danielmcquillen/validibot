@@ -356,6 +356,122 @@ class CustomerPortalViewTests(TestCase):
         self.assertEqual(response.url, "https://billing.stripe.com/portal/test")
 
 
+class CheckoutE2ETests(TestCase):
+    """
+    End-to-end integration tests for Stripe checkout flow.
+
+    These tests hit the real Stripe API (test mode) to verify the full flow.
+    They require STRIPE_TEST_SECRET_KEY to be configured.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        """Create test data with real Stripe price IDs."""
+        from validibot.billing.models import Plan
+
+        # Get actual Plans from database (created by seed_plans)
+        cls.starter_plan = Plan.objects.filter(code=PlanCode.STARTER).first()
+        cls.team_plan = Plan.objects.filter(code=PlanCode.TEAM).first()
+
+        # Create test user and org
+        cls.user = User.objects.create_user(
+            username="e2e_user",
+            email="e2e@example.com",
+            password="testpass123",  # noqa: S106
+        )
+        cls.org = Organization.objects.create(
+            name="E2E Test Org",
+            slug="e2e-test-org",
+        )
+        cls.membership = Membership.objects.create(
+            user=cls.user,
+            org=cls.org,
+            is_active=True,
+        )
+
+    def setUp(self):
+        """Set up client and login."""
+        from django.conf import settings
+
+        self.client = Client()
+        self.client.login(email="e2e@example.com", password="testpass123")
+        session = self.client.session
+        session["current_org_id"] = str(self.org.id)
+        session.save()
+
+        # Skip tests if Stripe not configured
+        self.stripe_configured = bool(settings.STRIPE_SECRET_KEY)
+
+    def test_checkout_flow_creates_stripe_session(self):
+        """
+        E2E test: Clicking Subscribe Now redirects to Stripe Checkout.
+
+        This test verifies the complete flow:
+        1. User is logged in with an org
+        2. Plan has a valid stripe_price_id
+        3. STRIPE_SECRET_KEY is configured
+        4. Checkout session is created
+        5. User is redirected to checkout.stripe.com
+        """
+        if not self.stripe_configured:
+            self.skipTest("STRIPE_SECRET_KEY not configured")
+
+        if not self.starter_plan or not self.starter_plan.stripe_price_id:
+            self.skipTest("Starter plan not configured with stripe_price_id")
+
+        # Create subscription for this org
+        Subscription.objects.get_or_create(
+            org=self.org,
+            defaults={
+                "plan": self.starter_plan,
+                "status": SubscriptionStatus.TRIALING,
+            },
+        )
+
+        # Make request to checkout
+        response = self.client.get(
+            reverse("billing:checkout") + f"?plan={self.starter_plan.code}&skip_trial=1",
+            follow=False,
+        )
+
+        # Should redirect to Stripe Checkout
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            response.url.startswith("https://checkout.stripe.com"),
+            f"Expected redirect to Stripe Checkout, got: {response.url}",
+        )
+
+    def test_checkout_requires_valid_stripe_price_id(self):
+        """E2E test: Checkout fails gracefully when stripe_price_id is invalid."""
+        if not self.stripe_configured:
+            self.skipTest("STRIPE_SECRET_KEY not configured")
+
+        # Create a plan with invalid stripe_price_id
+        bad_plan = Plan.objects.create(
+            code="BAD_PLAN",
+            name="Bad Plan",
+            stripe_price_id="price_invalid_123",
+            monthly_price_cents=100,
+        )
+
+        Subscription.objects.get_or_create(
+            org=self.org,
+            defaults={
+                "plan": bad_plan,
+                "status": SubscriptionStatus.TRIALING,
+            },
+        )
+
+        response = self.client.get(
+            reverse("billing:checkout") + "?plan=BAD_PLAN",
+            follow=False,
+        )
+
+        # Should redirect back to plans with error (not crash)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("plans", response.url)
+
+
 class GetOrCreateSubscriptionTests(TestCase):
     """Tests for get_or_create_subscription helper function."""
 

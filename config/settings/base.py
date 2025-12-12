@@ -525,5 +525,13 @@ DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"  # Use Stripe IDs as FKs (recommended)
 DJSTRIPE_USE_NATIVE_JSONFIELD = True  # Use native JSONField
 
 # Define which Stripe key to use based on live mode
-STRIPE_SECRET_KEY = STRIPE_LIVE_SECRET_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_SECRET_KEY
-STRIPE_PUBLIC_KEY = STRIPE_LIVE_PUBLIC_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_PUBLIC_KEY
+STRIPE_SECRET_KEY = (
+    STRIPE_LIVE_SECRET_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_SECRET_KEY
+)
+STRIPE_PUBLIC_KEY = (
+    STRIPE_LIVE_PUBLIC_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_PUBLIC_KEY
+)
+if not STRIPE_SECRET_KEY:
+    raise ValueError("STRIPE_SECRET_KEY is not set properly in environment variables.")
+if not STRIPE_PUBLIC_KEY:
+    raise ValueError("STRIPE_PUBLIC_KEY is not set properly in environment variables.")

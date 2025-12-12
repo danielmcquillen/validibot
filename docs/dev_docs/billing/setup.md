@@ -123,32 +123,33 @@ In the Stripe Dashboard (ensure **Test mode** is active):
      - Value: `TEAM`
 
 !!! tip "Adding Metadata in Stripe Dashboard"
-    When creating or editing a product, scroll down to find **Additional options** or **Metadata**. Click to expand, then add a key-value pair. The `plan_code` metadata is how our `link_stripe_prices` command matches Stripe prices to Validibot plans.
+    When creating or editing a product, scroll down to find **Additional options** or **Metadata**. Click to expand, then add a key-value pair. The `plan_code` metadata is how `seed_plans` matches Stripe prices to Validibot plans.
 
-4. Sync Stripe data to Django and link prices:
+4. Sync Stripe data and seed plans:
 
 ```bash
 # Sync Stripe Products/Prices to dj-stripe models
 uv run python manage.py djstripe_sync_models Price
 
-# Link Stripe Prices to our Plan model (preview first)
-uv run python manage.py link_stripe_prices --dry-run
-
-# Apply the linking
-uv run python manage.py link_stripe_prices
+# Seed plans and link to Stripe prices
+uv run python manage.py seed_plans
 ```
 
-You should see output like:
+You should see output showing plans created/linked:
 
 ```
-Found price for STARTER: price_1ABC... ($29.00/month)
-Found price for TEAM: price_1XYZ... ($99.00/month)
-
-Linking Plans to Prices:
-------------------------------------------------------------
+============================================================
+Step 2: Linking Stripe Prices
+============================================================
   Starter: (none) → price_1ABC...
   Team: (none) → price_1XYZ...
-  Enterprise: Skipped (no price - contact sales)
+  Enterprise: Skipped (contact sales)
+
+============================================================
+Summary
+============================================================
+  Starter: 10,000 launches, 2 seats, $29/mo, Stripe: ✓
+  Team: 100,000 launches, 10 seats, $99/mo, Stripe: ✓
 
 Done!
 ```
@@ -191,7 +192,7 @@ Create the same products with metadata:
 | Validibot Starter | $29/month | `plan_code: STARTER` |
 | Validibot Team | $99/month | `plan_code: TEAM` |
 
-Then run `link_stripe_prices` in production to connect them.
+Then sync and run `seed_plans` in production to link them.
 
 ### 3. Get Live API Keys
 

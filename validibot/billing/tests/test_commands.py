@@ -1,7 +1,7 @@
 """
 Tests for billing management commands.
 
-Tests seed_plans and link_stripe_prices command functionality.
+Tests seed_plans command functionality including Stripe linking.
 """
 
 from io import StringIO
@@ -21,7 +21,7 @@ class SeedPlansCommandTests(TestCase):
     def test_creates_all_plans_when_none_exist(self):
         """seed_plans creates all three plans when database is empty."""
         out = StringIO()
-        call_command("seed_plans", stdout=out)
+        call_command("seed_plans", "--skip-stripe", stdout=out)
 
         # Verify all plans created
         self.assertEqual(Plan.objects.count(), 3)
@@ -30,9 +30,9 @@ class SeedPlansCommandTests(TestCase):
         self.assertTrue(Plan.objects.filter(code=PlanCode.ENTERPRISE).exists())
 
         output = out.getvalue()
-        self.assertIn("Created plan: Starter", output)
-        self.assertIn("Created plan: Team", output)
-        self.assertIn("Created plan: Enterprise", output)
+        self.assertIn("Created: Starter", output)
+        self.assertIn("Created: Team", output)
+        self.assertIn("Created: Enterprise", output)
 
     def test_does_not_overwrite_existing_plans_without_force(self):
         """seed_plans doesn't overwrite plans without --force flag."""
@@ -44,7 +44,7 @@ class SeedPlansCommandTests(TestCase):
         )
 
         out = StringIO()
-        call_command("seed_plans", stdout=out)
+        call_command("seed_plans", "--skip-stripe", stdout=out)
 
         # Verify original values preserved
         starter = Plan.objects.get(code=PlanCode.STARTER)
@@ -61,7 +61,7 @@ class SeedPlansCommandTests(TestCase):
         )
 
         out = StringIO()
-        call_command("seed_plans", "--force", stdout=out)
+        call_command("seed_plans", "--force", "--skip-stripe", stdout=out)
 
         # Verify values updated to configured defaults
         starter = Plan.objects.get(code=PlanCode.STARTER)
@@ -77,7 +77,7 @@ class SeedPlansCommandTests(TestCase):
         )
 
         out = StringIO()
-        call_command("seed_plans", "--force", stdout=out)
+        call_command("seed_plans", "--force", "--skip-stripe", stdout=out)
 
         starter = Plan.objects.get(code=PlanCode.STARTER)
         self.assertEqual(starter.stripe_price_id, "price_existing")
@@ -85,10 +85,10 @@ class SeedPlansCommandTests(TestCase):
     def test_shows_plan_summary(self):
         """seed_plans shows summary of all plans."""
         out = StringIO()
-        call_command("seed_plans", stdout=out)
+        call_command("seed_plans", "--skip-stripe", stdout=out)
 
         output = out.getvalue()
-        self.assertIn("Plan Summary", output)
+        self.assertIn("Summary", output)
         self.assertIn("Starter:", output)
         self.assertIn("Team:", output)
         self.assertIn("Enterprise:", output)
@@ -96,16 +96,16 @@ class SeedPlansCommandTests(TestCase):
     def test_warns_about_missing_stripe_config(self):
         """seed_plans warns about paid plans without stripe_price_id."""
         out = StringIO()
-        call_command("seed_plans", stdout=out)
+        call_command("seed_plans", "--skip-stripe", stdout=out)
 
         output = out.getvalue()
         # Should warn about Starter and Team missing Stripe config
         self.assertIn("Warning", output)
-        self.assertIn("no stripe_price_id", output)
+        self.assertIn("missing Stripe price", output)
 
     def test_plan_limits_are_correct(self):
         """seed_plans creates plans with correct ADR-defined limits."""
-        call_command("seed_plans")
+        call_command("seed_plans", "--skip-stripe")
 
         starter = Plan.objects.get(code=PlanCode.STARTER)
         team = Plan.objects.get(code=PlanCode.TEAM)
@@ -134,8 +134,8 @@ class SeedPlansCommandTests(TestCase):
         self.assertEqual(enterprise.monthly_price_cents, 0)  # Contact us
 
 
-class LinkStripePricesCommandTests(TestCase):
-    """Tests for the link_stripe_prices management command."""
+class SeedPlansStripeLinkingTests(TestCase):
+    """Tests for Stripe linking in seed_plans command."""
 
     def setUp(self):
         """Create test plans."""
@@ -155,64 +155,53 @@ class LinkStripePricesCommandTests(TestCase):
             monthly_price_cents=0,  # Contact us
         )
 
-    @patch("validibot.billing.management.commands.link_stripe_prices.Command._link_prices")
-    def test_dry_run_does_not_save(self, mock_link):
-        """--dry-run calls _link_prices with dry_run=True."""
+    @patch("validibot.billing.management.commands.seed_plans.Command._link_stripe_prices")
+    def test_skip_stripe_flag_skips_linking(self, mock_link):
+        """--skip-stripe skips Stripe price linking."""
         out = StringIO()
-        call_command("link_stripe_prices", "--dry-run", stdout=out)
+        call_command("seed_plans", "--skip-stripe", stdout=out)
 
-        mock_link.assert_called_once()
-        # Second arg should be dry_run=True
-        self.assertTrue(mock_link.call_args[0][1])
+        mock_link.assert_not_called()
 
-    @patch("validibot.billing.management.commands.link_stripe_prices.Command._list_prices")
-    def test_list_shows_prices(self, mock_list):
-        """--list calls _list_prices."""
+    @patch("validibot.billing.management.commands.seed_plans.Command._list_stripe_prices")
+    def test_list_stripe_shows_prices(self, mock_list):
+        """--list-stripe calls _list_stripe_prices."""
         out = StringIO()
-        call_command("link_stripe_prices", "--list", stdout=out)
+        call_command("seed_plans", "--list-stripe", stdout=out)
 
         mock_list.assert_called_once()
 
     def test_links_prices_from_djstripe(self):
-        """link_stripe_prices updates Plan.stripe_price_id from dj-stripe."""
-        # Create mock Price model
-        mock_price_model = MagicMock()
-
-        # Create mock prices with product metadata
+        """seed_plans updates Plan.stripe_price_id from dj-stripe."""
+        # Create mock Price objects
         mock_starter_price = MagicMock()
         mock_starter_price.id = "price_starter_123"
-        mock_starter_price.active = True
-        mock_starter_price.type = "recurring"
-        mock_starter_price.unit_amount = 2900
-        mock_starter_price.recurring = {"interval": "month"}
         mock_starter_price.product = MagicMock()
         mock_starter_price.product.metadata = {"plan_code": "STARTER"}
 
         mock_team_price = MagicMock()
         mock_team_price.id = "price_team_456"
-        mock_team_price.active = True
-        mock_team_price.type = "recurring"
-        mock_team_price.unit_amount = 9900
-        mock_team_price.recurring = {"interval": "month"}
         mock_team_price.product = MagicMock()
         mock_team_price.product.metadata = {"plan_code": "TEAM"}
 
-        mock_price_model.objects.filter.return_value.select_related.return_value = [
-            mock_starter_price,
-            mock_team_price,
-        ]
-        mock_price_model.objects.filter.return_value.select_related.return_value.exists.return_value = True  # noqa: E501
+        # Mock the Price model query
+        mock_prices = MagicMock()
+        mock_prices.exists.return_value = True
+        mock_prices.__iter__ = lambda self: iter([mock_starter_price, mock_team_price])
 
-        # Import and run the command's _link_prices method directly
-        from validibot.billing.management.commands.link_stripe_prices import Command
+        with patch("djstripe.models.Price") as mock_price_model:
+            mock_price_model.objects.filter.return_value.select_related.return_value = mock_prices
 
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.SUCCESS = lambda x: x
-        cmd.style.WARNING = lambda x: x
+            # Import and run the command's _link_stripe_prices method
+            from validibot.billing.management.commands.seed_plans import Command
 
-        cmd._link_prices(mock_price_model, dry_run=False)
+            cmd = Command()
+            cmd.stdout = StringIO()
+            cmd.style = MagicMock()
+            cmd.style.SUCCESS = lambda x: x
+            cmd.style.WARNING = lambda x: x
+
+            cmd._link_stripe_prices()
 
         # Verify plans were updated
         self.starter.refresh_from_db()
@@ -223,19 +212,22 @@ class LinkStripePricesCommandTests(TestCase):
 
     def test_skips_enterprise_with_no_price(self):
         """Enterprise plan (contact us) is skipped without error."""
-        mock_price_model = MagicMock()
-        mock_price_model.objects.filter.return_value.select_related.return_value = []
-        mock_price_model.objects.filter.return_value.select_related.return_value.exists.return_value = False  # noqa: E501
+        # Mock empty price results
+        mock_prices = MagicMock()
+        mock_prices.exists.return_value = False
 
-        from validibot.billing.management.commands.link_stripe_prices import Command
+        with patch("djstripe.models.Price") as mock_price_model:
+            mock_price_model.objects.filter.return_value.select_related.return_value = mock_prices
 
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.WARNING = lambda x: x
+            from validibot.billing.management.commands.seed_plans import Command
 
-        # Should not raise
-        cmd._link_prices(mock_price_model, dry_run=False)
+            cmd = Command()
+            cmd.stdout = StringIO()
+            cmd.style = MagicMock()
+            cmd.style.WARNING = lambda x: x
+
+            # Should not raise
+            cmd._link_stripe_prices()
 
         # Enterprise should still have no price_id
         self.enterprise.refresh_from_db()

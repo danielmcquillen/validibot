@@ -143,16 +143,53 @@ class Command(BaseCommand):
 
     def _link_stripe_prices(self):
         """Link Plans to Stripe Prices from dj-stripe."""
+        from django.conf import settings
+        from django.db import OperationalError
+
         self.stdout.write("\n" + "=" * 60)
         self.stdout.write("Step 2: Linking Stripe Prices")
         self.stdout.write("=" * 60)
 
+        # Check 1: Is dj-stripe installed?
         try:
             from djstripe.models import Price
         except ImportError:
             self.stdout.write(
                 self.style.WARNING(
-                    "  dj-stripe not installed. Skipping Stripe linking.",
+                    "  ✗ dj-stripe not installed. Skipping Stripe linking.",
+                ),
+            )
+            return
+
+        # Check 2: Is STRIPE_SECRET_KEY configured?
+        stripe_key = getattr(settings, "STRIPE_SECRET_KEY", "")
+        if not stripe_key:
+            self.stdout.write(
+                self.style.WARNING(
+                    "  ✗ STRIPE_SECRET_KEY not configured.\n"
+                    "    Add to environment: STRIPE_SECRET_KEY=sk_test_...",
+                ),
+            )
+            return
+
+        # Check 3: Can we access dj-stripe tables?
+        try:
+            price_count = Price.objects.count()
+        except OperationalError as e:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  ✗ Cannot access dj-stripe tables: {e}\n"
+                    "    Run: python manage.py migrate djstripe",
+                ),
+            )
+            return
+
+        # Check 4: Are there any prices synced?
+        if price_count == 0:
+            self.stdout.write(
+                self.style.WARNING(
+                    "  ✗ No Stripe prices in database (0 records).\n"
+                    "    Run: python manage.py djstripe_sync_models Price",
                 ),
             )
             return
@@ -166,55 +203,109 @@ class Command(BaseCommand):
         if not prices.exists():
             self.stdout.write(
                 self.style.WARNING(
-                    "  No Stripe prices found in dj-stripe.\n"
-                    "  To set up Stripe:\n"
-                    "    1. Create Products in Stripe with metadata: plan_code=STARTER\n"
-                    "    2. Run: python manage.py djstripe_sync_models Price\n"
-                    "    3. Run: python manage.py seed_plans",
+                    f"  ✗ Found {price_count} prices but none are active+recurring.\n"
+                    "    Check Stripe Dashboard - prices may be archived or one-time.",
                 ),
             )
             return
 
-        # Build mapping from plan_code to price
+        self.stdout.write(f"  ✓ Found {prices.count()} active recurring price(s)")
+
+        # Build mapping from plan_code to price, checking for duplicates
         price_by_plan_code = {}
+        prices_without_metadata = []
+        duplicate_warnings = []
+
         for price in prices:
-            plan_code = price.product.metadata.get("plan_code", "").upper()
-            if plan_code in [pc.value for pc in PlanCode]:
-                if plan_code not in price_by_plan_code:
-                    price_by_plan_code[plan_code] = price
+            product_name = price.product.name if price.product else "Unknown"
+            plan_code = price.product.metadata.get("plan_code", "").upper() if price.product else ""
+
+            if not plan_code:
+                prices_without_metadata.append(f"{product_name} ({price.id})")
+                continue
+
+            if plan_code not in [pc.value for pc in PlanCode]:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"    Unknown plan_code '{plan_code}' on {product_name}",
+                    ),
+                )
+                continue
+
+            if plan_code in price_by_plan_code:
+                existing = price_by_plan_code[plan_code]
+                duplicate_warnings.append(
+                    f"    Multiple prices for {plan_code}: {existing.id}, {price.id}",
+                )
+            else:
+                price_by_plan_code[plan_code] = price
+                amount = price.unit_amount / 100 if price.unit_amount else 0
+                interval = price.recurring.get("interval", "month") if price.recurring else "?"
+                self.stdout.write(f"    {plan_code}: ${amount:.0f}/{interval} ({price.id})")
+
+        # Show warnings
+        if prices_without_metadata:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\n  ⚠ {len(prices_without_metadata)} price(s) missing plan_code metadata:",
+                ),
+            )
+            for p in prices_without_metadata[:5]:  # Limit to first 5
+                self.stdout.write(f"    - {p}")
+            if len(prices_without_metadata) > 5:
+                self.stdout.write(f"    ... and {len(prices_without_metadata) - 5} more")
+
+        if duplicate_warnings:
+            self.stdout.write(self.style.WARNING("\n  ⚠ Duplicate plan_code found (using first):"))
+            for warning in duplicate_warnings:
+                self.stdout.write(warning)
 
         if not price_by_plan_code:
             self.stdout.write(
-                self.style.WARNING(
-                    "  No Stripe prices have plan_code metadata.\n"
-                    "  Add metadata to Products in Stripe Dashboard:\n"
-                    "    Key: plan_code, Value: STARTER | TEAM | ENTERPRISE",
+                self.style.ERROR(
+                    "\n  ✗ No prices have valid plan_code metadata.\n"
+                    "    Add to Stripe Products: plan_code = STARTER | TEAM | ENTERPRISE",
                 ),
             )
             return
 
-        # Update Plans with matched prices
-        for plan in Plan.objects.all():
+        # Link Plans to Prices
+        self.stdout.write("\n  Linking:")
+        linked_count = 0
+        missing_count = 0
+
+        for plan in Plan.objects.all().order_by("display_order"):
             price = price_by_plan_code.get(plan.code)
 
             if price:
                 if plan.stripe_price_id == price.id:
-                    self.stdout.write(f"  {plan.name}: Already linked")
+                    self.stdout.write(f"    {plan.name}: Already linked ✓")
                 else:
                     old = plan.stripe_price_id or "(none)"
                     plan.stripe_price_id = price.id
                     plan.save(update_fields=["stripe_price_id"])
                     self.stdout.write(
-                        self.style.SUCCESS(f"  {plan.name}: {old} → {price.id}"),
+                        self.style.SUCCESS(f"    {plan.name}: {old} → {price.id} ✓"),
                     )
+                linked_count += 1
             elif plan.monthly_price_cents > 0:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  {plan.name}: No Stripe price (add plan_code={plan.code} metadata)",
+                        f"    {plan.name}: ✗ Missing (add plan_code={plan.code} to Stripe)",
                     ),
                 )
+                missing_count += 1
             else:
-                self.stdout.write(f"  {plan.name}: Skipped (contact sales)")
+                self.stdout.write(f"    {plan.name}: Skipped (contact sales)")
+
+        # Final status
+        if missing_count > 0:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"\n  ⚠ {missing_count} paid plan(s) not linked. "
+                    "Users cannot subscribe to these.",
+                ),
+            )
 
     def _list_stripe_prices(self):
         """List all available Stripe Prices."""

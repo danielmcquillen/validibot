@@ -463,8 +463,11 @@ class CheckoutE2ETests(TestCase):
         session["active_org_id"] = self.org.id
         session.save()
 
-        # Skip tests if Stripe not configured
-        self.stripe_configured = bool(settings.STRIPE_SECRET_KEY)
+        # Skip tests if Stripe not configured or using dummy key
+        # Real Stripe test keys start with sk_test_ followed by alphanumeric chars
+        stripe_key = settings.STRIPE_SECRET_KEY or ""
+        is_real_key = stripe_key.startswith("sk_test_") and "dummy" not in stripe_key
+        self.stripe_configured = is_real_key
 
     def test_checkout_flow_creates_stripe_session(self):
         """

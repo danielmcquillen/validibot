@@ -367,34 +367,70 @@ class CheckoutE2ETests(TestCase):
     @classmethod
     def setUpTestData(cls):
         """Create test data with real Stripe price IDs."""
-        from validibot.billing.models import Plan
+        import os
 
-        # Get actual Plans from database (created by seed_plans)
-        cls.starter_plan = Plan.objects.filter(code=PlanCode.STARTER).first()
-        cls.team_plan = Plan.objects.filter(code=PlanCode.TEAM).first()
+        # Get actual price IDs from Stripe (set via env or use known test prices)
+        # These are created by seed_plans and exist in the Stripe test account
+        starter_price_id = os.environ.get(
+            "TEST_STRIPE_STARTER_PRICE_ID",
+            "price_1SdKNl4RhDvR490gMQaeoTnH",  # From seed_plans
+        )
+        team_price_id = os.environ.get(
+            "TEST_STRIPE_TEAM_PRICE_ID",
+            "price_1SdKNl4RhDvR490gSHjS4wyy",  # From seed_plans
+        )
 
-        # Create test user and org
-        cls.user = User.objects.create_user(
-            username="e2e_user",
-            email="e2e@example.com",
-            password="testpass123",  # noqa: S106
+        # Get or create plans with real Stripe price IDs
+        cls.starter_plan, _ = Plan.objects.update_or_create(
+            code=PlanCode.STARTER,
+            defaults={
+                "name": "Starter",
+                "basic_launches_limit": 10000,
+                "included_credits": 200,
+                "monthly_price_cents": 2900,
+                "stripe_price_id": starter_price_id,
+            },
         )
-        cls.org = Organization.objects.create(
-            name="E2E Test Org",
-            slug="e2e-test-org",
+        cls.team_plan, _ = Plan.objects.update_or_create(
+            code=PlanCode.TEAM,
+            defaults={
+                "name": "Team",
+                "basic_launches_limit": 100000,
+                "included_credits": 1000,
+                "monthly_price_cents": 9900,
+                "stripe_price_id": team_price_id,
+            },
         )
-        cls.membership = Membership.objects.create(
+
+        # Create test user and org with unique identifiers
+        import uuid
+
+        unique_id = uuid.uuid4().hex[:8]
+        cls.user, _ = User.objects.get_or_create(
+            email=f"e2e_{unique_id}@example.com",
+            defaults={
+                "username": f"e2e_user_{unique_id}",
+                "password": "testpass123",  # noqa: S106
+            },
+        )
+        cls.org, _ = Organization.objects.get_or_create(
+            slug=f"e2e-test-org-{unique_id}",
+            defaults={"name": f"E2E Test Org {unique_id}"},
+        )
+        cls.membership, _ = Membership.objects.get_or_create(
             user=cls.user,
             org=cls.org,
-            is_active=True,
+            defaults={"is_active": True},
         )
+        cls.unique_email = cls.user.email
 
     def setUp(self):
         """Set up client and login."""
         from django.conf import settings
 
         self.client = Client()
-        self.client.login(email="e2e@example.com", password="testpass123")
+        # Force login since password may not be hashed properly with get_or_create
+        self.client.force_login(self.user)
         session = self.client.session
         session["current_org_id"] = str(self.org.id)
         session.save()

@@ -22,38 +22,47 @@ class PlanModelTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         """Create test plans."""
-        cls.starter_plan = Plan.objects.create(
+        cls.starter_plan, _ = Plan.objects.update_or_create(
             code=PlanCode.STARTER,
-            name="Starter",
-            basic_launches_limit=100,
-            included_credits=50,
-            max_seats=3,
-            max_workflows=10,
-            monthly_price_cents=2900,
-            display_order=1,
+            defaults={
+                "name": "Starter",
+                "basic_launches_limit": 100,
+                "included_credits": 50,
+                "max_seats": 3,
+                "max_workflows": 10,
+                "monthly_price_cents": 2900,
+                "display_order": 1,
+                "has_integrations": False,
+                "has_audit_logs": False,
+            },
         )
-        cls.team_plan = Plan.objects.create(
+        cls.team_plan, _ = Plan.objects.update_or_create(
             code=PlanCode.TEAM,
-            name="Team",
-            basic_launches_limit=500,
-            included_credits=200,
-            max_seats=10,
-            max_workflows=50,
-            has_integrations=True,
-            monthly_price_cents=9900,
-            display_order=2,
+            defaults={
+                "name": "Team",
+                "basic_launches_limit": 500,
+                "included_credits": 200,
+                "max_seats": 10,
+                "max_workflows": 50,
+                "has_integrations": True,
+                "has_audit_logs": False,
+                "monthly_price_cents": 9900,
+                "display_order": 2,
+            },
         )
-        cls.enterprise_plan = Plan.objects.create(
+        cls.enterprise_plan, _ = Plan.objects.update_or_create(
             code=PlanCode.ENTERPRISE,
-            name="Enterprise",
-            basic_launches_limit=None,  # Unlimited
-            included_credits=1000,
-            max_seats=None,  # Unlimited
-            max_workflows=None,  # Unlimited
-            has_integrations=True,
-            has_audit_logs=True,
-            monthly_price_cents=0,  # Contact sales
-            display_order=3,
+            defaults={
+                "name": "Enterprise",
+                "basic_launches_limit": None,  # Unlimited
+                "included_credits": 1000,
+                "max_seats": None,  # Unlimited
+                "max_workflows": None,  # Unlimited
+                "has_integrations": True,
+                "has_audit_logs": True,
+                "monthly_price_cents": 0,  # Contact sales
+                "display_order": 3,
+            },
         )
 
     def test_plan_str(self):
@@ -94,22 +103,27 @@ class SubscriptionModelTests(TestCase):
         from validibot.users.models import Organization
         from validibot.users.models import User
 
-        cls.plan = Plan.objects.create(
+        cls.plan, _ = Plan.objects.update_or_create(
             code=PlanCode.STARTER,
-            name="Starter",
-            basic_launches_limit=100,
-            included_credits=50,
-            max_seats=3,
+            defaults={
+                "name": "Starter",
+                "basic_launches_limit": 100,
+                "included_credits": 50,
+                "max_seats": 3,
+            },
         )
 
         # Create a user and organization
-        cls.user = User.objects.create_user(
-            email="test@example.com",
-            password="testpass123",  # noqa: S106
+        cls.user, _ = User.objects.get_or_create(
+            email="subscription_test@example.com",
+            defaults={
+                "username": "subscription_test",
+                "password": "testpass123",  # noqa: S106
+            },
         )
-        cls.org = Organization.objects.create(
-            name="Test Org",
-            slug="test-org",
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="subscription-model-test-org",
+            defaults={"name": "Subscription Test Org"},
         )
 
     def test_subscription_creation(self):
@@ -197,13 +211,15 @@ class SubscriptionStatusTransitionTests(TestCase):
         """Create test data."""
         from validibot.users.models import Organization
 
-        cls.plan = Plan.objects.create(
+        cls.plan, _ = Plan.objects.update_or_create(
             code=PlanCode.STARTER,
-            name="Starter",
+            defaults={
+                "name": "Starter",
+            },
         )
-        cls.org = Organization.objects.create(
-            name="Test Org",
-            slug="test-org-status",
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="test-org-status-transitions",
+            defaults={"name": "Status Test Org"},
         )
 
     def test_trial_to_active_transition(self):

@@ -53,6 +53,8 @@ def test_workflow_form_limits_projects_to_current_org():
 
 
 def test_workflow_form_saves_selected_project():
+    from validibot.submissions.constants import DataRetention
+
     user, org = create_user_in_org()
     default_project = ensure_default_project(org)
 
@@ -62,6 +64,7 @@ def test_workflow_form_saves_selected_project():
             "slug": "compliance-checks",
             "project": str(default_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
+            "data_retention": DataRetention.DO_NOT_STORE,
             "version": "1.0",
             "is_active": "on",
         },
@@ -79,6 +82,8 @@ def test_workflow_form_saves_selected_project():
 
 
 def test_workflow_form_allows_switching_projects_within_org():
+    from validibot.submissions.constants import DataRetention
+
     workflow = WorkflowFactory()
     workflow.user.set_current_org(workflow.org)
     second_project = ProjectFactory(org=workflow.org)
@@ -89,6 +94,7 @@ def test_workflow_form_allows_switching_projects_within_org():
             "slug": workflow.slug,
             "project": str(second_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
+            "data_retention": DataRetention.DO_NOT_STORE,
             "version": workflow.version,
             "is_active": "on",
         },
@@ -101,6 +107,8 @@ def test_workflow_form_allows_switching_projects_within_org():
 
 
 def test_workflow_form_rejects_project_from_other_org():
+    from validibot.submissions.constants import DataRetention
+
     workflow = WorkflowFactory()
     workflow.user.set_current_org(workflow.org)
     other_project = ProjectFactory()
@@ -111,6 +119,7 @@ def test_workflow_form_rejects_project_from_other_org():
             "slug": workflow.slug,
             "project": str(other_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
+            "data_retention": DataRetention.DO_NOT_STORE,
             "version": workflow.version,
             "is_active": "on",
         },

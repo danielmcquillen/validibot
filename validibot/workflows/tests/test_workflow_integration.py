@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from validibot.projects.tests.factories import ProjectFactory
+from validibot.submissions.constants import DataRetention
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
@@ -90,6 +91,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
             "is_active": "on",
             "project": str(project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
+            "data_retention": DataRetention.DO_NOT_STORE,
         },
     )
     assert response.status_code == HTTPStatus.FOUND

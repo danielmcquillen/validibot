@@ -31,21 +31,25 @@ class BasicWorkflowMeterTests(TestCase):
         """Create test data."""
         from validibot.users.models import Organization
 
-        cls.plan = Plan.objects.create(
+        cls.plan, _ = Plan.objects.update_or_create(
             code=PlanCode.STARTER,
-            name="Starter",
-            basic_launches_limit=100,
-            included_credits=50,
+            defaults={
+                "name": "Starter",
+                "basic_launches_limit": 100,
+                "included_credits": 50,
+            },
         )
-        cls.unlimited_plan = Plan.objects.create(
+        cls.unlimited_plan, _ = Plan.objects.update_or_create(
             code=PlanCode.ENTERPRISE,
-            name="Enterprise",
-            basic_launches_limit=None,  # Unlimited
-            included_credits=1000,
+            defaults={
+                "name": "Enterprise",
+                "basic_launches_limit": None,  # Unlimited
+                "included_credits": 1000,
+            },
         )
-        cls.org = Organization.objects.create(
-            name="Test Org",
-            slug="test-org-meter",
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="test-org-basic-meter",
+            defaults={"name": "Test Org Basic Meter"},
         )
         cls.meter = BasicWorkflowMeter()
 
@@ -152,15 +156,17 @@ class AdvancedWorkflowMeterTests(TestCase):
         """Create test data."""
         from validibot.users.models import Organization
 
-        cls.plan = Plan.objects.create(
+        cls.plan, _ = Plan.objects.update_or_create(
             code=PlanCode.TEAM,
-            name="Team",
-            basic_launches_limit=500,
-            included_credits=200,
+            defaults={
+                "name": "Team",
+                "basic_launches_limit": 500,
+                "included_credits": 200,
+            },
         )
-        cls.org = Organization.objects.create(
-            name="Test Org Advanced",
-            slug="test-org-advanced",
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="test-org-advanced-meter",
+            defaults={"name": "Test Org Advanced Meter"},
         )
         cls.meter = AdvancedWorkflowMeter()
 
@@ -234,19 +240,23 @@ class SeatEnforcerTests(TestCase):
         """Create test data."""
         from validibot.users.models import Organization
 
-        cls.plan_with_limit = Plan.objects.create(
+        cls.plan_with_limit, _ = Plan.objects.update_or_create(
             code=PlanCode.STARTER,
-            name="Starter",
-            max_seats=3,
+            defaults={
+                "name": "Starter",
+                "max_seats": 3,
+            },
         )
-        cls.plan_unlimited = Plan.objects.create(
+        cls.plan_unlimited, _ = Plan.objects.update_or_create(
             code=PlanCode.ENTERPRISE,
-            name="Enterprise",
-            max_seats=None,
+            defaults={
+                "name": "Enterprise",
+                "max_seats": None,
+            },
         )
-        cls.org = Organization.objects.create(
-            name="Test Org Seats",
-            slug="test-org-seats",
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="test-org-seats-enforcer",
+            defaults={"name": "Test Org Seats Enforcer"},
         )
         cls.enforcer = SeatEnforcer()
 
@@ -266,22 +276,27 @@ class SeatEnforcerTests(TestCase):
         from validibot.users.models import Membership
         from validibot.users.models import User
 
-        Subscription.objects.create(
+        Subscription.objects.get_or_create(
             org=self.org,
-            plan=self.plan_with_limit,
-            status=SubscriptionStatus.ACTIVE,
+            defaults={
+                "plan": self.plan_with_limit,
+                "status": SubscriptionStatus.ACTIVE,
+            },
         )
 
         # Create 3 members (at limit)
         for i in range(3):
-            user = User.objects.create_user(
-                email=f"member{i}@example.com",
-                password="testpass123",  # noqa: S106
+            user, _ = User.objects.get_or_create(
+                email=f"seat_member{i}@example.com",
+                defaults={
+                    "username": f"seat_member{i}",
+                    "password": "testpass123",  # noqa: S106
+                },
             )
-            Membership.objects.create(
+            Membership.objects.get_or_create(
                 user=user,
                 org=self.org,
-                is_active=True,
+                defaults={"is_active": True},
             )
 
         with pytest.raises(SeatLimitError):
@@ -307,27 +322,39 @@ class SeatEnforcerTests(TestCase):
     def test_get_seat_usage(self):
         """get_seat_usage returns correct usage stats."""
         from validibot.users.models import Membership
+        from validibot.users.models import Organization
         from validibot.users.models import User
 
-        Subscription.objects.create(
-            org=self.org,
-            plan=self.plan_with_limit,
-            status=SubscriptionStatus.ACTIVE,
+        # Use a fresh org specifically for this test to control member count
+        test_org, _ = Organization.objects.get_or_create(
+            slug="test-org-seat-usage",
+            defaults={"name": "Test Org Seat Usage"},
         )
 
-        # Create 2 members
+        Subscription.objects.get_or_create(
+            org=test_org,
+            defaults={
+                "plan": self.plan_with_limit,
+                "status": SubscriptionStatus.ACTIVE,
+            },
+        )
+
+        # Create exactly 2 members
         for i in range(2):
-            user = User.objects.create_user(
-                email=f"seatmember{i}@example.com",
-                password="testpass123",  # noqa: S106
+            user, _ = User.objects.get_or_create(
+                email=f"seat_usage_member{i}@example.com",
+                defaults={
+                    "username": f"seat_usage_member{i}",
+                    "password": "testpass123",  # noqa: S106
+                },
             )
-            Membership.objects.create(
+            Membership.objects.get_or_create(
                 user=user,
-                org=self.org,
-                is_active=True,
+                org=test_org,
+                defaults={"is_active": True},
             )
 
-        usage = self.enforcer.get_seat_usage(self.org)
+        usage = self.enforcer.get_seat_usage(test_org)
         self.assertEqual(usage["used"], 2)
         self.assertEqual(usage["limit"], 3)
         self.assertEqual(usage["remaining"], 1)
@@ -342,9 +369,23 @@ class MonthlyCounterTests(TestCase):
         """Create test data."""
         from validibot.users.models import Organization
 
-        cls.org = Organization.objects.create(
-            name="Counter Test Org",
-            slug="counter-test",
+        cls.plan, _ = Plan.objects.update_or_create(
+            code=PlanCode.STARTER,
+            defaults={
+                "name": "Starter",
+                "basic_launches_limit": 100,
+            },
+        )
+        cls.org, _ = Organization.objects.get_or_create(
+            slug="counter-test-org",
+            defaults={"name": "Counter Test Org"},
+        )
+        cls.subscription, _ = Subscription.objects.get_or_create(
+            org=cls.org,
+            defaults={
+                "plan": cls.plan,
+                "status": SubscriptionStatus.ACTIVE,
+            },
         )
 
     def test_get_or_create_monthly_counter_creates_new(self):

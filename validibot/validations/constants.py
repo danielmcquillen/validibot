@@ -236,6 +236,9 @@ class AssertionOperator(TextChoices):
 
 
 # CEL evaluation limits (adjust as needed)
-CEL_MAX_EVAL_TIMEOUT_MS = 100  # per assertion
+# Timeout can be overridden via settings.CEL_MAX_EVAL_TIMEOUT_MS for tests
+from django.conf import settings as django_settings
+
+CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 100)
 CEL_MAX_EXPRESSION_CHARS = 2000
 CEL_MAX_CONTEXT_SYMBOLS = 200

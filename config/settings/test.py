@@ -73,3 +73,7 @@ SV_JWKS_ALG = env("SV_JWKS_ALG", default="ES256")
 APP_ROLE = "web"
 APP_IS_WORKER = False
 ACCOUNT_ALLOW_LOGIN = True
+
+# CEL evaluation timeout - increase for tests since heavy test loads can cause
+# thread pool overhead that exceeds the default 100ms timeout
+CEL_MAX_EVAL_TIMEOUT_MS = 500

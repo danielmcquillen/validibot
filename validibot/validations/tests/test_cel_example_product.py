@@ -47,13 +47,16 @@ class TestExampleProductWithCEL(TestCase):
             run_stage=CatalogRunStage.INPUT,
             entry_type=CatalogEntryType.SIGNAL,
         )
-        cls.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
         cls.error_message = (
             ' Your prices has to be greater than 0 AND rating greater '
             'than 90 AND "mini" '
             "has to be in the tags!!!"
         )
+
+    def setUp(self):
+        """Create fresh ruleset for each test to avoid assertion accumulation."""
+        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
 
     def _assertion(self):
         return RulesetAssertionFactory(

@@ -570,17 +570,21 @@ class PublicWorkflowInfoView(DetailView):
         user = self.request.user
         steps = list(workflow.steps.all().order_by("order"))
         self._annotate_public_schema_steps(steps)
+
+        user_has_access = user.is_authenticated and workflow.can_execute(user=user)
+
+        recent_runs = []
+        if user_has_access:
+            recent_runs = list(
+                workflow.validation_runs.select_related("user").order_by(
+                    "-created",
+                )[:5],
+            )
         context.update(
             {
                 "steps": steps,
-                "recent_runs": list(
-                    workflow.validation_runs.select_related("user").order_by(
-                        "-created",
-                    )[:5],
-                ),
-                "user_has_access": (
-                    user.is_authenticated and workflow.can_execute(user=user)
-                ),
+                "recent_runs": recent_runs,
+                "user_has_access": user_has_access,
                 "breadcrumbs": [
                     {
                         "name": _("All Workflows"),

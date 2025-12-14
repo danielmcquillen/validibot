@@ -100,6 +100,13 @@ MAX_STEP_COUNT = 5
 
 
 class WorkflowViewSet(viewsets.ModelViewSet):
+    """API endpoints for managing workflows and launching validations.
+
+    Routes all workflow CRUD operations through the caller's accessible
+    organizations and applies scoped throttling for expensive launch requests.
+    """
+
+    throttle_scope: str | None = None
     queryset = Workflow.objects.all()
     serializer_class = WorkflowSerializer
     permission_classes = [permissions.IsAuthenticated, WorkflowPermission]

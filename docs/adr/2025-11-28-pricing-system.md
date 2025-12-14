@@ -2,10 +2,12 @@
 
 **Status:** Accepted (2025-12-11) - Implementation in progress  
 **Owners:** Platform / Billing / Infrastructure  
-**Related ADRs:** 2025-11-28-public-workflow-access  
+**Related ADRs:** [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](../dev_docs/adr/2025-12-15-free-tier-and-workflow-sharing.md) (workflow guests, sharing attribution)  
 **Related docs:** `dev_docs/overview/how_it_works.md`, `billing/models.py`
 
 ---
+
+> Note: Seat limits apply to organization memberships. Workflow-level sharing with external users (Workflow Guests) is designed to avoid consuming seats and is documented in [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](../dev_docs/adr/2025-12-15-free-tier-and-workflow-sharing.md).
 
 ## Context
 
@@ -38,11 +40,11 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Tier Summary
 
-|             | Starter | Team    | Enterprise         |
-| ----------- | ------- | ------- | ------------------ |
-| **Price**   | $29/mo  | $99/mo  | Contact us         |
-| **Seats**   | 2       | 10      | 100                |
-| **Support** | Email   | Email   | Priority + Slack   |
+|             | Starter | Team   | Enterprise       |
+| ----------- | ------- | ------ | ---------------- |
+| **Price**   | $29/mo  | $99/mo | Contact us       |
+| **Seats**   | 2       | 10     | 100              |
+| **Support** | Email   | Email  | Priority + Slack |
 
 **Trial:** All new organizations receive a 14-day free trial on Starter plan features. When the trial expires, users must subscribe to continue using the platform.
 
@@ -59,10 +61,10 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Usage Quotas
 
-|                                             | Starter   | Team    | Enterprise  |
-| ------------------------------------------- | --------- | ------- | ----------- |
-| **Basic workflow launches** (per month)     | 10,000    | 100,000 | 1,000,000   |
-| **Advanced workflow credits** (included/mo) | 200       | 1,000   | 5,000       |
+|                                             | Starter | Team    | Enterprise |
+| ------------------------------------------- | ------- | ------- | ---------- |
+| **Basic workflow launches** (per month)     | 10,000  | 100,000 | 1,000,000  |
+| **Advanced workflow credits** (included/mo) | 200     | 1,000   | 5,000      |
 
 **Basic workflow limits:** Hard monthly limits. When reached, further basic workflow launches are blocked until the next billing period. Users can configure warning notifications at custom percentage thresholds.
 
@@ -647,6 +649,7 @@ class CreditPurchase(TimeStampedModel):
 ### Legacy OrgQuota migration
 
 The existing `OrgQuota` model will be deleted. Its fields are replaced by:
+
 - **Plan limits** (`max_submissions_per_day`, etc.) → `Plan` model (lookup table with FK from Subscription)
 - **Per-org state** (credit balances) → `Subscription` model
 - **Enterprise overrides** → nullable `custom_*` fields on `Subscription`

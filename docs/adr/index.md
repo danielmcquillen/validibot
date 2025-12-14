@@ -8,7 +8,7 @@ This directory captures the architectural decisions that shape Validibot. Each A
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)
 - [ADR-2025-11-28: Invite-Based Signup and Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)
 - [ADR-2025-11-28: Pricing System](2025-11-28-pricing-system.md)
-- [ADR-2025-11-28: Public Workflow Access](2025-11-28-public-workflow-access.md)
+- [ADR-2025-12-15: Invite-Only Free Access and Cross-Org Workflow Sharing](../dev_docs/adr/2025-12-15-free-tier-and-workflow-sharing.md)
 
 ## Completed
 

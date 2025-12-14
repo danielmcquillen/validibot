@@ -30,6 +30,7 @@ Each stage has its own set of scheduler jobs with stage-specific names:
 | `validibot-cleanup-callback-receipts` | Weekly Sunday 4:00 AM | `/api/v1/scheduled/cleanup-callback-receipts/` | Delete old validator callback receipts (30 day retention) |
 | `validibot-purge-expired-submissions` | Hourly at :00 | `/api/v1/scheduled/purge-expired-submissions/` | Purge submission content past retention period |
 | `validibot-process-purge-retries` | Every 5 minutes | `/api/v1/scheduled/process-purge-retries/` | Retry failed submission purges |
+| `validibot-cleanup-stuck-runs` | Every 10 minutes | `/api/v1/scheduled/cleanup-stuck-runs/` | Mark validation runs stuck in RUNNING state as FAILED (30min timeout) |
 
 For dev/staging, job names include the stage suffix (e.g., `validibot-clear-sessions-dev`).
 
@@ -187,6 +188,7 @@ Schedules use standard cron syntax (minute hour day-of-month month day-of-week):
 | `0 3 * * *` | Daily at 3:00 AM |
 | `0 4 * * 0` | Weekly on Sunday at 4:00 AM |
 | `0 */6 * * *` | Every 6 hours |
+| `*/10 * * * *` | Every 10 minutes |
 | `*/15 * * * *` | Every 15 minutes |
 
 All times are in Australia/Sydney timezone (configured in justfile).

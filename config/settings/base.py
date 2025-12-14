@@ -395,13 +395,10 @@ REST_FRAMEWORK = {
     # These protect against abuse while allowing legitimate high-volume usage.
     # Exceeding limits returns 429 Too Many Requests with Retry-After header.
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        # Anonymous users (unauthenticated): strict limits for public endpoints
-        "anon": env("DRF_THROTTLE_RATE_ANON", default="100/hour"),
         # Authenticated users: generous limits for normal API usage
         "user": env("DRF_THROTTLE_RATE_USER", default="1000/hour"),
         # Scoped rates for specific high-value endpoints (set throttle_scope on views)
@@ -409,8 +406,21 @@ REST_FRAMEWORK = {
         "workflow_launch": env("DRF_THROTTLE_RATE_LAUNCH", default="60/minute"),
         # Burst protection: prevent rapid-fire requests in short windows
         "burst": env("DRF_THROTTLE_RATE_BURST", default="30/minute"),
+        # Anonymous rate (only used if DRF_ALLOW_ANONYMOUS=True)
+        "anon": env("DRF_THROTTLE_RATE_ANON", default="100/hour"),
     },
 }
+
+# Toggle for anonymous API access. When False (default), all API endpoints require
+# authentication. Set to True to allow unauthenticated access to public endpoints.
+# When enabled, AnonRateThrottle is added to protect against abuse.
+DRF_ALLOW_ANONYMOUS = env.bool("DRF_ALLOW_ANONYMOUS", default=False)
+
+if DRF_ALLOW_ANONYMOUS:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"].insert(
+        0,
+        "rest_framework.throttling.AnonRateThrottle",
+    )
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup
 CORS_URLS_REGEX = r"^/api/.*$"

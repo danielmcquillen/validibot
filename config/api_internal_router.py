@@ -9,6 +9,7 @@ from django.urls import path
 
 from validibot.core.api.scheduled_tasks import CleanupCallbackReceiptsView
 from validibot.core.api.scheduled_tasks import CleanupIdempotencyKeysView
+from validibot.core.api.scheduled_tasks import CleanupStuckRunsView
 from validibot.core.api.scheduled_tasks import ClearSessionsView
 from validibot.core.api.scheduled_tasks import ProcessPurgeRetriesView
 from validibot.core.api.scheduled_tasks import PurgeExpiredSubmissionsView
@@ -47,5 +48,10 @@ urlpatterns = [
         "scheduled/process-purge-retries/",
         ProcessPurgeRetriesView.as_view(),
         name="scheduled-process-purge-retries",
+    ),
+    path(
+        "scheduled/cleanup-stuck-runs/",
+        CleanupStuckRunsView.as_view(),
+        name="scheduled-cleanup-stuck-runs",
     ),
 ]

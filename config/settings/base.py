@@ -390,6 +390,26 @@ REST_FRAMEWORK = {
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
+    # Rate limiting / throttling
+    # See: https://www.django-rest-framework.org/api-guide/throttling/
+    # These protect against abuse while allowing legitimate high-volume usage.
+    # Exceeding limits returns 429 Too Many Requests with Retry-After header.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        # Anonymous users (unauthenticated): strict limits for public endpoints
+        "anon": env("DRF_THROTTLE_RATE_ANON", default="100/hour"),
+        # Authenticated users: generous limits for normal API usage
+        "user": env("DRF_THROTTLE_RATE_USER", default="1000/hour"),
+        # Scoped rates for specific high-value endpoints (set throttle_scope on views)
+        # Workflow launches are expensive (run validators, store data, etc.)
+        "workflow_launch": env("DRF_THROTTLE_RATE_LAUNCH", default="60/minute"),
+        # Burst protection: prevent rapid-fire requests in short windows
+        "burst": env("DRF_THROTTLE_RATE_BURST", default="30/minute"),
+    },
 }
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup

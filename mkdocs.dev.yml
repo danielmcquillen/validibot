@@ -42,6 +42,7 @@ nav:
       - Terminology: overview/terminology.md
       - User Roles & Permissions: overview/user_roles.md
       - How It Works: overview/how_it_works.md
+      - Validator Architecture: overview/validator_architecture.md
       - Submission Modes: overview/request_modes.md
       - System Administration: overview/system_admin.md
       - Dashboard: dashboard.md

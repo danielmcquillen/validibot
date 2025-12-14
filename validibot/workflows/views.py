@@ -179,6 +179,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         methods=["post"],
         url_path="start",
         url_name="start",
+        # Rate limit: 60 launches/minute per user
+        # (configurable via DRF_THROTTLE_RATE_LAUNCH env var)
+        # Protects against runaway automation while allowing batch processing.
+        throttle_scope="workflow_launch",
     )
     @idempotent
     def start_validation(self, request, pk=None, *args, **kwargs):

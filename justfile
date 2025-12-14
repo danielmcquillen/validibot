@@ -1728,6 +1728,13 @@ gcp-scheduler-setup stage:
         "/api/v1/scheduled/process-purge-retries/" \
         "Retry failed submission purges ({{stage}})"
 
+    # Job 6: Cleanup stuck runs (every 10 minutes)
+    create_or_update_job \
+        "validibot-cleanup-stuck-runs${JOB_SUFFIX}" \
+        "*/10 * * * *" \
+        "/api/v1/scheduled/cleanup-stuck-runs/" \
+        "Mark stuck validation runs as FAILED - 30min timeout ({{stage}})"
+
     echo "✅ All scheduler jobs configured for {{stage}}!"
     echo ""
     echo "View jobs: just gcp-scheduler-list"

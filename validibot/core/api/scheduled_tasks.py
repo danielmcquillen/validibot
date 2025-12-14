@@ -302,3 +302,67 @@ class ProcessPurgeRetriesView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class CleanupStuckRunsView(ScheduledTaskBaseView):
+    """
+    Mark stuck validation runs as FAILED.
+
+    Validation runs can become "stuck" in RUNNING status if a validator
+    container crashes without sending a callback, or if the callback fails.
+    This watchdog finds runs that have been RUNNING longer than a threshold
+    and marks them as FAILED.
+
+    URL: POST /api/v1/scheduled/cleanup-stuck-runs/
+    Recommended schedule: Every 10 minutes
+
+    Request body (optional):
+        timeout_minutes: int - Consider runs stuck after this many minutes (default: 30)
+        batch_size: int - Max runs to process (default: 100)
+    """
+
+    def post(self, request):
+        self.check_worker_mode()
+
+        # Allow overriding parameters via request body
+        timeout_minutes = request.data.get("timeout_minutes", 30)
+        batch_size = request.data.get("batch_size", 100)
+
+        logger.info(
+            "Starting scheduled cleanup of stuck runs "
+            "(timeout_minutes=%d, batch_size=%d)",
+            timeout_minutes,
+            batch_size,
+        )
+
+        try:
+            out = StringIO()
+            call_command(
+                "cleanup_stuck_runs",
+                f"--timeout-minutes={timeout_minutes}",
+                f"--batch-size={batch_size}",
+                stdout=out,
+            )
+            output = out.getvalue()
+
+            logger.info("Stuck run cleanup completed: %s", output.strip())
+
+            return Response(
+                {
+                    "task": "cleanup_stuck_runs",
+                    "status": "completed",
+                    "timeout_minutes": timeout_minutes,
+                    "output": output.strip(),
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.exception("Failed to cleanup stuck runs")
+            return Response(
+                {
+                    "task": "cleanup_stuck_runs",
+                    "status": "failed",
+                    "error": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

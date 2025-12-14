@@ -3,8 +3,34 @@ Callback API endpoint for Cloud Run Job validators.
 
 This module handles ValidationCallback POSTs from validator containers.
 It validates callback payloads, downloads the output envelope from GCS,
-and updates the ValidationRun in the database. Authentication is enforced
-by Cloud Run IAM; no shared secrets are required.
+and updates the ValidationRun in the database.
+
+Security Model
+--------------
+Authentication is handled at the infrastructure level, not application level:
+
+1. **Cloud Run Ingress**: The worker service is deployed with ingress="internal",
+   meaning only requests from within the same GCP project (e.g., Cloud Run Jobs,
+   Cloud Scheduler) can reach it. Public internet traffic is blocked.
+
+2. **Cloud Run IAM**: The validator Cloud Run Jobs run with a service account
+   that has permission to invoke the worker service. Cloud Run verifies the
+   caller's identity automatically.
+
+3. **Defense in Depth**: The endpoint checks `APP_IS_WORKER` and returns 404 on
+   non-worker instances. This prevents accidental exposure if routing rules change.
+
+Why no DRF Authentication?
+    - The callback endpoint sets `authentication_classes = []` because Cloud Run
+      IAM handles authentication before the request reaches Django.
+    - Adding DRF token auth would require validators to manage credentials, adding
+      complexity without security benefit (requests already can't reach this
+      endpoint from outside GCP).
+
+Testing Security:
+    - Unit tests verify APP_IS_WORKER guard (test_callback_security.py)
+    - Infrastructure security is verified via deployment checklists
+    - See docs/dev_docs/google_cloud/security.md for full security model
 
 Design: Simple APIView with clear error handling. No complex permissions.
 """

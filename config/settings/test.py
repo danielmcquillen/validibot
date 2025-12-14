@@ -10,6 +10,8 @@ os.environ.setdefault("STRIPE_TEST_SECRET_KEY", "sk_test_dummy_test_key_for_test
 os.environ.setdefault("STRIPE_TEST_PUBLIC_KEY", "pk_test_dummy_test_key_for_testing")
 
 from .base import *  # noqa: F403
+from .base import DATABASES
+from .base import REST_FRAMEWORK
 from .base import TEMPLATES
 from .base import env
 
@@ -77,3 +79,8 @@ ACCOUNT_ALLOW_LOGIN = True
 # CEL evaluation timeout - increase for tests since heavy test loads can cause
 # thread pool overhead that exceeds the default 100ms timeout
 CEL_MAX_EVAL_TIMEOUT_MS = 500
+
+# Disable DRF throttling in tests to prevent rate limit failures during test runs
+# Tests run many rapid API calls which would trigger throttle limits.
+REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []  # type: ignore[name-defined]
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {}  # type: ignore[name-defined]

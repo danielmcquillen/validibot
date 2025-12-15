@@ -396,7 +396,9 @@ REST_FRAMEWORK = {
     # Exceeding limits returns 429 Too Many Requests with Retry-After header.
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.UserRateThrottle",
-        "rest_framework.throttling.ScopedRateThrottle",
+        # GuestAwareThrottle extends ScopedRateThrottle to apply different rates
+        # for workflow guests (users with grants but no org membership)
+        "validibot.core.throttles.GuestAwareThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         # Authenticated users: generous limits for normal API usage
@@ -404,6 +406,12 @@ REST_FRAMEWORK = {
         # Scoped rates for specific high-value endpoints (set throttle_scope on views)
         # Workflow launches are expensive (run validators, store data, etc.)
         "workflow_launch": env("DRF_THROTTLE_RATE_LAUNCH", default="60/minute"),
+        # Guest users (workflow guests without org membership) have lower limits
+        # to prevent abuse while still allowing legitimate usage
+        "guest_workflow_launch": env(
+            "DRF_THROTTLE_RATE_GUEST_LAUNCH",
+            default="20/minute",
+        ),
         # Burst protection: prevent rapid-fire requests in short windows
         "burst": env("DRF_THROTTLE_RATE_BURST", default="30/minute"),
         # Anonymous rate (only used if DRF_ALLOW_ANONYMOUS=True)

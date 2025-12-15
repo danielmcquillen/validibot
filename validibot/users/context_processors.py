@@ -13,6 +13,9 @@ def organization_context(request):
     """
     Provide organization context for the current user.
     Sets request.active_org to the active organization.
+
+    For workflow guests (users with only WorkflowAccessGrants, no org memberships),
+    returns a minimal context with is_workflow_guest=True.
     """
 
     if not hasattr(request, "user"):
@@ -26,6 +29,11 @@ def organization_context(request):
             return {}
     except Exception:
         return {}
+
+    # Check if user is a workflow guest (has grants but no memberships).
+    # Must be checked BEFORE ensure_personal_workspace which would create one.
+    if request.user.is_workflow_guest:
+        return _guest_context(request)
 
     try:
         ensure_personal_workspace(request.user)
@@ -41,6 +49,27 @@ def organization_context(request):
             "Failed to apply organization context for user %s", request.user.id
         )
         return {}
+
+
+def _guest_context(request):
+    """
+    Return context for workflow guests.
+
+    Workflow guests have access to shared workflows via WorkflowAccessGrant,
+    but no organization membership. They see a limited UI with only their
+    shared workflows and validation runs.
+    """
+    return {
+        "is_workflow_guest": True,
+        "org_memberships": [],
+        "active_org": None,
+        "active_membership": None,
+        "is_org_admin": False,
+        "can_manage_validators": False,
+        "has_author_admin_owner": False,
+        "active_role_codes": set(),
+        "has_any_org_roles": False,
+    }
 
 
 def _apply_organization_context(request):
@@ -74,6 +103,7 @@ def _apply_organization_context(request):
     )
 
     return {
+        "is_workflow_guest": False,
         "org_memberships": memberships,
         "active_org": active_org,
         "active_membership": active_membership,

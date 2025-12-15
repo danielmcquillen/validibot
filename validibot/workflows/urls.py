@@ -6,6 +6,7 @@ app_name = "workflows"
 
 urlpatterns = [
     path("", views.WorkflowListView.as_view(), name="workflow_list"),
+    path("shared/", views.GuestWorkflowListView.as_view(), name="guest_workflow_list"),
     path("new/", views.WorkflowCreateView.as_view(), name="workflow_create"),
     path(
         "<int:pk>/launch/",

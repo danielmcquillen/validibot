@@ -68,7 +68,7 @@ def ensure_default_project(organization: Organization):
     )
 
 
-def ensure_personal_workspace(user: User) -> Organization:
+def ensure_personal_workspace(user: User) -> Organization | None:
     """
     Ensure the user has a personal workspace organization.
 
@@ -77,7 +77,25 @@ def ensure_personal_workspace(user: User) -> Organization:
     - A membership for the user (owner/admin roles)
     - A default project
     - A subscription on the Starter plan with 14-day trial
+
+    Returns None for Workflow Guests (users with workflow grants but no
+    org memberships). Guests operate without a personal workspace and
+    their usage is billed to the workflow owner's org.
     """
+    # Check if user is a workflow guest (has grants but no memberships)
+    # Import here to avoid circular import
+    from validibot.workflows.models import WorkflowAccessGrant
+
+    has_memberships = user.memberships.filter(is_active=True).exists()
+    has_grants = WorkflowAccessGrant.objects.filter(
+        user=user,
+        is_active=True,
+    ).exists()
+
+    if has_grants and not has_memberships:
+        # User is a workflow guest - no personal workspace needed
+        return None
+
     existing = (
         user.orgs.filter(is_personal=True, membership__is_active=True)
         .distinct()
@@ -296,8 +314,12 @@ class User(AbstractUser):
     def get_current_org(self) -> Organization | None:
         """
         Return the current_org (cached via select_related in callers).
-        If one isn't defined, set it to the user's personal org if it exists.
-        If no personal org exists, create one and set it.
+
+        If current_org is defined and the user has an active membership, return it.
+        Otherwise, try to create/return the user's personal workspace.
+
+        Returns None for Workflow Guests (users with workflow grants but no
+        org memberships). Guests operate without an organization context.
         """
         if (
             self.current_org
@@ -309,6 +331,7 @@ class User(AbstractUser):
         ):
             return self.current_org
 
+        # This returns None for workflow guests
         return ensure_personal_workspace(self)
 
     def set_current_org(
@@ -357,6 +380,32 @@ class User(AbstractUser):
         if not self.current_org:
             return None
         return Membership.objects.filter(user=self, org=self.current_org).first()
+
+    @property
+    def is_workflow_guest(self) -> bool:
+        """
+        Check if user is a Workflow Guest (has grants but no org memberships).
+
+        Workflow Guests are users who have been invited to specific workflows
+        but are not members of any organization. They operate on the Free Tier
+        plan and have a limited UI surface.
+
+        Returns:
+            True if the user has active workflow grants but no active org
+            memberships, False otherwise.
+        """
+        # If user has any active org memberships, they're not a guest
+        if self.memberships.filter(is_active=True).exists():
+            return False
+
+        # Check if they have any active workflow grants
+        # Import here to avoid circular import
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        return WorkflowAccessGrant.objects.filter(
+            user=self,
+            is_active=True,
+        ).exists()
 
     def get_absolute_url(self) -> str:
         """Get URL for user's detail view.

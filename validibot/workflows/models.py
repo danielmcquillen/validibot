@@ -47,7 +47,7 @@ class WorkflowQuerySet(models.QuerySet):
     """
     A custom queryset for Workflow model to add user-specific filtering methods.
     This lets us easily get workflows a user has access to based on their membership
-    to organizations.
+    to organizations or via workflow access grants (for guests).
     """
 
     def for_user(
@@ -58,34 +58,48 @@ class WorkflowQuerySet(models.QuerySet):
         """
         Get workflows accessible to the given user.
 
-        If required_role is provided,
-        only return workflows where the user has that role in the workflow's
-        organization.
+        Access is granted via:
+        1. Org membership with appropriate role (existing behavior)
+        2. Being the workflow creator (existing behavior)
+        3. Having an active WorkflowAccessGrant (new - for guests)
 
-        Otherwise, return all workflows where the user is an active member of the
-        workflow's organization. Note this doesn't mean they can execute the workflow;
-        that requires the EXECUTOR role specifically.
+        If required_role is provided, only return workflows where the user
+        has that role in the workflow's organization. In this case, guest
+        grants are NOT included (role-specific queries are for org members).
 
+        Otherwise, return all workflows the user can access via any of the
+        three methods above.
         """
-
         if not getattr(user, "is_authenticated", False):
             return self.none()
 
+        # Org membership subquery
         allowed_view_roles = roles_for_permission(PermissionCode.WORKFLOW_VIEW)
-        subq = Membership.objects.filter(
+        membership_subq = Membership.objects.filter(
             org=OuterRef("org_id"),
             user=user,
             is_active=True,
         )
         if required_role_code:
-            subq = subq.filter(roles__code=required_role_code)
+            membership_subq = membership_subq.filter(roles__code=required_role_code)
         else:
-            subq = subq.filter(roles__code__in=allowed_view_roles)
+            membership_subq = membership_subq.filter(roles__code__in=allowed_view_roles)
+
+        # Build the access condition
+        # Always include: membership access OR user is creator
+        access_condition = Exists(membership_subq) | Q(user_id=user.id)
+
+        # For non-role-specific queries, also include guest grant access
+        if not required_role_code:
+            grant_subq = WorkflowAccessGrant.objects.filter(
+                workflow_id=OuterRef("pk"),
+                user=user,
+                is_active=True,
+            )
+            access_condition = access_condition | Exists(grant_subq)
 
         return (
-            self.annotate(
-                _has_access=Exists(subq) | Q(user_id=user.id),
-            )
+            self.annotate(_has_access=access_condition)
             .filter(_has_access=True)
             .distinct()
         )
@@ -297,12 +311,20 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def can_view(self, *, user: User) -> bool:
         """
         Check if the given user can view this workflow.
-        Requires the ``workflow_view`` permission in the workflow's org.
+
+        Access is granted if either:
+        - User has WORKFLOW_VIEW permission in the workflow's org (org member), OR
+        - User has an active WorkflowAccessGrant for this workflow (guest)
         """
         if not user or not user.is_authenticated:
             return False
 
-        return user.has_perm(PermissionCode.WORKFLOW_VIEW.value, self)
+        # Org member check (existing behavior)
+        if user.has_perm(PermissionCode.WORKFLOW_VIEW.value, self):
+            return True
+
+        # Guest grant check
+        return self.access_grants.filter(user=user, is_active=True).exists()
 
     def can_delete(self, *, user: User) -> bool:
         """
@@ -316,15 +338,25 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
     def can_execute(self, *, user: User) -> bool:
         """
-        Check if the given user can execute this workflow.
-        Requires the ``workflow_launch`` permission in the workflow's org.
+        Check if the given user can execute (run) this workflow.
+
+        Access is granted if either:
+        - User has WORKFLOW_LAUNCH permission in the workflow's org (org member), OR
+        - User has an active WorkflowAccessGrant for this workflow (guest)
+
+        The workflow must also be active for execution to be allowed.
         """
         if not self.is_active:
             return False
         if not user or not user.is_authenticated:
             return False
 
-        return user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self)
+        # Org member check (existing behavior)
+        if user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self):
+            return True
+
+        # Guest grant check
+        return self.access_grants.filter(user=user, is_active=True).exists()
 
     def can_edit(self, *, user: User) -> bool:
         """
@@ -665,3 +697,296 @@ class WorkflowRoleAccess(models.Model):
 
     def __str__(self):
         return f"{self.workflow_id}:{self.role}"
+
+
+class WorkflowAccessGrant(TimeStampedModel):
+    """
+    Grants a user (typically external) access to a specific workflow without
+    requiring org membership. Used for cross-organization workflow sharing.
+
+    Workflow Guests are users who have access grants but no org membership.
+    Their usage is billed/metered against the workflow owner's org.
+
+    This is distinct from WorkflowRoleAccess which grants access based on
+    org membership roles. WorkflowAccessGrant is for external users who
+    are not members of the workflow's organization.
+    """
+
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="access_grants",
+        help_text=_("The workflow this grant provides access to."),
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="workflow_grants",
+        help_text=_("The user who has been granted access."),
+    )
+    granted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="granted_workflow_access",
+        help_text=_("The user who created this grant."),
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text=_("Whether this grant is currently active."),
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional notes about this access grant."),
+    )
+
+    class Meta:
+        unique_together = [("workflow", "user")]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["workflow", "is_active"]),
+        ]
+        verbose_name = _("workflow access grant")
+        verbose_name_plural = _("workflow access grants")
+
+    def __str__(self):
+        return f"{self.user} -> {self.workflow.name}"
+
+    def revoke(self) -> None:
+        """Revoke this access grant."""
+        self.is_active = False
+        self.save(update_fields=["is_active", "modified"])
+
+
+class WorkflowInvite(TimeStampedModel):
+    """
+    Invitation for an external user to access a specific workflow as a guest.
+
+    Unlike PendingInvite (for org membership), accepting this invite creates a
+    WorkflowAccessGrant but NOT a Membership. The invited user operates as a
+    Workflow Guest without an organization context.
+
+    Workflow invites enable cross-org sharing where:
+    - The inviter is an author in the workflow's org
+    - The invitee may or may not have an existing account
+    - Upon acceptance, the invitee gets access to the specific workflow only
+    - Usage is billed to the workflow owner's org
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", _("Pending")
+        ACCEPTED = "ACCEPTED", _("Accepted")
+        DECLINED = "DECLINED", _("Declined")
+        CANCELED = "CANCELED", _("Canceled")
+        EXPIRED = "EXPIRED", _("Expired")
+
+    # Default invite expiry: 7 days
+    DEFAULT_EXPIRY_DAYS = 7
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="invites",
+        help_text=_("The workflow this invite grants access to."),
+    )
+    inviter = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="sent_workflow_invites",
+        help_text=_("The user who sent this invite."),
+    )
+    invitee_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="received_workflow_invites",
+        null=True,
+        blank=True,
+        help_text=_("The invited user, if they already have an account."),
+    )
+    invitee_email = models.EmailField(
+        blank=True,
+        help_text=_("Email address of invitee (used when inviting non-users)."),
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        unique=True,
+        help_text=_("Unique token for invite acceptance URL."),
+    )
+    expires_at = models.DateTimeField(
+        help_text=_("When this invite expires."),
+    )
+
+    class Meta:
+        ordering = ["-created"]
+        verbose_name = _("workflow invite")
+        verbose_name_plural = _("workflow invites")
+        indexes = [
+            models.Index(fields=["token"]),
+            models.Index(fields=["invitee_email", "status"]),
+            models.Index(fields=["workflow", "status"]),
+        ]
+
+    def __str__(self):
+        target = self.invitee_user or self.invitee_email
+        return f"Invite to {self.workflow.name} for {target}"
+
+    @classmethod
+    def create_with_expiry(
+        cls,
+        *,
+        workflow: Workflow,
+        inviter: User,
+        invitee_email: str,
+        invitee_user: User | None = None,
+        expiry_days: int | None = None,
+        send_email: bool = True,
+    ) -> WorkflowInvite:
+        """
+        Create a new workflow invite with default expiry.
+
+        Args:
+            workflow: The workflow to grant access to.
+            inviter: The user sending the invite.
+            invitee_email: Email of the person being invited.
+            invitee_user: Optional existing user if email matches.
+            expiry_days: Days until expiry (default: 7).
+            send_email: Whether to send an invitation email (default: True).
+
+        Returns:
+            The created WorkflowInvite instance.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        days = expiry_days or cls.DEFAULT_EXPIRY_DAYS
+        expires_at = timezone.now() + timedelta(days=days)
+
+        invite = cls.objects.create(
+            workflow=workflow,
+            inviter=inviter,
+            invitee_email=invitee_email,
+            invitee_user=invitee_user,
+            expires_at=expires_at,
+        )
+
+        if send_email:
+            from validibot.workflows.emails import send_workflow_invite_email
+
+            send_workflow_invite_email(invite)
+
+        return invite
+
+    def mark_expired_if_needed(self) -> bool:
+        """
+        Check if invite has expired and update status if so.
+
+        Returns:
+            True if the invite was marked as expired, False otherwise.
+        """
+        from django.utils import timezone
+
+        if self.status != self.Status.PENDING:
+            return False
+
+        if timezone.now() >= self.expires_at:
+            self.status = self.Status.EXPIRED
+            self.save(update_fields=["status", "modified"])
+            return True
+
+        return False
+
+    def accept(self, user: User | None = None) -> WorkflowAccessGrant:
+        """
+        Accept this invite and create a WorkflowAccessGrant.
+
+        Args:
+            user: The user accepting the invite. If not provided, uses
+                  invitee_user. Required if invitee_user is not set.
+
+        Returns:
+            The created WorkflowAccessGrant.
+
+        Raises:
+            ValueError: If invite is not in PENDING status or no user provided.
+        """
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot accept invite with status {self.status}"
+            raise ValueError(msg)
+
+        accepting_user = user or self.invitee_user
+        if not accepting_user:
+            msg = "No user provided to accept invite"
+            raise ValueError(msg)
+
+        # Check for expiry first
+        if self.mark_expired_if_needed():
+            msg = "Invite has expired"
+            raise ValueError(msg)
+
+        # Create the access grant
+        grant, _created = WorkflowAccessGrant.objects.get_or_create(
+            workflow=self.workflow,
+            user=accepting_user,
+            defaults={
+                "granted_by": self.inviter,
+                "is_active": True,
+            },
+        )
+
+        # If grant already existed but was inactive, reactivate it
+        if not _created and not grant.is_active:
+            grant.is_active = True
+            grant.granted_by = self.inviter
+            grant.save(update_fields=["is_active", "granted_by", "modified"])
+
+        # Update invite status
+        self.status = self.Status.ACCEPTED
+        if not self.invitee_user:
+            self.invitee_user = accepting_user
+        self.save(update_fields=["status", "invitee_user", "modified"])
+
+        return grant
+
+    def decline(self) -> None:
+        """Decline this invite."""
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot decline invite with status {self.status}"
+            raise ValueError(msg)
+
+        self.status = self.Status.DECLINED
+        self.save(update_fields=["status", "modified"])
+
+    def cancel(self) -> None:
+        """Cancel this invite (called by the inviter)."""
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot cancel invite with status {self.status}"
+            raise ValueError(msg)
+
+        self.status = self.Status.CANCELED
+        self.save(update_fields=["status", "modified"])
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if invite has expired without updating status."""
+        from django.utils import timezone
+
+        return self.status == self.Status.EXPIRED or timezone.now() >= self.expires_at
+
+    @property
+    def is_pending(self) -> bool:
+        """Check if invite is still pending and not expired."""
+        return self.status == self.Status.PENDING and not self.is_expired

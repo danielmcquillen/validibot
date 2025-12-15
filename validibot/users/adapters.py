@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # Session key for storing the selected plan during signup flow
 SELECTED_PLAN_SESSION_KEY = "signup_selected_plan"
 
+# Session key for storing workflow invite token during signup flow
+WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
+
 
 def get_selected_plan_from_session(request: HttpRequest) -> dict | None:
     """
@@ -105,16 +108,29 @@ class AccountAdapter(DefaultAccountAdapter):
 
     def get_signup_redirect_url(self, request: HttpRequest) -> str:
         """
-        Redirect to billing dashboard after signup.
+        Redirect to appropriate destination after signup.
 
-        Creates a smooth flow: Pricing → Signup → Billing Dashboard
-        The billing dashboard shows trial status and allows users to:
-        - See their trial countdown
-        - Review plan options
-        - Subscribe immediately (skip trial) or continue with trial
+        Handles two flows:
+        1. Workflow invite flow: Accept invite, redirect to workflow launch
+        2. Standard pricing flow: Redirect to billing dashboard
 
-        Also stores the intended plan on the subscription for analytics.
+        For workflow invites:
+        - New user is created as a Workflow Guest (no personal workspace)
+        - Invite is accepted, creating a WorkflowAccessGrant
+        - User is redirected to the workflow launch page
+
+        For standard signups:
+        - User gets a personal workspace with trial subscription
+        - Redirected to billing dashboard to view trial/subscribe
         """
+        # Check for workflow invite token first
+        invite_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
+        if invite_token:
+            redirect_url = self._handle_workflow_invite_signup(request, invite_token)
+            if redirect_url:
+                return redirect_url
+
+        # Standard pricing flow
         selected_plan = request.session.get(SELECTED_PLAN_SESSION_KEY)
 
         if selected_plan:
@@ -134,6 +150,78 @@ class AccountAdapter(DefaultAccountAdapter):
 
         # Default: redirect to standard login redirect
         return settings.LOGIN_REDIRECT_URL
+
+    def _handle_workflow_invite_signup(
+        self,
+        request: HttpRequest,
+        invite_token: str,
+    ) -> str | None:
+        """
+        Handle workflow invite acceptance after signup.
+
+        Accepts the workflow invite, creating a WorkflowAccessGrant,
+        and returns the redirect URL to the workflow launch page.
+
+        Returns None if the invite is invalid, allowing fallback to
+        normal signup flow.
+        """
+        from django.contrib import messages
+        from django.utils.translation import gettext_lazy as _
+
+        from validibot.workflows.models import WorkflowInvite
+
+        # Clear the session key
+        del request.session[WORKFLOW_INVITE_SESSION_KEY]
+
+        try:
+            invite = WorkflowInvite.objects.select_related("workflow").get(
+                token=invite_token,
+            )
+
+            # Check if still valid
+            invite.mark_expired_if_needed()
+            if invite.status != WorkflowInvite.Status.PENDING:
+                logger.warning(
+                    "Workflow invite %s is no longer pending (status: %s)",
+                    invite_token,
+                    invite.status,
+                )
+                messages.warning(
+                    request,
+                    _("The workflow invite is no longer valid."),
+                )
+                return None
+
+            # Accept the invite
+            grant = invite.accept(user=request.user)
+
+            # Send acceptance notification to the inviter
+            from validibot.workflows.emails import send_workflow_invite_accepted_email
+
+            send_workflow_invite_accepted_email(grant)
+
+            messages.success(
+                request,
+                _(
+                    "Welcome! You now have access to the workflow '%(name)s'. "
+                    "You can run validations on this workflow."
+                )
+                % {"name": invite.workflow.name},
+            )
+
+            # Redirect to workflow launch page
+            return reverse(
+                "workflows:workflow_launch",
+                kwargs={"pk": invite.workflow.pk},
+            )
+
+        except WorkflowInvite.DoesNotExist:
+            logger.warning("Workflow invite not found: %s", invite_token)
+            return None
+        except ValueError as e:
+            logger.warning("Failed to accept workflow invite: %s", e)
+            messages.error(request, str(e))
+            return None
 
     def _store_intended_plan(self, user: User, plan_code: str) -> None:
         """

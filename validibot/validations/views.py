@@ -1828,3 +1828,119 @@ class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
         if request.method == "DELETE":
             return HttpResponse(status=204)
         return HttpResponseRedirect(success_url)
+
+
+# Guest Validation Views
+# ------------------------------------------------------------------------------
+
+
+class GuestValidationRunListView(LoginRequiredMixin, ListView):
+    """
+    List validation runs for workflow guests.
+
+    This view is for workflow guests (users with grants but no org memberships).
+    It shows only the user's own validation runs across all workflows they have
+    access to, with an organization filter.
+    """
+
+    template_name = "validations/guest_validation_list.html"
+    context_object_name = "validations"
+    paginate_by = 20
+    page_size_options = (10, 50, 100)
+
+    allowed_sorts = {
+        "created": "created",
+        "-created": "-created",
+        "status": "status",
+        "-status": "-status",
+        "workflow": "workflow__name",
+        "-workflow": "-workflow__name",
+    }
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return ValidationRun.objects.none()
+
+        # Get workflows the guest has access to via grants
+        from validibot.workflows.models import Workflow
+
+        accessible_workflows = Workflow.objects.for_user(user)
+
+        # Only show the user's own runs on those workflows
+        qs = ValidationRun.objects.filter(
+            user=user,
+            workflow__in=accessible_workflows,
+        ).select_related("workflow", "workflow__org", "submission", "org")
+
+        # Apply filters
+        status_filter = self.request.GET.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        workflow_filter = self.request.GET.get("workflow")
+        if workflow_filter:
+            qs = qs.filter(workflow_id=workflow_filter)
+
+        org_filter = self.request.GET.get("org")
+        if org_filter:
+            qs = qs.filter(org_id=org_filter)
+
+        ordering = self._get_ordering()
+        return qs.order_by(ordering)
+
+    def _get_ordering(self):
+        sort = self.request.GET.get("sort", "-created")
+        return self.allowed_sorts.get(sort, "-created")
+
+    def get_paginate_by(self, queryset):
+        per_page = self.request.GET.get("per_page")
+        if per_page:
+            try:
+                per_page = int(per_page)
+            except (TypeError, ValueError):
+                per_page = None
+            else:
+                if per_page not in self.page_size_options:
+                    per_page = None
+        if per_page is None:
+            per_page = self.paginate_by
+        self.page_size = per_page
+        return per_page
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+
+        # Mark all runs as viewable since these are the user's own runs
+        for validation in context.get("validations", []):
+            validation.curr_user_can_view = True
+            validation.curr_user_can_delete = False  # Guests can't delete
+
+        # Get org options for filter - orgs the user has workflow grants for
+        from validibot.users.models import Organization
+        from validibot.workflows.models import Workflow
+
+        accessible_workflows = Workflow.objects.for_user(user)
+        org_ids = accessible_workflows.values_list("org_id", flat=True).distinct()
+        org_options = Organization.objects.filter(id__in=org_ids)
+
+        context.update(
+            {
+                "current_sort": self.request.GET.get("sort", "-created"),
+                "status_filter": self.request.GET.get("status", ""),
+                "status_choices": ValidationRunStatus.choices,
+                "workflow_options": accessible_workflows,
+                "org_options": org_options,
+                "org_filter": self.request.GET.get("org", ""),
+                "query_string": self._get_base_query_string(),
+                "page_size_options": self.page_size_options,
+                "current_page_size": getattr(self, "page_size", self.paginate_by),
+            },
+        )
+        return context
+
+    def _get_base_query_string(self):
+        params = self.request.GET.copy()
+        params.pop("page", None)
+        return params.urlencode()

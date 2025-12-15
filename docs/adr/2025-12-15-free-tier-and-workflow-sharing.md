@@ -8,7 +8,7 @@
 
 We will support "cross-org workflow sharing" by introducing **Workflow Guests** (no seats) alongside existing **Organization Members** (seat-based). Workflow authors can invite external users (by email) to run specific workflows.
 
-Free access is **invite-only**: users can only create accounts via invite tokens. The inviter auto-approves their invitees for the specific workflow(s) they were invited to.
+Free access is **invite-only**: users can only create accounts via invite tokens. Invited users are **auto-approved** and placed on the **Free Tier plan**, which does not include an organization of their own.
 
 Public workflow execution is explicitly **off/hidden** for the initial rollout. The existing `make_info_public` remains an _info visibility_ concept, not a permission to execute. See Non-Goals for rationale; a future ADR may revisit this once abuse controls mature.
 
@@ -25,7 +25,8 @@ We need a model that lets external users run a workflow with tight safety contro
 ## Terminology
 
 - **Organization Member**: A user with a `Membership` in an org (consumes a seat; covered by org subscription limits).
-- **Workflow Guest**: A user who can access specific workflows via workflow-level grants (does _not_ consume a seat).
+- **Workflow Guest**: A user who can access specific workflows via workflow-level grants (does _not_ consume a seat). Guests are on the Free Tier plan and do not have an organization of their own.
+- **Free Tier plan**: A subscription plan with no organization. Users on this plan can only access workflows they've been explicitly invited to as Guests.
 
 ## Design Principles
 
@@ -42,8 +43,8 @@ We need a model that lets external users run a workflow with tight safety contro
 - Users can only create accounts via invite tokens (no self-serve signup for free access).
 - When an unrecognized email is invited to a workflow:
   - They receive an invite link (valid for 7 days) and can create an account.
-  - Upon account creation, they are automatically granted access to the workflow(s) they were invited to.
-  - The inviter implicitly approves them for those specific workflows.
+  - Upon account creation, they are **auto-approved** and immediately granted access to the workflow(s) they were invited to.
+  - Their account is placed on the **Free Tier plan** (no organization of their own).
 
 This mirrors the Notion/Linear-style "invite-only" posture and reduces abuse during early go-to-market.
 
@@ -79,9 +80,9 @@ Implementation detail: these should create **individual per-workflow grants in b
 
 ### 5) Guest UI restrictions
 
-Workflow Guests should have an intentionally limited product surface:
+Workflow Guests (Free Tier users) should have an intentionally limited product surface:
 
-- Left nav: **Workflows** and **Validation Runs** only.
+- Left nav: **Workflows** and **Validation Runs** only (no organization selector, since they have no org).
 - Guests can only see their own runs, not org-wide run history.
 - Guest access is read-only except:
   - launching runs for workflows they can access,
@@ -139,15 +140,47 @@ When a Guest launches a workflow run, metering and billing attribution must char
 
 ### Rate limiting
 
-We will enforce rate limits by scope:
+We will enforce rate limits using DRF throttling with **separate throttle scopes** for member vs guest launches.
 
-- **Members**: generous defaults
-- **Guests**: tighter defaults
-- **Public**: not enabled initially (but we design with a placeholder scope)
+Existing context: the workflow launch API action already uses `throttle_scope="workflow_launch"` with `ScopedRateThrottle`.
 
-Rate limits will use org-level defaults only for the initial release.
+This ADR expects us to introduce an explicit scope split:
 
-We already use DRF throttling and scoped throttle rates. This work extends the current throttle scope set to include guest-oriented scopes.
+- **Member launch scope**: keep using `workflow_launch` (current behavior).
+- **Guest launch scope**: add `workflow_launch_guest`.
+- **Public launch scope**: reserve `workflow_launch_public` (not enabled initially).
+
+Implementation note (important): because the scope needs to depend on _who_ is launching (member vs guest), we cannot rely solely on a static `throttle_scope` string on the view. Instead, create a **custom throttle class** that extends `SimpleRateThrottle` and overrides `get_cache_key()` to:
+
+1. Determine whether the authenticated user is a Member or Guest for the target workflow.
+2. Return a cache key that incorporates the appropriate scope (`workflow_launch` vs `workflow_launch_guest`).
+
+Example pattern:
+
+```python
+from rest_framework.throttling import SimpleRateThrottle
+
+class WorkflowLaunchThrottle(SimpleRateThrottle):
+    def get_cache_key(self, request, view):
+        workflow = view.get_object()
+        if user_is_guest_for_workflow(request.user, workflow):
+            self.scope = "workflow_launch_guest"
+        else:
+            self.scope = "workflow_launch"
+        self.rate = self.get_rate()
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": request.user.pk,
+        }
+```
+
+Note: DRF does not have a `get_throttle_scope()` method. The standard extension points are `get_cache_key()` on throttle classes or `get_throttles()` on views.
+
+Defaults should be configured via `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]` and remain env-driven, with guest defaults set materially lower than member defaults.
+
+Initial release: org-level defaults only.
+
+Future: per-workflow overrides (e.g., high-traffic shared workflows) can be layered by including `workflow_id` in the throttle cache key or by applying an additional per-workflow throttle.
 
 ## Rollout Plan
 
@@ -160,7 +193,7 @@ We already use DRF throttling and scoped throttle rates. This work extends the c
 
 The following are explicitly deferred to future releases:
 
-- **Self-serve free signup**: Allow users to create free accounts without an invite, with access limited to public workflows only. This will be enabled once abuse controls and support tooling are mature.
+- **Self-serve free tier signup**: Allow anyone to sign up for a Free Tier account without an invite. These users would require **superuser approval** (via Django admin) before they can access any workflows. Implementation: add an `is_approved` boolean on the User model, defaulting to `True` for all current signup paths (invite-based, org membership) but `False` for self-serve free tier signup. A new "Free Tier" plan would appear on the plans page. Approved free tier users could then access public workflows or workflows they're later invited to.
 - **Access Groups**: Named sets of users that can be granted access to multiple workflows. Bulk grants (step 3 above) provide a simpler solution for the "100 users" problem initially.
 - **Per-workflow rate limit overrides**: Authors can customize rate limits for specific high-traffic workflows.
 - **Grant expiration**: Time-limited access grants with automatic revocation.
@@ -184,9 +217,10 @@ The following are explicitly deferred to future releases:
 
 ## Decisions Made
 
-1. **Approval model**: The inviter auto-approves their invitees for the specific workflow(s) they were invited to. No separate approval step needed.
-2. **Access Groups**: Out of scope for initial release. Bulk grants provide a simpler solution.
-3. **Per-workflow rate limits**: Out of scope for initial release. Org-level defaults only.
-4. **Guest run visibility**: Guests see only their own runs, not org-wide run history.
-5. **Grant expiration**: Out of scope for initial release.
-6. **Invite token expiration**: 7 days. Expired invites shown in UI with resend option.
+1. **Approval model**: All invited users are auto-approved. Self-serve free tier signup (future) will require superuser approval via Django admin.
+2. **Free Tier plan**: Guests are placed on a Free Tier plan with no organization of their own. They do not see an organization selector in the left nav.
+3. **Access Groups**: Out of scope for initial release. Bulk grants provide a simpler solution.
+4. **Per-workflow rate limits**: Out of scope for initial release. Org-level defaults only.
+5. **Guest run visibility**: Guests see only their own runs, not org-wide run history.
+6. **Grant expiration**: Out of scope for initial release.
+7. **Invite token expiration**: 7 days. Expired invites shown in UI with resend option.

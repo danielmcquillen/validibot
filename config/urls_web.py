@@ -52,6 +52,11 @@ urlpatterns = [
         workflow_views.PublicWorkflowInfoView.as_view(),
         name="workflow_public_info",
     ),
+    path(
+        "workflows/invite/<uuid:token>/",
+        workflow_views.WorkflowInviteAcceptView.as_view(),
+        name="workflow_invite_accept",
+    ),
     path(settings.ADMIN_URL, admin.site.urls),
     path("app/core/", include("validibot.core.urls", namespace="core")),
     *static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT),

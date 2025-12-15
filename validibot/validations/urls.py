@@ -96,6 +96,11 @@ urlpatterns = [
         name="validation_list",
     ),
     path(
+        "my-runs/",
+        views.GuestValidationRunListView.as_view(),
+        name="guest_validation_list",
+    ),
+    path(
         "<uuid:pk>/",
         views.ValidationRunDetailView.as_view(),
         name="validation_detail",

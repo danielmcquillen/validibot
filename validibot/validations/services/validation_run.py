@@ -140,8 +140,9 @@ class ValidationRunService:
             raise PermissionError(err_msg)
 
         # Check billing limits before proceeding
+        # For workflow guests, billing is attributed to the workflow owner's org
         if BILLING_ENFORCEMENT_ENABLED:
-            self._check_billing_limits(org, workflow)
+            self._check_billing_limits(org, workflow, user=request.user)
 
         run_user = None
         if getattr(submission, "user_id", None):
@@ -264,12 +265,21 @@ class ValidationRunService:
         self,
         org: Organization,
         workflow: Workflow,
+        user: User | None = None,
     ) -> None:
         """
         Check billing limits before creating a validation run.
 
         For basic workflows: increments the usage counter and checks monthly limit.
         For advanced workflows: checks credit balance.
+
+        For workflow guests (users with grants but no org membership), billing is
+        attributed to the workflow owner's organization, not the user's org.
+
+        Args:
+            org: The organization passed to launch (may be None for guests).
+            workflow: The workflow being executed.
+            user: The user executing the workflow (used to check guest status).
 
         Raises:
             BillingError (or subclass) if limits exceeded or subscription inactive.
@@ -278,11 +288,22 @@ class ValidationRunService:
         from validibot.billing.metering import AdvancedWorkflowMeter
         from validibot.billing.metering import BasicWorkflowMeter
 
-        # Check if org has a subscription (it should, but handle edge cases)
-        if not hasattr(org, "subscription"):
+        # Determine billing org: for guests, use workflow's org
+        billing_org = org
+        if user and getattr(user, "is_workflow_guest", False):
+            # Workflow guests have their usage billed to the workflow owner's org
+            billing_org = workflow.org
+            logger.info(
+                "Guest user %s billing attributed to workflow org %s",
+                user.id,
+                billing_org.id,
+            )
+
+        # Check if billing org has a subscription (it should, but handle edge cases)
+        if not hasattr(billing_org, "subscription"):
             logger.warning(
                 "Organization %s has no subscription, skipping billing check",
-                org.id,
+                billing_org.id,
             )
             return
 
@@ -292,10 +313,10 @@ class ValidationRunService:
         if is_advanced:
             # For advanced workflows, check credit balance
             # Credit deduction happens after the run completes
-            AdvancedWorkflowMeter().check_can_launch(org, credits_required=1)
+            AdvancedWorkflowMeter().check_can_launch(billing_org, credits_required=1)
         else:
             # For basic workflows, check and increment usage counter
-            BasicWorkflowMeter().check_and_increment(org)
+            BasicWorkflowMeter().check_and_increment(billing_org)
 
     # ---------- Execute ----------
 

@@ -4,6 +4,7 @@ import time
 from http import HTTPStatus
 
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -2705,3 +2706,115 @@ class WorkflowStepAssertionMoveView(WorkflowStepAssertionsMixin, View):
             )
             + "#workflow-step-assertions",
         )
+
+
+# Workflow Invite Views
+# ------------------------------------------------------------------------------
+
+
+class WorkflowInviteAcceptView(View):
+    """
+    Handle workflow invite acceptance.
+
+    This view handles the invite accept flow:
+    1. For logged-in users: Accepts the invite immediately and redirects to workflow
+    2. For anonymous users: Stores the invite token in session and redirects to signup
+
+    The invite token is passed as a URL parameter.
+    """
+
+    WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
+
+    def get(self, request, token):
+        from validibot.workflows.models import WorkflowInvite
+
+        invite = get_object_or_404(
+            WorkflowInvite.objects.select_related("workflow", "inviter"),
+            token=token,
+        )
+
+        # Check if invite is valid
+        invite.mark_expired_if_needed()
+
+        if invite.status != WorkflowInvite.Status.PENDING:
+            messages.error(
+                request,
+                _("This invite is no longer valid (status: %(status)s).")
+                % {"status": invite.get_status_display()},
+            )
+            return HttpResponseRedirect(reverse("marketing:home"))
+
+        if request.user.is_authenticated:
+            # Accept immediately for logged-in users
+            try:
+                grant = invite.accept(user=request.user)
+                # Send acceptance notification to the inviter
+                from validibot.workflows.emails import (
+                    send_workflow_invite_accepted_email,
+                )
+
+                send_workflow_invite_accepted_email(grant)
+                messages.success(
+                    request,
+                    _(
+                        "You now have access to the workflow '%(name)s'. "
+                        "You can run validations on this workflow."
+                    )
+                    % {"name": invite.workflow.name},
+                )
+                # Redirect to the workflow launch page
+                return HttpResponseRedirect(
+                    reverse(
+                        "workflows:workflow_launch",
+                        kwargs={"pk": invite.workflow.pk},
+                    ),
+                )
+            except ValueError as e:
+                messages.error(request, str(e))
+                return HttpResponseRedirect(reverse("marketing:home"))
+
+        # For anonymous users, store token in session and redirect to signup
+        request.session[self.WORKFLOW_INVITE_SESSION_KEY] = str(token)
+        messages.info(
+            request,
+            _(
+                "Please sign up or log in to accept your invitation "
+                "to workflow '%(name)s'."
+            )
+            % {"name": invite.workflow.name},
+        )
+        return HttpResponseRedirect(reverse("account_signup"))
+
+
+# Guest Workflow Views
+# ------------------------------------------------------------------------------
+
+
+class GuestWorkflowListView(LoginRequiredMixin, ListView):
+    """
+    List workflows that a guest user has access to via WorkflowAccessGrants.
+
+    This view is for workflow guests (users with grants but no org memberships).
+    It shows workflows from all organizations the user has been granted access to,
+    with the org name displayed on each workflow card.
+    """
+
+    template_name = "workflows/guest_workflow_list.html"
+    context_object_name = "workflows"
+    paginate_by = 20
+
+    def get_queryset(self):
+        from validibot.workflows.models import Workflow
+
+        # Get workflows the user has grants for
+        return (
+            Workflow.objects.for_user(self.request.user)
+            .filter(is_archived=False, is_active=True)
+            .select_related("org", "project")
+            .order_by("org__name", "name")
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["search_query"] = self.request.GET.get("q", "")
+        return context

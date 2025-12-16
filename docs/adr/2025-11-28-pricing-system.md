@@ -92,44 +92,44 @@ This ADR defines the pricing tiers, metering strategy, Stripe integration, and t
 
 ### Cost Analysis
 
-**Modal compute cost per credit:**
+**Google Cloud Run compute cost per credit:**
 
 ```
 1 credit = 60 seconds × 1 vCPU × 4 GiB
 
-Modal pricing (as of 2025):
-- CPU: $0.0000131 per core-second
-- Memory: $0.00000222 per GiB-second
+Cloud Run pricing (Tier 1 regions, as of 2025):
+- CPU: $0.00002400 per vCPU-second
+- Memory: $0.00000250 per GiB-second
 
-Per-second cost = 0.0000131 + (4 × 0.00000222) = $0.00002198
-Per credit (60s) = 60 × $0.00002198 ≈ $0.00132 (~0.13 cents)
+Per-second cost = 0.00002400 + (4 × 0.00000250) = $0.0000340
+Per credit (60s) = 60 × $0.0000340 ≈ $0.00204 (~0.2 cents)
 ```
 
 What this means operationally:
 
-- A “credit” is pegged to a small, predictable slice of Modal compute (1 vCPU + 4 GiB for up to 60s). Longer or heavier jobs cost more credits via the `compute_weight` multiplier.
-- Our direct cost per credit is roughly **$0.00132**, so even heavy advanced workloads have negligible marginal cost compared to subscription revenue.
-- Credits normalize Modal’s per-second billing into a stable unit that is easy for customers to reason about and easy for us to expose in dashboards and alerts.
+- A "credit" is pegged to a small, predictable slice of Cloud Run compute (1 vCPU + 4 GiB for up to 60s). Longer or heavier jobs cost more credits via the `compute_weight` multiplier.
+- Our direct cost per credit is roughly **$0.002**, so even heavy advanced workloads have negligible marginal cost compared to subscription revenue.
+- Credits normalize Cloud Run's per-second billing into a stable unit that is easy for customers to reason about and easy for us to expose in dashboards and alerts.
 
 **Included credits cost us:**
 
 | Plan       | Included Credits | Our Cost | Subscription Price | Margin on Credits |
 | ---------- | ---------------- | -------- | ------------------ | ----------------- |
-| Starter    | 200/mo           | ~$0.26   | $25/mo             | Essentially free  |
-| Team       | 1,000/mo         | ~$1.32   | $100/mo            | Essentially free  |
-| Enterprise | 5,000/mo         | ~$6.60   | $1,000+/mo         | Essentially free  |
+| Starter    | 200/mo           | ~$0.41   | $29/mo             | Essentially free  |
+| Team       | 1,000/mo         | ~$2.04   | $99/mo             | Essentially free  |
+| Enterprise | 5,000/mo         | ~$10.20  | $1,000+/mo         | Essentially free  |
 
 **Overage credit pricing:**
 
 | Plan       | Price per Credit | Our Cost | Markup |
 | ---------- | ---------------- | -------- | ------ |
-| Starter    | $0.10            | $0.00132 | ~75×   |
-| Team       | $0.05            | $0.00132 | ~38×   |
-| Enterprise | Negotiated       | $0.00132 | Custom |
+| Starter    | $0.10            | $0.002   | ~50×   |
+| Team       | $0.05            | $0.002   | ~25×   |
+| Enterprise | Negotiated       | $0.002   | Custom |
 
-This pricing is aggressive but fair. Modal costs are a rounding error; the real value is our platform, validators, and workflow orchestration.
+This pricing is aggressive but fair. Cloud Run costs are a rounding error; the real value is our platform, validators, and workflow orchestration.
 
-“Essentially free” means the included credits cost us well under one dollar per month at current Modal pricing—so they do not meaningfully affect gross margin. We can safely treat included credits as a marketing/convenience feature rather than a material COGS line.
+"Essentially free" means the included credits cost us well under five dollars per month at current Cloud Run pricing—so they do not meaningfully affect gross margin. We can safely treat included credits as a marketing/convenience feature rather than a material COGS line.
 
 ---
 
@@ -211,19 +211,19 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 | EnergyPlus simulation  | HIGH         | Multi-minute building simulation     |
 | Custom code validators | Configurable | Depends on what the code does        |
 
-### Execution Target Derivation (heroku vs modal)
+### Execution Target Derivation (cloud_run_service vs cloud_run_job)
 
 `execution_target` is derived, not stored: we infer it from `validation_type` so metering can correctly classify runs without a separate field.
 
-| ValidationType   | execution_target                                           |
-| ---------------- | ---------------------------------------------------------- |
-| JSON_SCHEMA      | heroku                                                     |
-| XML_SCHEMA       | heroku                                                     |
-| BASIC            | heroku                                                     |
-| CUSTOM_VALIDATOR | heroku (default; override to modal if declared modal-only) |
-| ENERGYPLUS       | modal                                                      |
-| FMI              | modal                                                      |
-| AI_ASSIST        | modal                                                      |
+| ValidationType   | execution_target                                                    |
+| ---------------- | ------------------------------------------------------------------- |
+| JSON_SCHEMA      | cloud_run_service                                                   |
+| XML_SCHEMA       | cloud_run_service                                                   |
+| BASIC            | cloud_run_service                                                   |
+| CUSTOM_VALIDATOR | cloud_run_service (default; override to cloud_run_job if required)  |
+| ENERGYPLUS       | cloud_run_job                                                       |
+| FMI              | cloud_run_job                                                       |
+| AI_ASSIST        | cloud_run_job                                                       |
 
 On the `Validator` model we expose:
 
@@ -233,11 +233,11 @@ def execution_target(self) -> str:
     """Derived execution target for metering."""
     match self.validation_type:
         case ValidationType.ENERGYPLUS | ValidationType.FMI | ValidationType.AI_ASSIST:
-            return "modal"
+            return "cloud_run_job"
         case ValidationType.CUSTOM_VALIDATOR:
-            return "modal" if self.runs_on_modal else "heroku"
+            return "cloud_run_job" if self.runs_as_job else "cloud_run_service"
         case _:
-            return "heroku"
+            return "cloud_run_service"
 ```
 
 ### Default compute_weight per validation type
@@ -268,7 +268,7 @@ As explained in the Context section, we use two different metering approaches be
 
 ### Basic Workflow Metering (Hard Limits)
 
-Basic workflows run on our fixed-cost Heroku infrastructure. We enforce hard monthly limits with configurable warning notifications:
+Basic workflows run on our Cloud Run service (always-on instances with negligible per-request cost). We enforce hard monthly limits with configurable warning notifications:
 
 ```python
 # validibot/billing/metering.py
@@ -355,7 +355,7 @@ Credit-based metering tied to actual compute cost:
 #### Credit Definition
 
 ```
-1 credit ≈ up to 60 seconds of 1 vCPU & 4 GiB on Modal
+1 credit ≈ up to 60 seconds of 1 vCPU & 4 GiB on Cloud Run Jobs
 ```
 
 #### Credit Calculation
@@ -876,7 +876,7 @@ def stripe_webhook(request):
   - `path("checkout/<plan>/", PlanCheckoutStartView.as_view(), name="checkout-plan")`
   - `path("credits/checkout/", CreditPackCheckoutStartView.as_view(), name="checkout-credits")`
   - `path("dashboard/", BillingDashboardView.as_view(), name="dashboard")`
-  - `path("compute-callback/", ComputeCallbackView.as_view(), name="compute-callback")` # Modal job metrics ingress
+  - `path("compute-callback/", ComputeCallbackView.as_view(), name="compute-callback")` # Cloud Run Job metrics ingress
 - **Settings / environment variables:**
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`
@@ -924,10 +924,10 @@ def stripe_webhook(request):
 - On `invoice.payment_failed`: send in-app warning + email; start grace period (configurable, default 7 days). During grace, allow existing users to view but block new launches of advanced workflows; optionally reduce basic limit.
 - On final failure/cancellation: set status to `SUSPENDED`, keep data but block all launches and redirect to billing page until payment is fixed.
 
-### MVP rollout (Heroku/Modal in AU)
+### MVP rollout (Cloud Run in AU)
 
 - Start AU-only: price in AUD, apply 10% GST, and limit Checkout to AU billing addresses.
-- Run Heroku and Modal in AU regions where possible; if any Modal jobs execute outside AU, disclose data egress in ToS/privacy and in the billing dashboard.
+- Run Cloud Run services and jobs in `australia-southeast1` (Sydney); if any jobs execute outside AU, disclose data egress in ToS/privacy and in the billing dashboard.
 - Keep plans simple (e.g., Starter + credit packs); gate Team/Enterprise until tax/FX and seats are ready.
 - Use Stripe Billing Portal for payment updates; limit distribution to an allowlist while metering and webhooks stabilize.
 
@@ -936,7 +936,7 @@ def stripe_webhook(request):
 - Add USD pricing first (single-currency mode per deployment): introduce explicit USD price IDs for Starter/Team/credits; keep one currency active at a time to avoid mixed baskets.
 - Open signups to US/CA/NZ/SG before EU/UK to defer VAT/GDPR complexity; block unsupported countries at signup/checkout.
 - Enable Stripe Tax for new regions and capture required tax IDs (VAT/GST) and billing address per jurisdiction; configure inclusive vs exclusive pricing per region.
-- Add data residency disclosures: note that Heroku/Modal run in AU (or target region); if we add regional stacks later, document the routing rules.
+- Add data residency disclosures: note that Cloud Run services and jobs run in AU (or target region); if we add regional stacks later, document the routing rules.
 - Expand plans: un-gate Team/Enterprise, enable seat enforcement, and introduce annual price IDs; keep per-seat billing optional until stable.
 - Revisit credit pricing per currency; do not rely on FX conversions—set dedicated price IDs per currency.
 - Lift allowlist gradually; monitor dunning, webhook health, and metering accuracy before broadening distribution.
@@ -961,7 +961,7 @@ class Organization(models.Model):
     )
 ```
 
-Data residency rules: data stays in the org’s region unless a compute provider (e.g., Modal) for that region is unavailable, in which case we either queue the job or fall back only with explicit disclosure/consent. Each region will have dedicated Heroku/Modal deployments as we expand beyond AU.
+Data residency rules: data stays in the org's region unless a Cloud Run region is unavailable, in which case we either queue the job or fall back only with explicit disclosure/consent. Each region will have dedicated Cloud Run deployments as we expand beyond AU.
 
 ### Tax, invoices, receipts
 
@@ -1573,9 +1573,9 @@ class ComputeUsageTracker:
     Track compute usage for high-compute validators.
 
     High-compute validators (AI, simulations, etc.) report runtime metrics
-    after each job completes. We use these to calculate credit consumption.
+    after each Cloud Run Job completes. We use these to calculate credit consumption.
     The tracking is infrastructure-agnostic—it works whether the compute
-    runs on Modal, a local GPU cluster, or any other provider.
+    runs on Cloud Run Jobs, a local GPU cluster, or any other provider.
     """
 
     def record_job_completion(
@@ -1625,18 +1625,18 @@ class ComputeUsageTracker:
         return record
 ```
 
-### Modal metrics integration pattern
+### Cloud Run Job metrics integration pattern
 
-Modal does not expose a simple `get_job_metrics(job_id)` polling API. Instead, we will:
+Cloud Run Jobs report completion via Cloud Tasks callbacks. We will:
 
-1. Pass a `callback_url` (our `/billing/compute-callback/`) when dispatching Modal jobs via `sv_modal`.
-2. Modal posts job completion payloads (runtime_seconds, cpu_count, memory_gb, optional gpu_seconds) to that callback.
+1. Pass a `callback_url` (our `/billing/compute-callback/`) when dispatching Cloud Run Jobs via `vb_validators`.
+2. The job posts completion payloads (runtime_seconds, cpu_count, memory_gb, optional gpu_seconds) to that callback on completion.
 3. The callback handler calls `ComputeUsageTracker.record_job_completion(...)` with the received metrics.
-4. As a fallback for synchronous runs, if `sv_modal` returns metrics in the function result, we call the same tracker directly.
+4. As a fallback for synchronous runs, if the validator returns metrics in the response, we call the same tracker directly.
 
-This avoids polling and guarantees we meter every advanced run as soon as Modal reports completion.
+This avoids polling and guarantees we meter every advanced run as soon as the Cloud Run Job reports completion.
 
-**Callback auth:** The `/billing/compute-callback/` endpoint requires an HMAC signature header from `sv_modal` using a shared secret to prevent spoofed usage events. Reject unsigned/invalid requests with 401 and log for audit.
+**Callback auth:** The `/billing/compute-callback/` endpoint requires an HMAC signature header using a shared secret to prevent spoofed usage events. Reject unsigned/invalid requests with 401 and log for audit.
 
 ### Validator Model Additions
 
@@ -1714,7 +1714,7 @@ class Validator(TimeStampedModel):
 - [ ] Add `compute_tier` and `compute_weight` fields to Validator model
 - [ ] Implement `ComputeUsageTracker` (infrastructure-agnostic)
 - [ ] Define `JobMetrics` interface for compute providers
-- [ ] Integrate Modal provider (via sv_modal) to report metrics
+- [ ] Integrate Cloud Run Jobs (via vb_validators) to report metrics
 - [ ] Calculate credits based on runtime and weight
 - [ ] Create `ComputeJobRecord` for audit trail
 
@@ -1733,8 +1733,8 @@ These scenarios validate that the pricing model is financially sound.
 
 ### Cost Assumptions
 
-- **Modal effective cost per credit:** ~$0.002 (conservative, includes overhead)
-- **Base infrastructure (Heroku, DB, Redis, S3, monitoring):** ~$300/month early stage, scaling to ~$3,000/month at mid-scale
+- **Cloud Run effective cost per credit:** ~$0.002 (conservative, includes overhead)
+- **Base infrastructure (Cloud Run, Cloud SQL, Cloud Storage, monitoring):** ~$300/month early stage, scaling to ~$3,000/month at mid-scale
 - **Credit pack prices:** Starter $10/100 credits, Team $25/500 credits
 
 ### Scenario 1: Early Days (Handful of Customers)
@@ -1746,10 +1746,10 @@ These scenarios validate that the pricing model is financially sound.
 | Enterprise        | 0                             |
 | Overage purchases | None                          |
 
-**Revenue:** 3×$25 + 2×$100 = **$275/mo**  
-**Modal cost:** (450 + 1,600) × $0.002 = **$4.10/mo**  
-**Infrastructure:** **$300/mo**  
-**Gross profit:** $275 - $4.10 - $300 = **-$29.10/mo** (early-stage loss until volume grows)
+**Revenue:** 3×$29 + 2×$99 = **$285/mo**
+**Cloud Run cost:** (450 + 1,600) × $0.002 = **$4.10/mo**
+**Infrastructure:** **$300/mo**
+**Gross profit:** $285 - $4.10 - $300 = **-$19.10/mo** (early-stage loss until volume grows)
 
 At this stage, you're covering costs while building customer base.
 
@@ -1763,18 +1763,18 @@ At this stage, you're covering costs while building customer base.
 
 **Revenue:**
 
-- Starter subs: 10 × $25 = $250
+- Starter subs: 10 × $29 = $290
 - Starter packs: 10 × 2 × $10 = $200
-- Team subs: 5 × $100 = $500
+- Team subs: 5 × $99 = $495
 - Team packs: 5 × 1 × $25 = $125
 - Enterprise sub: 1 × $1,000 = $1,000
 - Enterprise packs: 1 × $25 = $25
 
-**Total revenue:** **$2,100/mo**
+**Total revenue:** **$2,135/mo**
 
-**Modal cost:** (2,200 + 6,000 + 5,500) × $0.002 = **$27.40/mo**  
-**Infrastructure:** **$500/mo** (scaled up a bit)  
-**Gross profit:** $2,100 - $27.40 - $500 = **$1,572.60/mo (~75% margin)**
+**Cloud Run cost:** (2,200 + 6,000 + 5,500) × $0.002 = **$27.40/mo**
+**Infrastructure:** **$500/mo** (scaled up a bit)
+**Gross profit:** $2,135 - $27.40 - $500 = **$1,607.60/mo (~75% margin)**
 
 ### Scenario 3: Mid-Scale Success
 
@@ -1786,15 +1786,15 @@ At this stage, you're covering costs while building customer base.
 
 **Revenue:**
 
-- Starter: 20 × ($25 + 3×$10) = $1,100
-- Team: 20 × ($100 + 2×$25) = $3,000
+- Starter: 20 × ($29 + 3×$10) = $1,180
+- Team: 20 × ($99 + 2×$25) = $2,980
 - Enterprise: 10 × ($2,000 + 2×$25) = $20,500
 
-**Total revenue:** **$24,600/mo**
+**Total revenue:** **$24,660/mo**
 
-**Modal cost:** 95,000 credits × $0.002 = **$190/mo**  
-**Infrastructure:** **$3,000/mo**  
-**Gross profit:** $24,600 - $190 - $3,000 = **$21,410/mo (~87% margin)**
+**Cloud Run cost:** 95,000 credits × $0.002 = **$190/mo**
+**Infrastructure:** **$3,000/mo**
+**Gross profit:** $24,660 - $190 - $3,000 = **$21,470/mo (~87% margin)**
 
 ### Stress Test: What If Everyone Maxes Out?
 
@@ -1812,30 +1812,30 @@ Let's assume every customer in Scenario 3 hits their soft caps and buys maximum 
 - 7.2M launches/month ÷ 30 days ÷ 24 hours = ~10,000 launches/hour = ~3/second average
 - Assume 500ms average validation time
 - Peak load (10× average): ~30 concurrent requests
-- **Verdict: Easily handled by standard Heroku setup**
+- **Verdict: Easily handled by Cloud Run with auto-scaling**
 
-**Advanced workflow (Modal) cost:**
+**Advanced workflow (Cloud Run Jobs) cost:**
 
 - 154,000 credits × $0.002 = **$308/month**
 - Still less than 2% of revenue
-- **Verdict: Modal costs remain negligible**
+- **Verdict: Cloud Run costs remain negligible**
 
 **Revenue at max usage (more credit packs sold):**
 
-- Starter: 20 × ($25 + 5×$10) = $1,500
-- Team: 20 × ($100 + 4×$25) = $4,000
+- Starter: 20 × ($29 + 5×$10) = $1,580
+- Team: 20 × ($99 + 4×$25) = $3,980
 - Enterprise: 10 × ($2,000 + 6×$25) = $21,500
-- **Total: $27,000/mo** (up from $24,800)
+- **Total: $27,060/mo** (up from $24,660)
 
 **Conclusion:** Even with everyone at maximum usage, the system handles load comfortably and margins actually improve (more overage revenue, minimal extra cost).
 
 ### Key Insights
 
-1. **Modal costs are a rounding error.** Even at scale, Modal is <1% of revenue.
+1. **Cloud Run costs are a rounding error.** Even at scale, Cloud Run is <1% of revenue.
 2. **Infrastructure is the real fixed cost** in early stages.
-3. **Enterprise customers drive profitability.** One $2,000/mo Enterprise = 57 Starter customers.
+3. **Enterprise customers drive profitability.** One $2,000/mo Enterprise = 69 Starter customers.
 4. **Credit pack overages are pure margin** after you've covered subscription costs.
-5. **Soft caps for basic workflows work** because Heroku is fixed cost—heavy usage doesn't hurt us.
+5. **Soft caps for basic workflows work** because Cloud Run services scale efficiently—heavy usage doesn't hurt us.
 6. **The system scales gracefully.** Max usage improves margins, not worsens them.
 
 ---
@@ -1845,5 +1845,5 @@ Let's assume every customer in Scenario 3 hits their soft caps and buys maximum 
 - [Stripe Subscriptions](https://stripe.com/docs/billing/subscriptions/overview) – Subscription lifecycle
 - [Stripe Checkout](https://stripe.com/docs/payments/checkout) – Hosted checkout pages
 - [Stripe Webhooks](https://stripe.com/docs/webhooks) – Event handling
-- [Modal Pricing](https://modal.com/pricing) – Compute cost structure
+- [Cloud Run Pricing](https://cloud.google.com/run/pricing) – Compute cost structure
 - [SaaS Pricing Models](https://www.priceintelligently.com/) – Pricing strategy resources

@@ -185,17 +185,20 @@ gcp-deploy stage: gcp-build gcp-push
     fi
 
     # Compute environment-specific names
+    # Prod keeps 1 instance warm to avoid cold starts; dev/staging scale to zero
     if [ "{{stage}}" = "prod" ]; then
         SERVICE="validibot-web"
         SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
         SECRET="django-env"
+        MIN_INSTANCES=1
         MAX_INSTANCES=4
     else
         SERVICE="validibot-web-{{stage}}"
         SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
         SECRET="django-env-{{stage}}"
+        MIN_INSTANCES=0
         MAX_INSTANCES=2
     fi
 
@@ -208,14 +211,14 @@ gcp-deploy stage: gcp-build gcp-push
         --add-cloudsql-instances "$DB" \
         --set-secrets=/secrets/.env="$SECRET":latest \
         --set-env-vars APP_ROLE=web,VALIDIBOT_STAGE={{stage}} \
-        --min-instances 0 \
+        --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
         --allow-unauthenticated \
         --project {{gcp_project}}
 
     echo ""
-    echo "✓ Web service deployed to {{stage}}"
+    echo "✓ Web service deployed to {{stage}} (min-instances=$MIN_INSTANCES)"
 
 # Deploy worker service to a specific stage
 # Usage: just gcp-deploy-worker dev | just gcp-deploy-worker prod

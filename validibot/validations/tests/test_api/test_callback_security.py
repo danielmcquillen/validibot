@@ -33,7 +33,7 @@ class TestCallbackEndpointSecurity(TestCase):
         self.client = APIClient()
         self.endpoint = "/api/v1/validation-callbacks/"
 
-    @override_settings(APP_IS_WORKER=False)
+    @override_settings(APP_IS_WORKER=False, ROOT_URLCONF="config.urls_web")
     def test_callback_returns_404_on_non_worker_instance(self):
         """
         Callback endpoint must not exist on web instances.
@@ -41,6 +41,10 @@ class TestCallbackEndpointSecurity(TestCase):
         This is a defense-in-depth measure. The primary security control is
         Cloud Run ingress settings, but web instances should also return 404
         even if somehow reached (e.g., misconfigured load balancer).
+
+        Note: We must set ROOT_URLCONF explicitly because config/urls.py
+        determines URL patterns at import time based on APP_IS_WORKER. Once
+        imported, URL patterns don't change even with override_settings.
         """
         response = self.client.post(
             self.endpoint,
@@ -53,14 +57,14 @@ class TestCallbackEndpointSecurity(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    @override_settings(APP_IS_WORKER=False)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     def test_callback_returns_405_for_get_request(self):
         """GET requests should return 405 Method Not Allowed (POST only endpoint)."""
         response = self.client.get(self.endpoint)
-        # The endpoint only accepts POST, so GET returns 405 regardless of worker status
+        # The endpoint only accepts POST, so GET returns 405
         self.assertEqual(response.status_code, 405)
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     def test_callback_accepts_post_on_worker_instance(self):
         """
         Callback endpoint should process requests on worker instances.
@@ -83,7 +87,7 @@ class TestCallbackEndpointSecurity(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("Validation run not found", response.json().get("error", ""))
 
-    @override_settings(APP_IS_WORKER=True)
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     def test_callback_validates_payload_on_worker(self):
         """Callback should validate payload structure even without auth."""
         response = self.client.post(

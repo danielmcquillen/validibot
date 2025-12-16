@@ -31,6 +31,11 @@ class ValidatorStepHandler:
         validator = getattr(step, "validator", None)
 
         if not validator:
+            logger.error(
+                "WorkflowStep has no validator configured: step_id=%s run_id=%s",
+                getattr(step, "id", None),
+                getattr(run, "id", None),
+            )
             return StepResult(
                 passed=False,
                 issues=[
@@ -38,6 +43,7 @@ class ValidatorStepHandler:
                         path="",
                         message=_("WorkflowStep has no validator configured."),
                         severity=Severity.ERROR,
+                        code="missing_validator",
                     )
                 ],
             )
@@ -65,6 +71,12 @@ class ValidatorStepHandler:
         try:
             validator_cls = get_validator_class(vtype)
         except Exception as exc:
+            logger.exception(
+                "Failed to load validator engine: type=%s validator_id=%s step_id=%s",
+                vtype,
+                getattr(validator, "id", None),
+                getattr(step, "id", None),
+            )
             return StepResult(
                 passed=False,
                 issues=[
@@ -72,6 +84,7 @@ class ValidatorStepHandler:
                         path="",
                         message=f"Failed to load validator engine '{vtype}': {exc}",
                         severity=Severity.ERROR,
+                        code="engine_load_failed",
                     )
                 ],
             )

@@ -18,7 +18,6 @@ from validibot.validations.engines.base import ValidationResult
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
-from validibot.validations.services.validation_run import GENERIC_EXECUTION_ERROR
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -62,7 +61,14 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_execute_sets_generic_error_when_engine_missing():
+def test_execute_fails_gracefully_when_engine_missing():
+    """When a validator engine can't be loaded, the step fails gracefully.
+
+    The refactored ValidatorStepHandler returns a failed StepResult with
+    a descriptive error rather than raising an exception. This results in
+    the run failing with "One or more validation steps failed" and the
+    specific error recorded in the ValidationFinding.
+    """
     org = OrganizationFactory()
     user = UserFactory()
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
@@ -88,7 +94,7 @@ def test_execute_sets_generic_error_when_engine_missing():
     )
 
     service = ValidationRunService()
-    result = service.execute(
+    service.execute(
         validation_run_id=validation_run.id,
         user_id=user.id,
         metadata=None,
@@ -96,8 +102,12 @@ def test_execute_sets_generic_error_when_engine_missing():
 
     validation_run.refresh_from_db()
     assert validation_run.status == ValidationRunStatus.FAILED
-    assert validation_run.error == GENERIC_EXECUTION_ERROR
-    assert result.error == GENERIC_EXECUTION_ERROR
+    # Step failure is now graceful - results in "steps failed" message
+    assert "failed" in validation_run.error.lower()
+    # The specific engine error is recorded in the findings
+    finding = ValidationFinding.objects.filter(validation_run=validation_run).first()
+    assert finding is not None
+    assert "failed to load" in finding.message.lower()
 
 
 @pytest.mark.django_db

@@ -811,8 +811,19 @@ class ValidationRunService:
         if handler is None:
             if step.action:
                 error_msg = f"No handler registered for action type: {action_type}"
+                logger.error(
+                    "No handler for action: type=%s step_id=%s run_id=%s",
+                    action_type,
+                    getattr(step, "id", None),
+                    validation_run.id,
+                )
             else:
                 error_msg = _("WorkflowStep has no validator or action configured.")
+                logger.error(
+                    "WorkflowStep has no validator or action: step_id=%s run_id=%s",
+                    getattr(step, "id", None),
+                    validation_run.id,
+                )
             step_result = StepResult(
                 passed=False,
                 issues=[

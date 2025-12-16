@@ -21,7 +21,6 @@ from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
-from validibot.validations.engines.registry import get as get_validator_class
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
@@ -46,9 +45,6 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.users.models import Organization
     from validibot.users.models import User
-    from validibot.validations.engines.base import BaseValidatorEngine
-    from validibot.validations.models import Ruleset
-    from validibot.validations.models import Validator
     from validibot.workflows.models import Workflow
     from validibot.workflows.models import WorkflowStep
 
@@ -788,10 +784,11 @@ class ValidationRunService:
         Refactored to use the Command/Handler pattern via StepHandler protocol.
         """
         # 1. Prepare Context
-        from validibot.actions.protocols import RunContext
         from validibot.actions.handlers import ValidatorStepHandler
+        from validibot.actions.protocols import RunContext
+        from validibot.actions.protocols import StepResult
         from validibot.actions.registry import get_action_handler
-        
+
         signals = self._extract_downstream_signals(validation_run)
         context = RunContext(
             validation_run=validation_run,
@@ -801,23 +798,42 @@ class ValidationRunService:
 
         # 2. Resolve Handler
         handler = None
-        
+
         if step.validator:
             handler = ValidatorStepHandler()
         elif step.action:
             action_type = step.action.definition.type
-            HandlerClass = get_action_handler(action_type)
-            if HandlerClass:
-                handler = HandlerClass()
-            else:
-                raise ValueError(f"No handler registered for action type: {action_type}")
-        else:
-            raise ValueError(_("WorkflowStep has no validator or action configured."))
+            handler_class = get_action_handler(action_type)
+            if handler_class:
+                handler = handler_class()
 
-        # 3. Execute Handler
+        # 3. Handle missing handler gracefully
+        if handler is None:
+            if step.action:
+                error_msg = f"No handler registered for action type: {action_type}"
+            else:
+                error_msg = _("WorkflowStep has no validator or action configured.")
+            step_result = StepResult(
+                passed=False,
+                issues=[
+                    ValidationIssue(
+                        path="",
+                        message=error_msg,
+                        severity=Severity.ERROR,
+                        code="missing_handler",
+                    ),
+                ],
+            )
+            return ValidationResult(
+                passed=step_result.passed,
+                issues=[self._normalize_issue(i) for i in step_result.issues],
+                stats=step_result.stats,
+            )
+
+        # 4. Execute Handler
         step_result = handler.execute(context)
         
-        # 4. Map Result (Backwards Compatibility)
+        # 5. Map Result (Backwards Compatibility)
         # We return a ValidationResult because callers (execute method) expect it.
         # Future refactor: Update callers to use StepResult directly.
         validation_result = ValidationResult(
@@ -835,80 +851,6 @@ class ValidationRunService:
             handler.__class__.__name__,
             validation_result.passed,
         )
-
-        return validation_result
-
-
-    def run_validator_engine(
-        self,
-        validator: Validator,
-        submission: Submission,
-        ruleset: Ruleset | None = None,
-        config: dict[str, Any] | None = None,
-        *,
-        validation_run: ValidationRun | None = None,
-        step: WorkflowStep | None = None,
-    ) -> ValidationResult:
-        """
-        Execute the appropriate validator engine code for the given
-        Validator model, the Submission from the user, and optional Ruleset.
-
-        Args:
-            validator (Validator): The Validator model instance to use.
-            submission (Submission): The Submission containing the content to validate.
-            ruleset (Ruleset, optional): An optional Ruleset to apply during validation.
-
-        Returns:
-            ValidationResult: The result of the validation, including issues found.
-
-        """
-        vtype = validator.validation_type
-        if not vtype:
-            raise ValueError(_("Validator model missing 'type' or 'validation_type'."))
-
-        # TODO: Later we might want to store a default config in a Validator and pass
-        # to the engine. For now we just pass an empty dict.
-        config = config or {}
-
-        try:
-            validator_cls = get_validator_class(vtype)
-        except Exception as exc:
-            err_msg = f"Failed to load validator engine for type '{vtype}': {exc}"
-            raise ValueError(err_msg) from exc
-
-        # To keep validator engine classes clean, we pass everything it
-        # needs either via the config dict or the ContentSource.
-        # We don't pass in any model instances.
-        validator_engine: BaseValidatorEngine = validator_cls(config=config)
-
-        signals = self._extract_downstream_signals(validation_run)
-        if getattr(validator_engine, "run_context", None) is None:
-            from types import SimpleNamespace
-
-            validator_engine.run_context = SimpleNamespace(
-                validation_run=validation_run,
-                workflow_step=step,
-                downstream_signals=signals,
-            )
-        else:
-            validator_engine.run_context.validation_run = validation_run
-            validator_engine.run_context.workflow_step = step
-            validator_engine.run_context.downstream_signals = signals
-
-        if hasattr(validator_engine, "validate_with_run"):
-            validation_result = validator_engine.validate_with_run(
-                validator=validator,
-                submission=submission,
-                ruleset=ruleset,
-                run=validation_run,
-                step=step,
-            )
-        else:
-            validation_result = validator_engine.validate(
-                validator=validator,
-                submission=submission,
-                ruleset=ruleset,
-            )
 
         return validation_result
 

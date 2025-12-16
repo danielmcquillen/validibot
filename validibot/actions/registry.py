@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import Any
 
 if TYPE_CHECKING:
     from validibot.actions.forms import BaseWorkflowActionForm

@@ -5,16 +5,10 @@ import pytest
 from validibot.events.constants import AppEventType
 from validibot.tracking.models import TrackingEvent
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.engines.base import ValidationResult
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
-
-
-class DummyResult:
-    def __init__(self, passed: bool, issues=None, stats=None):  # noqa: FBT001
-        self.passed = passed
-        self.issues = issues or []
-        self.stats = stats or {}
 
 
 @pytest.mark.django_db
@@ -23,22 +17,13 @@ def test_execute_logs_started_and_success(monkeypatch):
     WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def success_engine(
-        self,
-        validator,
-        submission,
-        ruleset=None,
-        config=None,
-        *,
-        validation_run=None,
-        step=None,
-    ):
-        return DummyResult(passed=True, issues=[])
+    def success_step(self, step, validation_run):
+        return ValidationResult(passed=True, issues=[])
 
     monkeypatch.setattr(
         ValidationRunService,
-        "run_validator_engine",
-        success_engine,
+        "execute_workflow_step",
+        success_step,
     )
 
     service = ValidationRunService()
@@ -65,22 +50,13 @@ def test_execute_logs_failure(monkeypatch):
     failing_step = WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def failure_engine(
-        self,
-        validator,
-        submission,
-        ruleset=None,
-        config=None,
-        *,
-        validation_run=None,
-        step=None,
-    ):
-        return DummyResult(passed=False, issues=["boom"])
+    def failure_step(self, step, validation_run):
+        return ValidationResult(passed=False, issues=["boom"])
 
     monkeypatch.setattr(
         ValidationRunService,
-        "run_validator_engine",
-        failure_engine,
+        "execute_workflow_step",
+        failure_step,
     )
 
     service = ValidationRunService()

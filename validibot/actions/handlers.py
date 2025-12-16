@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-from typing import Any
 
 from django.utils.translation import gettext as _
 
@@ -13,7 +12,6 @@ from validibot.actions.protocols import StepResult
 from validibot.actions.registry import register_action_handler
 from validibot.validations.constants import Severity
 from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.engines.registry import get as get_validator_class
 
 if TYPE_CHECKING:
@@ -24,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class ValidatorStepHandler:
     """
-    Adapter that allows existing ValidatorEngines to be executed via the StepHandler protocol.
+    Adapter that wraps ValidatorEngines for the StepHandler protocol.
     """
 
     def execute(self, context: RunContext) -> StepResult:
@@ -53,9 +51,8 @@ class ValidatorStepHandler:
                     ValidationIssue(
                         path="",
                         message=_(
-                            "Submission file type '%(ft)s' is not supported by this validator."
-                        )
-                        % {"ft": submission.file_type},
+                            "File type '%(ft)s' not supported by this validator."
+                        ) % {"ft": submission.file_type},
                         severity=Severity.ERROR,
                         code="unsupported_file_type",
                     )
@@ -73,7 +70,7 @@ class ValidatorStepHandler:
                 issues=[
                     ValidationIssue(
                         path="",
-                        message=f"Failed to load validator engine for type '{vtype}': {exc}",
+                        message=f"Failed to load validator engine '{vtype}': {exc}",
                         severity=Severity.ERROR,
                     )
                 ],
@@ -135,25 +132,37 @@ class ValidatorStepHandler:
 class SlackMessageActionHandler:
     """
     Handler for SlackMessageAction.
+
+    TODO: Implement actual Slack integration using slack_sdk.
     """
 
     def execute(self, context: RunContext) -> StepResult:
-        logger.info(f"Mock: Sending Slack message for step {context.step.id}")
-        # In a real impl, we'd use slack_sdk here.
-        return StepResult(passed=True, stats={"action": "slack_message_sent"})
+        raise NotImplementedError(
+            "SlackMessageActionHandler is not yet implemented. "
+            f"Step ID: {context.step.id}"
+        )
 
 
 class SignedCertificateActionHandler:
     """
     Handler for SignedCertificateAction.
+
+    TODO: Implement PDF certificate generation and attachment.
     """
 
     def execute(self, context: RunContext) -> StepResult:
-        logger.info(f"Mock: Generating certificate for step {context.step.id}")
-        # In a real impl, we'd generate PDF and attach it.
-        return StepResult(passed=True, stats={"action": "certificate_generated"})
+        raise NotImplementedError(
+            "SignedCertificateActionHandler is not yet implemented. "
+            f"Step ID: {context.step.id}"
+        )
 
 
 # Register Handlers
-register_action_handler(IntegrationActionType.SLACK_MESSAGE, SlackMessageActionHandler)
-register_action_handler(CertificationActionType.SIGNED_CERTIFICATE, SignedCertificateActionHandler)
+register_action_handler(
+    IntegrationActionType.SLACK_MESSAGE,
+    SlackMessageActionHandler,
+)
+register_action_handler(
+    CertificationActionType.SIGNED_CERTIFICATE,
+    SignedCertificateActionHandler,
+)

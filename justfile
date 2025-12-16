@@ -580,6 +580,90 @@ gcp-setup-data stage:
     echo ""
     echo "✓ setup_all completed on {{stage}}"
 
+# Run any Django management command on a deployed environment
+# Usage: just gcp-management-cmd prod "seed_plans --force --skip-stripe"
+# Usage: just gcp-management-cmd dev "shell"
+# Usage: just gcp-management-cmd prod "migrate --check"
+gcp-management-cmd stage command:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute environment-specific names
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="validibot-web"
+        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SECRET="django-env"
+    else
+        SERVICE="validibot-web-{{stage}}"
+        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SECRET="django-env-{{stage}}"
+    fi
+
+    # Get current image from deployed service
+    IMAGE=$(gcloud run services describe "$SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(spec.template.spec.containers[0].image)")
+
+    if [ -z "$IMAGE" ]; then
+        echo "Error: Could not get image from $SERVICE. Is it deployed?"
+        exit 1
+    fi
+
+    # Generate unique job name
+    JOB_NAME="manage-$(date +%s)"
+
+    echo "Running: python manage.py {{command}}"
+    echo "Stage: {{stage}}"
+    echo "Image: $IMAGE"
+    echo ""
+
+    # Delete job if it exists (shouldn't with timestamp, but just in case)
+    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
+
+    # Create the job
+    gcloud run jobs create "$JOB_NAME" \
+        --image "$IMAGE" \
+        --region {{gcp_region}} \
+        --service-account "$SA" \
+        --set-cloudsql-instances "$DB" \
+        --set-secrets=/secrets/.env="$SECRET":latest \
+        --memory 1Gi \
+        --command "/bin/bash" \
+        --args "-c,set -a && source /secrets/.env && set +a && python manage.py {{command}}" \
+        --project {{gcp_project}}
+
+    # Execute and capture the execution name
+    EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(metadata.name)")
+
+    echo "Execution: $EXECUTION"
+    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
+    echo ""
+
+    # Stream logs until job completes
+    gcloud beta run jobs executions logs "$EXECUTION" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --follow
+
+    # Clean up job after completion
+    echo ""
+    echo "Cleaning up job..."
+    gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet
+
+    echo "✓ Command completed on {{stage}}"
+
 # View logs from a Cloud Run job execution
 # Usage: just gcp-job-logs validibot-migrate-dev
 gcp-job-logs job:

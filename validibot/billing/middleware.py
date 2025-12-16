@@ -1,15 +1,17 @@
 """
 Billing middleware for subscription enforcement.
 
-This middleware checks subscription status on each request and redirects
-users with expired trials to the conversion page.
+This middleware checks subscription status on each request and blocks
+users with expired trials from accessing the app or API.
 """
 
 from __future__ import annotations
 
 import logging
+from http import HTTPStatus
 from typing import TYPE_CHECKING
 
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.utils import timezone
 
@@ -25,11 +27,11 @@ logger = logging.getLogger(__name__)
 
 class TrialExpiryMiddleware:
     """
-    Redirect users with expired trials to the conversion page.
+    Block users with expired trials from accessing app and API.
 
-    Checks subscription status on each request. If trial has expired,
-    redirects to /app/billing/trial-expired/ (except for billing URLs
-    and other exempt paths).
+    Checks subscription status on each request. If trial has expired:
+    - Web requests: Redirect to /app/billing/trial-expired/
+    - API requests: Return 402 Payment Required JSON response
 
     This middleware should be added after AuthenticationMiddleware.
     """
@@ -43,9 +45,15 @@ class TrialExpiryMiddleware:
         "/static/",
         "/media/",
         "/admin/",
-        "/api/",
         "/.well-known/",
     ]
+
+    # Blocked subscription statuses
+    BLOCKED_STATUSES = {
+        SubscriptionStatus.TRIAL_EXPIRED,
+        SubscriptionStatus.SUSPENDED,
+        SubscriptionStatus.CANCELED,
+    }
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -79,28 +87,56 @@ class TrialExpiryMiddleware:
                 and subscription.trial_ends_at < timezone.now()
             )
             if trial_expired:
-                # Trial has expired - update status and redirect
+                # Trial has expired - update status
                 subscription.status = SubscriptionStatus.TRIAL_EXPIRED
                 subscription.save(update_fields=["status"])
                 logger.info(
-                    "Trial expired for org=%s, redirecting to conversion page",
+                    "Trial expired for org=%s",
                     org.id,
                 )
 
-        # Redirect if trial expired
-        if subscription.status == SubscriptionStatus.TRIAL_EXPIRED:
-            return redirect("billing:trial-expired")
-
-        # Also block suspended/canceled subscriptions
-        blocked_statuses = {
-            SubscriptionStatus.SUSPENDED,
-            SubscriptionStatus.CANCELED,
-        }
-        if subscription.status in blocked_statuses:
-            return redirect("billing:trial-expired")
+        # Block if subscription is in a blocked status
+        if subscription.status in self.BLOCKED_STATUSES:
+            return self._block_request(request, subscription.status)
 
         return self.get_response(request)
 
     def _is_exempt_path(self, path: str) -> bool:
         """Check if the path is exempt from subscription checks."""
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PATH_PREFIXES)
+
+    def _is_api_request(self, request: HttpRequest) -> bool:
+        """Check if this is an API request."""
+        return request.path.startswith("/api/")
+
+    def _block_request(
+        self,
+        request: HttpRequest,
+        status: str,
+    ) -> HttpResponse:
+        """Block the request based on subscription status."""
+        if self._is_api_request(request):
+            # Return JSON error for API requests
+            error_messages = {
+                SubscriptionStatus.TRIAL_EXPIRED: (
+                    "Your trial has expired. Please subscribe to continue."
+                ),
+                SubscriptionStatus.SUSPENDED: (
+                    "Your subscription is suspended. "
+                    "Please update your payment method."
+                ),
+                SubscriptionStatus.CANCELED: (
+                    "Your subscription has been canceled. "
+                    "Please resubscribe to continue."
+                ),
+            }
+            return JsonResponse(
+                {
+                    "detail": error_messages.get(status, "Subscription inactive."),
+                    "code": "subscription_inactive",
+                    "status": status,
+                },
+                status=HTTPStatus.PAYMENT_REQUIRED,
+            )
+        # Redirect web requests to the conversion page
+        return redirect("billing:trial-expired")

@@ -784,89 +784,60 @@ class ValidationRunService:
     ) -> ValidationResult:
         """
         Execute a single workflow step against the ValidationRun's submission.
-
-        This simple implementation:
-          - Resolves the workflow step's Validator and optional Ruleset.
-          - Resolves the Submission from the ValidationRun.
-          - Calls the validator runner, which routes to the correct engine via registry.
-          - Logs the result; does not (yet) persist per-step outputs.
-
-        Any exception raised here will be caught by the caller (execute()), which will
-        mark the ValidationRun as FAILED.
-
-        NOTE: For this minimal implementation, we just log the outcome of each step.
-        The calling execute() method already handles overall run status and summary.
-
-        Args:
-            step (WorkflowStep): The workflow step to execute.
-            validation_run (ValidationRun): The validation run context.
-
-        Raises:
-            ValueError: If the step has no validator configured.
-
-        Returns:
-            Just a boolean True for now; could be extended to return more info.
-
+        
+        Refactored to use the Command/Handler pattern via StepHandler protocol.
         """
-        # 1) Resolve engine inputs from the step
-        validator = getattr(step, "validator", None)
-        if validator is None:
-            raise ValueError(_("WorkflowStep has no validator configured."))
-        # It may be that no ruleset is configured, in which case the validator
-        # implementation should use its default or built-in rules.
-        ruleset = getattr(step, "ruleset", None)
-
-        # 2) Materialize submission content as text
-        submission: Submission = validation_run.submission
-        if submission and not validator.supports_file_type(submission.file_type):
-            issue = ValidationIssue(
-                path="",
-                message=_(
-                    "Submission file type '%(ft)s' is not supported by this validator."
-                )
-                % {"ft": submission.file_type},
-                severity=Severity.ERROR,
-                code="unsupported_file_type",
-            )
-            return ValidationResult(
-                passed=False,
-                issues=[issue],
-                stats={"file_type": submission.file_type},
-            )
-
-        # 3) Run the validator (registry resolves the concrete class by type/variant)
-        step_config = getattr(step, "config", {}) or {}
-        validation_result: ValidationResult = self.run_validator_engine(
-            validator=validator,
-            submission=submission,
-            ruleset=ruleset,
-            config=step_config,
+        # 1. Prepare Context
+        from validibot.actions.protocols import RunContext
+        from validibot.actions.handlers import ValidatorStepHandler
+        from validibot.actions.registry import get_action_handler
+        
+        signals = self._extract_downstream_signals(validation_run)
+        context = RunContext(
             validation_run=validation_run,
             step=step,
+            downstream_signals=signals,
+        )
+
+        # 2. Resolve Handler
+        handler = None
+        
+        if step.validator:
+            handler = ValidatorStepHandler()
+        elif step.action:
+            action_type = step.action.definition.type
+            HandlerClass = get_action_handler(action_type)
+            if HandlerClass:
+                handler = HandlerClass()
+            else:
+                raise ValueError(f"No handler registered for action type: {action_type}")
+        else:
+            raise ValueError(_("WorkflowStep has no validator or action configured."))
+
+        # 3. Execute Handler
+        step_result = handler.execute(context)
+        
+        # 4. Map Result (Backwards Compatibility)
+        # We return a ValidationResult because callers (execute method) expect it.
+        # Future refactor: Update callers to use StepResult directly.
+        validation_result = ValidationResult(
+            passed=step_result.passed,
+            issues=[
+                self._normalize_issue(i) for i in step_result.issues
+            ],
+            stats=step_result.stats,
         )
         validation_result.workflow_step_name = step.name
 
-        # TODO:
-        #  Later when we support multiple steps per run, we will persist
-        #  a ValidationStepRun record here with the result, timings, etc.
-        #  For now, we just log the outcome.
-
-        # 4) For this minimal implementation, just log the outcome.
-        # The outer execute() method already handles overall run status and summary.
-        issue_count = len(getattr(validation_result, "issues", []) or [])
-        passed = getattr(validation_result, "passed", False)
-
         logger.info(
-            "Validation step executed: workflow_step_id=%s validator=%s issues=%s passed=%s",  # noqa: E501
+            "Step executed: step_id=%s handler=%s passed=%s",
             getattr(step, "id", None),
-            getattr(validator, "validation_type", None),
-            issue_count,
-            passed,
+            handler.__class__.__name__,
+            validation_result.passed,
         )
-        # If you want to persist per-step outputs later, this is where you'd create
-        # a ValidationRunStep row and store result.to_dict(), timings,
 
         return validation_result
+
 
     def run_validator_engine(
         self,

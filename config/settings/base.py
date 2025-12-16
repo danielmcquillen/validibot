@@ -570,6 +570,6 @@ STRIPE_PUBLIC_KEY = (
     STRIPE_LIVE_PUBLIC_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_PUBLIC_KEY
 )
 if not STRIPE_SECRET_KEY:
-    raise ValueError("STRIPE_SECRET_KEY is not set properly in environment variables.")
+    logger.warning("STRIPE_SECRET_KEY is not set properly in environment variables.")
 if not STRIPE_PUBLIC_KEY:
-    raise ValueError("STRIPE_PUBLIC_KEY is not set properly in environment variables.")
+    logger.warning("STRIPE_PUBLIC_KEY is not set properly in environment variables.")

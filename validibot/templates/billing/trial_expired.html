@@ -1,125 +1,169 @@
 {% extends "app_base.html" %}
-{% load humanize %}
 
-{% block title %}Trial Expired - Validibot{% endblock %}
+{% load i18n humanize static core_tags %}
 
-{% block content %}
-<div class="container py-5">
-  <div class="row justify-content-center">
-    <div class="col-md-10 text-center">
-      <h1 class="mb-4">Your Trial Has Ended</h1>
-      <p class="lead mb-4">
-        Thank you for trying Validibot! Your 14-day trial has concluded.
-        Subscribe now to continue using all features.
-      </p>
+{% block title %}
+  Trial Expired - Validibot
+{% endblock %}
 
-      {% if usage %}
-      <div class="card mb-4 mx-auto" style="max-width: 400px;">
-        <div class="card-body">
-          <h5>During your trial, you used:</h5>
-          <p class="h3 mb-0">{{ usage.used|default:0 }} workflow launches</p>
-        </div>
-      </div>
-      {% endif %}
+{% comment %}
+Trial expired page - shows when a user's trial has ended.
+Uses the shared plan_cards partial template for consistent plan display.
+Shows the marketing top nav instead of app top bar, with "App" shown as active.
+{% endcomment %}
 
-      {% if subscription.intended_plan %}
-      <div class="alert alert-info mb-4">
-        <i class="bi bi-info-circle me-2"></i>
-        You originally selected the <strong>{{ subscription.intended_plan.name }}</strong> plan.
-        We've highlighted it below.
-      </div>
-      {% endif %}
-
-      <div class="row justify-content-center mb-4">
-        {% for plan in all_plans %}
-        {% if plan.stripe_price_id %}
-        <div class="col-md-4 mb-3">
-          {# Check if this is the intended plan - requires both intended_plan to exist and codes to match #}
-          {% if subscription.intended_plan and plan.code == subscription.intended_plan.code %}
-          <div class="card h-100 border-primary border-2">
-            <div class="card-header bg-primary text-white">
-              <h5 class="mb-0">
-                {{ plan.name }}
-                <span class="badge bg-white text-primary ms-2">Your Selection</span>
-              </h5>
-            </div>
-            <div class="card-body">
-              <p class="h3">
-                {% if plan.monthly_price_dollars %}
-                ${{ plan.monthly_price_dollars }}<small class="text-muted">/mo</small>
-                {% else %}
-                Contact Us
-                {% endif %}
-              </p>
-              <ul class="list-unstyled text-start">
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} launches/mo
-                </li>
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {{ plan.included_credits|intcomma }} credits included
-                </li>
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats
-                </li>
-              </ul>
-            </div>
-            <div class="card-footer bg-transparent">
-              <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}"
-                 class="btn btn-primary w-100">
-                Continue with {{ plan.name }}
-              </a>
-            </div>
-          </div>
-          {% else %}
-          <div class="card h-100">
-            <div class="card-header">
-              <h5 class="mb-0">{{ plan.name }}</h5>
-            </div>
-            <div class="card-body">
-              <p class="h3">
-                {% if plan.monthly_price_dollars %}
-                ${{ plan.monthly_price_dollars }}<small class="text-muted">/mo</small>
-                {% else %}
-                Contact Us
-                {% endif %}
-              </p>
-              <ul class="list-unstyled text-start">
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}Unlimited{% endif %} launches/mo
-                </li>
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {{ plan.included_credits|intcomma }} credits included
-                </li>
-                <li class="mb-1">
-                  <i class="bi bi-check text-success me-1"></i>
-                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}Unlimited{% endif %} team seats
-                </li>
-              </ul>
-            </div>
-            <div class="card-footer bg-transparent">
-              <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}"
-                 class="btn btn-outline-primary w-100">
-                Subscribe Now
-              </a>
-            </div>
-          </div>
+{% block top_nav %}
+  {% comment %}
+  Show the marketing top nav with a simplified user dropdown (no "My Profile" link
+  since profile pages are blocked for trial-expired users).
+  {% endcomment %}
+  <header id="site-top-nav-wrapper"
+          class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm">
+    <nav id="site-top-nav"
+         class="container-xxl bd-gutter flex-wrap flex-lg-nowrap">
+      <button class="navbar-toggler navbar-toggler-right"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#navbarSupportedContent"
+              aria-controls="navbarSupportedContent"
+              aria-expanded="false"
+              aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <a class="navbar-brand brand-with-mark"
+         href="{% url 'marketing:home' %}">
+        <img src="{% static 'images/robot_head_bw.png' %}"
+             alt="{% trans 'Validibot logo' %}"
+             class="brand-mark" />
+        <span class="brand-name">Validibot</span>
+      </a>
+      <div class="collapse navbar-collapse" id="navbarSupportedContent">
+        <ul class="navbar-nav me-auto">
+          {% if ENABLE_FEATURES_SECTION %}
+            {% include 'marketing/partial/top_nav/features_menu.html' %}
           {% endif %}
-        </div>
-        {% endif %}
-        {% endfor %}
-      </div>
+          {% if ENABLE_RESOURCES_SECTION %}
+            {% include 'marketing/partial/top_nav/resources_menu.html' %}
+          {% endif %}
+          {% if ENABLE_PRICING_SECTION %}
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
+            </li>
+          {% endif %}
+          <li class="nav-item">
+            <a class="nav-link" href="{% url 'marketing:about' %}">{% translate "About" %}</a>
+          </li>
+          {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
+            {% include 'marketing/partial/top_nav/support_menu.html' %}
+          {% else %}
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
+            </li>
+          {% endif %}
+        </ul>
 
-      <p class="text-muted">
-        Need a custom solution?
-        <a href="mailto:sales@validibot.com">Contact our sales team</a>
-        for Enterprise pricing.
-      </p>
+        <ul class="navbar-nav">
+          {% comment %}
+          App button - shown as active since this is the app portion of the site.
+          Links to the trial expired page itself (the only accessible app page).
+          {% endcomment %}
+          {% if ENABLE_APP %}
+            <li class="nav-item app-nav-item">
+              <a class="nav-link active btn btn-outline-secondary"
+                 href="{% url 'billing:trial-expired' %}">
+                <img class="robot-head-icon"
+                     src="{% static 'images/robot_head_bw.png' %}"
+                     alt="Robot icon" />
+                {% translate "App" %}
+              </a>
+            </li>
+          {% endif %}
+
+          {% comment %}
+          User dropdown - simplified for trial expired (no My Profile link)
+          {% endcomment %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle"
+               href="#"
+               role="button"
+               data-bs-toggle="dropdown"
+               aria-expanded="false">
+              <i class="bi bi-person-circle"></i> {{ request.user.username }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+{% endblock top_nav %}
+
+{% block top_bar %}
+  {% comment %}
+  Hide the app top bar - we're using marketing nav instead.
+  {% endcomment %}
+{% endblock top_bar %}
+
+{% block left_sidebar %}
+  {% comment %}
+  No sidebar for trial expired page - users should focus on subscribing.
+  {% endcomment %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-12 text-center">
+        <h1 class="mb-4">
+          {% trans "Your Trial Has Ended" %}
+        </h1>
+        <p class="lead mb-4">
+          {% trans "Thank you for trying Validibot! Your 14-day trial has concluded. Subscribe now to continue using all features." %}
+        </p>
+
+        {% if usage and usage.used %}
+          <div class="card mb-4 mx-auto" style="max-width: 400px;">
+            <div class="card-body">
+              <h5>
+                {% trans "During your trial, you used:" %}
+              </h5>
+              <p class="h3 mb-0">
+                {{ usage.used|default:0|intcomma }}
+                {% trans "workflow launches" %}
+              </p>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if subscription.intended_plan %}
+          <div class="alert alert-info mb-4">
+            <i class="bi bi-info-circle me-2"></i>
+            {% blocktrans with plan_name=subscription.intended_plan.name %}
+          You originally selected the <strong>{{ plan_name }}</strong> plan.
+          We've highlighted it below.
+        {% endblocktrans %}
+          </div>
+        {% endif %}
+
+        {% comment %}
+      Include the shared plan cards partial using Django 6.0+ partial syntax.
+      Set highlight_intended=True to highlight the plan they selected during signup.
+      Set show_purchase_buttons=True to show "Purchase Plan" instead of "Upgrade".
+        {% endcomment %}
+        {% with highlight_intended=True show_purchase_buttons=True %}
+          {% include "billing/partials/plan_cards.html#plan_cards_grid" %}
+        {% endwith %}
+
+        <p class="text-muted mt-4">
+          {% trans "Need a custom solution?" %}
+          <a href="{% url 'marketing:contact' %}">{% trans "Contact our sales team" %}</a>
+          {% trans "for Enterprise pricing." %}
+        </p>
+      </div>
     </div>
   </div>
-</div>
-{% endblock %}
+{% endblock app_content %}

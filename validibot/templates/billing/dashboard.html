@@ -41,12 +41,10 @@
       </h1>
     </div>
     <div class="col-12 col-lg-6 d-flex justify-content-lg-end gap-2 p-0">
-      {% if is_trial and can_upgrade %}
-      <a href="{% url 'billing:plans' %}" class="btn btn-primary">
-        <i class="bi bi-arrow-up-circle me-1"></i>
+      <a href="{% url 'billing:plans' %}" class="btn btn-outline-primary">
+        <i class="bi bi-grid me-1"></i>
         {% trans "View Plans" %}
       </a>
-      {% endif %}
       {% if subscription.stripe_customer_id %}
       <a href="{% url 'billing:portal' %}" class="btn btn-outline-secondary">
         <i class="bi bi-gear me-1"></i>
@@ -108,10 +106,6 @@
           <a href="{% url 'billing:checkout' %}?plan={{ plan.code }}&skip_trial=1" class="btn btn-primary">
             <i class="bi bi-arrow-up-circle me-1"></i>
             {% trans "Subscribe Now" %}
-          </a>
-          <a href="{% url 'billing:plans' %}" class="btn btn-outline-secondary ms-2">
-            <i class="bi bi-grid me-1"></i>
-            {% trans "View Plans" %}
           </a>
         </div>
         {% endif %}

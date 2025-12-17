@@ -67,8 +67,31 @@ class MembershipAdmin(admin.ModelAdmin):
 
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
-    list_display = ["name", "slug", "is_personal"]
+    list_display = [
+        "name",
+        "slug",
+        "is_personal",
+        "subscription_status",
+        "trial_ends_at",
+    ]
+    list_filter = ["is_personal"]
     search_fields = ["name", "slug"]
+
+    @admin.display(description="Subscription Status")
+    def subscription_status(self, obj):
+        """Display the organization's subscription status."""
+        subscription = getattr(obj, "subscription", None)
+        if subscription:
+            return subscription.status
+        return "-"
+
+    @admin.display(description="Trial Ends")
+    def trial_ends_at(self, obj):
+        """Display when the trial ends (if applicable)."""
+        subscription = getattr(obj, "subscription", None)
+        if subscription and subscription.trial_ends_at:
+            return subscription.trial_ends_at.strftime("%Y-%m-%d")
+        return "-"
 
 
 @admin.register(Role)

@@ -14,10 +14,11 @@ class PlanCode(models.TextChoices):
     """
     Plan codes used as primary key for Plan model.
 
-    Three tiers: Starter (entry-level), Team (mid-tier), Enterprise (custom).
-    No free tier - new orgs get a 2-week trial on Starter.
+    Four tiers: Free (limited), Starter (entry-level), Team (mid-tier),
+    Enterprise (custom).
     """
 
+    FREE = "FREE", _("Free")
     STARTER = "STARTER", _("Starter")
     TEAM = "TEAM", _("Team")
     ENTERPRISE = "ENTERPRISE", _("Enterprise")

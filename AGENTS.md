@@ -168,6 +168,25 @@ All other code should be correct and not cause the Rust linter to fail. For exam
 When possible, try not to use 'magic numbers' in code (avoid the linting error PLR2004). For example use HTTPStatus rather than integers.
 Otherwise, create a static variable at the top of the module, and then use that variable in the code. For example MAX_NUMBER_TRIES=3 (and then use MAX_NUMBER_TRIES in code).
 
+# Django Template Conventions
+
+## Comments
+
+For multiline comments in Django templates, always use the `{% comment %}` tag rather than `{# ... #}`:
+
+```django
+{% comment %}
+This is a multiline comment that explains
+what this template section does and why.
+{% endcomment %}
+```
+
+The `{# ... #}` syntax is only for single-line comments:
+
+```django
+{# This is a single-line comment #}
+```
+
 # HTMx + Bootstrap Modal Forms Pattern
 
 Bootstrap modals with HTMx form submissions require careful state management to avoid common issues like disappearing modals, stuck backdrops, or persisted form errors. Follow this pattern for all modal forms in Validibot.

@@ -1,7 +1,6 @@
 {% extends "marketing_base.html" %}
 
 {% load i18n %}
-{% load humanize %}
 
 {% block content %}
   <section class="container marketing-page pricing-page">
@@ -14,86 +13,14 @@
       </p>
     </div>
 
-    <div class="row g-4 justify-content-center">
-      {% for plan in all_plans %}
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm {% if plan.code == 'TEAM' %}border-primary{% endif %}">
-          <div class="card-header {% if plan.code == 'TEAM' %}text-bg-primary{% else %}text-bg-light{% endif %} text-center">
-            <h2 class="h5 mb-0">
-              {{ plan.name }}
-            </h2>
-          </div>
-          <div class="card-body text-center d-flex flex-column">
-            <div class="pricing-content flex-grow-1">
-              {% if plan.monthly_price_dollars %}
-              <p class="display-6 fw-bold mb-0">
-                ${{ plan.monthly_price_dollars }}
-              </p>
-              <p class="text-muted">
-                {% trans "Per month" %}
-              </p>
-              {% else %}
-              <p class="display-6 fw-bold mb-0">
-                {% trans "Contact Us" %}
-              </p>
-              <p class="text-muted">
-                {% trans "Custom pricing" %}
-              </p>
-              {% endif %}
-
-              <p class="text-muted small mb-3">{{ plan.description }}</p>
-
-              <ul class="list-unstyled text-start">
-                <li class="mb-2">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% if plan.basic_launches_limit %}{{ plan.basic_launches_limit|intcomma }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "basic validation launches/mo" %}
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {{ plan.included_credits|intcomma }} {% trans "advanced validation credits/mo" %}
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% if plan.max_seats %}{{ plan.max_seats }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "team seats" %}
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% if plan.max_workflows %}{{ plan.max_workflows }}{% else %}{% trans "Unlimited" %}{% endif %} {% trans "workflows" %}
-                </li>
-                <li class="mb-2">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {{ plan.max_payload_mb }} MB {% trans "max payload" %}
-                </li>
-                <li class="mb-2">
-                  {% if plan.has_integrations %}
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% else %}
-                  <i class="bi bi-x-circle text-muted me-2"></i>
-                  {% endif %}
-                  {% trans "Third-party integrations" %}
-                </li>
-                <li class="mb-2">
-                  {% if plan.has_audit_logs %}
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% else %}
-                  <i class="bi bi-x-circle text-muted me-2"></i>
-                  {% endif %}
-                  {% trans "Audit logs" %}
-                </li>
-              </ul>
-            </div>
-            <div class="d-flex flex-row mt-3">
-              {% if plan.code == "ENTERPRISE" %}
-              <a class="btn btn-success ms-auto" href="{% url 'marketing:contact' %}">{% trans "Contact sales" %}</a>
-              {% elif ACCOUNT_ALLOW_LOGIN %}
-              <a class="btn btn-success ms-auto" href="{% url 'account_signup' %}?plan={{ plan.code }}">{% trans "Start free trial" %}</a>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
+    {% comment %}
+    Include the shared plan cards partial.
+    - show_signup_buttons=True: Shows "Start Free Trial" buttons instead of plan change forms
+    - highlight_plan="TEAM": Highlights the Team plan as the recommended option
+    {% endcomment %}
+    {% with show_signup_buttons=True highlight_plan="TEAM" %}
+      {% include "billing/partials/plan_cards.html#plan_cards_grid" %}
+    {% endwith %}
 
     <!-- FAQ Section -->
     <div class="text-center mt-5 pt-4">

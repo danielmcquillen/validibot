@@ -271,7 +271,7 @@ TEMPLATES = [
                 "validibot.core.context_processors.site_feature_settings",
                 "validibot.users.context_processors.organization_context",
                 "validibot.notifications.context_processors.notifications_context",
-                "validibot.billing.context_processors.trial_banner_context",
+                "validibot.billing.context_processors.billing_context",
             ],
         },
     },

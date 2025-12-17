@@ -7,6 +7,9 @@ Views in this module:
 - CheckoutStartView: Redirect to Stripe Checkout
 - CheckoutSuccessView: Handle successful checkout return
 - CustomerPortalView: Redirect to Stripe Customer Portal
+- ChangePlanView: Handle plan upgrades and downgrades
+- ChangePlanPreviewView: Preview a plan change (AJAX)
+- CancelScheduledChangeView: Cancel a pending plan change
 """
 
 from __future__ import annotations
@@ -131,6 +134,11 @@ class PlansView(LoginRequiredMixin, OrgMixin, TemplateView):
 
     Shows all available plans with features and pricing,
     allowing users to select and subscribe.
+
+    Context includes all variables needed by the plan_cards partial template:
+    - all_plans: QuerySet of Plan objects (ordered by display_order)
+    - subscription: Current Subscription object
+    - plan: Current Plan object (for "Current Plan" badge)
     """
 
     template_name = "billing/plans.html"
@@ -153,7 +161,7 @@ class PlansView(LoginRequiredMixin, OrgMixin, TemplateView):
             "plan": plan,
             "is_trial": is_trial,
             "trial_days_remaining": trial_days_remaining,
-            "all_plans": Plan.objects.all(),
+            "all_plans": Plan.objects.all().order_by("display_order"),
         })
 
         return context
@@ -166,8 +174,13 @@ class TrialExpiredView(LoginRequiredMixin, OrgMixin, TemplateView):
     Shows:
     - Trial expiration message
     - Usage summary from trial period
-    - Plan comparison
+    - Plan comparison using shared plan_cards partial
     - Subscribe CTA
+
+    Context includes all variables needed by the plan_cards partial template:
+    - all_plans: QuerySet of Plan objects (ordered by display_order)
+    - subscription: Current Subscription object
+    - plan: Current Plan object (for "Current Plan" badge)
     """
 
     template_name = "billing/trial_expired.html"
@@ -175,6 +188,7 @@ class TrialExpiredView(LoginRequiredMixin, OrgMixin, TemplateView):
     def get_context_data(self, **kwargs) -> dict:
         context = super().get_context_data(**kwargs)
         subscription = get_or_create_subscription(self.org)
+        plan = subscription.plan
 
         # Get usage from trial period
         meter = BasicWorkflowMeter()
@@ -183,8 +197,9 @@ class TrialExpiredView(LoginRequiredMixin, OrgMixin, TemplateView):
         context.update({
             "org": self.org,
             "subscription": subscription,
+            "plan": plan,
             "usage": usage,
-            "all_plans": Plan.objects.all(),
+            "all_plans": Plan.objects.all().order_by("display_order"),
             "stripe_public_key": settings.STRIPE_PUBLIC_KEY,
         })
 
@@ -265,10 +280,8 @@ class CheckoutStartView(LoginRequiredMixin, OrgMixin, RedirectView):
             logger.exception("Failed to create checkout session")
             messages.error(
                 request,
-                _(
-                    "Unable to start checkout. Please try again or contact support. "
-                    f"Error: {e!s}"
-                ),
+                _("Unable to start checkout. Please try again or contact support. "
+                  "Error: %s") % str(e),
             )
             return redirect("billing:plans")
 
@@ -343,9 +356,160 @@ class CustomerPortalView(LoginRequiredMixin, OrgMixin, RedirectView):
             logger.exception("Failed to create portal session")
             messages.error(
                 request,
-                _(
-                    "Unable to access billing portal. Please try again or contact support. "
-                    f"Error: {e!s}"
-                ),
+                _("Unable to access billing portal. Please try again. "
+                  "Error: %s") % str(e),
             )
             return redirect("billing:dashboard")
+
+
+class ChangePlanView(LoginRequiredMixin, OrgMixin, RedirectView):
+    """
+    Handle plan changes (upgrades and downgrades).
+
+    POST /app/billing/change-plan/?plan=TEAM
+
+    For free→paid: Redirects to Stripe Checkout
+    For paid→paid upgrade: Applies immediately with proration
+    For paid→paid downgrade: Schedules for end of billing period
+    For paid→free: Cancels Stripe subscription immediately
+    """
+
+    permanent = False
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        from validibot.billing.plan_changes import InvalidPlanChangeError
+        from validibot.billing.plan_changes import PlanChangeService
+        from validibot.billing.plan_changes import StripeError
+
+        plan_code = request.POST.get("plan") or request.GET.get("plan")
+
+        if not plan_code:
+            messages.error(request, _("No plan specified."))
+            return redirect("billing:plans")
+
+        try:
+            new_plan = Plan.objects.get(code=plan_code)
+        except Plan.DoesNotExist:
+            messages.error(request, _("Invalid plan."))
+            return redirect("billing:plans")
+
+        subscription = get_or_create_subscription(self.org)
+        service = PlanChangeService()
+
+        # Build URLs for checkout redirect (if needed)
+        success_url = request.build_absolute_uri(
+            reverse("billing:checkout-success"),
+        )
+        cancel_url = request.build_absolute_uri(
+            reverse("billing:plans"),
+        )
+
+        try:
+            result = service.change_plan(
+                subscription=subscription,
+                new_plan=new_plan,
+                success_url=success_url,
+                cancel_url=cancel_url,
+            )
+
+            # For free→paid, redirect to checkout
+            if result.checkout_url:
+                return HttpResponseRedirect(result.checkout_url)
+
+            # Show success message
+            if result.success:
+                messages.success(request, result.message)
+            else:
+                messages.warning(request, result.message)
+
+            return redirect("billing:plans")
+
+        except InvalidPlanChangeError as e:
+            messages.error(request, str(e))
+            return redirect("billing:plans")
+        except StripeError as e:
+            logger.exception("Stripe error during plan change")
+            messages.error(
+                request,
+                _("Unable to change plan. Please try again or contact support. "
+                  "Error: %s") % str(e),
+            )
+            return redirect("billing:plans")
+
+
+class ChangePlanPreviewView(LoginRequiredMixin, OrgMixin, TemplateView):
+    """
+    Preview what will happen when changing to a plan.
+
+    GET /app/billing/change-plan/preview/?plan=TEAM
+
+    Returns JSON with:
+    - change_type: upgrade/downgrade/lateral
+    - effective_immediately: boolean
+    - message: description of what will happen
+    - proration_amount: amount in cents (for upgrades)
+    """
+
+    def get(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        from django.http import JsonResponse
+
+        from validibot.billing.plan_changes import PlanChangeService
+
+        plan_code = request.GET.get("plan")
+
+        if not plan_code:
+            return JsonResponse({"error": "No plan specified"}, status=400)
+
+        try:
+            new_plan = Plan.objects.get(code=plan_code)
+        except Plan.DoesNotExist:
+            return JsonResponse({"error": "Invalid plan"}, status=400)
+
+        subscription = get_or_create_subscription(self.org)
+        service = PlanChangeService()
+
+        result = service.preview_change(subscription, new_plan)
+
+        return JsonResponse({
+            "success": result.success,
+            "change_type": result.change_type.value,
+            "old_plan": result.old_plan.code,
+            "new_plan": result.new_plan.code,
+            "effective_immediately": result.effective_immediately,
+            "scheduled_at": (
+                result.scheduled_at.isoformat() if result.scheduled_at else None
+            ),
+            "proration_amount_cents": result.proration_amount_cents,
+            "message": result.message,
+        })
+
+
+class CancelScheduledChangeView(LoginRequiredMixin, OrgMixin, RedirectView):
+    """
+    Cancel a scheduled plan change.
+
+    POST /app/billing/change-plan/cancel/
+    """
+
+    permanent = False
+    http_method_names = ["post"]
+
+    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        from validibot.billing.plan_changes import PlanChangeService
+
+        subscription = get_or_create_subscription(self.org)
+        service = PlanChangeService()
+
+        if service.cancel_scheduled_change(subscription):
+            messages.success(
+                request,
+                _("Scheduled plan change has been canceled."),
+            )
+        else:
+            messages.info(
+                request,
+                _("No scheduled change to cancel."),
+            )
+
+        return redirect("billing:plans")

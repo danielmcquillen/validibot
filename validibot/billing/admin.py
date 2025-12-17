@@ -15,6 +15,9 @@ from validibot.billing.models import Plan
 from validibot.billing.models import Subscription
 from validibot.billing.models import UsageCounter
 
+# Max members to display in subscription list
+_MAX_MEMBERS_DISPLAY = 3
+
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
@@ -54,7 +57,10 @@ class PlanAdmin(admin.ModelAdmin):
             "Pricing & Stripe",
             {
                 "fields": ["monthly_price_cents", "stripe_price_id"],
-                "description": "Set stripe_price_id to the Stripe Price ID (price_xxx) for checkout.",
+                "description": (
+                    "Set stripe_price_id to the Stripe Price ID (price_xxx) "
+                    "for checkout."
+                ),
             },
         ),
         ("Display", {"fields": ["display_order"]}),
@@ -67,6 +73,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
 
     list_display = [
         "org",
+        "org_members",
         "plan",
         "status",
         "intended_plan",
@@ -74,9 +81,26 @@ class SubscriptionAdmin(admin.ModelAdmin):
         "stripe_subscription_id",
     ]
     list_filter = ["status", "plan"]
-    search_fields = ["org__name", "stripe_customer_id", "stripe_subscription_id"]
+    search_fields = [
+        "org__name",
+        "org__membership__user__email",
+        "org__membership__user__name",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+    ]
     raw_id_fields = ["org"]
     readonly_fields = ["created", "modified"]
+
+    @admin.display(description="Members")
+    def org_members(self, obj):
+        """Display the organization's members (users)."""
+        memberships = obj.org.membership_set.select_related("user").all()[
+            :_MAX_MEMBERS_DISPLAY
+        ]
+        users = [m.user.email or m.user.username for m in memberships]
+        if obj.org.membership_set.count() > _MAX_MEMBERS_DISPLAY:
+            users.append("...")
+        return ", ".join(users) if users else "-"
 
     fieldsets = [
         (None, {"fields": ["org", "plan", "status"]}),

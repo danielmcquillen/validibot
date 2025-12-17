@@ -301,6 +301,64 @@ class CreditPurchase(TimeStampedModel):
         return f"{self.subscription.org.name}: {self.credits} credits"
 
 
+class PlanChange(TimeStampedModel):
+    """
+    Audit log for plan changes.
+
+    Records all upgrades, downgrades, and plan transitions for:
+    - Billing reconciliation
+    - Customer support history
+    - Analytics on plan movement
+    """
+
+    subscription = models.ForeignKey(
+        Subscription,
+        on_delete=models.CASCADE,
+        related_name="plan_changes",
+    )
+    old_plan = models.ForeignKey(
+        Plan,
+        on_delete=models.PROTECT,
+        related_name="changes_from",
+    )
+    new_plan = models.ForeignKey(
+        Plan,
+        on_delete=models.PROTECT,
+        related_name="changes_to",
+    )
+    change_type = models.CharField(
+        max_length=20,
+        help_text="Type of change: upgrade, downgrade, or lateral.",
+    )
+    effective_immediately = models.BooleanField(
+        default=True,
+        help_text="Whether change took effect immediately or was scheduled.",
+    )
+    scheduled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When scheduled change will take effect.",
+    )
+    proration_amount_cents = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Proration amount charged/credited in cents.",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Additional context for the change.",
+    )
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.subscription.org.name}: "
+            f"{self.old_plan.name} → {self.new_plan.name}"
+        )
+
+
 class UsageCounter(TimeStampedModel):
     """
     Track usage for quota enforcement and reporting.

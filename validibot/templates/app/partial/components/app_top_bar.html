@@ -1,45 +1,80 @@
 {% load static i18n core_tags %}
 
+{% comment %}
+App top bar component.
+
+This component renders the top navigation bar for the app, with support for
+restricted mode when the user's subscription is blocked (expired trial,
+suspended, canceled).
+
+In restricted mode:
+- Nav toggle button is hidden
+- Notifications bell is hidden
+- User menu shows only sign out option
+- "Back to Validibot" link is shown
+
+Uses `app_ui` context from billing.context_processors.app_ui_state_context.
+{% endcomment %}
+
 <div id="app-top-bar">
 
-    <div id="expand-collapse-btn-wrapper">
-        <button id="app-left-nav-toggle"
-                class="btn btn-sm btn-light"
-                type="button"
-                aria-controls="app-left-nav"
-                aria-expanded="true"
-                aria-label="{% trans 'Hide navigation' %}"
-                data-expanded-label="{% trans 'Hide navigation' %}"
-                data-collapsed-label="{% trans 'Show navigation' %}">
-            <i class="bi bi-list"></i>
-        </button>
-    </div>
+    {# Nav toggle button - hidden in restricted mode #}
+    {% if app_ui.show_nav_toggle %}
+        <div id="expand-collapse-btn-wrapper">
+            <button id="app-left-nav-toggle"
+                    class="btn btn-sm btn-light"
+                    type="button"
+                    aria-controls="app-left-nav"
+                    aria-expanded="true"
+                    aria-label="{% trans 'Hide navigation' %}"
+                    data-expanded-label="{% trans 'Hide navigation' %}"
+                    data-collapsed-label="{% trans 'Show navigation' %}">
+                <i class="bi bi-list"></i>
+            </button>
+        </div>
+    {% endif %}
 
     <div id="breadcrumbs-wrapper"
          class="
                 {% block breadcrumbs_styles %}
                 {% endblock breadcrumbs_styles %}">
 
-        {% include "core/partial/breadcrumbs.html" %}
+        {# Back to site link - shown in restricted mode #}
+        {% if app_ui.show_back_to_site_link %}
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'marketing:home' %}" class="text-decoration-none">
+                            <i class="bi bi-arrow-left me-1"></i>{% trans "Back to Validibot Site" %}
+                        </a>
+                    </li>
+                </ol>
+            </nav>
+        {% else %}
+            {% include "core/partial/breadcrumbs.html" %}
+        {% endif %}
     </div>
 
     <div class="app-header-right">
-        <div class="me-3">
-            <a href="{% url 'notifications:notification-list' %}"
-               class="btn btn-outline-dark position-relative notification-bell-btn"
-               data-bs-toggle="tooltip"
-               data-bs-placement="bottom"
-               title="{% trans 'Notifications' %}"
-               aria-label="{% trans 'Notifications' %}">
-                <i class="bi bi-bell-fill"></i>
-                {% if unread_notification_count %}
-                    <span class="badge rounded-pill bg-danger notification-bell-badge">
-                        {{ unread_notification_count }}
-                        <span class="visually-hidden">{% trans "unread notifications" %}</span>
-                    </span>
-                {% endif %}
-            </a>
-        </div>
+        {# Notifications bell - hidden in restricted mode #}
+        {% if app_ui.show_notifications %}
+            <div class="me-3">
+                <a href="{% url 'notifications:notification-list' %}"
+                   class="btn btn-outline-dark position-relative notification-bell-btn"
+                   data-bs-toggle="tooltip"
+                   data-bs-placement="bottom"
+                   title="{% trans 'Notifications' %}"
+                   aria-label="{% trans 'Notifications' %}">
+                    <i class="bi bi-bell-fill"></i>
+                    {% if unread_notification_count %}
+                        <span class="badge rounded-pill bg-danger notification-bell-badge">
+                            {{ unread_notification_count }}
+                            <span class="visually-hidden">{% trans "unread notifications" %}</span>
+                        </span>
+                    {% endif %}
+                </a>
+            </div>
+        {% endif %}
 
         <div id="user-profile-selector" class="dropdown">
             <button class="btn btn-dark d-inline-flex align-items-center justify-content-center p-0 rounded-circle overflow-hidden"
@@ -74,58 +109,64 @@
                         <span class="text-muted">{{ request.user.email }}</span>
                     {% endif %}
                 </li>
-                <li>
-                    <a class="dropdown-item
-                              {% if user_settings_nav.profile %}
-                                  active
-                              {% endif %}"
-                       href="{% org_url 'users:profile' %}">
-                        {% trans "User Profile" %}
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item
-                              {% if user_settings_nav.email %}
-                                  active
-                              {% endif %}"
-                       href="{% org_url 'users:email' %}">
-                        {% trans "User Email" %}
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item
-                              {% if user_settings_nav.api_key %}
-                                  active
-                              {% endif %}"
-                       href="{% org_url 'users:api-key' %}">
-                        {% trans "API Key" %}
-                    </a>
-                </li>
-                <hr class="dropdown-divider" />
-                <li>
-                    <a class="dropdown-item d-flex justify-content-between align-items-center"
-                       href="{% url 'notifications:notification-list' %}">
-                        {% trans "Notifications" %}
-                        {% if unread_notification_count %}
-                          <span class="badge rounded-pill bg-danger">
-                            {{ unread_notification_count }}
-                          </span>
-                        {% endif %}
-                    </a>
-                </li>
-                {% if is_org_admin %}
-                    {# divider #}
-                    <hr class="dropdown-divider" />
+
+                {# Full menu items - hidden in restricted mode #}
+                {% if app_ui.show_full_user_menu %}
                     <li>
                         <a class="dropdown-item
-                                  {% if user_settings_nav.organizations %}
+                                  {% if user_settings_nav.profile %}
                                       active
                                   {% endif %}"
-                           href="{% org_url 'users:organization-list' %}">
-                            {% trans "Manage organizations" %}
+                           href="{% org_url 'users:profile' %}">
+                            {% trans "User Profile" %}
                         </a>
                     </li>
+                    <li>
+                        <a class="dropdown-item
+                                  {% if user_settings_nav.email %}
+                                      active
+                                  {% endif %}"
+                           href="{% org_url 'users:email' %}">
+                            {% trans "User Email" %}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item
+                                  {% if user_settings_nav.api_key %}
+                                      active
+                                  {% endif %}"
+                           href="{% org_url 'users:api-key' %}">
+                            {% trans "API Key" %}
+                        </a>
+                    </li>
+                    <hr class="dropdown-divider" />
+                    <li>
+                        <a class="dropdown-item d-flex justify-content-between align-items-center"
+                           href="{% url 'notifications:notification-list' %}">
+                            {% trans "Notifications" %}
+                            {% if unread_notification_count %}
+                                <span class="badge rounded-pill bg-danger">
+                                    {{ unread_notification_count }}
+                                </span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    {% if is_org_admin %}
+                        {# divider #}
+                        <hr class="dropdown-divider" />
+                        <li>
+                            <a class="dropdown-item
+                                      {% if user_settings_nav.organizations %}
+                                          active
+                                      {% endif %}"
+                               href="{% org_url 'users:organization-list' %}">
+                                {% trans "Manage organizations" %}
+                            </a>
+                        </li>
+                    {% endif %}
                 {% endif %}
+
+                {# Sign out - always visible #}
                 {% if ACCOUNT_ALLOW_LOGIN %}
                     <li>
                         <hr class="dropdown-divider" />

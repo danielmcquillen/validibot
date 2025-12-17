@@ -38,15 +38,35 @@ class TrialExpiryMiddleware:
 
     # Paths that don't require an active subscription
     EXEMPT_PATH_PREFIXES = [
+        # Billing and payment
         "/app/billing/",
         "/billing/",
         "/stripe/",
+        # Authentication
         "/accounts/",
+        # Static files
         "/static/",
         "/media/",
+        # Admin
         "/admin/",
         "/.well-known/",
+        # Marketing pages - allow trial-expired users to browse the site
+        "/about/",
+        "/pricing/",
+        "/features/",
+        "/contact/",
+        "/terms/",
+        "/privacy/",
+        "/blog/",
+        "/support/",
+        "/help/",
+        "/resources/",
+        "/waitlist/",
+        "/webhooks/",
     ]
+
+    # Exact paths that are exempt (for home page)
+    EXEMPT_EXACT_PATHS = ["/"]
 
     # Blocked subscription statuses
     BLOCKED_STATUSES = {
@@ -103,6 +123,10 @@ class TrialExpiryMiddleware:
 
     def _is_exempt_path(self, path: str) -> bool:
         """Check if the path is exempt from subscription checks."""
+        # Check exact path matches first (for home page)
+        if path in self.EXEMPT_EXACT_PATHS:
+            return True
+        # Check prefix matches
         return any(path.startswith(prefix) for prefix in self.EXEMPT_PATH_PREFIXES)
 
     def _is_api_request(self, request: HttpRequest) -> bool:

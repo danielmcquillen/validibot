@@ -1,7 +1,7 @@
 """
 Management command to seed billing plans and link to Stripe.
 
-Creates or updates the three pricing plans (Starter, Team, Enterprise)
+Creates or updates the four pricing plans (Free, Starter, Team, Enterprise)
 with limits and features from ADR-2025-11-28, then links them to
 Stripe Prices via dj-stripe.
 
@@ -23,12 +23,28 @@ from validibot.billing.models import Plan
 
 # Plan configuration from ADR-2025-11-28
 PLAN_CONFIG = {
+    PlanCode.FREE: {
+        "name": "Free",
+        "description": (
+            "Get started with Validibot at no cost. Access public validation workflows."
+        ),
+        "basic_launches_limit": 100,
+        "included_credits": 0,
+        "max_workflows": 0,  # Cannot create own workflows
+        "max_custom_validators": 0,
+        "max_seats": 1,
+        "max_payload_mb": 1,
+        "has_integrations": False,
+        "has_audit_logs": False,
+        "monthly_price_cents": 0,  # Free
+        "display_order": 0,
+    },
     PlanCode.STARTER: {
         "name": "Starter",
         "description": (
-            "Perfect for individuals and small teams getting started with "
-            "data validation. Includes essential features to validate your "
-            "building energy models."
+            "Perfect for individuals and small teams. "
+            "Includes essential features to create powerful "
+            "validation workflows."
         ),
         "basic_launches_limit": 10_000,
         "included_credits": 200,
@@ -44,7 +60,7 @@ PLAN_CONFIG = {
     PlanCode.TEAM: {
         "name": "Team",
         "description": (
-            "For growing teams that need more capacity and collaboration "
+            "For growing teams that need more capacity and validation "
             "features. Includes integrations and audit logs for compliance."
         ),
         "basic_launches_limit": 100_000,
@@ -218,7 +234,11 @@ class Command(BaseCommand):
 
         for price in prices:
             product_name = price.product.name if price.product else "Unknown"
-            plan_code = price.product.metadata.get("plan_code", "").upper() if price.product else ""
+            plan_code = (
+                price.product.metadata.get("plan_code", "").upper()
+                if price.product
+                else ""
+            )
 
             if not plan_code:
                 prices_without_metadata.append(f"{product_name} ({price.id})")
@@ -240,8 +260,12 @@ class Command(BaseCommand):
             else:
                 price_by_plan_code[plan_code] = price
                 amount = price.unit_amount / 100 if price.unit_amount else 0
-                interval = price.recurring.get("interval", "month") if price.recurring else "?"
-                self.stdout.write(f"    {plan_code}: ${amount:.0f}/{interval} ({price.id})")
+                interval = (
+                    price.recurring.get("interval", "month") if price.recurring else "?"
+                )
+                self.stdout.write(
+                    f"    {plan_code}: ${amount:.0f}/{interval} ({price.id})"
+                )
 
         # Show warnings
         if prices_without_metadata:
@@ -253,10 +277,14 @@ class Command(BaseCommand):
             for p in prices_without_metadata[:5]:  # Limit to first 5
                 self.stdout.write(f"    - {p}")
             if len(prices_without_metadata) > 5:
-                self.stdout.write(f"    ... and {len(prices_without_metadata) - 5} more")
+                self.stdout.write(
+                    f"    ... and {len(prices_without_metadata) - 5} more"
+                )
 
         if duplicate_warnings:
-            self.stdout.write(self.style.WARNING("\n  ⚠ Duplicate plan_code found (using first):"))
+            self.stdout.write(
+                self.style.WARNING("\n  ⚠ Duplicate plan_code found (using first):")
+            )
             for warning in duplicate_warnings:
                 self.stdout.write(warning)
 
@@ -355,11 +383,12 @@ class Command(BaseCommand):
         for plan in Plan.objects.all().order_by("display_order"):
             launches = f"{plan.basic_launches_limit:,}"
             seats = plan.max_seats
-            price = (
-                f"${plan.monthly_price_cents / 100:.0f}/mo"
-                if plan.monthly_price_cents
-                else "Contact us"
-            )
+            if plan.monthly_price_cents:
+                price = f"${plan.monthly_price_cents / 100:.0f}/mo"
+            elif plan.code == PlanCode.FREE:
+                price = "Free"
+            else:
+                price = "Contact us"
             stripe = "✓" if plan.stripe_price_id else "✗"
 
             self.stdout.write(

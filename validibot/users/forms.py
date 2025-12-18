@@ -1,9 +1,11 @@
 from datetime import timedelta
 
+from allauth.account.forms import LoginForm
 from allauth.account.forms import SignupForm
 from allauth.socialaccount.forms import SignupForm as SocialSignupForm
 from crispy_forms.helper import FormHelper
 from django import forms
+from django.conf import settings
 from django.contrib.auth import forms as admin_forms
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -581,12 +583,50 @@ class UserAdminCreationForm(admin_forms.AdminUserCreationForm):
         }
 
 
+def _recaptcha_enabled() -> bool:
+    """Check if reCAPTCHA is configured (both keys must be set)."""
+    return bool(
+        getattr(settings, "RECAPTCHA_PUBLIC_KEY", "")
+        and getattr(settings, "RECAPTCHA_PRIVATE_KEY", "")
+    )
+
+
 class UserSignupForm(SignupForm):
     """
     Form that will be rendered on a user sign up section/screen.
     Default fields will be added automatically.
     Check UserSocialSignupForm for accounts created from social.
     """
+
+    terms_accepted = forms.BooleanField(
+        required=True,
+        label=_("I agree to the Terms of Service and Privacy Policy"),
+        error_messages={
+            "required": _("You must agree to the Terms of Service and Privacy Policy."),
+        },
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Only add reCAPTCHA field if keys are configured
+        if _recaptcha_enabled():
+            from django_recaptcha.fields import ReCaptchaField
+
+            self.fields["captcha"] = ReCaptchaField()
+
+
+class UserLoginForm(LoginForm):
+    """
+    Custom login form with optional reCAPTCHA support.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Only add reCAPTCHA field if keys are configured
+        if _recaptcha_enabled():
+            from django_recaptcha.fields import ReCaptchaField
+
+            self.fields["captcha"] = ReCaptchaField()
 
 
 class UserSocialSignupForm(SocialSignupForm):

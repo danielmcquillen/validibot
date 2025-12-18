@@ -1,13 +1,37 @@
 {% load static %}
 {% load i18n %}
 {% load account socialaccount %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags crispy_forms_filters %}
 
 <form class="login"
       method="post"
       action="{% url 'account_login' %}">
     {% csrf_token %}
-    {{ form|crispy }}
+
+    {% comment %}
+    Render all form fields except captcha (rendered separately at the end).
+    {% endcomment %}
+    {% for field in form %}
+        {% if field.name != 'captcha' %}
+            {{ field|as_crispy_field }}
+        {% endif %}
+    {% endfor %}
+
+    {% comment %}
+    reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
+    are configured in settings. The captcha widget will render its own UI.
+    {% endcomment %}
+    {% if form.captcha %}
+        <div class="mb-3">
+            {{ form.captcha }}
+            {% if form.captcha.errors %}
+                <div class="text-danger small mt-1">
+                    {{ form.captcha.errors.0 }}
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+
     {% with redirect_target=redirect_field_value|default:"/app/dashboard/" %}
         <input type="hidden"
                name="{{ redirect_field_name }}"

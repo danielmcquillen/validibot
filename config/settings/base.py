@@ -108,6 +108,7 @@ THIRD_PARTY_APPS = [
     "markdownify",
     "django_cloud_tasks",
     "djstripe",
+    "django_recaptcha",
 ]
 
 LOCAL_APPS = [
@@ -367,7 +368,10 @@ ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_ADAPTER = "validibot.users.adapters.AccountAdapter"
 # https://docs.allauth.org/en/latest/account/forms.html
-ACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSignupForm"}
+ACCOUNT_FORMS = {
+    "signup": "validibot.users.forms.UserSignupForm",
+    "login": "validibot.users.forms.UserLoginForm",
+}
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
 SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
@@ -511,6 +515,16 @@ ENABLE_BLOG = env.bool("ENABLE_BLOG", True)
 ENABLE_HELP_CENTER = env.bool("ENABLE_HELP_CENTER", False)
 ENABLE_SYSTEM_STATUS = env.bool("ENABLE_SYSTEM_STATUS", False)
 ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
+
+# django-recaptcha (Google reCAPTCHA)
+# https://github.com/django-recaptcha/django-recaptcha
+# Get keys from: https://www.google.com/recaptcha/admin
+RECAPTCHA_PUBLIC_KEY = env("RECAPTCHA_PUBLIC_KEY", default="")
+RECAPTCHA_PRIVATE_KEY = env("RECAPTCHA_PRIVATE_KEY", default="")
+# Use reCAPTCHA v2 invisible badge for better UX
+RECAPTCHA_WIDGET = "django_recaptcha.widgets.ReCaptchaV2Invisible"
+# Disable reCAPTCHA if keys not configured (for local development)
+SILENCED_SYSTEM_CHECKS = ["django_recaptcha.recaptcha_test_key_error"]
 
 TEST_ENERGYPLUS_WEATHER_FILE = env(
     "TEST_ENERGYPLUS_WEATHER_FILE",

@@ -7,7 +7,59 @@
       method="post"
       action="{% url 'account_signup' %}">
     {% csrf_token %}
-    {{ form|crispy }}
+
+    {% comment %}
+    Render all form fields except terms_accepted (rendered with links) and captcha
+    (rendered at the end before the submit button).
+    {% endcomment %}
+    {% for field in form %}
+        {% if field.name != 'terms_accepted' and field.name != 'captcha' %}
+            {{ field|as_crispy_field }}
+        {% endif %}
+    {% endfor %}
+
+    {% comment %}
+    Terms acceptance checkbox with links to Terms of Service and Privacy Policy.
+    {% endcomment %}
+    {% url 'marketing:terms' as terms_url %}
+    {% url 'marketing:privacy' as privacy_url %}
+    <div class="mb-3">
+        <div class="form-check">
+            <input type="checkbox"
+                   name="terms_accepted"
+                   id="id_terms_accepted"
+                   class="form-check-input {% if form.terms_accepted.errors %}is-invalid{% endif %}"
+                   {% if form.terms_accepted.value %}checked{% endif %}
+                   required>
+            <label class="form-check-label" for="id_terms_accepted">
+                {% blocktrans trimmed %}
+                I agree to the <a href="{{ terms_url }}" target="_blank">Terms of Service</a>
+                and <a href="{{ privacy_url }}" target="_blank">Privacy Policy</a>
+                {% endblocktrans %}
+            </label>
+            {% if form.terms_accepted.errors %}
+                <div class="invalid-feedback">
+                    {{ form.terms_accepted.errors.0 }}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% comment %}
+    reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
+    are configured in settings. The captcha widget will render its own UI.
+    {% endcomment %}
+    {% if form.captcha %}
+        <div class="mb-3">
+            {{ form.captcha }}
+            {% if form.captcha.errors %}
+                <div class="text-danger small mt-1">
+                    {{ form.captcha.errors.0 }}
+                </div>
+            {% endif %}
+        </div>
+    {% endif %}
+
     {% if redirect_field_value %}
         <input type="hidden"
                name="{{ redirect_field_name }}"

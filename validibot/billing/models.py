@@ -99,6 +99,12 @@ class Plan(models.Model):
         help_text="Order in which plans appear on pricing page.",
     )
 
+    # Availability toggle
+    is_available = models.BooleanField(
+        default=True,
+        help_text="Whether this plan can be selected. Unavailable plans show 'Coming Soon'.",  # noqa: E501
+    )
+
     class Meta:
         ordering = ["display_order"]
 

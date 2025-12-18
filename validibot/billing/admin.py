@@ -26,6 +26,7 @@ class PlanAdmin(admin.ModelAdmin):
     list_display = [
         "code",
         "name",
+        "is_available",
         "monthly_price_dollars",
         "basic_launches_limit",
         "included_credits",
@@ -33,7 +34,7 @@ class PlanAdmin(admin.ModelAdmin):
         "stripe_price_id",
         "display_order",
     ]
-    list_editable = ["stripe_price_id", "display_order"]
+    list_editable = ["is_available", "stripe_price_id", "display_order"]
     ordering = ["display_order"]
     search_fields = ["code", "name"]
 
@@ -63,7 +64,7 @@ class PlanAdmin(admin.ModelAdmin):
                 ),
             },
         ),
-        ("Display", {"fields": ["display_order"]}),
+        ("Display", {"fields": ["display_order", "is_available"]}),
     ]
 
 

@@ -38,6 +38,7 @@ PLAN_CONFIG = {
         "has_audit_logs": False,
         "monthly_price_cents": 0,  # Free
         "display_order": 0,
+        "is_available": False,  # Coming soon
     },
     PlanCode.STARTER: {
         "name": "Starter",
@@ -56,6 +57,7 @@ PLAN_CONFIG = {
         "has_audit_logs": False,
         "monthly_price_cents": 2900,  # $29
         "display_order": 1,
+        "is_available": True,
     },
     PlanCode.TEAM: {
         "name": "Team",
@@ -73,6 +75,7 @@ PLAN_CONFIG = {
         "has_audit_logs": True,
         "monthly_price_cents": 9900,  # $99
         "display_order": 2,
+        "is_available": True,
     },
     PlanCode.ENTERPRISE: {
         "name": "Enterprise",
@@ -90,6 +93,7 @@ PLAN_CONFIG = {
         "has_audit_logs": True,
         "monthly_price_cents": 0,  # Contact us
         "display_order": 3,
+        "is_available": True,
     },
 }
 

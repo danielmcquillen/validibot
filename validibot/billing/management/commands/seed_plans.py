@@ -37,6 +37,9 @@ PLAN_CONFIG = {
         "has_integrations": False,
         "has_audit_logs": False,
         "monthly_price_cents": 0,  # Free
+        # No credit packs on free plan
+        "credit_pack_size": None,
+        "credit_pack_price_cents": None,
         "display_order": 0,
         "is_available": False,  # Coming soon
     },
@@ -56,6 +59,9 @@ PLAN_CONFIG = {
         "has_integrations": False,
         "has_audit_logs": False,
         "monthly_price_cents": 2900,  # $29
+        # Credit pack: $10 for 100 credits (ADR)
+        "credit_pack_size": 100,
+        "credit_pack_price_cents": 1000,
         "display_order": 1,
         "is_available": True,
     },
@@ -74,6 +80,9 @@ PLAN_CONFIG = {
         "has_integrations": True,
         "has_audit_logs": True,
         "monthly_price_cents": 9900,  # $99
+        # Credit pack: $25 for 500 credits (ADR)
+        "credit_pack_size": 500,
+        "credit_pack_price_cents": 2500,
         "display_order": 2,
         "is_available": True,
     },
@@ -92,6 +101,9 @@ PLAN_CONFIG = {
         "has_integrations": True,
         "has_audit_logs": True,
         "monthly_price_cents": 0,  # Contact us
+        # Credit pack pricing: negotiated
+        "credit_pack_size": None,
+        "credit_pack_price_cents": None,
         "display_order": 3,
         "is_available": True,
     },

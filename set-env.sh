@@ -1,16 +1,11 @@
-
-# Use this file if you're using EnvFile for Pycharm to load env files.
+# Load local development environment variables.
 #
-# If you do, your .env file will be in the format
-#     BLAH=BLEH
-# not the format
-#     export BLAH=BLEH
+# Usage:
+#   source set-env.sh
 #
-# Therefore, if you're working directly in the terminal, and want to load the .env
-# file, you need to run this script like:
-#
-# > source set-env.sh
+# This exports all variables from .envs/.local/.django so they're available
+# to Django commands run directly in the terminal (outside Docker).
 
 set -o allexport
-source _envs/_local/django.env
+source .envs/.local/.django
 set +o allexport

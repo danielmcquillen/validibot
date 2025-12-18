@@ -2157,3 +2157,222 @@ gcp-maintenance-status stage:
     fi
 
     echo ""
+
+# =============================================================================
+# GCP Load Balancer & DNS
+# =============================================================================
+#
+# Creates a Global Application Load Balancer to provide a stable static IP
+# and multi-region capability (required because 'Domain Mapping' is not
+# available in australia-southeast1).
+#
+# Resources created:
+#   - Global Static IP
+#   - Network Endpoint Group (Serverless NEG) -> Points to Cloud Run
+#   - Backend Service -> Routes traffic to NEG
+#   - URL Map -> Directs all requests to Backend Service
+#   - SSL Certificate -> Google-managed (auto-renewing)
+#   - Target HTTPS Proxy -> Terminates SSL
+#   - Forwarding Rule -> Listens on IP:443
+#
+# Cost: ~$18 USD/month
+# =============================================================================
+
+# Set up the Global Load Balancer
+# Usage: just gcp-lb-setup prod "validibot.com,app.validibot.com"
+# Usage: just gcp-lb-setup dev "dev.validibot.com"
+gcp-lb-setup stage domains:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    echo "========================================================"
+    echo "Setting up Global Load Balancer for: {{stage}}"
+    echo "Domains: {{domains}}"
+    echo "========================================================"
+    echo ""
+
+    # Compute resource names
+    if [ "{{stage}}" = "prod" ]; then
+        SERVICE="validibot-web"
+        SUFFIX=""
+    else
+        SERVICE="validibot-web-{{stage}}"
+        SUFFIX="-{{stage}}"
+    fi
+
+    # Resource names with optional suffix (except LB components which act as singleton per env)
+    IP_NAME="validibot-ip${SUFFIX}"
+    NEG_NAME="validibot-neg${SUFFIX}"
+    BACKEND_NAME="validibot-backend${SUFFIX}"
+    URL_MAP_NAME="validibot-url-map${SUFFIX}"
+    CERT_NAME="validibot-cert${SUFFIX}"
+    PROXY_NAME="validibot-https-proxy${SUFFIX}"
+    RULE_NAME="validibot-lb-rule${SUFFIX}"
+    HTTP_PROXY_NAME="validibot-http-proxy${SUFFIX}"
+    HTTP_RULE_NAME="validibot-lb-rule-http${SUFFIX}"
+
+    # 1. Reserve Static IP
+    echo "1. Checking Static IP ($IP_NAME)..."
+    if gcloud compute addresses describe "$IP_NAME" --global --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute addresses create "$IP_NAME" --global --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    IP_ADDRESS=$(gcloud compute addresses describe "$IP_NAME" --global --project {{gcp_project}} --format="value(address)")
+    echo "   -> IP: $IP_ADDRESS"
+    echo ""
+
+    # 2. Create NEG (Connects to Cloud Run)
+    echo "2. Checking Network Endpoint Group ($NEG_NAME)..."
+    if gcloud compute network-endpoint-groups describe "$NEG_NAME" \
+        --region={{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute network-endpoint-groups create "$NEG_NAME" \
+            --region={{gcp_region}} \
+            --network-endpoint-type=serverless \
+            --cloud-run-service="$SERVICE" \
+            --project {{gcp_project}}
+        echo "   ✓ Created (pointing to $SERVICE)"
+    fi
+    echo ""
+
+    # 3. Create Backend Service
+    echo "3. Checking Backend Service ($BACKEND_NAME)..."
+    if ! gcloud compute backend-services describe "$BACKEND_NAME" --global --project {{gcp_project}} &>/dev/null; then
+        gcloud compute backend-services create "$BACKEND_NAME" \
+            --global \
+            --protocol=HTTP \
+            --timeout=1000s \
+            --project {{gcp_project}}
+        echo "   ✓ Created service"
+    else
+        echo "   ✓ Service exists"
+    fi
+
+    # Add NEG to Backend Service (idempotent check)
+    if gcloud compute backend-services describe "$BACKEND_NAME" --global --project {{gcp_project}} \
+        --format="value(backends[].group)" 2>/dev/null | grep -q "/$NEG_NAME$"; then
+        echo "   ✓ Backend already attached"
+    else
+        gcloud compute backend-services add-backend "$BACKEND_NAME" \
+            --global \
+            --network-endpoint-group="$NEG_NAME" \
+            --network-endpoint-group-region={{gcp_region}} \
+            --project {{gcp_project}}
+        echo "   ✓ Attached NEG to backend"
+    fi
+    echo ""
+
+    # 4. Create URL Map
+    echo "4. Checking URL Map ($URL_MAP_NAME)..."
+    if gcloud compute url-maps describe "$URL_MAP_NAME" --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute url-maps create "$URL_MAP_NAME" \
+            --default-service "$BACKEND_NAME" \
+            --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # 5. Create Managed SSL Certificate
+    echo "5. Checking SSL Certificate ($CERT_NAME)..."
+    if gcloud compute ssl-certificates describe "$CERT_NAME" --global --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+        # Note: We don't update domains on existing certs to avoid potential rotation issues during redeploy.
+        # To change domains, delete the cert manually first.
+    else
+        gcloud compute ssl-certificates create "$CERT_NAME" \
+            --domains "{{domains}}" \
+            --global \
+            --project {{gcp_project}}
+        echo "   ✓ Created for: {{domains}}"
+    fi
+    echo ""
+
+    # 6. Create Target HTTPS Proxy
+    echo "6. Checking Target Proxy ($PROXY_NAME)..."
+    if gcloud compute target-https-proxies describe "$PROXY_NAME" --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute target-https-proxies create "$PROXY_NAME" \
+            --ssl-certificates="$CERT_NAME" \
+            --url-map="$URL_MAP_NAME" \
+            --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # 7. Create Forwarding Rule
+    echo "7. Checking Forwarding Rule ($RULE_NAME)..."
+    if gcloud compute forwarding-rules describe "$RULE_NAME" --global --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute forwarding-rules create "$RULE_NAME" \
+            --address="$IP_NAME" \
+            --target-https-proxy="$PROXY_NAME" \
+            --global \
+            --ports=443 \
+            --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # 8. Create Target HTTP Proxy (optional but recommended for http->https redirects)
+    echo "8. Checking HTTP Target Proxy ($HTTP_PROXY_NAME)..."
+    if gcloud compute target-http-proxies describe "$HTTP_PROXY_NAME" --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute target-http-proxies create "$HTTP_PROXY_NAME" \
+            --url-map="$URL_MAP_NAME" \
+            --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    # 9. Create HTTP Forwarding Rule (port 80)
+    echo "9. Checking HTTP Forwarding Rule ($HTTP_RULE_NAME)..."
+    if gcloud compute forwarding-rules describe "$HTTP_RULE_NAME" --global --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Exists"
+    else
+        gcloud compute forwarding-rules create "$HTTP_RULE_NAME" \
+            --address="$IP_NAME" \
+            --target-http-proxy="$HTTP_PROXY_NAME" \
+            --global \
+            --ports=80 \
+            --project {{gcp_project}}
+        echo "   ✓ Created"
+    fi
+    echo ""
+
+    echo "========================================================"
+    echo "✅ Load Balancer Setup Complete"
+    echo "========================================================"
+    echo ""
+    echo "ACTION REQUIRED: Update your DNS records in DNS Simple"
+    echo ""
+    echo "Create these records for: {{domains}}"
+    echo "--------------------------------------------------------"
+    echo "Type:  A"
+    echo "Value: $IP_ADDRESS"
+    echo "TTL:   1 hour (or default)"
+    echo "--------------------------------------------------------"
+    echo ""
+    echo "Note: Google-managed certificates can take 15-60 minutes to provision"
+    echo "after DNS propagation. Until then, you may see SSL errors."
+
+    echo ""
+    echo "Optional hardening (recommended after you verify the LB works):"
+    echo "  Restrict direct access to the *.run.app URL:"
+    echo "    gcloud run services update \"$SERVICE\" \\"
+    echo "      --ingress internal-and-cloud-load-balancing \\"
+    echo "      --region {{gcp_region}} \\"
+    echo "      --project {{gcp_project}}"

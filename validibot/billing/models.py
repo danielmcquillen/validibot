@@ -93,6 +93,18 @@ class Plan(models.Model):
         help_text="Stripe Price ID for subscription checkout.",
     )
 
+    # Credit pack pricing (for top-up purchases)
+    credit_pack_size = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of credits in a credit pack. Null = not available.",
+    )
+    credit_pack_price_cents = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Price in cents for a credit pack. Null = negotiated pricing.",
+    )
+
     # Display order for plan comparison UI
     display_order = models.IntegerField(
         default=0,
@@ -115,6 +127,13 @@ class Plan(models.Model):
     def monthly_price_dollars(self) -> int:
         """Monthly price in whole dollars for display."""
         return self.monthly_price_cents // 100 if self.monthly_price_cents else 0
+
+    @property
+    def credit_pack_price_dollars(self) -> int | None:
+        """Credit pack price in whole dollars."""
+        if self.credit_pack_price_cents is None:
+            return None
+        return self.credit_pack_price_cents // 100
 
 
 class Subscription(TimeStampedModel):

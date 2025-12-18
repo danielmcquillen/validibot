@@ -12,7 +12,7 @@
       "django": true,
       "autoStartBrowser": false,
       "program": "${workspaceFolder}/manage.py",
-      "envFile": "${workspaceFolder}/_envs/_local/django.env",
+      "envFile": "${workspaceFolder}/.envs/.local/.django",
       "justMyCode": false
     },
     {
@@ -30,7 +30,7 @@
         "-l",
         "debug"
       ],
-      "envFile": "${workspaceFolder}/_envs/_local/django.env",
+      "envFile": "${workspaceFolder}/.envs/.local/.django",
       "justMyCode": false
     }
   ]

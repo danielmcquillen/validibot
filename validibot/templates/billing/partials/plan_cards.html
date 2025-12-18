@@ -172,6 +172,19 @@ The partial uses Django 6.0+ partialdef so it can be:
                 <li class="mb-2">
                   <i class="bi bi-check-circle-fill text-success me-2"></i>
                   {{ p.included_credits|intcomma }} {% trans "advanced credits / mo" %}
+                  {% if p.credit_pack_size and p.credit_pack_price_dollars %}
+                    <br>
+                    <small class="text-muted ms-4">
+                      {% blocktrans with price=p.credit_pack_price_dollars size=p.credit_pack_size trimmed %}
+                        Credit pack: ${{ price }} for {{ size }} credits
+                      {% endblocktrans %}
+                    </small>
+                  {% elif p.code == "ENTERPRISE" %}
+                    <br>
+                    <small class="text-muted ms-4">
+                      {% trans "Credit packs: negotiated" %}
+                    </small>
+                  {% endif %}
                 </li>
 
                 <li class="mb-4">

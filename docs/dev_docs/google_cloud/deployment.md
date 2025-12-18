@@ -181,6 +181,63 @@ just gcp-deploy-all prod
 just gcp-migrate prod
 ```
 
+## Custom Domain (DNSimple) via Load Balancer
+
+Cloud Run’s built-in “domain mappings” are not available in `australia-southeast1`, so production custom domains (like `validibot.com`) are served via a Global external HTTP(S) Load Balancer that routes to Cloud Run using a serverless NEG.
+
+The `justfile` includes an idempotent command that creates the load balancer resources and prints the static IP you need to set in DNSimple:
+
+```bash
+just gcp-lb-setup prod validibot.com
+```
+
+If you want multiple hostnames on the same cert/load balancer, pass a comma-separated list:
+
+```bash
+just gcp-lb-setup prod "validibot.com,www.validibot.com"
+```
+
+### DNSimple records
+
+In DNSimple, create an `A` record pointing at the static IP printed by `gcp-lb-setup`.
+
+- For the apex/root domain (`validibot.com`): create an `A` record for host `@` → the load balancer IP.
+- For `www.validibot.com` (optional): either add another `A` record pointing at the same IP, or use `CNAME www → validibot.com` (and include `www.validibot.com` in the `gcp-lb-setup` domains list so the cert covers it).
+
+### SSL certificate provisioning
+
+The load balancer uses a Google-managed certificate. After the DNS change propagates, provisioning typically takes 15–60 minutes.
+
+Useful status commands:
+
+```bash
+# See the reserved IP (prod)
+gcloud compute addresses describe validibot-ip --global \
+  --project project-a509c806-3e21-4fbc-b19
+
+# See certificate status (prod)
+gcloud compute ssl-certificates describe validibot-cert --global \
+  --project project-a509c806-3e21-4fbc-b19
+```
+
+### App configuration notes
+
+- Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp-secrets prod` and redeploy.
+- After you confirm the domain works, you can block direct public access to the `*.run.app` URL and only allow traffic via the load balancer:
+
+  ```bash
+  gcloud run services update validibot-web \
+    --ingress internal-and-cloud-load-balancing \
+    --region australia-southeast1 \
+    --project project-a509c806-3e21-4fbc-b19
+  ```
+
+### Timeouts (avoiding “30s” surprises)
+
+- Cloud Run request timeouts are configured on the Cloud Run service. This repo deploys with `--timeout 3600s` (see `gcp_cloud_run_request_timeout` in `justfile`).
+- Gunicorn is configured to match via `GUNICORN_TIMEOUT_SECONDS` (defaults to `3600`) in `compose/production/django/start.sh` and `compose/production/django/start-worker.sh`.
+- Serverless NEGs do not support customizing the load balancer backend-service timeout, and the backend service will show `timeoutSec=30`. If you see requests ending around 30 seconds, check the Cloud Run service `--timeout`, plus any client-side timeouts (browser, reverse proxy, task runner).
+
 ## Architecture Overview
 
 ```

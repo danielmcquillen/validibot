@@ -100,11 +100,35 @@ This checklist covers tasks to complete before launching Validibot to production
 
 ### DNS & SSL
 
-- [ ] **Configure custom domain** for Cloud Run service
+- [ ] **Set up the load balancer for `validibot.com`**
 
-- [ ] **Verify SSL certificate** is properly configured
+  Cloud Run “domain mappings” are not available in `australia-southeast1`, so production uses a Global external HTTP(S) Load Balancer in front of Cloud Run.
 
-- [ ] **Set up domain mapping** in Cloud Run
+  ```bash
+  just gcp-lb-setup prod validibot.com
+  ```
+
+- [ ] **Point DNSimple at the load balancer IP**
+
+  Create an `A` record for `validibot.com` (host `@`) pointing to the IP printed by `gcp-lb-setup`.
+
+- [ ] **Verify the Google-managed SSL cert becomes active**
+
+  This can take 15–60 minutes after DNS propagates.
+
+  ```bash
+  gcloud compute ssl-certificates describe validibot-cert --global
+  ```
+
+- [ ] **Lock down direct `*.run.app` access (optional)**
+
+  Once the domain works, restrict the Cloud Run web service so only the load balancer can reach it:
+
+  ```bash
+  gcloud run services update validibot-web \
+    --ingress internal-and-cloud-load-balancing \
+    --region australia-southeast1
+  ```
 
 ### Application
 

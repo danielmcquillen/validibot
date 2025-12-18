@@ -22,6 +22,7 @@ The GCP architecture includes:
 
 - **Cloud Run (web)** - Django app serving user traffic
 - **Cloud Run (worker)** - Background processing and validator callbacks
+- **External HTTP(S) Load Balancer** - Serves `validibot.com` and routes to Cloud Run (serverless NEG)
 - **Cloud SQL** - Managed PostgreSQL database
 - **Cloud Storage** - Object storage for media files
 - **Cloud Tasks** - Async task queue for validation jobs
@@ -30,7 +31,7 @@ The GCP architecture includes:
 
 ## Documentation
 
-- [Deployment Guide](deployment.md) - How to deploy to Cloud Run
+- [Deployment Guide](deployment.md) - Deployments, operations, and custom domain setup
 - [Logging](logging.md) - Cloud Logging setup and searching logs
 - [Scheduled Jobs](scheduled-jobs.md) - Cloud Scheduler configuration
 - [Security](security.md) - Cloud SQL networking, database access, secrets

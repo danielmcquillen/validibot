@@ -13,4 +13,8 @@ python manage.py migrate --noinput
 # Collect static assets for serving.
 python manage.py collectstatic --noinput
 # Launch Gunicorn to serve the Django application.
-gunicorn config.wsgi:application --bind 0.0.0.0:8000
+GUNICORN_TIMEOUT_SECONDS="${GUNICORN_TIMEOUT_SECONDS:-3600}"
+
+gunicorn config.wsgi:application \
+  --bind 0.0.0.0:8000 \
+  --timeout "${GUNICORN_TIMEOUT_SECONDS}"

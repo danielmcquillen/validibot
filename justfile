@@ -36,6 +36,7 @@ export PATH := env_var("HOME") + "/google-cloud-sdk/bin:" + env_var("PATH")
 gcp_project := "project-a509c806-3e21-4fbc-b19"
 gcp_region := "australia-southeast1"
 gcp_image := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
+gcp_cloud_run_request_timeout := "3600s"
 
 # Get git commit hash for image tagging
 git_sha := `git rev-parse --short HEAD`
@@ -214,7 +215,7 @@ gcp-deploy stage: gcp-build gcp-push
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
-        --timeout 1000s \
+        --timeout {{gcp_cloud_run_request_timeout}} \
         --allow-unauthenticated \
         --project {{gcp_project}}
 
@@ -259,7 +260,7 @@ gcp-deploy-worker stage: gcp-build gcp-push
         --min-instances 0 \
         --max-instances 2 \
         --memory 1Gi \
-        --timeout 1000s \
+        --timeout {{gcp_cloud_run_request_timeout}} \
         --project {{gcp_project}}
 
     echo ""
@@ -2165,7 +2166,7 @@ gcp-maintenance-status stage:
 # =============================================================================
 #
 # Creates a Global Application Load Balancer to provide a stable static IP
-# and multi-region capability (required because 'Domain Mapping' is not
+# and a global entrypoint (required because Cloud Run 'Domain Mapping' is not
 # available in australia-southeast1).
 #
 # Resources created:
@@ -2176,13 +2177,16 @@ gcp-maintenance-status stage:
 #   - SSL Certificate -> Google-managed (auto-renewing)
 #   - Target HTTPS Proxy -> Terminates SSL
 #   - Forwarding Rule -> Listens on IP:443
+#   - Target HTTP Proxy -> Optional for port 80
+#   - Forwarding Rule -> Optional for IP:80
 #
-# Cost: ~$18 USD/month
+# Cost: Global external load balancers have a non-zero base cost even at low
+# traffic. Check GCP pricing before you run this in production.
 # =============================================================================
 
 # Set up the Global Load Balancer
-# Usage: just gcp-lb-setup prod "validibot.com,app.validibot.com"
-# Usage: just gcp-lb-setup dev "dev.validibot.com"
+# Usage: just gcp-lb-setup prod validibot.com
+# Usage: just gcp-lb-setup prod "validibot.com,www.validibot.com"
 gcp-lb-setup stage domains:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2195,7 +2199,12 @@ gcp-lb-setup stage domains:
 
     echo "========================================================"
     echo "Setting up Global Load Balancer for: {{stage}}"
-    echo "Domains: {{domains}}"
+    DOMAINS_CSV="$(echo "{{domains}}" | tr -d '[:space:]')"
+    if [ -z "$DOMAINS_CSV" ]; then
+        echo "Error: domains must be a comma-separated list, e.g. 'validibot.com' or 'validibot.com,www.validibot.com'"
+        exit 1
+    fi
+    echo "Domains: $DOMAINS_CSV"
     echo "========================================================"
     echo ""
 
@@ -2208,7 +2217,7 @@ gcp-lb-setup stage domains:
         SUFFIX="-{{stage}}"
     fi
 
-    # Resource names with optional suffix (except LB components which act as singleton per env)
+    # Resource names with optional suffix
     IP_NAME="validibot-ip${SUFFIX}"
     NEG_NAME="validibot-neg${SUFFIX}"
     BACKEND_NAME="validibot-backend${SUFFIX}"
@@ -2218,6 +2227,18 @@ gcp-lb-setup stage domains:
     RULE_NAME="validibot-lb-rule${SUFFIX}"
     HTTP_PROXY_NAME="validibot-http-proxy${SUFFIX}"
     HTTP_RULE_NAME="validibot-lb-rule-http${SUFFIX}"
+
+    # 0. Verify the Cloud Run service exists
+    echo "0. Checking Cloud Run service ($SERVICE)..."
+    if gcloud run services describe "$SERVICE" \
+        --region={{gcp_region}} --project {{gcp_project}} &>/dev/null; then
+        echo "   ✓ Found"
+    else
+        echo "Error: Cloud Run service '$SERVICE' not found in region {{gcp_region}}."
+        echo "Deploy it first: just gcp-deploy {{stage}}"
+        exit 1
+    fi
+    echo ""
 
     # 1. Reserve Static IP
     echo "1. Checking Static IP ($IP_NAME)..."
@@ -2252,11 +2273,25 @@ gcp-lb-setup stage domains:
         gcloud compute backend-services create "$BACKEND_NAME" \
             --global \
             --protocol=HTTP \
-            --timeout=1000s \
             --project {{gcp_project}}
         echo "   ✓ Created service"
     else
         echo "   ✓ Service exists"
+    fi
+
+    # Fix: Serverless NEGs do not support backend-service timeout configuration.
+    # To attach a Serverless NEG, GCP requires the Backend Service timeout to remain at the default (30s).
+    # This does NOT control Cloud Run request timeouts; those are configured on the Cloud Run service itself.
+    CURRENT_TIMEOUT=$(gcloud compute backend-services describe "$BACKEND_NAME" --global --project {{gcp_project}} --format="value(timeoutSec)" 2>/dev/null || echo "")
+    if [[ -n "$CURRENT_TIMEOUT" && "$CURRENT_TIMEOUT" != "30" ]]; then
+        echo "   ! Backend Service timeoutSec is $CURRENT_TIMEOUT (unsupported for Serverless NEGs)."
+        echo "     Resetting Backend Service timeout to default (30s) to satisfy GCP requirements."
+        echo "     Note: Cloud Run request timeout is configured on the Cloud Run service (we deploy with {{gcp_cloud_run_request_timeout}})."
+        gcloud compute backend-services update "$BACKEND_NAME" \
+            --global \
+            --timeout=30s \
+            --project {{gcp_project}}
+        echo "   ✓ Timeout configuration fixed"
     fi
 
     # Add NEG to Backend Service (idempotent check)
@@ -2293,10 +2328,10 @@ gcp-lb-setup stage domains:
         # To change domains, delete the cert manually first.
     else
         gcloud compute ssl-certificates create "$CERT_NAME" \
-            --domains "{{domains}}" \
+            --domains "$DOMAINS_CSV" \
             --global \
             --project {{gcp_project}}
-        echo "   ✓ Created for: {{domains}}"
+        echo "   ✓ Created for: $DOMAINS_CSV"
     fi
     echo ""
 
@@ -2359,9 +2394,9 @@ gcp-lb-setup stage domains:
     echo "✅ Load Balancer Setup Complete"
     echo "========================================================"
     echo ""
-    echo "ACTION REQUIRED: Update your DNS records in DNS Simple"
+    echo "ACTION REQUIRED: Update your DNS records in DNSimple"
     echo ""
-    echo "Create these records for: {{domains}}"
+    echo "Create these records for: $DOMAINS_CSV"
     echo "--------------------------------------------------------"
     echo "Type:  A"
     echo "Value: $IP_ADDRESS"

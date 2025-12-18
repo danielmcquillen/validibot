@@ -50,6 +50,7 @@ See [Google Cloud Deployment](../google_cloud/deployment.md) for full details.
 
 Each stage runs on Google Cloud Run with the following services:
 
+- **External HTTP(S) Load Balancer** — Custom domain entrypoint (e.g., `validibot.com`) routing to Cloud Run
 - **Cloud Run (web)** — Django app serving user traffic
 - **Cloud Run (worker)** — Background task processing, validator callbacks
 - **Cloud SQL** — PostgreSQL 17 database

@@ -63,7 +63,7 @@ PLAN_CONFIG = {
         "credit_pack_size": 100,
         "credit_pack_price_cents": 1000,
         "display_order": 1,
-        "is_available": True,
+        "is_available": False,  # Coming soon
     },
     PlanCode.TEAM: {
         "name": "Team",
@@ -84,7 +84,7 @@ PLAN_CONFIG = {
         "credit_pack_size": 500,
         "credit_pack_price_cents": 2500,
         "display_order": 2,
-        "is_available": True,
+        "is_available": False,  # Coming soon
     },
     PlanCode.ENTERPRISE: {
         "name": "Enterprise",
@@ -105,7 +105,7 @@ PLAN_CONFIG = {
         "credit_pack_size": None,
         "credit_pack_price_cents": None,
         "display_order": 3,
-        "is_available": True,
+        "is_available": False,  # Coming soon
     },
 }
 

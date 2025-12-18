@@ -214,6 +214,7 @@ gcp-deploy stage: gcp-build gcp-push
         --min-instances $MIN_INSTANCES \
         --max-instances $MAX_INSTANCES \
         --memory 1Gi \
+        --timeout 1000s \
         --allow-unauthenticated \
         --project {{gcp_project}}
 
@@ -258,6 +259,7 @@ gcp-deploy-worker stage: gcp-build gcp-push
         --min-instances 0 \
         --max-instances 2 \
         --memory 1Gi \
+        --timeout 1000s \
         --project {{gcp_project}}
 
     echo ""

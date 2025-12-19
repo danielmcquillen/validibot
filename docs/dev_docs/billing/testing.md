@@ -12,7 +12,7 @@ This guide covers how to test the billing system both manually and with automate
 
 ```bash
 # Terminal 1: Start Django
-source _envs/local/set-env.sh && uv run python manage.py runserver
+source set-env.sh && uv run python manage.py runserver
 
 # Terminal 2: Forward webhooks
 stripe listen --forward-to localhost:8000/stripe/webhook/

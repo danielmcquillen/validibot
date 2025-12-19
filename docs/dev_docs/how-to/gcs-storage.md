@@ -174,7 +174,7 @@ To test with actual GCS buckets in local development:
    gcloud auth application-default login
    ```
 
-2. Set environment variables in `_envs/local/set-env.sh`:
+2. Set environment variables (either export them in your shell, or add them to `.envs/.local/.django` and re-run `source set-env.sh`):
    ```bash
    export GCS_MEDIA_BUCKET=validibot-media-dev
    export GCS_FILES_BUCKET=validibot-files-dev

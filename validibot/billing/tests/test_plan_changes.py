@@ -31,6 +31,21 @@ from validibot.users.models import User
 PRORATION_AMOUNT_CENTS = 5000
 
 
+def _upsert_plan(*, code: PlanCode, **defaults) -> Plan:
+    """
+    Create or update a Plan for tests.
+
+    Plans are seeded by a data migration, so tests should not assume the Plan
+    table is empty. This helper makes test setup idempotent under `--reuse-db`
+    and safe whether or not a plan row already exists.
+    """
+    plan, _ = Plan.objects.update_or_create(
+        code=code,
+        defaults=defaults,
+    )
+    return plan
+
+
 @pytest.mark.django_db
 class TestPlanChangeType:
     """Tests for determining upgrade vs downgrade."""
@@ -38,20 +53,20 @@ class TestPlanChangeType:
     @pytest.fixture
     def plans(self):
         """Create test plans."""
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
             display_order=0,
         )
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
             stripe_price_id="price_starter",
             display_order=1,
         )
-        team = Plan.objects.create(
+        team = _upsert_plan(
             code=PlanCode.TEAM,
             name="Team",
             monthly_price_cents=9900,
@@ -102,20 +117,20 @@ class TestCanChangePlan:
         )
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
             display_order=0,
         )
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
             stripe_price_id="price_starter",
             display_order=1,
         )
-        enterprise = Plan.objects.create(
+        enterprise = _upsert_plan(
             code=PlanCode.ENTERPRISE,
             name="Enterprise",
             monthly_price_cents=0,
@@ -199,20 +214,20 @@ class TestPreviewChange:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
             display_order=0,
         )
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
             stripe_price_id="price_starter",
             display_order=1,
         )
-        team = Plan.objects.create(
+        team = _upsert_plan(
             code=PlanCode.TEAM,
             name="Team",
             monthly_price_cents=9900,
@@ -292,7 +307,7 @@ class TestChangePlanFreeToFree:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
@@ -330,13 +345,13 @@ class TestChangePlanFreeToPaid:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
             display_order=0,
         )
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
@@ -396,14 +411,14 @@ class TestChangePlanPaidToFree:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        free = Plan.objects.create(
+        free = _upsert_plan(
             code=PlanCode.FREE,
             name="Free",
             monthly_price_cents=0,
             included_credits=0,
             display_order=0,
         )
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
@@ -478,7 +493,7 @@ class TestChangePlanPaidToPaid:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
@@ -486,7 +501,7 @@ class TestChangePlanPaidToPaid:
             stripe_price_id="price_starter",
             display_order=1,
         )
-        team = Plan.objects.create(
+        team = _upsert_plan(
             code=PlanCode.TEAM,
             name="Team",
             monthly_price_cents=9900,
@@ -610,14 +625,14 @@ class TestMultipleChangesInCycle:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,
             stripe_price_id="price_starter",
             display_order=1,
         )
-        team = Plan.objects.create(
+        team = _upsert_plan(
             code=PlanCode.TEAM,
             name="Team",
             monthly_price_cents=9900,
@@ -692,7 +707,7 @@ class TestCancelScheduledChange:
         """Create test data."""
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
-        starter = Plan.objects.create(
+        starter = _upsert_plan(
             code=PlanCode.STARTER,
             name="Starter",
             monthly_price_cents=2900,

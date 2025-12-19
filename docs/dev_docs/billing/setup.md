@@ -35,7 +35,7 @@ STRIPE_LIVE_MODE=False             # Set True only for production
 DJSTRIPE_FOREIGN_KEY_TO_FIELD=id
 ```
 
-For local development, add these to `_envs/local/.django`.
+For local development, add these to `.envs/.local/.django`.
 
 ---
 
@@ -55,7 +55,7 @@ These keys let Django make API calls to Stripe.
 3. Go to **Developers → API Keys**
 4. Copy the **Publishable key** (`pk_test_...`) and **Secret key** (`sk_test_...`)
 
-Add to `_envs/local/.django`:
+Add to `.envs/.local/.django`:
 
 ```bash
 STRIPE_PUBLIC_KEY=pk_test_your_key_here
@@ -93,7 +93,7 @@ The CLI will display:
 **Now copy that secret to your env file before starting Django:**
 
 1. Copy the `whsec_...` value from the CLI output
-2. Add to `_envs/local/.django`:
+2. Add to `.envs/.local/.django`:
    ```bash
    DJSTRIPE_WEBHOOK_SECRET=whsec_abc123...
    ```
@@ -156,7 +156,7 @@ Done!
 
 ### 5. Test the Flow
 
-1. Start Django: `source _envs/local/set-env.sh && uv run python manage.py runserver`
+1. Start Django: `source set-env.sh && uv run python manage.py runserver`
 2. Start Stripe CLI (in another terminal): `stripe listen --forward-to localhost:8000/stripe/webhook/`
 3. Navigate to `/app/billing/` and click "Subscribe"
 4. Use test card `4242 4242 4242 4242` (any future expiry, any CVC)

@@ -4,24 +4,24 @@ This project was generated without the Cookiecutter Docker option. The files her
 
 ## Quick start with Docker (local)
 
-1. Copy the sample env file:  
-   `cp .envs/.local/.django.example .envs/.local/.django`
-   `cp .envs/.local/.postgres.example .envs/.local/.postgres`
+1. Ensure your local env files exist:
+   - `.envs/.local/.django`
+   - `.envs/.local/.postgres` (you can start from `.envs/.local/.postgres.example`)
 
 2. Build and start:  
    `docker compose -f docker-compose.local.yml up --build`
 
 3. Apply migrations (the start script does this, but you can rerun):  
-   `docker compose -f docker-compose.local.yml exec web uv run python manage.py migrate`
+   `docker compose -f docker-compose.local.yml exec django uv run python manage.py migrate`
 
 4. Create a superuser if needed:  
-   `docker compose -f docker-compose.local.yml exec web uv run python manage.py createsuperuser`
+   `docker compose -f docker-compose.local.yml exec django uv run python manage.py createsuperuser`
 
 5. Visit http://localhost:8000
 
 What’s running:
 
-- `web`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000).
+- `django`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000).
 - `worker`: Same image, serving internal/task endpoints on port 8001 (lets you mimic separate Cloud Run services with different scaling/concurrency).
 - `postgres`: Postgres built from `compose/production/postgres/Dockerfile`, env vars from `.envs/.local/.postgres`.
 - `mailpit`: Local SMTP capture at http://localhost:8025.
@@ -45,11 +45,11 @@ You can still run locally without Docker (often faster for dev):
 
 1. Install Python 3.13 and `uv` (see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/)).
 2. Install deps: `uv sync --extra dev`
-3. Set env vars (you can reuse `.envs/.local/.django` values):
-   - `export DJANGO_SETTINGS_MODULE=config.settings.local`
-   - `export DATABASE_URL=postgres://...` pointing to your local Postgres
-   - `export DJANGO_SECRET_KEY=...`
-4. Start Postgres locally (or use a service like Postgres.app) with matching creds.
+3. Start dependencies (optional, if you want to reuse the Docker Postgres):
+   - `docker compose -f docker-compose.local.yml up -d postgres mailpit`
+4. Load env vars for host-run commands:
+   - `source set-env.sh`
+   - Note: `set-env.sh` rewrites `POSTGRES_HOST=postgres` to `localhost` so `DATABASE_URL` works outside Docker.
 5. Run migrations: `uv run python manage.py migrate`
 6. Run the server: `uv run python manage.py runserver 0.0.0.0:8000`
 

@@ -56,19 +56,17 @@ Use uv to run commands, tests etc. so the relevant virtual environment is automa
 Project dependencies live in `pyproject.toml`; add the `dev` extra when you need tooling (for example,
 `uv run --extra dev pytest`). Production-only dependencies live under the `prod` extra.
 Whenever you run a command that involves Django, be sure to first load the environment variables
-contained in `_envs/local/django.env` by running the `set-env.sh` script.
+contained in `.envs/.local/.django` by running `source set-env.sh`.
 
 ## Environment Files
 
-The project has two sets of environment files with different purposes:
+The project uses `.envs/` for local development and deployments.
 
 | Directory | Purpose                              | Used By                                |
 | --------- | ------------------------------------ | -------------------------------------- |
-| `_envs/`  | Local development **without Docker** | `set-env.sh`, direct `uv run` commands |
-| `.envs/`  | Docker and cloud deployments         | Docker Compose, GCP Secret Manager     |
+| `.envs/`  | Local dev + Docker + cloud deployments | Docker Compose, `set-env.sh`, GCP Secret Manager |
 
-**Important:** When deploying to GCP or updating secrets, always use files from `.envs/`, never `_envs/`.
-The `_envs/` directory is for local-only, non-containerized development.
+**Important:** When deploying to GCP or updating secrets, always use files from `.envs/`.
 
 ## Adding Dependencies
 

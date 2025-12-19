@@ -15,8 +15,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - `docs/dev_docs/` - Developer documentation (start with `docs/dev_docs/index.md`)
 - `docs/user_docs/` - End-user documentation
 - `tests/` - Integration tests
-- `_envs/` - Local development environment files (non-Docker)
-- `.envs/` - Docker and cloud deployment environment files
+- `.envs/` - Local (Docker + host-run) and cloud deployment environment files
 - `vb_shared_dev/` - Symlink to shared library code (../vb_shared)
 - `justfile` - Command runner (similar to Makefile)
 
@@ -63,7 +62,7 @@ All commands must be run with `uv` to ensure correct virtual environment:
 
 ```bash
 # Run Django commands (requires environment variables)
-source _envs/local/set-env.sh && uv run python manage.py [command]
+source set-env.sh && uv run python manage.py [command]
 
 # Run tests
 uv run --extra dev pytest
@@ -79,10 +78,9 @@ uv run --extra dev mypy validibot
 
 | Directory | Purpose                          | Used By                                |
 | --------- | -------------------------------- | -------------------------------------- |
-| `_envs/`  | Local development WITHOUT Docker | `set-env.sh`, direct `uv run` commands |
-| `.envs/`  | Docker and cloud deployments     | Docker Compose, GCP Secret Manager     |
+| `.envs/`  | Local + Docker + cloud deployments | Docker Compose, `set-env.sh`, GCP Secret Manager |
 
-**Never confuse these**: Always use `.envs/` for deployment, never `_envs/`.
+**Important:** Deployment secrets live under `.envs/.production/` and are uploaded to GCP Secret Manager; keep them private and out of git.
 
 ## Django Conventions
 

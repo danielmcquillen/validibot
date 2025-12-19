@@ -288,9 +288,8 @@ The tradeoff is less granular access control (all-or-nothing), but for a single-
 
 ### Create the django-env secret
 
-> **Important:** Always use `.envs/.production/.django` (with leading dot), not `_envs/_production/`.
-> The `_envs/` directory is only for local development without Docker. Cloud deployments
-> and Docker Compose both use `.envs/`.
+> **Important:** Always use `.envs/.production/.django` (with leading dot). This repo no longer uses a separate `_envs/` directory.
+> Cloud deployments and Docker Compose use `.envs/`, and `source set-env.sh` loads local env vars for host-run commands.
 
 First, update `.envs/.production/.django` with production values:
 

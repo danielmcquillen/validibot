@@ -766,7 +766,6 @@ gcp-init-stage stage:
     ROLES=(
         "roles/cloudsql.client"
         "roles/secretmanager.secretAccessor"
-        "roles/storage.objectUser"
         "roles/run.invoker"
         "roles/cloudtasks.enqueuer"
     )
@@ -882,6 +881,14 @@ gcp-init-stage stage:
                 --project={{gcp_project}}
             echo "   ✓ Bucket '$BUCKET' created"
         fi
+
+        # Grant objectUser role on this specific bucket
+        gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/storage.objectUser" \
+            --project={{gcp_project}} \
+            --quiet >/dev/null
+        echo "   ✓ Granted objectUser on $BUCKET"
     done
     echo ""
 

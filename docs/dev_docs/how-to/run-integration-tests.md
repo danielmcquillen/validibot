@@ -64,7 +64,7 @@ export GCS_FMI_JOB_NAME=validibot-validator-fmi
 export GCP_REGION=australia-southeast1
 ```
 
-These are typically set in `_envs/local/set-env.sh` or loaded from `.envs/`.
+These are typically exported in your shell (often via `source set-env.sh`) or loaded from `.envs/` in Docker/GCP.
 
 ## E2E Tests
 

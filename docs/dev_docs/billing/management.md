@@ -10,7 +10,7 @@ Plans are seeded using a management command that creates the Starter, Team, and 
 
 ```bash
 # Seed plans (creates if they don't exist)
-source _envs/local/set-env.sh && uv run python manage.py seed_plans
+source set-env.sh && uv run python manage.py seed_plans
 ```
 
 Output:
@@ -34,7 +34,7 @@ If you need to update plan limits (e.g., price change, limit adjustment):
 
 ```bash
 # Update existing plans with latest configuration
-source _envs/local/set-env.sh && uv run python manage.py seed_plans --force
+source set-env.sh && uv run python manage.py seed_plans --force
 ```
 
 This preserves the `stripe_price_id` field while updating all other fields.

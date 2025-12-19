@@ -319,8 +319,8 @@ class Command(BaseCommand):
         if not price_by_plan_code:
             self.stdout.write(
                 self.style.ERROR(
-                    "\n  ✗ No prices have valid plan_code metadata.\n"
                     (
+                        "\n  ✗ No prices have valid plan_code metadata.\n"
                         "    Add to Stripe Products: plan_code = STARTER | TEAM | "
                         "ENTERPRISE"
                     ),

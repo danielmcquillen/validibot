@@ -19,7 +19,7 @@ class SeedPlansCommandTests(TestCase):
     """Tests for the seed_plans management command."""
 
     def test_creates_all_plans_when_none_exist(self):
-        """seed_plans creates all three plans when database is empty."""
+        """seed_plans creates all plans when database is empty."""
         # Clear any existing plans (may be created by conftest fixture)
         Plan.objects.all().delete()
 
@@ -27,12 +27,14 @@ class SeedPlansCommandTests(TestCase):
         call_command("seed_plans", "--skip-stripe", stdout=out)
 
         # Verify all plans created
-        self.assertEqual(Plan.objects.count(), 3)
+        self.assertEqual(Plan.objects.count(), 4)
+        self.assertTrue(Plan.objects.filter(code=PlanCode.FREE).exists())
         self.assertTrue(Plan.objects.filter(code=PlanCode.STARTER).exists())
         self.assertTrue(Plan.objects.filter(code=PlanCode.TEAM).exists())
         self.assertTrue(Plan.objects.filter(code=PlanCode.ENTERPRISE).exists())
 
         output = out.getvalue()
+        self.assertIn("Created: Free", output)
         self.assertIn("Created: Starter", output)
         self.assertIn("Created: Team", output)
         self.assertIn("Created: Enterprise", output)

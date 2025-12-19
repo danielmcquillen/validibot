@@ -5,13 +5,14 @@ This module triggers Cloud Run Jobs directly using the Jobs API client.
 The worker Django service calls this to start heavy validators (EnergyPlus, FMI).
 
 Architecture:
-    Web -> Cloud Task -> Worker -> Cloud Run Job (this module) -> Callback to Worker
+    Web -> Cloud Run Job (this module) -> Callback to worker
 
-The worker already runs in an async context (triggered by Cloud Task) with retry
-semantics. Starting a job is a fast, non-blocking API call - the job runs in the
-background. No additional queue layer is needed between worker and job.
+The Cloud Run job trigger is intentionally non-blocking. We start the job via
+the Jobs API and return immediately; the job runs asynchronously and POSTs its
+results back to the worker service.
 
-See issue #64 for context on why we use direct API calls instead of Cloud Tasks.
+See issue #64 for context on why we use direct API calls (instead of queueing)
+between Django and Cloud Run Jobs.
 """
 
 from __future__ import annotations

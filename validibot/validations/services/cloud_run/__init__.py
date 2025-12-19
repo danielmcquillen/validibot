@@ -7,5 +7,5 @@ validators and receiving their results via callbacks.
 Modules:
     envelope_builder: Creates typed input envelopes from Django models
     gcs_client: Uploads/downloads envelopes to Google Cloud Storage
-    job_client: Triggers Cloud Run Jobs via Cloud Tasks
+    job_client: Triggers Cloud Run Jobs via the Jobs API
 """

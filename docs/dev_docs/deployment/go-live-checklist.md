@@ -134,6 +134,11 @@ This checklist covers tasks to complete before launching Validibot to production
 
 - [ ] **Verify all environment variables** are set in production
 
+- [ ] **Set `SITE_URL` and `WORKER_URL` appropriately**
+
+  - `SITE_URL` should be your public domain (e.g., `https://validibot.com`).
+  - `WORKER_URL` should be the worker Cloud Run service `*.run.app` URL (used for internal callbacks and scheduled tasks).
+
 - [ ] **Run Django's `check --deploy`** to identify security issues
 
   ```bash

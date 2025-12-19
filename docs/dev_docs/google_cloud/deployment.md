@@ -223,6 +223,17 @@ gcloud compute ssl-certificates describe validibot-cert --global \
 ### App configuration notes
 
 - Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp-secrets prod` and redeploy.
+- Set these base URLs in your env file (they serve different purposes):
+  - `SITE_URL`: public web base URL (prod: `https://validibot.com`; dev/staging: the web `*.run.app` URL is fine).
+  - `WORKER_URL`: internal worker base URL (the worker `*.run.app` URL). Cloud Run Jobs and Cloud Scheduler target the worker service; callbacks should never go to the public domain.
+  You can fetch the current worker URL with:
+
+  ```bash
+  gcloud run services describe validibot-worker \
+    --region australia-southeast1 \
+    --project project-a509c806-3e21-4fbc-b19 \
+    --format='value(status.url)'
+  ```
 - After you confirm the domain works, you can block direct public access to the `*.run.app` URL and only allow traffic via the load balancer:
 
   ```bash

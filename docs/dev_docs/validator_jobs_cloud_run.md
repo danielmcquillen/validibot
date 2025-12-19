@@ -7,18 +7,18 @@ We deploy one Django image as two Cloud Run services:
 
 Validator jobs (EnergyPlus, FMI, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
 
+In environments with a custom public domain (production), `SITE_URL` points at the public domain (for example `https://validibot.com`) while `WORKER_URL` points at the worker service `*.run.app` URL. Callbacks and scheduled tasks should always target `WORKER_URL`, never `SITE_URL`.
+
 ## Flow overview
 
 ```mermaid
 sequenceDiagram
     participant Web as web (APP_ROLE=web)
     participant Worker as worker (APP_ROLE=worker)
-    participant Tasks as Cloud Tasks (queue SA)
     participant JobsAPI as Cloud Run Jobs API
     participant Job as Validator Job (SA)
 
-    Web->>Worker: Create Submission + ValidationRun
-    Worker->>JobsAPI: jobs.run (worker SA)
+    Web->>JobsAPI: jobs.run (web SA)
     JobsAPI-->>Job: Start job with env INPUT_URI
     Job->>Job: Download input.json + files from GCS
     Job->>Worker: Callback with result_uri (ID token from job SA)
@@ -26,7 +26,7 @@ sequenceDiagram
 ```
 
 IAM roles involved:
-- **Worker service account**: `roles/run.invoker` on the validator job so the worker can call the Jobs API directly.
+- **Web/Worker service account**: `roles/run.invoker` on the validator job so Django can call the Jobs API.
 - **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
@@ -49,12 +49,25 @@ The launcher generates a unique `callback_id` for each job execution and puts it
 3) Deploy worker:
    - `--no-allow-unauthenticated`
    - `--set-env-vars APP_ROLE=worker`
+   - Set `WORKER_URL` in the stage env file to the worker service URL (see below)
    - Grant `roles/run.invoker` on `validibot-worker` to each validator job service account
 
 4) Validator jobs:
    - Tag with labels: `validator=<name>,version=<git_sha>`
    - Env: `VALIDATOR_VERSION=<git_sha>`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
+
+To populate `WORKER_URL` for a stage, fetch the worker service URL and add it to the stage env file:
+
+```bash
+# prod example
+gcloud run services describe validibot-worker \
+  --region australia-southeast1 \
+  --project project-a509c806-3e21-4fbc-b19 \
+  --format='value(status.url)'
+```
+
+Then update your env file (`.envs/.production/.django`, `.envs/.dev/.django`, etc), run `just gcp-secrets <stage>`, and redeploy.
 
 ## Multi-Environment Architecture
 
@@ -70,12 +83,12 @@ Nothing stage-specific. The container includes:
 
 ### What's passed at runtime (job execution)
 
-When Django creates a Cloud Tasks job to run a validator, it passes:
+When Django triggers a validator Cloud Run Job execution, it passes:
 
 | Source | Data | Example |
 |--------|------|---------|
 | `INPUT_URI` env var | GCS path to input envelope | `gs://validibot-files-dev/org123/run456/input.json` |
-| Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validator-callback/` |
+| Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
 | Input envelope | `context.execution_bundle_uri` | `gs://validibot-files-dev/org123/run456/` |
 | Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-files-dev/org123/run456/model.idf` |
 

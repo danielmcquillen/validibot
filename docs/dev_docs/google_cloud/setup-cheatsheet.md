@@ -296,6 +296,8 @@ First, update `.envs/.production/.django` with production values:
 
 - `DJANGO_SECRET_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
 - `DJANGO_ALLOWED_HOSTS` - `.run.app,.validibot.com`
+- `SITE_URL` - Public base URL (typically `https://validibot.com` once the load balancer + DNS is set up)
+- `WORKER_URL` - Worker service `*.run.app` URL (used for validator callbacks and scheduled tasks)
 - `DATABASE_URL` - Cloud SQL Unix socket format (see below)
 
 The DATABASE_URL format for Cloud SQL:

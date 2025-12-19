@@ -555,6 +555,7 @@ GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="")
 GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")
 GCS_FMI_JOB_NAME = env("GCS_FMI_JOB_NAME", default="")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
+WORKER_URL = env("WORKER_URL", default="")
 
 
 # FEATURES

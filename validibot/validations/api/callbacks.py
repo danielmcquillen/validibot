@@ -9,16 +9,27 @@ Security Model
 --------------
 Authentication is handled at the infrastructure level, not application level:
 
-1. **Cloud Run Ingress**: The worker service is deployed with ingress="internal",
-   meaning only requests from within the same GCP project (e.g., Cloud Run Jobs,
-   Cloud Scheduler) can reach it. Public internet traffic is blocked.
+1. **Cloud Run IAM**: The worker service is deployed with
+   `--no-allow-unauthenticated`, so every request must be authenticated and
+   authorized by Cloud Run before it reaches Django.
 
-2. **Cloud Run IAM**: The validator Cloud Run Jobs run with a service account
+2. **Callback URL routing**: Validator jobs POST to `WORKER_URL` (the worker
+   service `*.run.app` URL), not `SITE_URL` (the public domain). This keeps
+   callbacks on the internal API surface even when production uses a custom
+   domain for the web service.
+
+3. **Cloud Run IAM caller identity**: The validator Cloud Run Jobs run with a service account
    that has permission to invoke the worker service. Cloud Run verifies the
    caller's identity automatically.
 
-3. **Defense in Depth**: The endpoint checks `APP_IS_WORKER` and returns 404 on
+4. **Defense in Depth**: The endpoint checks `APP_IS_WORKER` and returns 404 on
    non-worker instances. This prevents accidental exposure if routing rules change.
+
+Optional hardening:
+    You can additionally set the worker service ingress to `internal` to block
+    unauthenticated network paths (defense in depth), but IAM is the primary
+    control. See docs/dev_docs/google_cloud/deployment.md for deployment
+    guidance.
 
 Why no DRF Authentication?
     - The callback endpoint sets `authentication_classes = []` because Cloud Run

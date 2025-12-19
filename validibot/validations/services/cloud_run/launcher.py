@@ -8,7 +8,7 @@ This module orchestrates the complete flow of triggering Cloud Run Jobs:
 4. Return ValidationResult with pending status
 
 Architecture:
-    Web -> Cloud Task -> Worker -> Cloud Run Job (this module) -> Callback
+    Web -> Cloud Run Job (this module) -> Callback to worker
 
 Design: Simple function-based orchestration. No complex state management.
 """
@@ -43,6 +43,44 @@ if TYPE_CHECKING:
     from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
+
+VALIDATION_CALLBACK_PATH = "/api/v1/validation-callbacks/"
+
+
+def build_validation_callback_url() -> str:
+    """
+    Build the fully-qualified validation callback URL.
+
+    In Cloud Run, validator containers POST their results back to Django via the
+    worker service's internal API. We keep this separate from `SITE_URL` so that
+    production can use a custom public domain (e.g., `validibot.com`) while
+    callbacks still route to the IAM-protected worker `*.run.app` URL.
+
+    Returns:
+        Fully-qualified callback URL, e.g.
+        `https://validibot-worker-xyz.a.run.app/api/v1/validation-callbacks/`.
+
+    Raises:
+        ValueError: If neither WORKER_URL nor SITE_URL is set.
+    """
+    worker_url = (getattr(settings, "WORKER_URL", "") or "").strip()
+    if worker_url:
+        base_url = worker_url
+    else:
+        base_url = (getattr(settings, "SITE_URL", "") or "").strip()
+        logger.warning(
+            "WORKER_URL is not set; falling back to SITE_URL=%s for validation callbacks. "
+            "In Cloud Run multi-service deployments this is usually incorrect.",
+            base_url,
+        )
+
+    if not base_url:
+        msg = (
+            "WORKER_URL (preferred) or SITE_URL must be set to build validation callback URL."
+        )
+        raise ValueError(msg)  # noqa: TRY003
+
+    return f"{base_url.rstrip('/')}{VALIDATION_CALLBACK_PATH}"
 
 
 def launch_energyplus_validation(
@@ -127,7 +165,7 @@ def launch_energyplus_validation(
         if not current_step_run:
             msg = f"No active step run found for ValidationRun {run.id}"
             raise ValueError(msg)  # noqa: TRY301
-        callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
+        callback_url = build_validation_callback_url()
 
         # 4.5. Generate idempotency key for callback deduplication
         callback_id = str(uuid.uuid4())
@@ -293,7 +331,7 @@ def launch_fmi_validation(
         if not current_step_run:
             msg = f"No active step run for run {run.id}"
             raise ValueError(msg)  # noqa: TRY301
-        callback_url = f"{settings.SITE_URL}/api/v1/validation-callbacks/"
+        callback_url = build_validation_callback_url()
 
         # Generate idempotency key for callback deduplication
         callback_id = str(uuid.uuid4())

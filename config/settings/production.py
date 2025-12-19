@@ -317,3 +317,4 @@ GCS_FMI_JOB_NAME = env(
     default="validibot-validator-fmi",
 )
 SITE_URL = env("SITE_URL", default="https://validi.com")
+WORKER_URL = env("WORKER_URL", default="")

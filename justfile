@@ -357,6 +357,8 @@ gcp-secrets-init stage:
     echo "IMPORTANT - Edit the following values for {{stage}}:"
     echo "  - DATABASE_URL: Update to use validibot-db-{{stage}}"
     echo "  - DJANGO_ALLOWED_HOSTS: Add the {{stage}} service URL"
+    echo "  - SITE_URL: Set to the {{stage}} web service URL (the *.run.app URL is fine)"
+    echo "  - WORKER_URL: Set to the {{stage}} worker service URL (the *.run.app URL)"
     echo "  - CLOUD_SQL_CONNECTION_NAME: Change to validibot-db-{{stage}}"
     echo "  - GCP_KMS_SIGNING_KEY: Change 'credential-signing' to 'credential-signing-{{stage}}'"
     echo "  - GCP_KMS_JWKS_KEYS: Change 'credential-signing' to 'credential-signing-{{stage}}'"
@@ -421,12 +423,35 @@ gcp-resume stage:
 gcp-status stage:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
-    echo "Web service: $SERVICE"
-    gcloud run services describe "$SERVICE" \
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        WORKER_SERVICE="validibot-worker"
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+    fi
+
+    echo "Web service:    $WEB_SERVICE"
+    gcloud run services describe "$WEB_SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
-        --format="table(status.url,status.conditions[0].status,spec.template.spec.containerConcurrency)" 2>/dev/null || echo "  (not deployed)"
+        --format="table(status.url,spec.template.spec.timeoutSeconds,spec.template.spec.containerConcurrency)" 2>/dev/null || echo "  (not deployed)"
+    echo ""
+    echo "Worker service: $WORKER_SERVICE"
+    gcloud run services describe "$WORKER_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="table(status.url,spec.template.spec.timeoutSeconds,spec.template.spec.containerConcurrency)" 2>/dev/null || echo "  (not deployed)"
+
+    echo ""
+    echo "Tip:"
+    echo "  - SITE_URL should be your public base URL (prod: custom domain; dev/staging: web *.run.app URL is fine)."
+    echo "  - WORKER_URL should be the worker *.run.app URL (used for callbacks and scheduled tasks)."
 
 # Show status of all stages
 gcp-status-all:

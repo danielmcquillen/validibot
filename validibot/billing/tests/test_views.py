@@ -91,7 +91,7 @@ class CheckoutStartViewTests(TestCase):
         self.assertIn("plans", response.url)
 
     def test_checkout_redirects_to_plans_when_no_stripe_price_id(self):
-        """Checkout redirects to plans page with error when plan has no stripe_price_id."""
+        """Redirects to plans when plan has no Stripe price."""
         response = self.client.get(
             reverse("billing:checkout") + "?plan=STARTER",
             follow=False,
@@ -102,7 +102,7 @@ class CheckoutStartViewTests(TestCase):
 
     @override_settings(STRIPE_SECRET_KEY="")
     def test_checkout_redirects_to_plans_when_stripe_key_missing(self):
-        """Checkout redirects to plans page with error when STRIPE_SECRET_KEY is empty."""
+        """Redirects to plans when Stripe key is missing."""
         response = self.client.get(
             reverse("billing:checkout") + "?plan=TEAM",
             follow=False,
@@ -112,7 +112,7 @@ class CheckoutStartViewTests(TestCase):
         self.assertIn("plans", response.url)
 
     @patch("validibot.billing.services.BillingService")
-    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")
+    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")  # noqa: S106
     def test_checkout_redirects_to_stripe_on_success(self, mock_service_class):
         """Checkout redirects to Stripe checkout URL on success."""
         mock_service = MagicMock()
@@ -136,7 +136,7 @@ class CheckoutStartViewTests(TestCase):
         self.assertTrue(call_kwargs["skip_trial"])
 
     @patch("validibot.billing.services.BillingService")
-    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")
+    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")  # noqa: S106
     def test_checkout_redirects_to_plans_on_stripe_error(self, mock_service_class):
         """Checkout redirects to plans page with error when Stripe API fails."""
         mock_service = MagicMock()
@@ -293,7 +293,8 @@ class BillingDashboardViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("credits_balance", response.context)
-        # Verify credits_balance is a non-negative number (actual value depends on subscription state)
+        # Verify credits_balance is a non-negative number (actual value depends on
+        # subscription state).
         self.assertIsInstance(response.context["credits_balance"], int)
         self.assertGreaterEqual(response.context["credits_balance"], 0)
 
@@ -362,15 +363,20 @@ class CustomerPortalViewTests(TestCase):
         self.assertIn("plans", response.url)
 
     @patch("validibot.billing.services.BillingService")
-    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")
+    @override_settings(STRIPE_SECRET_KEY="sk_test_fake")  # noqa: S106
     def test_portal_redirects_to_stripe_when_customer_exists(self, mock_service_class):
         """Portal redirects to Stripe when customer exists."""
-        # Set up customer ID directly in database using org_id to avoid object identity issues
+        # Set up customer ID directly in database using org_id to avoid object
+        # identity issues.
         rows_updated = Subscription.objects.filter(org_id=self.org.id).update(
             stripe_customer_id="cus_test123",
         )
         # Verify the update worked
-        self.assertEqual(rows_updated, 1, "Should have updated exactly one subscription")
+        self.assertEqual(
+            rows_updated,
+            1,
+            "Should have updated exactly one subscription",
+        )
 
         mock_service = MagicMock()
         mock_service.get_customer_portal_url.return_value = (
@@ -438,7 +444,7 @@ class CheckoutE2ETests(TestCase):
             email=f"e2e_{unique_id}@example.com",
             defaults={
                 "username": f"e2e_user_{unique_id}",
-                "password": "testpass123",  # noqa: S106
+                "password": "testpass123",
             },
         )
         cls.org, _ = Organization.objects.get_or_create(
@@ -496,8 +502,9 @@ class CheckoutE2ETests(TestCase):
         )
 
         # Make request to checkout
+        checkout_url = reverse("billing:checkout")
         response = self.client.get(
-            reverse("billing:checkout") + f"?plan={self.starter_plan.code}&skip_trial=1",
+            f"{checkout_url}?plan={self.starter_plan.code}&skip_trial=1",
             follow=False,
         )
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# ruff: noqa: INP001, T201
 """
 Validibot API Client Example
 
@@ -35,6 +35,8 @@ except ImportError:
 # Configuration
 API_BASE_URL = os.getenv("VALIDIBOT_API_URL", "https://app.validibot.com/api/v1")
 API_TOKEN = os.getenv("VALIDIBOT_API_TOKEN", "")
+
+FINDINGS_PREVIEW_LIMIT = 10
 
 
 def get_auth_headers() -> dict:
@@ -83,7 +85,7 @@ def submit_validation(
     """
     headers = get_auth_headers()
 
-    with open(file_path, "rb") as f:
+    with file_path.open("rb") as f:
         files = {"file": (file_path.name, f)}
         data = {
             "workflow_id": workflow_id,
@@ -265,15 +267,15 @@ def main():
         findings = get_findings(run_id)
         if findings:
             print(f"\nFindings ({len(findings)}):")
-            for f in findings[:10]:  # Show first 10
+            for f in findings[:FINDINGS_PREVIEW_LIMIT]:  # Show first N
                 severity = f.get("severity", "?")
                 message = f.get("message", "")[:80]
                 path = f.get("path", "")
                 print(f"  [{severity}] {message}")
                 if path:
                     print(f"         at: {path}")
-            if len(findings) > 10:
-                print(f"  ... and {len(findings) - 10} more")
+            if len(findings) > FINDINGS_PREVIEW_LIMIT:
+                print(f"  ... and {len(findings) - FINDINGS_PREVIEW_LIMIT} more")
         else:
             print("\nNo findings.")
 

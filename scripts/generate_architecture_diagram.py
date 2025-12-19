@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# ruff: noqa: INP001
 """
 Generate a Google Cloud architecture diagram for Validibot.
 
@@ -8,13 +8,23 @@ GCP architecture using official Google Cloud icons.
 Usage:
     uv run --with diagrams python scripts/generate_architecture_diagram.py
 """
-from diagrams import Cluster, Diagram, Edge
+
+import logging
+
+from diagrams import Cluster
+from diagrams import Diagram
+from diagrams import Edge
 from diagrams.gcp.compute import Run
 from diagrams.gcp.database import SQL
 from diagrams.gcp.devtools import Scheduler
 from diagrams.gcp.operations import Logging
-from diagrams.gcp.security import Iam, KeyManagementService, SecretManager
-from diagrams.gcp.storage import GCS, Storage
+from diagrams.gcp.security import Iam
+from diagrams.gcp.security import KeyManagementService
+from diagrams.gcp.security import SecretManager
+from diagrams.gcp.storage import GCS
+from diagrams.gcp.storage import Storage
+
+logger = logging.getLogger(__name__)
 
 # Professional color palette (GCP-inspired)
 BLUE_PRIMARY = "#1a73e8"  # Google Blue
@@ -25,32 +35,54 @@ GRAY_LIGHT = "#9aa0a6"
 RED_ACCENT = "#d93025"
 
 
-def create_environment(name: str, suffix: str, is_prod: bool = False):
+def create_environment(name: str, suffix: str, *, is_prod: bool = False) -> Run:
     """Create an environment cluster with consistent layout."""
     display_suffix = "" if is_prod else f"-{suffix}"
 
     with Cluster(name, graph_attr={"bgcolor": "#f8f9fa", "pencolor": GRAY_LIGHT}):
         # Row 1: Support services (top)
         with Cluster("", graph_attr={"style": "invis"}):
-            scheduler = Scheduler(f"Cloud Scheduler")
-            secret = SecretManager(f"django-env{display_suffix}")
+            scheduler = Scheduler("Cloud Scheduler")
+            SecretManager(f"django-env{display_suffix}")
 
         # Row 2: Compute services
-        with Cluster("Cloud Run", graph_attr={"bgcolor": "#e8f0fe", "pencolor": BLUE_PRIMARY}):
+        with Cluster(
+            "Cloud Run",
+            graph_attr={
+                "bgcolor": "#e8f0fe",
+                "pencolor": BLUE_PRIMARY,
+            },
+        ):
             web = Run(f"web{display_suffix}")
             worker = Run(f"worker{display_suffix}")
 
         # Row 3: Validators
-        with Cluster("Validators", graph_attr={"bgcolor": "#e8f0fe", "pencolor": BLUE_PRIMARY}):
+        with Cluster(
+            "Validators",
+            graph_attr={
+                "bgcolor": "#e8f0fe",
+                "pencolor": BLUE_PRIMARY,
+            },
+        ):
             eplus = Run(f"energyplus{display_suffix}")
             fmi = Run(f"fmi{display_suffix}")
 
         # Row 4: Data layer
         db = SQL(f"validibot-db{display_suffix}\nPostgreSQL 17")
-        tasks = Scheduler(f"validation-queue{display_suffix}")
+        if is_prod:
+            tasks_name = "validibot-tasks"
+        else:
+            tasks_name = f"validibot-validation-queue-{suffix}"
+        tasks = Scheduler(tasks_name)
 
         # Row 5: Storage (using Storage icon for bucket appearance)
-        with Cluster("Storage", graph_attr={"bgcolor": "#e6f4ea", "pencolor": GREEN_SUCCESS}):
+        with Cluster(
+            "Storage",
+            graph_attr={
+                "bgcolor": "#e6f4ea",
+                "pencolor": GREEN_SUCCESS,
+            },
+        ):
             media = Storage(f"media{display_suffix}\n(public)")
             files = Storage(f"files{display_suffix}\n(private)")
 
@@ -105,11 +137,17 @@ def main():
         node_attr=node_attr,
     ):
         # Shared Services cluster
-        with Cluster("Shared Services", graph_attr={"bgcolor": "#fef7e0", "pencolor": "#f9ab00"}):
-            registry = GCS("Artifact Registry")
-            logging = Logging("Cloud Logging")
-            kms = KeyManagementService("Cloud KMS")
-            iam = Iam("IAM")
+        with Cluster(
+            "Shared Services",
+            graph_attr={
+                "bgcolor": "#fef7e0",
+                "pencolor": "#f9ab00",
+            },
+        ):
+            GCS("Artifact Registry")
+            Logging("Cloud Logging")
+            KeyManagementService("Cloud KMS")
+            Iam("IAM")
 
         # Create the three environments in consistent order
         create_environment("Production", "prod", is_prod=True)
@@ -118,7 +156,9 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     main()
-    print("✓ Architecture diagrams generated:")
-    print("  - docs/dev_docs/images/validibot_gcp_architecture.png")
-    print("  - docs/dev_docs/images/validibot_gcp_architecture.svg (editable in Sketch)")
+    logger.info("✓ Architecture diagrams generated:")
+    logger.info("  - docs/dev_docs/images/validibot_gcp_architecture.png")
+    logger.info("  - docs/dev_docs/images/validibot_gcp_architecture.svg")
+    logger.info("    (editable in Sketch)")

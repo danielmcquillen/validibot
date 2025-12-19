@@ -226,7 +226,9 @@ class SeedPlansStripeLinkingTests(TestCase):
         mock_prices.__iter__ = lambda self: iter([mock_starter_price, mock_team_price])
 
         with patch("djstripe.models.Price") as mock_price_model:
-            mock_price_model.objects.filter.return_value.select_related.return_value = mock_prices
+            mock_price_model.objects.filter.return_value.select_related.return_value = (
+                mock_prices
+            )
 
             # Import and run the command's _link_stripe_prices method
             from validibot.billing.management.commands.seed_plans import Command
@@ -237,7 +239,7 @@ class SeedPlansStripeLinkingTests(TestCase):
             cmd.style.SUCCESS = lambda x: x
             cmd.style.WARNING = lambda x: x
 
-            cmd._link_stripe_prices()
+            cmd._link_stripe_prices()  # noqa: SLF001
 
         # Verify plans were updated
         self.starter.refresh_from_db()
@@ -253,7 +255,9 @@ class SeedPlansStripeLinkingTests(TestCase):
         mock_prices.exists.return_value = False
 
         with patch("djstripe.models.Price") as mock_price_model:
-            mock_price_model.objects.filter.return_value.select_related.return_value = mock_prices
+            mock_price_model.objects.filter.return_value.select_related.return_value = (
+                mock_prices
+            )
 
             from validibot.billing.management.commands.seed_plans import Command
 
@@ -263,7 +267,7 @@ class SeedPlansStripeLinkingTests(TestCase):
             cmd.style.WARNING = lambda x: x
 
             # Should not raise
-            cmd._link_stripe_prices()
+            cmd._link_stripe_prices()  # noqa: SLF001
 
         # Enterprise should still have no price_id
         self.enterprise.refresh_from_db()

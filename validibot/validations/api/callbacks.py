@@ -18,9 +18,9 @@ Authentication is handled at the infrastructure level, not application level:
    callbacks on the internal API surface even when production uses a custom
    domain for the web service.
 
-3. **Cloud Run IAM caller identity**: The validator Cloud Run Jobs run with a service account
-   that has permission to invoke the worker service. Cloud Run verifies the
-   caller's identity automatically.
+3. **Cloud Run IAM caller identity**: The validator Cloud Run Jobs run with a
+   service account that has permission to invoke the worker service. Cloud Run
+   verifies the caller's identity automatically.
 
 4. **Defense in Depth**: The endpoint checks `APP_IS_WORKER` and returns 404 on
    non-worker instances. This prevents accidental exposure if routing rules change.

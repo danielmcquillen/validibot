@@ -21,6 +21,8 @@ from django.core.management.base import BaseCommand
 from validibot.billing.constants import PlanCode
 from validibot.billing.models import Plan
 
+PRICES_WITHOUT_METADATA_PREVIEW_LIMIT = 5
+
 # Plan configuration from ADR-2025-11-28
 PLAN_CONFIG = {
     PlanCode.FREE: {
@@ -144,7 +146,7 @@ class Command(BaseCommand):
 
         self._show_summary()
 
-    def _seed_plans(self, force_update: bool):
+    def _seed_plans(self, *, force_update: bool):
         """Create or update Plan records."""
         self.stdout.write("\n" + "=" * 60)
         self.stdout.write("Step 1: Seeding Plans")
@@ -285,16 +287,26 @@ class Command(BaseCommand):
 
         # Show warnings
         if prices_without_metadata:
+            prices_without_metadata_count = len(prices_without_metadata)
             self.stdout.write(
                 self.style.WARNING(
-                    f"\n  ⚠ {len(prices_without_metadata)} price(s) missing plan_code metadata:",
+                    (
+                        f"\n  ⚠ {prices_without_metadata_count} price(s) missing "
+                        "plan_code metadata:"
+                    ),
                 ),
             )
-            for p in prices_without_metadata[:5]:  # Limit to first 5
-                self.stdout.write(f"    - {p}")
-            if len(prices_without_metadata) > 5:
+            for price_label in prices_without_metadata[
+                :PRICES_WITHOUT_METADATA_PREVIEW_LIMIT
+            ]:
+                self.stdout.write(f"    - {price_label}")
+            if prices_without_metadata_count > PRICES_WITHOUT_METADATA_PREVIEW_LIMIT:
+                remaining_count = (
+                    prices_without_metadata_count
+                    - PRICES_WITHOUT_METADATA_PREVIEW_LIMIT
+                )
                 self.stdout.write(
-                    f"    ... and {len(prices_without_metadata) - 5} more"
+                    f"    ... and {remaining_count} more",
                 )
 
         if duplicate_warnings:
@@ -308,7 +320,10 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(
                     "\n  ✗ No prices have valid plan_code metadata.\n"
-                    "    Add to Stripe Products: plan_code = STARTER | TEAM | ENTERPRISE",
+                    (
+                        "    Add to Stripe Products: plan_code = STARTER | TEAM | "
+                        "ENTERPRISE"
+                    ),
                 ),
             )
             return
@@ -335,7 +350,10 @@ class Command(BaseCommand):
             elif plan.monthly_price_cents > 0:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"    {plan.name}: ✗ Missing (add plan_code={plan.code} to Stripe)",
+                        (
+                            f"    {plan.name}: ✗ Missing (add plan_code={plan.code} "
+                            "to Stripe)"
+                        ),
                     ),
                 )
                 missing_count += 1

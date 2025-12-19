@@ -11,6 +11,9 @@ flush the database during teardown, it fails.
 Solution: Monkey-patch the flush command to reset connections before running.
 """
 
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 from django.db import connections
 
@@ -60,21 +63,23 @@ def reset_connections_before_test():
 
 
 # Monkey-patch Django's flush command to reset connections before running
-_original_flush_handle = None
+_original_flush_handle: dict[str, Callable[..., Any] | None] = {"handle": None}
 
 
 def _patched_flush_handle(self, *args, **options):
     """Patched flush command that resets bad connections first."""
     _reset_bad_connections()
-    return _original_flush_handle(self, *args, **options)
+    original_handle = _original_flush_handle["handle"]
+    if original_handle is None:  # pragma: no cover - defensive
+        raise RuntimeError("Original FlushCommand.handle not set")
+    return original_handle(self, *args, **options)
 
 
 def pytest_configure(config):
     """Patch the flush command when pytest starts."""
-    global _original_flush_handle
     from django.core.management.commands.flush import Command as FlushCommand
 
-    _original_flush_handle = FlushCommand.handle
+    _original_flush_handle["handle"] = FlushCommand.handle
     FlushCommand.handle = _patched_flush_handle
 
 
@@ -82,5 +87,6 @@ def pytest_unconfigure(config):
     """Restore the original flush command when pytest ends."""
     from django.core.management.commands.flush import Command as FlushCommand
 
-    if _original_flush_handle is not None:
-        FlushCommand.handle = _original_flush_handle
+    original_handle = _original_flush_handle["handle"]
+    if original_handle is not None:
+        FlushCommand.handle = original_handle

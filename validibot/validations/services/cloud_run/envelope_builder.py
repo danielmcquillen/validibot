@@ -23,6 +23,7 @@ from vb_shared.validations.envelopes import ValidationInputEnvelope
 from vb_shared.validations.envelopes import ValidatorInfo
 from vb_shared.validations.envelopes import ValidatorType
 from vb_shared.validations.envelopes import WorkflowInfo
+
 from validibot.validations.constants import ValidationType
 
 

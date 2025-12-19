@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from django.test import TestCase
 from django.utils import timezone
 
 from validibot.billing.constants import PlanCode
@@ -24,11 +23,12 @@ from validibot.billing.models import Plan
 from validibot.billing.models import PlanChange
 from validibot.billing.models import Subscription
 from validibot.billing.plan_changes import InvalidPlanChangeError
-from validibot.billing.plan_changes import PlanChangeResult
 from validibot.billing.plan_changes import PlanChangeService
 from validibot.billing.plan_changes import PlanChangeType
 from validibot.users.models import Organization
 from validibot.users.models import User
+
+PRORATION_AMOUNT_CENTS = 5000
 
 
 @pytest.mark.django_db
@@ -99,7 +99,6 @@ class TestCanChangePlan:
         user = User.objects.create_user(
             username="testuser",
             email="test@example.com",
-            password="testpass",
         )
         org = Organization.objects.create(name="Test Org", slug="test-org")
 
@@ -538,7 +537,7 @@ class TestChangePlanPaidToPaid:
         # Mock invoice with proration
         mock_line = MagicMock()
         mock_line.proration = True
-        mock_line.amount = 5000  # $50 proration
+        mock_line.amount = PRORATION_AMOUNT_CENTS  # $50 proration
         mock_inv = MagicMock()
         mock_inv.lines.data = [mock_line]
         mock_invoice.return_value = mock_inv
@@ -552,7 +551,7 @@ class TestChangePlanPaidToPaid:
 
         assert result.success
         assert result.effective_immediately
-        assert result.proration_amount_cents == 5000
+        assert result.proration_amount_cents == PRORATION_AMOUNT_CENTS
 
         # Verify Stripe was called correctly
         mock_modify.assert_called_once()

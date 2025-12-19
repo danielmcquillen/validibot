@@ -8,7 +8,9 @@ These tests ensure validator callbacks target the worker service base URL
 import pytest
 from django.test import override_settings
 
-from validibot.validations.services.cloud_run.launcher import build_validation_callback_url
+from validibot.validations.services.cloud_run.launcher import (
+    build_validation_callback_url,
+)
 
 
 def test_build_validation_callback_url_uses_worker_url():
@@ -39,6 +41,8 @@ def test_build_validation_callback_url_falls_back_to_site_url(caplog):
 
 def test_build_validation_callback_url_requires_a_base_url():
     """Raises a clear error when neither `WORKER_URL` nor `SITE_URL` is set."""
-    with override_settings(WORKER_URL="", SITE_URL=""):
-        with pytest.raises(ValueError, match="WORKER_URL"):
-            build_validation_callback_url()
+    with (
+        override_settings(WORKER_URL="", SITE_URL=""),
+        pytest.raises(ValueError, match="WORKER_URL"),
+    ):
+        build_validation_callback_url()

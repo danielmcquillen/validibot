@@ -69,16 +69,20 @@ def build_validation_callback_url() -> str:
     else:
         base_url = (getattr(settings, "SITE_URL", "") or "").strip()
         logger.warning(
-            "WORKER_URL is not set; falling back to SITE_URL=%s for validation callbacks. "
-            "In Cloud Run multi-service deployments this is usually incorrect.",
+            (
+                "WORKER_URL is not set; falling back to SITE_URL=%s for validation "
+                "callbacks. In Cloud Run multi-service deployments this is usually "
+                "incorrect."
+            ),
             base_url,
         )
 
     if not base_url:
         msg = (
-            "WORKER_URL (preferred) or SITE_URL must be set to build validation callback URL."
+            "WORKER_URL (preferred) or SITE_URL must be set to build validation "
+            "callback URL."
         )
-        raise ValueError(msg)  # noqa: TRY003
+        raise ValueError(msg)
 
     return f"{base_url.rstrip('/')}{VALIDATION_CALLBACK_PATH}"
 

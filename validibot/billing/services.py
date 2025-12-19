@@ -91,6 +91,7 @@ class BillingService:
         plan: Plan,
         success_url: str,
         cancel_url: str,
+        *,
         skip_trial: bool = False,
     ) -> str:
         """

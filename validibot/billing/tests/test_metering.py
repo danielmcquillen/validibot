@@ -290,7 +290,7 @@ class SeatEnforcerTests(TestCase):
                 email=f"seat_member{i}@example.com",
                 defaults={
                     "username": f"seat_member{i}",
-                    "password": "testpass123",  # noqa: S106
+                    "password": "testpass123",
                 },
             )
             Membership.objects.get_or_create(
@@ -345,7 +345,7 @@ class SeatEnforcerTests(TestCase):
                 email=f"seat_usage_member{i}@example.com",
                 defaults={
                     "username": f"seat_usage_member{i}",
-                    "password": "testpass123",  # noqa: S106
+                    "password": "testpass123",
                 },
             )
             Membership.objects.get_or_create(

@@ -578,7 +578,9 @@ class TestWorkflowLaunchFormOptionalFields:
         assert form.is_valid(), form.errors
         assert form.cleaned_data["filename"] == "my-test-file"
         assert form.cleaned_data["metadata"] == {"source": "test"}
-        assert form.cleaned_data["short_description"] == "Test submission for validation"
+        assert form.cleaned_data["short_description"] == (
+            "Test submission for validation"
+        )
 
     def test_all_optional_fields_cleared_when_disabled(self):
         """All optional fields should be cleared when all are disabled."""

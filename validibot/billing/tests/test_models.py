@@ -118,7 +118,7 @@ class SubscriptionModelTests(TestCase):
             email="subscription_test@example.com",
             defaults={
                 "username": "subscription_test",
-                "password": "testpass123",  # noqa: S106
+                "password": "testpass123",
             },
         )
         cls.org, _ = Organization.objects.get_or_create(

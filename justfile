@@ -1891,7 +1891,7 @@ gcp-scheduler-delete-all stage:
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries; do
+        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
             job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \
@@ -1903,6 +1903,64 @@ gcp-scheduler-delete-all stage:
     else
         echo "Cancelled."
     fi
+
+# Pause all scheduler jobs for a stage
+gcp-scheduler-pause-all stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute job suffix
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_SUFFIX=""
+    else
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "Pausing all scheduler jobs for {{stage}}..."
+    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+        job="${job_base}${JOB_SUFFIX}"
+        echo "Pausing $job..."
+        gcloud scheduler jobs pause "$job" \
+            --project {{gcp_project}} \
+            --location {{gcp_region}} \
+            --quiet 2>/dev/null || echo "  (job not found or already paused)"
+    done
+    echo "✅ All scheduler jobs paused for {{stage}}"
+
+# Resume all scheduler jobs for a stage
+gcp-scheduler-resume-all stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage parameter
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    # Compute job suffix
+    if [ "{{stage}}" = "prod" ]; then
+        JOB_SUFFIX=""
+    else
+        JOB_SUFFIX="-{{stage}}"
+    fi
+
+    echo "Resuming all scheduler jobs for {{stage}}..."
+    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+        job="${job_base}${JOB_SUFFIX}"
+        echo "Resuming $job..."
+        gcloud scheduler jobs resume "$job" \
+            --project {{gcp_project}} \
+            --location {{gcp_region}} \
+            --quiet 2>/dev/null || echo "  (job not found or already running)"
+    done
+    echo "✅ All scheduler jobs resumed for {{stage}}"
 
 # Pause a scheduler job
 gcp-scheduler-pause job_name:

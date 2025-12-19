@@ -25,9 +25,14 @@ The GCP architecture includes:
 - **External HTTP(S) Load Balancer** - Serves `validibot.com` and routes to Cloud Run (serverless NEG)
 - **Cloud SQL** - Managed PostgreSQL database
 - **Cloud Storage** - Object storage for media files
-- **Cloud Tasks** - Async task queue for validation jobs
+- **Cloud Tasks** - Optional async queue for web→worker work and retries (validator jobs are triggered via the Jobs API today)
 - **Cloud Scheduler** - Cron jobs for maintenance tasks
 - **Secret Manager** - Secure credential storage
+
+When using a custom domain (production), keep these base URLs separate:
+
+- `SITE_URL`: Public base URL (prod: `https://validibot.com`).
+- `WORKER_URL`: Worker `*.run.app` URL used for validator callbacks and scheduled tasks.
 
 ## Documentation
 

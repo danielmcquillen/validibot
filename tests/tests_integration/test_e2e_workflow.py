@@ -3,9 +3,9 @@ End-to-end workflow tests that verify the complete validation flow.
 
 These tests exercise the full production path:
     1. Submit file via API
-    2. Django creates ValidationRun, triggers Cloud Tasks -> Worker
-    3. Worker launches Cloud Run Job
-    4. Job executes, calls back to Django worker
+    2. Django creates ValidationRun
+    3. Django launches Cloud Run Job (Jobs API)
+    4. Job executes, calls back to Django worker (via WORKER_URL)
     5. Django processes callback, updates database
     6. Test polls API until run completes
     7. Verify status and findings

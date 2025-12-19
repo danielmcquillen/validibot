@@ -55,7 +55,7 @@ Each stage runs on Google Cloud Run with the following services:
 - **Cloud Run (worker)** — Background task processing, validator callbacks
 - **Cloud SQL** — PostgreSQL 17 database
 - **Cloud Storage** — Media file storage
-- **Cloud Tasks** — Async task queue for validation jobs
+- **Cloud Tasks** — Optional async task queue for web→worker work and retries (validator Cloud Run Jobs are triggered directly via the Jobs API today)
 - **Cloud Scheduler** — Cron jobs (session cleanup, expired key removal)
 - **Secret Manager** — Credentials and secrets
 - **Artifact Registry** — Docker image storage
@@ -82,6 +82,8 @@ Secrets are stored in Secret Manager and mounted as `/secrets/.env`. Key variabl
 | `DJANGO_SECRET_KEY`        | Unique per environment; never reuse local keys.              |
 | `DJANGO_ALLOWED_HOSTS`     | Comma-separated hosts, e.g. `validibot.com,*.validibot.com`. |
 | `DATABASE_URL`             | Cloud SQL connection string.                                 |
+| `SITE_URL`                 | Public base URL (prod: `https://validibot.com`).             |
+| `WORKER_URL`               | Worker base URL (worker `*.run.app` URL) for callbacks/tasks. |
 | `GCS_MEDIA_BUCKET`         | Cloud Storage bucket for media files.                        |
 | `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail.               |
 | `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                       |

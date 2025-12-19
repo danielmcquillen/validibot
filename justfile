@@ -1686,7 +1686,7 @@ test-integration *args:
     docker compose -f docker-compose.local.yml stop postgres mailpit
 
 # Run E2E tests against deployed staging environment
-# Tests the full flow: API -> Cloud Tasks -> Worker -> Cloud Run Job -> Callback
+# Tests the full flow: API -> Cloud Run Job -> Callback -> Worker
 # Requires environment variables (see tests/tests_integration/test_e2e_workflow.py)
 test-e2e *args:
     @if [ -z "${E2E_TEST_API_URL:-}" ]; then \

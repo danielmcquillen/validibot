@@ -74,12 +74,13 @@ E2E tests verify the complete validation flow including callbacks. Unlike integr
 
 1. Submit file via API
 2. Django creates ValidationRun
-3. Cloud Tasks queues the job
-4. Worker launches Cloud Run Job
-5. Job executes and calls back to Django
-6. Django updates database
-7. Test polls API until completion
-8. Test verifies status and findings
+3. Django launches a Cloud Run Job (Jobs API)
+4. Job executes and calls back to the Django worker (via `WORKER_URL`)
+5. Worker processes the callback and updates the database
+6. Test polls API until completion
+7. Test verifies status and findings
+
+If your environment uses a custom public domain, make sure `WORKER_URL` is set to the worker `*.run.app` URL. Otherwise callbacks may accidentally route to the public domain (which points at the web service via the load balancer) and fail.
 
 ### Prerequisites
 

@@ -12,33 +12,27 @@ This document describes the complete architecture for running validations using 
 
 ## Repository Structure
 
+The validator system spans three codebases:
+
+- **This repo (`validibot/`)**: the Django web + worker services (Cloud Run Services).
+- **`vb_shared`**: shared Pydantic envelope models (installed here; see `vb_shared_dev/` for the local checkout).
+- **`vb_validators`**: validator job containers (see `vb_validators_dev/` for the local checkout).
+
 ```
-validibot/
-├── validibot/                    # Django app (Cloud Run Service)
-│   ├── validibot/        # Main Django project
-│   └── ...
+validibot/ (this repo)
+├── validibot/                               # Django app (Cloud Run Services)
+│   └── validations/
+│       ├── services/cloud_run/              # Launcher + Jobs API client
+│       └── api/callbacks.py                 # Worker-only callback endpoint
 │
-├── vb_shared/                    # Shared schemas (Python package)
-│   ├── validations/
-│   │   └── envelopes.py         # Base input/output envelopes
-│   ├── energyplus/
-│   │   ├── models.py            # EnergyPlus output models
-│   │   └── envelopes.py         # EnergyPlus typed envelopes
-│   └── fmi/
-│       └── models.py            # FMI models
+├── vb_shared_dev/                           # Local checkout of ../vb_shared (schemas + envelopes)
+│   └── vb_shared/validations/envelopes.py   # ExecutionContext, ValidationCallback, etc.
 │
-└── validators/                   # Cloud Run Job validators
-    ├── shared/                  # Shared utilities for all validators
-    │   ├── gcs_client.py        # GCS download/upload helpers
-    │   ├── callback_client.py   # HTTP callback utilities
-    │   └── envelope_loader.py   # Envelope loading helpers
-    │
-    └── energyplus/              # EnergyPlus validator container
-        ├── Dockerfile
-        ├── main.py              # Entrypoint
-        ├── runner.py            # EnergyPlus execution logic
-        ├── requirements.txt
-        └── tests/
+└── vb_validators_dev/                       # Local checkout of ../vb_validators (Cloud Run Job containers)
+    └── validators/
+        ├── core/callback_client.py          # Posts callbacks (ID token)
+        ├── energyplus/                      # EnergyPlus validator container
+        └── fmi/                             # FMI validator container
 ```
 
 ## Data Flow
@@ -99,9 +93,12 @@ input_envelope = EnergyPlusInputEnvelope(
         invocation_mode="cli"
     ),
     context=ExecutionContext(
-        callback_url=HttpUrl("https://validibot.example.com/api/v1/validation-callbacks/"),
+        # This should target the worker service base URL (WORKER_URL),
+        # not the public domain (SITE_URL).
+        callback_url="https://validibot-worker.example.a.run.app/api/v1/validation-callbacks/",
+        callback_id="cb-uuid-here",
         execution_bundle_uri=f"gs://bucket/{org.id}/{run.id}/",
-        timeout_seconds=3600
+        timeout_seconds=3600,
     )
 )
 
@@ -109,19 +106,16 @@ input_envelope = EnergyPlusInputEnvelope(
 input_uri = f"gs://bucket/{org.id}/{run.id}/input.json"
 upload_envelope(input_envelope, input_uri)
 
-# Trigger Cloud Run Job via Cloud Tasks
-create_cloud_task(
-    queue="validator-jobs",
-    url=f"https://{REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{PROJECT}/jobs/validibot-validator-energyplus:run",
-    payload={
-        "overrides": {
-            "containerOverrides": [{
-                "env": [
-                    {"name": "INPUT_URI", "value": input_uri}
-                ]
-            }]
-        }
-    }
+# Trigger Cloud Run Job via Jobs API (non-blocking)
+from django.conf import settings
+
+from validibot.validations.services.cloud_run.job_client import run_validator_job
+
+execution_name = run_validator_job(
+    project_id=settings.GCP_PROJECT_ID,
+    region=settings.GCP_REGION,
+    job_name="validibot-validator-energyplus",
+    input_uri=input_uri,
 )
 ```
 
@@ -276,77 +270,17 @@ if run.validator.type == "energyplus":
 
 ## GCP Infrastructure
 
-### Cloud Run Service (Django)
+The authoritative deployment commands live in the repo `justfile`, plus:
 
-```bash
-gcloud run deploy validibot \
-  --source . \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --service-account django-runner@PROJECT.iam.gserviceaccount.com
-```
+- `docs/dev_docs/google_cloud/deployment.md` (Cloud Run services + `validibot.com` load balancer)
+- `docs/dev_docs/validator_jobs_cloud_run.md` (validator jobs + callback flow)
 
-**Service Account Permissions:**
+At a high level:
 
-- `roles/cloudstorage.objectAdmin` - Upload/download GCS files
-- `roles/cloudtasks.enqueuer` - Create Cloud Tasks
-- `roles/run.admin` - Trigger Cloud Run Jobs
-- `roles/cloudkms.cryptoKeyEncrypterDecrypter` - Sign/verify JWT tokens
-
-### Cloud Run Jobs (Validators)
-
-```bash
-# Build container
-gcloud builds submit \
-  --tag gcr.io/PROJECT/validibot-validator-energyplus \
-  validators/energyplus
-
-# Create job
-gcloud run jobs create validibot-validator-energyplus \
-  --image gcr.io/PROJECT/validibot-validator-energyplus \
-  --region us-central1 \
-  --memory 4Gi \
-  --cpu 2 \
-  --max-retries 0 \
-  --task-timeout 3600 \
-  --service-account validator-runner@PROJECT.iam.gserviceaccount.com
-```
-
-**Service Account Permissions:**
-
-- `roles/cloudstorage.objectAdmin` - Download inputs, upload outputs
-- `roles/run.invoker` - Self-invoke for retries (optional)
-
-### Cloud Tasks Queue
-
-```bash
-gcloud tasks queues create validator-jobs \
-  --location us-central1 \
-  --max-dispatches-per-second 10 \
-  --max-concurrent-dispatches 100
-```
-
-### GCS Bucket
-
-```bash
-gsutil mb -l us-central1 gs://PROJECT-validator-bundles
-gsutil lifecycle set lifecycle.json gs://PROJECT-validator-bundles
-```
-
-**Lifecycle policy (lifecycle.json):**
-
-```json
-{
-  "lifecycle": {
-    "rule": [
-      {
-        "action": { "type": "Delete" },
-        "condition": { "age": 30 }
-      }
-    ]
-  }
-}
-```
+- We deploy one Django image as two Cloud Run services (`validibot-web` and `validibot-worker`).
+- We deploy validator containers as Cloud Run Jobs (`validibot-validator-energyplus`, `validibot-validator-fmi`, etc).
+- The worker service is deployed with `--no-allow-unauthenticated` and only accepts authenticated calls.
+- Cloud Tasks queues exist for future web→worker orchestration and retries, but validator jobs are triggered directly via the Jobs API today.
 
 ## Security
 
@@ -417,7 +351,7 @@ Alert on:
 
 ## Adding New Validator Types
 
-1. **Create envelope schemas** in `vb_shared/{domain}/`:
+1. **Create envelope schemas** in `vb_shared/{domain}/` (see `vb_shared_dev/` in this workspace):
 
    ```python
    # vb_shared/xml/envelopes.py
@@ -429,18 +363,18 @@ Alert on:
        inputs: XMLInputs
    ```
 
-2. **Create validator container** in `validators/{domain}/`:
+2. **Create validator container** in `vb_validators` (see `vb_validators_dev/validators/` in this workspace):
 
    - Copy `validators/energyplus/` as template
    - Update `Dockerfile` with domain-specific dependencies
    - Implement `runner.py` with validation logic
    - Update `main.py` to use your envelopes
 
-3. **Deploy container** as Cloud Run Job:
+3. **Deploy container** as a Cloud Run Job:
 
    ```bash
-   gcloud builds submit --tag gcr.io/PROJECT/validibot-validator-xml validators/xml
-   gcloud run jobs create validibot-validator-xml --image gcr.io/PROJECT/validibot-validator-xml ...
+   just validator-deploy xml dev
+   # or: just validators-deploy-all dev
    ```
 
 4. **Update Django** to use new validator:

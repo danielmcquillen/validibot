@@ -8,7 +8,9 @@ These tests verify that the Cloud Run Job infrastructure works end-to-end:
 4. Verify output envelope structure
 
 Production Architecture:
-    Web -> Cloud Task -> Worker -> Cloud Run Job (direct API call) -> Callback
+    Web -> Cloud Run Job (Jobs API) -> Callback to worker
+
+    (Cloud Tasks is reserved for future web→worker orchestration and retries.)
 
 Test Architecture (simplified):
     Test -> Cloud Run Job (direct API call) -> GCS output

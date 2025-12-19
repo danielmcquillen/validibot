@@ -143,7 +143,7 @@ For detailed KMS documentation, see [KMS for Credential Signing](kms.md).
 
 ## Create Cloud Tasks Queue
 
-Cloud Tasks is used to trigger Cloud Run Jobs for validation processing. Create the queue:
+Cloud Tasks is available for async orchestration and retries (for example, moving web→worker work off-request). Validator Cloud Run Jobs are triggered directly via the Jobs API today, but we still provision the queue so we can adopt Cloud Tasks where it adds reliability.
 
 ```bash
 gcloud tasks queues create validibot-tasks \

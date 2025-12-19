@@ -12569,6 +12569,9 @@ a {
   flex-direction: column;
   height: 100%;
 }
+.entrance-card-wrapper--wide .card {
+  max-width: 56rem;
+}
 
 #messages {
   z-index: 10000;
@@ -12910,7 +12913,7 @@ a {
 }
 
 .robot-main {
-  max-width: 100%;
+  max-width: 80%;
   height: auto;
   filter: drop-shadow(0 20px 40px rgba(6, 111, 209, 0.2));
 }

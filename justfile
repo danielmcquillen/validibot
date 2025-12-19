@@ -740,7 +740,7 @@ gcp-init-stage stage:
         SA_NAME="validibot-cloudrun-prod"
         DB_INSTANCE="validibot-db"
         SECRET_NAME="django-env"
-        QUEUE_NAME="validibot-validation-queue"
+        QUEUE_NAME="validibot-tasks"
     else
         SA_NAME="validibot-cloudrun-{{stage}}"
         DB_INSTANCE="validibot-db-{{stage}}"
@@ -1958,7 +1958,7 @@ gcp-maintenance-on stage:
         WEB_SERVICE="validibot-web"
         WORKER_SERVICE="validibot-worker"
         DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-validation-queue"
+        QUEUE_NAME="validibot-tasks"
         JOB_SUFFIX=""
     else
         WEB_SERVICE="validibot-web-{{stage}}"
@@ -2046,7 +2046,7 @@ gcp-maintenance-off stage:
         WEB_SERVICE="validibot-web"
         WORKER_SERVICE="validibot-worker"
         DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-validation-queue"
+        QUEUE_NAME="validibot-tasks"
         JOB_SUFFIX=""
     else
         WEB_SERVICE="validibot-web-{{stage}}"
@@ -2141,7 +2141,7 @@ gcp-maintenance-status stage:
     if [ "{{stage}}" = "prod" ]; then
         WEB_SERVICE="validibot-web"
         DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-validation-queue"
+        QUEUE_NAME="validibot-tasks"
     else
         WEB_SERVICE="validibot-web-{{stage}}"
         DB_INSTANCE="validibot-db-{{stage}}"

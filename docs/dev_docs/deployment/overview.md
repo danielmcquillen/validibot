@@ -23,7 +23,7 @@ Each stage has completely isolated infrastructure:
 | FMI validator | `validibot-validator-fmi-dev` | `validibot-validator-fmi-staging` | `validibot-validator-fmi` |
 | Media bucket | `validibot-media-dev` | `validibot-media-staging` | `validibot-media` |
 | Files bucket | `validibot-files-dev` | `validibot-files-staging` | `validibot-files` |
-| Tasks queue | `validibot-validation-queue-dev` | `validibot-validation-queue-staging` | `validibot-validation-queue` |
+| Tasks queue | `validibot-validation-queue-dev` | `validibot-validation-queue-staging` | `validibot-tasks` |
 | Secret | `django-env-dev` | `django-env-staging` | `django-env` |
 
 This isolation ensures that dev/staging changes never affect production data.

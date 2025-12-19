@@ -58,7 +58,7 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 
 - Service account: `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `validibot-db`
-- Cloud Tasks queue: `validibot-validation-queue`
+- Cloud Tasks queue: `validibot-tasks`
 - GCS buckets: `validibot-media`, `validibot-files`
 - Secret: `django-env`
 

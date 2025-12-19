@@ -521,8 +521,9 @@ ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
 # Get keys from: https://www.google.com/recaptcha/admin
 RECAPTCHA_PUBLIC_KEY = env("RECAPTCHA_PUBLIC_KEY", default="")
 RECAPTCHA_PRIVATE_KEY = env("RECAPTCHA_PRIVATE_KEY", default="")
-# Use reCAPTCHA v2 invisible badge for better UX
-RECAPTCHA_WIDGET = "django_recaptcha.widgets.ReCaptchaV2Invisible"
+# reCAPTCHA v3 is configured via ReCaptchaV3Field in forms
+# Optional: Set minimum score threshold (default 0.5, range 0.0-1.0)
+# RECAPTCHA_REQUIRED_SCORE = 0.5
 # Disable reCAPTCHA if keys not configured (for local development)
 SILENCED_SYSTEM_CHECKS = ["django_recaptcha.recaptcha_test_key_error"]
 

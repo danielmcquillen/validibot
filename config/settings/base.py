@@ -376,6 +376,10 @@ ACCOUNT_FORMS = {
 SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
 # https://docs.allauth.org/en/latest/socialaccount/configuration.html
 SOCIALACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSocialSignupForm"}
+# https://docs.allauth.org/en/latest/account/configuration.html
+# Brute force protection: lock out after 5 failed attempts for 5 minutes
+ACCOUNT_LOGIN_ATTEMPTS_LIMIT = 5
+ACCOUNT_LOGIN_ATTEMPTS_TIMEOUT = 300
 
 # django-rest-framework
 # -------------------------------------------------------------------------------

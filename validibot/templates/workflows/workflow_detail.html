@@ -274,7 +274,7 @@
               </li>
             </ul>
             <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.validibot.io" }}/api/v1/workflows/{{ workflow.pk }}/start/ \
-  -H "Authorization: Token &lt;token&gt;" \
+  -H "Authorization: Bearer &lt;token&gt;" \
   -H "Content-Type: application/json" \
   -d '{
     "content": "{ \"example\": true }",

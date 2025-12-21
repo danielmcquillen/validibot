@@ -389,7 +389,7 @@ REST_FRAMEWORK = {
     "DEFAULT_CONTENT_NEGOTIATION_CLASS": "validibot.core.api.negotiation.AgentAwareNegotiation",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.TokenAuthentication",
+        "validibot.core.api.authentication.BearerAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

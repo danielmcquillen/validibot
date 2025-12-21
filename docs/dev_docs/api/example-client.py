@@ -45,7 +45,7 @@ def get_auth_headers() -> dict:
         print("Error: VALIDIBOT_API_TOKEN environment variable not set")
         print("Get your token from: Settings -> API Tokens")
         sys.exit(1)
-    return {"Authorization": f"Token {API_TOKEN}"}
+    return {"Authorization": f"Bearer {API_TOKEN}"}
 
 
 def get_token(username: str, password: str) -> str:

@@ -96,7 +96,7 @@ class WorkflowE2ETest(TestCase):
 
     def _get_auth_headers(self) -> dict:
         """Get authentication headers for API requests."""
-        return {"Authorization": f"Token {E2E_API_TOKEN}"}
+        return {"Authorization": f"Bearer {E2E_API_TOKEN}"}
 
     def _submit_validation(
         self,

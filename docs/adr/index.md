@@ -4,6 +4,7 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
+- [ADR-2025-12-22: CLI and API Support](2025-12-22-cli-api-support.md)
 - [ADR-2025-11-23: Ephemeral Submission Retention](2025-11-23-ephemeral-submission-retention.md)
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)
 - [ADR-2025-11-28: Invite-Based Signup and Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)

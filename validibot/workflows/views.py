@@ -30,7 +30,6 @@ from django.views.generic.edit import FormView
 from rest_framework import permissions
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response as APIResponse
 
@@ -49,7 +48,6 @@ from validibot.projects.models import Project
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.mixins import SuperuserRequiredMixin
-from validibot.users.models import Organization
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import CatalogRunStage
@@ -100,21 +98,87 @@ MAX_STEP_COUNT = 5
 # ------------------------------------------------------------------------------
 
 
-class WorkflowViewSet(viewsets.ModelViewSet):
-    """API endpoints for managing workflows and launching validations.
+class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only API endpoints for workflows, plus validation launching.
 
-    Routes all workflow CRUD operations through the caller's accessible
-    organizations and applies scoped throttling for expensive launch requests.
+    This ViewSet provides:
+    - list: List all workflows accessible to the authenticated user
+    - retrieve: Get details of a specific workflow (by ID or slug)
+    - start_validation: Launch a validation run on a workflow
+
+    Create, update, and delete operations are not available via API.
+    Users must use the web interface for workflow management.
+
+    This restriction is intentional to minimize the API attack surface
+    during the initial CLI rollout. See ADR-2025-12-22 for rationale.
     """
 
     throttle_scope: str | None = None
     queryset = Workflow.objects.all()
     serializer_class = WorkflowSerializer
     permission_classes = [permissions.IsAuthenticated, WorkflowPermission]
+    # Allow lookup by either pk (integer) or slug (string)
+    lookup_value_regex = r"[^/]+"
 
     def get_queryset(self):
         # List all workflows the user can access (in any of their orgs)
         return Workflow.objects.for_user(self.request.user)
+
+    def get_object(self):
+        """
+        Retrieve a workflow by ID (integer) or slug (string).
+
+        Supports optional org query parameter for disambiguation when
+        multiple workflows share the same slug across organizations.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field)
+
+        # Try integer lookup first (pk)
+        if lookup_value and lookup_value.isdigit():
+            filter_kwargs = {"pk": int(lookup_value)}
+        else:
+            # Slug-based lookup
+            filter_kwargs = {"slug": lookup_value}
+
+            # Optional org disambiguation
+            org_slug = self.request.query_params.get("org")
+            if org_slug:
+                filter_kwargs["org__slug"] = org_slug
+
+            # Optional version disambiguation
+            version = self.request.query_params.get("version")
+            if version:
+                filter_kwargs["version"] = version
+
+        # Check for ambiguous matches when using slug without org
+        if "slug" in filter_kwargs and "org__slug" not in filter_kwargs:
+            matches = queryset.filter(**filter_kwargs)
+            if matches.count() > 1:
+                # Return helpful error with disambiguation options
+                orgs = list(
+                    matches.values_list("org__slug", "version").distinct()
+                )
+                raise DRFValidationError(
+                    {
+                        "detail": _(
+                            "Multiple workflows found with slug '%(slug)s'. "
+                            "Use ?org=<org-slug> to disambiguate."
+                        )
+                        % {"slug": lookup_value},
+                        "matches": [
+                            {"org": org, "version": ver} for org, ver in orgs
+                        ],
+                    },
+                )
+
+        obj = get_object_or_404(queryset, **filter_kwargs)
+
+        # May raise a permission denied
+        self.check_object_permissions(self.request, obj)
+
+        return obj
 
     def get_serializer_class(self):
         if getattr(self, "action", None) in [
@@ -123,65 +187,6 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             return ValidationRunStartSerializer
         return super().get_serializer_class()
 
-    def perform_create(self, serializer):
-        org = self._resolve_target_org()
-        if not self.request.user.has_perm(
-            PermissionCode.WORKFLOW_EDIT.value,
-            org,
-        ):
-            raise DRFPermissionDenied(
-                detail=_(
-                    "You do not have permission to create "
-                    "workflows for this organization.",
-                ),
-            )
-        serializer.save(org=org, user=self.request.user)
-
-    def perform_update(self, serializer):
-        workflow: Workflow = self.get_object()
-        if not self.request.user.has_perm(
-            PermissionCode.WORKFLOW_EDIT.value,
-            workflow,
-        ):
-            raise DRFPermissionDenied(
-                detail=_("You do not have permission to update this workflow."),
-            )
-        requested_org = serializer.validated_data.get("org")
-        requested_org_id = self.request.data.get("org")
-        if requested_org and requested_org != workflow.org:
-            raise DRFValidationError(
-                {"org": _("Cannot move a workflow to another organization.")},
-            )
-        if requested_org_id and str(requested_org_id) != str(workflow.org_id):
-            raise DRFValidationError(
-                {"org": _("Cannot move a workflow to another organization.")},
-            )
-        serializer.save(org=workflow.org, user=workflow.user)
-
-    def perform_destroy(self, instance: Workflow):
-        if not self.request.user.has_perm(
-            PermissionCode.WORKFLOW_EDIT.value,
-            instance,
-        ):
-            raise DRFPermissionDenied(
-                detail=_("You do not have permission to delete this workflow."),
-            )
-        return super().perform_destroy(instance)
-
-    def _resolve_target_org(self) -> Organization:
-        org_id = self.request.data.get("org") or getattr(
-            self.request.user,
-            "current_org_id",
-            None,
-        )
-        if not org_id:
-            raise DRFValidationError({"org": _("Organization is required.")})
-        try:
-            return Organization.objects.get(pk=org_id)
-        except Organization.DoesNotExist as exc:
-            raise DRFValidationError({"org": _("Organization not found.")}) from exc
-
-    # Public action remains unchanged
     @action(
         detail=True,
         methods=["post"],
@@ -194,6 +199,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
     )
     @idempotent
     def start_validation(self, request, pk=None, *args, **kwargs):
+        """
+        Launch a validation run on this workflow.
+
+        Accepts multipart/form-data with a file upload or JSON payload.
+        Returns the created ValidationRun details.
+        """
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)
         try:

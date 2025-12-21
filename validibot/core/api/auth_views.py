@@ -1,7 +1,7 @@
 """
 Authentication API endpoints.
 
-Provides a minimal endpoint for token verification and user identification,
+Provides a minimal endpoint for API key verification and user identification,
 following the GitHub API pattern (GET /user returns authenticated user info).
 """
 
@@ -19,10 +19,10 @@ class AuthMeView(APIView):
     Get the currently authenticated user's basic information.
 
     This endpoint serves two purposes:
-    1. Token validation - returns 401/403 if token is invalid
+    1. API key validation - returns 401/403 if key is invalid
     2. User identification - returns email/name for display
 
-    Used by the CLI during login to verify tokens and show user info.
+    Used by the CLI during login to verify API keys and show user info.
     """
 
     permission_classes = [IsAuthenticated]
@@ -31,7 +31,7 @@ class AuthMeView(APIView):
         summary="Get current user info",
         description=(
             "Returns the email and name of the currently authenticated user. "
-            "This endpoint is used to validate API tokens and retrieve basic "
+            "This endpoint is used to validate API keys and retrieve basic "
             "user information for display purposes."
         ),
         responses={
@@ -47,7 +47,7 @@ class AuthMeView(APIView):
                 },
             ),
             401: {"description": "Authentication credentials were not provided."},
-            403: {"description": "Invalid or expired token."},
+            403: {"description": "Invalid or expired API key."},
         },
         tags=["Authentication"],
     )

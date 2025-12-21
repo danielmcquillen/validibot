@@ -56,6 +56,8 @@ nav:
       - Manage Organizations & Projects: organization_management.md
   - Integrations:
       - EnergyPlus Modal: integrations/energyplus_modal.md
+  - API:
+      - Authentication: api/authentication.md
   - Billing & Stripe:
       - Overview: billing/index.md
       - Setup: billing/setup.md

@@ -91,6 +91,7 @@ def test_workflow_form_allows_switching_projects_within_org():
     form = WorkflowForm(
         data={
             "name": workflow.name,
+            "description_md": "Validates schema compliance.",
             "slug": workflow.slug,
             "project": str(second_project.pk),
             "allowed_file_types": [SubmissionFileType.JSON],
@@ -104,6 +105,8 @@ def test_workflow_form_allows_switching_projects_within_org():
 
     assert form.is_valid(), form.errors
     assert form.cleaned_data["project"] == second_project
+    saved_workflow = form.save()
+    assert saved_workflow.get_public_info.content_md == "Validates schema compliance."
 
 
 def test_workflow_form_rejects_project_from_other_org():

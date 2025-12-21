@@ -203,6 +203,23 @@ def parse_policy_rules(raw_text: str) -> list[ParsedPolicyRule]:
 
 
 class WorkflowForm(forms.ModelForm):
+    description_md = forms.CharField(
+        label=_("Workflow description (Markdown)"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "rows": 6,
+                "placeholder": _(
+                    "Describe what this workflow validates and who it's for...",
+                ),
+            },
+        ),
+        help_text=_(
+            "Shown on the workflow info page. This is stored as Markdown and "
+            "sanitized before display. You can control visibility from the "
+            "Public Info card on the workflow detail page.",
+        ),
+    )
     allowed_file_types = forms.MultipleChoiceField(
         label=_("Allowed file types"),
         help_text=_(
@@ -252,6 +269,7 @@ class WorkflowForm(forms.ModelForm):
         self.helper.form_tag = False
         self.helper.layout = Layout(
             Field("name", placeholder=_("Name your workflow"), autofocus=True),
+            Field("description_md"),
             Field("slug", placeholder=""),
             Field("project"),
             Field("allowed_file_types"),
@@ -283,6 +301,11 @@ class WorkflowForm(forms.ModelForm):
         # Configure data retention field
         self.fields["data_retention"].label = _("Data retention")
         self.fields["data_retention"].widget.attrs.update({"class": "form-select"})
+        self.fields["description_md"].widget.attrs.setdefault("class", "form-control")
+        if self.instance and self.instance.pk:
+            self.fields["description_md"].initial = (
+                self.instance.get_public_info.content_md or ""
+            )
 
     def clean_name(self):
         name = (self.cleaned_data.get("name") or "").strip()
@@ -338,6 +361,7 @@ class WorkflowForm(forms.ModelForm):
             "Workflow runs started from this workflow default to the selected "
             "project. Projects listed belong to your current organization.",
         )
+
         project_field.queryset = Project.objects.none()
 
         if not self.user or not getattr(self.user, "is_authenticated", False):
@@ -361,6 +385,16 @@ class WorkflowForm(forms.ModelForm):
         default_project = projects.filter(is_default=True).first() or projects.first()
         if default_project:
             project_field.initial = default_project.pk
+
+    def save(self, *, commit: bool = True):
+        workflow = super().save(commit=commit)
+        if commit and workflow.pk:
+            description_md = (self.cleaned_data.get("description_md") or "").strip()
+            public_info = workflow.get_public_info
+            if public_info.content_md != description_md:
+                public_info.content_md = description_md
+                public_info.save()
+        return workflow
 
 
 class WorkflowLaunchForm(forms.Form):

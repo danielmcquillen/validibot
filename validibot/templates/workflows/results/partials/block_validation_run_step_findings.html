@@ -6,6 +6,12 @@
     </div>
     <div class="card-body">
 
+        {% if run.user_friendly_error %}
+            <div class="alert alert-danger small w-100 mb-4" role="alert">
+                <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
+            </div>
+        {% endif %}
+
         {% if run.status == "SUCCEEDED" %}
             <div class="alert validation-success-alert alert-success mb-4 d-flex flex-row align-items-center">
                 <div>

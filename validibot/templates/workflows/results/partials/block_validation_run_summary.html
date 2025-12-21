@@ -11,11 +11,30 @@ This template lists out the summary results of the validation workflow run.
     </div>
     <div class="card-body">
 
-        {% if run.user_friendly_error %}
-            <div class="alert alert-danger small w-100" role="alert">
-                <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
-            </div>
-        {% endif %}
+        <section>
+            <dl class="row small mb-0">
+                <dt class="col-5 col-lg-4">
+                    {% trans "Status" %}
+                </dt>
+                <dd class="col-7 col-lg-8">
+                    {% if run.status == "SUCCEEDED" %}
+                        <span class="badge text-bg-success">{{ run.get_status_display }}</span>
+                    {% elif run.status == "FAILED" %}
+                        <span class="badge text-bg-danger">{{ run.get_status_display }}</span>
+                    {% elif run.status == "RUNNING" %}
+                        <span class="badge text-bg-primary">{{ run.get_status_display }}</span>
+                    {% elif run.status == "PENDING" %}
+                        <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+                    {% elif run.status == "CANCELED" %}
+                        <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+                    {% elif run.status == "TIMED_OUT" %}
+                        <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+                    {% else %}
+                        <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+                    {% endif %}
+                </dd>
+            </dl>
+        </section>
 
         <section>
             {% if run.submission and run.submission.name or run.short_description %}

@@ -1,7 +1,7 @@
 # ADR: CLI and API Support
 
 **Date:** 2025-12-22
-**Status:** In Progress
+**Status:** Implemented
 **Context:** Implementing a public-facing API and CLI for programmatic access to Validibot
 
 ## Summary
@@ -98,27 +98,23 @@ The CLI is a separate Python package (`validibot-cli`) that provides:
 
 This follows industry convention where "API key" describes what users generate and manage, while "token" describes the technical implementation.
 
-## Planned Changes
-
 ### 5. API Surface Restrictions
 
 **Goal**: Limit the API to read-only operations plus validation launching.
 
-**Current API ViewSets**:
+**API ViewSets**:
 
-| ViewSet | Current Actions | Planned Actions |
-|---------|-----------------|-----------------|
-| `UserViewSet` | list, retrieve, update, me | me only |
-| `WorkflowViewSet` | list, retrieve, create, update, delete, start | list, retrieve, start |
-| `ValidationRunViewSet` | list, retrieve (read-only) | list, retrieve (unchanged) |
+| ViewSet | Actions |
+|---------|---------|
+| `UserViewSet` | `me` only (removed list, retrieve, update) |
+| `WorkflowViewSet` | `list`, `retrieve`, `start_validation` (read-only + start) |
+| `ValidationRunViewSet` | `list`, `retrieve` (read-only, unchanged) |
 
-**Implementation Plan**:
+**Implementation**:
 
-1. **UserViewSet**: Remove list, retrieve, and update. Keep only the `me` action for current user info.
+1. **UserViewSet**: Changed from `mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.UpdateModelMixin, GenericViewSet` to just `GenericViewSet` with a `me` action.
 
-2. **WorkflowViewSet**: Convert to read-only plus the `start_validation` action:
-   - Remove `create`, `update`, `destroy` permissions
-   - Keep `list`, `retrieve`, `start_validation`
+2. **WorkflowViewSet**: Changed from `ModelViewSet` to `ReadOnlyModelViewSet` with the `start_validation` action preserved.
 
 3. **ValidationRunViewSet**: Already read-only, no changes needed.
 
@@ -178,17 +174,17 @@ validibot validate model.idf -w my-workflow --org my-org --version 2
 
 ### 7. Serializer Field Restrictions
 
-Current `WorkflowSerializer` exposes:
+**WorkflowSerializer** now exposes:
 
 ```python
-fields = ["id", "org", "user", "name", "uuid", "slug", "version", "is_active", "allowed_file_types"]
+fields = ["id", "uuid", "slug", "name", "version", "org_slug", "is_active", "allowed_file_types"]
 ```
 
-**Changes**:
+**Changes made**:
 
-- Remove `user` field (not needed by CLI/API consumers)
-- Add `org_slug` as a read-only derived field
-- Consider removing internal `id` field (use `uuid` for API lookups)
+- Removed `user` field (not needed by CLI/API consumers)
+- Added `org_slug` as a read-only derived field (via `SlugRelatedField`)
+- Removed `org` (replaced with `org_slug` for cleaner API)
 
 ## Security Considerations
 

@@ -43,7 +43,7 @@ def get_auth_headers() -> dict:
     """Get authentication headers for API requests."""
     if not API_TOKEN:
         print("Error: VALIDIBOT_API_TOKEN environment variable not set")
-        print("Get your token from: Settings -> API Tokens")
+        print("Get your API key from: Settings -> API Key")
         sys.exit(1)
     return {"Authorization": f"Bearer {API_TOKEN}"}
 
@@ -53,7 +53,7 @@ def get_token(username: str, password: str) -> str:
     Get an API token using username/password.
 
     Use this if you need to obtain a token programmatically.
-    Alternatively, create a token in the web UI under Settings -> API Tokens.
+    Alternatively, create an API key in the web UI under Settings -> API Key.
     """
     response = requests.post(
         f"{API_BASE_URL}/auth-token/",

@@ -85,7 +85,7 @@ If your environment uses a custom public domain, make sure `WORKER_URL` is set t
 ### Prerequisites
 
 1. **Deployed staging environment** - Cloud Run web service accessible
-2. **API token** - Create one in Settings -> API Tokens
+2. **API key** - Create one in Settings -> API Key
 3. **Test workflow** - A workflow with an EnergyPlus validator step
 
 ### Running E2E Tests

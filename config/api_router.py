@@ -7,9 +7,11 @@ config/api_internal_router.py and are exposed only on the worker service.
 """
 
 from django.conf import settings
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
+from validibot.core.api.auth_views import AuthMeView
 from validibot.users.api.views import UserViewSet
 from validibot.validations.views import ValidationRunViewSet
 from validibot.workflows.views import WorkflowViewSet
@@ -22,6 +24,7 @@ router.register("validation-runs", ValidationRunViewSet, basename="validation-ru
 
 app_name = "api"
 urlpatterns = [
+    # Auth endpoint for token verification and user identification
+    path("auth/me/", AuthMeView.as_view(), name="auth-me"),
     *router.urls,
-    # Public API endpoints only. Validator callbacks are internal-only.
 ]

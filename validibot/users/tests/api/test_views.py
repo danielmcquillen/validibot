@@ -6,20 +6,20 @@ from validibot.users.models import User
 
 
 class TestUserViewSet:
+    """
+    Tests for the UserViewSet API.
+
+    The UserViewSet only exposes the 'me' action to return the current user.
+    List, retrieve, and update operations are not available via API.
+    See ADR-2025-12-22 for rationale on API restrictions.
+    """
+
     @pytest.fixture
     def api_rf(self) -> APIRequestFactory:
         return APIRequestFactory()
 
-    def test_get_queryset(self, user: User, api_rf: APIRequestFactory):
-        view = UserViewSet()
-        request = api_rf.get("/fake-url/")
-        request.user = user
-
-        view.request = request
-
-        assert user in view.get_queryset()
-
     def test_me(self, user: User, api_rf: APIRequestFactory):
+        """Test that the me action returns the current user's details."""
         view = UserViewSet()
         request = api_rf.get("/fake-url/")
         request.user = user

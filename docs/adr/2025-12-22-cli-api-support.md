@@ -146,11 +146,12 @@ class Meta:
     ]
 ```
 
-**Solution**: Add optional query parameters for disambiguation:
+**Solution**: Add optional query parameters for disambiguation and filtering:
 
 ```
 GET /api/v1/workflows/<slug>/
 GET /api/v1/workflows/<slug>/?org=<org-slug>
+GET /api/v1/workflows/<slug>/?org=<org-slug>&project=<project-slug>
 GET /api/v1/workflows/<slug>/?org=<org-slug>&version=<version>
 ```
 
@@ -163,14 +164,17 @@ validibot validate model.idf -w my-workflow
 # Disambiguate by organization
 validibot validate model.idf -w my-workflow --org my-org
 
-# Full disambiguation
+# Filter by project within an organization
+validibot validate model.idf -w my-workflow --org my-org --project my-project
+
+# Specify a particular version
 validibot validate model.idf -w my-workflow --org my-org --version 2
 ```
 
 **Error Handling**:
 
 - If multiple workflows match, return 400 with a list of matching (org, version) pairs
-- CLI displays human-friendly message suggesting `--org` option
+- CLI displays human-friendly message suggesting `--org`, `--project`, or `--version` options
 
 ### 7. Serializer Field Restrictions
 

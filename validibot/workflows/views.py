@@ -129,8 +129,10 @@ class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Retrieve a workflow by ID (integer) or slug (string).
 
-        Supports optional org query parameter for disambiguation when
-        multiple workflows share the same slug across organizations.
+        Supports optional query parameters for disambiguation:
+        - org: Organization slug
+        - version: Workflow version
+        - project: Project slug (for filtering within an org)
         """
         queryset = self.filter_queryset(self.get_queryset())
         lookup_value = self.kwargs.get(self.lookup_field)
@@ -152,7 +154,12 @@ class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
             if version:
                 filter_kwargs["version"] = version
 
-        # Check for ambiguous matches when using slug without org
+            # Optional project filtering
+            project_slug = self.request.query_params.get("project")
+            if project_slug:
+                filter_kwargs["project__slug"] = project_slug
+
+        # Check for ambiguous matches when using slug without full disambiguation
         if "slug" in filter_kwargs and "org__slug" not in filter_kwargs:
             matches = queryset.filter(**filter_kwargs)
             if matches.count() > 1:

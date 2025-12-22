@@ -11,6 +11,12 @@
     border-bottom: 1px dotted #aaa;
     margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
+
+    &:last-child {
+      border-bottom: 0;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
   }
 
   dl {

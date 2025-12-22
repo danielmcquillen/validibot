@@ -14488,6 +14488,11 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   margin-bottom: 0.5rem;
   padding-bottom: 0.5rem;
 }
+.validation-info-card section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
 .validation-info-card dl {
   margin-bottom: 0;
 }

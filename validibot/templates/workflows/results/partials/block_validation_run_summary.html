@@ -146,15 +146,14 @@ This template lists out the summary results of the validation workflow run.
             </dl>
         </section>
 
-        <section>
-            {% if run.submission and run.submission.metadata %}
-
+        {% if run.submission and run.submission.metadata %}
+            <section>
                 <h6 class="fw-semibold">
                     {% trans "Submission metadata" %}
                 </h6>
                 <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
-            {% endif %}
-        </section>
+            </section>
+        {% endif %}
 
     </div>
 </div>

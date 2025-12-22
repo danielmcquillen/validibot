@@ -17,6 +17,7 @@ from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
+from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.engines.base import ValidationIssue
@@ -54,14 +55,6 @@ class ValidationRunLaunchResults:
     validation_run: ValidationRun
     data: dict[str, Any] = field(factory=dict)
     status: int | None = None
-
-    @property
-    def status_code(self) -> int | None:  # Backwards compatibility for legacy callers
-        return self.status
-
-    @status_code.setter
-    def status_code(self, value: int | None) -> None:
-        self.status = value
 
 
 class ValidationRunService:
@@ -434,9 +427,16 @@ class ValidationRunService:
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.ended_at = timezone.now()
             validation_run.error = GENERIC_EXECUTION_ERROR
+            validation_run.error_category = ValidationRunErrorCategory.RUNTIME_ERROR
             validation_run.summary = {}
             validation_run.save(
-                update_fields=["status", "ended_at", "error", "summary"],
+                update_fields=[
+                    "status",
+                    "ended_at",
+                    "error",
+                    "error_category",
+                    "summary",
+                ],
             )
             tracking_service.log_validation_run_status(
                 run=validation_run,
@@ -496,13 +496,21 @@ class ValidationRunService:
         if overall_failed:
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.error = _("One or more validation steps failed.")
+            validation_run.error_category = ValidationRunErrorCategory.VALIDATION_FAILED
         else:
             validation_run.status = ValidationRunStatus.SUCCEEDED
             validation_run.error = ""
+            validation_run.error_category = ""
         validation_run.ended_at = timezone.now()
         validation_run.summary = {}
         validation_run.save(
-            update_fields=["status", "error", "ended_at", "summary"],
+            update_fields=[
+                "status",
+                "error",
+                "error_category",
+                "ended_at",
+                "summary",
+            ],
         )
 
         summary_record = self._build_run_summary_record(

@@ -4,7 +4,7 @@ Management command to mark stuck validation runs as failed.
 Validation runs can become "stuck" in RUNNING status if a validator container
 crashes without sending a callback, or if the callback fails to reach the
 worker service. This watchdog command finds runs that have been in RUNNING
-status longer than a threshold and marks them as FAILED.
+status longer than a threshold and marks them as TIMED_OUT.
 
 This is a safety net for edge cases - most runs complete normally via callbacks.
 The threshold should be generous (30+ minutes) to avoid false positives for
@@ -46,7 +46,7 @@ MAX_DISPLAY_IDS = 10
 
 
 class Command(BaseCommand):
-    help = "Mark validation runs stuck in RUNNING status as FAILED."
+    help = "Mark validation runs stuck in RUNNING status as TIMED_OUT."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -98,7 +98,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(
                 self.style.WARNING(
-                    f"[DRY RUN] Would mark {count} run(s) as FAILED:"
+                    f"[DRY RUN] Would mark {count} run(s) as TIMED_OUT:"
                 )
             )
             for run in stuck_runs:
@@ -126,7 +126,7 @@ class Command(BaseCommand):
                 if locked.status != ValidationRunStatus.RUNNING:
                     continue
 
-                locked.status = ValidationRunStatus.FAILED
+                locked.status = ValidationRunStatus.TIMED_OUT
                 locked.error_category = ValidationRunErrorCategory.TIMEOUT
                 locked.error = error_message
                 locked.ended_at = timezone.now()
@@ -159,7 +159,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Marked {len(updated_ids)} stuck run(s) as FAILED "
+                f"Marked {len(updated_ids)} stuck run(s) as TIMED_OUT "
                 f"(timeout: {timeout_minutes} minutes)."
             )
         )

@@ -5,6 +5,7 @@ A **Validation Run** (sometimes just called a "Job") is one execution of a Submi
 It records:
 
 - Status (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELED`, `TIMED_OUT`).
+- Derived state (`PENDING`, `RUNNING`, `COMPLETED`) and result (`PASS`, `FAIL`, `ERROR`, `CANCELED`, `TIMED_OUT`, `UNKNOWN`) for API/CLI consumers.
 - Start and end timestamps.
 - Duration.
 - Resolved configuration (rulesets, thresholds, overrides).

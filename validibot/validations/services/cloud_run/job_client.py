@@ -176,32 +176,3 @@ def get_execution_status(execution_name: str) -> dict:
         "running_count": execution.running_count,
     }
 
-
-# Backwards compatibility alias - deprecated, use run_validator_job instead
-def trigger_validator_job(
-    *,
-    project_id: str,
-    region: str,
-    queue_name: str,  # Ignored - no longer using Cloud Tasks
-    job_name: str,
-    input_uri: str,
-    service_account_email: str | None = None,  # Ignored - uses worker SA
-    timeout_seconds: int = 1800,  # Ignored - job has its own timeout
-) -> str:
-    """
-    DEPRECATED: Use run_validator_job() instead.
-
-    This function previously used Cloud Tasks but now calls run_validator_job()
-    directly. The queue_name, service_account_email, and timeout_seconds
-    parameters are ignored.
-    """
-    logger.warning(
-        "trigger_validator_job is deprecated. Use run_validator_job() instead. "
-        "queue_name, service_account_email, and timeout_seconds are ignored.",
-    )
-    return run_validator_job(
-        project_id=project_id,
-        region=region,
-        job_name=job_name,
-        input_uri=input_uri,
-    )

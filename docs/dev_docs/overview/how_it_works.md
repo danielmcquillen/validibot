@@ -285,7 +285,9 @@ These summary tables keep severity totals, assertion hit rates, and per-step hea
 
 The ValidationRun is updated with final results:
 
-- **Status**: SUCCEEDED if all steps passed, FAILED if any step failed
+- **Status**: One of `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELED`, `TIMED_OUT`
+- **State**: A simplified lifecycle state (`PENDING`, `RUNNING`, `COMPLETED`) derived from Status
+- **Result**: A stable automation-friendly conclusion (`PASS`, `FAIL`, `ERROR`, `CANCELED`, `TIMED_OUT`, `UNKNOWN`) derived from Status, findings, and `error_category`
 - **End Timestamp**: When execution completed
 - **Duration**: Total execution time in milliseconds
 - **Summary Record**: One-to-one link to `ValidationRunSummary` (accessed via `run.summary_record`)
@@ -310,6 +312,8 @@ If validation completes within the timeout window, the API returns immediately:
 {
   "id": "2dd379f6-2425-4bae-8c23-61ed05ff1ebf",
   "status": "SUCCEEDED",
+  "state": "COMPLETED",
+  "result": "PASS",
   "workflow": {
     "id": 42,
     "name": "JSON Product Validation",
@@ -341,6 +345,8 @@ For longer validations, the client receives a polling URL:
 {
   "id": "2dd379f6-2425-4bae-8c23-61ed05ff1ebf",
   "status": "RUNNING",
+  "state": "RUNNING",
+  "result": "UNKNOWN",
   "poll_url": "/api/validation-runs/2dd379f6-2425-4bae-8c23-61ed05ff1ebf/",
   "started_at": "2023-10-05T14:30:00Z"
 }

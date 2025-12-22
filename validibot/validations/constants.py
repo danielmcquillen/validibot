@@ -12,6 +12,41 @@ class ValidationRunStatus(TextChoices):
     TIMED_OUT = "TIMED_OUT", _("Timed Out")
 
 
+class ValidationRunState(TextChoices):
+    """
+    Public-facing lifecycle state for a validation run.
+
+    This is intentionally separate from `ValidationRunStatus`. The underlying
+    model status captures both lifecycle and terminal outcomes (for example
+    `SUCCEEDED`, `FAILED`). For API consumers and the CLI we expose a simpler
+    state machine:
+
+    - `PENDING`: Run created but not yet started.
+    - `RUNNING`: Run is executing.
+    - `COMPLETED`: Run reached a terminal status (success, failure, cancel, timeout).
+    """
+
+    PENDING = "PENDING", _("Pending")
+    RUNNING = "RUNNING", _("Running")
+    COMPLETED = "COMPLETED", _("Completed")
+
+
+class ValidationRunResult(TextChoices):
+    """
+    Public-facing outcome for a validation run.
+
+    Unlike `ValidationRunStatus`, this focuses on the terminal conclusion and is
+    designed to be stable for automation (CLI exit codes, CI pipelines).
+    """
+
+    PASS = "PASS", _("Pass")
+    FAIL = "FAIL", _("Fail")
+    ERROR = "ERROR", _("Error")
+    CANCELED = "CANCELED", _("Canceled")
+    TIMED_OUT = "TIMED_OUT", _("Timed Out")
+    UNKNOWN = "UNKNOWN", _("Unknown")
+
+
 VALIDATION_RUN_TERMINAL_STATUSES = [
     ValidationRunStatus.SUCCEEDED,
     ValidationRunStatus.FAILED,

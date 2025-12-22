@@ -19,6 +19,7 @@ from validibot.users.models import Role
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
 from validibot.validations.tests.factories import ValidationFindingFactory
@@ -277,6 +278,84 @@ class ValidationRunViewSetTestCase(TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0]["message"], finding.message)
         self.assertEqual(issues[0]["path"], finding.path)
+
+    def test_detail_includes_state_and_result_fields(self):
+        """Expose stable `state` and `result` fields for CLI/API consumers."""
+        self.client.force_authenticate(user=self.user)
+
+        pending_run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.PENDING,
+        )
+        url = reverse("api:validation-runs-detail", args=[pending_run.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["state"], "PENDING")
+        self.assertEqual(resp.data["result"], "UNKNOWN")
+
+        succeeded_run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.SUCCEEDED,
+        )
+        url = reverse("api:validation-runs-detail", args=[succeeded_run.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["state"], "COMPLETED")
+        self.assertEqual(resp.data["result"], "PASS")
+
+    def test_failed_run_result_uses_error_category(self):
+        """Map `FAILED` runs to FAIL vs ERROR using `error_category`."""
+        self.client.force_authenticate(user=self.user)
+
+        validation_failed = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.FAILED,
+            error_category=ValidationRunErrorCategory.VALIDATION_FAILED,
+        )
+        url = reverse("api:validation-runs-detail", args=[validation_failed.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["state"], "COMPLETED")
+        self.assertEqual(resp.data["result"], "FAIL")
+
+        runtime_failed = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.FAILED,
+            error_category=ValidationRunErrorCategory.RUNTIME_ERROR,
+        )
+        url = reverse("api:validation-runs-detail", args=[runtime_failed.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["state"], "COMPLETED")
+        self.assertEqual(resp.data["result"], "ERROR")
+
+    def test_timed_out_run_result(self):
+        """Timed out runs should return `result=TIMED_OUT`."""
+        self.client.force_authenticate(user=self.user)
+        run = ValidationRunFactory(
+            submission=self.submission,
+            workflow=self.workflow,
+            org=self.org,
+            project=self.project,
+            status=ValidationRunStatus.TIMED_OUT,
+        )
+        url = reverse("api:validation-runs-detail", args=[run.pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data["state"], "COMPLETED")
+        self.assertEqual(resp.data["result"], "TIMED_OUT")
 
     def test_executor_cannot_retrieve_other_users_run(self):
         """Executor scoped to org cannot fetch runs they didn't launch."""

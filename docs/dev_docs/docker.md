@@ -45,13 +45,18 @@ You can still run locally without Docker (often faster for dev):
 
 1. Install Python 3.13 and `uv` (see [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/)).
 2. Install deps: `uv sync --extra dev`
-3. Start dependencies (optional, if you want to reuse the Docker Postgres):
-   - `docker compose -f docker-compose.local.yml up -d postgres mailpit`
+3. Decide where Postgres runs:
+   - **Local Postgres (default)**: make sure Postgres is running and create the database:
+     - `createdb validibot`
+   - **Docker Postgres** (optional): start dependencies:
+     - `docker compose -f docker-compose.local.yml up -d postgres mailpit`
 4. Load env vars for host-run commands:
-   - `source set-env.sh`
-   - Note: `set-env.sh` rewrites `POSTGRES_HOST=postgres` to `localhost` so `DATABASE_URL` works outside Docker.
+   - Local Postgres: `source set-env.sh`
+   - Docker Postgres: `source set-env.sh docker`
 5. Run migrations: `uv run python manage.py migrate`
 6. Run the server: `uv run python manage.py runserver 0.0.0.0:8000`
+
+If you see `role "validibot" does not exist`, you’re almost certainly connecting to a different Postgres than you think (for example, a local Postgres.app instance on `localhost:5432` instead of the Docker container). Either use local Postgres mode (`source set-env.sh`) or stop the local server so Docker can bind to the port, then use Docker mode (`source set-env.sh docker`).
 
 ## Notes and deviations from full Cookiecutter setup
 

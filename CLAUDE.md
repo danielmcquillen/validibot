@@ -62,6 +62,8 @@ All commands must be run with `uv` to ensure correct virtual environment:
 
 ```bash
 # Run Django commands (requires environment variables)
+# Default: local Postgres (unix socket). If you want to use Docker Postgres, use:
+#   source set-env.sh docker
 source set-env.sh && uv run python manage.py [command]
 
 # Run tests

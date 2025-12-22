@@ -12,6 +12,11 @@ from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.relations import SlugRelatedField
 
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
+from validibot.validations.constants import ValidationRunErrorCategory
+from validibot.validations.constants import ValidationRunResult
+from validibot.validations.constants import ValidationRunState
+from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import ValidationRun
 from validibot.workflows.constants import SUPPORTED_CONTENT_TYPES
 
@@ -47,7 +52,52 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    state = serializers.SerializerMethodField()
+
+    result = serializers.SerializerMethodField()
+
+    user_friendly_error = serializers.CharField(
+        read_only=True,
+    )
+
     steps = serializers.SerializerMethodField()
+
+    def get_state(self, obj: ValidationRun) -> str:
+        if obj.status == ValidationRunStatus.PENDING:
+            return ValidationRunState.PENDING
+        if obj.status == ValidationRunStatus.RUNNING:
+            return ValidationRunState.RUNNING
+        return ValidationRunState.COMPLETED
+
+    def get_result(self, obj: ValidationRun) -> str:
+        """
+        Derive a stable run outcome for automation.
+
+        - PASS: Run succeeded.
+        - FAIL: Run completed but validation failed (user input issues).
+        - ERROR: Run failed due to runtime/system issues.
+        - CANCELED / TIMED_OUT: Terminal non-success outcomes.
+        - UNKNOWN: Run not yet completed.
+        """
+
+        if obj.status == ValidationRunStatus.SUCCEEDED:
+            return ValidationRunResult.PASS
+        if obj.status == ValidationRunStatus.CANCELED:
+            return ValidationRunResult.CANCELED
+        if obj.status == ValidationRunStatus.TIMED_OUT:
+            return ValidationRunResult.TIMED_OUT
+
+        if obj.status == ValidationRunStatus.FAILED:
+            if obj.error_category == ValidationRunErrorCategory.VALIDATION_FAILED:
+                return ValidationRunResult.FAIL
+            if obj.error_category == ValidationRunErrorCategory.TIMEOUT:
+                return ValidationRunResult.TIMED_OUT
+            return ValidationRunResult.ERROR
+
+        if obj.status in VALIDATION_RUN_TERMINAL_STATUSES:
+            return ValidationRunResult.ERROR
+
+        return ValidationRunResult.UNKNOWN
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
         step_runs = list(obj.step_runs.all())
@@ -84,7 +134,10 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "status",
+            "state",
+            "result",
             "source",
+            "error_category",
             "org",
             "user",
             "workflow",
@@ -97,6 +150,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             # "summary", # We use "steps" field to dig into summary and get steps.
             "steps",
             "error",
+            "user_friendly_error",
         ]
         read_only_fields = fields
 

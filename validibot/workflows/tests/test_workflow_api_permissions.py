@@ -1,3 +1,15 @@
+"""
+Tests for workflow API permissions.
+
+The WorkflowViewSet is read-only per ADR-2025-12-22 to minimize API attack
+surface during the initial CLI rollout. Write operations (create, update,
+delete) are only available through the web interface.
+
+These tests verify that:
+1. Read operations (list, retrieve) work correctly with proper permissions
+2. Write operations return 405 Method Not Allowed for all users
+"""
+
 import json
 
 import pytest
@@ -9,7 +21,6 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
-from validibot.workflows.models import Workflow
 from validibot.workflows.tests.factories import WorkflowFactory
 
 
@@ -47,24 +58,8 @@ def workflow(db, org):
     )
 
 
-def test_viewer_cannot_create_workflow(api_client: APIClient, viewer, org):
-    api_client.force_authenticate(user=viewer)
-    payload = {
-        "name": "Viewer Attempt",
-        "slug": "viewer-attempt",
-        "allowed_file_types": [SubmissionFileType.JSON],
-        "org": org.id,
-    }
-    resp = api_client.post(
-        "/api/v1/workflows/",
-        data=json.dumps(payload),
-        content_type="application/json",
-    )
-
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-
-def test_manager_creates_workflow_scoped_to_org(api_client: APIClient, manager, org):
+def test_create_not_allowed_for_any_user(api_client: APIClient, manager, org):
+    """Create operations return 405 since the API is read-only."""
     api_client.force_authenticate(user=manager)
     payload = {
         "name": "API Workflow",
@@ -78,71 +73,46 @@ def test_manager_creates_workflow_scoped_to_org(api_client: APIClient, manager, 
         content_type="application/json",
     )
 
-    assert resp.status_code == status.HTTP_201_CREATED, resp.content
-    workflow_id = resp.data["id"]
-    workflow = Workflow.objects.get(pk=workflow_id)
-    assert workflow.org_id == org.id
-    assert workflow.user_id == manager.id
+    assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
-def test_manager_cannot_create_in_unjoined_org(api_client: APIClient, manager):
-    other_org = OrganizationFactory()
+def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflow):
+    """Update operations return 405 since the API is read-only."""
     api_client.force_authenticate(user=manager)
-
-    resp = api_client.post(
-        "/api/v1/workflows/",
-        data=json.dumps(
-            {
-                "name": "Bad Org",
-                "slug": "bad-org",
-                "org": other_org.id,
-            },
-        ),
-        content_type="application/json",
-    )
-
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-
-def test_viewer_cannot_update_or_delete(api_client: APIClient, viewer, workflow):
-    api_client.force_authenticate(user=viewer)
-    url = f"/api/v1/workflows/{workflow.pk}/"
-
-    resp = api_client.patch(
-        url,
-        data=json.dumps({"name": "Blocked"}),
-        content_type="application/json",
-    )
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-    resp = api_client.delete(url)
-    assert resp.status_code == status.HTTP_403_FORBIDDEN
-
-
-def test_manager_update_keeps_org_fixed(api_client: APIClient, manager, workflow, org):
-    api_client.force_authenticate(user=manager)
-    other_org = OrganizationFactory()
 
     resp = api_client.patch(
         f"/api/v1/workflows/{workflow.pk}/",
-        data=json.dumps(
-            {
-                "name": "Renamed Workflow",
-                "org": other_org.id,
-            },
-        ),
+        data=json.dumps({"name": "Renamed Workflow"}),
         content_type="application/json",
     )
 
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    workflow.refresh_from_db()
-    assert workflow.name != "Renamed Workflow"
-    assert workflow.org_id == org.id
+    assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
-def test_manager_can_delete(api_client: APIClient, manager, workflow):
+def test_delete_not_allowed_for_any_user(api_client: APIClient, manager, workflow):
+    """Delete operations return 405 since the API is read-only."""
     api_client.force_authenticate(user=manager)
+
     resp = api_client.delete(f"/api/v1/workflows/{workflow.pk}/")
 
-    assert resp.status_code == status.HTTP_204_NO_CONTENT
-    assert not Workflow.objects.filter(pk=workflow.pk).exists()
+    assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+def test_viewer_can_list_workflows(api_client: APIClient, viewer, workflow):
+    """Viewers can list workflows they have access to."""
+    api_client.force_authenticate(user=viewer)
+
+    resp = api_client.get("/api/v1/workflows/")
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert len(resp.data) >= 1
+
+
+def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow):
+    """Viewers can retrieve individual workflow details."""
+    api_client.force_authenticate(user=viewer)
+
+    resp = api_client.get(f"/api/v1/workflows/{workflow.pk}/")
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["id"] == workflow.pk

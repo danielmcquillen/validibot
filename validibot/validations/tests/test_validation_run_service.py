@@ -57,7 +57,7 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
     validation_run = response.validation_run
     validation_run.refresh_from_db()
     assert validation_run.pk
-    assert response.status_code in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
+    assert response.status in {status.HTTP_202_ACCEPTED, status.HTTP_201_CREATED}
 
 
 @pytest.mark.django_db

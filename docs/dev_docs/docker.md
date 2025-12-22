@@ -58,6 +58,15 @@ You can still run locally without Docker (often faster for dev):
 
 If you see `role "validibot" does not exist`, you’re almost certainly connecting to a different Postgres than you think (for example, a local Postgres.app instance on `localhost:5432` instead of the Docker container). Either use local Postgres mode (`source set-env.sh`) or stop the local server so Docker can bind to the port, then use Docker mode (`source set-env.sh docker`).
 
+## VS Code: pytest “Run” button
+
+VS Code’s test runner does not source `set-env.sh`, so it needs a simple env file. This repo includes a minimal one at `.vscode/.env` that points tests at local Postgres (`DATABASE_URL=postgres:///validibot`).
+
+If the **Testing** panel hangs, double-check:
+
+- VS Code is using the repo interpreter: `.venv/bin/python` (see `.vscode/settings.json`)
+- Postgres is running and the database exists: `createdb validibot`
+
 ## Notes and deviations from full Cookiecutter setup
 
 - No Celery/Redis services: we use Google Cloud Tasks for async work, so the compose files only include `web` and `db`.

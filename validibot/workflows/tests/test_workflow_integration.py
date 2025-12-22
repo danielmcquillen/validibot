@@ -145,27 +145,27 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
     api_client,
     run_validation_tasks_inline,
 ):
+    """Test that validation run API correctly reports failures for invalid data.
+
+    Since the workflow API is read-only (ADR-2025-12-22), we create the workflow
+    using factories and then test the validation flow via the start endpoint.
+    """
     user = UserFactory()
     org = OrganizationFactory()
     grant_role(user, org, RoleCode.OWNER)
     grant_role(user, org, RoleCode.EXECUTOR)
     api_client.force_authenticate(user=user)
 
-    create_resp = api_client.post(
-        reverse("api:workflow-list"),
-        data={
-            "org": org.pk,
-            "user": user.pk,
-            "name": "Price check",
-            "slug": "price-check",
-            "version": "1.0",
-            "is_active": True,
-        },
-        format="json",
+    # Create workflow using factory since API is read-only
+    workflow = Workflow.objects.create(
+        org=org,
+        user=user,
+        name="Price check",
+        slug="price-check",
+        version="1.0",
+        is_active=True,
+        allowed_file_types=[SubmissionFileType.JSON],
     )
-    assert create_resp.status_code == status.HTTP_201_CREATED
-    workflow_id = create_resp.data["id"]
-    workflow = Workflow.objects.get(pk=workflow_id)
 
     validator = ValidatorFactory(
         validation_type=ValidationType.BASIC,

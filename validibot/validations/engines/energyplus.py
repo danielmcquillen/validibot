@@ -6,10 +6,11 @@ Cloud Run Jobs and receives results via callbacks.
 
 The validation flow:
 1. Engine receives validator, submission, ruleset from workflow execution
-2. If Cloud Run Jobs is configured, launches async job via launcher
-3. Returns pending ValidationResult
-4. Cloud Run Job executes and POSTs callback to Django
-5. Callback updates ValidationRun with final results
+2. run_context is set by the handler with validation_run and workflow_step
+3. If Cloud Run Jobs is configured, launches async job via launcher
+4. Returns pending ValidationResult
+5. Cloud Run Job executes and POSTs callback to Django
+6. Callback updates ValidationRun with final results
 
 If Cloud Run Jobs is not configured (local dev), returns not-implemented error.
 """
@@ -32,11 +33,10 @@ from validibot.validations.engines.registry import register_engine
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
-    from validibot.validations.models import ValidationRun
     from validibot.validations.models import Validator
-    from validibot.workflows.models import WorkflowStep
 
 
 @register_engine(ValidationType.ENERGYPLUS)
@@ -53,63 +53,54 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset | None,
+        run_context: RunContext | None = None,
     ) -> ValidationResult:
         """
         Validate an EnergyPlus submission.
 
-        This is the original signature that doesn't have access to ValidationRun.
-        Returns not-implemented error and directs to use validate_with_run instead.
-        """
-        provider = self.resolve_provider(validator)
-        if provider:
-            provider.ensure_catalog_entries()
-
-        issues = [
-            ValidationIssue(
-                path="",
-                message=_(
-                    "EnergyPlus validation requires Cloud Run Jobs integration. "
-                    "Use validate_with_run() instead of validate().",
-                ),
-                severity=Severity.ERROR,
-            ),
-        ]
-
-        stats = {
-            "implementation_status": "Requires validate_with_run()",
-            "executor": "Cloud Run Jobs",
-        }
-
-        return ValidationResult(passed=False, issues=issues, stats=stats)
-
-    def validate_with_run(
-        self,
-        validator: Validator,
-        submission: Submission,
-        ruleset: Ruleset | None,
-        run: ValidationRun,
-        step: WorkflowStep,
-    ) -> ValidationResult:
-        """
-        Validate an EnergyPlus submission with ValidationRun context.
-
-        This is called by the validation workflow when it has created a ValidationRun.
-        It launches a Cloud Run Job asynchronously and returns a pending result.
+        Launches a Cloud Run Job asynchronously and returns a pending result.
 
         Args:
             validator: EnergyPlus validator instance
             submission: Submission with IDF/epJSON content
             ruleset: Ruleset with weather_file metadata
-            run: ValidationRun instance (in PENDING status)
-            step: WorkflowStep with configuration
+            run_context: Required execution context with validation_run and step
 
         Returns:
             ValidationResult with passed=None (pending) if Cloud Run Jobs configured,
-            or passed=False (error) if not configured for local development.
+            or passed=False (error) if not configured or missing context.
         """
         provider = self.resolve_provider(validator)
         if provider:
             provider.ensure_catalog_entries()
+
+        # Store run_context on instance for CEL evaluation methods
+        self.run_context = run_context
+
+        # Validate that run_context is properly set
+        run = run_context.validation_run if run_context else None
+        step = run_context.step if run_context else None
+
+        if not run or not step:
+            logger.error(
+                "EnergyPlus engine requires run_context to be set with "
+                "validation_run and workflow_step"
+            )
+            issues = [
+                ValidationIssue(
+                    path="",
+                    message=_(
+                        "EnergyPlus validation requires workflow context. "
+                        "Ensure the engine is called via the workflow handler.",
+                    ),
+                    severity=Severity.ERROR,
+                ),
+            ]
+            return ValidationResult(
+                passed=False,
+                issues=issues,
+                stats={"implementation_status": "Missing run_context"},
+            )
 
         # Check if Cloud Run Jobs is configured
         if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_ENERGYPLUS_JOB_NAME:

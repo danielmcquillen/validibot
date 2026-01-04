@@ -7,30 +7,32 @@
       "request": "launch",
       "args": [
         "runserver",
-        "8000",
+        "8000"
       ],
       "django": true,
       "autoStartBrowser": false,
       "program": "${workspaceFolder}/manage.py",
       "envFile": "${workspaceFolder}/.envs/.local/.django",
+      "env": {
+        "DATABASE_URL": "postgres:///validibot"
+      },
       "justMyCode": false
     },
     {
-      "name": "Python: Celery",
+      "name": "Python Debugger: Django (Docker Postgres)",
       "type": "debugpy",
       "request": "launch",
-      "module": "celery",
-      "console": "integratedTerminal",
       "args": [
-        "-A",
-        "config.celery_app",
-        "worker",
-        "-Q",
-        "celery",
-        "-l",
-        "debug"
+        "runserver",
+        "8000"
       ],
+      "django": true,
+      "autoStartBrowser": false,
+      "program": "${workspaceFolder}/manage.py",
       "envFile": "${workspaceFolder}/.envs/.local/.django",
+      "env": {
+        "DATABASE_URL": "postgres://validibot:validibot@localhost:5432/validibot"
+      },
       "justMyCode": false
     }
   ]

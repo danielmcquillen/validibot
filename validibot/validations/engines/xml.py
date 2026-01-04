@@ -16,6 +16,7 @@ from validibot.validations.engines.base import ValidationResult
 from validibot.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Validator
@@ -40,11 +41,14 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset,
+        run_context: RunContext | None = None,
     ) -> ValidationResult:
         """
         Validate the provided XML against the configured schema (XSD or Relax NG).
         Returns a ValidationResult with ERROR issues for any schema violations.
         """
+        # Store run_context on instance for CEL evaluation methods
+        self.run_context = run_context
         if submission.file_type != SubmissionFileType.XML:
             return ValidationResult(
                 passed=False,

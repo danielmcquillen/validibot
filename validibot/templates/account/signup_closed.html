@@ -1,0 +1,59 @@
+{% extends "core/base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Signup by Invitation Only" %}
+{% endblock title %}
+
+{% block content %}
+  {% site_name as current_site_name %}
+  <div class="container-fluid entrance-page p-4">
+    <div class="entrance-card-wrapper">
+      <div class="card">
+        <div class="card-body text-center py-5">
+
+          <div class="mb-4">
+            <i class="bi bi-envelope-paper text-primary" style="font-size: 3rem;"></i>
+          </div>
+
+          <h3 class="card-body-header mb-3">
+            {% trans "Signup is by Invitation Only" %}
+          </h3>
+
+          <p class="text-muted mb-4">
+            {% blocktrans trimmed %}
+              Validibot is currently available by invitation only.
+              If you've received an invite link, please use that to create your account.
+            {% endblocktrans %}
+          </p>
+
+          <div class="bg-light rounded p-3 mb-4">
+            <p class="small text-muted mb-2">
+              <i class="bi bi-info-circle me-1"></i>
+              {% trans "How to get access:" %}
+            </p>
+            <p class="small mb-0">
+              {% blocktrans trimmed %}
+                Ask a workflow author to invite you to run their validation workflow.
+                You'll receive an email with a link to create your free account.
+              {% endblocktrans %}
+            </p>
+          </div>
+
+          <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
+            <a href="{% url 'account_login' %}" class="btn btn-primary">
+              <i class="bi bi-box-arrow-in-right me-1"></i>
+              {% trans "Sign In" %}
+            </a>
+            <a href="{% url 'marketing:home' %}" class="btn btn-outline-secondary">
+              <i class="bi bi-house me-1"></i>
+              {% trans "Back to Home" %}
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}

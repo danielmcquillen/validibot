@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from validibot.actions.protocols import RunContext
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
@@ -21,11 +24,12 @@ def _energyplus_ruleset():
     )
 
 
-def test_energyplus_engine_returns_not_implemented():
+def test_energyplus_engine_requires_run_context():
     """
-    Test that the EnergyPlus engine returns error when validate() called.
+    Test that the EnergyPlus engine returns error when run_context is not provided.
 
-    The engine now requires validate_with_run() for Cloud Run Jobs integration.
+    The engine requires run_context with validation_run and step to be passed
+    to validate(). This is normally done by the handler.
     """
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
     ruleset = _energyplus_ruleset()
@@ -33,17 +37,56 @@ def test_energyplus_engine_returns_not_implemented():
 
     engine = EnergyPlusValidationEngine(config={})
 
+    # Don't pass run_context - should fail
     result = engine.validate(
         validator=validator,
         submission=submission,
         ruleset=ruleset,
+        run_context=None,
     )
 
     assert result.passed is False
     assert any(
-        "validate_with_run" in issue.message.lower()
+        "workflow context" in issue.message.lower()
         and issue.severity == Severity.ERROR
         for issue in result.issues
     )
     assert result.stats is not None
-    assert result.stats["implementation_status"] == "Requires validate_with_run()"
+    assert result.stats["implementation_status"] == "Missing run_context"
+
+
+def test_energyplus_engine_not_configured():
+    """
+    Test that the EnergyPlus engine returns error when Cloud Run not configured.
+
+    When run_context is provided but GCS_VALIDATION_BUCKET and GCS_ENERGYPLUS_JOB_NAME
+    are not configured, the engine should return a helpful error.
+    """
+    validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+    ruleset = _energyplus_ruleset()
+    submission = SubmissionFactory(content='{"Building": "Demo"}')
+
+    engine = EnergyPlusValidationEngine(config={})
+
+    # Create run_context with mock objects
+    run_context = RunContext(
+        validation_run=MagicMock(id=1),
+        step=MagicMock(id=1),
+        downstream_signals={},
+    )
+
+    result = engine.validate(
+        validator=validator,
+        submission=submission,
+        ruleset=ruleset,
+        run_context=run_context,
+    )
+
+    assert result.passed is False
+    assert any(
+        "not configured" in issue.message.lower()
+        and issue.severity == Severity.ERROR
+        for issue in result.issues
+    )
+    assert result.stats is not None
+    assert result.stats["implementation_status"] == "Not configured"

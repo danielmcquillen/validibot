@@ -11,7 +11,7 @@ license = { text = "Proprietary" }
 authors = [{ name = "Daniel McQuillen" }]
 dependencies = [
   "argon2-cffi==25.1.0",
-  "authlib==1.6.5",
+  "authlib==1.6.6",
   "bleach==6.3.0",
   "cel-python==0.4.0",
   "crispy-bootstrap5==2025.6",
@@ -19,9 +19,9 @@ dependencies = [
   "defusedxml==0.7.1",
   "django==6.0",
   "django-allauth[mfa]==65.13.1",
-  "django-anymail[postmark]==13.1",
-  "dj-stripe==2.9.0",
-  "stripe>=5.0.0,<11.0.0", # Pin stripe version for dj-stripe 2.9.0 compatibility
+  "django-anymail[postmark]==14.0",
+  "dj-stripe==2.10.3",
+  "stripe>=13.0.1",
   "django-cloud-tasks>=0.0.4",
   "django-cors-headers==4.9.0",
   "django-crispy-forms==2.5",
@@ -33,7 +33,7 @@ dependencies = [
   "django-storages[google]==1.14.6",
   "djangorestframework==3.16.1",
   "drf-spectacular==0.29.0",
-  "fmpy==0.3.26",
+  "fmpy==0.3.27",
   "google-cloud-kms>=3.7.0",
   "google-cloud-tasks>=2.20.0",
   "gunicorn==23.0.0",
@@ -42,21 +42,21 @@ dependencies = [
   "lxml==6.0.2",
   "markdown2==2.5.4",
   "nh3==0.3.2",
-  "pillow==12.0.0",
+  "pillow==12.1.0",
   "psycopg[c]==3.3.2",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
   "redis==7.1.0",
-  "sentry-sdk==2.47.0",
+  "sentry-sdk==2.48.0",
   # vb-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # This Git URL is used when building Docker images (local or production).
   # For local non-Docker development, see [tool.uv.sources] below which overrides
   # this to use the local vb_shared_dev folder instead.
-  "vb-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/vb_shared.git@main",
+  "vb-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/vb_shared.git@main",
   "uvicorn-worker==0.4.0",
-  "uvicorn[standard]==0.38.0",
+  "uvicorn[standard]==0.40.0",
   "whitenoise==6.11.0",
-  "google-cloud-run>=0.12.0",
+  "google-cloud-run>=0.13.0",
   "python-json-logger>=4.0.0",
   "django-recaptcha>=4.1.0",
 ]
@@ -64,7 +64,7 @@ dependencies = [
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib"
+addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib -m 'not smoke'"
 python_files = ["tests.py", "test_*.py"]
 testpaths = [
   "tests",
@@ -72,6 +72,7 @@ testpaths = [
 ] # exclude sibling dev repos (sv_modal_dev, vb_shared_dev) from discovery
 markers = [
   "integration: marks tests as integration (may require platform-specific binaries)",
+  "smoke: marks tests as smoke tests (run with -m smoke, skipped by default)",
 ]
 
 # ignore test_use_cases

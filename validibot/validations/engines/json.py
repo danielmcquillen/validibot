@@ -17,6 +17,7 @@ from validibot.validations.engines.base import ValidationResult
 from validibot.validations.engines.registry import register_engine
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Submission
     from validibot.validations.models import Validator
@@ -37,7 +38,10 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset,
+        run_context: RunContext | None = None,
     ) -> ValidationResult:
+        # Store run_context on instance for CEL evaluation methods
+        self.run_context = run_context
         if submission.file_type != SubmissionFileType.JSON:
             return ValidationResult(
                 passed=False,

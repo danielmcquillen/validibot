@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from vb_shared.fmi import FMIRunResult
 
+from validibot.actions.protocols import RunContext
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
@@ -37,10 +40,65 @@ def _prime_modal_cache_fake():
     return []
 
 
+def _mock_run_context() -> RunContext:
+    """Create a mock RunContext for testing."""
+    return RunContext(
+        validation_run=MagicMock(id=1),
+        step=MagicMock(id=1),
+        downstream_signals={},
+    )
+
+
 class FMIEngineTests(TestCase):
     """Validate FMI engine dispatch and required configuration."""
 
-    def test_fmi_engine_success_path(self):
+    def test_fmi_engine_requires_run_context(self):
+        """Test that FMI engine returns error when run_context is not provided."""
+        org = OrganizationFactory()
+        workflow = WorkflowFactory(
+            org=org,
+            allowed_file_types=[SubmissionFileType.BINARY],
+        )
+        upload = _fake_fmu()
+        validator = create_fmi_validator(
+            org=org,
+            project=workflow.project,
+            name="Test FMU",
+            upload=upload,
+        )
+        ruleset = Ruleset.objects.create(
+            org=org,
+            user=None,
+            name="FMI Rules",
+            ruleset_type=RulesetType.FMI,
+            version="1",
+            rules_text="{}",
+        )
+        submission = SubmissionFactory(
+            org=org,
+            project=workflow.project,
+            workflow=workflow,
+            file_type=SubmissionFileType.BINARY,
+        )
+
+        engine = FMIValidationEngine(config={})
+
+        # Don't pass run_context - should fail
+        result = engine.validate(
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
+            run_context=None,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertTrue(
+            any("workflow context" in issue.message.lower() for issue in result.issues)
+        )
+        self.assertEqual(result.stats["implementation_status"], "Missing run_context")
+
+    def test_fmi_engine_not_configured(self):
+        """Test that FMI engine returns error when Cloud Run not configured."""
         org = OrganizationFactory()
         workflow = WorkflowFactory(
             org=org,
@@ -85,17 +143,24 @@ class FMIEngineTests(TestCase):
         _FakeRunner(fake_result)
 
         engine = FMIValidationEngine(config={"inputs": {"u_in": 1.0}})
+
+        # Pass run_context so we get past that check
         result = engine.validate(
             validator=validator,
             submission=submission,
             ruleset=ruleset,
+            run_context=_mock_run_context(),
         )
 
         # Without Cloud Run config, engine returns failure
         self.assertFalse(result.passed)
         self.assertIn("implementation_status", result.stats)
+        self.assertEqual(
+            result.stats["implementation_status"], "FMI Cloud Run not configured"
+        )
 
     def test_fmi_engine_rejects_missing_fmu(self):
+        """Test that FMI engine handles missing FMU gracefully."""
         org = OrganizationFactory()
         workflow = WorkflowFactory(
             org=org,
@@ -123,7 +188,13 @@ class FMIEngineTests(TestCase):
             project=workflow.project,
         )
         engine = FMIValidationEngine(config={})
+
+        # Don't pass run_context - will fail with missing context error
+        # which is fine since we're testing that engine handles edge cases
         result = engine.validate(
-            validator=validator, submission=submission, ruleset=ruleset
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
+            run_context=None,
         )
         self.assertFalse(result.passed)

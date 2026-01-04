@@ -16,7 +16,6 @@ from abc import abstractmethod
 from dataclasses import asdict
 from dataclasses import dataclass
 from gettext import gettext as _
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -35,6 +34,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.providers import get_provider_for_validator
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Validator
@@ -90,29 +90,32 @@ class ValidationResult:
 
 class BaseValidatorEngine(ABC):
     """
-    Base class for all validator enginge implementations....the code that
-    actually does the validation logic.
+    Base class for all validator engine implementations.
+
     Concrete subclasses should be registered in the registry keyed by ValidationType.
 
-    To keep validator engine classes clean, we pass everything it
-    needs either via the config dict or the ContentSource.
-    We don't pass in any model instances.
+    Attributes:
+        config: Arbitrary configuration dict (e.g., schema paths, thresholds, flags)
+
+    The validate() method accepts an optional run_context argument containing:
+        - validation_run: The ValidationRun model instance
+        - step: The WorkflowStep model instance
+        - downstream_signals: Signals from previous workflow steps (for CEL)
+
+    Async engines (EnergyPlus, FMI) require run_context for job tracking. Sync
+    engines (XML, JSON, Basic, AI) typically don't need it, though the base class
+    CEL evaluation methods can use it for cross-step assertions.
     """
 
     validation_type: ValidationType
     cel_helpers = DEFAULT_HELPERS
 
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
-        # Arbitrary configuration (e.g., schema, thresholds, flags)
         self.config: dict[str, Any] = config or {}
         self.processor_name: str = self.config.get("processor_name", "").strip()
-        # Run context is populated by ValidationRunService when a validator
-        # executes within a workflow. Engines can safely assume it exists.
-        self.run_context: SimpleNamespace = SimpleNamespace(
-            validation_run=None,
-            workflow_step=None,
-            downstream_signals={},
-        )
+        # run_context is now passed as an argument to validate(), but we keep
+        # a reference on the instance for use by CEL evaluation methods.
+        self.run_context: RunContext | None = None
 
     def get_cel_helpers(self) -> dict[str, CelHelper]:
         """
@@ -450,9 +453,19 @@ class BaseValidatorEngine(ABC):
         validator: Validator,
         submission: Submission,
         ruleset: Ruleset,
+        run_context: RunContext | None = None,
     ) -> ValidationResult:
         """
-        Run standard, defined validator on a submission by an API user,
-        using a ruleset defined by the author.
+        Run validation on a submission using the given validator and ruleset.
+
+        Args:
+            validator: The Validator model instance defining validation behavior.
+            submission: The Submission model instance containing data to validate.
+            ruleset: The Ruleset model instance with validation rules/assertions.
+            run_context: Optional execution context containing validation_run and
+                step for async engines. Sync engines typically don't need this.
+
+        Returns:
+            ValidationResult with passed status, issues list, and optional stats.
         """
         raise NotImplementedError

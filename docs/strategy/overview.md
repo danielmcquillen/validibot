@@ -19,7 +19,7 @@ Validibot is a platform for validating complex technical data and models
 against rich, containerised logic.
 
 Instead of simple "if field X is empty" checks, Validibot runs deep
-validators—FMUs, EnergyPlus models, simulations, and advanced scripts—and
+validators -- FMUs, EnergyPlus models, simulations, and advanced scripts -- and
 turns their results into clear, reusable workflows the whole team can trust.
 
 Long term, Validibot should be the obvious choice when someone asks:

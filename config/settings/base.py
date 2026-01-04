@@ -23,9 +23,10 @@ if READ_DOT_ENV_FILE:
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)
 # App role (web vs worker). Worker instances expose internal APIs only.
+# Default to "web" for local development; production sets APP_ROLE explicitly.
 APP_ROLE = env(
     "APP_ROLE",
-    default="worker" if DEBUG else "web",
+    default="web",
 )
 APP_IS_WORKER = APP_ROLE.lower() == "worker"
 # Local time zone. Choices are
@@ -378,8 +379,9 @@ SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
 SOCIALACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSocialSignupForm"}
 # https://docs.allauth.org/en/latest/account/configuration.html
 # Brute force protection: lock out after 5 failed attempts for 5 minutes
-ACCOUNT_LOGIN_ATTEMPTS_LIMIT = 5
-ACCOUNT_LOGIN_ATTEMPTS_TIMEOUT = 300
+ACCOUNT_RATE_LIMITS = {
+    "login_failed": "5/5m",  # 5 failed attempts per 5 minutes
+}
 
 # django-rest-framework
 # -------------------------------------------------------------------------------

@@ -70,6 +70,19 @@ class AccountAdapter(DefaultAccountAdapter):
     """
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
+        """
+        Determine if signup is allowed for this request.
+
+        Signup is allowed if:
+        1. ACCOUNT_ALLOW_REGISTRATION is True (open registration), OR
+        2. The user has a workflow invite token in their session (invite-only access)
+
+        This enables invite-only signup: set ACCOUNT_ALLOW_REGISTRATION=False to
+        block public signup, but users with workflow invite links can still register.
+        """
+        # Always allow signup if user has a workflow invite token
+        if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+            return True
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
     def get_login_redirect_url(self, request: HttpRequest) -> str:
@@ -261,6 +274,15 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         request: HttpRequest,
         sociallogin: SocialLogin,
     ) -> bool:
+        """
+        Determine if social signup is allowed for this request.
+
+        Same logic as AccountAdapter: allow if open registration OR if user
+        has a workflow invite token in session.
+        """
+        # Always allow signup if user has a workflow invite token
+        if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
+            return True
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
     def populate_user(

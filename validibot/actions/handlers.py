@@ -22,12 +22,42 @@ logger = logging.getLogger(__name__)
 
 class ValidatorStepHandler:
     """
-    Adapter that wraps ValidatorEngines for the StepHandler protocol.
+    Adapter that bridges validator engines to the unified StepHandler protocol.
+
+    This handler is the glue between the workflow engine (which speaks the
+    StepHandler protocol) and the various validator engines (XML, JSON, Basic,
+    EnergyPlus, FMI, AI). It's automatically invoked when a WorkflowStep has
+    an associated Validator.
+
+    Execution flow:
+        1. Extracts the Validator from the WorkflowStep
+        2. Validates file type compatibility
+        3. Resolves the appropriate engine class from the registry
+        4. Instantiates the engine with step-level config
+        5. Calls engine.validate() with the submission and run_context
+        6. Translates ValidationResult → StepResult
+
+    For async engines (EnergyPlus, FMI), the engine launches a Cloud Run Job
+    and returns a pending result. The workflow engine handles the async
+    completion via callbacks.
+
+    Example:
+        This handler is not called directly. The ValidationRunService
+        dispatches to it when processing a validator step::
+
+            # In ValidationRunService.execute_step():
+            handler = ValidatorStepHandler()
+            result = handler.execute(run_context)
+
+    See Also:
+        - BaseValidatorEngine: The abstract base class for all engines
+        - StepHandler: The protocol this class implements
+        - ValidationRunService: The dispatcher that invokes this handler
     """
 
-    def execute(self, context: RunContext) -> StepResult:
-        step = context.step
-        run = context.validation_run
+    def execute(self, run_context: RunContext) -> StepResult:
+        step = run_context.step
+        run = run_context.validation_run
         validator = getattr(step, "validator", None)
 
         if not validator:
@@ -92,36 +122,15 @@ class ValidatorStepHandler:
         # Setup Engine
         config = getattr(step, "config", {}) or {}
         validator_engine: BaseValidatorEngine = validator_cls(config=config)
-        
-        # Inject Context (Backwards Compatibility)
-        if getattr(validator_engine, "run_context", None) is None:
-            from types import SimpleNamespace
-            validator_engine.run_context = SimpleNamespace(
-                validation_run=run,
-                workflow_step=step,
-                downstream_signals=context.downstream_signals,
-            )
-        else:
-            validator_engine.run_context.validation_run = run
-            validator_engine.run_context.workflow_step = step
-            validator_engine.run_context.downstream_signals = context.downstream_signals
 
-        # Execute
+        # Execute - pass run_context as explicit argument
         try:
-            if hasattr(validator_engine, "validate_with_run"):
-                v_result = validator_engine.validate_with_run(
-                    validator=validator,
-                    submission=submission,
-                    ruleset=getattr(step, "ruleset", None),
-                    run=run,
-                    step=step,
-                )
-            else:
-                v_result = validator_engine.validate(
-                    validator=validator,
-                    submission=submission,
-                    ruleset=getattr(step, "ruleset", None),
-                )
+            v_result = validator_engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=getattr(step, "ruleset", None),
+                run_context=run_context,
+            )
         except Exception as exc:
             logger.exception("Validator engine execution failed")
             return StepResult(
@@ -149,10 +158,10 @@ class SlackMessageActionHandler:
     TODO: Implement actual Slack integration using slack_sdk.
     """
 
-    def execute(self, context: RunContext) -> StepResult:
+    def execute(self, run_context: RunContext) -> StepResult:
         raise NotImplementedError(
             "SlackMessageActionHandler is not yet implemented. "
-            f"Step ID: {context.step.id}"
+            f"Step ID: {run_context.step.id}"
         )
 
 
@@ -163,10 +172,10 @@ class SignedCertificateActionHandler:
     TODO: Implement PDF certificate generation and attachment.
     """
 
-    def execute(self, context: RunContext) -> StepResult:
+    def execute(self, run_context: RunContext) -> StepResult:
         raise NotImplementedError(
             "SignedCertificateActionHandler is not yet implemented. "
-            f"Step ID: {context.step.id}"
+            f"Step ID: {run_context.step.id}"
         )
 
 

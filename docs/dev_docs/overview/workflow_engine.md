@@ -27,7 +27,7 @@ All execution logic must implement the `StepHandler` protocol defined in `validi
 
 ```python
 class StepHandler(Protocol):
-    def execute(self, context: RunContext) -> StepResult:
+    def execute(self, run_context: RunContext) -> StepResult:
         ...
 ```
 

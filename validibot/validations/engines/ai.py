@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from statistics import mean
 from statistics import pstdev
+from typing import TYPE_CHECKING
 from typing import Any
 
 from django.utils.translation import gettext_lazy as _
@@ -16,6 +17,12 @@ from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
 from validibot.validations.engines.registry import register_engine
+
+if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
+    from validibot.submissions.models import Submission
+    from validibot.validations.models import Ruleset
+    from validibot.validations.models import Validator
 
 JSON_POINTER_ROOT = "$"
 JSON_POINTER_SEPARATOR = "."
@@ -489,7 +496,15 @@ def _heuristic_critiques(data: Any) -> list[ValidationIssue]:
 class AiAssistEngine(BaseValidatorEngine):
     """Heuristic AI-assist validator providing policy checks and critiques."""
 
-    def validate(self, validator, submission, ruleset):
+    def validate(
+        self,
+        validator: Validator,
+        submission: Submission,
+        ruleset: Ruleset,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        # Store run_context on instance for CEL evaluation methods
+        self.run_context = run_context
         content = submission.get_content()
         parsed = _ensure_json_structure(content)
         issues: list[ValidationIssue] = []

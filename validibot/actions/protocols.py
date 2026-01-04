@@ -13,12 +13,27 @@ if TYPE_CHECKING:
 
 @dataclass
 class RunContext:
-    """Context passed to every step handler during execution."""
-    
-    validation_run: ValidationRun
-    step: WorkflowStep
+    """
+    Context passed to step handlers and validator engines during execution.
+
+    This dataclass provides execution context for both workflow step handlers
+    (via StepHandler.execute()) and validator engines (via
+    BaseValidatorEngine.validate()).
+
+    For step handlers, all fields are required. For validator engines, the context
+    is optional - sync engines (XML, JSON, Basic, AI) typically don't need it,
+    while async engines (EnergyPlus, FMI) require it for job tracking.
+
+    Attributes:
+        validation_run: The ValidationRun model instance being executed.
+        step: The WorkflowStep model instance being processed.
+        downstream_signals: Signals from previous workflow steps, keyed by step slug.
+            Used for CEL cross-step assertions.
+    """
+
+    validation_run: ValidationRun | None = None
+    step: WorkflowStep | None = None
     downstream_signals: dict[str, Any] = field(default_factory=dict)
-    # Add other shared context here (e.g. user, dry_run flag, etc.)
 
 
 @dataclass
@@ -38,14 +53,14 @@ class StepHandler(Protocol):
 
     def execute(
         self,
-        context: RunContext,
+        run_context: RunContext,
     ) -> StepResult:
         """
         Execute the business logic for this step.
-        
+
         Args:
-            context: The run context containing the step, run, and signals.
-            
+            run_context: The run context containing the step, run, and signals.
+
         Returns:
             StepResult indicating success/failure and any outputs.
         """

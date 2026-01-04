@@ -88,5 +88,6 @@ nav:
       - ADR-0021: adr/2025-10-31-ruleset-and-provider.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
+      - Post-Deployment Verification: deployment/post-deployment-verification.md
       - Go-Live Checklist: deployment/go-live-checklist.md
       - Heroku: deployment/heroku.md

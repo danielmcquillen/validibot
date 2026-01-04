@@ -167,6 +167,14 @@ This checklist covers tasks to complete before launching Validibot to production
 
 ## Post-Launch
 
+- [ ] **Run post-deployment verification**
+
+  ```bash
+  just verify-deployment prod
+  ```
+
+  This runs smoke tests to verify critical functionality. See [Post-Deployment Verification](./post-deployment-verification.md) for details.
+
 - [ ] **Monitor error rates** for first 24 hours
 
 - [ ] **Monitor database performance** - watch for slow queries

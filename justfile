@@ -1054,6 +1054,166 @@ test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
 # =============================================================================
+# Post-Deployment Verification (PDV)
+# =============================================================================
+#
+# Smoke tests that run against a deployed environment to verify critical
+# functionality is working correctly after deployment.
+#
+# Usage:
+#   just verify-deployment dev      # Verify dev environment
+#   just verify-deployment prod     # Verify production
+#   just verify-deployment prod -k "callback"  # Run specific tests
+#
+# What gets tested:
+#   - Web service health and accessibility
+#   - Worker service IAM protection (unauthenticated requests rejected)
+#   - Callback endpoint security
+#   - API endpoint availability
+#
+# Prerequisites:
+#   - Services deployed to the target stage
+#   - Valid gcloud credentials with Cloud Run Invoker role
+#
+# =============================================================================
+
+# Verify a deployed environment with smoke tests
+# Usage: just verify-deployment dev | just verify-deployment prod
+verify-deployment stage *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    echo "=============================================="
+    echo "Post-Deployment Verification: {{stage}}"
+    echo "=============================================="
+    echo ""
+
+    # Check gcloud is available
+    if ! command -v gcloud &> /dev/null; then
+        echo "Error: gcloud CLI not found. Install Google Cloud SDK first."
+        exit 1
+    fi
+
+    # Check we have valid credentials
+    if ! gcloud auth print-identity-token &> /dev/null; then
+        echo "Error: No valid gcloud credentials."
+        echo "Run: gcloud auth login"
+        exit 1
+    fi
+
+    # Compute service names
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        WORKER_SERVICE="validibot-worker"
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+    fi
+
+    echo "Target services:"
+    echo "  Web:    $WEB_SERVICE"
+    echo "  Worker: $WORKER_SERVICE"
+    echo ""
+
+    # Check services exist
+    echo "Checking service deployment..."
+    WEB_URL=$(gcloud run services describe "$WEB_SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null) || {
+        echo "Error: Web service $WEB_SERVICE not found or not accessible"
+        exit 1
+    }
+    WORKER_URL=$(gcloud run services describe "$WORKER_SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null) || {
+        echo "Error: Worker service $WORKER_SERVICE not found or not accessible"
+        exit 1
+    }
+
+    echo "  Web URL:    $WEB_URL"
+    echo "  Worker URL: $WORKER_URL"
+    echo ""
+    echo "Running smoke tests..."
+    echo ""
+
+    # Run the smoke tests
+    SMOKE_TEST_STAGE={{stage}} uv run pytest tests/smoke/ {{args}} -v
+
+    echo ""
+    echo "=============================================="
+    echo "✓ PDV Complete: {{stage}}"
+    echo "=============================================="
+
+# Quick deployment verification (just check services are up)
+verify-deployment-quick stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Validate stage
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    echo "Quick verification for {{stage}}..."
+
+    # Compute service names
+    if [ "{{stage}}" = "prod" ]; then
+        WEB_SERVICE="validibot-web"
+        WORKER_SERVICE="validibot-worker"
+    else
+        WEB_SERVICE="validibot-web-{{stage}}"
+        WORKER_SERVICE="validibot-worker-{{stage}}"
+    fi
+
+    # Check web service
+    WEB_URL=$(gcloud run services describe "$WEB_SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null) || {
+        echo "✗ Web service not deployed"
+        exit 1
+    }
+
+    # Check worker service
+    WORKER_URL=$(gcloud run services describe "$WORKER_SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(status.url)" 2>/dev/null) || {
+        echo "✗ Worker service not deployed"
+        exit 1
+    }
+
+    # Quick health check on web
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$WEB_URL" --max-time 30) || HTTP_CODE="000"
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "✓ Web service responding ($WEB_URL)"
+    else
+        echo "✗ Web service returned $HTTP_CODE"
+        exit 1
+    fi
+
+    # Quick IAM check on worker (should be 403)
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$WORKER_URL" --max-time 30) || HTTP_CODE="000"
+    if [ "$HTTP_CODE" = "403" ]; then
+        echo "✓ Worker service IAM protected ($WORKER_URL)"
+    else
+        echo "✗ Worker service returned $HTTP_CODE (expected 403)"
+        exit 1
+    fi
+
+    echo ""
+    echo "✓ Quick verification passed for {{stage}}"
+
+# =============================================================================
 # KMS Setup (Per Stage)
 # =============================================================================
 #

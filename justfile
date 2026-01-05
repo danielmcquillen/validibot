@@ -787,6 +787,21 @@ gcp-init-stage stage:
     done
     echo ""
 
+    # Step 2b: Grant serviceAccountTokenCreator on itself (needed for Cloud Tasks OIDC tokens)
+    echo "2b. Granting serviceAccountTokenCreator (for Cloud Tasks OIDC)"
+    if gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --project={{gcp_project}} \
+        --format="value(bindings.members)" 2>/dev/null | grep -q "$SA_EMAIL"; then
+        echo "   ✓ serviceAccountTokenCreator (already bound)"
+    else
+        gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/iam.serviceAccountTokenCreator" \
+            --project={{gcp_project}} \
+            --quiet &>/dev/null || true
+        echo "   ✓ serviceAccountTokenCreator (added)"
+    fi
+    echo ""
+
     # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)
     echo "3. Creating Cloud SQL instance: $DB_INSTANCE"
     if gcloud sql instances describe "$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then

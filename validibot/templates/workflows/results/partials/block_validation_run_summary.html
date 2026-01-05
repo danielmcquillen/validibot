@@ -36,8 +36,8 @@ This template lists out the summary results of the validation workflow run.
             </dl>
         </section>
 
-        <section>
-            {% if run.submission and run.submission.name or run.short_description %}
+        {% if run.submission and run.submission.name or run.short_description %}
+            <section>
                 <dl class="row small">
                     {% if run.submission and run.submission.name %}
                         <dt class="col-sm-4">
@@ -56,15 +56,13 @@ This template lists out the summary results of the validation workflow run.
                         </dd>
                     {% endif %}
                 </dl>
-            {% endif %}
-        </section>
+            </section>
+        {% endif %}
 
-        <section>
-            <dl class="row small">
-
-                {% with summary_record=run.summary_record %}
-                    {% if summary_record %}
-
+        {% with summary_record=run.summary_record %}
+            {% if summary_record %}
+                <section>
+                    <dl class="row small">
                         <dt class="col-5 col-lg-4">
                             {% trans "Errors" %}
                         </dt>
@@ -92,13 +90,10 @@ This template lists out the summary results of the validation workflow run.
                         <dd class="col-7 col-lg-8">
                             {{ summary_record.total_findings }}
                         </dd>
-
-                    {% endif %}
-                {% endwith %}
-
-
-            </dl>
-        </section>
+                    </dl>
+                </section>
+            {% endif %}
+        {% endwith %}
 
         <section>
             <dl class="row small">

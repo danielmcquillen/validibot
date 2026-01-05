@@ -4,6 +4,8 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
+- [ADR-2026-01-06: SaaS Reliability Hardening for Worker Internals](2026-01-06-saas-reliability-worker-internals.md)
+- [ADR-2026-01-05: Validation Run Execution via Cloud Tasks](2026-01-05-validation-run-execution-via-cloud-tasks.md)
 - [ADR-2025-12-22: CLI and API Support](2025-12-22-cli-api-support.md)
 - [ADR-2025-11-23: Ephemeral Submission Retention](2025-11-23-ephemeral-submission-retention.md)
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)

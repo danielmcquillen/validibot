@@ -171,6 +171,15 @@ def _enqueue_cloud_tasks(
     region = getattr(settings, "GCP_REGION", "australia-southeast1")
     queue_path = f"projects/{project_id}/locations/{region}/queues/{queue_name}"
 
+    # Debug logging for queue path construction
+    logger.info(
+        "Cloud Tasks config: project_id=%s region=%s queue_name=%s queue_path=%s",
+        project_id,
+        region,
+        queue_name,
+        queue_path,
+    )
+
     # Task name for deduplication
     # Initial execution: validation-run-{id}
     # Resume execution: validation-run-{id}-step-{resume_from_step}
@@ -188,8 +197,14 @@ def _enqueue_cloud_tasks(
     # The worker service validates the OIDC token via IAM
     service_account = _get_invoker_service_account()
 
-    # Create the task
-    client = tasks_v2.CloudTasksClient()
+    # Create the task client with regional endpoint
+    # Cloud Tasks requires regional endpoints for non-US regions
+    from google.api_core import client_options
+
+    options = client_options.ClientOptions(
+        api_endpoint=f"{region}-cloudtasks.googleapis.com",
+    )
+    client = tasks_v2.CloudTasksClient(client_options=options)
 
     task = tasks_v2.Task(
         name=full_task_name,

@@ -768,6 +768,7 @@ gcp-init-stage stage:
         "roles/secretmanager.secretAccessor"
         "roles/run.invoker"
         "roles/cloudtasks.enqueuer"
+        "roles/cloudtasks.viewer"
     )
     for role in "${ROLES[@]}"; do
         # Check if binding already exists
@@ -787,19 +788,30 @@ gcp-init-stage stage:
     done
     echo ""
 
-    # Step 2b: Grant serviceAccountTokenCreator on itself (needed for Cloud Tasks OIDC tokens)
-    echo "2b. Granting serviceAccountTokenCreator (for Cloud Tasks OIDC)"
-    if gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --project={{gcp_project}} \
-        --format="value(bindings.members)" 2>/dev/null | grep -q "$SA_EMAIL"; then
-        echo "   ✓ serviceAccountTokenCreator (already bound)"
-    else
-        gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
-            --member="serviceAccount:$SA_EMAIL" \
-            --role="roles/iam.serviceAccountTokenCreator" \
-            --project={{gcp_project}} \
-            --quiet &>/dev/null || true
-        echo "   ✓ serviceAccountTokenCreator (added)"
-    fi
+    # Step 2b: Grant SA-level permissions on itself (needed for Cloud Tasks OIDC tokens)
+    # - serviceAccountTokenCreator: generate OIDC tokens
+    # - serviceAccountUser: act as the service account (iam.serviceAccounts.actAs)
+    echo "2b. Granting SA-level permissions (for Cloud Tasks OIDC)"
+    SA_ROLES=(
+        "roles/iam.serviceAccountTokenCreator"
+        "roles/iam.serviceAccountUser"
+    )
+    for sa_role in "${SA_ROLES[@]}"; do
+        role_short="${sa_role##*/}"
+        if gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --project={{gcp_project}} \
+            --flatten="bindings[].members" \
+            --filter="bindings.role=$sa_role AND bindings.members=serviceAccount:$SA_EMAIL" \
+            --format="value(bindings.role)" 2>/dev/null | grep -q .; then
+            echo "   ✓ $role_short (already bound)"
+        else
+            gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+                --member="serviceAccount:$SA_EMAIL" \
+                --role="$sa_role" \
+                --project={{gcp_project}} \
+                --quiet &>/dev/null || true
+            echo "   ✓ $role_short (added)"
+        fi
+    done
     echo ""
 
     # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)

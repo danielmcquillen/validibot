@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
 from validibot.users.models import User
@@ -68,8 +69,8 @@ class IdempotencyKeyStatus(models.TextChoices):
     receipt, then updated to COMPLETED when done.
     """
 
-    PROCESSING = "processing", "Processing"
-    COMPLETED = "completed", "Completed"
+    PROCESSING = "PROCESSING", _("Processing")
+    COMPLETED = "COMPLETED", _("Completed")
 
 
 class CallbackReceiptStatus(models.TextChoices):
@@ -80,8 +81,8 @@ class CallbackReceiptStatus(models.TextChoices):
     on receipt, then updated to the final validation status when done.
     """
 
-    PROCESSING = "processing", "Processing"
-    COMPLETED = "completed", "Completed"
+    PROCESSING = "PROCESSING", _("Processing")
+    COMPLETED = "COMPLETED", _("Completed")
 
 
 class IdempotencyKey(TimeStampedModel):

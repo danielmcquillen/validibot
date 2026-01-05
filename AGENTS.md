@@ -94,6 +94,12 @@ uv export --extra dev --output-file requirements/local.txt
 - Absolute imports are clearer, easier to refactor, and work consistently whether code runs as a script or module.
 - Exception: relative imports are acceptable in `__init__.py` files for re-exporting submodule contents.
 
+## HTTP Client Library
+
+- **Prefer `httpx` over `requests`** for making HTTP requests. `httpx` is a modern async-capable HTTP client with a similar API to `requests` but better performance and async support.
+- Use synchronous `httpx` for simple cases: `httpx.post(url, json=payload, timeout=30)`
+- Use async `httpx.AsyncClient` when in an async context
+
 ## Be consistent when defining constants
 
 We try to be consistent about putting constants in the relevant app's constants.py module as either a TextChoices or an Enum class, and then using those constants in

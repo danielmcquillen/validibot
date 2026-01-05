@@ -59,12 +59,47 @@ class ValidationRunLaunchResults:
 
 class ValidationRunService:
     """
-    Single service for 'launching' and then 'executing' validation runs.
-    There are two main methods in this class:
+    Orchestrates the complete lifecycle of validation runs.
 
-    1. launch():    called by views to create a run and execute it.
-    2. execute():   performs the validation steps.
+    This is the central service for creating, executing, and tracking validation
+    runs. It coordinates between the workflow engine, validator engines, action
+    handlers, and persistence layer.
 
+    Main entry points:
+
+        launch(request, org, workflow, submission, ...)
+            Creates a ValidationRun and begins execution. Called by views/API.
+
+        execute(validation_run_id, user_id, metadata)
+            Processes workflow steps sequentially. Called by launch() or can
+            be invoked directly to resume a run.
+
+        cancel_run(run, actor)
+            Cancels a run that hasn't completed yet.
+
+    Execution model:
+
+        - Sync validators (Basic, JSON, XML, AI) execute inline and return
+          immediately with passed=True/False.
+
+        - Async validators (EnergyPlus, FMI) launch Cloud Run Jobs and return
+          passed=None (pending). The workflow pauses and resumes when the
+          job callback arrives.
+
+        - Action handlers (Slack, Certificate) are dispatched via the action
+          registry and follow the same StepHandler protocol.
+
+    State transitions:
+
+        PENDING → RUNNING → SUCCEEDED | FAILED | CANCELED
+
+        For async validators, the run stays in RUNNING until the callback
+        processing finalizes the result.
+
+    See Also:
+        - ValidatorStepHandler: Bridges workflow engine to validator engines
+        - BaseValidatorEngine: Abstract base for all validation engines
+        - StepHandler protocol: Interface for step execution
     """
 
     # ---------- Launch (views call this) ----------
@@ -80,36 +115,40 @@ class ValidationRunService:
         *,
         extra: dict | None = None,
         source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
-        wait_for_completion: bool = False,
     ) -> ValidationRunLaunchResults:
         """
-        Creates a validation run for a given workflow and a user request.
-        The user should have provided us with a 'submission' as part of their request.
-        The submission is the content (json, xml, whatever) that the workflow will
-        validate.
+        Create a ValidationRun and begin execution.
 
-        When ``wait_for_completion`` is True we optimistically execute inline.
-        If the run reaches a terminal status we return 201 Created; otherwise
-        the caller gets a 202 Accepted response plus a link to check status
-        later. The default behaviour for UI launches is to return immediately
-        so the browser can transition to the in-progress page.
+        This is the main entry point called by views and API endpoints. It:
+
+        1. Validates preconditions (permissions, billing limits)
+        2. Creates a ValidationRun record with status=PENDING
+        3. Calls execute() to process workflow steps
+        4. Returns results with appropriate HTTP status
+
+        Returns 201 Created if the run reaches a terminal status (all steps
+        completed or a step failed). 
+        Returns 202 Accepted if the run is still in progress - this happens when 
+        an async validator (EnergyPlus, FMI) launches a Cloud Run Job. 
+        The callback will finalize the run later.
 
         Args:
-            request:                The HTTP request object.
-            org:                    The organization under which the validation
-                                    run is created.
-            workflow:               The workflow to be executed.
-            submission:             The submission associated with the validation run.
-            user_id:                The ID of the user initiating the run.
-            metadata:               Optional metadata to be associated with the run.
-            wait_for_completion:    Whether to wait synchronously for the run to
-                                    complete.
-            source:                 Origin of the run (launch page, API, etc.).
+            request: The HTTP request object (used for user auth and URI building).
+            org: The organization under which the run is created.
+            workflow: The workflow to execute.
+            submission: The file/content to validate.
+            user_id: ID of the user initiating the run.
+            metadata: Optional metadata to associate with the run.
+            extra: Additional fields to pass to ValidationRun.objects.create().
+            source: Origin of the run (LAUNCH_PAGE, API, etc.).
 
         Returns:
-            ValidationRunLaunchResults: Instance of this dataclass with
-            results of launch.
+            ValidationRunLaunchResults with the run and HTTP status code.
 
+        Raises:
+            ValueError: If required arguments are missing.
+            PermissionError: If user lacks execute permission on workflow.
+            BillingError: If org has exceeded limits or subscription is inactive.
         """
         start_time = time.perf_counter()
         if not request:
@@ -172,7 +211,7 @@ class ValidationRunService:
                 extra_data=created_extra or None,
             )
 
-        # Execute immediately (Celery removed). This preserves existing state
+        # Execute immediately. This preserves existing state
         # transitions and pending async markers for Cloud Run validators.
         try:
             self.execute(
@@ -248,65 +287,6 @@ class ValidationRunService:
 
         return run, True
 
-    # ---------- Billing Enforcement ----------
-
-    def _check_billing_limits(
-        self,
-        org: Organization,
-        workflow: Workflow,
-        user: User | None = None,
-    ) -> None:
-        """
-        Check billing limits before creating a validation run.
-
-        For basic workflows: increments the usage counter and checks monthly limit.
-        For advanced workflows: checks credit balance.
-
-        For workflow guests (users with grants but no org membership), billing is
-        attributed to the workflow owner's organization, not the user's org.
-
-        Args:
-            org: The organization passed to launch (may be None for guests).
-            workflow: The workflow being executed.
-            user: The user executing the workflow (used to check guest status).
-
-        Raises:
-            BillingError (or subclass) if limits exceeded or subscription inactive.
-        """
-        # Local imports to avoid circular dependencies
-        from validibot.billing.metering import AdvancedWorkflowMeter
-        from validibot.billing.metering import BasicWorkflowMeter
-
-        # Determine billing org: for guests, use workflow's org
-        billing_org = org
-        if user and getattr(user, "is_workflow_guest", False):
-            # Workflow guests have their usage billed to the workflow owner's org
-            billing_org = workflow.org
-            logger.info(
-                "Guest user %s billing attributed to workflow org %s",
-                user.id,
-                billing_org.id,
-            )
-
-        # Check if billing org has a subscription (it should, but handle edge cases)
-        if not hasattr(billing_org, "subscription"):
-            logger.warning(
-                "Organization %s has no subscription, skipping billing check",
-                billing_org.id,
-            )
-            return
-
-        # Determine if workflow is advanced (uses high-compute validators)
-        is_advanced = getattr(workflow, "is_advanced", False)
-
-        if is_advanced:
-            # For advanced workflows, check credit balance
-            # Credit deduction happens after the run completes
-            AdvancedWorkflowMeter().check_can_launch(billing_org, credits_required=1)
-        else:
-            # For basic workflows, check and increment usage counter
-            BasicWorkflowMeter().check_and_increment(billing_org)
-
     # ---------- Execute ----------
 
     def execute(
@@ -316,7 +296,27 @@ class ValidationRunService:
         metadata: dict | None = None,
     ) -> ValidationRunTaskResult:
         """
-        Execute a ValidationRun in-process.
+        Process workflow steps for a ValidationRun.
+
+        Iterates through the workflow's steps in order, dispatching each to the
+        appropriate handler (ValidatorStepHandler for validators, or an action
+        handler from the registry). Execution stops on first failure or when
+        an async validator returns pending.
+
+        For sync validators, all steps execute inline and the run reaches a
+        terminal status (SUCCEEDED/FAILED) before returning.
+
+        For async validators (EnergyPlus, FMI), this method returns while the
+        run is still RUNNING. The Cloud Run Job callback will later finalize
+        the run via separate callback processing.
+
+        Args:
+            validation_run_id: ID of the ValidationRun to execute.
+            user_id: ID of the user who initiated the run (for tracking).
+            metadata: Optional metadata passed through to step handlers.
+
+        Returns:
+            ValidationRunTaskResult with the final (or current) run status.
         """
         try:
             validation_run: ValidationRun = ValidationRun.objects.select_related(
@@ -541,6 +541,65 @@ class ValidationRunService:
 
         return result
 
+    # ---------- Private methods ----------
+
+    def _check_billing_limits(
+        self,
+        org: Organization,
+        workflow: Workflow,
+        user: User | None = None,
+    ) -> None:
+        """
+        Check billing limits before creating a validation run.
+
+        For basic workflows: increments the usage counter and checks monthly limit.
+        For advanced workflows: checks credit balance.
+
+        For workflow guests (users with grants but no org membership), billing is
+        attributed to the workflow owner's organization, not the user's org.
+
+        Args:
+            org: The organization passed to launch (may be None for guests).
+            workflow: The workflow being executed.
+            user: The user executing the workflow (used to check guest status).
+
+        Raises:
+            BillingError (or subclass) if limits exceeded or subscription inactive.
+        """
+        # Local imports to avoid circular dependencies
+        from validibot.billing.metering import AdvancedWorkflowMeter
+        from validibot.billing.metering import BasicWorkflowMeter
+
+        # Determine billing org: for guests, use workflow's org
+        billing_org = org
+        if user and getattr(user, "is_workflow_guest", False):
+            # Workflow guests have their usage billed to the workflow owner's org
+            billing_org = workflow.org
+            logger.info(
+                "Guest user %s billing attributed to workflow org %s",
+                user.id,
+                billing_org.id,
+            )
+
+        # Check if billing org has a subscription (it should, but handle edge cases)
+        if not hasattr(billing_org, "subscription"):
+            logger.warning(
+                "Organization %s has no subscription, skipping billing check",
+                billing_org.id,
+            )
+            return
+
+        # Determine if workflow is advanced (uses high-compute validators)
+        is_advanced = getattr(workflow, "is_advanced", False)
+
+        if is_advanced:
+            # For advanced workflows, check credit balance
+            # Credit deduction happens after the run completes
+            AdvancedWorkflowMeter().check_can_launch(billing_org, credits_required=1)
+        else:
+            # For basic workflows, check and increment usage counter
+            BasicWorkflowMeter().check_and_increment(billing_org)
+
     def _start_step_run(
         self,
         *,
@@ -669,6 +728,20 @@ class ValidationRunService:
         step_run: ValidationStepRun,
         validation_result: ValidationResult,
     ) -> dict[str, Any]:
+        """
+        Persist step results and update run state.
+
+        After a handler returns, this method:
+
+        1. Normalizes issues and persists them as ValidationFinding rows.
+        2. Extracts any "signals" from stats and stores them in run.summary
+           for downstream CEL assertions to access.
+        3. For sync results (passed=True/False): finalizes the step_run with
+           status PASSED/FAILED.
+        4. For async results (passed=None): keeps step_run as RUNNING.
+
+        Returns a metrics dict used for building the run summary.
+        """
         issues = [
             self._normalize_issue(issue) for issue in (validation_result.issues or [])
         ]
@@ -787,9 +860,28 @@ class ValidationRunService:
         validation_run: ValidationRun,
     ) -> ValidationResult:
         """
-        Execute a single workflow step against the ValidationRun's submission.
-        
-        Refactored to use the Command/Handler pattern via StepHandler protocol.
+        Dispatch a single workflow step to its handler.
+
+        This is the central dispatcher that routes steps to the correct handler:
+
+        1. Builds a RunContext with the validation_run, step, and any signals
+           from prior steps (for cross-step CEL assertions).
+
+        2. Resolves the handler:
+           - For validator steps: uses ValidatorStepHandler
+           - For action steps: looks up handler class from ACTION_HANDLER_REGISTRY
+
+        3. Calls handler.execute(run_context) and maps the StepResult back to
+           ValidationResult for backwards compatibility with callers.
+
+        Args:
+            step: The WorkflowStep to execute (has either .validator or .action).
+            validation_run: The parent ValidationRun being processed.
+
+        Returns:
+            ValidationResult with passed=True/False for sync handlers, or
+            passed=None for async handlers (EnergyPlus, FMI) that have launched
+            a Cloud Run Job and are awaiting callback.
         """
         # 1. Prepare Context
         from validibot.actions.handlers import ValidatorStepHandler
@@ -851,15 +943,13 @@ class ValidationRunService:
 
         # 4. Execute Handler
         step_result = handler.execute(context)
-        
+
         # 5. Map Result (Backwards Compatibility)
         # We return a ValidationResult because callers (execute method) expect it.
         # Future refactor: Update callers to use StepResult directly.
         validation_result = ValidationResult(
             passed=step_result.passed,
-            issues=[
-                self._normalize_issue(i) for i in step_result.issues
-            ],
+            issues=[self._normalize_issue(i) for i in step_result.issues],
             stats=step_result.stats,
         )
         validation_result.workflow_step_name = step.name
@@ -878,8 +968,19 @@ class ValidationRunService:
         validation_run: ValidationRun | None,
     ) -> dict[str, Any]:
         """
-        Collect namespaced signals from prior steps so engines can expose them
-        to CEL assertions (steps.<step_run_id>.signals.<slug>).
+        Collect signals from completed steps for cross-step CEL assertions.
+
+        When a validator emits signals (e.g., EnergyPlus outputs like zone_temp),
+        they're stored in validation_run.summary["steps"][step_id]["signals"].
+        This method extracts them into a structure that CEL can query:
+
+            steps.<step_run_id>.signals.<catalog_slug>
+
+        Example: An EnergyPlus step with id=42 emitting {"zone_temp": 21.5}
+        allows later steps to assert: steps["42"].signals.zone_temp < 25
+
+        Returns:
+            Dict mapping step_run_id to {"signals": {...}} for each prior step.
         """
         if not validation_run:
             return {}

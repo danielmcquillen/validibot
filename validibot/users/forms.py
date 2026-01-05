@@ -276,6 +276,7 @@ class OrganizationMemberForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.organization: Organization | None = kwargs.pop("organization", None)
+        self.request_user = kwargs.pop("request_user", None)
         super().__init__(*args, **kwargs)
         self.helper = FormHelper()
         self.helper.form_method = "post"
@@ -336,7 +337,10 @@ class OrganizationMemberForm(forms.Form):
         # Check seat limit before adding member
         if hasattr(self.organization, "subscription"):
             try:
-                SeatEnforcer().check_can_add_member(self.organization)
+                SeatEnforcer().check_can_add_member(
+                    self.organization,
+                    user=self.request_user,
+                )
             except SeatLimitError as exc:
                 raise forms.ValidationError(exc.detail) from exc
 
@@ -419,7 +423,10 @@ class InviteUserForm(forms.Form):
         # Check seat limit before allowing invite
         if hasattr(self.organization, "subscription"):
             try:
-                SeatEnforcer().check_can_add_member(self.organization)
+                SeatEnforcer().check_can_add_member(
+                    self.organization,
+                    user=self.inviter,
+                )
             except SeatLimitError as exc:
                 raise forms.ValidationError(exc.detail) from exc
 

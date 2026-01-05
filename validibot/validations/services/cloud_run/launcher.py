@@ -131,6 +131,27 @@ def launch_energyplus_validation(
         >>> assert "job_name" in result.stats
     """
     try:
+        # 0. Idempotency check: if this step run already has job info in output,
+        # a job was already launched (possibly on a previous retry). Return
+        # pending result to wait for the existing job's callback.
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run found for ValidationRun {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+
+        existing_output = current_step_run.output or {}
+        if existing_output.get("job_name"):
+            logger.info(
+                "Job already launched for step run %s (job=%s), skipping relaunch",
+                current_step_run.id,
+                existing_output.get("job_name"),
+            )
+            return ValidationResult(
+                passed=None,  # Still pending
+                issues=[],
+                stats=existing_output,
+            )
+
         # 1. Extract weather file from ruleset metadata
         if not ruleset or not ruleset.metadata:
             msg = "EnergyPlus validations require a ruleset with weather_file metadata"
@@ -164,16 +185,13 @@ def launch_energyplus_validation(
         )
 
         # 4. Build callback URL (IAM protected worker service)
-        current_step_run = run.current_step_run
-        if not current_step_run:
-            msg = f"No active step run found for ValidationRun {run.id}"
-            raise ValueError(msg)  # noqa: TRY301
         callback_url = build_validation_callback_url()
 
         # 4.5. Generate deterministic idempotency key for callback deduplication.
         # Using the step run ID ensures that retries use the same callback_id,
-        # preventing duplicate Cloud Run Job launches and ensuring callback
-        # receipt fencing works correctly across retries.
+        # allowing the callback receipt fencing to correctly identify and handle
+        # duplicate callbacks. Note: Job launch idempotency is handled by the
+        # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = f"step-run-{current_step_run.id}"
 
         # 5. Build typed input envelope
@@ -213,26 +231,24 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
         )
 
-        # 7.5. Update run and step run status to RUNNING
+        # 7.5. Update step run status to RUNNING
+        # Note: run.status and run.started_at are already set by execute() when
+        # the run transitions from PENDING to RUNNING. We only need to mark the
+        # step run as running here.
         from datetime import UTC
         from datetime import datetime
 
         from validibot.validations.constants import StepStatus
-        from validibot.validations.constants import ValidationRunStatus
 
         now = datetime.now(UTC)
-        run.status = ValidationRunStatus.RUNNING
-        run.started_at = now
-        run.save(update_fields=["status", "started_at"])
-
         current_step_run.status = StepStatus.RUNNING
         current_step_run.started_at = now
         current_step_run.save(update_fields=["status", "started_at"])
 
         logger.info(
-            "Marked run %s and step run %s as RUNNING",
-            run.id,
+            "Marked step run %s as RUNNING for run %s",
             current_step_run.id,
+            run.id,
         )
 
         # 8. Return pending ValidationResult
@@ -279,6 +295,27 @@ def launch_fmi_validation(
     a pending ValidationResult.
     """
     try:
+        # 0. Idempotency check: if this step run already has job info in output,
+        # a job was already launched (possibly on a previous retry). Return
+        # pending result to wait for the existing job's callback.
+        current_step_run = run.current_step_run
+        if not current_step_run:
+            msg = f"No active step run for run {run.id}"
+            raise ValueError(msg)  # noqa: TRY301
+
+        existing_output = current_step_run.output or {}
+        if existing_output.get("job_name"):
+            logger.info(
+                "Job already launched for step run %s (job=%s), skipping relaunch",
+                current_step_run.id,
+                existing_output.get("job_name"),
+            )
+            return ValidationResult(
+                passed=None,  # Still pending
+                issues=[],
+                stats=existing_output,
+            )
+
         fmu_model = validator.fmu_model
         if not fmu_model:
             msg = "FMI validator is missing an FMU model."
@@ -333,16 +370,13 @@ def launch_fmi_validation(
             if value is not None:
                 input_values[slug] = value
 
-        current_step_run = run.current_step_run
-        if not current_step_run:
-            msg = f"No active step run for run {run.id}"
-            raise ValueError(msg)  # noqa: TRY301
         callback_url = build_validation_callback_url()
 
         # Generate deterministic idempotency key for callback deduplication.
         # Using the step run ID ensures that retries use the same callback_id,
-        # preventing duplicate Cloud Run Job launches and ensuring callback
-        # receipt fencing works correctly across retries.
+        # allowing the callback receipt fencing to correctly identify and handle
+        # duplicate callbacks. Note: Job launch idempotency is handled by the
+        # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = f"step-run-{current_step_run.id}"
 
         # Build envelope
@@ -403,17 +437,16 @@ def launch_fmi_validation(
             input_uri=input_envelope_uri,
         )
 
-        # Mark run/step running
+        # Mark step run as RUNNING
+        # Note: run.status and run.started_at are already set by execute() when
+        # the run transitions from PENDING to RUNNING. We only need to mark the
+        # step run as running here.
         from datetime import UTC
         from datetime import datetime
 
         from validibot.validations.constants import StepStatus
-        from validibot.validations.constants import ValidationRunStatus
 
         now = datetime.now(UTC)
-        run.status = ValidationRunStatus.RUNNING
-        run.started_at = now
-        run.save(update_fields=["status", "started_at"])
         current_step_run.status = StepStatus.RUNNING
         current_step_run.started_at = now
         current_step_run.save(update_fields=["status", "started_at"])

@@ -76,6 +76,9 @@ def _apply_organization_context(request):
     """
     Determines the active organization for the user and
     returns relevant context variables.
+
+    Superusers get full access rights regardless of membership, allowing them
+    to access all navigation and features even without explicit roles.
     """
     memberships_qs = (
         request.user.memberships.filter(is_active=True)
@@ -86,6 +89,22 @@ def _apply_organization_context(request):
         request,
         memberships_qs,
     )
+
+    # Superusers get full access regardless of membership
+    is_superuser = request.user.is_superuser
+    if is_superuser:
+        return {
+            "is_workflow_guest": False,
+            "org_memberships": memberships,
+            "active_org": active_org,
+            "active_membership": active_membership,
+            "is_org_admin": True,
+            "can_manage_validators": True,
+            "has_author_admin_owner": True,
+            "active_role_codes": set(),
+            "has_any_org_roles": True,
+        }
+
     active_role_codes = (
         set(active_membership.role_codes) if active_membership else set()
     )

@@ -662,10 +662,14 @@ class ValidationRunService:
         if is_advanced:
             # For advanced workflows, check credit balance
             # Credit deduction happens after the run completes
-            AdvancedWorkflowMeter().check_can_launch(billing_org, credits_required=1)
+            AdvancedWorkflowMeter().check_can_launch(
+                billing_org,
+                credits_required=1,
+                user=user,
+            )
         else:
             # For basic workflows, check and increment usage counter
-            BasicWorkflowMeter().check_and_increment(billing_org)
+            BasicWorkflowMeter().check_and_increment(billing_org, user=user)
 
     def _start_step_run(
         self,
@@ -940,13 +944,20 @@ class ValidationRunService:
 
         total_findings = sum(severity_totals.values())
 
-        # Extract assertion counts from step_metrics (not persisted as findings)
-        assertion_failures = sum(
-            metrics.get("assertion_failures", 0) for metrics in step_metrics
-        )
-        assertion_total = sum(
-            metrics.get("assertion_total", 0) for metrics in step_metrics
-        )
+        # Query assertion counts from ALL step runs' output fields.
+        # This ensures correct totals in resume scenarios where earlier steps'
+        # metrics aren't in the current step_metrics list.
+        all_step_runs = ValidationStepRun.objects.filter(
+            validation_run=validation_run,
+        ).select_related("workflow_step").order_by("step_order")
+
+        assertion_failures = 0
+        assertion_total = 0
+        for step_run in all_step_runs:
+            output = step_run.output or {}
+            assertion_failures += output.get("assertion_failures", 0)
+            # assertion_total comes from stats under various keys
+            assertion_total += self._extract_assertion_total(output)
 
         summary_record, _ = ValidationRunSummary.objects.update_or_create(
             run=validation_run,
@@ -964,12 +975,9 @@ class ValidationRunService:
         )
 
         # Build step summaries from ALL step runs, querying findings from DB
+        # (reuses all_step_runs queryset from assertion counting above)
         summary_record.step_summaries.all().delete()
         step_summary_objects: list[ValidationStepRunSummary] = []
-
-        all_step_runs = ValidationStepRun.objects.filter(
-            validation_run=validation_run,
-        ).select_related("workflow_step").order_by("step_order")
 
         for step_run in all_step_runs:
             # Query step-level severity counts from persisted findings

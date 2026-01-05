@@ -57,7 +57,10 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
                 "pending_invites": pending_invites,
                 "add_form": kwargs.get(
                     "add_form",
-                    OrganizationMemberForm(organization=self.organization),
+                    OrganizationMemberForm(
+                        organization=self.organization,
+                        request_user=self.request.user,
+                    ),
                 ),
                 "invite_form": kwargs.get(
                     "invite_form",
@@ -70,7 +73,11 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
-        form = OrganizationMemberForm(request.POST, organization=self.organization)
+        form = OrganizationMemberForm(
+            request.POST,
+            organization=self.organization,
+            request_user=request.user,
+        )
         if form.is_valid():
             form.save()
             messages.success(request, _("Member added."))

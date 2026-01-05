@@ -103,6 +103,9 @@ def billing_context(request: HttpRequest) -> dict:
        - trial_plan_name
        - subscription_status
 
+    Superusers bypass all billing restrictions - they always see full UI
+    regardless of subscription status.
+
     Usage in templates:
         {% if app_ui.show_notifications %}
             ... notification bell ...
@@ -119,6 +122,28 @@ def billing_context(request: HttpRequest) -> dict:
     Returns:
         dict with 'app_ui' and legacy trial banner variables
     """
+    # Superusers bypass all billing restrictions
+    is_superuser = (
+        hasattr(request, "user")
+        and request.user.is_authenticated
+        and request.user.is_superuser
+    )
+    if is_superuser:
+        return {
+            "app_ui": AppUIState(
+                restricted_mode=False,
+                show_nav_toggle=True,
+                show_notifications=True,
+                show_full_user_menu=True,
+                show_back_to_site_link=False,
+                show_trial_banner=False,
+            ),
+            "show_trial_banner": False,
+            "trial_days_remaining": 0,
+            "trial_plan_name": "",
+            "subscription_status": None,
+        }
+
     _, subscription = _get_org_subscription(request)
 
     # Default state for unauthenticated users or users without subscription

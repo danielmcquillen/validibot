@@ -171,22 +171,48 @@ class ValidationCallbackView(APIView):
                 )
 
             # Idempotency check: reserve the receipt upfront to fence duplicates.
-            # Using get_or_create atomically prevents race conditions where two
-            # concurrent callbacks both pass a "no receipt exists" check.
+            # We use select_for_update with NOWAIT to prevent concurrent callbacks
+            # from both proceeding when one is already processing. If a lock can't
+            # be acquired immediately, the callback is rejected (Cloud Tasks will retry).
             receipt = None
             receipt_created = False
             if callback.callback_id:
+                from django.db import DatabaseError
                 from django.db import transaction
 
-                with transaction.atomic():
-                    receipt, receipt_created = CallbackReceipt.objects.get_or_create(
-                        callback_id=callback.callback_id,
-                        defaults={
-                            "validation_run": run,
-                            "status": CallbackReceiptStatus.PROCESSING,
-                            "result_uri": callback.result_uri or "",
-                        },
+                try:
+                    with transaction.atomic():
+                        # Try to get existing receipt with lock
+                        try:
+                            receipt = (
+                                CallbackReceipt.objects.select_for_update(nowait=True)
+                                .get(callback_id=callback.callback_id)
+                            )
+                            receipt_created = False
+                        except CallbackReceipt.DoesNotExist:
+                            # No receipt exists - create one with PROCESSING status
+                            receipt = CallbackReceipt.objects.create(
+                                callback_id=callback.callback_id,
+                                validation_run=run,
+                                status=CallbackReceiptStatus.PROCESSING,
+                                result_uri=callback.result_uri or "",
+                            )
+                            receipt_created = True
+                except DatabaseError:
+                    # Lock acquisition failed - another callback is processing
+                    # Return 409 Conflict so Cloud Tasks will retry later
+                    logger.info(
+                        "Callback %s locked by concurrent request, returning 409",
+                        callback.callback_id,
                     )
+                    return Response(
+                        {
+                            "message": "Callback is being processed by another request",
+                            "retry": True,
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
                 if not receipt_created:
                     # Receipt already exists - check if it was fully processed.
                     # If status is still PROCESSING, a previous attempt failed
@@ -466,9 +492,11 @@ class ValidationCallbackView(APIView):
                 # DO NOT finalize the run - the resume task will do that
                 from validibot.core.tasks import enqueue_validation_run
 
+                # user_id can be NULL if the run was created via API without user context.
+                # Pass 0 to signal "no user" - execute() handles this gracefully.
                 enqueue_validation_run(
                     validation_run_id=run.id,
-                    user_id=run.user_id,
+                    user_id=run.user_id or 0,
                     resume_from_step=step_run.step_order + 1,
                 )
                 logger.info(

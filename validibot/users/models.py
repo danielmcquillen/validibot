@@ -671,7 +671,7 @@ class PendingInvite(TimeStampedModel):
         from validibot.billing.metering import SeatEnforcer
 
         if hasattr(self.org, "subscription"):
-            SeatEnforcer().check_can_add_member(self.org)
+            SeatEnforcer().check_can_add_member(self.org, user=self.invitee_user)
 
         membership, _ = Membership.objects.get_or_create(
             user=self.invitee_user,

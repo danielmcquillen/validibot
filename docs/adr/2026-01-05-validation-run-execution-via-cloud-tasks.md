@@ -10,7 +10,7 @@ Validation runs can take significant time to complete, especially when they incl
 
 The current implementation has `launch()` calling `execute()` directly, which blocks the web request until all synchronous steps complete. This creates timeout risks and poor user experience.
 
-**Behavior Change:** This ADR changes `launch()` from synchronous (sometimes returning 201 with completed results) to always-async (always returning 202 with pending status). Clients that currently rely on 201 responses with final results will need to poll for completion.
+**Behavior Change:** This ADR changes `launch()` from synchronous (blocking until completion) to async (enqueueing via Cloud Tasks). The method typically returns 202 Accepted with pending status, but may return 201 Created if execution completes before the response is sent (e.g., very fast sync-only workflows or test mode). Clients should handle both 201 and 202 responses and poll for completion when receiving 202.
 
 ## Decision
 
@@ -97,7 +97,7 @@ Already exists in infrastructure. Used to deliver execution tasks to the worker.
 **Web Instance Changes:**
 
 - `launch()` creates the ValidationRun and enqueues a task instead of calling `execute()`
-- Always returns 202 Accepted (run is always pending when response is sent)
+- Typically returns 202 Accepted; may return 201 Created if execution completes before response
 - New `enqueue_execution_task()` method handles task creation
 
 **Worker Instance Changes:**
@@ -220,7 +220,7 @@ Two existing idempotency mechanisms remain unchanged by this ADR:
 
 Clients can send an `Idempotency-Key` header when launching validation runs. The `@idempotent` decorator on the launch endpoint caches the response and replays it for duplicate requests.
 
-With this ADR, the cached response will always be 202 Accepted with `status: PENDING` (never 201 with final results). This is actually cleaner - the idempotency key protects against duplicate *launch* requests. Clients already need to poll or use webhooks for final results.
+With this ADR, the cached response will typically be 202 Accepted with `status: PENDING`, though 201 Created is possible if execution completed very quickly. The idempotency key protects against duplicate *launch* requests. Clients already need to poll or use webhooks for final results.
 
 No changes needed to this mechanism.
 
@@ -278,7 +278,7 @@ Task naming ensures:
 
 ### Neutral
 
-- Always returns 202 Accepted (no more 201 for sync completions)
+- Typically returns 202 Accepted (201 possible if execution completes before response)
 - Status polling or webhooks needed for completion notification
 
 ## Future Optimization: Sync Path for Simple Workflows

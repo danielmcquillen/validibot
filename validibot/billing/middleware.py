@@ -83,6 +83,10 @@ class TrialExpiryMiddleware:
         if not request.user.is_authenticated:
             return self.get_response(request)
 
+        # Superusers bypass all subscription checks
+        if request.user.is_superuser:
+            return self.get_response(request)
+
         # Skip exempt paths
         if self._is_exempt_path(request.path):
             return self.get_response(request)

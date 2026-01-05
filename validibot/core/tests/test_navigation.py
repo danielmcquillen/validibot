@@ -61,3 +61,30 @@ class NavigationVisibilityTests(TestCase):
         self.assertNotIn("Validator Library", html)
         self.assertNotIn("Validation Runs", html)
         self.assertNotIn("nav-link text-white", html)
+
+    def test_superuser_nav_shows_full_access(self):
+        """Superusers should see full navigation regardless of membership roles.
+
+        Even when a superuser has a membership with no explicit roles assigned,
+        they should still see all navigation sections (Dashboard, Workflows,
+        Validator Library, Admin sections, etc.).
+        """
+        # Create a membership for the superuser with NO roles
+        membership = MembershipFactory()
+        membership.user.is_superuser = True
+        membership.user.save()
+        membership.set_roles(set())  # No roles assigned
+        _login_with_membership(self.client, membership)
+
+        response = self.client.get(reverse("workflows:workflow_list"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        # Superuser should see all nav sections despite having no roles
+        self.assertIn("Dashboard", html)
+        self.assertIn("Validator Library", html)
+        self.assertIn("Workflows", html)
+        self.assertIn("Validation Runs", html)
+        # Should see admin sections
+        self.assertIn("Projects", html)
+        self.assertIn("Members", html)
+        self.assertIn("Subscription", html)

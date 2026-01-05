@@ -2075,12 +2075,28 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
 
     def get_success_url(self):
         workflow = self.get_workflow()
+        detail_url = reverse_with_org(
+            "workflows:workflow_detail",
+            request=self.request,
+            kwargs={"pk": workflow.pk},
+        )
         if hasattr(self, "saved_step") and self.saved_step:
+            # JSON and XML schema validators don't support step assertions,
+            # so skip the step edit screen and return to the workflow detail
+            validation_type = (
+                self.saved_step.validator.validation_type
+                if self.saved_step.validator
+                else None
+            )
+            if validation_type in {
+                ValidationType.JSON_SCHEMA,
+                ValidationType.XML_SCHEMA,
+            }:
+                return f"{detail_url}#workflow-steps-col"
+
             anchor = (
                 "#workflow-step-assertions"
-                if self.saved_step.validator
-                and self.saved_step.validator.validation_type
-                in ADVANCED_VALIDATION_TYPES
+                if validation_type in ADVANCED_VALIDATION_TYPES
                 else "#workflow-step-details"
             )
             return (
@@ -2091,11 +2107,6 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                 )
                 + anchor
             )
-        detail_url = reverse_with_org(
-            "workflows:workflow_detail",
-            request=self.request,
-            kwargs={"pk": workflow.pk},
-        )
         return f"{detail_url}#workflow-steps-col"
 
     def get_neighbor_steps(self) -> tuple[WorkflowStep | None, WorkflowStep | None]:

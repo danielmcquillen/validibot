@@ -87,12 +87,10 @@ class ExecuteValidationRunView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not user_id:
-            logger.error("Missing user_id in request for run %s", validation_run_id)
-            return Response(
-                {"error": "user_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # user_id is optional - runs can be created without user context (e.g., API)
+        # A value of 0 signals "no user" from resume callbacks where run.user_id was NULL
+        if user_id == 0:
+            user_id = None
 
         logger.info(
             "Received execute-validation-run task: validation_run_id=%s "

@@ -35,6 +35,7 @@ from validibot.billing.models import UsageCounter
 
 if TYPE_CHECKING:
     from validibot.users.models import Organization
+    from validibot.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -181,15 +182,28 @@ class BasicWorkflowMeter:
     This meter checks the limit and increments the counter when allowed.
     """
 
-    def check_and_increment(self, org: Organization) -> None:
+    def check_and_increment(
+        self,
+        org: Organization,
+        user: User | None = None,
+    ) -> None:
         """
         Check if org can launch a basic workflow and increment counter.
+
+        Args:
+            org: The organization to check
+            user: Optional user performing the action. Superusers bypass limits.
 
         Raises:
             TrialExpiredError: If trial has expired
             SubscriptionInactiveError: If subscription is not active
             BasicWorkflowLimitExceeded: If monthly limit reached
         """
+        # Superusers bypass all billing checks
+        if user and getattr(user, "is_superuser", False):
+            self._increment_counter(org)
+            return
+
         subscription = org.subscription
         self._check_subscription_status(subscription)
 
@@ -284,15 +298,29 @@ class AdvancedWorkflowMeter:
         """Check if org has enough credits for an operation."""
         return self.check_balance(org) >= required
 
-    def check_can_launch(self, org: Organization, credits_required: int = 1) -> None:
+    def check_can_launch(
+        self,
+        org: Organization,
+        credits_required: int = 1,
+        user: User | None = None,
+    ) -> None:
         """
         Check if org can launch an advanced workflow.
+
+        Args:
+            org: The organization to check
+            credits_required: Number of credits required for this operation
+            user: Optional user performing the action. Superusers bypass limits.
 
         Raises:
             TrialExpiredError: If trial has expired
             SubscriptionInactiveError: If subscription not active
             InsufficientCreditsError: If not enough credits
         """
+        # Superusers bypass all billing checks
+        if user and getattr(user, "is_superuser", False):
+            return
+
         subscription = org.subscription
 
         # Check subscription status
@@ -398,13 +426,25 @@ class SeatEnforcer:
     Replaces the old OrgQuota.max_seats - now uses Plan/Subscription.
     """
 
-    def check_can_add_member(self, org: Organization) -> None:
+    def check_can_add_member(
+        self,
+        org: Organization,
+        user: User | None = None,
+    ) -> None:
         """
         Check if org can add another member.
+
+        Args:
+            org: The organization to check
+            user: Optional user performing the action. Superusers bypass limits.
 
         Raises:
             SeatLimitExceeded: If org is at max seats
         """
+        # Superusers bypass all billing checks
+        if user and getattr(user, "is_superuser", False):
+            return
+
         limit = org.subscription.get_effective_limit("max_seats")
 
         # None = unlimited (Enterprise)

@@ -15,7 +15,11 @@ Security Model:
 
 from __future__ import annotations
 
-import requests
+from http import HTTPStatus
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import requests
 
 
 class TestWorkerServiceIAM:
@@ -35,7 +39,7 @@ class TestWorkerServiceIAM:
         response = http_session.get(worker_url, timeout=30)
 
         # Cloud Run returns 403 for unauthenticated requests to IAM-protected services
-        assert response.status_code == 403, (
+        assert response.status_code == HTTPStatus.FORBIDDEN, (
             f"Worker service returned {response.status_code}, expected 403 Forbidden. "
             "This suggests the worker service may not be properly protected by IAM. "
             "Check that it was deployed with --no-allow-unauthenticated."
@@ -64,10 +68,11 @@ class TestWorkerServiceIAM:
         )
 
         # Should get 403 from Cloud Run IAM, not 200/404/500 from Django
-        assert response.status_code == 403, (
-            f"Callback endpoint returned {response.status_code}, expected 403 Forbidden. "
-            "CRITICAL: If this returns 200, 404, or 500, the callback endpoint may be "
-            "exposed without IAM protection. This is a security vulnerability."
+        assert response.status_code == HTTPStatus.FORBIDDEN, (
+            f"Callback endpoint returned {response.status_code}, "
+            "expected 403 Forbidden. CRITICAL: If this returns 200, 404, or 500, "
+            "the callback endpoint may be exposed without IAM protection. "
+            "This is a security vulnerability."
         )
 
     def test_scheduled_task_endpoints_reject_unauthenticated(
@@ -95,7 +100,7 @@ class TestWorkerServiceIAM:
                 json={},
                 timeout=30,
             )
-            assert response.status_code == 403, (
+            assert response.status_code == HTTPStatus.FORBIDDEN, (
                 f"Scheduled endpoint {endpoint} returned {response.status_code}, "
                 "expected 403. This endpoint may be exposed without IAM protection."
             )
@@ -123,13 +128,18 @@ class TestWorkerServiceAuthenticated:
         response = authenticated_http_session.get(worker_url, timeout=30)
 
         # Should NOT be 403 - IAM should accept the request
-        assert response.status_code != 403, (
+        assert response.status_code != HTTPStatus.FORBIDDEN, (
             "Authenticated request was rejected by IAM. Check that your gcloud "
             "credentials have the 'Cloud Run Invoker' role on the worker service."
         )
 
         # We expect 404 (no root handler) or 200 (if there's a catch-all)
-        assert response.status_code in (200, 404, 405), (
+        expected_codes = (
+            HTTPStatus.OK,
+            HTTPStatus.NOT_FOUND,
+            HTTPStatus.METHOD_NOT_ALLOWED,
+        )
+        assert response.status_code in expected_codes, (
             f"Unexpected status code {response.status_code} for authenticated request"
         )
 
@@ -156,12 +166,12 @@ class TestWorkerServiceAuthenticated:
         )
 
         # Should NOT be 403 - request should reach Django
-        assert response.status_code != 403, (
+        assert response.status_code != HTTPStatus.FORBIDDEN, (
             "Authenticated callback request was rejected by IAM."
         )
 
         # Expect 404 "Validation run not found" since we used a fake UUID
-        assert response.status_code == 404, (
+        assert response.status_code == HTTPStatus.NOT_FOUND, (
             f"Expected 404 (run not found), got {response.status_code}. "
             f"Response: {response.text[:200]}"
         )

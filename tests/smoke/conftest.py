@@ -15,8 +15,9 @@ import requests
 
 def _get_service_url(service_name: str, region: str, project: str) -> str:
     """Get the URL of a Cloud Run service using gcloud."""
-    result = subprocess.run(
-        [
+    # gcloud is a trusted executable with controlled arguments
+    result = subprocess.run(  # noqa: S603
+        [  # noqa: S607
             "gcloud",
             "run",
             "services",
@@ -44,7 +45,7 @@ def stage() -> str:
     if stage not in ("dev", "staging", "prod"):
         pytest.skip(
             "SMOKE_TEST_STAGE must be set to 'dev', 'staging', or 'prod'. "
-            "Run with: SMOKE_TEST_STAGE=dev pytest tests/smoke/ -v"
+            "Run with: SMOKE_TEST_STAGE=dev pytest tests/smoke/ -v",
         )
     return stage
 
@@ -87,11 +88,12 @@ def web_url(web_service_name: str, gcp_config: dict) -> str:
             gcp_config["region"],
             gcp_config["project"],
         )
+    except subprocess.CalledProcessError as e:
+        pytest.skip(f"Failed to get web service URL: {e.stderr}")
+    else:
         if not url:
             pytest.skip(f"Web service {web_service_name} not deployed")
         return url
-    except subprocess.CalledProcessError as e:
-        pytest.skip(f"Failed to get web service URL: {e.stderr}")
 
 
 @pytest.fixture(scope="session")
@@ -107,11 +109,12 @@ def worker_url(worker_service_name: str, gcp_config: dict) -> str:
             gcp_config["region"],
             gcp_config["project"],
         )
+    except subprocess.CalledProcessError as e:
+        pytest.skip(f"Failed to get worker service URL: {e.stderr}")
+    else:
         if not url:
             pytest.skip(f"Worker service {worker_service_name} not deployed")
         return url
-    except subprocess.CalledProcessError as e:
-        pytest.skip(f"Failed to get worker service URL: {e.stderr}")
 
 
 @pytest.fixture(scope="session")
@@ -137,9 +140,9 @@ def authenticated_http_session(gcp_config: dict) -> requests.Session:
     This session includes an identity token for the current user/service account,
     which can be used to make authenticated requests to IAM-protected services.
     """
-    # Get an identity token for the current credentials
+    # Get an identity token for the current credentials (gcloud is trusted)
     result = subprocess.run(
-        ["gcloud", "auth", "print-identity-token"],
+        ["gcloud", "auth", "print-identity-token"],  # noqa: S607
         capture_output=True,
         text=True,
         check=True,

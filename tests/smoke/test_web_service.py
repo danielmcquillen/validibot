@@ -7,7 +7,11 @@ responding correctly after deployment.
 
 from __future__ import annotations
 
-import requests
+from http import HTTPStatus
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import requests
 
 
 class TestWebServiceHealth:
@@ -20,7 +24,7 @@ class TestWebServiceHealth:
         This is a basic smoke test to verify the web service is running.
         """
         response = http_session.get(web_url, timeout=30)
-        assert response.status_code == 200, (
+        assert response.status_code == HTTPStatus.OK, (
             f"Homepage returned {response.status_code}, expected 200"
         )
 
@@ -35,7 +39,7 @@ class TestWebServiceHealth:
         This verifies static file serving and basic routing work.
         """
         response = http_session.get(f"{web_url}/robots.txt", timeout=30)
-        assert response.status_code == 200, (
+        assert response.status_code == HTTPStatus.OK, (
             f"robots.txt returned {response.status_code}, expected 200"
         )
 
@@ -46,7 +50,7 @@ class TestWebServiceHealth:
         This verifies DRF Spectacular is configured correctly.
         """
         response = http_session.get(f"{web_url}/api/v1/docs/", timeout=30)
-        assert response.status_code == 200, (
+        assert response.status_code == HTTPStatus.OK, (
             f"API docs returned {response.status_code}, expected 200"
         )
 
@@ -55,7 +59,7 @@ class TestWebServiceHealth:
         OpenAPI schema should be accessible.
         """
         response = http_session.get(f"{web_url}/api/v1/schema/", timeout=30)
-        assert response.status_code == 200, (
+        assert response.status_code == HTTPStatus.OK, (
             f"API schema returned {response.status_code}, expected 200"
         )
 
@@ -74,7 +78,7 @@ class TestWebServiceAPI:
         Unauthenticated requests should get 401 Unauthorized.
         """
         response = http_session.get(f"{web_url}/api/v1/auth/me/", timeout=30)
-        assert response.status_code == 401, (
+        assert response.status_code == HTTPStatus.UNAUTHORIZED, (
             f"auth/me returned {response.status_code}, expected 401 Unauthorized"
         )
 
@@ -87,6 +91,6 @@ class TestWebServiceAPI:
         The workflows API should require authentication for listing.
         """
         response = http_session.get(f"{web_url}/api/v1/workflows/", timeout=30)
-        assert response.status_code == 401, (
+        assert response.status_code == HTTPStatus.UNAUTHORIZED, (
             f"workflows list returned {response.status_code}, expected 401"
         )

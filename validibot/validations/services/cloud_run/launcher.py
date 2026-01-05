@@ -16,7 +16,6 @@ Design: Simple function-based orchestration. No complex state management.
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -171,8 +170,11 @@ def launch_energyplus_validation(
             raise ValueError(msg)  # noqa: TRY301
         callback_url = build_validation_callback_url()
 
-        # 4.5. Generate idempotency key for callback deduplication
-        callback_id = str(uuid.uuid4())
+        # 4.5. Generate deterministic idempotency key for callback deduplication.
+        # Using the step run ID ensures that retries use the same callback_id,
+        # preventing duplicate Cloud Run Job launches and ensuring callback
+        # receipt fencing works correctly across retries.
+        callback_id = f"step-run-{current_step_run.id}"
 
         # 5. Build typed input envelope
         step_config = step.config or {}
@@ -337,8 +339,11 @@ def launch_fmi_validation(
             raise ValueError(msg)  # noqa: TRY301
         callback_url = build_validation_callback_url()
 
-        # Generate idempotency key for callback deduplication
-        callback_id = str(uuid.uuid4())
+        # Generate deterministic idempotency key for callback deduplication.
+        # Using the step run ID ensures that retries use the same callback_id,
+        # preventing duplicate Cloud Run Job launches and ensuring callback
+        # receipt fencing works correctly across retries.
+        callback_id = f"step-run-{current_step_run.id}"
 
         # Build envelope
         envelope = FMIInputEnvelope(

@@ -205,6 +205,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
 
     start_url = reverse("api:workflow-start", kwargs={"pk": workflow.pk})
     run_resp = api_client.post(start_url, data={"price": 25}, format="json")
+    # 201 Created when execution completes, 202 Accepted when still processing
     assert run_resp.status_code == status.HTTP_201_CREATED
     body = run_resp.json()
     assert body["status"] == ValidationRunStatus.FAILED

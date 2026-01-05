@@ -14,7 +14,6 @@ from django.utils.translation import gettext as _
 from rest_framework import status
 
 from validibot.tracking.services import TrackingEventService
-from validibot.validations.constants import VALIDATION_RUN_TERMINAL_STATUSES
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
@@ -117,20 +116,18 @@ class ValidationRunService:
         source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
     ) -> ValidationRunLaunchResults:
         """
-        Create a ValidationRun and begin execution.
+        Create a ValidationRun and enqueue execution via Cloud Tasks.
 
         This is the main entry point called by views and API endpoints. It:
 
         1. Validates preconditions (permissions, billing limits)
         2. Creates a ValidationRun record with status=PENDING
-        3. Calls execute() to process workflow steps
-        4. Returns results with appropriate HTTP status
+        3. Enqueues a Cloud Task to execute the workflow steps
+        4. Returns immediately with appropriate HTTP status
 
-        Returns 201 Created if the run reaches a terminal status (all steps
-        completed or a step failed). 
-        Returns 202 Accepted if the run is still in progress - this happens when 
-        an async validator (EnergyPlus, FMI) launches a Cloud Run Job. 
-        The callback will finalize the run later.
+        Execution happens asynchronously on the worker instance. The run status
+        will transition to RUNNING, then to SUCCEEDED/FAILED when complete.
+        Clients should poll for completion or use webhooks.
 
         Args:
             request: The HTTP request object (used for user auth and URI building).
@@ -143,13 +140,20 @@ class ValidationRunService:
             source: Origin of the run (LAUNCH_PAGE, API, etc.).
 
         Returns:
-            ValidationRunLaunchResults with the run and HTTP status code.
+            ValidationRunLaunchResults with the run and HTTP status code:
+            - 201 Created if execution completed (SUCCEEDED, FAILED, CANCELED)
+            - 202 Accepted if still processing (PENDING, RUNNING)
 
         Raises:
             ValueError: If required arguments are missing.
             PermissionError: If user lacks execute permission on workflow.
             BillingError: If org has exceeded limits or subscription is inactive.
+
+        See Also:
+            ADR-001: Validation Run Execution via Cloud Tasks
         """
+        from validibot.core.tasks import enqueue_validation_run
+
         start_time = time.perf_counter()
         if not request:
             err_msg = "Request object is required to build absolute URIs."
@@ -211,40 +215,46 @@ class ValidationRunService:
                 extra_data=created_extra or None,
             )
 
-        # Execute immediately. This preserves existing state
-        # transitions and pending async markers for Cloud Run validators.
+        # Enqueue execution via Cloud Tasks (async)
+        # The worker will call execute() when it receives the task
         try:
-            self.execute(
+            enqueue_validation_run(
                 validation_run_id=validation_run.id,
                 user_id=request.user.id,
-                metadata=metadata,
             )
-        except Exception:  # pragma: no cover - defensive
+        except Exception:
             logger.exception(
-                "Validation run %s failed during execution",
+                "Failed to enqueue validation run %s",
                 validation_run.id,
             )
-            validation_run.refresh_from_db()
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.error = GENERIC_EXECUTION_ERROR
             validation_run.save(update_fields=["status", "error"])
 
+        # Refresh from DB to get any updates made during execution
+        # This is primarily for test mode where execute() runs synchronously,
+        # but also provides correct status if execution completed very quickly
         validation_run.refresh_from_db()
+
+        # Return appropriate HTTP status based on run state:
+        # - 201 Created if execution completed (SUCCEEDED, FAILED, CANCELED)
+        # - 202 Accepted if still processing (PENDING, RUNNING)
+        if validation_run.status in {
+            ValidationRunStatus.SUCCEEDED,
+            ValidationRunStatus.FAILED,
+            ValidationRunStatus.CANCELED,
+        }:
+            http_status = status.HTTP_201_CREATED
+        else:
+            http_status = status.HTTP_202_ACCEPTED
 
         results: ValidationRunLaunchResults = ValidationRunLaunchResults(
             validation_run=validation_run,
+            status=http_status,
         )
 
-        if validation_run.status in VALIDATION_RUN_TERMINAL_STATUSES:
-            # Finished (either success or failure)
-            results.status = status.HTTP_201_CREATED
-        else:
-            # Still running or pending
-            # Add the URL to poll for status
-            results.status = status.HTTP_202_ACCEPTED
-
         logger.info(
-            "Validation run %s launch completed in %.2f ms (status=%s)",
+            "Validation run %s launch completed in %.2f ms (status=%s, enqueued)",
             validation_run.id,
             (time.perf_counter() - start_time) * 1000,
             validation_run.status,
@@ -294,6 +304,7 @@ class ValidationRunService:
         validation_run_id: int,
         user_id: int,
         metadata: dict | None = None,
+        resume_from_step: int | None = None,
     ) -> ValidationRunTaskResult:
         """
         Process workflow steps for a ValidationRun.
@@ -307,16 +318,28 @@ class ValidationRunService:
         terminal status (SUCCEEDED/FAILED) before returning.
 
         For async validators (EnergyPlus, FMI), this method returns while the
-        run is still RUNNING. The Cloud Run Job callback will later finalize
-        the run via separate callback processing.
+        run is still RUNNING. When the Cloud Run Job callback arrives, it
+        enqueues a new Cloud Task with resume_from_step to continue execution.
+
+        Idempotency:
+            - Initial execution (resume_from_step=None): Only proceeds if status
+              is PENDING. Transitions to RUNNING atomically.
+            - Resume execution (resume_from_step set): Expects status to be RUNNING.
+              No state transition needed.
+            - Cloud Tasks may deliver the same task multiple times. Step-level
+              idempotency is handled by _start_step_run() using get_or_create.
 
         Args:
             validation_run_id: ID of the ValidationRun to execute.
             user_id: ID of the user who initiated the run (for tracking).
             metadata: Optional metadata passed through to step handlers.
+            resume_from_step: Step order to resume from (None for initial execution).
 
         Returns:
             ValidationRunTaskResult with the final (or current) run status.
+
+        See Also:
+            ADR-001: Validation Run Execution via Cloud Tasks
         """
         try:
             validation_run: ValidationRun = ValidationRun.objects.select_related(
@@ -336,33 +359,62 @@ class ValidationRunService:
                 error=GENERIC_EXECUTION_ERROR,
             )
 
-        if validation_run.status not in (
-            ValidationRunStatus.PENDING,
-            ValidationRunStatus.RUNNING,
-        ):
+        tracking_service = TrackingEventService()
+        actor = self._resolve_run_actor(validation_run, user_id)
+
+        # Idempotency check and state transition based on entry point
+        # See ADR-001 for detailed explanation
+        if resume_from_step is None:
+            # Initial execution: atomically transition PENDING → RUNNING
+            # This prevents race conditions when Cloud Tasks delivers duplicates
+            now = timezone.now()
+            updated_count = ValidationRun.objects.filter(
+                id=validation_run_id,
+                status=ValidationRunStatus.PENDING,
+            ).update(
+                status=ValidationRunStatus.RUNNING,
+                started_at=now,
+            )
+
+            if updated_count == 0:
+                # Either already started or status changed - fetch current state
+                validation_run.refresh_from_db()
+                logger.info(
+                    "Validation run %s already started (status=%s), skipping",
+                    validation_run_id,
+                    validation_run.status,
+                )
+                return ValidationRunTaskResult(
+                    run_id=validation_run.id,
+                    status=validation_run.status,
+                    error="",
+                )
+
+            # Update local object to reflect DB state
+            validation_run.status = ValidationRunStatus.RUNNING
+            validation_run.started_at = now
+
+            tracking_service.log_validation_run_started(
+                run=validation_run,
+                user=actor,
+                extra_data={"status": ValidationRunStatus.RUNNING},
+            )
+        elif validation_run.status != ValidationRunStatus.RUNNING:
+            # Resume from callback: expect status to be RUNNING
+            logger.warning(
+                "Validation run %s not RUNNING for resume (status=%s), skipping",
+                validation_run_id,
+                validation_run.status,
+            )
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
                 error=_("Validation run is not in a state that allows execution."),
             )
 
-        tracking_service = TrackingEventService()
-        actor = self._resolve_run_actor(validation_run, user_id)
-
         def _was_cancelled() -> bool:
             validation_run.refresh_from_db(fields=["status"])
             return validation_run.status == ValidationRunStatus.CANCELED
-
-        validation_run.status = ValidationRunStatus.RUNNING
-        if not validation_run.started_at:
-            validation_run.started_at = timezone.now()
-
-        validation_run.save(update_fields=["status", "started_at"])
-        tracking_service.log_validation_run_started(
-            run=validation_run,
-            user=actor,
-            extra_data={"status": ValidationRunStatus.RUNNING},
-        )
 
         workflow: Workflow = validation_run.workflow
         overall_failed = False
@@ -373,14 +425,29 @@ class ValidationRunService:
 
         try:
             workflow_steps = workflow.steps.all().order_by("order")
+            # Filter steps for resume execution
+            if resume_from_step is not None:
+                workflow_steps = workflow_steps.filter(order__gte=resume_from_step)
+
             for wf_step in workflow_steps:
                 if _was_cancelled():
                     cancelled = True
                     break
-                step_run = self._start_step_run(
+                step_run, should_execute = self._start_step_run(
                     validation_run=validation_run,
                     workflow_step=wf_step,
                 )
+
+                # Skip already-completed steps (idempotency on retry)
+                if not should_execute:
+                    # If the step failed, we should stop (same as normal failure)
+                    if step_run.status == StepStatus.FAILED:
+                        overall_failed = True
+                        failing_step_id = wf_step.id
+                        break
+                    # Otherwise, continue to the next step
+                    continue
+
                 try:
                     validation_result: ValidationResult = self.execute_workflow_step(
                         step=wf_step,
@@ -605,15 +672,62 @@ class ValidationRunService:
         *,
         validation_run: ValidationRun,
         workflow_step: WorkflowStep,
-    ) -> ValidationStepRun:
-        """Create a ValidationStepRun entry marking the step as in progress."""
-        return ValidationStepRun.objects.create(
-            validation_run=validation_run,
-            workflow_step=workflow_step,
-            step_order=workflow_step.order or 0,
-            status=StepStatus.RUNNING,
-            started_at=timezone.now(),
-        )
+    ) -> tuple[ValidationStepRun, bool]:
+        """
+        Get or create a ValidationStepRun entry for the step.
+
+        This method is idempotent to handle Cloud Tasks retries. If a step run
+        already exists for this (validation_run, workflow_step) pair, it returns
+        the existing one. If the existing step run is already terminal (PASSED,
+        FAILED, SKIPPED), the caller should skip re-execution.
+
+        Returns:
+            Tuple of (step_run, should_execute):
+            - step_run: The ValidationStepRun instance
+            - should_execute: True if the step should be executed, False if it
+              should be skipped (already terminal or already RUNNING from a
+              prior attempt)
+
+        See Also:
+            ADR-001: Idempotent Step Execution on Retry
+        """
+        with transaction.atomic():
+            step_run, created = ValidationStepRun.objects.get_or_create(
+                validation_run=validation_run,
+                workflow_step=workflow_step,
+                defaults={
+                    "step_order": workflow_step.order or 0,
+                    "status": StepStatus.RUNNING,
+                    "started_at": timezone.now(),
+                },
+            )
+
+            if not created:
+                # Step run already exists - check if we should execute
+                if step_run.status in {
+                    StepStatus.PASSED,
+                    StepStatus.FAILED,
+                    StepStatus.SKIPPED,
+                }:
+                    # Already terminal - skip execution
+                    logger.info(
+                        "Step run %s already terminal (status=%s), skipping",
+                        step_run.id,
+                        step_run.status,
+                    )
+                    return step_run, False
+
+                # Step is RUNNING - this is a retry. Clear any prior findings
+                # to avoid duplicates, then re-execute.
+                logger.info(
+                    "Step run %s is RUNNING (retry scenario), clearing findings",
+                    step_run.id,
+                )
+                ValidationFinding.objects.filter(
+                    validation_step_run=step_run,
+                ).delete()
+
+            return step_run, True
 
     def _finalize_step_run(
         self,
@@ -801,11 +915,38 @@ class ValidationRunService:
         validation_run: ValidationRun,
         step_metrics: list[dict[str, Any]],
     ) -> ValidationRunSummary:
-        severity_totals: Counter = Counter()
-        total_findings = 0
-        for metrics in step_metrics:
-            severity_totals.update(metrics.get("severity_counts", {}))
-            total_findings += metrics.get("total_findings", 0)
+        """
+        Build run and step summary records from database findings.
+
+        This method queries persisted findings from the database rather than
+        relying solely on in-memory step_metrics. This ensures accurate summaries
+        in resume scenarios where earlier steps' findings are already persisted
+        but not in the current step_metrics list.
+
+        The step_metrics list is still used to extract assertion counts, which
+        aren't persisted as findings (they come from validator stats).
+        """
+        from django.db.models import Count
+
+        # Query run-level severity counts from persisted findings
+        # This ensures we include findings from ALL steps, not just current pass
+        severity_totals: Counter[str] = Counter()
+        for row in (
+            ValidationFinding.objects.filter(validation_run=validation_run)
+            .values("severity")
+            .annotate(count=Count("id"))
+        ):
+            severity_totals[row["severity"]] = row["count"]
+
+        total_findings = sum(severity_totals.values())
+
+        # Extract assertion counts from step_metrics (not persisted as findings)
+        assertion_failures = sum(
+            metrics.get("assertion_failures", 0) for metrics in step_metrics
+        )
+        assertion_total = sum(
+            metrics.get("assertion_total", 0) for metrics in step_metrics
+        )
 
         summary_record, _ = ValidationRunSummary.objects.update_or_create(
             run=validation_run,
@@ -813,26 +954,33 @@ class ValidationRunService:
                 "status": validation_run.status,
                 "completed_at": validation_run.ended_at,
                 "total_findings": total_findings,
-                "error_count": severity_totals.get(Severity.ERROR, 0),
-                "warning_count": severity_totals.get(Severity.WARNING, 0),
-                "info_count": severity_totals.get(Severity.INFO, 0),
-                "assertion_failure_count": sum(
-                    metrics.get("assertion_failures", 0) for metrics in step_metrics
-                ),
-                "assertion_total_count": sum(
-                    metrics.get("assertion_total", 0) for metrics in step_metrics
-                ),
+                "error_count": severity_totals.get(Severity.ERROR.value, 0),
+                "warning_count": severity_totals.get(Severity.WARNING.value, 0),
+                "info_count": severity_totals.get(Severity.INFO.value, 0),
+                "assertion_failure_count": assertion_failures,
+                "assertion_total_count": assertion_total,
                 "extras": {},
             },
         )
 
+        # Build step summaries from ALL step runs, querying findings from DB
         summary_record.step_summaries.all().delete()
         step_summary_objects: list[ValidationStepRunSummary] = []
-        for metrics in step_metrics:
-            step_run = metrics.get("step_run")
-            if not step_run:
-                continue
-            severity_counts: Counter = metrics.get("severity_counts", Counter())
+
+        all_step_runs = ValidationStepRun.objects.filter(
+            validation_run=validation_run,
+        ).select_related("workflow_step").order_by("step_order")
+
+        for step_run in all_step_runs:
+            # Query step-level severity counts from persisted findings
+            step_severity_counts: Counter[str] = Counter()
+            for row in (
+                ValidationFinding.objects.filter(validation_step_run=step_run)
+                .values("severity")
+                .annotate(count=Count("id"))
+            ):
+                step_severity_counts[row["severity"]] = row["count"]
+
             step_summary_objects.append(
                 ValidationStepRunSummary(
                     summary=summary_record,
@@ -844,11 +992,12 @@ class ValidationRunService:
                     ),
                     step_order=step_run.step_order or 0,
                     status=step_run.status,
-                    error_count=severity_counts.get(Severity.ERROR, 0),
-                    warning_count=severity_counts.get(Severity.WARNING, 0),
-                    info_count=severity_counts.get(Severity.INFO, 0),
+                    error_count=step_severity_counts.get(Severity.ERROR.value, 0),
+                    warning_count=step_severity_counts.get(Severity.WARNING.value, 0),
+                    info_count=step_severity_counts.get(Severity.INFO.value, 0),
                 ),
             )
+
         if step_summary_objects:
             ValidationStepRunSummary.objects.bulk_create(step_summary_objects)
 

@@ -555,7 +555,7 @@ DEFAULT_FROM_EMAIL = env(
 # ------------------------------------------------------------------------------
 # These defaults allow local development without Cloud Run Jobs
 GCP_PROJECT_ID = env("GCP_PROJECT_ID", default="")
-GCP_REGION = env("GCP_REGION", default="us-central1")
+GCP_REGION = env("GCP_REGION", default="australia-southeast1")
 GCS_VALIDATION_BUCKET = env("GCS_VALIDATION_BUCKET", default="")
 GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="")
 GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")

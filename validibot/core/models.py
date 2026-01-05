@@ -61,7 +61,24 @@ IDEMPOTENCY_KEY_TTL_HOURS = 24
 
 
 class IdempotencyKeyStatus(models.TextChoices):
-    """Status of an idempotency key request."""
+    """
+    Status of an idempotency key request.
+
+    Used for API request deduplication. Requests are marked PROCESSING on
+    receipt, then updated to COMPLETED when done.
+    """
+
+    PROCESSING = "processing", "Processing"
+    COMPLETED = "completed", "Completed"
+
+
+class CallbackReceiptStatus(models.TextChoices):
+    """
+    Status of a callback receipt for validator callbacks.
+
+    Used for validator callback deduplication. Callbacks are marked PROCESSING
+    on receipt, then updated to the final validation status when done.
+    """
 
     PROCESSING = "processing", "Processing"
     COMPLETED = "completed", "Completed"

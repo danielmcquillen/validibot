@@ -133,7 +133,7 @@ class CallbackCompletionTestCase(TestCase):
         return mock_envelope
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
-    @patch("validibot.validations.api.callbacks.download_envelope")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_callback_completion_rebuilds_summaries_and_queues_purge(
         self,
         mock_download,

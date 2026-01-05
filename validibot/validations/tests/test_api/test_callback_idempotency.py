@@ -98,7 +98,7 @@ class CallbackIdempotencyTestCase(TestCase):
         return mock_envelope
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
-    @patch("validibot.validations.api.callbacks.download_envelope")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_first_callback_processed_successfully(self, mock_download):
         """Test that the first callback with a callback_id is processed."""
         mock_download.return_value = self._make_mock_envelope()
@@ -128,7 +128,7 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(receipt.status, "success")
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
-    @patch("validibot.validations.api.callbacks.download_envelope")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_duplicate_callback_returns_early(self, mock_download):
         """Test that duplicate callbacks with same callback_id are not reprocessed."""
         mock_download.return_value = self._make_mock_envelope()
@@ -174,7 +174,7 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(receipt_count, 1)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
-    @patch("validibot.validations.api.callbacks.download_envelope")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_callback_without_id_still_processed(self, mock_download):
         """Test that callbacks without callback_id are processed (no idempotency)."""
         mock_download.return_value = self._make_mock_envelope()
@@ -199,7 +199,7 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(CallbackReceipt.objects.count(), 0)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
-    @patch("validibot.validations.api.callbacks.download_envelope")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
     def test_different_callback_ids_processed_separately(self, mock_download):
         """Test that different callback_ids are processed independently.
 

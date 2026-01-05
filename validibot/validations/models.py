@@ -1755,7 +1755,27 @@ class ValidationStepRunSummary(TimeStampedModel):
 
 class ValidationFinding(TimeStampedModel):
     """
-    Normalized issues produced by step runs for efficient filtering/pagination.
+    Normalized issue emitted during a validation step.
+
+    A ValidationFinding is the durable, queryable representation of a single
+    validator message (error/warning/info) produced while executing a
+    ValidationStepRun. Findings are stored separately from validator-specific
+    `ValidationStepRun.output` so the UI/API can filter, sort, and paginate
+    issues efficiently.
+
+    Data model relationships:
+    - `validation_step_run` is the primary parent for the finding.
+    - `validation_run` is denormalized for performance (kept aligned by
+      `_ensure_run_alignment`).
+    - `ruleset_assertion` optionally links the finding back to a configured
+      RulesetAssertion when the validator can attribute the issue to an assertion.
+
+    Aggregates such as ValidationRunSummary and ValidationStepRunSummary are
+    computed from this table (severity totals, per-step counts).
+
+    The `path` field records a location within the submitted artifact (JSON
+    Pointer, XPath, etc.). For JSON submissions we strip the synthetic `payload`
+    prefix to match user-facing paths (see `_strip_payload_prefix`).
     """
 
     class Meta:

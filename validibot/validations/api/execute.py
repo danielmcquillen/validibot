@@ -18,18 +18,16 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
-from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
+from validibot.core.api.worker import WorkerOnlyAPIView
 from validibot.validations.services.validation_run import ValidationRunService
 
 logger = logging.getLogger(__name__)
 
 
-class ExecuteValidationRunView(APIView):
+class ExecuteValidationRunView(WorkerOnlyAPIView):
     """
     Execute a validation run from a Cloud Tasks delivery.
 
@@ -52,17 +50,13 @@ class ExecuteValidationRunView(APIView):
     URL: POST /api/v1/execute-validation-run/
     """
 
-    # Cloud Run IAM performs authentication; DRF auth is disabled here.
-    authentication_classes = []
-    permission_classes = []
-
     def post(self, request):
         """
         Process a validation run execution task.
 
         Request body (JSON):
             {
-                "validation_run_id": 123,
+                "validation_run_id": "00000000-0000-0000-0000-000000000000",
                 "user_id": 456,
                 "resume_from_step": null  // or int for resume
             }
@@ -71,10 +65,6 @@ class ExecuteValidationRunView(APIView):
             200 OK: Task completed (validation succeeded, failed, or was skipped)
             500 Internal Server Error: Infrastructure error (triggers Cloud Tasks retry)
         """
-        # Only available on worker instances
-        if not getattr(settings, "APP_IS_WORKER", False):
-            raise Http404
-
         # Parse request data
         validation_run_id = request.data.get("validation_run_id")
         user_id = request.data.get("user_id")
@@ -87,8 +77,9 @@ class ExecuteValidationRunView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # user_id is optional - runs can be created without user context (e.g., API)
-        # A value of 0 signals "no user" from resume callbacks where run.user_id was NULL
+        # user_id is optional - runs can be created without user context (e.g., API).
+        # When resuming from an async validator callback, we pass `run.user_id or 0`
+        # to signal "no user". This view converts 0 back to None.
         if user_id == 0:
             user_id = None
 

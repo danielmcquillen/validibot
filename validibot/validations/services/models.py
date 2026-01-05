@@ -1,11 +1,17 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
-from validibot.validations.constants import ValidationRunStatus
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from validibot.validations.constants import ValidationRunStatus
 
 
 @dataclass
 class ValidationRunTaskResult:
-    run_id: int
+    run_id: UUID | str
     status: ValidationRunStatus
     error: str | None = None
 

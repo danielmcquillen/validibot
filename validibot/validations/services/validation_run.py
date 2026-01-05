@@ -42,6 +42,8 @@ GENERIC_EXECUTION_ERROR = _(
 RUN_CANCELED_MESSAGE = _("Run canceled by user.")
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from validibot.submissions.models import Submission
     from validibot.users.models import Organization
     from validibot.users.models import User
@@ -301,8 +303,8 @@ class ValidationRunService:
 
     def execute(
         self,
-        validation_run_id: int,
-        user_id: int,
+        validation_run_id: UUID | str,
+        user_id: int | None,
         metadata: dict | None = None,
         resume_from_step: int | None = None,
     ) -> ValidationRunTaskResult:
@@ -330,7 +332,7 @@ class ValidationRunService:
               idempotency is handled by _start_step_run() using get_or_create.
 
         Args:
-            validation_run_id: ID of the ValidationRun to execute.
+            validation_run_id: ID of the ValidationRun to execute (UUID).
             user_id: ID of the user who initiated the run (for tracking).
             metadata: Optional metadata passed through to step handlers.
             resume_from_step: Step order to resume from (None for initial execution).
@@ -925,6 +927,29 @@ class ValidationRunService:
             if isinstance(value, int) and value >= 0:
                 return value
         return 0
+
+    def rebuild_run_summary_record(
+        self,
+        *,
+        validation_run: ValidationRun,
+    ) -> ValidationRunSummary:
+        """
+        Rebuild run and step summary records from persisted state.
+
+        This is safe to call multiple times and is used when a run reaches a
+        terminal state outside of the main worker loop (for example completion
+        via an async validator callback).
+
+        Args:
+            validation_run: The run whose summary records should be rebuilt.
+
+        Returns:
+            The updated ValidationRunSummary record.
+        """
+        return self._build_run_summary_record(
+            validation_run=validation_run,
+            step_metrics=[],
+        )
 
     def _build_run_summary_record(
         self,

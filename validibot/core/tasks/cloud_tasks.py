@@ -20,14 +20,18 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
 
 def enqueue_validation_run(
-    validation_run_id: int,
+    validation_run_id: UUID | str,
     user_id: int,
     resume_from_step: int | None = None,
 ) -> str | None:
@@ -51,7 +55,7 @@ def enqueue_validation_run(
         google.api_core.exceptions.GoogleAPICallError: If task creation fails.
     """
     payload = {
-        "validation_run_id": validation_run_id,
+        "validation_run_id": str(validation_run_id),
         "user_id": user_id,
         "resume_from_step": resume_from_step,
     }
@@ -139,7 +143,7 @@ def _enqueue_local_dev(payload: dict) -> None:
 
 
 def _enqueue_cloud_tasks(
-    validation_run_id: int,
+    validation_run_id: UUID | str,
     resume_from_step: int | None,
     payload: dict,
 ) -> str:
@@ -216,12 +220,6 @@ def _enqueue_cloud_tasks(
 
     try:
         created_task = client.create_task(request=request)
-        logger.info(
-            "Cloud Task created: %s for validation_run_id=%s",
-            created_task.name,
-            validation_run_id,
-        )
-        return created_task.name
     except Exception as exc:
         # Check if it's a duplicate task (already exists)
         # Cloud Tasks returns ALREADY_EXISTS if task name is taken
@@ -233,6 +231,13 @@ def _enqueue_cloud_tasks(
             )
             return full_task_name
         raise
+    else:
+        logger.info(
+            "Cloud Task created: %s for validation_run_id=%s",
+            created_task.name,
+            validation_run_id,
+        )
+        return created_task.name
 
 
 def _get_invoker_service_account() -> str:

@@ -177,7 +177,7 @@ def launch_energyplus_validation(
 
         # 3. Upload submission file to GCS
         # TODO: Detect file type (IDF vs epJSON) and use appropriate extension
-        logger.info(f"Uploading submission to {model_file_uri}")
+        logger.info("Uploading submission to %s", model_file_uri)
         upload_file(
             content=submission.content.encode("utf-8"),
             uri=model_file_uri,
@@ -217,13 +217,13 @@ def launch_energyplus_validation(
         )
 
         # 6. Upload envelope to GCS
-        logger.info(f"Uploading input envelope to {input_envelope_uri}")
+        logger.info("Uploading input envelope to %s", input_envelope_uri)
         upload_envelope(envelope, input_envelope_uri)
 
         # 7. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
-        logger.info(f"Triggering Cloud Run Job: {job_name}")
+        logger.info("Triggering Cloud Run Job: %s", job_name)
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,

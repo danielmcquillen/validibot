@@ -52,7 +52,7 @@ and reduces storage costs for workflows that don't need to retain user data.
 
 | Policy | Behavior |
 |--------|----------|
-| `DO_NOT_STORE` | Content purged immediately after validation completes |
+| `DO_NOT_STORE` | Content queued for purge shortly after validation completes |
 | `STORE_10_DAYS` | Content retained for 10 days after submission |
 | `STORE_30_DAYS` | Content retained for 30 days after submission |
 

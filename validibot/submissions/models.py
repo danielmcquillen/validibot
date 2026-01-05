@@ -529,7 +529,8 @@ def _delete_execution_bundle(run) -> None:
     all associated files from cloud storage.
 
     Args:
-        run: ValidationRun instance with summary containing execution_bundle_uri
+        run: ValidationRun instance whose step run output (or summary) contains
+            execution bundle metadata.
 
     Note:
         - Safe to call if bundle doesn't exist (no-op)
@@ -537,11 +538,27 @@ def _delete_execution_bundle(run) -> None:
     """
     from urllib.parse import urlparse
 
-    if not run.summary:
-        return
+    bundle_uri = ""
+    if isinstance(getattr(run, "summary", None), dict):
+        bundle_uri = run.summary.get("execution_bundle_uri") or ""
 
-    # Get execution bundle URI from run summary (set by launcher)
-    bundle_uri = run.summary.get("execution_bundle_uri")
+    # Backwards-compatible fallback: execution bundle URI is persisted in the
+    # async step run's output when the Cloud Run Job is launched.
+    if not bundle_uri:
+        try:
+            for output in run.step_runs.values_list("output", flat=True):
+                if not isinstance(output, dict):
+                    continue
+                candidate = output.get("execution_bundle_uri")
+                if candidate:
+                    bundle_uri = str(candidate)
+                    break
+        except Exception:
+            logger.exception(
+                "Failed to read execution_bundle_uri from step run outputs",
+                extra={"run_id": str(getattr(run, "id", ""))},
+            )
+
     if not bundle_uri or not bundle_uri.startswith("gs://"):
         return
 
@@ -616,11 +633,11 @@ def detect_file_type(
 
 class PurgeRetry(models.Model):
     """
-    Track submissions that failed to purge and need retry.
+    Track submissions that need purge processing.
 
-    When a purge operation fails (e.g., GCS unavailable, file locked),
-    we record it here for later retry. A scheduled job processes
-    these records and attempts to complete the purge.
+    A scheduled job processes these records and attempts to purge the
+    associated submissions (for example DO_NOT_STORE submissions when
+    a validation run completes, or retries after transient failures).
 
     This ensures data retention policies are eventually enforced
     even when transient failures occur.
@@ -698,3 +715,45 @@ class PurgeRetry(models.Model):
             self.next_retry_at = timezone.now() + timezone.timedelta(days=365)
 
         self.save()
+
+
+def queue_submission_purge(submission: Submission | None) -> None:
+    """
+    Queue a purge attempt for a submission.
+
+    This is primarily used to enforce DO_NOT_STORE retention after a validation
+    run completes without blocking request paths that also do critical state
+    updates (for example Cloud Run Job callbacks).
+
+    The scheduled `process_purge_retries` job performs the actual purge work.
+
+    Args:
+        submission: Submission to purge (no-op when None or already purged).
+    """
+    if not submission:
+        return
+
+    if submission.content_purged_at:
+        return
+
+    from django.utils import timezone
+
+    from validibot.submissions.constants import DataRetention
+
+    if submission.retention_policy != DataRetention.DO_NOT_STORE:
+        return
+
+    now = timezone.now()
+    retry, created = PurgeRetry.objects.get_or_create(
+        submission=submission,
+        defaults={"next_retry_at": now},
+    )
+    if created:
+        return
+
+    if retry.attempt_count >= PurgeRetry.MAX_ATTEMPTS:
+        return
+
+    if retry.next_retry_at > now:
+        retry.next_retry_at = now
+        retry.save(update_fields=["next_retry_at"])

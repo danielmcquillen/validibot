@@ -38,7 +38,7 @@ A future ADR will address truly ephemeral handling where submission content is n
 - Memory-only path during validation execution
 - Additional infrastructure cost (~$35+/month minimum)
 
-For now, even `DO_NOT_STORE` submissions are temporarily stored in the database during execution, then purged immediately upon run completion.
+For now, even `DO_NOT_STORE` submissions are temporarily stored in the database during execution, then queued for purge as soon as the run completes (via the scheduled purge worker).
 
 ## Retention Policy Availability by Plan
 
@@ -522,7 +522,7 @@ models.CheckConstraint(
 
 ### Integration Tests
 
-- DO_NOT_STORE submission purged after run completes
+- DO_NOT_STORE submission queued for purge when run completes
 - STORE_10_DAYS submission not purged before expiry
 - STORE_10_DAYS submission purged by scheduled job after expiry
 - Failed purge queued for retry
@@ -548,7 +548,7 @@ models.CheckConstraint(
 - [x] Workflows can specify retention policy
 - [ ] Retention options respect org plan availability *(deferred to pricing ADR)*
 - [x] Submissions correctly set `expires_at` based on retention
-- [x] DO_NOT_STORE submissions purged after run completion
+- [x] DO_NOT_STORE submissions queued for purge after run completion
 - [x] Scheduled job purges expired submissions
 - [x] Purge failures are retried automatically
 - [x] UI shows retention policy in workflow forms

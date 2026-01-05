@@ -20,6 +20,7 @@ from django.utils import timezone
 from validibot.submissions.constants import DataRetention
 from validibot.submissions.models import PurgeRetry
 from validibot.submissions.models import Submission
+from validibot.submissions.models import queue_submission_purge
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.validations.models import ValidationRun
 from validibot.validations.tests.factories import ValidationRunFactory
@@ -440,6 +441,48 @@ class TestProcessPurgeRetriesCommand:
         call_command("process_purge_retries", stdout=out)
 
         assert "No pending purge retries" in out.getvalue()
+
+
+@pytest.mark.django_db
+class TestQueueSubmissionPurge:
+    """Tests for queue_submission_purge() helper."""
+
+    def test_creates_retry_for_do_not_store_submission(self):
+        """queue_submission_purge should enqueue a purge retry for DO_NOT_STORE."""
+        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+
+        queue_submission_purge(submission)
+
+        assert PurgeRetry.objects.filter(submission=submission).exists()
+
+    def test_noop_when_submission_already_purged(self):
+        """
+        queue_submission_purge should not create retries for already-purged content.
+        """
+        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+        Submission.objects.filter(id=submission.id).update(
+            content="",
+            input_file="",
+            content_purged_at=timezone.now(),
+        )
+
+        submission.refresh_from_db()
+        queue_submission_purge(submission)
+
+        assert not PurgeRetry.objects.filter(submission=submission).exists()
+
+    def test_bring_next_retry_forward_when_scheduled_in_future(self):
+        """queue_submission_purge should bring next_retry_at forward for fast purge."""
+        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+        retry = PurgeRetry.objects.create(
+            submission=submission,
+            next_retry_at=timezone.now() + timedelta(hours=1),
+        )
+
+        queue_submission_purge(submission)
+
+        retry.refresh_from_db()
+        assert retry.next_retry_at <= timezone.now()
 
 
 @pytest.mark.django_db

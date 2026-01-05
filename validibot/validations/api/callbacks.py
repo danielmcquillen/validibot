@@ -47,12 +47,10 @@ Design: Simple APIView with clear error handling. No complex permissions.
 """
 
 import logging
-from collections import Counter
 from datetime import UTC
 from datetime import datetime
 
 from django.conf import settings
-from django.db.models import Count
 from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
@@ -63,7 +61,6 @@ from vb_shared.validations.envelopes import ValidationCallback
 from vb_shared.validations.envelopes import ValidationStatus
 
 from validibot.core.models import CallbackReceiptStatus
-from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
@@ -71,10 +68,9 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import CallbackReceipt
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
-from validibot.validations.models import ValidationRunSummary
 from validibot.validations.models import ValidationStepRun
-from validibot.validations.models import ValidationStepRunSummary
 from validibot.validations.services.cloud_run.gcs_client import download_envelope
+from validibot.validations.services.validation_run import ValidationRunService
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +440,8 @@ class ValidationCallbackView(APIView):
                 0,
             )
         # Persist full envelope plus a signals namespace for downstream steps.
+        # Merge with any existing output (e.g., job metadata like execution_bundle_uri)
+        # so the step retains launch-time diagnostics after callback finalization.
         step_output = output_envelope.model_dump()
         try:
             # FMI envelopes expose output_values keyed by catalog slug
@@ -457,7 +455,8 @@ class ValidationCallbackView(APIView):
                 "Failed to extract signals from output envelope",
                 extra={"run_id": run.id},
             )
-        step_run.output = step_output
+        existing_output = dict(step_run.output or {})
+        step_run.output = {**existing_output, **step_output}
         step_run.error = step_error
         step_run.save(
             update_fields=[
@@ -597,66 +596,12 @@ class ValidationCallbackView(APIView):
 
             run.save()
 
-            # Rebuild summaries based on stored findings
-            severity_counts_run: Counter[str] = Counter()
-            for row in (
-                ValidationFinding.objects.filter(validation_run=run)
-                .values("severity")
-                .annotate(count=Count("id"))
-            ):
-                severity_counts_run[row["severity"]] = row["count"]
-
-            severity_counts_step: Counter[str] = Counter()
-            for row in (
-                ValidationFinding.objects.filter(validation_step_run=step_run)
-                .values("severity")
-                .annotate(count=Count("id"))
-            ):
-                severity_counts_step[row["severity"]] = row["count"]
-
-            total_findings_run = sum(severity_counts_run.values())
-
-            run_summary, _ = ValidationRunSummary.objects.update_or_create(
-                run=run,
-                defaults={
-                    "status": run.status,
-                    "completed_at": run.ended_at,
-                    "total_findings": total_findings_run,
-                    "error_count": severity_counts_run.get(
-                        Severity.ERROR.value,
-                        0,
-                    ),
-                    "warning_count": severity_counts_run.get(
-                        Severity.WARNING.value,
-                        0,
-                    ),
-                    "info_count": severity_counts_run.get(Severity.INFO.value, 0),
-                    "assertion_failure_count": 0,
-                    "assertion_total_count": 0,
-                    "extras": {},
-                },
-            )
-
-            ValidationStepRunSummary.objects.update_or_create(
-                step_run=step_run,
-                defaults={
-                    "summary": run_summary,
-                    "step_name": getattr(step_run.workflow_step, "name", ""),
-                    "step_order": step_run.step_order or 0,
-                    "status": step_run.status,
-                    "error_count": severity_counts_step.get(
-                        Severity.ERROR.value,
-                        0,
-                    ),
-                    "warning_count": severity_counts_step.get(
-                        Severity.WARNING.value,
-                        0,
-                    ),
-                    "info_count": severity_counts_step.get(
-                        Severity.INFO.value,
-                        0,
-                    ),
-                },
+            # Rebuild summaries based on persisted findings, covering all steps.
+            # This matches ValidationRunService behavior and ensures correct totals
+            # when a run completes on an async callback.
+            ValidationRunService()._build_run_summary_record(  # noqa: SLF001
+                validation_run=run,
+                step_metrics=[],
             )
 
             logger.info(
@@ -665,9 +610,9 @@ class ValidationCallbackView(APIView):
                 run.status,
             )
 
-            # Purge submission content if retention policy is DO_NOT_STORE
-            # This happens after all processing is complete to ensure data
-            # integrity during the validation run.
+            # Queue submission purge if retention policy is DO_NOT_STORE.
+            # This keeps the callback request fast and relies on the scheduled
+            # purge worker to enforce retention.
             self._purge_if_do_not_store(run)
 
         # Update the receipt status from PROCESSING to the final status.
@@ -709,16 +654,17 @@ class ValidationCallbackView(APIView):
 
     def _purge_if_do_not_store(self, run: ValidationRun) -> None:
         """
-        Purge submission content if the retention policy is DO_NOT_STORE.
+        Queue submission purge if the retention policy is DO_NOT_STORE.
 
-        This is called after all callback processing is complete. Failures
-        are logged but don't fail the callback - a retry mechanism will
-        handle orphaned submissions.
+        Validator callbacks should be fast and reliable. Instead of purging
+        submission content inline (which may require deleting many GCS objects),
+        we enqueue a purge record for the scheduled purge worker to process.
 
         Args:
             run: The ValidationRun that just completed
         """
         from validibot.submissions.constants import DataRetention
+        from validibot.submissions.models import queue_submission_purge
 
         submission = run.submission
         if not submission:
@@ -732,36 +678,19 @@ class ValidationCallbackView(APIView):
             return
 
         try:
-            submission.purge_content()
+            queue_submission_purge(submission)
             logger.info(
-                "Purged DO_NOT_STORE submission after run completion",
+                "Queued DO_NOT_STORE submission purge after run completion",
                 extra={
                     "submission_id": str(submission.id),
                     "run_id": str(run.id),
                 },
             )
-        except Exception as e:
-            # Log but don't fail - queue for retry
+        except Exception:
             logger.exception(
-                "Failed to purge DO_NOT_STORE submission, queuing for retry",
+                "Failed to queue DO_NOT_STORE submission purge",
                 extra={
                     "submission_id": str(submission.id),
                     "run_id": str(run.id),
                 },
             )
-            # Queue for retry via PurgeRetry model
-            try:
-                from django.utils import timezone
-
-                from validibot.submissions.models import PurgeRetry
-
-                retry, created = PurgeRetry.objects.get_or_create(
-                    submission=submission,
-                    defaults={"next_retry_at": timezone.now()},
-                )
-                retry.record_failure(str(e))
-            except Exception:
-                logger.exception(
-                    "Failed to create PurgeRetry record",
-                    extra={"submission_id": str(submission.id)},
-                )

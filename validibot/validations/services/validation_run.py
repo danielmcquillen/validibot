@@ -515,6 +515,9 @@ class ValidationRunService:
                 validation_run=validation_run,
                 step_metrics=step_metrics,
             )
+            from validibot.submissions.models import queue_submission_purge
+
+            queue_submission_purge(validation_run.submission)
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=validation_run.status,
@@ -545,6 +548,9 @@ class ValidationRunService:
                 actor=actor,
                 extra_data=extra_payload,
             )
+            from validibot.submissions.models import queue_submission_purge
+
+            queue_submission_purge(validation_run.submission)
             return ValidationRunTaskResult(
                 run_id=validation_run.id,
                 status=ValidationRunStatus.CANCELED,
@@ -606,6 +612,9 @@ class ValidationRunService:
             extra_data=extra_payload,
         )
 
+        from validibot.submissions.models import queue_submission_purge
+
+        queue_submission_purge(validation_run.submission)
         return result
 
     # ---------- Private methods ----------
@@ -931,8 +940,10 @@ class ValidationRunService:
         in resume scenarios where earlier steps' findings are already persisted
         but not in the current step_metrics list.
 
-        The step_metrics list is still used to extract assertion counts, which
-        aren't persisted as findings (they come from validator stats).
+        Assertion totals are computed from persisted step_run.output data. The
+        step_metrics argument is accepted for call-site compatibility, but the
+        summary is rebuilt from persisted state so it can be called safely after
+        async callbacks and retries.
         """
         from django.db.models import Count
 

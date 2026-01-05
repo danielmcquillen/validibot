@@ -264,7 +264,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         default=DataRetention.DO_NOT_STORE,
         help_text=_(
             "How long to keep submission data after validation completes. "
-            "DO_NOT_STORE purges immediately after run completion."
+            "DO_NOT_STORE queues deletion shortly after run completion."
         ),
     )
 

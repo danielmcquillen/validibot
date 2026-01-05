@@ -173,9 +173,14 @@ class ValidationCallbackView(APIView):
             # Idempotency check: reserve the receipt upfront to fence duplicates.
             # We use select_for_update with NOWAIT to prevent concurrent callbacks
             # from both proceeding when one is already processing. If a lock can't
-            # be acquired immediately, the callback is rejected (Cloud Tasks will retry).
+            # be acquired, the callback is rejected (Cloud Tasks will retry).
+            #
+            # IMPORTANT: The lock must be held for the ENTIRE duration of processing.
+            # We do this by returning early responses from within the transaction,
+            # and only committing when processing is complete.
             receipt = None
             receipt_created = False
+            should_process = True  # Flag to track if we should process the callback
             if callback.callback_id:
                 from django.db import DatabaseError
                 from django.db import transaction
@@ -198,6 +203,36 @@ class ValidationCallbackView(APIView):
                                 result_uri=callback.result_uri or "",
                             )
                             receipt_created = True
+
+                        if not receipt_created:
+                            # Receipt already exists - check if it was fully processed.
+                            # If status is still PROCESSING, a previous attempt failed
+                            # mid-processing, so we should retry. Otherwise, it's a true
+                            # duplicate and we return the cached response.
+                            if receipt.status != CallbackReceiptStatus.PROCESSING:
+                                logger.info(
+                                    "Callback %s already processed at %s",
+                                    callback.callback_id,
+                                    receipt.received_at,
+                                )
+                                should_process = False
+                            else:
+                                # Status is PROCESSING - previous attempt failed, retry
+                                logger.info(
+                                    "Callback %s still PROCESSING (previous attempt "
+                                    "failed), retrying",
+                                    callback.callback_id,
+                                )
+
+                        # Process the callback inside the transaction so the lock is
+                        # held until we update the receipt status to a terminal value.
+                        if should_process:
+                            return self._process_callback(
+                                callback=callback,
+                                run=run,
+                                receipt=receipt,
+                            )
+
                 except DatabaseError:
                     # Lock acquisition failed - another callback is processing
                     # Return 409 Conflict so Cloud Tasks will retry later
@@ -213,444 +248,24 @@ class ValidationCallbackView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
 
-                if not receipt_created:
-                    # Receipt already exists - check if it was fully processed.
-                    # If status is still PROCESSING, a previous attempt failed
-                    # mid-processing, so we should retry. Otherwise, it's a true
-                    # duplicate and we return the cached response.
-                    if receipt.status != CallbackReceiptStatus.PROCESSING:
-                        logger.info(
-                            "Callback %s already processed at %s, returning cached",
-                            callback.callback_id,
-                            receipt.received_at,
-                        )
-                        received_at_iso = receipt.received_at.isoformat()
-                        return Response(
-                            {
-                                "message": "Callback already processed",
-                                "idempotent_replayed": True,
-                                "original_received_at": received_at_iso,
-                            },
-                            status=status.HTTP_200_OK,
-                        )
-                    # Status is PROCESSING - previous attempt failed, retry
-                    logger.info(
-                        "Callback %s has status %s (previous attempt failed), retrying",
-                        callback.callback_id,
-                        CallbackReceiptStatus.PROCESSING,
-                    )
-
-            # Locate the active step run (RUNNING/PENDING) for this validation.
-            step_run = run.current_step_run
-            if not step_run:
-                step_run = (
-                    ValidationStepRun.objects.select_related(
-                        "workflow_step__validator",
-                    )
-                    .filter(
-                        validation_run=run,
-                        status__in=[StepStatus.RUNNING, StepStatus.PENDING],
-                    )
-                    .order_by("step_order")
-                    .first()
-                )
-
-            if not step_run:
-                logger.warning("No active step run found for run %s", run.id)
-                return Response(
-                    {"error": "Step run not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            validator = step_run.workflow_step.validator
-            if not validator:
-                logger.error("No validator found for step run: %s", step_run.id)
-                return Response(
-                    {"error": "No validator found for step"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Download the output envelope from GCS
-            # Determine the envelope class based on validator type
-            if validator.validation_type == ValidationType.ENERGYPLUS:
-                envelope_class = EnergyPlusOutputEnvelope
-            elif validator.validation_type == ValidationType.FMI:
-                envelope_class = FMIOutputEnvelope
-            else:
-                logger.error(
-                    "Unsupported validator type: %s",
-                    validator.validation_type,
-                )
-                error_msg = f"Unsupported validator type: {validator.validation_type}"
-                return Response(
-                    {"error": error_msg},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            try:
-                output_envelope = download_envelope(
-                    callback.result_uri,
-                    envelope_class,
-                )
-            except Exception as e:
-                logger.exception("Failed to download output envelope")
-                return Response(
-                    {"error": f"Failed to download output envelope: {e}"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                )
-
-            # Double-check the envelope matches the expected validator
-            if str(output_envelope.validator.id) != str(validator.id):
-                logger.warning(
-                    "Envelope validator mismatch: envelope=%s expected=%s",
-                    output_envelope.validator.id,
-                    validator.id,
-                )
-                return Response(
-                    {"error": "Validator mismatch in output envelope"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if str(getattr(output_envelope, "run_id", "")) != str(run.id):
-                logger.warning(
-                    "Envelope run mismatch: envelope=%s expected=%s",
-                    getattr(output_envelope, "run_id", ""),
-                    run.id,
-                )
-                return Response(
-                    {"error": "Run mismatch in output envelope"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if str(getattr(output_envelope.org, "id", "")) != str(run.org_id):
-                logger.warning(
-                    "Envelope org mismatch: envelope=%s run=%s",
-                    getattr(output_envelope.org, "id", ""),
-                    run.org_id,
-                )
-                return Response(
-                    {"error": "Org mismatch in output envelope"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if (
-                str(getattr(output_envelope.workflow, "step_id", ""))
-                != str(step_run.workflow_step_id)
-            ):
-                logger.warning(
-                    "Envelope step mismatch: envelope=%s expected=%s",
-                    getattr(output_envelope.workflow, "step_id", ""),
-                    step_run.workflow_step_id,
-                )
-                return Response(
-                    {"error": "Workflow step mismatch in output envelope"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Map ValidationStatus to step status
-            step_status_mapping = {
-                ValidationStatus.SUCCESS: StepStatus.PASSED,
-                ValidationStatus.FAILED_VALIDATION: StepStatus.FAILED,
-                ValidationStatus.FAILED_RUNTIME: StepStatus.FAILED,
-                ValidationStatus.CANCELLED: StepStatus.SKIPPED,
-            }
-
-            # Determine the step status from the envelope
-            step_status = step_status_mapping.get(
-                output_envelope.status,
-                StepStatus.FAILED,
-            )
-
-            # Set timestamps for step finalization
-            finished_at = _coerce_finished_at(output_envelope.timing.finished_at)
-
-            # Extract error messages from envelope (for step-level errors)
-            step_error = ""
-            if output_envelope.status != ValidationStatus.SUCCESS:
-                error_messages = [
-                    msg.text
-                    for msg in output_envelope.messages
-                    if msg.severity == "ERROR"
-                ]
-                if error_messages:
-                    step_error = "\n".join(error_messages)
-
-            # Update the step run with detailed status/timing/output
-            step_run.status = step_status
-            step_run.ended_at = finished_at
-            if not step_run.started_at:
-                step_run.started_at = finished_at
-            if step_run.started_at and step_run.ended_at:
-                step_run.duration_ms = max(
-                    int(
-                        (step_run.ended_at - step_run.started_at).total_seconds()
-                        * 1000,
-                    ),
-                    0,
-                )
-            # Persist full envelope plus a signals namespace for downstream steps.
-            step_output = output_envelope.model_dump()
-            try:
-                # FMI envelopes expose output_values keyed by catalog slug
-                signals = getattr(output_envelope.outputs, "output_values", None)
-                if signals is None and hasattr(output_envelope.outputs, "outputs"):
-                    signals = getattr(output_envelope.outputs, "outputs", None)
-                if signals:
-                    step_output = {**step_output, "signals": signals}
-            except Exception:
-                logger.exception(
-                    "Failed to extract signals from output envelope",
-                    extra={"run_id": run.id},
-                )
-            step_run.output = step_output
-            step_run.error = step_error
-            step_run.save(
-                update_fields=[
-                    "status",
-                    "ended_at",
-                    "started_at",
-                    "duration_ms",
-                    "output",
-                    "error",
-                ],
-            )
-
-            # Replace existing findings for this step run with envelope messages
-            ValidationFinding.objects.filter(validation_step_run=step_run).delete()
-            findings_to_create: list[ValidationFinding] = []
-            for msg in output_envelope.messages:
-                severity_value = (
-                    msg.severity.value
-                    if hasattr(msg.severity, "value")
-                    else str(msg.severity)
-                )
-                location = getattr(msg, "location", None)
-                path = getattr(location, "path", None) or ""
-                meta: dict = {}
-                if location:
-                    meta.update(
+                # If we get here, it means should_process was False (duplicate callback)
+                if not should_process:
+                    received_at_iso = receipt.received_at.isoformat()
+                    return Response(
                         {
-                            "line": getattr(location, "line", None),
-                            "column": getattr(location, "column", None),
-                        }
+                            "message": "Callback already processed",
+                            "idempotent_replayed": True,
+                            "original_received_at": received_at_iso,
+                        },
+                        status=status.HTTP_200_OK,
                     )
-                if msg.tags:
-                    meta["tags"] = msg.tags
-                finding = ValidationFinding(
-                    validation_run=run,
-                    validation_step_run=step_run,
-                    severity=severity_value,
-                    code=msg.code or "",
-                    message=msg.text,
-                    path=path,
-                    meta=meta,
-                )
-                try:
-                    finding._ensure_run_alignment()  # noqa: SLF001
-                    finding._strip_payload_prefix()  # noqa: SLF001
-                except Exception:
-                    logger.warning(
-                        "Skipping finding due to cleanup failure",
-                        exc_info=True,
-                    )
-                    continue
-                findings_to_create.append(finding)
-
-            if findings_to_create:
-                try:
-                    ValidationFinding.objects.bulk_create(
-                        findings_to_create,
-                        batch_size=500,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to persist findings for step_run %s; continuing",
-                        step_run.id,
-                    )
-
-            # Make outputs available to downstream steps under a namespaced key
-            # on the run summary. We use step_run.id as the namespace to avoid
-            # collisions. Downstream resolvers can read from
-            # run.summary["steps"][<step_run_id>]["signals"].
-            if run.summary is None:
-                run.summary = {}
-            summary_steps = run.summary.get("steps", {})
-            summary_steps[str(step_run.id)] = {
-                "signals": step_output.get("signals", {}),
-            }
-            run.summary["steps"] = summary_steps
-            run.save(update_fields=["summary"])
-
-            # Check if there are remaining steps to execute
-            # Only proceed with remaining steps if the current step passed
-            remaining_steps = run.workflow.steps.filter(
-                order__gt=step_run.step_order,
-            ).exists()
-
-            if remaining_steps and step_status == StepStatus.PASSED:
-                # Enqueue a Cloud Task to resume execution from the next step
-                # DO NOT finalize the run - the resume task will do that
-                from validibot.core.tasks import enqueue_validation_run
-
-                # user_id can be NULL if the run was created via API without user context.
-                # Pass 0 to signal "no user" - execute() handles this gracefully.
-                enqueue_validation_run(
-                    validation_run_id=run.id,
-                    user_id=run.user_id or 0,
-                    resume_from_step=step_run.step_order + 1,
-                )
-                logger.info(
-                    "Enqueued resume task for run %s from step %s",
-                    run.id,
-                    step_run.step_order + 1,
-                )
             else:
-                # No remaining steps OR step failed - finalize the run now
-                # Map ValidationStatus to run status and error category
-                status_mapping = {
-                    ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
-                    ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
-                    ValidationStatus.FAILED_RUNTIME: ValidationRunStatus.FAILED,
-                    ValidationStatus.CANCELLED: ValidationRunStatus.CANCELED,
-                }
-                error_category_mapping = {
-                    ValidationStatus.SUCCESS: "",
-                    ValidationStatus.FAILED_VALIDATION: (
-                        ValidationRunErrorCategory.VALIDATION_FAILED
-                    ),
-                    ValidationStatus.FAILED_RUNTIME: (
-                        ValidationRunErrorCategory.RUNTIME_ERROR
-                    ),
-                    ValidationStatus.CANCELLED: "",
-                }
-
-                run.status = status_mapping.get(
-                    output_envelope.status,
-                    ValidationRunStatus.FAILED,
-                )
-                run.error_category = error_category_mapping.get(
-                    output_envelope.status,
-                    ValidationRunErrorCategory.RUNTIME_ERROR,
-                )
-                run.ended_at = finished_at
-                run.error = step_error
-
-                # Calculate duration if we have both timestamps
-                if run.started_at and run.ended_at:
-                    delta = run.ended_at - run.started_at
-                    run.duration_ms = int(delta.total_seconds() * 1000)
-
-                run.save()
-
-                # Rebuild summaries based on stored findings
-                severity_counts_run: Counter[str] = Counter()
-                for row in (
-                    ValidationFinding.objects.filter(validation_run=run)
-                    .values("severity")
-                    .annotate(count=Count("id"))
-                ):
-                    severity_counts_run[row["severity"]] = row["count"]
-
-                severity_counts_step: Counter[str] = Counter()
-                for row in (
-                    ValidationFinding.objects.filter(validation_step_run=step_run)
-                    .values("severity")
-                    .annotate(count=Count("id"))
-                ):
-                    severity_counts_step[row["severity"]] = row["count"]
-
-                total_findings_run = sum(severity_counts_run.values())
-
-                run_summary, _ = ValidationRunSummary.objects.update_or_create(
+                # No callback_id - process without idempotency protection
+                return self._process_callback(
+                    callback=callback,
                     run=run,
-                    defaults={
-                        "status": run.status,
-                        "completed_at": run.ended_at,
-                        "total_findings": total_findings_run,
-                        "error_count": severity_counts_run.get(
-                            Severity.ERROR.value,
-                            0,
-                        ),
-                        "warning_count": severity_counts_run.get(
-                            Severity.WARNING.value,
-                            0,
-                        ),
-                        "info_count": severity_counts_run.get(Severity.INFO.value, 0),
-                        "assertion_failure_count": 0,
-                        "assertion_total_count": 0,
-                        "extras": {},
-                    },
+                    receipt=None,
                 )
-
-                ValidationStepRunSummary.objects.update_or_create(
-                    step_run=step_run,
-                    defaults={
-                        "summary": run_summary,
-                        "step_name": getattr(step_run.workflow_step, "name", ""),
-                        "step_order": step_run.step_order or 0,
-                        "status": step_run.status,
-                        "error_count": severity_counts_step.get(
-                            Severity.ERROR.value,
-                            0,
-                        ),
-                        "warning_count": severity_counts_step.get(
-                            Severity.WARNING.value,
-                            0,
-                        ),
-                        "info_count": severity_counts_step.get(
-                            Severity.INFO.value,
-                            0,
-                        ),
-                    },
-                )
-
-                logger.info(
-                    "Finalized run %s with status %s",
-                    run.id,
-                    run.status,
-                )
-
-                # Purge submission content if retention policy is DO_NOT_STORE
-                # This happens after all processing is complete to ensure data
-                # integrity during the validation run.
-                self._purge_if_do_not_store(run)
-
-            # Update the receipt status from PROCESSING to the final status.
-            # The receipt was created at the start to fence duplicate callbacks.
-            # We update whether this was a new receipt or a retry (receipt existed
-            # but had status=PROCESSING from a failed previous attempt).
-            if callback.callback_id and receipt:
-                try:
-                    cb_status = callback.status
-                    if hasattr(cb_status, "value"):
-                        status_str = cb_status.value
-                    else:
-                        status_str = str(cb_status)
-                    receipt.status = status_str
-                    receipt.validation_run = run
-                    receipt.save(update_fields=["status", "validation_run"])
-                    logger.debug(
-                        "Updated callback receipt %s to status %s",
-                        callback.callback_id,
-                        status_str,
-                    )
-                except Exception:
-                    # If receipt update fails, log but don't fail the request.
-                    logger.warning(
-                        "Failed to update callback receipt for %s",
-                        callback.callback_id,
-                        exc_info=True,
-                    )
-
-            logger.info(
-                "Successfully processed callback for run %s",
-                callback.run_id,
-            )
-
-            return Response(
-                {"message": "Callback processed successfully"},
-                status=status.HTTP_200_OK,
-            )
 
         except Exception as e:
             logger.exception("Unexpected error processing callback")
@@ -658,6 +273,439 @@ class ValidationCallbackView(APIView):
                 {"error": f"Internal server error: {e}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    def _process_callback(
+        self,
+        callback: ValidationCallback,
+        run: ValidationRun,
+        receipt: CallbackReceipt | None,
+    ) -> Response:
+        """
+        Process the callback payload and update the validation run.
+
+        This method contains the core callback processing logic, extracted to
+        allow it to run inside a transaction that holds a row lock on the
+        callback receipt (for idempotency).
+
+        Args:
+            callback: The validated callback payload
+            run: The ValidationRun being updated
+            receipt: Optional CallbackReceipt for idempotency tracking
+
+        Returns:
+            Response to send back to the caller
+        """
+        # Locate the active step run (RUNNING/PENDING) for this validation.
+        step_run = run.current_step_run
+        if not step_run:
+            step_run = (
+                ValidationStepRun.objects.select_related(
+                    "workflow_step__validator",
+                )
+                .filter(
+                    validation_run=run,
+                    status__in=[StepStatus.RUNNING, StepStatus.PENDING],
+                )
+                .order_by("step_order")
+                .first()
+            )
+
+        if not step_run:
+            logger.warning("No active step run found for run %s", run.id)
+            return Response(
+                {"error": "Step run not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        validator = step_run.workflow_step.validator
+        if not validator:
+            logger.error("No validator found for step run: %s", step_run.id)
+            return Response(
+                {"error": "No validator found for step"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Download the output envelope from GCS
+        # Determine the envelope class based on validator type
+        if validator.validation_type == ValidationType.ENERGYPLUS:
+            envelope_class = EnergyPlusOutputEnvelope
+        elif validator.validation_type == ValidationType.FMI:
+            envelope_class = FMIOutputEnvelope
+        else:
+            logger.error(
+                "Unsupported validator type: %s",
+                validator.validation_type,
+            )
+            error_msg = f"Unsupported validator type: {validator.validation_type}"
+            return Response(
+                {"error": error_msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            output_envelope = download_envelope(
+                callback.result_uri,
+                envelope_class,
+            )
+        except Exception as e:
+            logger.exception("Failed to download output envelope")
+            return Response(
+                {"error": f"Failed to download output envelope: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Double-check the envelope matches the expected validator
+        if str(output_envelope.validator.id) != str(validator.id):
+            logger.warning(
+                "Envelope validator mismatch: envelope=%s expected=%s",
+                output_envelope.validator.id,
+                validator.id,
+            )
+            return Response(
+                {"error": "Validator mismatch in output envelope"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if str(getattr(output_envelope, "run_id", "")) != str(run.id):
+            logger.warning(
+                "Envelope run mismatch: envelope=%s expected=%s",
+                getattr(output_envelope, "run_id", ""),
+                run.id,
+            )
+            return Response(
+                {"error": "Run mismatch in output envelope"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if str(getattr(output_envelope.org, "id", "")) != str(run.org_id):
+            logger.warning(
+                "Envelope org mismatch: envelope=%s run=%s",
+                getattr(output_envelope.org, "id", ""),
+                run.org_id,
+            )
+            return Response(
+                {"error": "Org mismatch in output envelope"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if (
+            str(getattr(output_envelope.workflow, "step_id", ""))
+            != str(step_run.workflow_step_id)
+        ):
+            logger.warning(
+                "Envelope step mismatch: envelope=%s expected=%s",
+                getattr(output_envelope.workflow, "step_id", ""),
+                step_run.workflow_step_id,
+            )
+            return Response(
+                {"error": "Workflow step mismatch in output envelope"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Map ValidationStatus to step status
+        step_status_mapping = {
+            ValidationStatus.SUCCESS: StepStatus.PASSED,
+            ValidationStatus.FAILED_VALIDATION: StepStatus.FAILED,
+            ValidationStatus.FAILED_RUNTIME: StepStatus.FAILED,
+            ValidationStatus.CANCELLED: StepStatus.SKIPPED,
+        }
+
+        # Determine the step status from the envelope
+        step_status = step_status_mapping.get(
+            output_envelope.status,
+            StepStatus.FAILED,
+        )
+
+        # Set timestamps for step finalization
+        finished_at = _coerce_finished_at(output_envelope.timing.finished_at)
+
+        # Extract error messages from envelope (for step-level errors)
+        step_error = ""
+        if output_envelope.status != ValidationStatus.SUCCESS:
+            error_messages = [
+                msg.text
+                for msg in output_envelope.messages
+                if msg.severity == "ERROR"
+            ]
+            if error_messages:
+                step_error = "\n".join(error_messages)
+
+        # Update the step run with detailed status/timing/output
+        step_run.status = step_status
+        step_run.ended_at = finished_at
+        if not step_run.started_at:
+            step_run.started_at = finished_at
+        if step_run.started_at and step_run.ended_at:
+            step_run.duration_ms = max(
+                int(
+                    (step_run.ended_at - step_run.started_at).total_seconds()
+                    * 1000,
+                ),
+                0,
+            )
+        # Persist full envelope plus a signals namespace for downstream steps.
+        step_output = output_envelope.model_dump()
+        try:
+            # FMI envelopes expose output_values keyed by catalog slug
+            signals = getattr(output_envelope.outputs, "output_values", None)
+            if signals is None and hasattr(output_envelope.outputs, "outputs"):
+                signals = getattr(output_envelope.outputs, "outputs", None)
+            if signals:
+                step_output = {**step_output, "signals": signals}
+        except Exception:
+            logger.exception(
+                "Failed to extract signals from output envelope",
+                extra={"run_id": run.id},
+            )
+        step_run.output = step_output
+        step_run.error = step_error
+        step_run.save(
+            update_fields=[
+                "status",
+                "ended_at",
+                "started_at",
+                "duration_ms",
+                "output",
+                "error",
+            ],
+        )
+
+        # Replace existing findings for this step run with envelope messages
+        ValidationFinding.objects.filter(validation_step_run=step_run).delete()
+        findings_to_create: list[ValidationFinding] = []
+        for msg in output_envelope.messages:
+            severity_value = (
+                msg.severity.value
+                if hasattr(msg.severity, "value")
+                else str(msg.severity)
+            )
+            location = getattr(msg, "location", None)
+            path = getattr(location, "path", None) or ""
+            meta: dict = {}
+            if location:
+                meta.update(
+                    {
+                        "line": getattr(location, "line", None),
+                        "column": getattr(location, "column", None),
+                    }
+                )
+            if msg.tags:
+                meta["tags"] = msg.tags
+            finding = ValidationFinding(
+                validation_run=run,
+                validation_step_run=step_run,
+                severity=severity_value,
+                code=msg.code or "",
+                message=msg.text,
+                path=path,
+                meta=meta,
+            )
+            try:
+                finding._ensure_run_alignment()  # noqa: SLF001
+                finding._strip_payload_prefix()  # noqa: SLF001
+            except Exception:
+                logger.warning(
+                    "Skipping finding due to cleanup failure",
+                    exc_info=True,
+                )
+                continue
+            findings_to_create.append(finding)
+
+        if findings_to_create:
+            try:
+                ValidationFinding.objects.bulk_create(
+                    findings_to_create,
+                    batch_size=500,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to persist findings for step_run %s; continuing",
+                    step_run.id,
+                )
+
+        # Make outputs available to downstream steps under a namespaced key
+        # on the run summary. We use step_run.id as the namespace to avoid
+        # collisions. Downstream resolvers can read from
+        # run.summary["steps"][<step_run_id>]["signals"].
+        if run.summary is None:
+            run.summary = {}
+        summary_steps = run.summary.get("steps", {})
+        summary_steps[str(step_run.id)] = {
+            "signals": step_output.get("signals", {}),
+        }
+        run.summary["steps"] = summary_steps
+        run.save(update_fields=["summary"])
+
+        # Check if there are remaining steps to execute
+        # Only proceed with remaining steps if the current step passed
+        remaining_steps = run.workflow.steps.filter(
+            order__gt=step_run.step_order,
+        ).exists()
+
+        if remaining_steps and step_status == StepStatus.PASSED:
+            # Enqueue a Cloud Task to resume execution from the next step
+            # DO NOT finalize the run - the resume task will do that
+            from validibot.core.tasks import enqueue_validation_run
+
+            # user_id can be NULL if the run was created via API without user context.
+            # Pass 0 to signal "no user" - execute() handles this gracefully.
+            enqueue_validation_run(
+                validation_run_id=run.id,
+                user_id=run.user_id or 0,
+                resume_from_step=step_run.step_order + 1,
+            )
+            logger.info(
+                "Enqueued resume task for run %s from step %s",
+                run.id,
+                step_run.step_order + 1,
+            )
+        else:
+            # No remaining steps OR step failed - finalize the run now
+            # Map ValidationStatus to run status and error category
+            status_mapping = {
+                ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
+                ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
+                ValidationStatus.FAILED_RUNTIME: ValidationRunStatus.FAILED,
+                ValidationStatus.CANCELLED: ValidationRunStatus.CANCELED,
+            }
+            error_category_mapping = {
+                ValidationStatus.SUCCESS: "",
+                ValidationStatus.FAILED_VALIDATION: (
+                    ValidationRunErrorCategory.VALIDATION_FAILED
+                ),
+                ValidationStatus.FAILED_RUNTIME: (
+                    ValidationRunErrorCategory.RUNTIME_ERROR
+                ),
+                ValidationStatus.CANCELLED: "",
+            }
+
+            run.status = status_mapping.get(
+                output_envelope.status,
+                ValidationRunStatus.FAILED,
+            )
+            run.error_category = error_category_mapping.get(
+                output_envelope.status,
+                ValidationRunErrorCategory.RUNTIME_ERROR,
+            )
+            run.ended_at = finished_at
+            run.error = step_error
+
+            # Calculate duration if we have both timestamps
+            if run.started_at and run.ended_at:
+                delta = run.ended_at - run.started_at
+                run.duration_ms = int(delta.total_seconds() * 1000)
+
+            run.save()
+
+            # Rebuild summaries based on stored findings
+            severity_counts_run: Counter[str] = Counter()
+            for row in (
+                ValidationFinding.objects.filter(validation_run=run)
+                .values("severity")
+                .annotate(count=Count("id"))
+            ):
+                severity_counts_run[row["severity"]] = row["count"]
+
+            severity_counts_step: Counter[str] = Counter()
+            for row in (
+                ValidationFinding.objects.filter(validation_step_run=step_run)
+                .values("severity")
+                .annotate(count=Count("id"))
+            ):
+                severity_counts_step[row["severity"]] = row["count"]
+
+            total_findings_run = sum(severity_counts_run.values())
+
+            run_summary, _ = ValidationRunSummary.objects.update_or_create(
+                run=run,
+                defaults={
+                    "status": run.status,
+                    "completed_at": run.ended_at,
+                    "total_findings": total_findings_run,
+                    "error_count": severity_counts_run.get(
+                        Severity.ERROR.value,
+                        0,
+                    ),
+                    "warning_count": severity_counts_run.get(
+                        Severity.WARNING.value,
+                        0,
+                    ),
+                    "info_count": severity_counts_run.get(Severity.INFO.value, 0),
+                    "assertion_failure_count": 0,
+                    "assertion_total_count": 0,
+                    "extras": {},
+                },
+            )
+
+            ValidationStepRunSummary.objects.update_or_create(
+                step_run=step_run,
+                defaults={
+                    "summary": run_summary,
+                    "step_name": getattr(step_run.workflow_step, "name", ""),
+                    "step_order": step_run.step_order or 0,
+                    "status": step_run.status,
+                    "error_count": severity_counts_step.get(
+                        Severity.ERROR.value,
+                        0,
+                    ),
+                    "warning_count": severity_counts_step.get(
+                        Severity.WARNING.value,
+                        0,
+                    ),
+                    "info_count": severity_counts_step.get(
+                        Severity.INFO.value,
+                        0,
+                    ),
+                },
+            )
+
+            logger.info(
+                "Finalized run %s with status %s",
+                run.id,
+                run.status,
+            )
+
+            # Purge submission content if retention policy is DO_NOT_STORE
+            # This happens after all processing is complete to ensure data
+            # integrity during the validation run.
+            self._purge_if_do_not_store(run)
+
+        # Update the receipt status from PROCESSING to the final status.
+        # The receipt was created at the start to fence duplicate callbacks.
+        # We update whether this was a new receipt or a retry (receipt existed
+        # but had status=PROCESSING from a failed previous attempt).
+        if callback.callback_id and receipt:
+            try:
+                cb_status = callback.status
+                if hasattr(cb_status, "value"):
+                    status_str = cb_status.value
+                else:
+                    status_str = str(cb_status)
+                receipt.status = status_str
+                receipt.validation_run = run
+                receipt.save(update_fields=["status", "validation_run"])
+                logger.debug(
+                    "Updated callback receipt %s to status %s",
+                    callback.callback_id,
+                    status_str,
+                )
+            except Exception:
+                # If receipt update fails, log but don't fail the request.
+                logger.warning(
+                    "Failed to update callback receipt for %s",
+                    callback.callback_id,
+                    exc_info=True,
+                )
+
+        logger.info(
+            "Successfully processed callback for run %s",
+            callback.run_id,
+        )
+
+        return Response(
+            {"message": "Callback processed successfully"},
+            status=status.HTTP_200_OK,
+        )
 
     def _purge_if_do_not_store(self, run: ValidationRun) -> None:
         """

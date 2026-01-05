@@ -868,7 +868,11 @@ class ValidationRunService:
             step_run=step_run,
             issues=issues,
         )
-        stats = validation_result.stats or {}
+        stats = dict(validation_result.stats or {})
+        # Add assertion_failures to stats so it gets persisted in step_run.output.
+        # This is needed for _build_run_summary_record() to calculate totals
+        # correctly in resume scenarios.
+        stats["assertion_failures"] = assertion_failures
         # Persist any signals for downstream steps in a namespaced structure.
         # Callers can include a "signals" dict in stats with catalog slugs/values.
         if "signals" in stats:

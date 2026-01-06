@@ -38,17 +38,14 @@ if TYPE_CHECKING:
 
 class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     """
-    Read-only API endpoints for workflows within an organization.
+    Browse and run workflows in an organization.
 
-    Provides:
-    - list: List all workflows (latest version of each family)
-    - retrieve: Get a workflow by slug or numeric ID
-    - runs (POST): Launch a validation run on a workflow
+    **Identifiers:** Workflows are identified by their `slug`, which is unique
+    within each organization. You can also use the numeric `id` if needed.
 
-    URL patterns:
-        GET  /orgs/<org_slug>/workflows/
-        GET  /orgs/<org_slug>/workflows/<identifier>/
-        POST /orgs/<org_slug>/workflows/<identifier>/runs/
+    **Versioning:** Workflows can have multiple versions. These endpoints always
+    use the **latest version**. To pin a specific version, use the
+    `/workflows/{slug}/versions/{version}/` endpoints instead.
     """
 
     throttle_scope: str | None = None
@@ -93,10 +90,10 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """
-        List workflows, returning only the latest version of each family.
+        List all workflows in the organization.
 
-        A workflow "family" is defined by org + slug. For each family,
-        only the latest (highest version, most recent) is returned.
+        Returns only the **latest version** of each workflow. If a workflow
+        has multiple versions, only the most recent one appears in this list.
         """
         queryset = self.filter_queryset(self.get_queryset())
 
@@ -133,10 +130,16 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     @idempotent
     def runs(self, request, *args, **kwargs):
         """
-        Launch a validation run on this workflow.
+        Start a validation run.
 
-        Accepts multipart/form-data with a file upload or JSON payload.
-        Returns the created ValidationRun details.
+        Submits a file for validation using this workflow. If the workflow has
+        multiple versions, the latest version is used automatically.
+
+        **Request format:** `multipart/form-data` with a `file` field, or JSON
+        with base64-encoded `content`.
+
+        **Response:** Returns the created run with its `id`. Poll the
+        `/runs/{id}/` endpoint to check status and retrieve results.
         """
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)
@@ -164,17 +167,10 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
 
 class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     """
-    API endpoints for accessing specific versions of a workflow.
+    Access specific versions of a workflow.
 
-    Provides:
-    - list: List all versions of a workflow (by slug)
-    - retrieve: Get a specific version
-    - runs (POST): Launch a run on a specific version
-
-    URL patterns:
-        GET  /orgs/<org_slug>/workflows/<slug>/versions/
-        GET  /orgs/<org_slug>/workflows/<slug>/versions/<version>/
-        POST /orgs/<org_slug>/workflows/<slug>/versions/<version>/runs/
+    Use these endpoints when you need to pin a particular workflow version
+    for reproducibility, rather than always using the latest.
     """
 
     throttle_scope: str | None = None
@@ -213,10 +209,10 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     @idempotent
     def runs(self, request, *args, **kwargs):
         """
-        Launch a validation run on this specific workflow version.
+        Start a validation run using this specific version.
 
-        Accepts multipart/form-data with a file upload or JSON payload.
-        Returns the created ValidationRun details.
+        Same as the main workflow runs endpoint, but uses this exact version
+        instead of the latest.
         """
         workflow = self.get_object()
         project = resolve_project(workflow=workflow, request=request)

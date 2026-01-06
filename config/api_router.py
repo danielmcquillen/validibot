@@ -8,6 +8,7 @@ config/api_internal_router.py and are exposed only on the worker service.
 URL structure (ADR-2026-01-06):
     /api/v1/users/                               - User management (root-level)
     /api/v1/auth/me/                             - Auth verification (root-level)
+    /api/v1/orgs/                                - List user's organizations
     /api/v1/orgs/<org_slug>/workflows/           - Org-scoped workflows
     /api/v1/orgs/<org_slug>/runs/                - Org-scoped validation runs
 """
@@ -19,6 +20,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
 from validibot.core.api.auth_views import AuthMeView
+from validibot.users.api.views import OrganizationViewSet
 from validibot.users.api.views import UserViewSet
 from validibot.validations.api_views import OrgScopedRunViewSet
 from validibot.workflows.api_views import OrgScopedWorkflowViewSet
@@ -27,6 +29,7 @@ from validibot.workflows.api_views import WorkflowVersionViewSet
 # Root-level router for user endpoints (not org-scoped)
 root_router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 root_router.register("users", UserViewSet)
+root_router.register("orgs", OrganizationViewSet, basename="orgs")
 
 # Org-scoped router for workflows and runs
 org_router = DefaultRouter() if settings.DEBUG else SimpleRouter()

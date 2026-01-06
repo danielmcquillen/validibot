@@ -105,6 +105,7 @@ THIRD_PARTY_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     "drf_spectacular",
+    "drf_spectacular_sidecar",  # Serves Swagger UI/ReDoc assets locally
     "django_filters",
     "markdownify",
     "django_cloud_tasks",
@@ -455,6 +456,20 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "1.0.0",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
     "SCHEMA_PATH_PREFIX": "/api/",
+    # Serve Swagger UI and ReDoc assets locally via sidecar (fixes encoding issues,
+    # works offline, avoids CDN dependencies)
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
+    # Swagger UI enhancements
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,  # Enable deep linking to operations
+        "persistAuthorization": True,  # Remember auth token across page refreshes
+        "displayOperationId": False,  # Hide operation IDs for cleaner UI
+        "filter": True,  # Enable endpoint filtering/search
+        "defaultModelsExpandDepth": 2,  # Expand models by default
+        "docExpansion": "list",  # Show endpoints as list (not expanded)
+    },
 }
 
 # Validibot settings

@@ -34,19 +34,17 @@ logger = logging.getLogger(__name__)
 
 class OrgScopedRunViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     """
-    Read-only API endpoints for validation runs within an organization.
+    View validation runs and their results.
 
-    Provides:
-    - list: List runs in the organization
-    - retrieve: Get a run by ID
+    **Filtering:** By default, only runs from the last 30 days are returned.
+    Use `?all=1` to retrieve all runs, or filter by date with `?after=`,
+    `?before=`, or `?on=` parameters.
 
-    URL patterns:
-        GET /orgs/<org_slug>/runs/
-        GET /orgs/<org_slug>/runs/<pk>/
+    **Permissions:** Depending on your role, you may see all runs in the
+    organization or only runs you created.
 
-    Access control:
-    - Users with VALIDATION_RESULTS_VIEW_ALL can see all runs in the org
-    - Users with VALIDATION_RESULTS_VIEW_OWN can see only their runs
+    **Results:** Each run includes a `steps` array containing validation
+    findings (issues) discovered during the run.
     """
 
     serializer_class = ValidationRunSerializer

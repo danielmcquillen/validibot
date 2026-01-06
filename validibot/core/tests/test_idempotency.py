@@ -359,7 +359,7 @@ class TestIdempotencyKey:
         IdempotencyKey.objects.create(
             org=org,
             key=idempotency_key,
-            endpoint="WorkflowViewSet.start_validation",
+            endpoint="OrgScopedWorkflowViewSet.runs",
             request_hash=request_hash,
             status=IdempotencyKeyStatus.PROCESSING,
             expires_at=timezone.now() + timedelta(hours=24),

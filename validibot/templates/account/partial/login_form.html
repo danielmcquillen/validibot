@@ -3,9 +3,7 @@
 {% load account socialaccount %}
 {% load crispy_forms_tags crispy_forms_filters %}
 
-<form class="login"
-      method="post"
-      action="{% url 'account_login' %}">
+<form class="login" method="post" action="{% url 'account_login' %}">
     {% csrf_token %}
 
     {% comment %}

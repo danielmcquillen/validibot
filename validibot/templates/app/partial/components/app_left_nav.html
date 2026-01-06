@@ -14,7 +14,7 @@
       </a>
     </div>
 
-    {# Guest users have no org selector and minimal navigation #}
+    {# Workflow guests (no org membership) see minimal navigation #}
     {% if is_workflow_guest %}
       <ul class="nav nav-pills flex-column mt-3" role="menu">
         <li class="nav-item" role="none">
@@ -34,6 +34,42 @@
           </a>
         </li>
       </ul>
+
+    {# Free plan users on personal org see limited navigation (Workflows + Validation Runs) #}
+    {% elif show_limited_nav %}
+      <div class="workspace-selector-wrapper">
+        {% if org_memberships|length > 1 %}
+          {% include 'app/partial/components/workspace_selector.html' %}
+        {% endif %}
+      </div>
+
+      <ul class="nav nav-pills flex-column" role="menu">
+        <li class="nav-item" role="none">
+          <a href="{% org_url 'workflows:workflow_list' %}"
+             class="nav-link text-white {% active_link 'workflows' %}"
+             role="menuitem">
+            <i class="bi bi-boxes"></i>
+            <span>{% trans "Workflows" %}</span>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="{% org_url 'validations:validation_list' %}"
+             class="nav-link text-white {% active_link_views 'validations:validation_list' 'validations:validation_detail' %}"
+             role="menuitem">
+            <i class="bi bi-shield-check"></i>
+            <span>{% trans "Validation Runs" %}</span>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="{% url 'billing:dashboard' %}"
+             class="nav-link text-white {% active_link 'billing' %}"
+             role="menuitem">
+            <i class="bi bi-credit-card"></i>
+            <span>{% trans "Subscription" %}</span>
+          </a>
+        </li>
+      </ul>
+
     {% else %}
       {# Regular member navigation #}
       <div class="workspace-selector-wrapper">
@@ -146,7 +182,7 @@
         {% endif %}
       </ul>
     {% endif %}
-    {# end is_workflow_guest else block #}
+    {# end navigation conditionals #}
 
   </div>
 {% endwith %}

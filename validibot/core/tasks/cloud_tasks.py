@@ -180,15 +180,13 @@ def _enqueue_cloud_tasks(
         queue_path,
     )
 
-    # Task name for deduplication
+    # Task name for deduplication (optional - Cloud Tasks can auto-generate)
     # Initial execution: validation-run-{id}
     # Resume execution: validation-run-{id}-step-{resume_from_step}
     if resume_from_step is not None:
         task_name = f"validation-run-{validation_run_id}-step-{resume_from_step}"
     else:
         task_name = f"validation-run-{validation_run_id}"
-
-    full_task_name = f"{queue_path}/tasks/{task_name}"
 
     # Build the task URL
     endpoint_url = f"{worker_url.rstrip('/')}/api/v1/execute-validation-run/"
@@ -197,17 +195,12 @@ def _enqueue_cloud_tasks(
     # The worker service validates the OIDC token via IAM
     service_account = _get_invoker_service_account()
 
-    # Create the task client with regional endpoint
-    # Cloud Tasks requires regional endpoints for non-US regions
-    from google.api_core import client_options
+    # Create the task client
+    client = tasks_v2.CloudTasksClient()
 
-    options = client_options.ClientOptions(
-        api_endpoint=f"{region}-cloudtasks.googleapis.com",
-    )
-    client = tasks_v2.CloudTasksClient(client_options=options)
-
+    # Note: Don't specify task.name - let Cloud Tasks auto-generate it
+    # Specifying a full name requires additional permissions and can cause 404 errors
     task = tasks_v2.Task(
-        name=full_task_name,
         http_request=tasks_v2.HttpRequest(
             http_method=tasks_v2.HttpMethod.POST,
             url=endpoint_url,
@@ -240,11 +233,12 @@ def _enqueue_cloud_tasks(
         # Cloud Tasks returns ALREADY_EXISTS if task name is taken
         if "ALREADY_EXISTS" in str(exc):
             logger.info(
-                "Cloud Task already exists (dedupe): %s for validation_run_id=%s",
-                full_task_name,
+                "Cloud Task already exists (dedupe): task_name=%s "
+                "validation_run_id=%s",
+                task_name,
                 validation_run_id,
             )
-            return full_task_name
+            return task_name
         raise
     else:
         logger.info(

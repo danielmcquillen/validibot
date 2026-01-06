@@ -123,6 +123,9 @@ class BillingDashboardView(LoginRequiredMixin, OrgMixin, TemplateView):
             "stripe_public_key": settings.STRIPE_PUBLIC_KEY,
             "is_welcome": is_welcome,
             "selected_plan_code": selected_plan_code,
+            "breadcrumbs": [
+                {"name": _("Subscription"), "url": ""},
+            ],
         })
 
         return context

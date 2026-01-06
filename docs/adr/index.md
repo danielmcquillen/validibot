@@ -4,6 +4,8 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
+- [ADR-2026-01-06: Org-scoped API Routing and Versioned Workflow Identifiers](2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md)
+- [ADR-2026-01-06: Org-scoped Web URLs](2026-01-06-org-scoped-web-urls.md)
 - [ADR-2026-01-06: SaaS Reliability Hardening for Worker Internals](2026-01-06-saas-reliability-worker-internals.md)
 - [ADR-2026-01-05: Validation Run Execution via Cloud Tasks](2026-01-05-validation-run-execution-via-cloud-tasks.md)
 - [ADR-2025-12-22: CLI and API Support](2025-12-22-cli-api-support.md)

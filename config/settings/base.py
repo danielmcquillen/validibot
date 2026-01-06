@@ -562,6 +562,7 @@ GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")
 GCS_FMI_JOB_NAME = env("GCS_FMI_JOB_NAME", default="")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 WORKER_URL = env("WORKER_URL", default="")
+CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 
 
 # FEATURES

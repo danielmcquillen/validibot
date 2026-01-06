@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import uuid
-from decimal import Decimal
-from decimal import InvalidOperation
 from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
@@ -36,6 +35,37 @@ if TYPE_CHECKING:
     from validibot.users.constants import RoleCode
 
 logger = logging.getLogger(__name__)
+
+# Pattern for validating semantic versions (e.g., "1", "1.0", "1.0.0")
+SEMVER_PATTERN = re.compile(
+    r"^(?P<major>0|[1-9]\d*)(?:\.(?P<minor>0|[1-9]\d*)(?:\.(?P<patch>0|[1-9]\d*))?)?$"
+)
+
+
+def validate_workflow_version(value: str) -> None:
+    """
+    Validate that version is either an integer or semantic version.
+
+    Valid examples: "1", "2", "1.0", "1.0.0", "2.1.3"
+    Invalid examples: "v1", "1.0.0-beta", "latest", arbitrary strings
+
+    This ensures versions can be reliably compared and ordered.
+    """
+    if not value:
+        return  # Empty is allowed (will be backfilled)
+
+    # Check if it's a simple integer
+    if value.isdigit():
+        return
+
+    # Check if it's a valid semantic version
+    if SEMVER_PATTERN.match(value):
+        return
+
+    raise ValidationError(
+        _("Version must be an integer (e.g., '1') or semantic version "
+          "(e.g., '1.0.0')."),
+    )
 
 
 def select_public_storage():
@@ -221,6 +251,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         max_length=40,
         blank=True,
         default="",
+        validators=[validate_workflow_version],
+        help_text=_(
+            "Version identifier (integer or semantic version, e.g., '1' or '1.0.0')."
+        ),
     )
 
     is_locked = models.BooleanField(
@@ -305,7 +339,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         if not self.slug:
-            self.slug = slugify(self.name)
+            candidate = slugify(self.name)
+            if not candidate:
+                # Fallback for names that don't slugify (e.g., only punctuation)
+                candidate = f"wf-{uuid.uuid4().hex[:8]}"
+            self.slug = candidate
         super().save(*args, **kwargs)
 
     def can_view(self, *, user: User) -> bool:
@@ -442,29 +480,35 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         return new
 
     def _determine_next_version_label(self, versions) -> str:
-        """Return a simple, unique version label for the cloned workflow."""
+        """
+        Return a simple integer version label for the cloned workflow.
 
-        numeric_versions: list[Decimal] = []
+        Parses existing versions (integer or semver) and returns the next
+        major version as an integer string. This ensures cloned versions
+        are always valid integers (e.g., "1", "2", "3") and never produce
+        invalid versions like "2.5".
+        """
+        max_major = 0
         for raw in versions:
             if raw is None:
                 continue
             candidate = str(raw).strip()
             if not candidate:
                 continue
-            try:
-                numeric_versions.append(Decimal(candidate))
-            except InvalidOperation:
+
+            # Parse as integer
+            if candidate.isdigit():
+                max_major = max(max_major, int(candidate))
                 continue
 
-        if numeric_versions:
-            highest = max(numeric_versions)
-            new_version = highest + Decimal(1)
-            if new_version == new_version.to_integral():
-                return str(int(new_version))
-            return format(new_version.normalize(), "f")
+            # Parse as semver - extract major version
+            match = SEMVER_PATTERN.match(candidate)
+            if match:
+                major = int(match.group("major"))
+                max_major = max(max_major, major)
 
-        # Fall back to a simple incremental label.
-        return "1"
+        # Return next integer version
+        return str(max_major + 1)
 
     @property
     def is_advanced(self) -> bool:

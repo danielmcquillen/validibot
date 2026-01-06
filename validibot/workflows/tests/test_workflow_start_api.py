@@ -110,7 +110,8 @@ def workflow_without_steps(db, org, user):
 
 
 def start_url(workflow) -> str:
-    return f"/api/v1/workflows/{workflow.pk}/start/"
+    """Return the API URL for starting a workflow run (org-scoped per ADR-2026-01-06)."""
+    return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 
 @pytest.fixture(autouse=True)
@@ -737,7 +738,7 @@ class TestWorkflowStartAPI:
 
         # POST -> expect 202 + Location
         resp = api_client.post(
-            f"/api/v1/workflows/{workflow.pk}/start/",
+            start_url(workflow),
             data=json.dumps({"long": "run"}),
             content_type="application/json",
         )

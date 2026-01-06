@@ -5,6 +5,8 @@ The WorkflowViewSet is read-only per ADR-2025-12-22 to minimize API attack
 surface during the initial CLI rollout. Write operations (create, update,
 delete) are only available through the web interface.
 
+Updated for ADR-2026-01-06: Uses org-scoped API routes.
+
 These tests verify that:
 1. Read operations (list, retrieve) work correctly with proper permissions
 2. Write operations return 405 Method Not Allowed for all users
@@ -68,7 +70,7 @@ def test_create_not_allowed_for_any_user(api_client: APIClient, manager, org):
     }
 
     resp = api_client.post(
-        "/api/v1/workflows/",
+        f"/api/v1/orgs/{org.slug}/workflows/",
         data=json.dumps(payload),
         content_type="application/json",
     )
@@ -76,12 +78,12 @@ def test_create_not_allowed_for_any_user(api_client: APIClient, manager, org):
     assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
-def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflow):
+def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflow, org):
     """Update operations return 405 since the API is read-only."""
     api_client.force_authenticate(user=manager)
 
     resp = api_client.patch(
-        f"/api/v1/workflows/{workflow.pk}/",
+        f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/",
         data=json.dumps({"name": "Renamed Workflow"}),
         content_type="application/json",
     )
@@ -89,30 +91,34 @@ def test_update_not_allowed_for_any_user(api_client: APIClient, manager, workflo
     assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
-def test_delete_not_allowed_for_any_user(api_client: APIClient, manager, workflow):
+def test_delete_not_allowed_for_any_user(api_client: APIClient, manager, workflow, org):
     """Delete operations return 405 since the API is read-only."""
     api_client.force_authenticate(user=manager)
 
-    resp = api_client.delete(f"/api/v1/workflows/{workflow.pk}/")
+    resp = api_client.delete(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/")
 
     assert resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
 
 
-def test_viewer_can_list_workflows(api_client: APIClient, viewer, workflow):
+def test_viewer_can_list_workflows(api_client: APIClient, viewer, workflow, org):
     """Viewers can list workflows they have access to."""
     api_client.force_authenticate(user=viewer)
 
-    resp = api_client.get("/api/v1/workflows/")
+    resp = api_client.get(f"/api/v1/orgs/{org.slug}/workflows/")
 
     assert resp.status_code == status.HTTP_200_OK
-    assert len(resp.data) >= 1
+    # Handle paginated response
+    data = resp.data
+    if isinstance(data, dict) and "results" in data:
+        data = data["results"]
+    assert len(data) >= 1
 
 
-def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow):
+def test_viewer_can_retrieve_workflow(api_client: APIClient, viewer, workflow, org):
     """Viewers can retrieve individual workflow details."""
     api_client.force_authenticate(user=viewer)
 
-    resp = api_client.get(f"/api/v1/workflows/{workflow.pk}/")
+    resp = api_client.get(f"/api/v1/orgs/{org.slug}/workflows/{workflow.pk}/")
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["id"] == workflow.pk

@@ -203,7 +203,11 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         message_template=message,
     )
 
-    start_url = reverse("api:workflow-start", kwargs={"pk": workflow.pk})
+    # ADR-2026-01-06: Use org-scoped API route
+    start_url = reverse(
+        "api:org-workflows-runs",
+        kwargs={"org_slug": org.slug, "pk": workflow.pk},
+    )
     run_resp = api_client.post(start_url, data={"price": 25}, format="json")
     # 201 Created when execution completes, 202 Accepted when still processing
     assert run_resp.status_code == status.HTTP_201_CREATED

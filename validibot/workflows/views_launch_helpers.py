@@ -161,10 +161,11 @@ def launch_api_validation_run(
     validation_run: ValidationRun = launch_result.validation_run
     data = ValidationRunSerializer(validation_run).data
     per_attempt = int(getattr(settings, "VALIDATION_START_ATTEMPT_TIMEOUT", 5))
+    # ADR-2026-01-06: Use org-scoped route for Location header
     location = request.build_absolute_uri(
         reverse(
-            "api:validation-runs-detail",
-            kwargs={"pk": validation_run.id},
+            "api:org-runs-detail",
+            kwargs={"org_slug": workflow.org.slug, "pk": validation_run.id},
         ),
     )
     headers = {"Location": location}

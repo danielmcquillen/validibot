@@ -3,20 +3,23 @@
 Validibot API Client Example
 
 This script demonstrates how to use the Validibot API to:
-1. Authenticate with an API token
+1. Authenticate with an API key
 2. Submit a file for validation
 3. Poll for results
-4. Retrieve validation findings
+4. Display validation findings
 
 Prerequisites:
     pip install requests
 
 Usage:
-    # Set your API token
-    export VALIDIBOT_API_TOKEN="your-token-here"
+    # Set your API key (get it from Settings -> API Key in the web UI)
+    export VALIDIBOT_API_KEY="your-api-key-here"
 
     # Run the script
-    python example-client.py --file model.idf --workflow workflow-uuid
+    python example-client.py --org my-org --workflow my-workflow --file model.idf
+
+    # You can also use workflow ID instead of slug
+    python example-client.py --org my-org --workflow 123 --file model.idf
 """
 
 import argparse
@@ -34,70 +37,49 @@ except ImportError:
 
 # Configuration
 API_BASE_URL = os.getenv("VALIDIBOT_API_URL", "https://app.validibot.com/api/v1")
-API_TOKEN = os.getenv("VALIDIBOT_API_TOKEN", "")
+API_KEY = os.getenv("VALIDIBOT_API_KEY", "")
 
 FINDINGS_PREVIEW_LIMIT = 10
 
 
 def get_auth_headers() -> dict:
     """Get authentication headers for API requests."""
-    if not API_TOKEN:
-        print("Error: VALIDIBOT_API_TOKEN environment variable not set")
-        print("Get your API key from: Settings -> API Key")
+    if not API_KEY:
+        print("Error: VALIDIBOT_API_KEY environment variable not set")
+        print("Get your API key from: Settings -> API Key in the web UI")
         sys.exit(1)
-    return {"Authorization": f"Bearer {API_TOKEN}"}
-
-
-def get_token(username: str, password: str) -> str:
-    """
-    Get an API token using username/password.
-
-    Use this if you need to obtain a token programmatically.
-    Alternatively, create an API key in the web UI under Settings -> API Key.
-    """
-    response = requests.post(
-        f"{API_BASE_URL}/auth-token/",
-        json={"username": username, "password": password},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()["token"]
+    return {"Authorization": f"Bearer {API_KEY}"}
 
 
 def submit_validation(
+    org_slug: str,
+    workflow: str,
     file_path: Path,
-    workflow_id: str,
     *,
     name: str | None = None,
-    metadata: dict | None = None,
 ) -> dict:
     """
     Submit a file for validation.
 
     Args:
+        org_slug: Organization slug (e.g., "my-org")
+        workflow: Workflow slug or numeric ID
         file_path: Path to the file to validate
-        workflow_id: UUID of the workflow to run
         name: Optional name for the submission
-        metadata: Optional metadata dict
 
     Returns:
-        API response with run_id
+        API response with run details including id
     """
     headers = get_auth_headers()
 
     with file_path.open("rb") as f:
         files = {"file": (file_path.name, f)}
-        data = {
-            "workflow_id": workflow_id,
-        }
+        data = {}
         if name:
             data["name"] = name
-        if metadata:
-            import json
-            data["metadata"] = json.dumps(metadata)
 
         response = requests.post(
-            f"{API_BASE_URL}/validations/submit/",
+            f"{API_BASE_URL}/orgs/{org_slug}/workflows/{workflow}/runs/",
             headers=headers,
             files=files,
             data=data,
@@ -108,39 +90,20 @@ def submit_validation(
     return response.json()
 
 
-def get_run_status(run_id: str) -> dict:
+def get_run_status(org_slug: str, run_id: str) -> dict:
     """
-    Get the status of a validation run.
+    Get the status and results of a validation run.
 
     Args:
+        org_slug: Organization slug
         run_id: UUID of the validation run
 
     Returns:
-        Run status including status, error_category if failed
+        Run details including status, steps, and findings
     """
     headers = get_auth_headers()
     response = requests.get(
-        f"{API_BASE_URL}/validations/runs/{run_id}/",
-        headers=headers,
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-def get_findings(run_id: str) -> list[dict]:
-    """
-    Get validation findings for a completed run.
-
-    Args:
-        run_id: UUID of the validation run
-
-    Returns:
-        List of findings with severity, message, path, etc.
-    """
-    headers = get_auth_headers()
-    response = requests.get(
-        f"{API_BASE_URL}/validations/runs/{run_id}/findings/",
+        f"{API_BASE_URL}/orgs/{org_slug}/runs/{run_id}/",
         headers=headers,
         timeout=30,
     )
@@ -149,6 +112,7 @@ def get_findings(run_id: str) -> list[dict]:
 
 
 def wait_for_completion(
+    org_slug: str,
     run_id: str,
     *,
     timeout_seconds: int = 300,
@@ -158,28 +122,48 @@ def wait_for_completion(
     Poll until the validation run completes.
 
     Args:
+        org_slug: Organization slug
         run_id: UUID of the validation run
         timeout_seconds: Maximum time to wait
         poll_interval: Seconds between polls
 
     Returns:
-        Final run status
+        Final run details including results
     """
     terminal_statuses = {"SUCCEEDED", "FAILED", "CANCELED", "TIMED_OUT"}
     start_time = time.time()
 
     while time.time() - start_time < timeout_seconds:
-        status = get_run_status(run_id)
-        run_status = status.get("status", "UNKNOWN")
+        run_data = get_run_status(org_slug, run_id)
+        run_status = run_data.get("status", "UNKNOWN")
 
         print(f"  Status: {run_status}")
 
         if run_status in terminal_statuses:
-            return status
+            return run_data
 
         time.sleep(poll_interval)
 
     raise TimeoutError(f"Run {run_id} did not complete within {timeout_seconds}s")
+
+
+def extract_findings(run_data: dict) -> list[dict]:
+    """
+    Extract findings from run data.
+
+    Findings are nested in the steps array of the run response.
+
+    Args:
+        run_data: Run response from the API
+
+    Returns:
+        Flattened list of all findings across steps
+    """
+    findings = []
+    for step in run_data.get("steps", []):
+        step_findings = step.get("findings", [])
+        findings.extend(step_findings)
+    return findings
 
 
 def main():
@@ -187,15 +171,20 @@ def main():
         description="Submit a file to Validibot for validation"
     )
     parser.add_argument(
-        "--file", "-f",
+        "--org", "-o",
         required=True,
-        type=Path,
-        help="Path to the file to validate",
+        help="Organization slug (e.g., 'my-org')",
     )
     parser.add_argument(
         "--workflow", "-w",
         required=True,
-        help="UUID of the workflow to run",
+        help="Workflow slug or numeric ID",
+    )
+    parser.add_argument(
+        "--file", "-f",
+        required=True,
+        type=Path,
+        help="Path to the file to validate",
     )
     parser.add_argument(
         "--name", "-n",
@@ -219,30 +208,32 @@ def main():
         print(f"Error: File not found: {args.file}")
         sys.exit(1)
 
-    print(f"Submitting {args.file.name} to workflow {args.workflow}...")
+    print(f"Submitting {args.file.name} to workflow '{args.workflow}' in org '{args.org}'...")
 
     # Submit the file
     result = submit_validation(
-        args.file,
+        args.org,
         args.workflow,
+        args.file,
         name=args.name,
     )
 
-    run_id = result.get("run_id")
+    run_id = result.get("id")
     if not run_id:
-        print(f"Error: No run_id in response: {result}")
+        print(f"Error: No id in response: {result}")
         sys.exit(1)
 
     print(f"Created validation run: {run_id}")
 
     if args.no_wait:
-        print(f"Check status at: {API_BASE_URL}/validations/runs/{run_id}/")
+        print(f"Check status at: {API_BASE_URL}/orgs/{args.org}/runs/{run_id}/")
         return
 
     # Wait for completion
     print("Waiting for completion...")
     try:
-        final_status = wait_for_completion(
+        final_data = wait_for_completion(
+            args.org,
             run_id,
             timeout_seconds=args.timeout,
         )
@@ -251,20 +242,20 @@ def main():
         sys.exit(1)
 
     # Print results
-    status = final_status.get("status")
+    status = final_data.get("status")
     print(f"\nValidation {status}")
 
     if status == "FAILED":
-        error_category = final_status.get("error_category", "")
-        error_message = final_status.get("user_friendly_error", "")
+        error_category = final_data.get("error_category", "")
+        error_message = final_data.get("user_friendly_error", "")
         if error_category:
             print(f"  Error category: {error_category}")
         if error_message:
             print(f"  Message: {error_message}")
 
-    # Get findings
+    # Get findings from the run data (findings are in the steps array)
     if status in ("SUCCEEDED", "FAILED"):
-        findings = get_findings(run_id)
+        findings = extract_findings(final_data)
         if findings:
             print(f"\nFindings ({len(findings)}):")
             for f in findings[:FINDINGS_PREVIEW_LIMIT]:  # Show first N

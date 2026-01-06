@@ -110,7 +110,7 @@ def workflow_without_steps(db, org, user):
 
 
 def start_url(workflow) -> str:
-    """Return the API URL for starting a workflow run (org-scoped per ADR-2026-01-06)."""
+    """Return the org-scoped API URL for starting a workflow run."""
     return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 

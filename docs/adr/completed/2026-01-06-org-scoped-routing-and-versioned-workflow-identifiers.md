@@ -1,6 +1,6 @@
 # ADR-2026-01-06: Org-scoped API Routing and Versioned Workflow Identifiers
 
-**Status:** Proposed
+**Status:** Completed
 **Owners:** Platform / API
 **Related ADRs:**
 - `docs/adr/2025-12-22-cli-api-support.md`

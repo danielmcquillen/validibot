@@ -3,7 +3,7 @@
 **Status:** Proposed
 **Owners:** Platform / Frontend
 **Related ADRs:**
-- `docs/adr/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md` (API companion)
+- `docs/adr/completed/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md` (API companion)
 - `docs/adr/2025-12-22-cli-api-support.md`
 **Related code:**
 - `config/urls_web.py`
@@ -351,7 +351,7 @@ class OrgScopedMixin:
 
 ## Relationship to API ADR
 
-This ADR should be implemented **after** the API routing ADR (`2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md`)
+This ADR should be implemented **after** the API routing ADR (`completed/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md`)
 to ensure:
 
 1. The org resolution logic is shared/consistent

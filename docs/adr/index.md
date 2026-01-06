@@ -18,6 +18,7 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 See [completed/](completed/) for implemented ADRs including:
 
+- Org-scoped API Routing and Versioned Workflow Identifiers
 - Validator Job Interface Contract
 - Phase 4 FMI Cloud Run
 - FMI Storage and Security Review

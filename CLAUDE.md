@@ -44,6 +44,10 @@ This project works alongside two related repositories:
 
 Always consider these neighboring projects when working on integrations or modifying shared functionality.
 
+Also, the CLI application is at ../validibot-cli
+Please update that CLI whenever appropriate (e.g. when the
+API changes)
+
 ### vb_shared Workflow
 
 **IMPORTANT**: When making changes to vb_shared that other repos depend on (vb_validators, validibot):

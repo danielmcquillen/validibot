@@ -115,24 +115,23 @@ class WorkflowQuerySet(models.QuerySet):
         else:
             membership_subq = membership_subq.filter(roles__code__in=allowed_view_roles)
 
-        # Build the access condition
-        # Always include: membership access OR user is creator
-        access_condition = Exists(membership_subq) | Q(user_id=user.id)
+        qs = self.annotate(
+            _has_membership=Exists(membership_subq),
+        )
 
-        # For non-role-specific queries, also include guest grant access
+        access_filter = Q(_has_membership=True) | Q(user_id=user.id)
+
+        # For non-role-specific queries, also include guest grant access.
         if not required_role_code:
             grant_subq = WorkflowAccessGrant.objects.filter(
                 workflow_id=OuterRef("pk"),
                 user=user,
                 is_active=True,
             )
-            access_condition = access_condition | Exists(grant_subq)
+            qs = qs.annotate(_has_grant=Exists(grant_subq))
+            access_filter = access_filter | Q(_has_grant=True)
 
-        return (
-            self.annotate(_has_access=access_condition)
-            .filter(_has_access=True)
-            .distinct()
-        )
+        return qs.filter(access_filter).distinct()
 
 
 class WorkflowManager(models.Manager):

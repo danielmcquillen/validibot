@@ -40,10 +40,27 @@ def backfill_empty_slugs(apps, schema_editor):
 
 
 def backfill_empty_versions(apps, schema_editor):
-    """Set empty workflow versions to "1"."""
+    """
+    Set empty workflow versions to "1", avoiding collisions.
+
+    For each workflow with an empty version, find the first available version
+    number that doesn't conflict with an existing (org, slug, version) tuple.
+    """
     Workflow = apps.get_model("workflows", "Workflow")
 
-    Workflow.objects.filter(version="").update(version="1")
+    for workflow in Workflow.objects.filter(version=""):
+        candidate = "1"
+        # Check for collision with existing (org, slug, version) tuple
+        while Workflow.objects.filter(
+            org_id=workflow.org_id,
+            slug=workflow.slug,
+            version=candidate,
+        ).exclude(pk=workflow.pk).exists():
+            # Increment version number to find an available slot
+            candidate = str(int(candidate) + 1)
+
+        workflow.version = candidate
+        workflow.save(update_fields=["version"])
 
 
 class Migration(migrations.Migration):

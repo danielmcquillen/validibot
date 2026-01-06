@@ -89,7 +89,8 @@ def workflow(db, org, user):
 
 
 def start_url(workflow) -> str:
-    return f"/api/v1/workflows/{workflow.pk}/start/"
+    # Use org-scoped route (ADR-2026-01-06)
+    return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 
 @pytest.fixture(autouse=True)

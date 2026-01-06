@@ -79,13 +79,18 @@ class OrgScopedMixin:
 
 class OrgMembershipPermission(permissions.BasePermission):
     """
-    Permission class that checks user is a member of the org in the URL.
+    Permission class that checks user has access to the org in the URL.
 
-    Requires the view to use OrgScopedMixin or provide a get_membership() method.
-    Superusers are always allowed access.
+    Access is granted if the user:
+    - Is a superuser
+    - Is a member of the org
+    - Has a workflow access grant for any workflow in the org (guest access)
+
+    Requires the view to use OrgScopedMixin or provide get_org() and
+    get_membership() methods.
     """
 
-    message = "You must be a member of this organization."
+    message = "You must be a member of this organization or have a workflow grant."
 
     def has_permission(self, request: Request, view: APIView) -> bool:
         # Superusers always have access
@@ -93,8 +98,25 @@ class OrgMembershipPermission(permissions.BasePermission):
             return True
 
         # Check if view has org-scoping capability
-        if not hasattr(view, "get_membership"):
+        if not hasattr(view, "get_membership") or not hasattr(view, "get_org"):
             return True
 
+        # Check org membership first (most common case)
         membership = view.get_membership()
-        return membership is not None
+        if membership is not None:
+            return True
+
+        # Check for guest grants (workflow access grants in this org)
+        if request.user.is_authenticated:
+            from validibot.workflows.models import WorkflowAccessGrant
+
+            org = view.get_org()
+            has_grant = WorkflowAccessGrant.objects.filter(
+                user=request.user,
+                workflow__org=org,
+                is_active=True,
+            ).exists()
+            if has_grant:
+                return True
+
+        return False

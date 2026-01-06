@@ -14,7 +14,7 @@ Let's assume that you're the one calling the API.
 - Locate the URL of the workflow you want to call (visible in the 'Workflow details' portion of the workflow page).
 - Confirm the MIME type of the payload you plan to send (`application/json`, `application/xml`, plain text, etc.).
 - Decide whether you need to attach metadata (for example `{"source": "api"}`) alongside the content.
-  The endpoint is always `POST /api/workflows/<workflow_id>/start/`.
+  The endpoint is `POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/`, where `workflow_identifier` can be the workflow's slug (preferred) or its numeric ID.
 
 ## Mode 1 – Raw Body
 
@@ -31,7 +31,7 @@ curl -X POST \
   -H "Authorization: Bearer $API_TOKEN" \
   -H "Content-Type: application/json" \
   --data-binary @payload.json \
-  "https://api.validibot.app/api/workflows/42/start/"
+  "https://api.validibot.app/api/v1/orgs/my-org/workflows/my-workflow/runs/"
 ```
 
 ## Mode 2 – JSON Envelope
@@ -53,7 +53,7 @@ curl -X POST \
         "filename": "sample.xml",
         "metadata": {"source": "supplier-api"}
       }' \
-  "https://api.validibot.app/api/workflows/42/start/"
+  "https://api.validibot.app/api/v1/orgs/my-org/workflows/my-workflow/runs/"
 ```
 
 If `content_encoding` is set to `base64`, the service will decode it before creating the submission. Arrays or objects supplied as `content` are automatically serialized to JSON strings so the stored submission always contains plain text that mirrors a real JSON file—this keeps downstream validators from having to guess at Python-native types.
@@ -72,7 +72,7 @@ curl -X POST \
   -F "filename=building.idf" \
   -F "content_type=application/octet-stream" \
   -F 'metadata={"source": "browser"}' \
-  "https://api.validibot.app/api/workflows/42/start/"
+  "https://api.validibot.app/api/v1/orgs/my-org/workflows/my-workflow/runs/"
 ```
 
 Multipart requests are parsed the same way as JSON envelopes after upload completes.
@@ -87,7 +87,7 @@ Multipart requests are parsed the same way as JSON envelopes after upload comple
 
 ## Workflow File Types
 
-Each workflow advertises an `allowed_file_types` array (JSON, XML, TEXT, YAML, etc.) in both the in-app detail page and the `/api/workflows/` responses. Pick one of those logical types when launching from the UI—the dropdown disappears when there is only a single option—or set your HTTP `Content-Type` header accordingly when you call the API.
+Each workflow advertises an `allowed_file_types` array (JSON, XML, TEXT, YAML, etc.) in both the in-app detail page and the `/api/v1/orgs/{org_slug}/workflows/` responses. Pick one of those logical types when launching from the UI—the dropdown disappears when there is only a single option—or set your HTTP `Content-Type` header accordingly when you call the API.
 
 Validators also declare their `supported_file_types`, so a workflow that allows JSON _and_ XML might still block an XML run if one of its steps only speaks JSON. In that situation (or when you send a format the workflow never accepted) the API returns `FILE_TYPE_UNSUPPORTED` with a detail that names the blocking step. The UI shows the same text at the top of the launch form.
 

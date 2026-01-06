@@ -7,7 +7,7 @@ This guide walks through the two-stage wizard used to add or edit workflow steps
 Owners, Admins, and Authors can pause a workflow whenever you need to stop new validation runs without deleting the configuration. Open the workflow detail page and use the **Disable workflow** button in the Status panel. While inactive, the workflow:
 
 - stays visible in the catalog so teammates can review its setup;
-- blocks new runs from both the UI and the `/api/v1/workflows/<id>/start/` endpoint (calls return HTTP 403);
+- blocks new runs from both the UI and the `/api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/` endpoint (calls return HTTP 403);
 - allows in-flight runs to finish normally.
 
 Re-enable the workflow from the same panel when you are ready to accept submissions again. Executors and Viewers can still open the page, but they will see read-only messaging that the workflow is inactive.

@@ -337,13 +337,14 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         self.allowed_file_types = normalized
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Auto-generate slug BEFORE validation so uniqueness checks work correctly
         if not self.slug:
-            candidate = slugify(self.name)
+            candidate = slugify(self.name) if self.name else ""
             if not candidate:
                 # Fallback for names that don't slugify (e.g., only punctuation)
                 candidate = f"wf-{uuid.uuid4().hex[:8]}"
             self.slug = candidate
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def can_view(self, *, user: User) -> bool:

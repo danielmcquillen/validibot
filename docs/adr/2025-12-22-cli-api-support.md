@@ -1,8 +1,10 @@
 # ADR: CLI and API Support
 
 **Date:** 2025-12-22
-**Status:** Implemented
+**Status:** Partially superseded by [ADR-2026-01-06](2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md)
 **Context:** Implementing a public-facing API and CLI for programmatic access to Validibot
+
+> **Note:** The API routing described in this ADR has been replaced by org-scoped routes. The new canonical endpoint pattern is `/api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/` instead of `/api/v1/workflows/{id}/start/`. See ADR-2026-01-06 for details.
 
 ## Summary
 

@@ -41,9 +41,11 @@ validibot/ (this repo)
 
 ```
 User → Django REST API
-  POST /api/v1/workflows/{id}/start/
+  POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/
   Body: IDF or epJSON content
 ```
+
+Note: The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID. See [ADR-2026-01-06](../adr/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped API routing.
 
 ### 2. Django Creates Validation Job
 

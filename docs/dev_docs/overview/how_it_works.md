@@ -59,8 +59,8 @@ When a client wants to validate content, they trigger the process through the AP
 #### 2.1 Request Processing
 
 ```python
-# Example API call to start validation
-POST /api/workflows/{workflow_id}/start/
+# Example API call to start validation (org-scoped per ADR-2026-01-06)
+POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/
 Content-Type: application/json
 
 {
@@ -68,6 +68,8 @@ Content-Type: application/json
   "content": "{ \"user\": { \"name\": \"John\" } }"
 }
 ```
+
+The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID. See [ADR-2026-01-06](../adr/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped API routing.
 
 The system supports multiple submission modes:
 
@@ -217,7 +219,7 @@ sequenceDiagram
     participant Registry as Engine Registry
     participant Engine as BaseValidatorEngine
 
-    Client->>API: POST /workflows/{id}/start
+    Client->>API: POST /orgs/{org}/workflows/{id}/runs/
     API->>Service: launch(request, workflow, submission)
     Service->>Service: ValidationRun.objects.create(...)
     Service->>Worker: execute(run_id, user_id, metadata)
@@ -347,7 +349,7 @@ For longer validations, the client receives a polling URL:
   "status": "RUNNING",
   "state": "RUNNING",
   "result": "UNKNOWN",
-  "poll_url": "/api/validation-runs/2dd379f6-2425-4bae-8c23-61ed05ff1ebf/",
+  "poll_url": "/api/v1/orgs/{org_slug}/runs/2dd379f6-2425-4bae-8c23-61ed05ff1ebf/",
   "started_at": "2023-10-05T14:30:00Z"
 }
 ```

@@ -9,7 +9,7 @@ Document the production and sandbox base URLs, along with any version prefixes (
 Provide a short summary of how to obtain and use API tokens, then link to the detailed Authentication guide for step-by-step instructions.
 
 ## Common Request Pattern
-Explain that most endpoints expect JSON bodies, return JSON responses, and follow standard HTTP verbs. Mention that workflow run creation happens via `POST /api/workflows/<id>/start/` and requires EXECUTOR access.
+Explain that most endpoints expect JSON bodies, return JSON responses, and follow standard HTTP verbs. Mention that workflow run creation happens via `POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/` and requires EXECUTOR access.
 
 ## Error Format
 Describe the standard error payload (`detail`, `code`, optional `status`, `type`, `errors`) so integrators know what to log or display. Include room for an example response snippet.

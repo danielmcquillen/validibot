@@ -16,6 +16,7 @@ skip_callback=True), these tests verify the callback mechanism actually works.
 Prerequisites:
     - E2E_TEST_API_URL: Deployed API URL (e.g., https://staging.validibot.com/api/v1)
     - E2E_TEST_API_TOKEN: Valid API token with workflow execution permission
+    - E2E_TEST_ORG_SLUG: Organization slug (required for org-scoped API routes)
     - E2E_TEST_WORKFLOW_ID: UUID of workflow with EnergyPlus validator step
     - E2E_TEST_WORKFLOW_EXPECTS_SUCCESS: Set to "false" if the test file should fail
 
@@ -25,6 +26,7 @@ Run them after deploying to staging to verify the full flow works.
 Example:
     E2E_TEST_API_URL=https://staging.validibot.com/api/v1 \
     E2E_TEST_API_TOKEN=your-token \
+    E2E_TEST_ORG_SLUG=my-org \
     E2E_TEST_WORKFLOW_ID=workflow-uuid \
     pytest tests/tests_integration/test_e2e_workflow.py -v
 """
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 # Configuration from environment
 E2E_API_URL = os.getenv("E2E_TEST_API_URL", "")
 E2E_API_TOKEN = os.getenv("E2E_TEST_API_TOKEN", "")
+E2E_ORG_SLUG = os.getenv("E2E_TEST_ORG_SLUG", "")  # Required for org-scoped routes
 E2E_WORKFLOW_ID = os.getenv("E2E_TEST_WORKFLOW_ID", "")
 E2E_EXPECTS_SUCCESS = (
     os.getenv("E2E_TEST_WORKFLOW_EXPECTS_SUCCESS", "true").lower() == "true"
@@ -81,6 +84,8 @@ class WorkflowE2ETest(TestCase):
             missing.append("E2E_TEST_API_URL")
         if not E2E_API_TOKEN:
             missing.append("E2E_TEST_API_TOKEN")
+        if not E2E_ORG_SLUG:
+            missing.append("E2E_TEST_ORG_SLUG")
         if not E2E_WORKFLOW_ID:
             missing.append("E2E_TEST_WORKFLOW_ID")
 
@@ -90,6 +95,7 @@ class WorkflowE2ETest(TestCase):
             raise cls.skipTest(cls, reason)
 
         logger.info("E2E_TEST_API_URL: %s", E2E_API_URL)
+        logger.info("E2E_TEST_ORG_SLUG: %s", E2E_ORG_SLUG)
         logger.info("E2E_TEST_WORKFLOW_ID: %s", E2E_WORKFLOW_ID)
         logger.info("E2E_TEST_WORKFLOW_EXPECTS_SUCCESS: %s", E2E_EXPECTS_SUCCESS)
         logger.info("Prerequisites check: PASSED")
@@ -114,7 +120,8 @@ class WorkflowE2ETest(TestCase):
         Returns:
             API response containing run_id
         """
-        url = f"{E2E_API_URL}/workflows/{E2E_WORKFLOW_ID}/start/"
+        # Use org-scoped route (ADR-2026-01-06)
+        url = f"{E2E_API_URL}/orgs/{E2E_ORG_SLUG}/workflows/{E2E_WORKFLOW_ID}/runs/"
 
         with file_path.open("rb") as f:
             files = {"file": (file_path.name, f)}
@@ -136,7 +143,8 @@ class WorkflowE2ETest(TestCase):
 
     def _get_run_status(self, run_id: str) -> dict:
         """Get the current status of a validation run."""
-        url = f"{E2E_API_URL}/validations/runs/{run_id}/"
+        # Use org-scoped route (ADR-2026-01-06)
+        url = f"{E2E_API_URL}/orgs/{E2E_ORG_SLUG}/runs/{run_id}/"
         response = requests.get(
             url,
             headers=self._get_auth_headers(),

@@ -97,18 +97,20 @@ def workflow_context(load_json_asset, api_client):
     }
 
 
-def start_workflow_url(workflow_id: int) -> str:
+def start_workflow_url(workflow) -> str:
     """
-    Resolve the workflow start endpoint. Fall back to a conventional path if
-    reverse fails.
+    Resolve the workflow start endpoint (org-scoped per ADR-2026-01-06).
     """
     try:
-        url = reverse("api:workflow-start", args=[workflow_id])
+        url = reverse(
+            "api:org-workflows-runs",
+            kwargs={"org_slug": workflow.org.slug, "pk": workflow.pk},
+        )
     except Exception:
         logger.debug("Could not reverse for workflow start")
     else:
         return url
-    return f"/api/v1/workflows/{workflow_id}/start/"
+    return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 
 def normalize_poll_url(location: str) -> str:
@@ -183,8 +185,9 @@ class TestJsonValidation:
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]
+        org = workflow_context["org"]
 
-        start_url = start_workflow_url(workflow.pk)
+        start_url = start_workflow_url(workflow)
         payload = valid_product_payload()
 
         resp = client.post(
@@ -205,19 +208,15 @@ class TestJsonValidation:
 
             run_id = data.get("id")
             if run_id:
-                for name in ("validation-run-detail", "api:validation-run-detail"):
-                    try:
-                        poll_url = reverse(name, args=[run_id])
-                        break
-                    except Exception as exc:
-                        logger.debug(
-                            "Could not reverse %s for run %s: %s",
-                            name,
-                            run_id,
-                            exc,
-                        )
-                if not poll_url:
-                    poll_url = f"/api/v1/validation-runs/{run_id}/"
+                # Use org-scoped route (ADR-2026-01-06)
+                try:
+                    poll_url = reverse(
+                        "api:org-runs-detail",
+                        kwargs={"org_slug": org.slug, "pk": run_id},
+                    )
+                except Exception as exc:
+                    logger.debug("Could not reverse org-runs-detail: %s", exc)
+                    poll_url = f"/api/v1/orgs/{org.slug}/runs/{run_id}/"
 
         data, last_status = poll_until_complete(client, poll_url)
         assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
@@ -237,8 +236,9 @@ class TestJsonValidation:
         """
         client = workflow_context["client"]
         workflow = workflow_context["workflow"]
+        org = workflow_context["org"]
 
-        start_url = start_workflow_url(workflow.pk)
+        start_url = start_workflow_url(workflow)
         payload = invalid_product_payload()
 
         resp = client.post(
@@ -258,19 +258,15 @@ class TestJsonValidation:
                 logger.debug("Could not parse JSON response: %s", exc)
             run_id = data.get("id")
             if run_id:
-                for name in ("validation-run-detail", "api:validation-run-detail"):
-                    try:
-                        poll_url = reverse(name, args=[run_id])
-                        break
-                    except Exception as exc:
-                        logger.debug(
-                            "Could not reverse %s for run %s: %s",
-                            name,
-                            run_id,
-                            exc,
-                        )
-                if not poll_url:
-                    poll_url = f"/api/v1/validation-runs/{run_id}/"
+                # Use org-scoped route (ADR-2026-01-06)
+                try:
+                    poll_url = reverse(
+                        "api:org-runs-detail",
+                        kwargs={"org_slug": org.slug, "pk": run_id},
+                    )
+                except Exception as exc:
+                    logger.debug("Could not reverse org-runs-detail: %s", exc)
+                    poll_url = f"/api/v1/orgs/{org.slug}/runs/{run_id}/"
 
         data, last_status = poll_until_complete(client, poll_url)
         assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"

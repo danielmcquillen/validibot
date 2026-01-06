@@ -220,7 +220,11 @@ class Organization(TimeStampedModel):
     def save(self, *args, **kwargs):
         """Override save to ensure slug is set if not provided."""
         if not self.slug:
-            self.slug = slugify(self.name)
+            candidate = slugify(self.name) if self.name else ""
+            if not candidate:
+                # Fallback for names that don't slugify (e.g., only punctuation/unicode)
+                candidate = f"org-{uuid4().hex[:8]}"
+            self.slug = candidate
         super().save(*args, **kwargs)
 
     def get_absolute_url(self) -> str:

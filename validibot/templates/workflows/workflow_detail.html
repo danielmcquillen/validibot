@@ -262,7 +262,7 @@
             <ul class="list-unstyled small text-muted mb-3">
               <li>
                 <span class="fw-semibold me-1">{% trans "Endpoint" %}:</span>
-                <code class="text-body-secondary">POST /api/v1/workflows/{{ workflow.pk }}/start/</code>
+                <code class="text-body-secondary">POST /api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/</code>
               </li>
               <li>
                 <span class="fw-semibold me-1">{% trans "Auth" %}:</span>
@@ -273,7 +273,7 @@
                 {% trans "Send raw content, a JSON envelope, or multipart form-data." %}
               </li>
             </ul>
-            <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.validibot.io" }}/api/v1/workflows/{{ workflow.pk }}/start/ \
+            <pre class="bg-dark text-white rounded-3 p-3 small mb-2"><code>curl -X POST https://{{ request.get_host|default:"api.validibot.io" }}/api/v1/orgs/{{ workflow.org.slug }}/workflows/{{ workflow.slug|default:workflow.pk }}/runs/ \
   -H "Authorization: Bearer &lt;token&gt;" \
   -H "Content-Type: application/json" \
   -d '{

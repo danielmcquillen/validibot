@@ -1,12 +1,18 @@
 # Using a Workflow via the API
 
 Endpoint:
-POST /api/workflows/{workflow_id}/start
+```
+POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/
+```
 
-Auth: required. User must have EXECUTOR role in the workflow’s org.
+The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID.
+
+Auth: required. User must be a member of the org and have EXECUTOR role.
 Workflow status: the workflow must be **active**. Disabled workflows return HTTP 403 with `{"detail": "This workflow is inactive..."}` and no run is created.
 
 Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When the flag is `False`, all `/api/v1/` routes return 404.
+
+See [ADR-2026-01-06](../adr/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped routing.
 
 You can submit content in three ways:
 
@@ -36,26 +42,32 @@ Content-Type: application/json | application/xml | text/plain | text/x-idf
 (optional) X-Filename: model.idf
 
 Example (raw JSON):
-curl -X POST https://api.example.com/api/workflows/42/start \
+```bash
+curl -X POST https://api.example.com/api/v1/orgs/my-org/workflows/my-workflow/runs/ \
  -H "Authorization: Bearer <token>" \
  -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/json" \
  --data-binary @building.json
+```
 
 Example (raw XML):
-curl -X POST https://api.example.com/api/workflows/42/start \
+```bash
+curl -X POST https://api.example.com/api/v1/orgs/my-org/workflows/my-workflow/runs/ \
  -H "Authorization: Bearer <token>" \
  -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/xml" \
  --data-binary '<root><item>1</item></root>'
+```
 
 Base64 (when necessary):
-curl -X POST https://api.example.com/api/workflows/42/start \
+```bash
+curl -X POST https://api.example.com/api/v1/orgs/my-org/workflows/my-workflow/runs/ \
  -H "Authorization: Bearer <token>" \
  -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: text/x-idf" \
  -H "Content-Encoding: base64" \
  --data "$(base64 building.idf)"
+```
 
 ## Mode 2: JSON Envelope
 
@@ -70,7 +82,8 @@ Body JSON:
 }
 
 Example:
-curl -X POST https://api.example.com/api/workflows/42/start \
+```bash
+curl -X POST https://api.example.com/api/v1/orgs/my-org/workflows/my-workflow/runs/ \
  -H "Authorization: Bearer <token>" \
  -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -H "Content-Type: application/json" \
@@ -80,6 +93,7 @@ curl -X POST https://api.example.com/api/workflows/42/start \
 "filename": "bldg.json",
 "metadata": {"ticket":"ABC-1"}
 }'
+```
 
 ## Mode 3: Multipart Upload
 
@@ -92,24 +106,30 @@ filename: (optional)
 content_type: (optional override)
 
 Example:
-curl -X POST https://api.example.com/api/workflows/42/start \
+```bash
+curl -X POST https://api.example.com/api/v1/orgs/my-org/workflows/my-workflow/runs/ \
  -H "Authorization: Bearer <token>" \
  -H "Idempotency-Key: 8f14e45f-ceea-467f-a8ad-0e7e3a1a8b9c" \
  -F "file=@building.idf" \
  -F 'metadata={\"source\":\"browser\"}' \
  -F "filename=building.idf" \
  -F "content_type=text/x-idf"
+```
 
 ## Responses
 
 If workflow finishes quickly (optimistic window):
+```
 201 Created
-Location: /api/validation-runs/<id>/
+Location: /api/v1/orgs/{org_slug}/runs/{run_id}/
+```
 
 Else (still processing):
+```
 202 Accepted
-Location: /api/validation-runs/<id>/
+Location: /api/v1/orgs/{org_slug}/runs/{run_id}/
 Retry-After: 5
+```
 
 Poll the Location until status is SUCCEEDED or FAILED.
 
@@ -148,4 +168,4 @@ All modes end up identical after ingestion: a Submission plus a queued Validatio
 - Every validator has a `supported_file_types` list. System validators get sane defaults, and custom validators must be explicit. The step builder only offers validators that overlap with the workflow's current allow list.
 - During launch we re-inspect the payload. If we can prove the content is JSON even though it was submitted as `text/plain`, we store the Submission as JSON so downstream tooling has the right classification.
 - If a client sends a format the workflow doesn't allow—or one of the validators can't consume—the API returns `FILE_TYPE_UNSUPPORTED` with a detail that names the blocking step. The UI sticks the same message at the top of the launch form.
-- Use the `allowed_file_types` field exposed by `GET /api/workflows/` (and in the in-app workflow detail) to inform your integrations about the acceptable formats.
+- Use the `allowed_file_types` field exposed by `GET /api/v1/orgs/{org_slug}/workflows/` (and in the in-app workflow detail) to inform your integrations about the acceptable formats.

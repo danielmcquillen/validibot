@@ -135,37 +135,40 @@ def get_latest_workflow_ids(
     A workflow "family" is defined by (org, slug). This function returns
     the ID of the latest version for each unique family.
 
+    Uses O(n) time complexity by grouping in Python after a single DB query.
+
     Args:
         queryset: Queryset of workflows
 
     Returns:
         List of workflow IDs representing the latest version of each family
     """
-    # Group workflows by (org_id, slug) and find the latest in each group
-    latest_ids = []
-    seen_families: set[tuple[int, str]] = set()
+    from collections import defaultdict
 
-    # Pre-filter to non-archived and order for efficient processing
-    workflows = queryset.filter(is_archived=False).order_by(
-        "org_id",
-        "slug",
-        "-created",
+    # Fetch all non-archived workflows in a single query
+    workflows = list(
+        queryset.filter(is_archived=False).only(
+            "id", "org_id", "slug", "version", "created",
+        )
     )
 
-    for wf in workflows:
-        family_key = (wf.org_id, wf.slug)
-        if family_key in seen_families:
-            continue
+    if not workflows:
+        return []
 
-        # This is the first (and thus latest by created) we've seen for this family
-        # But we need to check versions too - gather all versions for this family
-        family_workflows = [w for w in workflows if (w.org_id, w.slug) == family_key]
-        latest = get_latest_workflow(
-            queryset.filter(pk__in=[w.pk for w in family_workflows]),
-            include_archived=False,
-        )
-        if latest:
-            latest_ids.append(latest.pk)
-            seen_families.add(family_key)
+    # Group by (org_id, slug) family
+    families: dict[tuple[int, str], list] = defaultdict(list)
+    for wf in workflows:
+        families[(wf.org_id, wf.slug)].append(wf)
+
+    # Find the latest in each family using version comparison
+    latest_ids = []
+    for family_workflows in families.values():
+        # Sort by version descending, then created descending (as tiebreaker)
+        def sort_key(wf) -> tuple[tuple[int, int, int], float]:
+            pv = ParsedVersion(wf.version)
+            return ((-pv.major, -pv.minor, -pv.patch), -wf.created.timestamp())
+
+        family_workflows.sort(key=sort_key)
+        latest_ids.append(family_workflows[0].pk)
 
     return latest_ids

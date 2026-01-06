@@ -1,6 +1,8 @@
 # Workflow Submission Modes
 
-Every workflow run begins with an HTTP request to `POST /api/workflows/<id>/start/`. Callers can shape that request three different ways, and the view layer auto-detects the correct parsing route.
+Every workflow run begins with an HTTP request to `POST /api/v1/orgs/{org_slug}/workflows/{workflow_identifier}/runs/`. Callers can shape that request three different ways, and the view layer auto-detects the correct parsing route.
+
+See [ADR-2026-01-06](../adr/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped API routing.
 
 This page documents each "mode", the detection rules in `validibot/workflows/request_utils.py`, and the expectations downstream services rely on.
 

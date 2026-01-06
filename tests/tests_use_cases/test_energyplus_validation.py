@@ -106,7 +106,11 @@ class TestEnergyPlusValidation:
 
         payload = load_example_epjson()
 
-        start_url = reverse("api:workflow-start", args=[workflow.pk])
+        # Use org-scoped route (ADR-2026-01-06)
+        start_url = reverse(
+            "api:org-workflows-runs",
+            kwargs={"org_slug": workflow.org.slug, "pk": workflow.pk},
+        )
         resp = client.post(
             start_url,
             data=payload,

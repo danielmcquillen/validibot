@@ -25,12 +25,16 @@ logger = logging.getLogger(__name__)
 pytestmark = pytest.mark.django_db
 
 
-def start_workflow_url(workflow_id: int) -> str:
+def start_workflow_url(workflow) -> str:
+    """Resolve the API start URL for a workflow (org-scoped per ADR-2026-01-06)."""
     try:
-        return reverse("api:workflow-start", args=[workflow_id])
+        return reverse(
+            "api:org-workflows-runs",
+            kwargs={"org_slug": workflow.org.slug, "pk": workflow.pk},
+        )
     except Exception:
         logger.debug("Could not reverse for workflow start")
-    return f"/api/v1/workflows/{workflow_id}/start/"
+    return f"/api/v1/orgs/{workflow.org.slug}/workflows/{workflow.pk}/runs/"
 
 
 def normalize_poll_url(location: str) -> str:
@@ -142,7 +146,7 @@ def _run_and_poll(
     content: str,
     content_type: str = "application/xml",
 ) -> dict:
-    start_url = start_workflow_url(workflow.pk)
+    start_url = start_workflow_url(workflow)
     resp = client.post(start_url, data=content, content_type=content_type)
     assert resp.status_code in (200, 201, 202), resp.content
 
@@ -156,14 +160,16 @@ def _run_and_poll(
             logger.debug("Could not parse JSON response: %s", e)
         run_id = data.get("id")
         if run_id:
-            for name in ("validation-run-detail", "api:validation-run-detail"):
-                try:
-                    poll_url = reverse(name, args=[run_id])
-                    break
-                except Exception as e:
-                    logger.debug("Could not reverse %s for run %s: %s", name, run_id, e)
-            if not poll_url:
-                poll_url = f"/api/v1/validation-runs/{run_id}/"
+            # Use org-scoped route (ADR-2026-01-06)
+            org_slug = workflow.org.slug
+            try:
+                poll_url = reverse(
+                    "api:org-runs-detail",
+                    kwargs={"org_slug": org_slug, "pk": run_id},
+                )
+            except Exception as e:
+                logger.debug("Could not reverse org-runs-detail: %s", e)
+                poll_url = f"/api/v1/orgs/{org_slug}/runs/{run_id}/"
 
     data, last_status = poll_until_complete(client, poll_url)
     assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"

@@ -165,10 +165,18 @@
           </li>
           <li class="nav-item" role="none">
             <a href="{% org_url 'members:member_list' %}"
-               class="nav-link text-white {% active_link 'members' %}"
+               class="nav-link text-white {% active_link_views 'members:member_list' 'members:member_edit' 'members:member_delete' %}"
                role="menuitem">
               <i class="bi bi-people"></i>
               <span>{% trans "Members" %}</span>
+            </a>
+          </li>
+          <li class="nav-item" role="none">
+            <a href="{% org_url 'members:guest_list' %}"
+               class="nav-link text-white {% active_link_views 'members:guest_list' %}"
+               role="menuitem">
+              <i class="bi bi-person-badge"></i>
+              <span>{% trans "Guests" %}</span>
             </a>
           </li>
           <li class="nav-item" role="none">

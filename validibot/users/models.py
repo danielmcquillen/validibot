@@ -685,7 +685,33 @@ class PendingInvite(TimeStampedModel):
         membership.set_roles(set(membership_roles))
         self.status = self.Status.ACCEPTED
         self.save(update_fields=["status"])
+
+        # Clean up guest access grants now that user is a member.
+        # As a member, they have broader access, so guest grants are redundant.
+        self._cleanup_guest_grants()
+
         return membership
+
+    def _cleanup_guest_grants(self) -> int:
+        """
+        Remove guest access grants for workflows in this org.
+
+        When a user becomes a member, they no longer need individual
+        WorkflowAccessGrant records for workflows in the org - they have
+        access via their membership roles instead.
+
+        Returns the count of grants deleted.
+        """
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        # Delete active guest grants for workflows in this org
+        deleted_count, _ = WorkflowAccessGrant.objects.filter(
+            user=self.invitee_user,
+            workflow__org=self.org,
+            is_active=True,
+        ).delete()
+
+        return deleted_count
 
     def decline(self) -> None:
         self.mark_expired_if_needed()

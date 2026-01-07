@@ -51,6 +51,26 @@ urlpatterns = [
         name="workflow_visibility_update",
     ),
     path(
+        "<int:pk>/sharing/invite/",
+        views.WorkflowGuestInviteView.as_view(),
+        name="workflow_guest_invite",
+    ),
+    path(
+        "<int:pk>/sharing/<int:grant_id>/revoke/",
+        views.WorkflowGuestRevokeView.as_view(),
+        name="workflow_guest_revoke",
+    ),
+    path(
+        "<int:pk>/sharing/invites/<uuid:invite_id>/cancel/",
+        views.WorkflowInviteCancelView.as_view(),
+        name="workflow_invite_cancel",
+    ),
+    path(
+        "<int:pk>/sharing/invites/<uuid:invite_id>/resend/",
+        views.WorkflowInviteResendView.as_view(),
+        name="workflow_invite_resend",
+    ),
+    path(
         "<int:pk>/",
         views.WorkflowDetailView.as_view(),
         name="workflow_detail",

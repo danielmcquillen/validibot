@@ -356,6 +356,164 @@ class DeclineGuestInviteView(View):
         return HttpResponseRedirect(reverse("notifications:notification-list"))
 
 
+def _notify_workflow_inviter(invite, *, action: str):
+    """Notify the inviter when a workflow invite is accepted/declined."""
+    if not invite.inviter:
+        return
+    if invite.invitee_user:
+        invitee_name = invite.invitee_user.email
+    else:
+        invitee_name = invite.invitee_email
+    workflow_name = invite.workflow.name
+    message = _(
+        "Workflow invitation to '%(username)s' for %(workflow)s was %(action)s."
+    ) % {
+        "username": invitee_name,
+        "workflow": workflow_name,
+        "action": action,
+    }
+    Notification.objects.create(
+        user=invite.inviter,
+        org=invite.workflow.org,
+        type=Notification.Type.WORKFLOW_INVITE,
+        workflow_invite=invite,
+        payload={"message": str(message)},
+    )
+
+
+class AcceptWorkflowInviteView(View):
+    """Allow an invitee to accept a per-workflow invite notification."""
+
+    def post(self, request, *args, **kwargs):
+        notification = get_object_or_404(
+            Notification.objects.select_related(
+                "workflow_invite",
+                "workflow_invite__workflow",
+                "workflow_invite__workflow__org",
+            ),
+            pk=kwargs.get("pk"),
+            user=request.user,
+        )
+        invite = notification.workflow_invite
+        if invite is None:
+            raise Http404
+        invite.mark_expired_if_needed()
+        if invite.status != "PENDING":
+            messages.error(request, _("Invite is no longer valid."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+        if invite.invitee_user and invite.invitee_user_id != request.user.id:
+            messages.error(request, _("This invite was sent to a different user."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+        if invite.invitee_user is None:
+            # Bind to current user if emails match
+            if (
+                invite.invitee_email
+                and invite.invitee_email.lower() == (request.user.email or "").lower()
+            ):
+                invite.invitee_user = request.user
+                invite.save(update_fields=["invitee_user"])
+            else:
+                messages.error(
+                    request, _("This invite is not addressed to your account.")
+                )
+                return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+        # Accept invite and create workflow access grant
+        grant = invite.accept(user=request.user)
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["read_at"])
+        _notify_workflow_inviter(invite, action=_("accepted"))
+
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_ACCEPTED,
+            project=None,
+            org=invite.workflow.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "invite_type": "workflow_invite",
+                "workflow_id": invite.workflow.id,
+                "workflow_name": invite.workflow.name,
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+                "grant_id": grant.id if grant else None,
+            },
+            channel="web",
+        )
+        messages.success(
+            request,
+            _("Invitation accepted. You now have access to '%(workflow)s'.")
+            % {"workflow": invite.workflow.name},
+        )
+        if request.headers.get("HX-Request"):
+            notification.refresh_from_db()
+            invite.refresh_from_db()
+            return render(
+                request,
+                "notifications/partials/invite_row.html",
+                {"notification": notification},
+                status=200,
+            )
+        return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+
+class DeclineWorkflowInviteView(View):
+    """Allow an invitee to decline a per-workflow invite notification."""
+
+    def post(self, request, *args, **kwargs):
+        notification = get_object_or_404(
+            Notification.objects.select_related(
+                "workflow_invite",
+                "workflow_invite__workflow",
+                "workflow_invite__workflow__org",
+            ),
+            pk=kwargs.get("pk"),
+            user=request.user,
+        )
+        invite = notification.workflow_invite
+        if invite is None:
+            raise Http404
+        if invite.invitee_user and invite.invitee_user_id != request.user.id:
+            messages.error(request, _("This invite was sent to a different user."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+        invite.decline()
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["read_at"])
+        _notify_workflow_inviter(invite, action=_("declined"))
+
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_DECLINED,
+            project=None,
+            org=invite.workflow.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "invite_type": "workflow_invite",
+                "workflow_id": invite.workflow.id,
+                "workflow_name": invite.workflow.name,
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+            },
+            channel="web",
+        )
+        messages.info(request, _("Invitation declined."))
+        if request.headers.get("HX-Request"):
+            notification.refresh_from_db()
+            invite.refresh_from_db()
+            return render(
+                request,
+                "notifications/partials/invite_row.html",
+                {"notification": notification},
+                status=200,
+            )
+        return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+
 class DismissNotificationView(LoginRequiredMixin, View):
     """Dismiss a notification."""
 

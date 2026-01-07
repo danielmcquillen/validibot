@@ -40,4 +40,25 @@ urlpatterns = [
         views.MemberDeleteConfirmView.as_view(),
         name="member_delete_confirm",
     ),
+    # Guest management
+    path(
+        "guests/",
+        views.GuestListView.as_view(),
+        name="guest_list",
+    ),
+    path(
+        "guests/invite/",
+        views.GuestInviteCreateView.as_view(),
+        name="guest_invite_create",
+    ),
+    path(
+        "guests/invites/<uuid:invite_id>/cancel/",
+        views.GuestInviteCancelView.as_view(),
+        name="guest_invite_cancel",
+    ),
+    path(
+        "guests/<int:user_id>/revoke-all/",
+        views.GuestRevokeAllView.as_view(),
+        name="guest_revoke_all",
+    ),
 ]

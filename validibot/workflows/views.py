@@ -1216,6 +1216,11 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
             workflow.is_archived = True
             workflow.is_active = False
             workflow.save(update_fields=["is_archived", "is_active"])
+
+            # Cancel any pending workflow invites since the workflow is no longer
+            # accessible.
+            self._cancel_pending_invites(workflow)
+
             messages.info(
                 request,
                 _("Workflow archived and disabled. Runs remain available for audit."),
@@ -1252,6 +1257,21 @@ class WorkflowArchiveView(WorkflowObjectMixin, View):
             request=request,
         )
         return HttpResponseRedirect(success_url)
+
+    def _cancel_pending_invites(self, workflow: Workflow) -> int:
+        """
+        Cancel pending WorkflowInvites for an archived workflow.
+
+        When a workflow is archived, pending invites become pointless since
+        the workflow is no longer accessible. This cleans up those invites
+        and returns the count of canceled invites.
+        """
+        from validibot.workflows.models import WorkflowInvite
+
+        return WorkflowInvite.objects.filter(
+            workflow=workflow,
+            status=WorkflowInvite.Status.PENDING,
+        ).update(status=WorkflowInvite.Status.CANCELED)
 
     def _determine_show_archived(self, request) -> bool:
         raw = (request.POST.get("show_archived") or "").lower()
@@ -2959,3 +2979,385 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
             request=request,
         )
         return HttpResponse(html)
+
+
+class WorkflowGuestInviteView(WorkflowObjectMixin, View):
+    """
+    Invite a guest to access this specific workflow.
+
+    Creates a WorkflowInvite and optionally a notification if the invitee
+    is an existing user.
+    """
+
+    def get(self, request, *args, **kwargs):
+        """Return the invite form modal content."""
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        context = {
+            "workflow": workflow,
+        }
+        return render(
+            request,
+            "workflows/partials/workflow_guest_invite_form.html",
+            context,
+        )
+
+    def post(self, request, *args, **kwargs):
+        """Process the guest invite form."""
+        from validibot.notifications.models import Notification
+        from validibot.users.models import User
+        from validibot.workflows.models import WorkflowInvite
+
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        email = (request.POST.get("email") or "").strip().lower()
+
+        if not email:
+            messages.error(request, _("Email address is required."))
+            return self._render_form_response(request, workflow, email)
+
+        # Check if user is already a member of the org
+        existing_membership = workflow.org.memberships.filter(
+            user__email__iexact=email,
+            is_active=True,
+        ).exists()
+        if existing_membership:
+            messages.error(
+                request,
+                _("This user is already a member of the organization."),
+            )
+            return self._render_form_response(request, workflow, email)
+
+        # Check if user already has access
+        existing_grant = workflow.access_grants.filter(
+            user__email__iexact=email,
+            is_active=True,
+        ).exists()
+        if existing_grant:
+            messages.error(
+                request,
+                _("This user already has access to this workflow."),
+            )
+            return self._render_form_response(request, workflow, email)
+
+        # Check for pending invite
+        pending_invite = WorkflowInvite.objects.filter(
+            workflow=workflow,
+            invitee_email__iexact=email,
+            status=WorkflowInvite.Status.PENDING,
+        ).exists()
+        if pending_invite:
+            messages.error(
+                request,
+                _("An invitation is already pending for this email."),
+            )
+            return self._render_form_response(request, workflow, email)
+
+        # Find existing user by email
+        invitee_user = User.objects.filter(email__iexact=email).first()
+
+        # Create the invite
+        invite = WorkflowInvite.create_with_expiry(
+            workflow=workflow,
+            inviter=request.user,
+            invitee_email=email,
+            invitee_user=invitee_user,
+            send_email=False,  # TODO: Implement email sending
+        )
+
+        # Create notification if invitee is an existing user
+        if invitee_user:
+            Notification.objects.create(
+                user=invitee_user,
+                org=workflow.org,
+                type=Notification.Type.WORKFLOW_INVITE,
+                workflow_invite=invite,
+                payload={
+                    "workflow_name": workflow.name,
+                    "inviter_name": request.user.name or request.user.email,
+                },
+            )
+
+        messages.success(
+            request,
+            _("Invitation sent to %(email)s.") % {"email": email},
+        )
+
+        # Return updated guest access section
+        return self._render_guest_section_response(request, workflow)
+
+    def _render_form_response(self, request, workflow, email=""):
+        """Render the form with errors."""
+        context = {
+            "workflow": workflow,
+            "email": email,
+        }
+        return render(
+            request,
+            "workflows/partials/workflow_guest_invite_form.html",
+            context,
+            status=HTTPStatus.OK,
+        )
+
+    def _render_guest_section_response(self, request, workflow):
+        """Render the updated guest access section."""
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.models import WorkflowInvite
+
+        access_grants = (
+            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
+            .select_related("user", "granted_by")
+            .order_by("-created")
+        )
+        pending_invites = (
+            WorkflowInvite.objects.filter(
+                workflow=workflow,
+                status=WorkflowInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .order_by("-created")
+        )
+
+        context = {
+            "workflow": workflow,
+            "access_grants": access_grants,
+            "pending_invites": pending_invites,
+            "can_manage_sharing": self.user_can_manage_workflow(),
+        }
+        response = render(
+            request,
+            "workflows/partials/workflow_guest_access_section.html",
+            context,
+        )
+        response["HX-Trigger"] = "close-modal"
+        return response
+
+
+class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
+    """Revoke a guest's access to this workflow."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.notifications.models import Notification
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        grant_id = kwargs.get("grant_id")
+
+        grant = get_object_or_404(
+            WorkflowAccessGrant,
+            pk=grant_id,
+            workflow=workflow,
+            is_active=True,
+        )
+
+        # Deactivate the grant
+        grant.is_active = False
+        grant.save(update_fields=["is_active", "modified"])
+
+        # Notify the guest
+        Notification.objects.create(
+            user=grant.user,
+            org=workflow.org,
+            type=Notification.Type.SYSTEM_ALERT,
+            payload={
+                "action": "access_revoked",
+                "workflow_name": workflow.name,
+                "changed_by": request.user.id,
+                "message": str(
+                    _("Your access to '%(workflow)s' has been removed.")
+                    % {"workflow": workflow.name}
+                ),
+            },
+        )
+
+        messages.success(
+            request,
+            _("Access revoked for %(email)s.") % {"email": grant.user.email},
+        )
+
+        # Return updated guest access section
+        return self._render_guest_section_response(request, workflow)
+
+    def _render_guest_section_response(self, request, workflow):
+        """Render the updated guest access section."""
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.models import WorkflowInvite
+
+        access_grants = (
+            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
+            .select_related("user", "granted_by")
+            .order_by("-created")
+        )
+        pending_invites = (
+            WorkflowInvite.objects.filter(
+                workflow=workflow,
+                status=WorkflowInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .order_by("-created")
+        )
+
+        context = {
+            "workflow": workflow,
+            "access_grants": access_grants,
+            "pending_invites": pending_invites,
+            "can_manage_sharing": self.user_can_manage_workflow(),
+        }
+        return render(
+            request,
+            "workflows/partials/workflow_guest_access_section.html",
+            context,
+        )
+
+
+class WorkflowInviteCancelView(WorkflowObjectMixin, View):
+    """Cancel a pending workflow invite."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.workflows.models import WorkflowInvite
+
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        invite_id = kwargs.get("invite_id")
+
+        invite = get_object_or_404(
+            WorkflowInvite,
+            pk=invite_id,
+            workflow=workflow,
+            status=WorkflowInvite.Status.PENDING,
+        )
+
+        invite.cancel()
+
+        messages.success(
+            request,
+            _("Invitation canceled."),
+        )
+
+        # Return updated guest access section
+        return self._render_guest_section_response(request, workflow)
+
+    def _render_guest_section_response(self, request, workflow):
+        """Render the updated guest access section."""
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.models import WorkflowInvite
+
+        access_grants = (
+            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
+            .select_related("user", "granted_by")
+            .order_by("-created")
+        )
+        pending_invites = (
+            WorkflowInvite.objects.filter(
+                workflow=workflow,
+                status=WorkflowInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .order_by("-created")
+        )
+
+        context = {
+            "workflow": workflow,
+            "access_grants": access_grants,
+            "pending_invites": pending_invites,
+            "can_manage_sharing": self.user_can_manage_workflow(),
+        }
+        return render(
+            request,
+            "workflows/partials/workflow_guest_access_section.html",
+            context,
+        )
+
+
+class WorkflowInviteResendView(WorkflowObjectMixin, View):
+    """Resend a workflow invite (creates a new invite with fresh expiry)."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.notifications.models import Notification
+        from validibot.workflows.models import WorkflowInvite
+
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        invite_id = kwargs.get("invite_id")
+
+        old_invite = get_object_or_404(
+            WorkflowInvite,
+            pk=invite_id,
+            workflow=workflow,
+        )
+
+        # Cancel the old invite if still pending
+        if old_invite.status == WorkflowInvite.Status.PENDING:
+            old_invite.cancel()
+
+        # Create a new invite
+        new_invite = WorkflowInvite.create_with_expiry(
+            workflow=workflow,
+            inviter=request.user,
+            invitee_email=old_invite.invitee_email,
+            invitee_user=old_invite.invitee_user,
+            send_email=False,  # TODO: Implement email sending
+        )
+
+        # Create notification if invitee is an existing user
+        if new_invite.invitee_user:
+            Notification.objects.create(
+                user=new_invite.invitee_user,
+                org=workflow.org,
+                type=Notification.Type.WORKFLOW_INVITE,
+                workflow_invite=new_invite,
+                payload={
+                    "workflow_name": workflow.name,
+                    "inviter_name": request.user.name or request.user.email,
+                },
+            )
+
+        messages.success(
+            request,
+            _("Invitation resent."),
+        )
+
+        # Return updated guest access section
+        return self._render_guest_section_response(request, workflow)
+
+    def _render_guest_section_response(self, request, workflow):
+        """Render the updated guest access section."""
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.models import WorkflowInvite
+
+        access_grants = (
+            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
+            .select_related("user", "granted_by")
+            .order_by("-created")
+        )
+        pending_invites = (
+            WorkflowInvite.objects.filter(
+                workflow=workflow,
+                status=WorkflowInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .order_by("-created")
+        )
+
+        context = {
+            "workflow": workflow,
+            "access_grants": access_grants,
+            "pending_invites": pending_invites,
+            "can_manage_sharing": self.user_can_manage_workflow(),
+        }
+        return render(
+            request,
+            "workflows/partials/workflow_guest_access_section.html",
+            context,
+        )

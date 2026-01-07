@@ -414,3 +414,320 @@ class MemberDeleteConfirmView(MemberDeleteView, TemplateView):
         return _("User '%(username)s' removed from organization") % {
             "username": membership.user.username,
         }
+
+
+# =============================================================================
+# Guest Management Views
+# =============================================================================
+
+
+class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView):
+    """Display all guests (users with workflow access but no membership) for the org."""
+
+    template_name = "members/guest_list.html"
+    organization_context_attr = "organization"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        from validibot.workflows.models import GuestInvite
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        context = super().get_context_data(**kwargs)
+
+        # Get all users with active grants in this org who are NOT members
+        member_user_ids = Membership.objects.filter(
+            org=self.organization,
+            is_active=True,
+        ).values_list("user_id", flat=True)
+
+        # Get grants grouped by user
+        grants_by_user = (
+            WorkflowAccessGrant.objects.filter(
+                workflow__org=self.organization,
+                is_active=True,
+            )
+            .exclude(user_id__in=member_user_ids)
+            .select_related("user", "workflow", "granted_by")
+            .order_by("user__email", "workflow__name")
+        )
+
+        # Group grants by user
+        guests: dict = {}
+        for grant in grants_by_user:
+            user_id = grant.user_id
+            if user_id not in guests:
+                guests[user_id] = {
+                    "user": grant.user,
+                    "grants": [],
+                    "workflow_count": 0,
+                }
+            guests[user_id]["grants"].append(grant)
+            guests[user_id]["workflow_count"] += 1
+
+        # Get pending guest invites
+        pending_invites = (
+            GuestInvite.objects.filter(
+                org=self.organization,
+                status=GuestInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .prefetch_related("workflows")
+            .order_by("-created")
+        )
+
+        # Mark expired invites
+        for invite in pending_invites:
+            invite.mark_expired_if_needed()
+
+        context.update(
+            {
+                "organization": self.organization,
+                "guests": list(guests.values()),
+                "guest_count": len(guests),
+                "pending_invites": [
+                    inv for inv in pending_invites
+                    if inv.status == GuestInvite.Status.PENDING
+                ],
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append({"name": _("Guests")})
+        return breadcrumbs
+
+
+class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
+    """Create a new org-level guest invite."""
+
+    def get(self, request, *args, **kwargs):
+        """Return the invite form modal content."""
+        from validibot.workflows.models import Workflow
+
+        workflows = (
+            Workflow.objects.filter(
+                org=self.organization,
+                is_active=True,
+                is_archived=False,
+            )
+            .order_by("name")
+        )
+
+        context = {
+            "organization": self.organization,
+            "workflows": workflows,
+        }
+        return render(
+            request,
+            "members/partials/guest_invite_form.html",
+            context,
+        )
+
+    def post(self, request, *args, **kwargs):
+        """Process the guest invite form."""
+        from validibot.workflows.models import GuestInvite
+        from validibot.workflows.models import Workflow
+
+        email = (request.POST.get("email") or "").strip().lower()
+        scope = request.POST.get("scope", GuestInvite.Scope.SELECTED)
+        workflow_ids = request.POST.getlist("workflows")
+
+        if not email:
+            messages.error(request, _("Email address is required."))
+            return self._render_form_response(request, email, scope, workflow_ids)
+
+        # Check if user is already a member
+        existing_membership = Membership.objects.filter(
+            org=self.organization,
+            user__email__iexact=email,
+            is_active=True,
+        ).exists()
+        if existing_membership:
+            messages.error(
+                request,
+                _("This user is already a member of the organization."),
+            )
+            return self._render_form_response(request, email, scope, workflow_ids)
+
+        # Check for pending invite to same email
+        pending_invite = GuestInvite.objects.filter(
+            org=self.organization,
+            invitee_email__iexact=email,
+            status=GuestInvite.Status.PENDING,
+        ).exists()
+        if pending_invite:
+            messages.error(
+                request,
+                _("An invitation is already pending for this email."),
+            )
+            return self._render_form_response(request, email, scope, workflow_ids)
+
+        # Validate scope and workflows
+        if scope == GuestInvite.Scope.SELECTED and not workflow_ids:
+            messages.error(
+                request,
+                _("Please select at least one workflow."),
+            )
+            return self._render_form_response(request, email, scope, workflow_ids)
+
+        # Find existing user
+        invitee_user = User.objects.filter(email__iexact=email).first()
+
+        # Get selected workflows
+        workflows = None
+        if scope == GuestInvite.Scope.SELECTED:
+            workflows = list(
+                Workflow.objects.filter(
+                    pk__in=workflow_ids,
+                    org=self.organization,
+                    is_active=True,
+                    is_archived=False,
+                )
+            )
+
+        # Create the invite
+        invite = GuestInvite.create_with_expiry(
+            org=self.organization,
+            inviter=request.user,
+            invitee_email=email,
+            invitee_user=invitee_user,
+            scope=scope,
+            workflows=workflows,
+            send_email=False,  # TODO: Implement email sending
+        )
+
+        # Create notification if invitee is an existing user
+        if invitee_user:
+            Notification.objects.create(
+                user=invitee_user,
+                org=self.organization,
+                type=Notification.Type.GUEST_INVITE,
+                guest_invite=invite,
+                payload={
+                    "org_name": self.organization.name,
+                    "inviter_name": request.user.name or request.user.email,
+                    "scope": scope,
+                },
+            )
+
+        messages.success(
+            request,
+            _("Invitation sent to %(email)s.") % {"email": email},
+        )
+
+        # Redirect back to guest list
+        return HttpResponseRedirect(
+            reverse_with_org("members:guest_list", request=request)
+        )
+
+    def _render_form_response(
+        self, request, email="", scope="SELECTED", workflow_ids=None
+    ):
+        """Render the form with errors."""
+        from validibot.workflows.models import Workflow
+
+        workflows = (
+            Workflow.objects.filter(
+                org=self.organization,
+                is_active=True,
+                is_archived=False,
+            )
+            .order_by("name")
+        )
+
+        context = {
+            "organization": self.organization,
+            "workflows": workflows,
+            "email": email,
+            "scope": scope,
+            "selected_workflow_ids": workflow_ids or [],
+        }
+        return render(
+            request,
+            "members/partials/guest_invite_form.html",
+            context,
+        )
+
+
+class GuestInviteCancelView(OrganizationAdminRequiredMixin, View):
+    """Cancel a pending org-level guest invite."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.workflows.models import GuestInvite
+
+        invite_id = kwargs.get("invite_id")
+        invite = get_object_or_404(
+            GuestInvite,
+            pk=invite_id,
+            org=self.organization,
+            status=GuestInvite.Status.PENDING,
+        )
+
+        invite.cancel()
+
+        messages.success(request, _("Invitation canceled."))
+
+        # Return to guest list
+        return HttpResponseRedirect(
+            reverse_with_org("members:guest_list", request=request)
+        )
+
+
+class GuestRevokeAllView(OrganizationAdminRequiredMixin, View):
+    """Revoke all workflow access for a guest user."""
+
+    def post(self, request, *args, **kwargs):
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        user_id = kwargs.get("user_id")
+        target_user = get_object_or_404(User, pk=user_id)
+
+        # Ensure user is not a member
+        is_member = Membership.objects.filter(
+            org=self.organization,
+            user=target_user,
+            is_active=True,
+        ).exists()
+        if is_member:
+            messages.error(
+                request,
+                _("This user is a member, not a guest. Use member management instead."),
+            )
+            return HttpResponseRedirect(
+                reverse_with_org("members:guest_list", request=request)
+            )
+
+        # Revoke all grants
+        grants = WorkflowAccessGrant.objects.filter(
+            workflow__org=self.organization,
+            user=target_user,
+            is_active=True,
+        )
+        revoked_count = grants.update(is_active=False)
+
+        # Notify the user
+        if revoked_count > 0:
+            Notification.objects.create(
+                user=target_user,
+                org=self.organization,
+                type=Notification.Type.SYSTEM_ALERT,
+                payload={
+                    "action": "all_access_revoked",
+                    "org_name": self.organization.name,
+                    "changed_by": request.user.id,
+                    "message": str(
+                        _("Your guest access to %(org)s has been removed.")
+                        % {"org": self.organization.name}
+                    ),
+                },
+            )
+
+        messages.success(
+            request,
+            _("Revoked access to %(count)d workflow(s) for %(email)s.")
+            % {"count": revoked_count, "email": target_user.email},
+        )
+
+        return HttpResponseRedirect(
+            reverse_with_org("members:guest_list", request=request)
+        )

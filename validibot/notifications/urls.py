@@ -28,6 +28,17 @@ urlpatterns = [
         views.DeclineGuestInviteView.as_view(),
         name="notification-guest-invite-decline",
     ),
+    # Workflow invite (WorkflowInvite) acceptance
+    path(
+        "workflow-invite/<uuid:pk>/accept/",
+        views.AcceptWorkflowInviteView.as_view(),
+        name="notification-workflow-invite-accept",
+    ),
+    path(
+        "workflow-invite/<uuid:pk>/decline/",
+        views.DeclineWorkflowInviteView.as_view(),
+        name="notification-workflow-invite-decline",
+    ),
     # Dismiss any notification
     path(
         "dismiss/<uuid:pk>/",

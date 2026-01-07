@@ -1582,15 +1582,11 @@ class TestWorkflowSharingPermissions:
         """Test that org admins can manage sharing for any workflow."""
         org = OrganizationFactory()
         admin = UserFactory()
-        admin.memberships.filter(org=org).delete()
-        membership = admin.memberships.create(org=org, is_active=True)
-        grant_role(membership, RoleCode.ADMIN)
+        grant_role(admin, org, RoleCode.ADMIN)
 
         # Workflow created by another user
         author = UserFactory()
-        author.memberships.filter(org=org).delete()
-        author_membership = author.memberships.create(org=org, is_active=True)
-        grant_role(author_membership, RoleCode.WORKFLOW_AUTHOR)
+        grant_role(author, org, RoleCode.AUTHOR)
         workflow = WorkflowFactory(org=org, user=author)
 
         client.force_login(admin)
@@ -1608,9 +1604,7 @@ class TestWorkflowSharingPermissions:
         """Test that authors can manage sharing for workflows they created."""
         org = OrganizationFactory()
         author = UserFactory()
-        author.memberships.filter(org=org).delete()
-        membership = author.memberships.create(org=org, is_active=True)
-        grant_role(membership, RoleCode.WORKFLOW_AUTHOR)
+        grant_role(author, org, RoleCode.AUTHOR)
 
         workflow = WorkflowFactory(org=org, user=author)
 
@@ -1630,14 +1624,10 @@ class TestWorkflowSharingPermissions:
 
         # Create two authors
         author1 = UserFactory()
-        author1.memberships.filter(org=org).delete()
-        membership1 = author1.memberships.create(org=org, is_active=True)
-        grant_role(membership1, RoleCode.WORKFLOW_AUTHOR)
+        grant_role(author1, org, RoleCode.AUTHOR)
 
         author2 = UserFactory()
-        author2.memberships.filter(org=org).delete()
-        membership2 = author2.memberships.create(org=org, is_active=True)
-        grant_role(membership2, RoleCode.WORKFLOW_AUTHOR)
+        grant_role(author2, org, RoleCode.AUTHOR)
 
         # Workflow created by author1
         workflow = WorkflowFactory(org=org, user=author1)
@@ -1658,14 +1648,10 @@ class TestWorkflowSharingPermissions:
         org = OrganizationFactory()
 
         author = UserFactory()
-        author.memberships.filter(org=org).delete()
-        author_membership = author.memberships.create(org=org, is_active=True)
-        grant_role(author_membership, RoleCode.WORKFLOW_AUTHOR)
+        grant_role(author, org, RoleCode.AUTHOR)
 
         viewer = UserFactory()
-        viewer.memberships.filter(org=org).delete()
-        viewer_membership = viewer.memberships.create(org=org, is_active=True)
-        grant_role(viewer_membership, RoleCode.WORKFLOW_VIEWER)
+        grant_role(viewer, org, RoleCode.WORKFLOW_VIEWER)
 
         workflow = WorkflowFactory(org=org, user=author)
 

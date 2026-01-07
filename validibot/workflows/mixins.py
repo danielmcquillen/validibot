@@ -82,11 +82,17 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             .prefetch_related("validation_runs")
         )
         # Also include public workflows (any authenticated user can access)
+        # Use union to combine distinct querysets properly
         from django.db.models import Q
 
-        return queryset | Workflow.objects.filter(
-            Q(is_public=True) & Q(is_active=True) & Q(is_archived=False)
-        ).select_related("org", "user", "project")
+        public_qs = (
+            Workflow.objects.filter(
+                Q(is_public=True) & Q(is_active=True) & Q(is_archived=False)
+            )
+            .select_related("org", "user", "project")
+            .distinct()
+        )
+        return queryset | public_qs
 
     def get_queryset(self):
         return self.get_workflow_queryset()

@@ -103,7 +103,7 @@ def create_default_validators():
             "has_processor": True,
         },
         {
-            "name": _("FMI Validator"),
+            "name": _("FMU Validator"),
             "slug": "fmi-validator",
             "short_description": _(
                 "Run FMUs and assert against inputs and outputs.",

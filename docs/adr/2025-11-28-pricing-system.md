@@ -215,15 +215,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
 `execution_target` is derived, not stored: we infer it from `validation_type` so metering can correctly classify runs without a separate field.
 
-| ValidationType   | execution_target                                                    |
-| ---------------- | ------------------------------------------------------------------- |
-| JSON_SCHEMA      | cloud_run_service                                                   |
-| XML_SCHEMA       | cloud_run_service                                                   |
-| BASIC            | cloud_run_service                                                   |
-| CUSTOM_VALIDATOR | cloud_run_service (default; override to cloud_run_job if required)  |
-| ENERGYPLUS       | cloud_run_job                                                       |
-| FMI              | cloud_run_job                                                       |
-| AI_ASSIST        | cloud_run_job                                                       |
+| ValidationType   | execution_target                                                   |
+| ---------------- | ------------------------------------------------------------------ |
+| JSON_SCHEMA      | cloud_run_service                                                  |
+| XML_SCHEMA       | cloud_run_service                                                  |
+| BASIC            | cloud_run_service                                                  |
+| CUSTOM_VALIDATOR | cloud_run_service (default; override to cloud_run_job if required) |
+| ENERGYPLUS       | cloud_run_job                                                      |
+| FMI              | cloud_run_job                                                      |
+| AI_ASSIST        | cloud_run_job                                                      |
 
 On the `Validator` model we expose:
 
@@ -1800,12 +1800,12 @@ At this stage, you're covering costs while building customer base.
 
 Let's assume every customer in Scenario 3 hits their soft caps and buys maximum reasonable overage:
 
-| Tier       | Orgs | Basic Launches (at soft cap) | Advanced Credits (heavy overage) |
-| ---------- | ---- | ---------------------------- | -------------------------------- |
-| Starter    | 20   | 20 × 10,000 = 200,000        | 20 × (200 + 500) = 14,000        |
-| Team       | 20   | 20 × 100,000 = 2,000,000     | 20 × (1,000 + 2,000) = 60,000    |
-| Enterprise | 10   | 10 × 500,000 = 5,000,000     | 10 × (5,000 + 3,000) = 80,000    |
-| **Total**  |      | **7.2 million/month**        | **154,000 credits/month**        |
+| Tier       | Orgs | Basic Launches (at soft cap) | Advanced Validation Credits (heavy overage) |
+| ---------- | ---- | ---------------------------- | ------------------------------------------- |
+| Starter    | 20   | 20 × 10,000 = 200,000        | 20 × (200 + 500) = 14,000                   |
+| Team       | 20   | 20 × 100,000 = 2,000,000     | 20 × (1,000 + 2,000) = 60,000               |
+| Enterprise | 10   | 10 × 500,000 = 5,000,000     | 10 × (5,000 + 3,000) = 80,000               |
+| **Total**  |      | **7.2 million/month**        | **154,000 credits/month**                   |
 
 **Basic workflow load analysis:**
 

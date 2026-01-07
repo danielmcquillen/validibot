@@ -129,8 +129,8 @@ card on the right, using the same type-ahead search pattern.
 /app/orgs/<org_slug>/settings/guests/invites/<id>/resend/ - Resend invite
 ```
 
-Guests are never invited to the organization itself. They are only invited to all or a subset of
-workflows in the org.
+Guests are never invited to the organization itself. They are only invited to all current workflows
+or a subset of workflows in the org.
 
 **Guest List View:**
 

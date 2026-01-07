@@ -75,7 +75,7 @@ def test_invitee_can_accept_and_become_member(client):
     notification = Notification.objects.create(
         user=invitee,
         org=org,
-        type=Notification.Type.INVITE,
+        type=Notification.Type.MEMBER_INVITE,
         invite=invite,
         payload={"roles": invite.roles},
     )
@@ -148,7 +148,7 @@ def test_invitee_can_decline_and_event_is_logged(client):
     notification = Notification.objects.create(
         user=invitee,
         org=org,
-        type=Notification.Type.INVITE,
+        type=Notification.Type.MEMBER_INVITE,
         invite=invite,
         payload={"roles": invite.roles},
     )
@@ -192,14 +192,14 @@ def test_can_dismiss_rules_for_invitee_and_inviter():
     invitee_notification = Notification.objects.create(
         user=invitee,
         org=org,
-        type=Notification.Type.INVITE,
+        type=Notification.Type.MEMBER_INVITE,
         invite=invite,
         payload={},
     )
     inviter_notification = Notification.objects.create(
         user=inviter,
         org=org,
-        type=Notification.Type.INVITE,
+        type=Notification.Type.MEMBER_INVITE,
         invite=invite,
         payload={},
     )

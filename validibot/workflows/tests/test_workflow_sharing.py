@@ -21,6 +21,7 @@ from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+from validibot.workflows.models import GuestInvite
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowAccessGrant
 from validibot.workflows.models import WorkflowInvite
@@ -1308,3 +1309,262 @@ class TestBillingAttribution:
         # Each workflow execution should bill to its respective org
         assert workflow1.org == org1
         assert workflow2.org == org2
+
+
+# =============================================================================
+# GuestInvite Model Tests
+# =============================================================================
+
+
+class TestGuestInvite:
+    """Tests for the GuestInvite model (org-level guest invites)."""
+
+    def test_create_guest_invite_with_selected_scope(self):
+        """Test creating a guest invite with selected workflows."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        invitee = UserFactory(orgs=[])
+
+        workflow1 = WorkflowFactory(org=org, is_active=True)
+        workflow2 = WorkflowFactory(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.SELECTED,
+            workflows=[workflow1, workflow2],
+            send_email=False,
+        )
+
+        assert invite.org == org
+        assert invite.inviter == inviter
+        assert invite.invitee_user == invitee
+        assert invite.scope == GuestInvite.Scope.SELECTED
+        assert invite.status == GuestInvite.Status.PENDING
+        assert set(invite.workflows.all()) == {workflow1, workflow2}
+
+    def test_create_guest_invite_with_all_scope(self):
+        """Test creating a guest invite with ALL workflows scope."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        assert invite.scope == GuestInvite.Scope.ALL
+        assert invite.workflows.count() == 0  # Workflows not stored for ALL scope
+
+    def test_get_resolved_workflows_selected_scope(self):
+        """Test get_resolved_workflows returns selected workflows."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        workflow1 = WorkflowFactory(org=org, is_active=True)
+        workflow2 = WorkflowFactory(org=org, is_active=True)
+        workflow3 = WorkflowFactory(org=org, is_active=True)  # Not selected
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.SELECTED,
+            workflows=[workflow1, workflow2],
+            send_email=False,
+        )
+
+        resolved = list(invite.get_resolved_workflows())
+        assert workflow1 in resolved
+        assert workflow2 in resolved
+        assert workflow3 not in resolved
+
+    def test_get_resolved_workflows_all_scope(self):
+        """Test get_resolved_workflows returns all active workflows for ALL scope."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        workflow1 = WorkflowFactory(org=org, is_active=True, is_archived=False)
+        workflow2 = WorkflowFactory(org=org, is_active=True, is_archived=False)
+        inactive_workflow = WorkflowFactory(org=org, is_active=False)
+        archived_workflow = WorkflowFactory(org=org, is_active=True, is_archived=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        resolved = list(invite.get_resolved_workflows())
+        assert workflow1 in resolved
+        assert workflow2 in resolved
+        assert inactive_workflow not in resolved
+        assert archived_workflow not in resolved
+
+    def test_accept_guest_invite_creates_grants(self):
+        """Test accepting guest invite creates WorkflowAccessGrants."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        invitee = UserFactory(orgs=[])
+        Membership.objects.filter(user=invitee).delete()
+
+        workflow1 = WorkflowFactory(org=org, is_active=True)
+        workflow2 = WorkflowFactory(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.SELECTED,
+            workflows=[workflow1, workflow2],
+            send_email=False,
+        )
+
+        grants = invite.accept()
+
+        assert len(grants) == 2
+        assert invite.status == GuestInvite.Status.ACCEPTED
+        assert WorkflowAccessGrant.objects.filter(
+            user=invitee,
+            workflow=workflow1,
+            is_active=True,
+        ).exists()
+        assert WorkflowAccessGrant.objects.filter(
+            user=invitee,
+            workflow=workflow2,
+            is_active=True,
+        ).exists()
+
+    def test_accept_guest_invite_with_all_scope(self):
+        """Test accepting ALL scope invite creates grants for all workflows."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        invitee = UserFactory(orgs=[])
+        Membership.objects.filter(user=invitee).delete()
+
+        workflow1 = WorkflowFactory(org=org, is_active=True)
+        workflow2 = WorkflowFactory(org=org, is_active=True)
+        WorkflowFactory(org=org, is_active=False)  # inactive, should be skipped
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        grants = invite.accept()
+
+        assert len(grants) == 2  # Only active workflows
+        assert invitee.is_workflow_guest is True
+
+    def test_decline_guest_invite(self):
+        """Test declining a guest invite."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        invite.decline()
+
+        assert invite.status == GuestInvite.Status.DECLINED
+
+    def test_cancel_guest_invite(self):
+        """Test canceling a guest invite."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        invite.cancel()
+
+        assert invite.status == GuestInvite.Status.CANCELED
+
+    def test_cannot_accept_non_pending_invite(self):
+        """Test that accepting a non-pending invite raises ValueError."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        invitee = UserFactory(orgs=[])
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+        invite.decline()
+
+        with pytest.raises(ValueError, match="Cannot accept invite"):
+            invite.accept()
+
+    def test_accept_expired_invite_raises_error(self):
+        """Test that accepting an expired invite raises ValueError."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+        invitee = UserFactory(orgs=[])
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee.email,
+            invitee_user=invitee,
+            scope=GuestInvite.Scope.ALL,
+            expiry_days=-1,  # Already expired
+            send_email=False,
+        )
+
+        with pytest.raises(ValueError, match="expired"):
+            invite.accept()
+
+    def test_is_pending_property(self):
+        """Test the is_pending property."""
+        org = OrganizationFactory()
+        inviter = UserFactory()
+        inviter.memberships.create(org=org, is_active=True)
+
+        invite = GuestInvite.create_with_expiry(
+            org=org,
+            inviter=inviter,
+            invitee_email="guest@example.com",
+            scope=GuestInvite.Scope.ALL,
+            send_email=False,
+        )
+
+        assert invite.is_pending is True
+
+        invite.decline()
+        assert invite.is_pending is False

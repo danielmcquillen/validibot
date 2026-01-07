@@ -24,4 +24,4 @@ def test_create_dummy_workflows_creates_records():
         public_info = WorkflowPublicInfo.objects.get(workflow=workflow)
         assert public_info.content_html
         assert workflow.project is not None
-        assert workflow.make_info_public is True
+        assert workflow.make_info_page_public is True

@@ -123,7 +123,7 @@
                       <span>
                         {% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}
                       </span>
-                      {% if workflow.make_info_public %}
+                      {% if workflow.make_info_page_public %}
                         <span class="badge text-bg-light">
                           {% trans "Public" %}
                         </span>
@@ -173,7 +173,7 @@
                       <div>
                         {% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}
                       </div>
-                      {% if workflow.make_info_public %}
+                      {% if workflow.make_info_page_public %}
                         <span class="badge text-bg-light mt-2">
                           {% trans "Public" %}
                         </span>

@@ -488,10 +488,10 @@ class PublicWorkflowListView(ListView):
                 .values_list("pk", flat=True)
             )
             queryset = queryset.filter(
-                models.Q(make_info_public=True) | models.Q(pk__in=accessible_ids),
+                models.Q(make_info_page_public=True) | models.Q(pk__in=accessible_ids),
             )
         else:
-            queryset = queryset.filter(make_info_public=True)
+            queryset = queryset.filter(make_info_page_public=True)
 
         search_query = self.request.GET.get("q", "").strip()
         if search_query:
@@ -583,7 +583,7 @@ class PublicWorkflowInfoView(DetailView):
 
     def get_queryset(self):
         return (
-            Workflow.objects.filter(make_info_public=True)
+            Workflow.objects.filter(make_info_page_public=True)
             .select_related("org", "project", "user")
             .prefetch_related(
                 "steps",
@@ -1342,10 +1342,10 @@ class WorkflowPublicInfoUpdateView(WorkflowObjectMixin, UpdateView):
     def form_valid(self, form):
         response = super().form_valid(form)
         workflow = self.get_workflow()
-        desired_visibility = bool(form.cleaned_data.get("make_info_public"))
-        if workflow.make_info_public != desired_visibility:
-            workflow.make_info_public = desired_visibility
-            workflow.save(update_fields=["make_info_public"])
+        desired_visibility = bool(form.cleaned_data.get("make_info_page_public"))
+        if workflow.make_info_page_public != desired_visibility:
+            workflow.make_info_page_public = desired_visibility
+            workflow.save(update_fields=["make_info_page_public"])
         messages.success(self.request, _("Public workflow info updated."))
         return response
 
@@ -1455,17 +1455,17 @@ class WorkflowPublicVisibilityUpdateView(WorkflowObjectMixin, View):
         if not self.user_can_manage_workflow():
             return HttpResponse(status=403)
         workflow = self.get_workflow()
-        raw_state = (request.POST.get("make_info_public") or "").strip().lower()
+        raw_state = (request.POST.get("make_info_page_public") or "").strip().lower()
         if raw_state in {"true", "1", "on"}:
             new_state = True
         elif raw_state in {"false", "0", "off"}:
             new_state = False
         else:
-            new_state = not workflow.make_info_public
+            new_state = not workflow.make_info_page_public
 
-        if workflow.make_info_public != new_state:
-            workflow.make_info_public = new_state
-            workflow.save(update_fields=["make_info_public"])
+        if workflow.make_info_page_public != new_state:
+            workflow.make_info_page_public = new_state
+            workflow.save(update_fields=["make_info_page_public"])
 
         context = public_info_card_context(
             request,
@@ -2847,3 +2847,115 @@ class GuestWorkflowListView(LoginRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["search_query"] = self.request.GET.get("q", "")
         return context
+
+
+class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
+    """
+    View for managing workflow sharing settings (visibility and guest access).
+
+    This is the "Sharing" tab in workflow settings. It allows:
+    - Setting workflow visibility (private/public)
+    - Viewing/managing guest access grants
+    - Inviting guests to this workflow
+    """
+
+    template_name = "workflows/workflow_sharing.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_workflow()
+
+        # Get active access grants for this workflow
+        from validibot.workflows.models import WorkflowAccessGrant
+        from validibot.workflows.models import WorkflowInvite
+
+        access_grants = (
+            WorkflowAccessGrant.objects.filter(workflow=workflow, is_active=True)
+            .select_related("user", "granted_by")
+            .order_by("-created")
+        )
+
+        pending_invites = (
+            WorkflowInvite.objects.filter(
+                workflow=workflow,
+                status=WorkflowInvite.Status.PENDING,
+            )
+            .select_related("inviter", "invitee_user")
+            .order_by("-created")
+        )
+
+        context.update(
+            {
+                "workflow": workflow,
+                "access_grants": access_grants,
+                "pending_invites": pending_invites,
+                "can_manage_sharing": self.user_can_manage_workflow(),
+            },
+        )
+        return context
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Sharing")})
+        return breadcrumbs
+
+
+class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
+    """Toggle workflow visibility between private and public."""
+
+    def post(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+
+        workflow = self.get_workflow()
+        raw_state = (request.POST.get("is_public") or "").strip().lower()
+
+        if raw_state in {"true", "1", "on"}:
+            new_state = True
+        elif raw_state in {"false", "0", "off"}:
+            new_state = False
+        else:
+            # Toggle if no explicit value
+            new_state = not workflow.is_public
+
+        if workflow.is_public != new_state:
+            workflow.is_public = new_state
+            # Note: make_info_page_public auto-synced in model.save()
+            workflow.save(update_fields=["is_public", "make_info_page_public"])
+
+        # Return updated visibility section for HTMX
+        context = {
+            "workflow": workflow,
+            "can_manage_sharing": self.user_can_manage_workflow(),
+        }
+        html = render_to_string(
+            "workflows/partials/workflow_visibility_section.html",
+            context,
+            request=request,
+        )
+        return HttpResponse(html)

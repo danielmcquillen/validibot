@@ -13,11 +13,17 @@ from validibot.users.models import User
 class Notification(models.Model):
     """
     Generic notification record tied to a user and organization.
-    Invite notifications optionally link to a PendingInvite for integrity.
+
+    Invite notifications link to the appropriate invite model:
+    - member_invite: PendingInvite (org membership invites)
+    - guest_invite: GuestInvite (org-level guest access invites)
+    - workflow_invite: WorkflowInvite (per-workflow guest invites)
     """
 
     class Type(models.TextChoices):
-        INVITE = "invite", _("Invite")
+        MEMBER_INVITE = "member_invite", _("Member invite")
+        GUEST_INVITE = "guest_invite", _("Guest invite")
+        WORKFLOW_INVITE = "workflow_invite", _("Workflow invite")
         SYSTEM_ALERT = "system_alert", _("System alert")
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
@@ -37,6 +43,23 @@ class Notification(models.Model):
         null=True,
         blank=True,
         related_name="notifications",
+        help_text=_("Link to PendingInvite for member_invite notifications."),
+    )
+    guest_invite = models.ForeignKey(
+        "workflows.GuestInvite",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications",
+        help_text=_("Link to GuestInvite for guest_invite notifications."),
+    )
+    workflow_invite = models.ForeignKey(
+        "workflows.WorkflowInvite",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notifications",
+        help_text=_("Link to WorkflowInvite for workflow_invite notifications."),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
@@ -66,9 +89,27 @@ class Notification(models.Model):
           any recipient can dismiss.
         - Non-invite notifications are always dismissible.
         """
-        if not self.invite:
+        # Non-invite notifications are always dismissible
+        if self.type == self.Type.SYSTEM_ALERT:
             return True
-        if self.user != self.invite.invitee_user:
-            return True
-        # An invitee can dismiss only if the invite is no longer pending.
-        return self.invite.status != PendingInvite.Status.PENDING
+
+        # Check member invite (PendingInvite)
+        if self.invite:
+            if self.user != self.invite.invitee_user:
+                return True
+            return self.invite.status != PendingInvite.Status.PENDING
+
+        # Check guest invite (GuestInvite)
+        if self.guest_invite:
+            if self.user != self.guest_invite.invitee_user:
+                return True
+            return self.guest_invite.status != "PENDING"
+
+        # Check workflow invite (WorkflowInvite)
+        if self.workflow_invite:
+            if self.user != self.workflow_invite.invitee_user:
+                return True
+            return self.workflow_invite.status != "PENDING"
+
+        # No linked invite - allow dismissal
+        return True

@@ -93,7 +93,7 @@ def _notify_inviter(invite: PendingInvite, *, action: str):
     Notification.objects.create(
         user=invite.inviter,
         org=invite.org,
-        type=Notification.Type.INVITE,
+        type=Notification.Type.MEMBER_INVITE,
         invite=invite,
         payload={"message": str(message)},
     )
@@ -198,6 +198,152 @@ class DeclineInviteView(View):
             channel="web",
         )
         messages.info(request, _("Invitation declined."))
+        if request.headers.get("HX-Request"):
+            notification.refresh_from_db()
+            invite.refresh_from_db()
+            return render(
+                request,
+                "notifications/partials/invite_row.html",
+                {"notification": notification},
+                status=200,
+            )
+        return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+
+def _notify_guest_inviter(invite, *, action: str):
+    """Notify the inviter when a guest invite is accepted/declined."""
+    if not invite.inviter:
+        return
+    if invite.invitee_user:
+        invitee_name = invite.invitee_user.email
+    else:
+        invitee_name = invite.invitee_email
+    org_name = invite.org.name
+    message = _("Guest invitation to '%(username)s' for %(org)s was %(action)s.") % {
+        "username": invitee_name,
+        "org": org_name,
+        "action": action,
+    }
+    Notification.objects.create(
+        user=invite.inviter,
+        org=invite.org,
+        type=Notification.Type.GUEST_INVITE,
+        guest_invite=invite,
+        payload={"message": str(message)},
+    )
+
+
+class AcceptGuestInviteView(View):
+    """Allow an invitee to accept a guest invite notification."""
+
+    def post(self, request, *args, **kwargs):
+        notification = get_object_or_404(
+            Notification.objects.select_related("guest_invite", "guest_invite__org"),
+            pk=kwargs.get("pk"),
+            user=request.user,
+        )
+        invite = notification.guest_invite
+        if invite is None:
+            raise Http404
+        invite.mark_expired_if_needed()
+        if invite.status != "PENDING":
+            messages.error(request, _("Invite is no longer valid."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+        if invite.invitee_user and invite.invitee_user_id != request.user.id:
+            messages.error(request, _("This invite was sent to a different user."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+        if invite.invitee_user is None:
+            # Bind to current user if emails match
+            if (
+                invite.invitee_email
+                and invite.invitee_email.lower() == (request.user.email or "").lower()
+            ):
+                invite.invitee_user = request.user
+                invite.save(update_fields=["invitee_user"])
+            else:
+                messages.error(
+                    request, _("This invite is not addressed to your account.")
+                )
+                return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+        # Accept invite and create workflow access grants
+        grants = invite.accept(user=request.user)
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["read_at"])
+        _notify_guest_inviter(invite, action=_("accepted"))
+
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_ACCEPTED,
+            project=None,
+            org=invite.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "invite_type": "guest_invite",
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+                "scope": invite.scope,
+                "workflows_granted": len(grants),
+            },
+            channel="web",
+        )
+        workflow_count = len(grants)
+        msg = _(
+            "Guest invitation accepted. You now have access to %(count)d workflow(s)."
+        ) % {"count": workflow_count}
+        messages.success(request, msg)
+        if request.headers.get("HX-Request"):
+            notification.refresh_from_db()
+            invite.refresh_from_db()
+            return render(
+                request,
+                "notifications/partials/invite_row.html",
+                {"notification": notification},
+                status=200,
+            )
+        return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+
+class DeclineGuestInviteView(View):
+    """Allow an invitee to decline a guest invite notification."""
+
+    def post(self, request, *args, **kwargs):
+        notification = get_object_or_404(
+            Notification.objects.select_related("guest_invite", "guest_invite__org"),
+            pk=kwargs.get("pk"),
+            user=request.user,
+        )
+        invite = notification.guest_invite
+        if invite is None:
+            raise Http404
+        if invite.invitee_user and invite.invitee_user_id != request.user.id:
+            messages.error(request, _("This invite was sent to a different user."))
+            return HttpResponseRedirect(reverse("notifications:notification-list"))
+
+        invite.decline()
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["read_at"])
+        _notify_guest_inviter(invite, action=_("declined"))
+
+        TrackingEventService().log_tracking_event(
+            event_type=TrackingEventType.APP_EVENT,
+            app_event_type=AppEventType.INVITE_DECLINED,
+            project=None,
+            org=invite.org,
+            user=request.user,
+            extra_data={
+                "invite_id": str(invite.id),
+                "invite_type": "guest_invite",
+                "inviter_id": getattr(invite.inviter, "id", None),
+                "invitee_user_id": getattr(invite.invitee_user, "id", None),
+                "invitee_email": invite.invitee_email,
+                "scope": invite.scope,
+            },
+            channel="web",
+        )
+        messages.info(request, _("Guest invitation declined."))
         if request.headers.get("HX-Request"):
             notification.refresh_from_db()
             invite.refresh_from_db()

@@ -41,6 +41,16 @@ urlpatterns = [
         name="workflow_public_info_edit",
     ),
     path(
+        "<int:pk>/sharing/",
+        views.WorkflowSharingView.as_view(),
+        name="workflow_sharing",
+    ),
+    path(
+        "<int:pk>/sharing/visibility/",
+        views.WorkflowVisibilityUpdateView.as_view(),
+        name="workflow_visibility_update",
+    ),
+    path(
         "<int:pk>/",
         views.WorkflowDetailView.as_view(),
         name="workflow_detail",

@@ -137,7 +137,7 @@ def build_public_info_url(request, workflow: Workflow) -> str | None:
     """
     Build the public info URL for the given workflow, if public info is enabled.
     """
-    if not workflow.make_info_public:
+    if not workflow.make_info_page_public:
         return None
     return request.build_absolute_uri(
         reverse(

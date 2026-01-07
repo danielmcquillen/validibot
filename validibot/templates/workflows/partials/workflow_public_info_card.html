@@ -13,7 +13,7 @@
       </dt>
       <dd class="col-sm-8">
         <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
-          {% if workflow.make_info_public %}
+          {% if workflow.make_info_page_public %}
             <span class="badge text-bg-primary py-2">
               {% trans "Visible" %}
             </span>
@@ -29,8 +29,8 @@
                   hx-target="#workflow-public-info-card"
                   hx-swap="outerHTML">
               {% csrf_token %}
-              {% if workflow.make_info_public %}
-                <input type="hidden" name="make_info_public" value="false" />
+              {% if workflow.make_info_page_public %}
+                <input type="hidden" name="make_info_page_public" value="false" />
                 <button type="submit"
                         class="btn btn-warning btn-sm"
                         data-bs-toggle="tooltip"
@@ -39,7 +39,7 @@
                   <i class="bi-eye-slash"></i>
                 </button>
               {% else %}
-                <input type="hidden" name="make_info_public" value="true" />
+                <input type="hidden" name="make_info_page_public" value="true" />
                 <button type="submit"
                         class="btn btn-success btn-sm"
                         data-bs-toggle="tooltip"
@@ -62,7 +62,7 @@
           {% endif %}
         </div>
         <small class="text-muted d-block mt-2">
-          {% if workflow.make_info_public %}
+          {% if workflow.make_info_page_public %}
             {% trans "Anyone with the link can currently view the workflow info page." %}
           {% else %}
             {% trans "Only teammates with access can currently view the workflow info page." %}

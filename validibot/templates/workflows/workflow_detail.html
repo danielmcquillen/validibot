@@ -49,6 +49,13 @@
             <a class="btn btn-outline-secondary"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
+               title="{% trans "Sharing settings" %}"
+               href="{% org_url 'workflows:workflow_sharing' pk=workflow.pk %}">
+              <i class="bi-share"></i>
+            </a>
+            <a class="btn btn-outline-secondary"
+               data-bs-toggle="tooltip"
+               data-bs-placement="top"
                title="{% trans "View Validations" %}"
                href="{{ related_validations_url }}">
               <i class="bi-diagram-3"></i>

@@ -152,7 +152,7 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
                 Notification.objects.create(
                     user=invite.invitee_user,
                     org=invite.org,
-                    type=Notification.Type.INVITE,
+                    type=Notification.Type.MEMBER_INVITE,
                     invite=invite,
                     payload={"roles": invite.roles, "inviter": request.user.id},
                 )

@@ -21,8 +21,8 @@ def _force_login_for_workflow(client, workflow):
 
 
 def test_public_list_shows_public_workflows_only(client):
-    public_workflow = WorkflowFactory(name="Public Workflow", make_info_public=True)
-    private_workflow = WorkflowFactory(name="Private Workflow", make_info_public=False)
+    public_workflow = WorkflowFactory(name="Public Workflow", make_info_page_public=True)
+    private_workflow = WorkflowFactory(name="Private Workflow", make_info_page_public=False)
 
     response = client.get(reverse("public_workflow_list"))
 
@@ -33,7 +33,7 @@ def test_public_list_shows_public_workflows_only(client):
 
 
 def test_authenticated_user_sees_private_accessible_workflows(client):
-    accessible = WorkflowFactory(name="Member Workflow", make_info_public=False)
+    accessible = WorkflowFactory(name="Member Workflow", make_info_page_public=False)
     _force_login_for_workflow(client, accessible)
 
     response = client.get(reverse("public_workflow_list"))
@@ -45,8 +45,8 @@ def test_authenticated_user_sees_private_accessible_workflows(client):
 
 
 def test_search_filters_results(client):
-    WorkflowFactory(name="Data Quality", make_info_public=True)
-    WorkflowFactory(name="Image Validation", make_info_public=True)
+    WorkflowFactory(name="Data Quality", make_info_page_public=True)
+    WorkflowFactory(name="Image Validation", make_info_page_public=True)
 
     response = client.get(reverse("public_workflow_list"), {"q": "Image"})
 
@@ -57,7 +57,7 @@ def test_search_filters_results(client):
 
 
 def test_per_page_parameter_limits_results(client):
-    WorkflowFactory.create_batch(12, make_info_public=True)
+    WorkflowFactory.create_batch(12, make_info_page_public=True)
 
     response = client.get(
         reverse("public_workflow_list"),

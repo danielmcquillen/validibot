@@ -1080,8 +1080,8 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
 
 
 class WorkflowPublicInfoForm(forms.ModelForm):
-    make_info_public = forms.BooleanField(
-        label=_("Make info public"),
+    make_info_page_public = forms.BooleanField(
+        label=_("Make info page public"),
         required=False,
         help_text=_(
             "When enabled, anyone with the link can view the workflow's info page.",
@@ -1117,8 +1117,10 @@ class WorkflowPublicInfoForm(forms.ModelForm):
         self.fields["title"].widget.attrs.setdefault("class", "form-control")
         self.fields["content_md"].widget.attrs.setdefault("class", "form-control")
         self.fields["title"].required = False
-        self.fields["make_info_public"].initial = bool(workflow.make_info_public)
-        self.fields["make_info_public"].widget.attrs.setdefault(
+        self.fields["make_info_page_public"].initial = bool(
+            workflow.make_info_page_public,
+        )
+        self.fields["make_info_page_public"].widget.attrs.setdefault(
             "class",
             "form-check-input",
         )
@@ -1127,7 +1129,7 @@ class WorkflowPublicInfoForm(forms.ModelForm):
         self.helper.layout = Layout(
             Field("title"),
             Field("content_md"),
-            Field("make_info_public"),
+            Field("make_info_page_public"),
         )
 
 

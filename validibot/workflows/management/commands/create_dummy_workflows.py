@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 version="1",
                 is_active=True,
                 is_locked=False,
-                make_info_public=True,
+                make_info_page_public=True,
             )
 
             self._create_public_info(workflow=workflow)

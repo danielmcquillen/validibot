@@ -271,10 +271,17 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
-    make_info_public = models.BooleanField(
+    make_info_page_public = models.BooleanField(
         default=False,
         help_text=_(
-            "Allows non-logged in users to see details of the workflow validation.",
+            "Allows non-logged in users to see the workflow's info page.",
+        ),
+    )
+
+    is_public = models.BooleanField(
+        default=False,
+        help_text=_(
+            "If true, any authenticated user can launch this workflow.",
         ),
     )
 
@@ -343,6 +350,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                 # Fallback for names that don't slugify (e.g., only punctuation)
                 candidate = f"wf-{uuid.uuid4().hex[:8]}"
             self.slug = candidate
+
+        # Public workflows must have their info page public too
+        if self.is_public and not self.make_info_page_public:
+            self.make_info_page_public = True
+
         self.full_clean()
         super().save(*args, **kwargs)
 
@@ -378,8 +390,9 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         """
         Check if the given user can execute (run) this workflow.
 
-        Access is granted if either:
-        - User has WORKFLOW_LAUNCH permission in the workflow's org (org member), OR
+        Access is granted if any of these conditions are met:
+        - Workflow is public (any authenticated user)
+        - User has WORKFLOW_LAUNCH permission in the workflow's org (org member)
         - User has an active WorkflowAccessGrant for this workflow (guest)
 
         The workflow must also be active for execution to be allowed.
@@ -389,7 +402,11 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         if not user or not user.is_authenticated:
             return False
 
-        # Org member check (existing behavior)
+        # Public workflows: any authenticated user can execute
+        if self.is_public:
+            return True
+
+        # Org member check
         if user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, self):
             return True
 
@@ -1004,6 +1021,281 @@ class WorkflowInvite(TimeStampedModel):
         self.save(update_fields=["status", "invitee_user", "modified"])
 
         return grant
+
+    def decline(self) -> None:
+        """Decline this invite."""
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot decline invite with status {self.status}"
+            raise ValueError(msg)
+
+        self.status = self.Status.DECLINED
+        self.save(update_fields=["status", "modified"])
+
+    def cancel(self) -> None:
+        """Cancel this invite (called by the inviter)."""
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot cancel invite with status {self.status}"
+            raise ValueError(msg)
+
+        self.status = self.Status.CANCELED
+        self.save(update_fields=["status", "modified"])
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if invite has expired without updating status."""
+        from django.utils import timezone
+
+        return self.status == self.Status.EXPIRED or timezone.now() >= self.expires_at
+
+    @property
+    def is_pending(self) -> bool:
+        """Check if invite is still pending and not expired."""
+        return self.status == self.Status.PENDING and not self.is_expired
+
+
+class GuestInvite(TimeStampedModel):
+    """
+    Invitation for an external user to access multiple workflows in an org as a guest.
+
+    Unlike WorkflowInvite (for a single workflow), this invite grants access to either:
+    - All current workflows in the org (scope=ALL), or
+    - A selected subset of workflows (scope=SELECTED)
+
+    When accepted, the invite expands into individual WorkflowAccessGrant rows
+    for each workflow in the resolved set. New workflows created after acceptance
+    are NOT automatically shared.
+
+    This model enables the org-level guest management UI where admins can invite
+    guests to multiple workflows at once.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", _("Pending")
+        ACCEPTED = "ACCEPTED", _("Accepted")
+        DECLINED = "DECLINED", _("Declined")
+        CANCELED = "CANCELED", _("Canceled")
+        EXPIRED = "EXPIRED", _("Expired")
+
+    class Scope(models.TextChoices):
+        ALL = "ALL", _("All workflows in org")
+        SELECTED = "SELECTED", _("Selected workflows")
+
+    # Default invite expiry: 7 days
+    DEFAULT_EXPIRY_DAYS = 7
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    org = models.ForeignKey(
+        "users.Organization",
+        on_delete=models.CASCADE,
+        related_name="guest_invites",
+        help_text=_("The organization this invite is for."),
+    )
+    inviter = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="sent_guest_invites",
+        help_text=_("The user who sent this invite."),
+    )
+    invitee_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="received_guest_invites",
+        null=True,
+        blank=True,
+        help_text=_("The invited user, if they already have an account."),
+    )
+    invitee_email = models.EmailField(
+        blank=True,
+        help_text=_("Email address of invitee (used when inviting non-users)."),
+    )
+    scope = models.CharField(
+        max_length=16,
+        choices=Scope.choices,
+        default=Scope.SELECTED,
+        help_text=_("Whether to grant access to all current workflows or a selection."),
+    )
+    workflows = models.ManyToManyField(
+        Workflow,
+        blank=True,
+        related_name="guest_invites",
+        help_text=_("Workflows to grant access to (used when scope=SELECTED)."),
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    token = models.UUIDField(
+        default=uuid.uuid4,
+        editable=False,
+        unique=True,
+        help_text=_("Unique token for invite acceptance URL."),
+    )
+    expires_at = models.DateTimeField(
+        help_text=_("When this invite expires."),
+    )
+
+    class Meta:
+        ordering = ["-created"]
+        verbose_name = _("guest invite")
+        verbose_name_plural = _("guest invites")
+        indexes = [
+            models.Index(fields=["token"]),
+            models.Index(fields=["invitee_email", "status"]),
+            models.Index(fields=["org", "status"]),
+        ]
+
+    def __str__(self):
+        target = self.invitee_user or self.invitee_email
+        return f"Guest invite to {self.org.name} for {target}"
+
+    def get_resolved_workflows(self) -> models.QuerySet[Workflow]:
+        """
+        Get the workflows this invite grants access to.
+
+        For scope=ALL, returns all active, non-archived workflows in the org.
+        For scope=SELECTED, returns the explicitly selected workflows.
+        """
+        if self.scope == self.Scope.ALL:
+            return Workflow.objects.filter(
+                org=self.org,
+                is_active=True,
+                is_archived=False,
+            )
+        return self.workflows.filter(is_active=True, is_archived=False)
+
+    @classmethod
+    def create_with_expiry(
+        cls,
+        *,
+        org,
+        inviter: User,
+        invitee_email: str,
+        scope: str,
+        workflows: list | None = None,
+        invitee_user: User | None = None,
+        expiry_days: int | None = None,
+        send_email: bool = True,
+    ) -> GuestInvite:
+        """
+        Create a new guest invite with default expiry.
+
+        Args:
+            org: The organization to grant guest access to.
+            inviter: The user sending the invite.
+            invitee_email: Email of the person being invited.
+            scope: Either 'ALL' or 'SELECTED'.
+            workflows: List of workflows (required if scope=SELECTED).
+            invitee_user: Optional existing user if email matches.
+            expiry_days: Days until expiry (default: 7).
+            send_email: Whether to send an invitation email (default: True).
+
+        Returns:
+            The created GuestInvite instance.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        days = expiry_days or cls.DEFAULT_EXPIRY_DAYS
+        expires_at = timezone.now() + timedelta(days=days)
+
+        invite = cls.objects.create(
+            org=org,
+            inviter=inviter,
+            invitee_email=invitee_email,
+            invitee_user=invitee_user,
+            scope=scope,
+            expires_at=expires_at,
+        )
+
+        if scope == cls.Scope.SELECTED and workflows:
+            invite.workflows.set(workflows)
+
+        if send_email:
+            # TODO: Implement send_guest_invite_email in Phase 3/4
+            pass
+
+        return invite
+
+    def mark_expired_if_needed(self) -> bool:
+        """
+        Check if invite has expired and update status if so.
+
+        Returns:
+            True if the invite was marked as expired, False otherwise.
+        """
+        from django.utils import timezone
+
+        if self.status != self.Status.PENDING:
+            return False
+
+        if timezone.now() >= self.expires_at:
+            self.status = self.Status.EXPIRED
+            self.save(update_fields=["status", "modified"])
+            return True
+
+        return False
+
+    def accept(self, user: User | None = None) -> list[WorkflowAccessGrant]:
+        """
+        Accept this invite and create WorkflowAccessGrants for all resolved workflows.
+
+        Args:
+            user: The user accepting the invite. If not provided, uses
+                  invitee_user. Required if invitee_user is not set.
+
+        Returns:
+            List of created/updated WorkflowAccessGrant instances.
+
+        Raises:
+            ValueError: If invite is not in PENDING status or no user provided.
+        """
+        if self.status != self.Status.PENDING:
+            msg = f"Cannot accept invite with status {self.status}"
+            raise ValueError(msg)
+
+        accepting_user = user or self.invitee_user
+        if not accepting_user:
+            msg = "No user provided to accept invite"
+            raise ValueError(msg)
+
+        # Check for expiry first
+        if self.mark_expired_if_needed():
+            msg = "Invite has expired"
+            raise ValueError(msg)
+
+        # Create grants for all resolved workflows
+        grants = []
+        for workflow in self.get_resolved_workflows():
+            grant, _created = WorkflowAccessGrant.objects.get_or_create(
+                workflow=workflow,
+                user=accepting_user,
+                defaults={
+                    "granted_by": self.inviter,
+                    "is_active": True,
+                },
+            )
+
+            # If grant already existed but was inactive, reactivate it
+            if not _created and not grant.is_active:
+                grant.is_active = True
+                grant.granted_by = self.inviter
+                grant.save(update_fields=["is_active", "granted_by", "modified"])
+
+            grants.append(grant)
+
+        # Update invite status
+        self.status = self.Status.ACCEPTED
+        if not self.invitee_user:
+            self.invitee_user = accepting_user
+        self.save(update_fields=["status", "invitee_user", "modified"])
+
+        return grants
 
     def decline(self) -> None:
         """Decline this invite."""

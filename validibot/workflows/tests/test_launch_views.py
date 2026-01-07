@@ -572,7 +572,7 @@ def test_latest_run_view_redirects_when_no_runs_exist(client):
 
 
 def test_public_info_view_accessible_when_enabled(client):
-    workflow = WorkflowFactory(make_info_public=True)
+    workflow = WorkflowFactory(make_info_page_public=True)
     validator = ValidatorFactory(
         validation_type=ValidationType.JSON_SCHEMA,
         slug="public-json",
@@ -624,7 +624,7 @@ def test_public_info_view_accessible_when_enabled(client):
 
 
 def test_public_info_form_updates_visibility(client):
-    workflow = WorkflowFactory(make_info_public=False)
+    workflow = WorkflowFactory(make_info_page_public=False)
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.AUTHOR)
@@ -634,30 +634,30 @@ def test_public_info_form_updates_visibility(client):
         data={
             "title": "Public doc",
             "content_md": "## Overview\nDetails here.",
-            "make_info_public": "on",
+            "make_info_page_public": "on",
         },
     )
 
     assert response.status_code == HTTPStatus.FOUND
     workflow.refresh_from_db()
-    assert workflow.make_info_public is True
+    assert workflow.make_info_page_public is True
 
 
 def test_public_visibility_toggle_updates_card(client):
-    workflow = WorkflowFactory(make_info_public=False)
+    workflow = WorkflowFactory(make_info_page_public=False)
     WorkflowStepFactory(workflow=workflow)
     user = _force_login_for_workflow(client, workflow)
     grant_role(user, workflow.org, RoleCode.AUTHOR)
 
     response = client.post(
         reverse("workflows:workflow_public_visibility", kwargs={"pk": workflow.pk}),
-        data={"make_info_public": "true"},
+        data={"make_info_page_public": "true"},
         HTTP_HX_REQUEST="true",
     )
 
     assert response.status_code == HTTPStatus.OK
     workflow.refresh_from_db()
-    assert workflow.make_info_public is True
+    assert workflow.make_info_page_public is True
     assert "Visible" in response.content.decode()
 
 
@@ -685,7 +685,7 @@ def test_launch_start_rejects_incompatible_file_type(client):
 
 
 def test_public_info_view_hides_schema_when_not_shared(client):
-    workflow = WorkflowFactory(make_info_public=True)
+    workflow = WorkflowFactory(make_info_page_public=True)
     validator = ValidatorFactory(
         validation_type=ValidationType.XML_SCHEMA,
         slug="public-xml",
@@ -728,7 +728,7 @@ def test_public_info_view_hides_schema_when_not_shared(client):
 
 
 def test_public_info_view_returns_404_when_disabled(client):
-    workflow = WorkflowFactory(make_info_public=False)
+    workflow = WorkflowFactory(make_info_page_public=False)
 
     response = client.get(
         reverse("workflow_public_info", kwargs={"workflow_uuid": workflow.uuid}),

@@ -745,7 +745,15 @@ class WorkflowListView(WorkflowAccessMixin, ListView):
         qs = (
             super()
             .get_queryset()
-            .annotate(run_count=Count("validation_runs", distinct=True))
+            .annotate(
+                run_count=Count("validation_runs", distinct=True),
+                # Count active guest access grants for this workflow
+                guest_count=Count(
+                    "access_grants",
+                    filter=models.Q(access_grants__is_active=True),
+                    distinct=True,
+                ),
+            )
         )
         if not self._show_archived():
             qs = qs.filter(is_archived=False)
@@ -3061,12 +3069,14 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
         invitee_user = User.objects.filter(email__iexact=email).first()
 
         # Create the invite
+        # Email is only sent if invitee is NOT already a registered user
+        # (registered users receive in-app notifications instead)
         invite = WorkflowInvite.create_with_expiry(
             workflow=workflow,
             inviter=request.user,
             invitee_email=email,
             invitee_user=invitee_user,
-            send_email=False,  # TODO: Implement email sending
+            send_email=(invitee_user is None),
         )
 
         # Create notification if invitee is an existing user
@@ -3133,6 +3143,9 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
             "workflows/partials/workflow_guest_access_section.html",
             context,
         )
+        # Retarget to the guest section (form targets modal content by default)
+        response["HX-Retarget"] = "#guest-access-section"
+        response["HX-Reswap"] = "outerHTML"
         response["HX-Trigger"] = "close-modal"
         return response
 

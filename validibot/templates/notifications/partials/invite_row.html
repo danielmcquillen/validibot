@@ -1,8 +1,8 @@
 {% load i18n %}
 
 {# Determine which invite type this notification refers to #}
-{% if notification.invite %}
-  {% with invite=notification.invite invite_type="member" %}
+{% if notification.member_invite %}
+  {% with invite=notification.member_invite invite_type="member" %}
     {% include "notifications/partials/_invite_alert.html" %}
   {% endwith %}
 {% elif notification.guest_invite %}

@@ -5,8 +5,9 @@ from uuid import uuid4
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from validibot.core.constants import InviteStatus
+from validibot.users.models import MemberInvite
 from validibot.users.models import Organization
-from validibot.users.models import PendingInvite
 from validibot.users.models import User
 
 
@@ -15,7 +16,7 @@ class Notification(models.Model):
     Generic notification record tied to a user and organization.
 
     Invite notifications link to the appropriate invite model:
-    - member_invite: PendingInvite (org membership invites)
+    - member_invite: MemberInvite (org membership invites)
     - guest_invite: GuestInvite (org-level guest access invites)
     - workflow_invite: WorkflowInvite (per-workflow guest invites)
     """
@@ -28,7 +29,9 @@ class Notification(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="notifications"
+        User,
+        on_delete=models.CASCADE,
+        related_name="notifications",
     )
     org = models.ForeignKey(
         Organization,
@@ -37,13 +40,14 @@ class Notification(models.Model):
     )
     type = models.CharField(max_length=32, choices=Type.choices)
     payload = models.JSONField(default=dict)
-    invite = models.ForeignKey(
-        PendingInvite,
+    member_invite = models.ForeignKey(
+        MemberInvite,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="notifications",
-        help_text=_("Link to PendingInvite for member_invite notifications."),
+        help_text=_("Link to MemberInvite for member_invite notifications."),
+        db_column="invite_id",  # Keep old column name for backward compatibility
     )
     guest_invite = models.ForeignKey(
         "workflows.GuestInvite",
@@ -93,23 +97,23 @@ class Notification(models.Model):
         if self.type == self.Type.SYSTEM_ALERT:
             return True
 
-        # Check member invite (PendingInvite)
-        if self.invite:
-            if self.user != self.invite.invitee_user:
+        # Check member invite (MemberInvite)
+        if self.member_invite:
+            if self.user != self.member_invite.invitee_user:
                 return True
-            return self.invite.status != PendingInvite.Status.PENDING
+            return self.member_invite.status != InviteStatus.PENDING
 
         # Check guest invite (GuestInvite)
         if self.guest_invite:
             if self.user != self.guest_invite.invitee_user:
                 return True
-            return self.guest_invite.status != "PENDING"
+            return self.guest_invite.status != InviteStatus.PENDING
 
         # Check workflow invite (WorkflowInvite)
         if self.workflow_invite:
             if self.user != self.workflow_invite.invitee_user:
                 return True
-            return self.workflow_invite.status != "PENDING"
+            return self.workflow_invite.status != InviteStatus.PENDING
 
         # No linked invite - allow dismissal
         return True

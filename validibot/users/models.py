@@ -603,72 +603,118 @@ class MembershipRole(models.Model):
         return f"{self.membership_id}:{self.role.code}"
 
 
-class PendingInvite(TimeStampedModel):
+class MemberInvite(TimeStampedModel):
     """
-    Represents an invitation to join an organization with proposed roles.
-    Stores status and expiry and transitions to a Membership on acceptance.
+    Invitation to join an organization as a member with proposed roles.
+
+    Unlike WorkflowInvite (for guest access to a single workflow), accepting
+    this invite creates a full Membership with roles in the organization.
+
+    Note: This class was formerly called PendingInvite. The name was changed
+    to better distinguish membership invites from guest/workflow invites.
     """
 
-    class Status(models.TextChoices):
-        PENDING = "PENDING", _("Pending")
-        ACCEPTED = "ACCEPTED", _("Accepted")
-        DECLINED = "DECLINED", _("Declined")
-        CANCELED = "CANCELED", _("Canceled")
-        EXPIRED = "EXPIRED", _("Expired")
+    # Import InviteStatus from core to use shared status choices
+    from validibot.core.constants import InviteStatus
+
+    # Keep Status as alias for backward compatibility during migration
+    Status = InviteStatus
+
+    # Default invite expiry: 7 days
+    DEFAULT_EXPIRY_DAYS = 7
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     org = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
-        related_name="pending_invites",
+        related_name="member_invites",
     )
     inviter = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="sent_invites",
+        related_name="sent_member_invites",
     )
     invitee_user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="received_invites",
+        related_name="received_member_invites",
         null=True,
         blank=True,
     )
-    invitee_email = models.EmailField(
-        blank=True,
-    )
-
+    invitee_email = models.EmailField(blank=True)
     roles = models.JSONField(default=list)
-
     status = models.CharField(
         max_length=16,
-        choices=Status.choices,
-        default=Status.PENDING,
+        choices=InviteStatus.choices,
+        default=InviteStatus.PENDING,
     )
     expires_at = models.DateTimeField()
-    token = models.UUIDField(default=uuid4, editable=False)
+    token = models.UUIDField(default=uuid4, editable=False, unique=True)
 
     class Meta:
         ordering = ["-created"]
+        verbose_name = _("member invite")
+        verbose_name_plural = _("member invites")
+        # Rename database table from pendinginvite to memberinvite
+        db_table = "users_memberinvite"
 
     def __str__(self):
         target = self.invitee_user or self.invitee_email or "unknown"
-        return f"Invite to {self.org} for {target}"
+        return f"Member invite to {self.org} for {target}"
 
-    def mark_expired_if_needed(self) -> None:
-        if self.status != self.Status.PENDING:
-            return
-        if self.expires_at <= datetime.now(timezone.utc):  # noqa: UP017
-            self.status = self.Status.EXPIRED
-            self.save(update_fields=["status"])
+    @property
+    def is_expired(self) -> bool:
+        """Check if invite has expired without updating status."""
+        return (
+            self.status == self.InviteStatus.EXPIRED
+            or datetime.now(timezone.utc) >= self.expires_at  # noqa: UP017
+        )
+
+    @property
+    def is_pending(self) -> bool:
+        """Check if invite is still pending and not expired."""
+        return self.status == self.InviteStatus.PENDING and not self.is_expired
+
+    def mark_expired_if_needed(self) -> bool:
+        """
+        Check if invite has expired and update status if so.
+
+        Returns:
+            True if the invite was marked as expired, False otherwise.
+        """
+        if self.status != self.InviteStatus.PENDING:
+            return False
+        if datetime.now(timezone.utc) >= self.expires_at:  # noqa: UP017
+            self.status = self.InviteStatus.EXPIRED
+            self.save(update_fields=["status", "modified"])
+            return True
+        return False
 
     def accept(self, roles: list[str] | None = None) -> Membership:
-        self.mark_expired_if_needed()
-        if self.status != self.Status.PENDING:
-            raise ValueError("Invite is not pending.")
-        membership_roles = roles or self.roles or []
+        """
+        Accept this invite and create a Membership.
+
+        Args:
+            roles: Optional list of role codes. If not provided, uses the
+                   roles stored on the invite.
+
+        Returns:
+            The created or updated Membership.
+
+        Raises:
+            ValueError: If invite is not pending, has expired, or has no invitee_user.
+        """
+        if self.mark_expired_if_needed():
+            raise ValueError("Invite has expired")
+
+        if self.status != self.InviteStatus.PENDING:
+            msg = f"Cannot accept invite with status {self.status}"
+            raise ValueError(msg)
+
         if self.invitee_user is None:
             raise ValueError("Invitee user is not set; cannot accept without user.")
+
+        membership_roles = roles or self.roles or []
 
         # Check seat limit before accepting (seats may have filled since invite
         # was sent). Local import to avoid circular dependency.
@@ -683,8 +729,8 @@ class PendingInvite(TimeStampedModel):
             defaults={"is_active": True},
         )
         membership.set_roles(set(membership_roles))
-        self.status = self.Status.ACCEPTED
-        self.save(update_fields=["status"])
+        self.status = self.InviteStatus.ACCEPTED
+        self.save(update_fields=["status", "modified"])
 
         # Clean up guest access grants now that user is a member.
         # As a member, they have broader access, so guest grants are redundant.
@@ -714,16 +760,46 @@ class PendingInvite(TimeStampedModel):
         return deleted_count
 
     def decline(self) -> None:
-        self.mark_expired_if_needed()
-        if self.status != self.Status.PENDING:
+        """Mark invite as declined."""
+        if self.status != self.InviteStatus.PENDING:
             return
-        self.status = self.Status.DECLINED
-        self.save(update_fields=["status"])
+        self.status = self.InviteStatus.DECLINED
+        self.save(update_fields=["status", "modified"])
+
+    def cancel(self) -> None:
+        """Mark invite as canceled (by inviter)."""
+        if self.status != self.InviteStatus.PENDING:
+            return
+        self.status = self.InviteStatus.CANCELED
+        self.save(update_fields=["status", "modified"])
 
     @classmethod
-    def create_with_expiry(cls, **kwargs) -> PendingInvite:
+    def create_with_expiry(cls, *, send_email: bool = False, **kwargs) -> MemberInvite:
+        """
+        Create a new member invite with default expiry.
+
+        Args:
+            send_email: Whether to send an invitation email (default: False).
+                        Email is typically only sent for non-registered users;
+                        registered users receive in-app notifications instead.
+            **kwargs: Fields passed to MemberInvite.objects.create()
+
+        Returns:
+            The created MemberInvite instance.
+        """
         expiry = kwargs.pop(
             "expires_at",
-            datetime.now(timezone.utc) + timedelta(days=7),  # noqa: UP017
+            datetime.now(timezone.utc) + timedelta(days=cls.DEFAULT_EXPIRY_DAYS),  # noqa: UP017
         )
-        return cls.objects.create(expires_at=expiry, **kwargs)
+        invite = cls.objects.create(expires_at=expiry, **kwargs)
+
+        if send_email:
+            from validibot.workflows.emails import send_member_invite_email
+
+            send_member_invite_email(invite)
+
+        return invite
+
+
+# Backward compatibility alias - remove after migrations
+PendingInvite = MemberInvite

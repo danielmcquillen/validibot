@@ -8,7 +8,7 @@
   **Related ADRs:**
 - `docs/adr/2025-11-28-invite-based-signup-and-seat-management.md` (Member invitation patterns)
   **Related code:**
-- `validibot/users/models.py` (`PendingInvite`, `Membership`)
+- `validibot/users/models.py` (`MemberInvite`, `Membership`)
 - `validibot/workflows/models.py` (`WorkflowAccessGrant`, `WorkflowInvite`, `GuestInvite`)
 - `validibot/notifications/models.py` (`Notification`)
 - `validibot/members/views.py` (Member management patterns)
@@ -256,7 +256,7 @@ Simple form:
 
 - Email input (with autocomplete for existing users)
 - Submit creates `WorkflowInvite` for this single workflow
-- Uses existing `WorkflowInvite` model (not `PendingInvite`)
+- Uses existing `WorkflowInvite` model (not `MemberInvite`)
 - Uses the guest invite notification type with a workflow invite template
 
 This is the quick path for "I want to share this one workflow with someone."
@@ -320,7 +320,7 @@ class GuestInvite(TimeStampedModel):
     token = models.UUIDField(default=uuid4, editable=False)
 ```
 
-`PendingInvite` remains the member invite model. Guest invites never create memberships.
+`MemberInvite` remains the member invite model. Guest invites never create memberships.
 GuestInvite scope controls whether we grant access to all current workflows or the selected subset.
 Accepted invites expand into per-workflow `WorkflowAccessGrant` rows.
 
@@ -408,8 +408,8 @@ Guest notifications link to the invite record so accept/decline routes are unamb
 
 ```python
 class Notification(models.Model):
-    invite = models.ForeignKey(
-        PendingInvite,
+    member_invite = models.ForeignKey(
+        MemberInvite,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -517,7 +517,7 @@ workflows they authored.
 
 1. Add `GuestInvite` model and acceptance flow
 2. Add guest invite notification type, templates, and Notification links
-3. Keep `PendingInvite` as member-only
+3. Keep `MemberInvite` as member-only
 
 ### Phase 3: Per-Workflow Sharing UI
 
@@ -553,7 +553,7 @@ YAGNI - we only need two levels now.
 
 ### B) Separate guest invitation model
 
-Could create `GuestInvite` instead of extending `PendingInvite`.
+Could create `GuestInvite` instead of extending `MemberInvite`.
 
 **Decision:** Use a dedicated `GuestInvite` model so guest invites never touch member logic,
 seat enforcement, or member notifications.

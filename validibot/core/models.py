@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from django.db import models
@@ -5,6 +7,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
+from validibot.core.constants import InviteStatus
 from validibot.users.models import User
 
 
@@ -55,6 +58,95 @@ class SiteSettings(TimeStampedModel):
 
     def __str__(self):
         return f"SiteSettings<{self.slug}>"
+
+
+class BaseInvite(TimeStampedModel):
+    """
+    Abstract base model for all invite types.
+
+    Provides common fields and lifecycle methods for:
+    - MemberInvite (org membership invites)
+    - GuestInvite (multi-workflow guest access)
+    - WorkflowInvite (single workflow guest access)
+
+    Each subclass must define:
+    - inviter ForeignKey (with unique related_name)
+    - invitee_user ForeignKey (with unique related_name)
+    - accept() method (return types differ per invite type)
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invitee_email = models.EmailField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=InviteStatus.choices,
+        default=InviteStatus.PENDING,
+    )
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        abstract = True
+        ordering = ["-created"]
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if invite has expired without updating status."""
+        return (
+            self.status == InviteStatus.EXPIRED or timezone.now() >= self.expires_at
+        )
+
+    @property
+    def is_pending(self) -> bool:
+        """Check if invite is still pending and not expired."""
+        return self.status == InviteStatus.PENDING and not self.is_expired
+
+    def mark_expired_if_needed(self) -> bool:
+        """
+        Check if invite has expired and update status if so.
+
+        Returns:
+            True if the invite was marked as expired, False otherwise.
+        """
+        if self.status != InviteStatus.PENDING:
+            return False
+
+        if timezone.now() >= self.expires_at:
+            self.status = InviteStatus.EXPIRED
+            self.save(update_fields=["status", "modified"])
+            return True
+
+        return False
+
+    def _validate_pending_status(self) -> None:
+        """
+        Validate invite is pending before accepting.
+
+        Called by subclass accept() methods to ensure invite is in valid state.
+
+        Raises:
+            ValueError: If invite is not in PENDING status or has expired.
+        """
+        if self.mark_expired_if_needed():
+            raise ValueError("Invite has expired")
+
+        if self.status != InviteStatus.PENDING:
+            msg = f"Cannot accept invite with status {self.status}"
+            raise ValueError(msg)
+
+    def decline(self) -> None:
+        """Mark invite as declined."""
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.DECLINED
+        self.save(update_fields=["status", "modified"])
+
+    def cancel(self) -> None:
+        """Mark invite as canceled (by inviter)."""
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.CANCELED
+        self.save(update_fields=["status", "modified"])
 
 
 # Default TTL for idempotency keys (24 hours)

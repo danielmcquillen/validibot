@@ -26,8 +26,8 @@ from validibot.users.forms import InviteUserForm
 from validibot.users.forms import OrganizationMemberForm
 from validibot.users.forms import OrganizationMemberRolesForm
 from validibot.users.mixins import OrganizationAdminRequiredMixin
+from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
-from validibot.users.models import PendingInvite
 from validibot.users.models import User
 
 
@@ -46,7 +46,7 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
             .order_by("user__name", "user__username")
         )
         pending_invites = list(
-            PendingInvite.objects.filter(org=self.organization).order_by("-created")
+            MemberInvite.objects.filter(org=self.organization).order_by("-created")
         )
         for invite in pending_invites:
             invite.mark_expired_if_needed()
@@ -175,7 +175,7 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
                     user=invite.invitee_user,
                     org=invite.org,
                     type=Notification.Type.MEMBER_INVITE,
-                    invite=invite,
+                    member_invite=invite,
                     payload={"roles": invite.roles, "inviter": request.user.id},
                 )
             messages.success(
@@ -212,14 +212,13 @@ class InviteCancelView(OrganizationAdminRequiredMixin, View):
 
     def post(self, request, *args, **kwargs):
         invite = get_object_or_404(
-            PendingInvite,
+            MemberInvite,
             pk=kwargs.get("invite_id"),
             org=self.organization,
             inviter=request.user,
         )
-        if invite.status == PendingInvite.Status.PENDING:
-            invite.status = PendingInvite.Status.CANCELED
-            invite.save(update_fields=["status"])
+        if invite.is_pending:
+            invite.cancel()
             messages.info(request, _("Invitation canceled."))
         return HttpResponseRedirect(
             reverse_with_org("members:member_list", request=request)
@@ -446,7 +445,13 @@ class MemberDeleteConfirmView(MemberDeleteView, TemplateView):
 
 
 class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView):
-    """Display all guests (users with workflow access but no membership) for the org."""
+    """
+    Display all guests (users with workflow access but no membership) for the org.
+
+    Note: ADR specifies that Authors should also be able to access this page
+    (scoped to workflows they authored). Currently only Admins/Owners have
+    access. See ADR section 9 for future author permission implementation.
+    """
 
     template_name = "members/guest_list.html"
     organization_context_attr = "organization"
@@ -612,6 +617,8 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
             )
 
         # Create the invite
+        # Email is only sent if invitee is NOT already a registered user
+        # (registered users receive in-app notifications instead)
         invite = GuestInvite.create_with_expiry(
             org=self.organization,
             inviter=request.user,
@@ -619,7 +626,7 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
             invitee_user=invitee_user,
             scope=scope,
             workflows=workflows,
-            send_email=False,  # TODO: Implement email sending
+            send_email=(invitee_user is None),
         )
 
         # Create notification if invitee is an existing user

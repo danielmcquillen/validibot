@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
@@ -13,11 +15,14 @@ from django.utils.translation import gettext_lazy as _
 from django.views import View
 from django.views.generic import ListView
 
+from validibot.core.constants import InviteStatus
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
 from validibot.tracking.constants import TrackingEventType
 from validibot.tracking.services import TrackingEventService
-from validibot.users.models import PendingInvite
+
+if TYPE_CHECKING:
+    from validibot.users.models import MemberInvite
 
 
 class NotificationListView(LoginRequiredMixin, ListView):
@@ -49,7 +54,7 @@ class NotificationListView(LoginRequiredMixin, ListView):
         if not show_dismissed:
             qs = qs.filter(dismissed_at__isnull=True)
         qs = qs.select_related(
-            "invite",
+            "member_invite",
             "guest_invite",
             "guest_invite__org",
             "workflow_invite",
@@ -58,8 +63,8 @@ class NotificationListView(LoginRequiredMixin, ListView):
         ).order_by("-created_at")
         # Lazy expire invites on read
         for notification in qs:
-            if notification.invite:
-                notification.invite.mark_expired_if_needed()
+            if notification.member_invite:
+                notification.member_invite.mark_expired_if_needed()
             if notification.guest_invite:
                 notification.guest_invite.mark_expired_if_needed()
             if notification.workflow_invite:
@@ -84,13 +89,13 @@ class NotificationListView(LoginRequiredMixin, ListView):
         return context
 
 
-def _invitee_label(invite: PendingInvite) -> str:
+def _invitee_label(invite: MemberInvite) -> str:
     if invite.invitee_user:
         return invite.invitee_user.username
     return invite.invitee_email or _("unknown user")
 
 
-def _notify_inviter(invite: PendingInvite, *, action: str):
+def _notify_inviter(invite: MemberInvite, *, action: str):
     if not invite.inviter:
         return
     invitee_name = _invitee_label(invite)
@@ -104,25 +109,25 @@ def _notify_inviter(invite: PendingInvite, *, action: str):
         user=invite.inviter,
         org=invite.org,
         type=Notification.Type.MEMBER_INVITE,
-        invite=invite,
+        member_invite=invite,
         payload={"message": str(message)},
     )
 
 
 class AcceptInviteView(View):
-    """Allow an invitee to accept an invite notification."""
+    """Allow an invitee to accept a member invite notification."""
 
     def post(self, request, *args, **kwargs):
         notification = get_object_or_404(
-            Notification.objects.select_related("invite"),
+            Notification.objects.select_related("member_invite"),
             pk=kwargs.get("pk"),
             user=request.user,
         )
-        invite = notification.invite
+        invite = notification.member_invite
         if invite is None:
             raise Http404
         invite.mark_expired_if_needed()
-        if invite.status != PendingInvite.Status.PENDING:
+        if invite.status != InviteStatus.PENDING:
             messages.error(request, _("Invite is no longer valid."))
             return HttpResponseRedirect(reverse("notifications:notification-list"))
         if invite.invitee_user and invite.invitee_user_id != request.user.id:
@@ -174,15 +179,15 @@ class AcceptInviteView(View):
 
 
 class DeclineInviteView(View):
-    """Allow an invitee to decline an invite notification."""
+    """Allow an invitee to decline a member invite notification."""
 
     def post(self, request, *args, **kwargs):
         notification = get_object_or_404(
-            Notification.objects.select_related("invite"),
+            Notification.objects.select_related("member_invite"),
             pk=kwargs.get("pk"),
             user=request.user,
         )
-        invite = notification.invite
+        invite = notification.member_invite
         if invite is None:
             raise Http404
         if invite.invitee_user and invite.invitee_user_id != request.user.id:
@@ -256,7 +261,7 @@ class AcceptGuestInviteView(View):
         if invite is None:
             raise Http404
         invite.mark_expired_if_needed()
-        if invite.status != "PENDING":
+        if invite.status != InviteStatus.PENDING:
             messages.error(request, _("Invite is no longer valid."))
             return HttpResponseRedirect(reverse("notifications:notification-list"))
         if invite.invitee_user and invite.invitee_user_id != request.user.id:
@@ -408,7 +413,7 @@ class AcceptWorkflowInviteView(View):
         if invite is None:
             raise Http404
         invite.mark_expired_if_needed()
-        if invite.status != "PENDING":
+        if invite.status != InviteStatus.PENDING:
             messages.error(request, _("Invite is no longer valid."))
             return HttpResponseRedirect(reverse("notifications:notification-list"))
         if invite.invitee_user and invite.invitee_user_id != request.user.id:

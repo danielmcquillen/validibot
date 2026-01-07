@@ -6,7 +6,7 @@ app_name = "notifications"
 
 urlpatterns = [
     path("", views.NotificationListView.as_view(), name="notification-list"),
-    # Member invite (PendingInvite) acceptance
+    # Member invite (MemberInvite) acceptance
     path(
         "invite/<uuid:pk>/accept/",
         views.AcceptInviteView.as_view(),

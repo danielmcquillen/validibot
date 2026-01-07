@@ -19,6 +19,7 @@ from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 
 from validibot.actions.models import Action
+from validibot.core.constants import InviteStatus
 from validibot.core.mixins import FeaturedImageMixin
 from validibot.core.utils import render_markdown_safe
 from validibot.projects.models import Project
@@ -825,7 +826,7 @@ class WorkflowInvite(TimeStampedModel):
     """
     Invitation for an external user to access a specific workflow as a guest.
 
-    Unlike PendingInvite (for org membership), accepting this invite creates a
+    Unlike MemberInvite (for org membership), accepting this invite creates a
     WorkflowAccessGrant but NOT a Membership. The invited user operates as a
     Workflow Guest without an organization context.
 
@@ -836,12 +837,8 @@ class WorkflowInvite(TimeStampedModel):
     - Usage is billed to the workflow owner's org
     """
 
-    class Status(models.TextChoices):
-        PENDING = "PENDING", _("Pending")
-        ACCEPTED = "ACCEPTED", _("Accepted")
-        DECLINED = "DECLINED", _("Declined")
-        CANCELED = "CANCELED", _("Canceled")
-        EXPIRED = "EXPIRED", _("Expired")
+    # Keep Status as alias for backward compatibility
+    Status = InviteStatus
 
     # Default invite expiry: 7 days
     DEFAULT_EXPIRY_DAYS = 7
@@ -877,8 +874,8 @@ class WorkflowInvite(TimeStampedModel):
     )
     status = models.CharField(
         max_length=16,
-        choices=Status.choices,
-        default=Status.PENDING,
+        choices=InviteStatus.choices,
+        default=InviteStatus.PENDING,
     )
     token = models.UUIDField(
         default=uuid.uuid4,
@@ -960,11 +957,11 @@ class WorkflowInvite(TimeStampedModel):
         """
         from django.utils import timezone
 
-        if self.status != self.Status.PENDING:
+        if self.status != InviteStatus.PENDING:
             return False
 
         if timezone.now() >= self.expires_at:
-            self.status = self.Status.EXPIRED
+            self.status = InviteStatus.EXPIRED
             self.save(update_fields=["status", "modified"])
             return True
 
@@ -984,18 +981,17 @@ class WorkflowInvite(TimeStampedModel):
         Raises:
             ValueError: If invite is not in PENDING status or no user provided.
         """
-        if self.status != self.Status.PENDING:
+        # Check for expiry first
+        if self.mark_expired_if_needed():
+            raise ValueError("Invite has expired")
+
+        if self.status != InviteStatus.PENDING:
             msg = f"Cannot accept invite with status {self.status}"
             raise ValueError(msg)
 
         accepting_user = user or self.invitee_user
         if not accepting_user:
             msg = "No user provided to accept invite"
-            raise ValueError(msg)
-
-        # Check for expiry first
-        if self.mark_expired_if_needed():
-            msg = "Invite has expired"
             raise ValueError(msg)
 
         # Create the access grant
@@ -1015,7 +1011,7 @@ class WorkflowInvite(TimeStampedModel):
             grant.save(update_fields=["is_active", "granted_by", "modified"])
 
         # Update invite status
-        self.status = self.Status.ACCEPTED
+        self.status = InviteStatus.ACCEPTED
         if not self.invitee_user:
             self.invitee_user = accepting_user
         self.save(update_fields=["status", "invitee_user", "modified"])
@@ -1024,20 +1020,16 @@ class WorkflowInvite(TimeStampedModel):
 
     def decline(self) -> None:
         """Decline this invite."""
-        if self.status != self.Status.PENDING:
-            msg = f"Cannot decline invite with status {self.status}"
-            raise ValueError(msg)
-
-        self.status = self.Status.DECLINED
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.DECLINED
         self.save(update_fields=["status", "modified"])
 
     def cancel(self) -> None:
         """Cancel this invite (called by the inviter)."""
-        if self.status != self.Status.PENDING:
-            msg = f"Cannot cancel invite with status {self.status}"
-            raise ValueError(msg)
-
-        self.status = self.Status.CANCELED
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.CANCELED
         self.save(update_fields=["status", "modified"])
 
     @property
@@ -1045,12 +1037,12 @@ class WorkflowInvite(TimeStampedModel):
         """Check if invite has expired without updating status."""
         from django.utils import timezone
 
-        return self.status == self.Status.EXPIRED or timezone.now() >= self.expires_at
+        return self.status == InviteStatus.EXPIRED or timezone.now() >= self.expires_at
 
     @property
     def is_pending(self) -> bool:
         """Check if invite is still pending and not expired."""
-        return self.status == self.Status.PENDING and not self.is_expired
+        return self.status == InviteStatus.PENDING and not self.is_expired
 
 
 class GuestInvite(TimeStampedModel):
@@ -1069,12 +1061,8 @@ class GuestInvite(TimeStampedModel):
     guests to multiple workflows at once.
     """
 
-    class Status(models.TextChoices):
-        PENDING = "PENDING", _("Pending")
-        ACCEPTED = "ACCEPTED", _("Accepted")
-        DECLINED = "DECLINED", _("Declined")
-        CANCELED = "CANCELED", _("Canceled")
-        EXPIRED = "EXPIRED", _("Expired")
+    # Keep Status as alias for backward compatibility
+    Status = InviteStatus
 
     class Scope(models.TextChoices):
         ALL = "ALL", _("All workflows in org")
@@ -1126,8 +1114,8 @@ class GuestInvite(TimeStampedModel):
     )
     status = models.CharField(
         max_length=16,
-        choices=Status.choices,
-        default=Status.PENDING,
+        choices=InviteStatus.choices,
+        default=InviteStatus.PENDING,
     )
     token = models.UUIDField(
         default=uuid.uuid4,
@@ -1217,8 +1205,9 @@ class GuestInvite(TimeStampedModel):
             invite.workflows.set(workflows)
 
         if send_email:
-            # TODO: Implement send_guest_invite_email in Phase 3/4
-            pass
+            from validibot.workflows.emails import send_guest_invite_email
+
+            send_guest_invite_email(invite)
 
         return invite
 
@@ -1231,11 +1220,11 @@ class GuestInvite(TimeStampedModel):
         """
         from django.utils import timezone
 
-        if self.status != self.Status.PENDING:
+        if self.status != InviteStatus.PENDING:
             return False
 
         if timezone.now() >= self.expires_at:
-            self.status = self.Status.EXPIRED
+            self.status = InviteStatus.EXPIRED
             self.save(update_fields=["status", "modified"])
             return True
 
@@ -1255,18 +1244,17 @@ class GuestInvite(TimeStampedModel):
         Raises:
             ValueError: If invite is not in PENDING status or no user provided.
         """
-        if self.status != self.Status.PENDING:
+        # Check for expiry first
+        if self.mark_expired_if_needed():
+            raise ValueError("Invite has expired")
+
+        if self.status != InviteStatus.PENDING:
             msg = f"Cannot accept invite with status {self.status}"
             raise ValueError(msg)
 
         accepting_user = user or self.invitee_user
         if not accepting_user:
             msg = "No user provided to accept invite"
-            raise ValueError(msg)
-
-        # Check for expiry first
-        if self.mark_expired_if_needed():
-            msg = "Invite has expired"
             raise ValueError(msg)
 
         # Create grants for all resolved workflows
@@ -1290,7 +1278,7 @@ class GuestInvite(TimeStampedModel):
             grants.append(grant)
 
         # Update invite status
-        self.status = self.Status.ACCEPTED
+        self.status = InviteStatus.ACCEPTED
         if not self.invitee_user:
             self.invitee_user = accepting_user
         self.save(update_fields=["status", "invitee_user", "modified"])
@@ -1299,20 +1287,16 @@ class GuestInvite(TimeStampedModel):
 
     def decline(self) -> None:
         """Decline this invite."""
-        if self.status != self.Status.PENDING:
-            msg = f"Cannot decline invite with status {self.status}"
-            raise ValueError(msg)
-
-        self.status = self.Status.DECLINED
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.DECLINED
         self.save(update_fields=["status", "modified"])
 
     def cancel(self) -> None:
         """Cancel this invite (called by the inviter)."""
-        if self.status != self.Status.PENDING:
-            msg = f"Cannot cancel invite with status {self.status}"
-            raise ValueError(msg)
-
-        self.status = self.Status.CANCELED
+        if self.status != InviteStatus.PENDING:
+            return
+        self.status = InviteStatus.CANCELED
         self.save(update_fields=["status", "modified"])
 
     @property
@@ -1320,9 +1304,9 @@ class GuestInvite(TimeStampedModel):
         """Check if invite has expired without updating status."""
         from django.utils import timezone
 
-        return self.status == self.Status.EXPIRED or timezone.now() >= self.expires_at
+        return self.status == InviteStatus.EXPIRED or timezone.now() >= self.expires_at
 
     @property
     def is_pending(self) -> bool:
         """Check if invite is still pending and not expired."""
-        return self.status == self.Status.PENDING and not self.is_expired
+        return self.status == InviteStatus.PENDING and not self.is_expired

@@ -5,12 +5,13 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from validibot.core.constants import InviteStatus
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
 from validibot.tracking.constants import TrackingEventType
 from validibot.tracking.models import TrackingEvent
 from validibot.users.constants import RoleCode
-from validibot.users.models import PendingInvite
+from validibot.users.models import MemberInvite
 from validibot.users.tests.factories import UserFactory
 
 
@@ -38,7 +39,7 @@ def test_invite_notification_shows_for_invitee(client):
         follow=True,
     )
     assert response.status_code == HTTPStatus.OK
-    assert PendingInvite.objects.filter(invitee_user=invitee, org=org).exists()
+    assert MemberInvite.objects.filter(invitee_user=invitee, org=org).exists()
     assert Notification.objects.filter(user=invitee).count() == 1
     event = TrackingEvent.objects.filter(
         app_event_type=AppEventType.INVITE_CREATED,
@@ -64,7 +65,7 @@ def test_invitee_can_accept_and_become_member(client):
     inviter.memberships.get(org=org).set_roles({RoleCode.ADMIN})
     invitee = UserFactory()
 
-    invite = PendingInvite.create_with_expiry(
+    invite = MemberInvite.create_with_expiry(
         org=org,
         inviter=inviter,
         invitee_user=invitee,
@@ -76,7 +77,7 @@ def test_invitee_can_accept_and_become_member(client):
         user=invitee,
         org=org,
         type=Notification.Type.MEMBER_INVITE,
-        invite=invite,
+        member_invite=invite,
         payload={"roles": invite.roles},
     )
 
@@ -92,7 +93,7 @@ def test_invitee_can_accept_and_become_member(client):
     )
     assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
-    assert invite.status == PendingInvite.Status.ACCEPTED
+    assert invite.status == InviteStatus.ACCEPTED
     membership = invitee.memberships.filter(org=org).first()
     assert membership is not None
     assert RoleCode.WORKFLOW_VIEWER in membership.role_codes
@@ -137,7 +138,7 @@ def test_invitee_can_decline_and_event_is_logged(client):
     inviter.memberships.get(org=org).set_roles({RoleCode.ADMIN})
     invitee = UserFactory()
 
-    invite = PendingInvite.create_with_expiry(
+    invite = MemberInvite.create_with_expiry(
         org=org,
         inviter=inviter,
         invitee_user=invitee,
@@ -149,7 +150,7 @@ def test_invitee_can_decline_and_event_is_logged(client):
         user=invitee,
         org=org,
         type=Notification.Type.MEMBER_INVITE,
-        invite=invite,
+        member_invite=invite,
         payload={"roles": invite.roles},
     )
 
@@ -165,7 +166,7 @@ def test_invitee_can_decline_and_event_is_logged(client):
     )
     assert resp.status_code in (HTTPStatus.FOUND, HTTPStatus.OK)
     invite.refresh_from_db()
-    assert invite.status == PendingInvite.Status.DECLINED
+    assert invite.status == InviteStatus.DECLINED
     event = TrackingEvent.objects.filter(
         app_event_type=AppEventType.INVITE_DECLINED,
     ).last()
@@ -181,7 +182,7 @@ def test_can_dismiss_rules_for_invitee_and_inviter():
     invitee = UserFactory()
     org = inviter.orgs.first()
     inviter.memberships.get(org=org).set_roles({RoleCode.ADMIN})
-    invite = PendingInvite.create_with_expiry(
+    invite = MemberInvite.create_with_expiry(
         org=org,
         inviter=inviter,
         invitee_user=invitee,
@@ -193,14 +194,14 @@ def test_can_dismiss_rules_for_invitee_and_inviter():
         user=invitee,
         org=org,
         type=Notification.Type.MEMBER_INVITE,
-        invite=invite,
+        member_invite=invite,
         payload={},
     )
     inviter_notification = Notification.objects.create(
         user=inviter,
         org=org,
         type=Notification.Type.MEMBER_INVITE,
-        invite=invite,
+        member_invite=invite,
         payload={},
     )
 

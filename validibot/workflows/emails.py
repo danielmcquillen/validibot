@@ -238,3 +238,235 @@ The Validibot Team</p>
         workflow_name,
     )
     return True
+
+
+def send_guest_invite_email(invite) -> bool:
+    """
+    Send an email notification to the invitee about a guest invite.
+
+    The email contains:
+    - Who sent the invite
+    - Which organization they're being invited to as a guest
+    - The scope of access (all workflows or selected)
+    - A link to accept the invite
+
+    Args:
+        invite: The GuestInvite instance.
+
+    Returns:
+        True if email was sent successfully, False otherwise.
+    """
+    recipient_email = invite.invitee_email
+    if not recipient_email:
+        logger.warning(
+            "Cannot send guest invite email: no invitee_email on invite %s",
+            invite.id,
+        )
+        return False
+
+    inviter_name = invite.inviter.get_full_name() or invite.inviter.username
+    org_name = invite.org.name
+
+    # Build the acceptance URL - guests accept via notifications
+    site_url = get_site_url()
+    accept_url = f"{site_url}/notifications/"
+
+    # Describe the scope
+    if invite.scope == "ALL":
+        scope_desc = _("all workflows")
+    else:
+        workflow_count = invite.workflows.count()
+        scope_desc = _("%(count)d selected workflow(s)") % {"count": workflow_count}
+
+    subject = _("You've been invited as a guest to %(org_name)s on Validibot") % {
+        "org_name": org_name,
+    }
+
+    plain_message = _(
+        """Hi there,
+
+%(inviter_name)s has invited you to access %(scope_desc)s
+in %(org_name)s on Validibot as a guest.
+
+Click the link below to view and accept this invitation:
+%(accept_url)s
+
+This invitation will expire in 7 days.
+
+If you weren't expecting this invitation, you can safely ignore this email.
+
+Thanks,
+The Validibot Team
+"""
+    ) % {
+        "inviter_name": inviter_name,
+        "scope_desc": scope_desc,
+        "org_name": org_name,
+        "accept_url": accept_url,
+    }
+
+    html_message = _(
+        """<p>Hi there,</p>
+
+<p><strong>%(inviter_name)s</strong> has invited you to access %(scope_desc)s
+in <strong>%(org_name)s</strong> on Validibot as a guest.</p>
+
+<p><a href="%(accept_url)s">Click here to view and accept this invitation</a></p>
+
+<p>This invitation will expire in 7 days.</p>
+
+<p>If you weren't expecting this invitation, you can safely ignore this email.</p>
+
+<p>Thanks,<br>
+The Validibot Team</p>
+"""
+    ) % {
+        "inviter_name": inviter_name,
+        "scope_desc": scope_desc,
+        "org_name": org_name,
+        "accept_url": accept_url,
+    }
+
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+
+    try:
+        sent = send_mail(
+            subject,
+            plain_message,
+            from_email,
+            [recipient_email],
+            html_message=html_message,
+        )
+    except Exception:
+        logger.exception("Error sending guest invite email to %s", recipient_email)
+        return False
+
+    if sent == 0:
+        logger.error(
+            "Email backend did not accept guest invite email for %s",
+            recipient_email,
+        )
+        return False
+
+    logger.info(
+        "Sent guest invite email to %s for org %s",
+        recipient_email,
+        org_name,
+    )
+    return True
+
+
+def send_member_invite_email(invite) -> bool:
+    """
+    Send an email notification to the invitee about a member invite.
+
+    The email contains:
+    - Who sent the invite
+    - Which organization they're being invited to
+    - The roles they'll receive
+    - A link to accept the invite
+
+    Args:
+        invite: The MemberInvite instance.
+
+    Returns:
+        True if email was sent successfully, False otherwise.
+    """
+    recipient_email = invite.invitee_email
+    if not recipient_email:
+        logger.warning(
+            "Cannot send member invite email: no invitee_email on invite %s",
+            invite.id,
+        )
+        return False
+
+    inviter_name = (
+        invite.inviter.get_full_name() or invite.inviter.username
+        if invite.inviter
+        else "An administrator"
+    )
+    org_name = invite.org.name
+
+    # Build the acceptance URL - members accept via notifications
+    site_url = get_site_url()
+    accept_url = f"{site_url}/notifications/"
+
+    # Describe the roles
+    roles_desc = ", ".join(invite.roles) if invite.roles else _("member")
+
+    subject = _("You've been invited to join %(org_name)s on Validibot") % {
+        "org_name": org_name,
+    }
+
+    plain_message = _(
+        """Hi there,
+
+%(inviter_name)s has invited you to join %(org_name)s on Validibot
+as a %(roles_desc)s.
+
+Click the link below to view and accept this invitation:
+%(accept_url)s
+
+This invitation will expire in 7 days.
+
+If you weren't expecting this invitation, you can safely ignore this email.
+
+Thanks,
+The Validibot Team
+"""
+    ) % {
+        "inviter_name": inviter_name,
+        "roles_desc": roles_desc,
+        "org_name": org_name,
+        "accept_url": accept_url,
+    }
+
+    html_message = _(
+        """<p>Hi there,</p>
+
+<p><strong>%(inviter_name)s</strong> has invited you to join
+<strong>%(org_name)s</strong> on Validibot as a %(roles_desc)s.</p>
+
+<p><a href="%(accept_url)s">Click here to view and accept this invitation</a></p>
+
+<p>This invitation will expire in 7 days.</p>
+
+<p>If you weren't expecting this invitation, you can safely ignore this email.</p>
+
+<p>Thanks,<br>
+The Validibot Team</p>
+"""
+    ) % {
+        "inviter_name": inviter_name,
+        "roles_desc": roles_desc,
+        "org_name": org_name,
+        "accept_url": accept_url,
+    }
+
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+
+    try:
+        sent = send_mail(
+            subject,
+            plain_message,
+            from_email,
+            [recipient_email],
+            html_message=html_message,
+        )
+    except Exception:
+        logger.exception("Error sending member invite email to %s", recipient_email)
+        return False
+
+    if sent == 0:
+        logger.error(
+            "Email backend did not accept member invite email for %s",
+            recipient_email,
+        )
+        return False
+
+    logger.info(
+        "Sent member invite email to %s for org %s",
+        recipient_email,
+        org_name,
+    )
+    return True

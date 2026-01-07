@@ -14,9 +14,9 @@ from validibot.billing.metering import SeatEnforcer
 from validibot.billing.metering import SeatLimitError
 from validibot.users.constants import RESERVED_ORG_SLUGS
 from validibot.users.constants import RoleCode
+from validibot.users.models import MemberInvite
 from validibot.users.models import Membership
 from validibot.users.models import Organization
-from validibot.users.models import PendingInvite
 from validibot.users.models import User
 
 ROLE_HELP_TEXT: dict[str, str] = {
@@ -447,17 +447,20 @@ class InviteUserForm(forms.Form):
             cleaned["invitee_email"] = email
         return cleaned
 
-    def save(self) -> PendingInvite:
+    def save(self) -> MemberInvite:
         roles = self.cleaned_data.get("roles") or [RoleCode.WORKFLOW_VIEWER]
         invitee_user = self.cleaned_data.get("invitee_user")
         invitee_email = self.cleaned_data.get("invitee_email")
-        invite = PendingInvite.create_with_expiry(
+        # Email is only sent if invitee is NOT already a registered user
+        # (registered users receive in-app notifications instead)
+        invite = MemberInvite.create_with_expiry(
             org=self.organization,
             inviter=self.inviter,
             invitee_user=invitee_user,
             invitee_email=invitee_email,
             roles=roles,
             expires_at=timezone.now() + timedelta(days=7),
+            send_email=(invitee_user is None),
         )
         return invite
 

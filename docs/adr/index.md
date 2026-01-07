@@ -4,6 +4,7 @@ This directory captures the architectural decisions that shape Validibot. Each A
 
 ## Active / In Progress
 
+- [ADR-2026-01-07: Guest Management and Workflow Visibility](2026-01-07-guest-management-ui.md)
 - [ADR-2026-01-06: Org-scoped Web URLs](2026-01-06-org-scoped-web-urls.md)
 - [ADR-2026-01-06: SaaS Reliability Hardening for Worker Internals](2026-01-06-saas-reliability-worker-internals.md)
 - [ADR-2026-01-05: Validation Run Execution via Cloud Tasks](2026-01-05-validation-run-execution-via-cloud-tasks.md)
@@ -12,7 +13,6 @@ This directory captures the architectural decisions that shape Validibot. Each A
 - [ADR-2025-11-25: Issue Validation Credentials](2025-11-25-issue-validation-credentials.md)
 - [ADR-2025-11-28: Invite-Based Signup and Seat Management](2025-11-28-invite-based-signup-and-seat-management.md)
 - [ADR-2025-11-28: Pricing System](2025-11-28-pricing-system.md)
-- [ADR-2025-12-15: Invite-Only Free Access and Cross-Org Workflow Sharing](2025-12-15-free-tier-and-workflow-sharing.md)
 
 ## Completed
 

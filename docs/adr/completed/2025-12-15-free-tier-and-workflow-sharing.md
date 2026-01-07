@@ -1,8 +1,12 @@
-# ADR: Invite-Only Free Access and Cross-Org Workflow Sharing
+# ADR-2025-12-15: Invite-Only Free Access and Cross-Org Workflow Sharing
 
+**Status:** Deprecated (superseded by ADR-2026-01-07)
 **Date:** 2025-12-15
-**Status:** Proposed
+**Superseded By:** `../2026-01-07-guest-management-ui.md`
 **Context:** Enable workflow authors to share workflows with external users without granting organization membership (seats), while controlling abuse/cost.
+
+This ADR is deprecated. ADR-2026-01-07 replaces the invite-only policy and
+introduces the current guest management and public workflow visibility model.
 
 ## Summary
 

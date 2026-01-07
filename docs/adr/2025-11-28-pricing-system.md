@@ -2,12 +2,12 @@
 
 **Status:** Accepted (2025-12-11) - Implementation in progress  
 **Owners:** Platform / Billing / Infrastructure  
-**Related ADRs:** [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](2025-12-15-free-tier-and-workflow-sharing.md) (workflow guests, sharing attribution)  
+**Related ADRs:** [ADR-2025-12-15: Invite-Only Free Access and Cross-Org Workflow Sharing](completed/2025-12-15-free-tier-and-workflow-sharing.md) (deprecated; workflow guests, sharing attribution)  
 **Related docs:** `dev_docs/overview/how_it_works.md`, `billing/models.py`
 
 ---
 
-> Note: Seat limits apply to organization memberships. Workflow-level sharing with external users (Workflow Guests) is designed to avoid consuming seats and is documented in [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](2025-12-15-free-tier-and-workflow-sharing.md).
+> Note: Seat limits apply to organization memberships. Workflow-level sharing with external users (Workflow Guests) is designed to avoid consuming seats and is documented in [ADR-2026-01-07: Guest Management and Workflow Visibility](2026-01-07-guest-management-ui.md). The older invite-only ADR is deprecated.
 
 ## Context
 

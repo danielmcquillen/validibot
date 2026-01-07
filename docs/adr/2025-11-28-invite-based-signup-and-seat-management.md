@@ -2,12 +2,12 @@
 
 **Status:** Proposed (2025-11-28)  
 **Owners:** Platform / Users  
-**Related ADRs:** [ADR-2025-11-28: Pricing System](2025-11-28-pricing-system.md) (seats/limits), [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](2025-12-15-free-tier-and-workflow-sharing.md) (workflow guests/sharing)  
+**Related ADRs:** [ADR-2025-11-28: Pricing System](2025-11-28-pricing-system.md) (seats/limits), [ADR-2025-12-15: Invite-Only Free Access and Cross-Org Workflow Sharing](completed/2025-12-15-free-tier-and-workflow-sharing.md) (deprecated; workflow guests/sharing)  
 **Related docs:** `dev_docs/data-model/users_roles.md`, `dev_docs/organization_management.md`
 
 ---
 
-> Note: This ADR covers inviting users into an organization (seat-based membership). For workflow-level sharing with external users that do not consume seats (Workflow Guests), see [ADR: Invite-Only Free Access and Cross-Org Workflow Sharing](2025-12-15-free-tier-and-workflow-sharing.md).
+> Note: This ADR covers inviting users into an organization (seat-based membership). For workflow-level sharing with external users that do not consume seats (Workflow Guests), see [ADR-2026-01-07: Guest Management and Workflow Visibility](2026-01-07-guest-management-ui.md). The older invite-only ADR is deprecated.
 
 ## Context
 

@@ -1568,3 +1568,113 @@ class TestGuestInvite:
 
         invite.decline()
         assert invite.is_pending is False
+
+
+# =============================================================================
+# Sharing Permission Tests
+# =============================================================================
+
+
+class TestWorkflowSharingPermissions:
+    """Tests for workflow sharing permission logic."""
+
+    def test_admin_can_manage_sharing_for_any_workflow(self, client):
+        """Test that org admins can manage sharing for any workflow."""
+        org = OrganizationFactory()
+        admin = UserFactory()
+        admin.memberships.filter(org=org).delete()
+        membership = admin.memberships.create(org=org, is_active=True)
+        grant_role(membership, RoleCode.ADMIN)
+
+        # Workflow created by another user
+        author = UserFactory()
+        author.memberships.filter(org=org).delete()
+        author_membership = author.memberships.create(org=org, is_active=True)
+        grant_role(author_membership, RoleCode.WORKFLOW_AUTHOR)
+        workflow = WorkflowFactory(org=org, user=author)
+
+        client.force_login(admin)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        # Admin should be able to access sharing page
+        response = client.get(
+            reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
+        )
+        assert response.status_code == HTTPStatus.OK
+
+    def test_author_can_manage_sharing_for_own_workflow(self, client):
+        """Test that authors can manage sharing for workflows they created."""
+        org = OrganizationFactory()
+        author = UserFactory()
+        author.memberships.filter(org=org).delete()
+        membership = author.memberships.create(org=org, is_active=True)
+        grant_role(membership, RoleCode.WORKFLOW_AUTHOR)
+
+        workflow = WorkflowFactory(org=org, user=author)
+
+        client.force_login(author)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.get(
+            reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
+        )
+        assert response.status_code == HTTPStatus.OK
+
+    def test_author_cannot_manage_sharing_for_others_workflow(self, client):
+        """Test that authors cannot manage sharing for workflows they didn't create."""
+        org = OrganizationFactory()
+
+        # Create two authors
+        author1 = UserFactory()
+        author1.memberships.filter(org=org).delete()
+        membership1 = author1.memberships.create(org=org, is_active=True)
+        grant_role(membership1, RoleCode.WORKFLOW_AUTHOR)
+
+        author2 = UserFactory()
+        author2.memberships.filter(org=org).delete()
+        membership2 = author2.memberships.create(org=org, is_active=True)
+        grant_role(membership2, RoleCode.WORKFLOW_AUTHOR)
+
+        # Workflow created by author1
+        workflow = WorkflowFactory(org=org, user=author1)
+
+        # Author2 tries to access sharing
+        client.force_login(author2)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.get(
+            reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
+        )
+        assert response.status_code == HTTPStatus.FORBIDDEN
+
+    def test_viewer_cannot_manage_sharing(self, client):
+        """Test that viewers cannot manage sharing for any workflow."""
+        org = OrganizationFactory()
+
+        author = UserFactory()
+        author.memberships.filter(org=org).delete()
+        author_membership = author.memberships.create(org=org, is_active=True)
+        grant_role(author_membership, RoleCode.WORKFLOW_AUTHOR)
+
+        viewer = UserFactory()
+        viewer.memberships.filter(org=org).delete()
+        viewer_membership = viewer.memberships.create(org=org, is_active=True)
+        grant_role(viewer_membership, RoleCode.WORKFLOW_VIEWER)
+
+        workflow = WorkflowFactory(org=org, user=author)
+
+        client.force_login(viewer)
+        session = client.session
+        session["active_org_id"] = str(org.id)
+        session.save()
+
+        response = client.get(
+            reverse("workflows:workflow_sharing", kwargs={"pk": workflow.pk}),
+        )
+        assert response.status_code == HTTPStatus.FORBIDDEN

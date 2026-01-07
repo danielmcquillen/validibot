@@ -82,7 +82,6 @@ from validibot.workflows.views_helpers import resequence_workflow_steps
 from validibot.workflows.views_helpers import resolve_project
 from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
-from validibot.workflows.views_helpers import user_has_executor_role
 from validibot.workflows.views_launch_helpers import LaunchValidationError
 from validibot.workflows.views_launch_helpers import build_submission_from_api
 from validibot.workflows.views_launch_helpers import build_submission_from_form
@@ -277,7 +276,7 @@ class WorkflowLaunchDetailView(WorkflowLaunchContextMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         workflow = self.get_workflow()
-        can_execute = user_has_executor_role(self.request.user, workflow)
+        can_execute = workflow.can_execute(user=self.request.user)
         has_steps = workflow.steps.exists()
         form = kwargs.get("launch_form")
         if form is None and can_execute and has_steps:
@@ -2890,7 +2889,7 @@ class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
     template_name = "workflows/workflow_sharing.html"
 
     def dispatch(self, request, *args, **kwargs):
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
 
@@ -2922,7 +2921,7 @@ class WorkflowSharingView(WorkflowObjectMixin, TemplateView):
                 "workflow": workflow,
                 "access_grants": access_grants,
                 "pending_invites": pending_invites,
-                "can_manage_sharing": self.user_can_manage_workflow(),
+                "can_manage_sharing": self.user_can_manage_sharing(),
             },
         )
         return context
@@ -2957,7 +2956,7 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
     """Toggle workflow visibility between private and public."""
 
     def post(self, request, *args, **kwargs):
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -2979,7 +2978,7 @@ class WorkflowVisibilityUpdateView(WorkflowObjectMixin, View):
         # Return updated visibility section for HTMX
         context = {
             "workflow": workflow,
-            "can_manage_sharing": self.user_can_manage_workflow(),
+            "can_manage_sharing": self.user_can_manage_sharing(),
         }
         html = render_to_string(
             "workflows/partials/workflow_visibility_section.html",
@@ -2999,7 +2998,7 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
 
     def get(self, request, *args, **kwargs):
         """Return the invite form modal content."""
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -3018,7 +3017,7 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
         from validibot.users.models import User
         from validibot.workflows.models import WorkflowInvite
 
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -3136,7 +3135,7 @@ class WorkflowGuestInviteView(WorkflowObjectMixin, View):
             "workflow": workflow,
             "access_grants": access_grants,
             "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_workflow(),
+            "can_manage_sharing": self.user_can_manage_sharing(),
         }
         response = render(
             request,
@@ -3157,7 +3156,7 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
         from validibot.notifications.models import Notification
         from validibot.workflows.models import WorkflowAccessGrant
 
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -3221,7 +3220,7 @@ class WorkflowGuestRevokeView(WorkflowObjectMixin, View):
             "workflow": workflow,
             "access_grants": access_grants,
             "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_workflow(),
+            "can_manage_sharing": self.user_can_manage_sharing(),
         }
         return render(
             request,
@@ -3236,7 +3235,7 @@ class WorkflowInviteCancelView(WorkflowObjectMixin, View):
     def post(self, request, *args, **kwargs):
         from validibot.workflows.models import WorkflowInvite
 
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -3282,7 +3281,7 @@ class WorkflowInviteCancelView(WorkflowObjectMixin, View):
             "workflow": workflow,
             "access_grants": access_grants,
             "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_workflow(),
+            "can_manage_sharing": self.user_can_manage_sharing(),
         }
         return render(
             request,
@@ -3298,7 +3297,7 @@ class WorkflowInviteResendView(WorkflowObjectMixin, View):
         from validibot.notifications.models import Notification
         from validibot.workflows.models import WorkflowInvite
 
-        if not self.user_can_manage_workflow():
+        if not self.user_can_manage_sharing():
             return HttpResponse(status=HTTPStatus.FORBIDDEN)
 
         workflow = self.get_workflow()
@@ -3315,12 +3314,14 @@ class WorkflowInviteResendView(WorkflowObjectMixin, View):
             old_invite.cancel()
 
         # Create a new invite
+        # Email is only sent if invitee is NOT already a registered user
+        # (registered users receive in-app notifications instead)
         new_invite = WorkflowInvite.create_with_expiry(
             workflow=workflow,
             inviter=request.user,
             invitee_email=old_invite.invitee_email,
             invitee_user=old_invite.invitee_user,
-            send_email=False,  # TODO: Implement email sending
+            send_email=(old_invite.invitee_user is None),
         )
 
         # Create notification if invitee is an existing user
@@ -3367,7 +3368,7 @@ class WorkflowInviteResendView(WorkflowObjectMixin, View):
             "workflow": workflow,
             "access_grants": access_grants,
             "pending_invites": pending_invites,
-            "can_manage_sharing": self.user_can_manage_workflow(),
+            "can_manage_sharing": self.user_can_manage_sharing(),
         }
         return render(
             request,

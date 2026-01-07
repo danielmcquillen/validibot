@@ -36,7 +36,6 @@ from validibot.workflows.request_utils import detect_mode
 from validibot.workflows.request_utils import extract_request_basics
 from validibot.workflows.views_helpers import describe_workflow_file_type_violation
 from validibot.workflows.views_helpers import resolve_submission_file_type
-from validibot.workflows.views_helpers import user_has_executor_role
 
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
@@ -743,16 +742,15 @@ def ensure_workflow_ready_for_launch(workflow: Workflow) -> None:
 
 
 def ensure_user_can_launch_workflow(*, workflow: Workflow, user: User) -> None:
-    """Ensure the user can execute the workflow before creating submissions."""
+    """
+    Ensure the user can execute the workflow before creating submissions.
 
-    if not getattr(user, "is_authenticated", False):
-        raise LaunchValidationError(
-            detail=gettext_lazy("You do not have permission to run this workflow."),
-            code=WorkflowStartErrorCode.PERMISSION_DENIED,
-            status_code=HTTPStatus.FORBIDDEN,
-        )
-
-    if not user_has_executor_role(user, workflow):
+    Uses workflow.can_execute() which checks:
+    - Public workflows (any authenticated user)
+    - Org membership with WORKFLOW_LAUNCH permission
+    - Active WorkflowAccessGrant (guest access)
+    """
+    if not workflow.can_execute(user=user):
         raise LaunchValidationError(
             detail=gettext_lazy("You do not have permission to run this workflow."),
             code=WorkflowStartErrorCode.PERMISSION_DENIED,

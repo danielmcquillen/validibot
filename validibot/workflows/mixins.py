@@ -85,7 +85,7 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         from django.db.models import Q
 
         return queryset | Workflow.objects.filter(
-            Q(is_public=True) & Q(status=Workflow.Status.ACTIVE)
+            Q(is_public=True) & Q(is_active=True) & Q(is_archived=False)
         ).select_related("org", "user", "project")
 
     def get_queryset(self):
@@ -132,6 +132,34 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
             return False
         if user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, workflow):
             return True
+        if not user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow):
+            return False
+        return workflow.user_id == getattr(user, "id", None)
+
+    def user_can_manage_sharing(
+        self,
+        workflow: Workflow | None = None,
+        *,
+        user: User | None = None,
+    ) -> bool:
+        """
+        Sharing permissions: Admins can share any workflow in the org;
+        Authors can only share workflows they created.
+        """
+        user = user or self.request.user
+        if workflow is None:
+            workflow = self.get_workflow() if hasattr(self, "get_workflow") else None
+        if workflow is None:
+            return False
+        if not getattr(user, "is_authenticated", False):
+            return False
+        membership = user.membership_for_current_org()
+        if membership is None or not membership.is_active:
+            return False
+        # Admins can share any workflow
+        if user.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, workflow):
+            return True
+        # Authors can share their own workflows if they have edit permission
         if not user.has_perm(PermissionCode.WORKFLOW_EDIT.value, workflow):
             return False
         return workflow.user_id == getattr(user, "id", None)

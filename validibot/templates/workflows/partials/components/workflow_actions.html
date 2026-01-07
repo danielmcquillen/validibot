@@ -2,7 +2,7 @@
 
 <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center w-100">
   {% if workflow.curr_user_can_execute %}
-    <a class="btn btn-sm btn-secondary me-auto"
+    <a class="btn btn-sm btn-success bg-success-subtle me-auto"
        href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
        data-bs-toggle="tooltip"
        data-bs-placement="top"
@@ -84,10 +84,10 @@
                 data-bs-toggle="tooltip"
                 data-bs-placement="top"
                 title="{% trans "Archive workflow" %}"
-              aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
-                            Archive {{ workflow_name }}
-                          {% endblocktrans %}"
-              hx-confirm="{% trans "Archive and disable this workflow? Existing runs will be allowed to finish." %}">
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
+                              Archive {{ workflow_name }}
+                            {% endblocktrans %}"
+                hx-confirm="{% trans "Archive and disable this workflow? Existing runs will be allowed to finish." %}">
           <i class="bi-archive"></i>
         </button>
       {% else %}
@@ -111,4 +111,4 @@
     {% endif %}
   {% endif %}
 
-  </div>
+</div>

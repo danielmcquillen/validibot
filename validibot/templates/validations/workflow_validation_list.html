@@ -21,7 +21,7 @@
           {% trans "Recent runs that have executed against this workflow." %}
         </p>
       </div>
-      <a class="btn btn-outline-secondary"
+      <a class="btn btn-secondary"
          href="{% url 'workflows:workflow_detail' workflow.pk %}">
         <i class="bi-chevron-left me-1"></i>
         {% trans "Back to workflow" %}
@@ -66,10 +66,10 @@
               </td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm">
-                  <a class="btn btn-outline-primary"
+                  <a class="btn btn-secondary"
                      href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
                   <button type="button"
-                          class="btn btn-outline-danger"
+                          class="btn btn-danger"
                           hx-delete="{% url 'validations:validation_delete' run.pk %}"
                           hx-target="#validation-row-{{ validation.pk }}"
                           hx-swap="outerHTML"

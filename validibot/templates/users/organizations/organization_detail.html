@@ -21,13 +21,13 @@
         </p>
       </div>
       <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
-        <a class="btn btn-outline-secondary"
+        <a class="btn btn-secondary"
            href="{% url 'users:organization-update' organization.pk %}">
           <i class="bi bi-pencil-square me-1"></i>
           {% trans "Edit organization" %}
         </a>
         {% if not organization.is_personal %}
-          <a class="btn btn-outline-danger"
+          <a class="btn btn-danger"
              href="{% url 'users:organization-delete' organization.pk %}">
             <i class="bi bi-trash me-1"></i>
             {% trans "Delete" %}
@@ -66,17 +66,17 @@
             </dl>
           </div>
           <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
-            <a class="btn btn-outline-primary"
+            <a class="btn btn-secondary"
                href="{% org_url 'members:member_list' %}">
               <i class="bi bi-people me-1"></i>
               {% trans "Manage members" %}
             </a>
-            <a class="btn btn-outline-secondary"
+            <a class="btn btn-secondary"
                href="{% org_url 'projects:project-list' %}">
               <i class="bi bi-collection me-1"></i>
               {% trans "Manage projects" %}
             </a>
-            <a class="btn btn-outline-secondary"
+            <a class="btn btn-secondary"
                href="{% url 'billing:dashboard' %}">
               <i class="bi bi-credit-card me-1"></i>
               {% trans "Billing" %}

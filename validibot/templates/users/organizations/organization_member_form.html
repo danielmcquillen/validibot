@@ -37,10 +37,10 @@
               {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
               <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
               <div class="d-flex justify-content-end gap-2">
-                <a href="{% url 'users:organization-detail' organization.pk %}" class="btn btn-outline-secondary">
+                <a href="{% url 'users:organization-detail' organization.pk %}" class="btn btn-secondary">
                   {% trans "Cancel" %}
                 </a>
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-secondary">
                   {% trans "Save" %}
                 </button>
               </div>

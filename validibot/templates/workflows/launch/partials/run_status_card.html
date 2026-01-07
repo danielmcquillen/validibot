@@ -68,11 +68,11 @@
           {% trans "This run was canceled." %}
         </div>
         <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-outline-secondary"
+          <a class="btn btn-secondary"
              href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
             {% trans "Back to launch" %}
           </a>
-          <a class="btn btn-outline-secondary"
+          <a class="btn btn-secondary"
              href="{% if previous_runs_url %}{{ previous_runs_url }}{% else %}{% org_url 'workflows:workflow_validation_list' pk=workflow.pk %}{% endif %}">
             {% trans "View previous runs" %}
           </a>
@@ -80,7 +80,7 @@
       </div>
     {% else %}
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-        <a class="btn btn-outline-success"
+        <a class="btn btn-success"
            href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
           {% trans "Launch again" %}
         </a>

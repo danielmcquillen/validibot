@@ -46,14 +46,14 @@
           {% endif %}
 
           {% if can_manage_workflow %}
-            <a class="btn btn-outline-secondary"
+            <a class="btn btn-secondary"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "Sharing settings" %}"
                href="{% org_url 'workflows:workflow_sharing' pk=workflow.pk %}">
               <i class="bi-share"></i>
             </a>
-            <a class="btn btn-outline-secondary"
+            <a class="btn btn-secondary"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "View Validations" %}"
@@ -84,7 +84,7 @@
             </div>
             <div class="card-header-buttons">
               {% if can_manage_workflow %}
-                <button class="btn btn-primary btn-sm"
+                <button class="btn btn-secondary btn-sm"
                         data-bs-toggle="modal"
                         data-bs-target="#workflowStepModal"
                         hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
@@ -119,7 +119,7 @@
             </div>
             <div class="card-header-buttons">
               {% if can_manage_workflow %}
-                <a class="btn btn-sm btn-outline-secondary ms-2"
+                <a class="btn btn-sm btn-secondary ms-2"
                    href="{% org_url 'workflows:workflow_update' pk=workflow.pk %}"
                    aria-label="{% trans "Edit workflow details" %}"
                    data-bs-toggle="tooltip"

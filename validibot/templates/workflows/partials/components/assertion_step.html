@@ -30,7 +30,7 @@
                          role="group"
                          aria-label="{% trans 'Assertion actions' %}">
                         <button type="button"
-                                class="btn btn-outline-secondary"
+                                class="btn btn-secondary"
                                 data-bs-toggle="modal"
                                 data-bs-target="#workflowAssertionModal"
                                 hx-get="{% org_url 'workflows:workflow_step_assertion_update' workflow.pk step.pk assertion.pk %}"
@@ -43,7 +43,7 @@
                               action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
                             {% csrf_token %}
                             <input type="hidden" name="direction" value="up" />
-                            <button class="btn btn-outline-secondary"
+                            <button class="btn btn-secondary"
                                     {% if forloop.first %}
                                         disabled
                                     {% endif %}>
@@ -55,7 +55,7 @@
                               action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
                             {% csrf_token %}
                             <input type="hidden" name="direction" value="down" />
-                            <button class="btn btn-outline-secondary"
+                            <button class="btn btn-secondary"
                                     {% if forloop.last %}
                                         disabled
                                     {% endif %}>
@@ -67,7 +67,7 @@
                               action="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
                               onsubmit="return confirm('{% trans "Delete this assertion?" %}');">
                             {% csrf_token %}
-                            <button class="btn btn-outline-danger">
+                            <button class="btn btn-danger">
                                 <i class="bi-trash"></i>
                                 <span class="visually-hidden">{% trans "Delete assertion" %}</span>
                             </button>

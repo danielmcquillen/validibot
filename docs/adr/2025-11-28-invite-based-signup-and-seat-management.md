@@ -508,7 +508,7 @@ class InviteSignupForm(forms.Form):
       {{ form|crispy }}
 
       <div class="d-grid gap-2 mt-4">
-        <button type="submit" class="btn btn-primary btn-lg">
+        <button type="submit" class="btn btn-secondary btn-lg">
           {% trans "Create account and join" %} {{ org.name }}
         </button>
       </div>
@@ -671,7 +671,7 @@ Add a seats indicator to the org admin UI:
       </span>
     {% endif %}
     {% if can_invite %}
-      <a href="{% url 'members:invite' %}" class="btn btn-primary btn-sm">
+      <a href="{% url 'members:invite' %}" class="btn btn-secondary btn-sm">
         {% trans "Invite member" %}
       </a>
     {% endif %}

@@ -21,7 +21,7 @@
       <div class="col-12 col-lg-6 d-flex justify-content-end p-0">
         {% comment %}
         {# Not sure if I want users creating orgs yet #}
-        <a class="btn btn-primary" href="{{ create_url }}">
+        <a class="btn btn-secondary" href="{{ create_url }}">
           <i class="bi bi-plus-lg me-1"></i>
           {% trans "New organization" %}
         </a>
@@ -72,7 +72,7 @@
                               class="d-inline">
                           {% csrf_token %}
                           <input type="hidden" name="next" value="{% url 'billing:dashboard' %}" />
-                          <button type="submit" class="btn btn-sm btn-outline-secondary">
+                          <button type="submit" class="btn btn-sm btn-secondary">
                             <i class="bi bi-credit-card me-1"></i>
                             {% trans "Manage subscription" %}
                           </button>
@@ -85,21 +85,21 @@
                                 class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="next" value="{% org_url 'members:member_list' %}" />
-                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                            <button type="submit" class="btn btn-sm btn-secondary">
                               {% trans "Manage members" %}
                             </button>
                           </form>
-                          <a class="btn btn-sm btn-outline-secondary"
+                          <a class="btn btn-sm btn-secondary"
                              href="{% url 'users:organization-update' membership.org.pk %}">
                             {% trans "Edit" %}
                           </a>
                           {% if not membership.org.is_personal %}
-                            <a class="btn btn-sm btn-outline-danger"
+                            <a class="btn btn-sm btn-danger"
                                href="{% url 'users:organization-delete' membership.org.pk %}">
                               {% trans "Delete" %}
                             </a>
                           {% else %}
-                            <span class="btn btn-sm btn-outline-secondary disabled">
+                            <span class="btn btn-sm btn-secondary disabled">
                               {% trans "Protected" %}
                             </span>
                           {% endif %}

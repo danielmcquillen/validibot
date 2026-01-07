@@ -30,14 +30,14 @@
             {% if request.user.is_authenticated %}
                 {% if user_has_access %}
                 <a href="{% url 'workflows:workflow_launch' workflow.pk %}"
-                   class="btn btn-primary">
+                   class="btn btn-secondary">
                     {% trans "Open in app" %}
                 </a>
             {% else %}
-                <a href="{% url 'account_login' %}" class="btn btn-outline-primary">
+                <a href="{% url 'account_login' %}" class="btn btn-secondary">
                     {% trans "Sign in" %}
                 </a>
-                <a href="{% url 'account_signup' %}" class="btn btn-primary">
+                <a href="{% url 'account_signup' %}" class="btn btn-secondary">
                     {% trans "Start trial" %}
                 </a>
             {% endif %}

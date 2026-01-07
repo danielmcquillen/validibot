@@ -58,16 +58,17 @@
         color: #425d7a;
         width: 100%;
       }
-      .validator-info {
-        display: flex;
-        flex-direction: column;
-      }
       .validator-type {
         display: flex;
         flex-direction: column;
       }
     }
 
+    .validator-info {
+      display: flex;
+      flex-direction: column;
+      min-height: 5rem;
+    }
     .card-img-top {
       border-top-left-radius: 0 !important;
       border-top-right-radius: 0 !important;

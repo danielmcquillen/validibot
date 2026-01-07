@@ -53,12 +53,12 @@
                   <div class="btn-group btn-group-sm"
                        role="group"
                        aria-label="{% trans 'Default assertion actions' %}">
-                    <button class="btn btn-outline-primary"
+                    <button class="btn btn-secondary"
                             data-bs-toggle="modal"
                             data-bs-target="#modal-rule-edit-{{ assertion.id }}">
                       <i class="bi bi-pencil-square"></i>
                     </button>
-                    <button class="btn btn-outline-primary"
+                    <button class="btn btn-secondary"
                             hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-vals='{"direction": "up"}'
@@ -69,7 +69,7 @@
                             {% endif %}>
                       <i class="bi bi-arrow-up"></i>
                     </button>
-                    <button class="btn btn-outline-primary"
+                    <button class="btn btn-secondary"
                             hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-vals='{"direction": "down"}'
@@ -80,7 +80,7 @@
                             {% endif %}>
                       <i class="bi bi-arrow-down"></i>
                     </button>
-                    <button class="btn btn-outline-danger"
+                    <button class="btn btn-danger"
                             hx-delete="{% org_url 'validations:validator_rule_delete' pk=assertion.validator_id rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-target="#validator-assertion-{{ assertion.id }}"

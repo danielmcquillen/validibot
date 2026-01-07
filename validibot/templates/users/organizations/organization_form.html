@@ -40,12 +40,12 @@
       </div>
       <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
         {% if object %}
-        <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-outline-secondary">
+        <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-secondary">
           <i class="bi bi-arrow-left me-1"></i>
           {% trans "Back" %}
         </a>
         {% else %}
-        <a href="{% url 'users:organization-list' %}" class="btn btn-outline-secondary">
+        <a href="{% url 'users:organization-list' %}" class="btn btn-secondary">
           <i class="bi bi-arrow-left me-1"></i>
           {% trans "Back" %}
         </a>
@@ -62,15 +62,15 @@
               {{ form|crispy }}
               <div class="d-flex justify-content-end gap-2 mt-3">
                 {% if object %}
-                <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-outline-secondary">
+                <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-secondary">
                   {% trans "Cancel" %}
                 </a>
                 {% else %}
-                <a href="{% url 'users:organization-list' %}" class="btn btn-outline-secondary">
+                <a href="{% url 'users:organization-list' %}" class="btn btn-secondary">
                   {% trans "Cancel" %}
                 </a>
                 {% endif %}
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-secondary">
                   {% trans "Save" %}
                 </button>
               </div>

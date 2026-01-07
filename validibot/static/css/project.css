@@ -14285,13 +14285,14 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   color: #425d7a;
   width: 100%;
 }
-#validator-library .validator-library-card .card-header .validator-info {
-  display: flex;
-  flex-direction: column;
-}
 #validator-library .validator-library-card .card-header .validator-type {
   display: flex;
   flex-direction: column;
+}
+#validator-library .validator-library-card .validator-info {
+  display: flex;
+  flex-direction: column;
+  min-height: 5rem;
 }
 #validator-library .validator-library-card .card-img-top {
   border-top-left-radius: 0 !important;

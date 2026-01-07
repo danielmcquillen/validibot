@@ -6,7 +6,7 @@
       {% trans "Signals" %}
     </div>
     {% if can_edit_validator %}
-      <button class="btn btn-sm btn-primary"
+      <button class="btn btn-sm btn-secondary"
               data-bs-toggle="modal"
               data-bs-target="#modal-signal-create">
         <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
@@ -60,13 +60,13 @@
                     <div class="btn-group btn-group-sm"
                          role="group"
                          aria-label="{% trans 'Signal actions' %}">
-                      <button class="btn btn-outline-primary"
+                      <button class="btn btn-secondary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
                         <i class="bi bi-pencil-square"></i>
                       </button>
                       {# djlint:off H037 #}
-                      <button class="btn btn-outline-danger"
+                      <button class="btn btn-danger"
                               hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"
@@ -108,13 +108,13 @@
                     <div class="btn-group btn-group-sm"
                          role="group"
                          aria-label="{% trans 'Signal actions' %}">
-                      <button class="btn btn-outline-primary"
+                      <button class="btn btn-secondary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
                         <i class="bi bi-pencil-square"></i>
                       </button>
                       {# djlint:off H037 #}
-                      <button class="btn btn-outline-danger"
+                      <button class="btn btn-danger"
                               hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"

@@ -32,7 +32,7 @@
           <div class="card-footer d-flex justify-content-between flex-wrap gap-2">
             {% if validator %}
               <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
-                 class="btn btn-outline-secondary">
+                 class="btn btn-secondary">
                 <i class="bi bi-arrow-left me-1"></i>
                 {% blocktrans trimmed with validator_name=validator.name %}
                   Back to Edit “{{ validator_name }}”
@@ -40,12 +40,12 @@
               </a>
             {% else %}
               <a href="{% org_url 'validations:validation_library' %}"
-                 class="btn btn-outline-secondary">
+                 class="btn btn-secondary">
                 <i class="bi bi-arrow-left me-1"></i>
                 {% trans "Cancel" %}
               </a>
             {% endif %}
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-secondary">
               {% trans "Save validator" %}
             </button>
           </div>

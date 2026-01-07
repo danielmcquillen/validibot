@@ -164,12 +164,12 @@
                   <div class="btn-group btn-group-sm"
                        role="group"
                        aria-label="{% trans 'Step actions' %}">
-                    <a class="btn btn-outline-secondary"
+                    <a class="btn btn-secondary"
                        href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
                       <i class="bi-pencil-square"></i>
                       <span class="visually-hidden">{% trans "Edit" %}</span>
                     </a>
-                    <button class="btn btn-outline-secondary"
+                    <button class="btn btn-secondary"
                             hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
                             hx-target="this"
                             hx-swap="none"
@@ -180,7 +180,7 @@
                       <i class="bi-arrow-up"></i>
                       <span class="visually-hidden">{% trans "Move up" %}</span>
                     </button>
-                    <button class="btn btn-outline-secondary"
+                    <button class="btn btn-secondary"
                             hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
                             hx-target="this"
                             hx-swap="none"
@@ -191,7 +191,7 @@
                       <i class="bi-arrow-down"></i>
                       <span class="visually-hidden">{% trans "Move down" %}</span>
                     </button>
-                    <button class="btn btn-outline-danger"
+                    <button class="btn btn-danger"
                             hx-post="{% url 'workflows:workflow_step_delete' workflow.pk step.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-confirm="{% trans 'Remove this step?' %}"
@@ -280,7 +280,7 @@
 
         {% if can_manage_workflow %}
           {# add your first step button #}
-          <button class="btn btn-primary mt-4"
+          <button class="btn btn-secondary mt-4"
                   type="button"
                   data-bs-toggle="modal"
                   data-bs-target="#workflowStepModal"

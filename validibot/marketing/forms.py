@@ -127,7 +127,7 @@ class BetaWaitlistForm(forms.Form):
 
         if origin_value == self.ORIGIN_FOOTER:
             email_class = "form-control form-control-sm"
-            submit_class = "btn btn-primary btn-sm"
+            submit_class = "btn btn-secondarybtn-sm"
             email_wrapper = "mb-2 "
             submit_wrapper = "d-grid mt-1"
             form_class = "d-flex flex-column gap-2"

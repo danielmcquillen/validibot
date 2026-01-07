@@ -110,7 +110,7 @@
         </select>
       </div>
       <div class="col-sm-6 col-md-4 col-lg-2">
-        <button type="submit" class="btn btn-primary">
+        <button type="submit" class="btn btn-secondary">
           {% trans "Filter" %}
         </button>
         {% if request.GET %}
@@ -175,7 +175,7 @@
               </td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm" role="group">
-                  <a class="btn btn-outline-primary"
+                  <a class="btn btn-secondary"
                      href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
                 </div>
               </td>

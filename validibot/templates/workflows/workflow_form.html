@@ -40,7 +40,7 @@
               {% crispy form %}
 
               <div class="d-flex justify-content-between align-items-center mt-4">
-                <a class="btn btn-outline-secondary"
+                <a class="btn btn-secondary"
                    {% if object %}
                      href="{% url 'workflows:workflow_detail' object.id %}"
                    {% else %}
@@ -48,7 +48,7 @@
                    {% endif %}>
                   {% trans "Cancel" %}
                 </a>
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-secondary">
                   {% if object %}
                     {% trans "Save changes" %}
                   {% else %}

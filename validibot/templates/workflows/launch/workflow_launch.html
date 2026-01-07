@@ -34,7 +34,7 @@
               <p class="mb-1">
                 {% trans "Re-enable the workflow from the settings page before launching new runs." %}
               </p>
-              <a class="btn btn-sm btn-outline-primary mt-2"
+              <a class="btn btn-sm btn-secondary mt-2"
                  href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
                 {% trans "Manage workflow" %}
               </a>
@@ -50,7 +50,7 @@
               <p class="mb-1">
                 {% trans "Add at least one validation step before launching new runs." %}
               </p>
-              <a class="btn btn-sm btn-outline-primary mt-2"
+              <a class="btn btn-sm btn-secondary mt-2"
                  href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
                 {% trans "Manage workflow" %}
               </a>

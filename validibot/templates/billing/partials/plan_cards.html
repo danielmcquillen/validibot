@@ -221,7 +221,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               {% comment %}
               Plan is not available - show "Coming Soon" button.
               {% endcomment %}
-              <button class="btn btn-outline-secondary w-100" disabled>
+              <button class="btn btn-secondary w-100" disabled>
                 <i class="bi bi-clock me-1"></i>
                 {% trans "Coming Soon" %}
               </button>
@@ -233,7 +233,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               {% endcomment %}
               {% if p.code == "ENTERPRISE" %}
                 <a href="{% url 'marketing:contact' %}"
-                   class="btn btn-outline-primary w-100">
+                   class="btn btn-secondary w-100">
                   <i class="bi bi-envelope me-1"></i>
                   {% trans "Contact Sales" %}
                 </a>
@@ -250,7 +250,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               {% endcomment %}
               {% if subscription.stripe_subscription_id %}
                 <a href="{% url 'billing:portal' %}"
-                   class="btn btn-outline-primary w-100">
+                   class="btn btn-secondary w-100">
                   <i class="bi bi-gear me-1"></i>
                   {% trans "Manage Subscription" %}
                 </a>
@@ -262,7 +262,7 @@ The partial uses Django 6.0+ partialdef so it can be:
                 <form method="post" action="{% url 'billing:change-plan' %}">
                   {% csrf_token %}
                   <input type="hidden" name="plan" value="{{ p.code }}" />
-                  <button type="submit" class="btn btn-primary w-100">
+                  <button type="submit" class="btn btn-secondary w-100">
                     <i class="bi bi-cart me-1"></i>
                     {% trans "Purchase Plan" %}
                   </button>
@@ -271,7 +271,7 @@ The partial uses Django 6.0+ partialdef so it can be:
                 {% comment %}
                 Free plan - already on it, no action needed
                 {% endcomment %}
-                <button class="btn btn-outline-secondary w-100" disabled>
+                <button class="btn btn-secondary w-100" disabled>
                   <i class="bi bi-check me-1"></i>
                   {% trans "Current Plan" %}
                 </button>
@@ -282,7 +282,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               Enterprise - always contact sales
               {% endcomment %}
               <a href="{% url 'marketing:contact' %}"
-                 class="btn btn-outline-primary w-100">
+                 class="btn btn-secondary w-100">
                 <i class="bi bi-envelope me-1"></i>
                 {% trans "Contact Sales" %}
               </a>
@@ -297,14 +297,14 @@ The partial uses Django 6.0+ partialdef so it can be:
                 <input type="hidden" name="plan" value="{{ p.code }}" />
                 {% if show_purchase_buttons %}
                   <button type="submit"
-                          class="btn btn-outline-warning w-100"
+                          class="btn btn-warning w-100"
                           onclick="return confirm('{% trans "Are you sure you want to downgrade to the Free plan?" %}');">
                     <i class="bi bi-arrow-down-circle me-1"></i>
                     {% trans "Downgrade to Free" %}
                   </button>
                 {% else %}
                   <button type="submit"
-                          class="btn btn-outline-warning w-100"
+                          class="btn btn-warning w-100"
                           onclick="return confirm('{% trans "Are you sure you want to downgrade to the Free plan? This will cancel your current subscription." %}');">
                     <i class="bi bi-arrow-down-circle me-1"></i>
                     {% trans "Downgrade to Free" %}
@@ -324,7 +324,7 @@ The partial uses Django 6.0+ partialdef so it can be:
                 <form method="post" action="{% url 'billing:change-plan' %}">
                   {% csrf_token %}
                   <input type="hidden" name="plan" value="{{ p.code }}" />
-                  <button type="submit" class="btn btn-primary w-100">
+                  <button type="submit" class="btn btn-secondary w-100">
                     {% if show_purchase_buttons %}
                       <i class="bi bi-cart me-1"></i>
                       {% trans "Purchase Plan" %}
@@ -341,7 +341,7 @@ The partial uses Django 6.0+ partialdef so it can be:
                 <form method="post" action="{% url 'billing:change-plan' %}">
                   {% csrf_token %}
                   <input type="hidden" name="plan" value="{{ p.code }}" />
-                  <button type="submit" class="btn btn-outline-secondary w-100">
+                  <button type="submit" class="btn btn-secondary w-100">
                     <i class="bi bi-arrow-down-circle me-1"></i>
                     {% trans "Downgrade" %}
                   </button>

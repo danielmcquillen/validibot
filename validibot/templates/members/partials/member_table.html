@@ -44,20 +44,20 @@
                   </td>
                   <td class="text-end">
                     <div class="btn-group btn-group-sm" role="group">
-                      <a class="btn btn-outline-secondary"
+                      <a class="btn btn-secondary"
                          href="{% org_url 'members:member_edit' member_id=membership.pk %}">
                         {% trans "Edit" %}
                       </a>
                       {% if "OWNER" in membership.role_codes %}
                         <button type="button"
-                                class="btn btn-outline-danger"
+                                class="btn btn-danger"
                                 disabled
                                 title="{% trans "The organization owner cannot be removed." %}">
                           {% trans "Owner" %}
                         </button>
                       {% else %}
                         <button type="button"
-                                class="btn btn-outline-danger"
+                                class="btn btn-danger"
                                 hx-delete="{% org_url 'members:member_delete' member_id=membership.pk %}"
                                 hx-target="#member-list-card"
                                 hx-swap="outerHTML"

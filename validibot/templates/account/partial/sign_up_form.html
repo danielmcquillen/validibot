@@ -69,7 +69,7 @@
         {# Preserve selected plan through form submission for post-signup redirect #}
         <input type="hidden" name="plan" value="{{ signup_selected_plan_code }}" />
     {% endif %}
-    <button id="sign_up_btn" class="btn btn-primary" type="submit">
+    <button id="sign_up_btn" class="btn btn-secondary" type="submit">
         {% if signup_selected_plan %}
             {% trans "Create Account & Start Trial" %} »
         {% else %}

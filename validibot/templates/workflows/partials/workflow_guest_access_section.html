@@ -32,7 +32,7 @@
             </div>
             {% if can_manage_sharing %}
               <button type="button"
-                      class="btn btn-outline-danger btn-sm"
+                      class="btn btn-danger btn-sm"
                       hx-post="{% org_url 'workflows:workflow_guest_revoke' pk=workflow.pk grant_id=grant.pk %}"
                       hx-target="#guest-access-section"
                       hx-swap="outerHTML"
@@ -74,7 +74,7 @@
               <span class="badge text-bg-warning">{% trans "Pending" %}</span>
               {% if can_manage_sharing %}
                 <button type="button"
-                        class="btn btn-outline-secondary btn-sm"
+                        class="btn btn-secondary btn-sm"
                         hx-post="{% org_url 'workflows:workflow_invite_resend' pk=workflow.pk invite_id=invite.pk %}"
                         hx-target="#guest-access-section"
                         hx-swap="outerHTML"
@@ -82,7 +82,7 @@
                   <i class="bi-arrow-repeat"></i>
                 </button>
                 <button type="button"
-                        class="btn btn-outline-danger btn-sm"
+                        class="btn btn-danger btn-sm"
                         hx-post="{% org_url 'workflows:workflow_invite_cancel' pk=workflow.pk invite_id=invite.pk %}"
                         hx-target="#guest-access-section"
                         hx-swap="outerHTML"
@@ -100,7 +100,7 @@
     {% if can_manage_sharing %}
       <div class="mt-3">
         <button type="button"
-                class="btn btn-primary btn-sm"
+                class="btn btn-secondary btn-sm"
                 data-bs-toggle="modal"
                 data-bs-target="#guestInviteModal"
                 hx-get="{% org_url 'workflows:workflow_guest_invite' pk=workflow.pk %}"

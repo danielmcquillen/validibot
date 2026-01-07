@@ -60,7 +60,7 @@ Uses `app_ui` context from billing.context_processors.app_ui_state_context.
         {% if app_ui.show_notifications %}
             <div class="me-3">
                 <a href="{% url 'notifications:notification-list' %}"
-                   class="btn btn-outline-dark position-relative notification-bell-btn"
+                   class="btn btn-dark position-relative notification-bell-btn"
                    data-bs-toggle="tooltip"
                    data-bs-placement="bottom"
                    title="{% trans 'Notifications' %}"

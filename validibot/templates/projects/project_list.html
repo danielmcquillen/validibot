@@ -20,7 +20,7 @@
         </h1>
       </div>
       <div class="col-12 col-lg-6 d-flex justify-content-end p-0">
-        <a class="btn btn-primary" href="{{ create_url }}">
+        <a class="btn btn-secondary" href="{{ create_url }}">
           <i class="bi bi-plus-lg me-1"></i>
           {% trans "New project" %}
         </a>
@@ -76,12 +76,12 @@
                         <span class="text-muted small">{% trans "Protected" %}</span>
                       {% else %}
                         <div class="btn-group" role="group">
-                          <a class="btn btn-sm btn-outline-secondary"
+                          <a class="btn btn-sm btn-secondary"
                              href="{% url 'projects:project-update' project.pk %}">
                             {% trans "Edit" %}
                           </a>
                           <button type="button"
-                                  class="btn btn-sm btn-outline-danger"
+                                  class="btn btn-sm btn-danger"
                                   hx-post="{% url 'projects:project-delete' project.pk %}"
                                   hx-target="#project-row-{{ project.pk }}"
                                   hx-swap="outerHTML"

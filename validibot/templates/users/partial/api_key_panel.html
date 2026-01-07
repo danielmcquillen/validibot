@@ -19,7 +19,7 @@
              value="{{ api_token.key }}"
              readonly>
       <button type="button"
-              class="btn btn-outline-secondary"
+              class="btn btn-secondary"
               data-copy-target="#api-key-value"
               data-copy-timeout="1600"
               data-copied-label="{% trans "Copied" %}">
@@ -28,7 +28,7 @@
     </div>
     <div class="d-grid d-sm-flex gap-2">
       <button type="button"
-              class="btn btn-sm btn-outline-danger"
+              class="btn btn-sm btn-danger"
               hx-post="{% url 'users:api-key-rotate' %}"
               hx-target="#api-key-panel"
               hx-swap="outerHTML">

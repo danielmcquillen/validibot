@@ -2,19 +2,19 @@
 
 {% load i18n core_tags %}
 
-<a class="btn btn-sm btn-outline-primary"
+<a class="btn btn-sm btn-secondary"
    href="{% org_url 'validations:validator_detail' slug=validator.slug %}{% if validator.is_system %}?tab=system{% else %}?tab=custom{% endif %}">
   {% trans "View" %}
 </a>
 {% if not validator.is_system and can_manage_validators %}
-  <a class="btn btn-sm btn-outline-secondary"
+  <a class="btn btn-sm btn-secondary"
      href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
      aria-label="{% blocktrans trimmed with validator_name=validator.name %}
                    Edit {{ validator_name }}
                  {% endblocktrans %}">
     <i class="bi bi-pencil"></i> {% trans "Edit" %}
   </a>
-  <a class="btn btn-sm btn-outline-danger"
+  <a class="btn btn-sm btn-danger"
      href="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}">
     <i class="bi bi-trash"></i>
     <span class="visually-hidden">{% trans "Delete validator" %}</span>

@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 import logging
 
+import django.core.exceptions
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
@@ -281,6 +282,7 @@ sentry_sdk.init(
     integrations=integrations,
     environment=env("SENTRY_ENVIRONMENT", default="production"),
     traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
+    ignore_errors=[django.core.exceptions.DisallowedHost],
 )
 
 # django-rest-framework

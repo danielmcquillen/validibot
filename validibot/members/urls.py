@@ -11,6 +11,11 @@ urlpatterns = [
         name="member_list",
     ),
     path(
+        "invites/",
+        views.InviteFormView.as_view(),
+        name="invite_form",
+    ),
+    path(
         "invites/search/",
         views.InviteSearchView.as_view(),
         name="invite_search",

@@ -34,9 +34,19 @@ logger = logging.getLogger(__name__)
 class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
     """
     Reusable helpers for workflow UI views.
+
+    For listing workflows, filters to the user's current org. For looking up
+    specific workflows by ID (e.g., for launch), includes workflows the user
+    has guest access to via WorkflowAccessGrant or public workflows.
     """
 
     def get_workflow_queryset(self):
+        """
+        Get workflows for listing (scoped to current org).
+
+        This method is used for workflow list views where we want to show
+        only workflows in the user's current organization context.
+        """
         user = self.request.user
         queryset = (
             Workflow.objects.for_user(user)
@@ -50,6 +60,33 @@ class WorkflowAccessMixin(LoginRequiredMixin, BreadcrumbMixin):
         if current_org:
             return queryset.filter(org=current_org)
         return queryset.none()
+
+    def get_workflow_queryset_for_access(self):
+        """
+        Get workflows for single-object lookup (includes guest/public access).
+
+        This method is used when looking up a specific workflow by ID where
+        we want to allow access if the user has permission via:
+        1. Org membership with appropriate role
+        2. Active WorkflowAccessGrant (guest access)
+        3. Public workflow (is_public=True)
+
+        Unlike get_workflow_queryset(), this does NOT filter by current_org
+        so guests and public workflow users can access workflows.
+        """
+        user = self.request.user
+        # Start with workflows accessible via membership or guest grants
+        queryset = (
+            Workflow.objects.for_user(user)
+            .select_related("org", "user", "project")
+            .prefetch_related("validation_runs")
+        )
+        # Also include public workflows (any authenticated user can access)
+        from django.db.models import Q
+
+        return queryset | Workflow.objects.filter(
+            Q(is_public=True) & Q(status=Workflow.Status.ACTIVE)
+        ).select_related("org", "user", "project")
 
     def get_queryset(self):
         return self.get_workflow_queryset()
@@ -104,9 +141,16 @@ class WorkflowObjectMixin(WorkflowAccessMixin):
     workflow_url_kwarg = "pk"
 
     def get_workflow(self) -> Workflow:
+        """
+        Get a single workflow by ID, checking all access paths.
+
+        Uses get_workflow_queryset_for_access() to include workflows the user
+        can access via membership, guest grants, or public access - not just
+        workflows in their current org.
+        """
         if not hasattr(self, "_workflow"):
             queryset = (
-                self.get_workflow_queryset()
+                self.get_workflow_queryset_for_access()
                 .select_related("org", "user", "project")
                 .prefetch_related("steps")
             )

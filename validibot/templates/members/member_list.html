@@ -3,7 +3,7 @@
 {% load i18n core_tags %}
 
 {% block title %}
-  {% trans "Members" %} · Validibot
+  {% trans "Members" %} · {{ organization.name }} · Validibot
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -11,178 +11,144 @@
 {% endblock left_sidebar %}
 
 {% block app_content %}
-
-  <div id="member-list" class="container-fluid">
+  <div id="member-list"
+       class="container-fluid d-flex flex-column flex-grow-1">
     <div class="app-content-header-bar row">
-      <div class="app-content-header col-12 col-lg-6 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
-        <h1 class="app-page-title">
-          <i class="bi bi-people me-2"></i>
-          {% trans "Members" %}
-        </h1>
+      <div class="app-content-header col-12 col-lg-8">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-people me-2"></i>{% trans "Members" %}
+            </h1>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <button type="button"
+                  class="btn btn-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#memberInviteModal"
+                  hx-get="{% org_url 'members:invite_form' %}"
+                  hx-target="#member-invite-modal-content"
+                  hx-swap="innerHTML">
+            <i class="bi-person-plus me-1"></i>{% trans "Invite Member" %}
+          </button>
+        </div>
       </div>
     </div>
 
-    <div class="row g-4">
-      <div class="col-12 col-xl-7">
-        {% include "members/partials/member_table.html" %}
-      </div>
-      <div class="col-12 col-xl-5">
-        <div class="card shadow-sm h-100">
-          <div class="card-header pb-0">
-            <ul class="nav nav-tabs card-header-tabs" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active"
-                        id="invite-tab"
-                        data-bs-toggle="tab"
-                        data-bs-target="#invite-tab-pane"
-                        type="button"
-                        role="tab"
-                        aria-controls="invite-tab-pane"
-                        aria-selected="true">
-                  {% trans "Invite member" %}
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link"
-                        id="current-invites-tab"
-                        data-bs-toggle="tab"
-                        data-bs-target="#current-invites-tab-pane"
-                        type="button"
-                        role="tab"
-                        aria-controls="current-invites-tab-pane"
-                        aria-selected="false">
-                  {% trans "Current invitations" %}
-                </button>
-              </li>
-            </ul>
-          </div>
-          <div class="card-body pt-3">
-            <div class="tab-content">
-              <div class="tab-pane fade show active"
-                   id="invite-tab-pane"
-                   role="tabpanel"
-                   aria-labelledby="invite-tab">
-                <form method="post"
-                      novalidate
-                      action="{% org_url 'members:invite_create' %}">
-                  {% csrf_token %}
-                  {% if invite_form.non_field_errors %}
-                    <div class="alert alert-danger" role="alert">
-                      {% for error in invite_form.non_field_errors %}
-                        {{ error }}
-                        <br />
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                  <div class="mb-3">
-                    <label class="form-label fw-semibold"
-                           for="{{ invite_form.search.id_for_label }}">
-                      {% trans "User or email" %}
-                    </label>
-                    <input type="text"
-                           name="search"
-                           class="form-control"
-                           value="{{ invite_form.data.search|default:'' }}"
-                           hx-get="{% org_url 'members:invite_search' %}"
-                           hx-target="#invite-search-results"
-                           hx-trigger="keyup changed delay:300ms"
-                           hx-include="[name=search]"
-                           placeholder="{% trans 'Type a username or email' %}" />
-                    <div id="invite-search-results" class="mt-2">
-                      {% include "members/partials/invite_search_results.html" with matches=None query=None %}
-                    </div>
-                  </div>
-                  <div class="mb-3">
-                    <span class="form-label fw-semibold d-block mb-2">{{ invite_form.fields.roles.label }}</span>
-                    {% if invite_form.roles.errors %}
-                      <div class="text-danger small mb-2">
-                        {% for error in invite_form.roles.errors %}
-                          {{ error }}
-                          <br />
-                        {% endfor %}
-                      </div>
-                    {% endif %}
-                    {% include "users/partials/role_checkbox_list.html" with role_options=invite_form.role_options field_name="roles" %}
-                  </div>
-                  <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-primary">
-                      <i class="bi bi-person-plus me-1"></i>
-                      {% trans "Invite" %}
-                    </button>
-                  </div>
-                </form>
-              </div>
-              <div class="tab-pane fade"
-                   id="current-invites-tab-pane"
-                   role="tabpanel"
-                   aria-labelledby="current-invites-tab">
-                {% if pending_invites %}
-                  <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                      <thead>
-                        <tr>
-                          <th>
-                            {% trans "Invitee" %}
-                          </th>
-                          <th>
-                            {% trans "Roles" %}
-                          </th>
-                          <th>
-                            {% trans "Status" %}
-                          </th>
-                          <th class="text-end">
-                            {% trans "Actions" %}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for invite in pending_invites %}
-                          <tr>
-                            <td>
-                              {{ invite.invitee_user.name|default:invite.invitee_user.username|default:invite.invitee_email }}
-                              <div class="text-muted small">
-                                {{ invite.created|date:"Y-m-d H:i" }}
-                              </div>
-                            </td>
-                            <td class="text-muted small">
-                              {{ invite.roles|join:", " }}
-                            </td>
-                            <td>
-                              <span class="badge text-bg-light">{{ invite.get_status_display }}</span>
-                            </td>
-                            <td class="text-end">
-                              {% if invite.status == "PENDING" %}
-                                <form method="post"
-                                      action="{% org_url 'members:invite_cancel' invite.id %}">
-                                  {% csrf_token %}
-                                  <button data-bs-toggle="tooltip"
-                                          data-bs-placement="top"
-                                          label="{% trans 'Cancel invitation' %}"
-                                          aria-label="{% trans 'Cancel invitation' %}"
-                                          type="submit"
-                                          class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trash"></i>
-                                  </button>
-                                </form>
-                              {% else %}
-                                <span class="text-muted small">{% trans "No actions" %}</span>
-                              {% endif %}
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% else %}
-                  <p class="text-muted mb-0">
-                    {% trans "No invitations yet." %}
-                  </p>
-                {% endif %}
-              </div>
+    <div class="alert alert-info mb-3" role="alert">
+      {% url 'members:guest_list' as guests_url %}
+      {% blocktrans %}
+        <strong>About members:</strong> Members have access to your
+        org, based on the roles you give them. Members can do things likeauthor workflows, manage
+        organization settings and view analytics. Your subscription plan limits the number of 
+        members you can have.
+        (<a href="{{ guests_url }}">Guests</a>, on the other hand, can only access specific workflows you've shared with them.
+      )
+      {% endblocktrans %}
+    </div>
+
+    <div class="row flex-grow-1">
+      <div class="col-12 col-lg-7">
+        <div class="card app-card mb-3" id="member-list-card">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Current Members" %}
+              <span class="badge text-bg-secondary ms-2">{{ memberships|length }}</span>
             </div>
+          </div>
+          <div class="card-body">
+            {% include "members/partials/member_table.html" %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="card app-card">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Pending Invitations" %}
+              {% if pending_invites %}
+                <span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="card-body">
+            {% if pending_invites %}
+              <div class="list-group">
+                {% for invite in pending_invites %}
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-medium">
+                        {% if invite.invitee_user %}
+                          {{ invite.invitee_user.email }}
+                        {% else %}
+                          {{ invite.invitee_email }}
+                        {% endif %}
+                      </div>
+                      <small class="text-muted">
+                        {{ invite.roles|join:", " }}
+                        &middot;
+                        {% trans "Invited" %} {{ invite.created|date:"M j, Y" }}
+                      </small>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center">
+                      <span class="badge text-bg-warning">{% trans "Pending" %}</span>
+                      {% if invite.status == "PENDING" %}
+                        <form method="post"
+                              action="{% org_url 'members:invite_cancel' invite.id %}"
+                              class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit"
+                                  class="btn btn-outline-danger btn-sm"
+                                  onclick="return confirm('{% trans "Cancel this invitation?" %}')">
+                            <i class="bi-x-lg"></i>
+                          </button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">
+                {% trans "No pending invitations." %}
+              </p>
+            {% endif %}
           </div>
         </div>
       </div>
     </div>
   </div>
 {% endblock app_content %}
+
+{% block modal %}
+  {{ block.super }}
+  <div class="modal fade"
+       id="memberInviteModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content" id="member-invite-modal-content">
+      </div>
+    </div>
+  </div>
+{% endblock modal %}
+
+{% block inline_javascript %}
+  {{ block.super }}
+  <script>
+    document.body.addEventListener('close-modal', function(event) {
+      const modalEl = document.getElementById('memberInviteModal');
+      if (modalEl) {
+        let modal = bootstrap.Modal.getInstance(modalEl);
+        if (!modal) {
+          modal = new bootstrap.Modal(modalEl);
+        }
+        modal.hide();
+      }
+    });
+  </script>
+{% endblock inline_javascript %}

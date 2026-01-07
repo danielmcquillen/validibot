@@ -48,12 +48,22 @@ class NotificationListView(LoginRequiredMixin, ListView):
         show_dismissed = self.request.GET.get("show_dismissed") == "on"
         if not show_dismissed:
             qs = qs.filter(dismissed_at__isnull=True)
-        qs = qs.select_related("invite").order_by("-created_at")
+        qs = qs.select_related(
+            "invite",
+            "guest_invite",
+            "guest_invite__org",
+            "workflow_invite",
+            "workflow_invite__workflow",
+            "workflow_invite__workflow__org",
+        ).order_by("-created_at")
         # Lazy expire invites on read
         for notification in qs:
-            invite = notification.invite
-            if invite:
-                invite.mark_expired_if_needed()
+            if notification.invite:
+                notification.invite.mark_expired_if_needed()
+            if notification.guest_invite:
+                notification.guest_invite.mark_expired_if_needed()
+            if notification.workflow_invite:
+                notification.workflow_invite.mark_expired_if_needed()
         return qs
 
     def _query_string(self) -> str:

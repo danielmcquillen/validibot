@@ -222,6 +222,10 @@ class OrgPermissionBackend(BaseBackend):
     It keeps Validibot' per-org RBAC while letting callers use
     first-class Django permission checks with an object carrying an ``org``
     or ``org_id`` attribute (e.g., Workflow, ValidationRun, Organization).
+
+    Special cases:
+    - WORKFLOW_LAUNCH: Also grants permission for public workflows and
+      users with active WorkflowAccessGrant (guests).
     """
 
     supports_object_permissions = True
@@ -242,6 +246,12 @@ class OrgPermissionBackend(BaseBackend):
         perm_definition = PERMISSIONS_BY_CODE.get(perm_code)
         if not perm_definition:
             return False
+
+        # Special handling for workflow launch permission - check public
+        # workflows and guest access grants before requiring membership.
+        if perm_code == PermissionCode.WORKFLOW_LAUNCH and obj is not None:
+            if self._check_workflow_launch_special_access(user, obj):
+                return True
 
         org = self._resolve_org(user=user, obj=obj)
         if org is None:
@@ -266,6 +276,32 @@ class OrgPermissionBackend(BaseBackend):
             return True
 
         return membership.has_any_role(set(perm_definition.roles))
+
+    def _check_workflow_launch_special_access(self, user: User, obj) -> bool:
+        """
+        Check if user has launch access via public workflow or guest grant.
+
+        This handles cases where a non-member should be able to launch:
+        1. Public workflows (is_public=True) - any authenticated user
+        2. Guest grants (WorkflowAccessGrant) - users with active grants
+        """
+        # Import here to avoid circular imports
+        from validibot.workflows.models import Workflow
+        from validibot.workflows.models import WorkflowAccessGrant
+
+        if not isinstance(obj, Workflow):
+            return False
+
+        # Public workflows: any authenticated user can launch
+        if getattr(obj, "is_public", False):
+            return True
+
+        # Guest grant check: user has an active access grant for this workflow
+        return WorkflowAccessGrant.objects.filter(
+            workflow=obj,
+            user=user,
+            is_active=True,
+        ).exists()
 
     def get_all_permissions(
         self,

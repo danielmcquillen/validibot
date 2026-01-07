@@ -9,6 +9,7 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.models import Workflow
+from validibot.workflows.models import WorkflowAccessGrant
 
 
 class OrgPermissionBackendTests(TestCase):
@@ -91,4 +92,100 @@ class OrgPermissionBackendTests(TestCase):
 
         self.assertFalse(
             member.has_perm(PermissionCode.ADMIN_MANAGE_ORG.value, org),
+        )
+
+    def test_guest_can_launch_workflow_with_access_grant(self):
+        """Users with WorkflowAccessGrant can launch the workflow."""
+        org = OrganizationFactory()
+        owner = UserFactory()
+        grant_role(owner, org, RoleCode.OWNER)
+
+        workflow = Workflow.objects.create(
+            org=org,
+            user=owner,
+            name="Shared Workflow",
+        )
+
+        # Guest user - not a member of the org
+        guest = UserFactory()
+
+        # Without grant, guest cannot launch
+        self.assertFalse(
+            guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
+        )
+
+        # Create an access grant for the guest
+        WorkflowAccessGrant.objects.create(
+            workflow=workflow,
+            user=guest,
+            granted_by=owner,
+            is_active=True,
+        )
+
+        # With grant, guest can launch
+        self.assertTrue(
+            guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
+        )
+
+    def test_guest_cannot_launch_with_inactive_grant(self):
+        """Inactive WorkflowAccessGrant does not permit launch."""
+        org = OrganizationFactory()
+        owner = UserFactory()
+        grant_role(owner, org, RoleCode.OWNER)
+
+        workflow = Workflow.objects.create(
+            org=org,
+            user=owner,
+            name="Shared Workflow",
+        )
+
+        guest = UserFactory()
+        WorkflowAccessGrant.objects.create(
+            workflow=workflow,
+            user=guest,
+            granted_by=owner,
+            is_active=False,  # Inactive
+        )
+
+        self.assertFalse(
+            guest.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
+        )
+
+    def test_any_user_can_launch_public_workflow(self):
+        """Public workflows can be launched by any authenticated user."""
+        org = OrganizationFactory()
+        owner = UserFactory()
+        grant_role(owner, org, RoleCode.OWNER)
+
+        workflow = Workflow.objects.create(
+            org=org,
+            user=owner,
+            name="Public Workflow",
+            is_public=True,
+        )
+
+        # Random user with no relationship to org
+        random_user = UserFactory()
+
+        self.assertTrue(
+            random_user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
+        )
+
+    def test_non_public_workflow_requires_membership_or_grant(self):
+        """Non-public workflows require org membership or explicit grant."""
+        org = OrganizationFactory()
+        owner = UserFactory()
+        grant_role(owner, org, RoleCode.OWNER)
+
+        workflow = Workflow.objects.create(
+            org=org,
+            user=owner,
+            name="Private Workflow",
+            is_public=False,
+        )
+
+        random_user = UserFactory()
+
+        self.assertFalse(
+            random_user.has_perm(PermissionCode.WORKFLOW_LAUNCH.value, workflow),
         )

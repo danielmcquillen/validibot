@@ -89,6 +89,26 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
         return reverse_with_org("members:member_list", request=self.request)
 
 
+class InviteFormView(OrganizationAdminRequiredMixin, TemplateView):
+    """Return the member invite form for the modal."""
+
+    organization_context_attr = "organization"
+    template_name = "members/partials/member_invite_form.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "organization": self.organization,
+                "invite_form": InviteUserForm(
+                    organization=self.organization,
+                    inviter=self.request.user,
+                ),
+            },
+        )
+        return context
+
+
 class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
     """Return type-ahead search results for inviters."""
 
@@ -125,6 +145,8 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
+        from django.http import HttpResponse
+
         form = InviteUserForm(
             data=request.POST,
             organization=self.organization,
@@ -160,25 +182,27 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
                 request,
                 _("Invitation sent."),
             )
-            return HttpResponseRedirect(
-                reverse_with_org("members:member_list", request=request)
-            )
-        memberships = (
-            Membership.objects.filter(org=self.organization, is_active=True)
-            .select_related("user")
-            .prefetch_related("membership_roles__role")
-            .order_by("user__name", "user__username")
-        )
+
+            redirect_url = reverse_with_org("members:member_list", request=request)
+
+            # For HTMX requests, use HX-Redirect to close modal and redirect
+            if request.headers.get("HX-Request"):
+                response = HttpResponse()
+                response["HX-Redirect"] = redirect_url
+                return response
+
+            return HttpResponseRedirect(redirect_url)
+
+        # Form validation failed - re-render the form with errors
         context = {
             "organization": self.organization,
-            "memberships": memberships,
-            "pending_invites": PendingInvite.objects.filter(
-                org=self.organization
-            ).order_by("-created"),
-            "add_form": OrganizationMemberForm(organization=self.organization),
             "invite_form": form,
         }
-        return render(request, "members/member_list.html", context, status=400)
+        return render(
+            request,
+            "members/partials/member_invite_form.html",
+            context,
+        )
 
 
 class InviteCancelView(OrganizationAdminRequiredMixin, View):
@@ -500,6 +524,8 @@ class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateVie
 class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
     """Create a new org-level guest invite."""
 
+    organization_context_attr = "organization"
+
     def get(self, request, *args, **kwargs):
         """Return the invite form modal content."""
         from validibot.workflows.models import Workflow
@@ -616,9 +642,17 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
         )
 
         # Redirect back to guest list
-        return HttpResponseRedirect(
-            reverse_with_org("members:guest_list", request=request)
-        )
+        redirect_url = reverse_with_org("members:guest_list", request=request)
+
+        # For HTMX requests, use HX-Redirect to close modal and redirect
+        if request.headers.get("HX-Request"):
+            from django.http import HttpResponse
+
+            response = HttpResponse()
+            response["HX-Redirect"] = redirect_url
+            return response
+
+        return HttpResponseRedirect(redirect_url)
 
     def _render_form_response(
         self, request, email="", scope="SELECTED", workflow_ids=None
@@ -652,6 +686,8 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
 class GuestInviteCancelView(OrganizationAdminRequiredMixin, View):
     """Cancel a pending org-level guest invite."""
 
+    organization_context_attr = "organization"
+
     def post(self, request, *args, **kwargs):
         from validibot.workflows.models import GuestInvite
 
@@ -675,6 +711,8 @@ class GuestInviteCancelView(OrganizationAdminRequiredMixin, View):
 
 class GuestRevokeAllView(OrganizationAdminRequiredMixin, View):
     """Revoke all workflow access for a guest user."""
+
+    organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
         from validibot.workflows.models import WorkflowAccessGrant

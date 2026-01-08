@@ -354,7 +354,8 @@ class ValidationCallbackService:
         # Persist full envelope plus a signals namespace for downstream steps.
         # Merge with any existing output (e.g., job metadata like execution_bundle_uri)
         # so the step retains launch-time diagnostics after callback finalization.
-        step_output = output_envelope.model_dump()
+        # Use mode='json' to serialize datetime objects as ISO strings for JSONField.
+        step_output = output_envelope.model_dump(mode="json")
         try:
             # FMI envelopes expose output_values keyed by catalog slug
             signals = getattr(output_envelope.outputs, "output_values", None)

@@ -362,6 +362,9 @@ class ValidationCallbackService:
             if signals is None and hasattr(output_envelope.outputs, "outputs"):
                 signals = getattr(output_envelope.outputs, "outputs", None)
             if signals:
+                # Serialize Pydantic models to dicts for JSONField storage
+                if hasattr(signals, "model_dump"):
+                    signals = signals.model_dump(mode="json")
                 step_output = {**step_output, "signals": signals}
         except Exception:
             logger.exception(

@@ -107,7 +107,10 @@ class EnergyPlusValidatorE2ETest(TestCase):
             "TEST_ENERGYPLUS_WEATHER_FILE",
             "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
         )
-        bucket_path = f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+        bucket_path = (
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/"
+            f"{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
+        )
 
         client = storage.Client()
         bucket = client.bucket(settings.GCS_VALIDATION_BUCKET)
@@ -213,7 +216,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
 
         weather_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_WEATHER_PREFIX}/{self.weather_file}"
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{self.weather_file}"
         )
 
         model_uri = self._upload_to_gcs(
@@ -334,7 +337,7 @@ class EnergyPlusValidatorE2ETest(TestCase):
 
         weather_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_WEATHER_PREFIX}/{self.weather_file}"
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{self.weather_file}"
         )
 
         logger.info("Step 1: Uploading invalid model to GCS")

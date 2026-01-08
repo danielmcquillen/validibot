@@ -171,7 +171,7 @@ def launch_energyplus_validation(
         model_file_uri = f"{execution_bundle_uri}/model.epjson"
         weather_file_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
         )
         input_envelope_uri = f"{execution_bundle_uri}/input.json"
 

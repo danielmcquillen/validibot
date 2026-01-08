@@ -552,9 +552,12 @@ TEST_ENERGYPLUS_WEATHER_FILE = env(
     "TEST_ENERGYPLUS_WEATHER_FILE",
     default="USA_CA_SF.epw",
 )
-GCS_WEATHER_PREFIX = env(
-    "GCS_WEATHER_PREFIX",
-    default="assets/weather",
+# Validator assets are stored under gs://{bucket}/validator_assets/{asset_type}/
+# Weather data files (EPW) go in the weather_data subdirectory
+GCS_VALIDATOR_ASSETS_PREFIX = "validator_assets"
+GCS_WEATHER_DATA_DIR = env(
+    "GCS_WEATHER_DATA_DIR",
+    default="weather_data",
 )
 
 # PostHog (or other) tracker settings

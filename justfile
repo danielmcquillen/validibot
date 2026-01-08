@@ -2172,6 +2172,133 @@ gcp-scheduler-resume job_name:
         --location {{gcp_region}}
 
 # =============================================================================
+# Validator Assets Management
+# =============================================================================
+#
+# Validator assets (weather files, etc.) are stored in GCS under:
+#   gs://{bucket}/validator_assets/{asset_type}/
+#
+# Weather data files go in the weather_data subdirectory.
+# Each environment has its own bucket.
+
+# Sync weather data files from local ../weather_data directory to GCS
+# Usage: just sync-weather dev|staging|prod|all
+sync-weather env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    WEATHER_SOURCE="../weather_data"
+    ASSETS_PREFIX="validator_assets/weather_data"
+
+    if [ ! -d "$WEATHER_SOURCE" ]; then
+        echo "Error: Weather data directory not found: $WEATHER_SOURCE"
+        echo "Please create the directory and add EPW files to sync."
+        exit 1
+    fi
+
+    EPW_COUNT=$(find "$WEATHER_SOURCE" -name "*.epw" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$EPW_COUNT" -eq 0 ]; then
+        echo "Error: No EPW files found in $WEATHER_SOURCE"
+        exit 1
+    fi
+    echo "Found $EPW_COUNT EPW file(s) to sync"
+
+    sync_to_bucket() {
+        local bucket=$1
+        local env_name=$2
+        local gcs_path="gs://$bucket/$ASSETS_PREFIX/"
+        echo ""
+        echo "Syncing to $env_name bucket: $gcs_path"
+
+        # Run gsutil rsync and capture exit code
+        if ! gsutil -m rsync -r "$WEATHER_SOURCE/" "$gcs_path"; then
+            echo "❌ ERROR: gsutil rsync failed for $env_name"
+            exit 1
+        fi
+
+        # Verify files were uploaded by counting them
+        local remote_count
+        remote_count=$(gsutil ls "$gcs_path*.epw" 2>/dev/null | wc -l | tr -d ' ')
+
+        if [ "$remote_count" -eq 0 ]; then
+            echo "❌ ERROR: No EPW files found in bucket after sync"
+            exit 1
+        fi
+
+        if [ "$remote_count" -ne "$EPW_COUNT" ]; then
+            echo "⚠️  WARNING: Local has $EPW_COUNT files, bucket has $remote_count files"
+        fi
+
+        echo "✓ $env_name sync complete ($remote_count files in bucket)"
+    }
+
+    case "{{env}}" in
+        dev)
+            sync_to_bucket "validibot-files-dev" "dev"
+            ;;
+        staging)
+            sync_to_bucket "validibot-files-staging" "staging"
+            ;;
+        prod)
+            echo "⚠️  WARNING: You are about to sync weather files to PRODUCTION"
+            read -p "Are you sure? (yes/no): " confirm
+            if [ "$confirm" != "yes" ]; then
+                echo "Aborted."
+                exit 1
+            fi
+            sync_to_bucket "validibot-files" "prod"
+            ;;
+        all)
+            sync_to_bucket "validibot-files-dev" "dev"
+            sync_to_bucket "validibot-files-staging" "staging"
+            echo ""
+            echo "⚠️  WARNING: About to sync to PRODUCTION"
+            read -p "Continue with prod sync? (yes/no): " confirm
+            if [ "$confirm" == "yes" ]; then
+                sync_to_bucket "validibot-files" "prod"
+            else
+                echo "Skipped prod sync."
+            fi
+            ;;
+        *)
+            echo "Error: Invalid environment '{{env}}'"
+            echo "Usage: just sync-weather dev|staging|prod|all"
+            exit 1
+            ;;
+    esac
+
+    echo ""
+    echo "✓ Weather data sync complete"
+
+# List weather files in a bucket
+# Usage: just list-weather dev|staging|prod
+list-weather env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    ASSETS_PREFIX="validator_assets/weather_data"
+
+    case "{{env}}" in
+        dev)
+            BUCKET="validibot-files-dev"
+            ;;
+        staging)
+            BUCKET="validibot-files-staging"
+            ;;
+        prod)
+            BUCKET="validibot-files"
+            ;;
+        *)
+            echo "Error: Invalid environment '{{env}}'"
+            echo "Usage: just list-weather dev|staging|prod"
+            exit 1
+            ;;
+    esac
+
+    echo "Weather files in gs://$BUCKET/$ASSETS_PREFIX/:"
+    gsutil ls -l "gs://$BUCKET/$ASSETS_PREFIX/" 2>/dev/null || echo "  (no files found)"
+
+# =============================================================================
 # Maintenance Mode
 # =============================================================================
 #

@@ -2,10 +2,25 @@
 
 This document describes the complete architecture for running validations using Cloud Run Services and Cloud Run Jobs.
 
-## Weather file catalog (EnergyPlus)
+## Validator Assets
 
-- Store all EPW files under a fixed, read-only prefix: `gs://<validation-bucket>/<GCS_WEATHER_PREFIX>/<file>.epw` (default prefix: `assets/weather`).
-- Grant validator service accounts only `roles/storage.objectViewer` on that prefix (or bucket) so runtime code can read but not modify.
+Validator assets (weather files, reference data, etc.) are stored in GCS under:
+
+```
+gs://<bucket>/validator_assets/<asset_type>/
+```
+
+Each environment has its own bucket:
+- **dev**: `validibot-files-dev`
+- **staging**: `validibot-files-staging`
+- **prod**: `validibot-files`
+
+### Weather file catalog (EnergyPlus)
+
+- Store all EPW files under: `gs://<bucket>/validator_assets/weather_data/<file>.epw`
+- Use `just sync-weather <env>` to sync local weather files from `../weather_data/` to GCS
+- Use `just list-weather <env>` to list weather files in a bucket
+- Grant validator service accounts only `roles/storage.objectViewer` on the bucket so runtime code can read but not modify.
 - Keep the catalog in the same region as the jobs to avoid cross-region egress.
 - Optionally enable object versioning on the bucket for accidental delete/overwrite recovery; the job should still treat the catalog as immutable.
 - Tests that need a weather file should verify it exists at the prefix (and may upload a fixture in non-prod) but production flows must only read from the catalog.

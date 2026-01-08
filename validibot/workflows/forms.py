@@ -895,6 +895,22 @@ ENERGYPLUS_WEATHER_FILE_CHOICES = (
         "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
         _("San Francisco, CA (TMY3)"),
     ),
+    (
+        "USA_CO_Golden-NREL.724666_TMY3.epw",
+        _("Golden/Denver, CO (TMY3)"),
+    ),
+    (
+        "USA_FL_Tampa.Intl.AP.722110_TMY3.epw",
+        _("Tampa, FL (TMY3)"),
+    ),
+    (
+        "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
+        _("Chicago O'Hare, IL (TMY3)"),
+    ),
+    (
+        "USA_VA_Sterling-Washington.Dulles.Intl.AP.724030_TMY3.epw",
+        _("Washington Dulles, VA (TMY3)"),
+    ),
 )
 
 

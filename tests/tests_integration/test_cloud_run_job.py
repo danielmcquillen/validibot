@@ -287,13 +287,16 @@ class CloudRunJobIntegrationTest(TestCase):
         )
         weather_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
         )
 
         # Ensure weather file exists in the catalog (seed fixture in non-prod)
         from google.cloud import storage
 
-        weather_blob_path = f"{settings.GCS_WEATHER_PREFIX}/{weather_file}"
+        weather_blob_path = (
+            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/"
+            f"{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
+        )
         client = storage.Client()
         bucket = client.bucket(settings.GCS_VALIDATION_BUCKET)
         blob = bucket.blob(weather_blob_path)

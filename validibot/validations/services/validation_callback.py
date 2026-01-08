@@ -372,7 +372,36 @@ class ValidationCallbackService:
                 extra={"run_id": run.id},
             )
         existing_output = dict(step_run.output or {})
-        step_run.output = {**existing_output, **step_output}
+        merged_output = {**existing_output, **step_output}
+
+        # Defensive JSON serialization: ensure all values are JSON-safe before
+        # saving to the database. This catches any Pydantic models or other
+        # non-serializable objects that slipped through.
+        import json
+
+        def make_json_safe(obj):
+            """Convert Pydantic models and other objects to JSON-safe types."""
+            if hasattr(obj, "model_dump"):
+                return obj.model_dump(mode="json")
+            if isinstance(obj, dict):
+                return {k: make_json_safe(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [make_json_safe(item) for item in obj]
+            # Try JSON serialization to catch any remaining issues
+            try:
+                json.dumps(obj)
+            except TypeError:
+                # If not serializable, convert to string as last resort
+                logger.warning(
+                    "Non-serializable object in output: %s (%s)",
+                    type(obj).__name__,
+                    obj,
+                )
+                return str(obj)
+            else:
+                return obj
+
+        step_run.output = make_json_safe(merged_output)
         step_run.error = step_error
         step_run.save(
             update_fields=[

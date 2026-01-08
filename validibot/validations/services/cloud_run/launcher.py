@@ -98,7 +98,7 @@ def launch_energyplus_validation(
     Launch an EnergyPlus validation via Cloud Run Jobs.
 
     This function orchestrates the complete flow:
-    1. Extract weather file from ruleset metadata
+    1. Extract weather file from step config
     2. Upload submission file to GCS
     3. Build typed input envelope
     4. Upload envelope to GCS
@@ -109,14 +109,14 @@ def launch_energyplus_validation(
         run: ValidationRun instance (already created in PENDING status)
         validator: Validator instance
         submission: Submission instance with IDF/epJSON content
-        ruleset: Ruleset instance with weather_file metadata
-        step: WorkflowStep instance with config
+        ruleset: Ruleset instance (may be None for EnergyPlus)
+        step: WorkflowStep instance with config including weather_file
 
     Returns:
         ValidationResult with passed=None (pending), issues=[], stats with job info
 
     Raises:
-        ValueError: If required metadata is missing (e.g., weather_file)
+        ValueError: If required config is missing (e.g., weather_file)
         Exception: If GCS upload or job trigger fails
 
     Example:
@@ -152,14 +152,14 @@ def launch_energyplus_validation(
                 stats=existing_output,
             )
 
-        # 1. Extract weather file from ruleset metadata
-        if not ruleset or not ruleset.metadata:
-            msg = "EnergyPlus validations require a ruleset with weather_file metadata"
-            raise ValueError(msg)  # noqa: TRY301
-
-        weather_file = ruleset.metadata.get("weather_file")
+        # 1. Extract weather file from step config
+        step_config = step.config or {}
+        weather_file = step_config.get("weather_file")
         if not weather_file:
-            msg = "Ruleset metadata must include 'weather_file' (e.g., 'USA_CA_SF.epw')"
+            msg = (
+                "EnergyPlus step config must include 'weather_file' "
+                "(e.g., 'USA_CA_SF.epw')"
+            )
             raise ValueError(msg)  # noqa: TRY301
 
         # 2. Build GCS paths

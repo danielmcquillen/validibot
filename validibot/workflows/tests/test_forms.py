@@ -376,6 +376,7 @@ def test_energyplus_form_blocks_simulation_checks_without_run_flag():
     form = EnergyPlusStepConfigForm(
         data={
             "name": "Energy simulation",
+            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
             "simulation_checks": ["eui-range"],
         },
     )
@@ -391,6 +392,7 @@ def test_energyplus_form_accepts_simulation_checks_when_enabled():
     form = EnergyPlusStepConfigForm(
         data={
             "name": "Energy simulation",
+            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
             "run_simulation": "on",
             "simulation_checks": ["eui-range"],
         },

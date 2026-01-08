@@ -890,6 +890,14 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
+ENERGYPLUS_WEATHER_FILE_CHOICES = (
+    (
+        "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+        _("San Francisco, CA (TMY3)"),
+    ),
+)
+
+
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
     """Collects EnergyPlus step options including optional simulation checks.
 
@@ -897,6 +905,14 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         form = EnergyPlusStepConfigForm(data={"run_simulation": True})
     """
 
+    weather_file = forms.ChoiceField(
+        label=_("Default weather file"),
+        choices=ENERGYPLUS_WEATHER_FILE_CHOICES,
+        help_text=_(
+            "Weather file (EPW) used for EnergyPlus simulations. "
+            "This determines the climate data for the simulation."
+        ),
+    )
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
         required=False,
@@ -941,6 +957,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             config = step.config or {}
             self.initial.update(
                 {
+                    "weather_file": config.get("weather_file", ""),
                     "run_simulation": config.get("run_simulation", False),
                     "idf_checks": config.get("idf_checks", []),
                     "simulation_checks": config.get("simulation_checks", []),

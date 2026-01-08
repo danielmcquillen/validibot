@@ -306,6 +306,7 @@ class WorkflowStepAssertionsTests(TestCase):
             data={
                 "name": "Energy check",
                 "description": "",
+                "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
                 "run_simulation": True,
                 "idf_checks": [],
                 "simulation_checks": [],

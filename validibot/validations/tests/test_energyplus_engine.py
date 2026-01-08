@@ -17,9 +17,12 @@ pytestmark = pytest.mark.django_db
 
 
 def _energyplus_ruleset():
+    """Create a minimal EnergyPlus ruleset for testing.
+
+    Note: weather_file is now stored in step.config, not ruleset.metadata.
+    """
     return RulesetFactory(
         ruleset_type=RulesetType.ENERGYPLUS,
-        metadata={"weather_file": "USA_CA_SF.epw"},
         rules_text="{}",
     )
 

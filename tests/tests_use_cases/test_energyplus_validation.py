@@ -54,7 +54,6 @@ def energyplus_workflow(api_client):
         user=user,
         ruleset_type=RulesetType.ENERGYPLUS,
         rules_text="{}",
-        metadata={"weather_file": "USA_CA_SF.epw"},
     )
 
     workflow = WorkflowFactory(
@@ -70,7 +69,10 @@ def energyplus_workflow(api_client):
         validator=validator,
         ruleset=ruleset,
         order=1,
-        config={"run_simulation": True},
+        config={
+            "run_simulation": True,
+            "weather_file": "USA_CA_SF.epw",
+        },
     )
 
     api_client.force_authenticate(user=user)

@@ -409,6 +409,7 @@ def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
         "max": float(eui_max) if eui_max is not None else None,
     }
     return {
+        "weather_file": form.cleaned_data.get("weather_file", ""),
         "run_simulation": form.cleaned_data.get("run_simulation", False),
         "idf_checks": form.cleaned_data.get("idf_checks", []),
         "simulation_checks": form.cleaned_data.get("simulation_checks", []),

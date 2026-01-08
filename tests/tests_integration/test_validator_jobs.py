@@ -301,6 +301,192 @@ class EnergyPlusValidatorE2ETest(TestCase):
                 f"(status={status}); see job logs for details.",
             )
 
+    def test_energyplus_error_messages_extracted(self) -> None:
+        """
+        Validator should extract error messages from .err file when validation fails.
+
+        This test uses an invalid model file that will cause EnergyPlus to fail
+        with errors. We verify that:
+        1. The output envelope has status 'failed_validation'
+        2. The 'messages' array is populated with error messages from the .err file
+        3. Error messages have the correct severity and structure
+        """
+        logger.info("=" * 60)
+        logger.info("TEST: test_energyplus_error_messages_extracted")
+        logger.info("=" * 60)
+
+        # Use a different run ID for this test
+        self.test_run_id = f"test-eplus-errors-{uuid.uuid4()}"
+        logger.info("Test run_id: %s", self.test_run_id)
+
+        # Use an invalid model that will cause EnergyPlus to fail with errors
+        invalid_model_path = (
+            Path(settings.BASE_DIR)
+            / "tests"
+            / "data"
+            / "energyplus"
+            / "invalid_model.epjson"
+        )
+        if not invalid_model_path.exists():
+            self.skipTest(f"Invalid model fixture not found: {invalid_model_path}")
+
+        model_content = invalid_model_path.read_text()
+
+        weather_uri = (
+            f"gs://{settings.GCS_VALIDATION_BUCKET}/"
+            f"{settings.GCS_WEATHER_PREFIX}/{self.weather_file}"
+        )
+
+        logger.info("Step 1: Uploading invalid model to GCS")
+        model_uri = self._upload_to_gcs(
+            f"runs/{self.test_org_id}/{self.test_run_id}/model.epjson",
+            model_content,
+            "application/json",
+        )
+
+        logger.info("Step 2: Building input envelope")
+        envelope = {
+            "schema_version": "validibot.input.v1",
+            "run_id": self.test_run_id,
+            "validator": {
+                "id": "test-validator",
+                "type": "ENERGYPLUS",
+                "version": "24.1",
+            },
+            "org": {
+                "id": self.test_org_id,
+                "name": "Test Organization",
+            },
+            "workflow": {
+                "id": "test-workflow",
+                "step_id": "test-step",
+                "step_name": "Test EnergyPlus Error Extraction",
+            },
+            "input_files": [
+                {
+                    "name": "model.epjson",
+                    "mime_type": "application/vnd.energyplus.epjson",
+                    "role": "primary-model",
+                    "uri": model_uri,
+                },
+                {
+                    "name": "weather.epw",
+                    "mime_type": "application/vnd.energyplus.epw",
+                    "role": "weather",
+                    "uri": weather_uri,
+                },
+            ],
+            "inputs": {
+                "timestep_per_hour": 4,
+                "output_variables": [],
+                "invocation_mode": "cli",
+            },
+            "context": {
+                "skip_callback": True,
+                "execution_bundle_uri": (
+                    f"gs://{settings.GCS_VALIDATION_BUCKET}"
+                    f"/runs/{self.test_org_id}/{self.test_run_id}"
+                ),
+            },
+        }
+
+        logger.info("Step 3: Uploading input envelope")
+        input_uri = self._upload_to_gcs(
+            f"runs/{self.test_org_id}/{self.test_run_id}/input.json",
+            json.dumps(envelope),
+            "application/json",
+        )
+
+        logger.info("Step 4: Triggering EnergyPlus Cloud Run Job")
+        execution_name = run_validator_job(
+            project_id=settings.GCP_PROJECT_ID,
+            region=settings.GCP_REGION,
+            job_name=settings.GCS_ENERGYPLUS_JOB_NAME,
+            input_uri=input_uri,
+        )
+        logger.info("Execution started: %s", execution_name)
+        self.assertTrue(execution_name)
+
+        logger.info("Step 5: Polling for output envelope")
+        output = self._poll_output_envelope()
+        if output is None:
+            self.skipTest(
+                "EnergyPlus output not found within timeout; skipping E2E assertion.",
+            )
+
+        logger.info("Step 6: Validating output envelope")
+        logger.info("  Output: %s", json.dumps(output, indent=2, default=str))
+
+        # Basic schema checks
+        self.assertIn(
+            output.get("schema_version"),
+            ["validibot.result.v1", "validibot.output.v1"],
+        )
+        self.assertEqual(output.get("run_id"), self.test_run_id)
+        self.assertEqual(output.get("validator", {}).get("type"), "ENERGYPLUS")
+
+        # We expect the status to be failed_validation for an invalid model
+        status = output.get("status")
+        logger.info("  status: %s", status)
+        self.assertIn(
+            status,
+            ["failed_validation", "failed_runtime"],
+            f"Expected failed status for invalid model, got: {status}",
+        )
+
+        # KEY ASSERTION: Error messages should be extracted from .err file
+        messages = output.get("messages", [])
+        logger.info("  messages count: %d", len(messages))
+        for msg in messages:
+            logger.info(
+                "    [%s] %s (code=%s)",
+                msg.get("severity", "?"),
+                msg.get("text", "")[:100],
+                msg.get("code"),
+            )
+
+        # Verify messages are present
+        self.assertGreater(
+            len(messages),
+            0,
+            "Expected error messages to be extracted from .err file, but messages array is empty",
+        )
+
+        # Verify message structure
+        for msg in messages:
+            self.assertIn(
+                "severity",
+                msg,
+                "Each message should have a 'severity' field",
+            )
+            # Severity can be uppercase (from Pydantic enum) or lowercase
+            severity_lower = msg.get("severity", "").lower()
+            self.assertIn(
+                severity_lower,
+                ["error", "warning", "info"],
+                f"Unexpected severity: {msg.get('severity')}",
+            )
+            self.assertIn(
+                "text",
+                msg,
+                "Each message should have a 'text' field",
+            )
+            self.assertTrue(
+                msg.get("text"),
+                "Message text should not be empty",
+            )
+
+        # At least one error should be present (since we used an invalid model)
+        error_messages = [m for m in messages if m.get("severity", "").lower() == "error"]
+        logger.info("  error messages count: %d", len(error_messages))
+        self.assertGreater(
+            len(error_messages),
+            0,
+            "Expected at least one error message for invalid model",
+        )
+
+        logger.info("TEST PASSED: test_energyplus_error_messages_extracted")
+
 
 class FMIValidatorE2ETest(TestCase):
     """

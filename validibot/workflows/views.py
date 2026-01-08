@@ -54,6 +54,7 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import RulesetAssertion
@@ -1721,10 +1722,15 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         Return validators visible to this workflow's org. Compatibility is
         enforced at save time so the selector can still show validators that
         would require different file types.
+
+        Excludes DRAFT validators (not ready for display). COMING_SOON validators
+        are included but will be disabled in the UI.
         """
         validators: list[Validator] = []
         for validator in Validator.objects.filter(
             models.Q(org__isnull=True) | models.Q(org=workflow.org),
+        ).exclude(
+            release_state=ValidatorReleaseState.DRAFT,
         ).order_by("validation_type", "name", "pk"):
             self._ensure_validator_defaults(validator)
             validators.append(validator)
@@ -1899,10 +1905,18 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         is_compatible = workflow.validator_is_compatible(validator)
         allowed = ", ".join(workflow.allowed_file_type_labels())
         disabled_reason = None
-        if not is_compatible:
+        is_disabled = False
+
+        # Check if coming soon (takes precedence over compatibility)
+        if validator.is_coming_soon:
+            is_disabled = True
+            disabled_reason = _("Coming soon")
+        elif not is_compatible:
+            is_disabled = True
             disabled_reason = _(
                 "Not allowed for this workflow's submission types (%(allowed)s).",
             ) % {"allowed": allowed or _("selected types")}
+
         return {
             "value": f"validator:{validator.pk}",
             "label": validator.name,
@@ -1913,7 +1927,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
             "icon": getattr(validator, "display_icon", "bi-sliders"),
             "kind": "validator",
             "object": validator,
-            "disabled": not is_compatible,
+            "disabled": is_disabled,
             "disabled_reason": disabled_reason,
         }
 
@@ -1992,9 +2006,15 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         return getattr(self, "_step", None)
 
     def _validator_queryset(self):
+        """Return validators that can be selected for workflow steps.
+
+        Only PUBLISHED validators can be used in workflows. DRAFT and
+        COMING_SOON validators are excluded.
+        """
         workflow = self.get_workflow()
         return Validator.objects.filter(
             Q(is_system=True) | Q(org=workflow.org),
+            release_state=ValidatorReleaseState.PUBLISHED,
         )
 
     def get_validator(self) -> Validator:

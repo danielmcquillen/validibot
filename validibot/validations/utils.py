@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.providers import get_provider_for_validator
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ def create_default_validators():
             "name": _("Basic Validator"),
             "slug": "basic-validator",
             "short_description": _(
-                "The simplest validator. No signals or default assertions. "
+                "The simplest validator. "
                 "Allows workflow author to add signals and assertions directly "
                 "without a validator catalog.",
             ),
@@ -93,7 +94,7 @@ def create_default_validators():
             "description": _(
                 """
                 <p>Validate EnergyPlus IDF files for correctness and expected outputs. 
-                "Run simulations, surface findings, and keep building models 
+                Run simulations, surface findings, and keep building models 
                 reliable.</p>
                 """
             ),
@@ -143,7 +144,7 @@ def create_default_validators():
             ),
             "description": _(
                 """
-                <p>Use AI to validate submission content against your criteria. Blend 
+                <p>Use AI to validate submission content against your criteria. Blend
                 traditional assertions with AI scoring to review nuanced data quickly.
                 </p>
                 """
@@ -151,6 +152,7 @@ def create_default_validators():
             "validation_type": ValidationType.AI_ASSIST,
             "version": "1.0",
             "order": 5,
+            "release_state": ValidatorReleaseState.COMING_SOON,
         },
     ]
 
@@ -206,6 +208,11 @@ def create_default_validators():
         validator.allow_custom_assertion_targets = validator_data.get(
             "allow_custom_assertion_targets",
             validator.allow_custom_assertion_targets,
+        )
+        # Set release_state from config, defaulting to PUBLISHED for system validators
+        validator.release_state = validator_data.get(
+            "release_state",
+            ValidatorReleaseState.PUBLISHED,
         )
         validator.save()
 

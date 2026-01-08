@@ -146,6 +146,23 @@ class ValidationType(TextChoices):
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
 
 
+class ValidatorReleaseState(TextChoices):
+    """
+    Release state for system validators.
+
+    DRAFT: Validator is not shown anywhere in the UI. Used for validators
+           still under development.
+    COMING_SOON: Validator card is shown in the system library but cannot be
+                 viewed or used. The "View" button shows "Coming soon" and
+                 is disabled.
+    PUBLISHED: Validator is fully available - viewable and usable in workflows.
+    """
+
+    DRAFT = "DRAFT", _("Draft")
+    COMING_SOON = "COMING_SOON", _("Coming Soon")
+    PUBLISHED = "PUBLISHED", _("Published")
+
+
 # 'advanced' validation types that may require more resources or have special handling
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.ENERGYPLUS,

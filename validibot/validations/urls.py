@@ -46,6 +46,11 @@ urlpatterns = [
         name="validator_detail",
     ),
     path(
+        "library/custom/<slug:slug>/signals/",
+        views.ValidatorSignalsListView.as_view(),
+        name="validator_signals_list",
+    ),
+    path(
         "library/custom/<slug:slug>/assertions/",
         views.ValidatorDefaultAssertionsView.as_view(),
         name="validator_default_assertions",

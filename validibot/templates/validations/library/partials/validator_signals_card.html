@@ -5,13 +5,21 @@
     <div class="card-title mb-0">
       {% trans "Signals" %}
     </div>
-    {% if can_edit_validator %}
-      <button class="btn btn-sm btn-secondary"
-              data-bs-toggle="modal"
-              data-bs-target="#modal-signal-create">
-        <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
-      </button>
-    {% endif %}
+    <div class="d-flex gap-2">
+      {% if catalog_display.inputs or catalog_display.outputs %}
+        <a class="btn btn-sm btn-secondary"
+           href="{% org_url 'validations:validator_signals_list' slug=validator.slug %}">
+          <i class="bi bi-list-ul me-1"></i>{% trans "View all" %}
+        </a>
+      {% endif %}
+      {% if can_edit_validator %}
+        <button class="btn btn-sm btn-secondary"
+                data-bs-toggle="modal"
+                data-bs-target="#modal-signal-create">
+          <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+        </button>
+      {% endif %}
+    </div>
   </div>
   <div class="card-body">
     <div class="table-responsive">
@@ -56,10 +64,16 @@
                   {% trans "Input" %}
                 </td>
                 <td class="text-end">
-                  {% if can_edit_validator %}
-                    <div class="btn-group btn-group-sm"
-                         role="group"
-                         aria-label="{% trans 'Signal actions' %}">
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Signal actions' %}">
+                    <button class="btn btn-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                            title="{% trans 'View details' %}">
+                      <i class="bi bi-info-circle"></i>
+                    </button>
+                    {% if can_edit_validator %}
                       <button class="btn btn-secondary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
@@ -77,8 +91,8 @@
                         <i class="bi bi-trash"></i>
                       </button>
                       {# djlint:on #}
-                    </div>
-                  {% endif %}
+                    {% endif %}
+                  </div>
                 </td>
               </tr>
             {% endfor %}
@@ -104,10 +118,16 @@
                   {% trans "Output" %}
                 </td>
                 <td class="text-end">
-                  {% if can_edit_validator %}
-                    <div class="btn-group btn-group-sm"
-                         role="group"
-                         aria-label="{% trans 'Signal actions' %}">
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Signal actions' %}">
+                    <button class="btn btn-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                            title="{% trans 'View details' %}">
+                      <i class="bi bi-info-circle"></i>
+                    </button>
+                    {% if can_edit_validator %}
                       <button class="btn btn-secondary"
                               data-bs-toggle="modal"
                               data-bs-target="#modal-signal-edit-{{ entry.id }}">
@@ -123,8 +143,8 @@
                         <i class="bi bi-trash"></i>
                       </button>
                       {# djlint:on #}
-                    </div>
-                  {% endif %}
+                    {% endif %}
+                  </div>
                 </td>
               </tr>
             {% endfor %}

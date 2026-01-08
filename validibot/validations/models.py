@@ -37,6 +37,7 @@ from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import XMLSchemaType
 from validibot.workflows.models import Workflow
@@ -845,6 +846,16 @@ class Validator(TimeStampedModel):
         help_text=_("True when the validator ships with the platform."),
     )
 
+    release_state = models.CharField(
+        max_length=16,
+        choices=ValidatorReleaseState.choices,
+        default=ValidatorReleaseState.PUBLISHED,
+        help_text=_(
+            "Release state for system validators. DRAFT hides the validator, "
+            "COMING_SOON shows it disabled, PUBLISHED makes it fully available."
+        ),
+    )
+
     allow_custom_assertion_targets = models.BooleanField(
         default=False,
         help_text=_(
@@ -896,6 +907,21 @@ class Validator(TimeStampedModel):
             ValidationType.AI_ASSIST: "bi-robot",
         }.get(self.validation_type, "bi-journal-bookmark")  # default icon
         return bi_icon_class
+
+    @property
+    def is_published(self) -> bool:
+        """Return True if validator is published and fully available."""
+        return self.release_state == ValidatorReleaseState.PUBLISHED
+
+    @property
+    def is_coming_soon(self) -> bool:
+        """Return True if validator is marked as coming soon."""
+        return self.release_state == ValidatorReleaseState.COMING_SOON
+
+    @property
+    def is_draft(self) -> bool:
+        """Return True if validator is in draft state (hidden)."""
+        return self.release_state == ValidatorReleaseState.DRAFT
 
     def __str__(self):
         prefix = f"{self.validation_type}"

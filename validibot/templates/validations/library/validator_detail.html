@@ -145,6 +145,16 @@
       {% trans "Back to Validator Library" %}
     </a>
   </div>
+  {# Signal detail modals - available for all users #}
+  {% for entry in catalog_display.inputs %}
+    {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+  {% endfor %}
+  {% if show_output_tab %}
+    {% for entry in catalog_display.outputs %}
+      {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+    {% endfor %}
+  {% endif %}
+
   {% if can_edit_validator %}
     {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
     {% include "validations/library/partials/modal_rule_create.html" %}

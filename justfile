@@ -1766,6 +1766,16 @@ validator-deploy name stage: (validator-build-push name)
         --project {{gcp_project}}
     echo "✓ $JOB_NAME deployed"
 
+    # Grant the service account permission to run this job with overrides
+    # Uses custom role with run.jobs.run + run.jobs.runWithOverrides (for INPUT_URI env)
+    echo "Granting job runner permission to $SA on $JOB_NAME..."
+    gcloud run jobs add-iam-policy-binding "$JOB_NAME" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --member="serviceAccount:$SA" \
+        --role="projects/{{gcp_project}}/roles/validibot_job_runner"
+    echo "✓ IAM binding added"
+
 # Build and deploy all validator jobs to a stage
 # Usage: just validators-deploy-all dev | just validators-deploy-all prod
 validators-deploy-all stage:

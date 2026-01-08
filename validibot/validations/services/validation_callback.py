@@ -307,31 +307,10 @@ class ValidationCallbackService:
                 {"error": "Run mismatch in output envelope"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        if str(getattr(output_envelope.org, "id", "")) != str(run.org_id):
-            logger.warning(
-                "Envelope org mismatch: envelope=%s run=%s",
-                getattr(output_envelope.org, "id", ""),
-                run.org_id,
-            )
-            return Response(
-                {"error": "Org mismatch in output envelope"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if (
-            str(getattr(output_envelope.workflow, "step_id", ""))
-            != str(step_run.workflow_step_id)
-        ):
-            logger.warning(
-                "Envelope step mismatch: envelope=%s expected=%s",
-                getattr(output_envelope.workflow, "step_id", ""),
-                step_run.workflow_step_id,
-            )
-            return Response(
-                {"error": "Workflow step mismatch in output envelope"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Note: We don't validate org/workflow from the output envelope because
+        # ValidationOutputEnvelope doesn't contain those fields - they're only in
+        # the input envelope. The run_id check above is sufficient to match the
+        # callback to the correct run.
 
         # Map ValidationStatus to step status
         step_status_mapping = {

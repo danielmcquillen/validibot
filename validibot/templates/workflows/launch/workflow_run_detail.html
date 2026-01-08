@@ -16,7 +16,7 @@
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12">
         <h1 class="app-page-title">
-          <i class="bi bi-activity me-2"></i>{% trans "Workflow run status" %}
+          <i class="bi bi-activity me-2"></i>{% trans "Status for workflow:" %} {{ workflow.name|truncatechars:100 }}
         </h1>
       </div>
     </div>

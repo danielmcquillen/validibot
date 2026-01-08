@@ -26,9 +26,20 @@ sequenceDiagram
 ```
 
 IAM roles involved:
-- **Web/Worker service account**: `roles/run.invoker` on the validator job so Django can call the Jobs API.
+- **Web/Worker service account**: Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
 - **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
+
+### Custom IAM Role
+
+The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggering jobs with environment variable overrides (like `INPUT_URI`) requires `run.jobs.runWithOverrides`. We use a project-level custom role:
+
+```bash
+# Role: projects/project-a509c806-3e21-4fbc-b19/roles/validibot_job_runner
+# Permissions: run.jobs.run, run.jobs.runWithOverrides
+```
+
+This role is automatically granted by the `just validator-deploy` command.
 
 Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
 
@@ -68,6 +79,57 @@ gcloud run services describe validibot-worker \
 ```
 
 Then update your env file (`.envs/.production/.django`, `.envs/.dev/.django`, etc), run `just gcp-secrets <stage>`, and redeploy.
+
+## Deploying Validator Jobs
+
+Validator containers can be deployed using either justfile. Both are equivalent and kept in sync:
+
+| Location | Command | Notes |
+|----------|---------|-------|
+| `validibot/` | `just validator-deploy energyplus dev` | Uses symlink to `vb_validators_dev/` |
+| `vb_validators/` | `just deploy energyplus dev` | Native repo, shorter command |
+
+### Quick deploy
+
+```bash
+# From vb_validators directory
+just deploy energyplus dev      # Deploy EnergyPlus to dev
+just deploy fmi prod            # Deploy FMI to prod
+just deploy-all dev             # Deploy all validators to dev
+
+# From validibot directory
+just validator-deploy energyplus dev
+just validators-deploy-all dev
+```
+
+### What the deploy command does
+
+1. **Builds** the container image with `linux/amd64` platform (required by Cloud Run)
+2. **Pushes** to Artifact Registry at `australia-southeast1-docker.pkg.dev/project-xxx/validibot/`
+3. **Deploys** the Cloud Run Job with:
+   - Stage-appropriate job name (`validibot-validator-energyplus-dev` for dev, `validibot-validator-energyplus` for prod)
+   - Stage-appropriate service account (`validibot-cloudrun-dev@...` for dev)
+   - Memory (4Gi), CPU (2), timeout (1 hour), no retries
+   - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
+4. **Grants IAM permission** - adds custom `validibot_job_runner` role so the web/worker service can trigger the job with env overrides
+
+### Viewing logs and job status
+
+```bash
+# From vb_validators directory
+just list-jobs                      # List all validator jobs
+just describe-job energyplus dev    # Show job details
+just logs energyplus dev            # View recent logs
+
+# From validibot directory (equivalent)
+gcloud run jobs list --filter "name~validibot-validator" --region australia-southeast1
+```
+
+### Deleting a validator job
+
+```bash
+just delete-job energyplus dev
+```
 
 ## Multi-Environment Architecture
 

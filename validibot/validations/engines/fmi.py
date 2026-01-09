@@ -69,10 +69,6 @@ class FMIValidationEngine(BaseValidatorEngine):
             ValidationResult with passed=None (pending) if Cloud Run Jobs configured,
             or passed=False (error) if not configured or missing context.
         """
-        provider = self.resolve_provider(validator)
-        if provider:
-            provider.ensure_catalog_entries()
-
         # Store run_context on instance for CEL evaluation methods
         self.run_context = run_context
 

@@ -941,11 +941,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         ),
         required=False,
     )
-    energyplus_notes = forms.CharField(
-        label=_("EnergyPlus notes"),
-        required=False,
-        widget=forms.Textarea(attrs={"rows": 3}),
-    )
 
     def __init__(self, *args, step=None, **kwargs):
         super().__init__(*args, step=step, **kwargs)
@@ -957,7 +952,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "weather_file": config.get("weather_file", ""),
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
-                    "energyplus_notes": config.get("notes", ""),
                 }
             )
             for key, value in self.initial.items():

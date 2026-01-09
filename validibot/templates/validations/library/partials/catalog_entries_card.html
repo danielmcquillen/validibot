@@ -39,8 +39,8 @@
               <table class="table table-sm align-middle" data-sortable-table>
                 <thead>
                   <tr>
+                    <th class="text-muted small" data-sortable="true">{% trans "Name" %}</th>
                     <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
-                    <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
                     <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
                   </tr>
                 </thead>
@@ -49,14 +49,14 @@
                     <tr data-sv-catalog-entry
                         data-sv-catalog-label="{{ entry.label|default:entry.slug|escape }}"
                         data-sv-catalog-slug="{{ entry.slug|escape }}">
+                      <td class="small">
+                        {{ entry.label|default:entry.slug }}
+                      </td>
                       <td>
                         <code class="catalog-entry-slug d-inline-block text-truncate"
                               data-original-text="{{ entry.target_field|escape }}"
                               style="max-width: 220px;"
                               title="{{ entry.target_field }}">{{ entry.target_field }}</code>
-                      </td>
-                      <td class="text-muted small" data-sort-value="{{ entry.entry_type }}">
-                        {{ entry.get_entry_type_display }}
                       </td>
                       <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">
                         {{ entry.get_run_stage_display }}

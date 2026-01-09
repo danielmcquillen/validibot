@@ -406,7 +406,6 @@ def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
         "weather_file": form.cleaned_data.get("weather_file", ""),
         "idf_checks": form.cleaned_data.get("idf_checks", []),
         "run_simulation": form.cleaned_data.get("run_simulation", False),
-        "notes": form.cleaned_data.get("energyplus_notes", ""),
     }
 
 

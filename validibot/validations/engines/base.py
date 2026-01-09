@@ -31,7 +31,6 @@ from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.providers import get_provider_for_validator
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -123,12 +122,6 @@ class BaseValidatorEngine(ABC):
         append or remove helpers based on validator metadata.
         """
         return dict(self.cel_helpers)
-
-    def resolve_provider(self, validator: Validator):
-        """
-        Resolve the provider configured for the given validator, if any.
-        """
-        return get_provider_for_validator(validator)
 
     # ------------------------------------------------------------------ CEL helpers
 

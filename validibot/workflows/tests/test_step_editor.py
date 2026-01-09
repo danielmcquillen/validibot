@@ -566,7 +566,6 @@ def test_create_energyplus_step_with_idf_checks(client):
             "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
             "run_simulation": "on",
             "idf_checks": ["duplicate-names", "hvac-sizing"],
-            "energyplus_notes": "",
         },
     )
     # 302 redirect to assertions page on success

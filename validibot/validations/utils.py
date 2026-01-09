@@ -6,7 +6,6 @@ from django.utils.translation import gettext_lazy as _
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
-from validibot.validations.providers import get_provider_for_validator
 
 logger = logging.getLogger(__name__)
 
@@ -216,9 +215,9 @@ def create_default_validators():
         )
         validator.save()
 
-        provider = get_provider_for_validator(validator)
-        if provider:
-            provider.ensure_catalog_entries()
+    # Note: Catalog entries for system validators are synced separately via:
+    #   python manage.py sync_system_validators
+    # This function only creates the validator instances.
 
     return created, updated
 

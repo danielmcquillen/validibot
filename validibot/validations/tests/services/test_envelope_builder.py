@@ -37,7 +37,6 @@ def test_build_energyplus_input_envelope():
         callback_id="cb-test-123",
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
         timestep_per_hour=4,
-        output_variables=["Zone Mean Air Temperature"],
     )
 
     # Verify it's the right type
@@ -75,7 +74,6 @@ def test_build_energyplus_input_envelope():
 
     # Verify EnergyPlus-specific inputs
     assert envelope.inputs.timestep_per_hour == 4  # noqa: PLR2004
-    assert envelope.inputs.output_variables == ["Zone Mean Air Temperature"]
 
 
 def test_build_energyplus_input_envelope_defaults():
@@ -95,12 +93,11 @@ def test_build_energyplus_input_envelope_defaults():
         callback_url="https://api.example.com/callbacks/",
         callback_id=None,
         execution_bundle_uri="gs://test-bucket/runs/run-123/",
-        # Use defaults for timestep_per_hour and output_variables
+        # Use default for timestep_per_hour
     )
 
     # Verify defaults
     assert envelope.inputs.timestep_per_hour == 4  # noqa: PLR2004
-    assert envelope.inputs.output_variables == []
 
 
 def test_build_energyplus_input_envelope_with_callback_id():

@@ -197,7 +197,6 @@ def launch_energyplus_validation(
         # 5. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
-        output_variables = step_config.get("output_variables")
 
         envelope = build_energyplus_input_envelope(
             run_id=run_id,
@@ -213,7 +212,6 @@ def launch_energyplus_validation(
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
-            output_variables=output_variables,
         )
 
         # 6. Upload envelope to GCS

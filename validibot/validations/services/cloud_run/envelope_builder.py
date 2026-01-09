@@ -50,13 +50,15 @@ def build_energyplus_input_envelope(
     callback_id: str | None,
     execution_bundle_uri: str,
     timestep_per_hour: int = 4,
-    output_variables: list[str] | None = None,
 ) -> EnergyPlusInputEnvelope:
     """
     Build an EnergyPlusInputEnvelope from Django validation run data.
 
     This function creates a fully typed input envelope for EnergyPlus validators.
     It takes Django model data and transforms it into the Cloud Run Job input format.
+
+    The validator always returns a fixed set of output signals defined in its
+    catalog - users don't need to specify which outputs they want.
 
     Args:
         run_id: Validation run UUID
@@ -72,7 +74,6 @@ def build_energyplus_input_envelope(
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: GCS directory for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4)
-        output_variables: EnergyPlus output variables to collect
 
     Returns:
         Fully populated EnergyPlusInputEnvelope ready for GCS upload
@@ -91,7 +92,6 @@ def build_energyplus_input_envelope(
         ...     callback_url="https://api.example.com/callbacks/",
         ...     execution_bundle_uri="gs://bucket/runs/abc-123/",
         ...     timestep_per_hour=4,
-        ...     output_variables=["Zone Mean Air Temperature"],
         ... )
     """
     # Build validator info
@@ -134,7 +134,6 @@ def build_energyplus_input_envelope(
     # Build EnergyPlus-specific inputs
     energyplus_inputs = EnergyPlusInputs(
         timestep_per_hour=timestep_per_hour,
-        output_variables=output_variables or [],
     )
 
     # Build execution context
@@ -219,7 +218,6 @@ def build_input_envelope(
 
         # Get EnergyPlus-specific settings from step config
         timestep_per_hour = step.config.get("timestep_per_hour", 4)
-        output_variables = step.config.get("output_variables", [])
 
         return build_energyplus_input_envelope(
             run_id=str(run.id),
@@ -235,7 +233,6 @@ def build_input_envelope(
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
-            output_variables=output_variables,
         )
     if validator.validation_type == ValidationType.FMI:
         # FMU location: use gcs_uri when present, otherwise local file path

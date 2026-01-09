@@ -14,7 +14,6 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import XMLSchemaType
-from validibot.workflows.forms import EnergyPlusStepConfigForm
 from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import WorkflowForm
 from validibot.workflows.forms import WorkflowLaunchForm
@@ -366,35 +365,6 @@ def test_xml_schema_form_accepts_matching_rng():
             "name": "RNG schema",
             "schema_type": XMLSchemaType.RELAXNG.value,
             "schema_text": rng_schema,
-        },
-    )
-
-    assert form.is_valid(), form.errors
-
-
-def test_energyplus_form_blocks_simulation_checks_without_run_flag():
-    form = EnergyPlusStepConfigForm(
-        data={
-            "name": "Energy simulation",
-            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
-            "simulation_checks": ["eui-range"],
-        },
-    )
-
-    assert not form.is_valid()
-    assert any(
-        "Enable 'Run EnergyPlus simulation' to use post-simulation checks." in error
-        for error in form.errors["simulation_checks"]
-    )
-
-
-def test_energyplus_form_accepts_simulation_checks_when_enabled():
-    form = EnergyPlusStepConfigForm(
-        data={
-            "name": "Energy simulation",
-            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
-            "run_simulation": "on",
-            "simulation_checks": ["eui-range"],
         },
     )
 

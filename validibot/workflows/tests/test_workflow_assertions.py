@@ -309,7 +309,6 @@ class WorkflowStepAssertionsTests(TestCase):
                 "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
                 "run_simulation": True,
                 "idf_checks": [],
-                "simulation_checks": [],
             },
         )
         self.assertEqual(response.status_code, 302)

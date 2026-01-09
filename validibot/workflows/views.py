@@ -1522,16 +1522,7 @@ class WorkflowStepListView(WorkflowObjectMixin, View):
             config = dict(step.config or {})
             if step.validator:
                 vtype = step.validator.validation_type
-                if vtype == ValidationType.ENERGYPLUS:
-                    band = config.get("eui_band") or {}
-                    config.setdefault(
-                        "eui_band",
-                        {
-                            "min": band.get("min"),
-                            "max": band.get("max"),
-                        },
-                    )
-                elif vtype == ValidationType.XML_SCHEMA:
+                if vtype == ValidationType.XML_SCHEMA:
                     schema_type = config.get("schema_type")
                     if schema_type:
                         try:

@@ -402,18 +402,10 @@ def build_xml_schema_config(
 
 
 def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
-    eui_min = form.cleaned_data.get("eui_min")
-    eui_max = form.cleaned_data.get("eui_max")
-    eui_band = {
-        "min": float(eui_min) if eui_min is not None else None,
-        "max": float(eui_max) if eui_max is not None else None,
-    }
     return {
         "weather_file": form.cleaned_data.get("weather_file", ""),
-        "run_simulation": form.cleaned_data.get("run_simulation", False),
         "idf_checks": form.cleaned_data.get("idf_checks", []),
-        "simulation_checks": form.cleaned_data.get("simulation_checks", []),
-        "eui_band": eui_band,
+        "run_simulation": form.cleaned_data.get("run_simulation", False),
         "notes": form.cleaned_data.get("energyplus_notes", ""),
     }
 

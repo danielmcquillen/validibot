@@ -553,7 +553,7 @@ def test_create_ai_policy_requires_rules(client):
     assert "Create step" in html
 
 
-def test_create_energyplus_requires_simulation_toggle_for_checks(client):
+def test_create_energyplus_step_with_idf_checks(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.ENERGYPLUS, "energyplus", "EnergyPlus")
@@ -563,20 +563,18 @@ def test_create_energyplus_requires_simulation_toggle_for_checks(client):
         create_url,
         data={
             "name": "EnergyPlus QA",
-            "run_simulation": "",
-            "idf_checks": ["duplicate-names"],
-            "simulation_checks": ["eui-range"],
-            "eui_min": "",
-            "eui_max": "",
+            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+            "run_simulation": "on",
+            "idf_checks": ["duplicate-names", "hvac-sizing"],
             "energyplus_notes": "",
         },
     )
-    assert response.status_code == HTTPStatus.BAD_REQUEST
-    html = response.content.decode()
-    assert "Run EnergyPlus simulation" in html
-    assert "simulation_checks" in html
-    assert '<button type="submit" class="btn btn-secondary">' in html
-    assert "Create step" in html
+    # 302 redirect to assertions page on success
+    assert response.status_code == HTTPStatus.FOUND
+    step = workflow.steps.first()
+    assert step is not None
+    assert step.config["idf_checks"] == ["duplicate-names", "hvac-sizing"]
+    assert step.config["run_simulation"] is True
 
 
 def test_step_settings_does_not_expose_validator_selector(client):

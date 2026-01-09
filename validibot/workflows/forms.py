@@ -44,11 +44,6 @@ ENERGYPLUS_IDF_CHECK_CHOICES = (
     ("schedule-coverage", _("Check schedules cover 7 days")),
 )
 
-ENERGYPLUS_SIMULATION_CHECK_CHOICES = (
-    ("eui-range", _("Flag if Energy Use Intensity is outside range")),
-    ("peak-load", _("Check peak heating/cooling load")),
-)
-
 MIN_NUMBER_RULE_LINE_PARTS = 2
 
 MAX_SELECTORS = 20
@@ -915,7 +910,11 @@ ENERGYPLUS_WEATHER_FILE_CHOICES = (
 
 
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
-    """Collects EnergyPlus step options including optional simulation checks.
+    """Collects EnergyPlus step configuration options.
+
+    The EnergyPlus validator runs the simulation and returns output values.
+    Validation checks (EUI ranges, etc.) should be defined as assertions
+    against the returned signals.
 
     Example:
         form = EnergyPlusStepConfigForm(data={"run_simulation": True})
@@ -942,24 +941,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         ),
         required=False,
     )
-    simulation_checks = forms.MultipleChoiceField(
-        label=_("Post-simulation checks"),
-        required=False,
-        choices=ENERGYPLUS_SIMULATION_CHECK_CHOICES,
-        widget=forms.CheckboxSelectMultiple,
-    )
-    eui_min = forms.DecimalField(
-        label=_("EUI minimum (kWh/m²)"),
-        required=False,
-        min_value=0,
-        decimal_places=2,
-    )
-    eui_max = forms.DecimalField(
-        label=_("EUI maximum (kWh/m²)"),
-        required=False,
-        min_value=0,
-        decimal_places=2,
-    )
     energyplus_notes = forms.CharField(
         label=_("EnergyPlus notes"),
         required=False,
@@ -974,32 +955,14 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             self.initial.update(
                 {
                     "weather_file": config.get("weather_file", ""),
-                    "run_simulation": config.get("run_simulation", False),
                     "idf_checks": config.get("idf_checks", []),
-                    "simulation_checks": config.get("simulation_checks", []),
-                    "eui_min": config.get("eui_band", {}).get("min"),
-                    "eui_max": config.get("eui_band", {}).get("max"),
+                    "run_simulation": config.get("run_simulation", False),
                     "energyplus_notes": config.get("notes", ""),
                 }
             )
             for key, value in self.initial.items():
                 if key in self.fields and value not in (None, ""):
                     self.fields[key].initial = value
-
-    def clean(self):
-        cleaned = super().clean()
-        eui_min = cleaned.get("eui_min")
-        eui_max = cleaned.get("eui_max")
-        run_simulation = cleaned.get("run_simulation")
-        simulation_checks = cleaned.get("simulation_checks") or []
-        if not run_simulation and simulation_checks:
-            self.add_error(
-                "simulation_checks",
-                _("Enable 'Run EnergyPlus simulation' to use post-simulation checks."),
-            )
-        if eui_min is not None and eui_max is not None and eui_min > eui_max:
-            raise ValidationError(_("EUI minimum cannot exceed maximum."))
-        return cleaned
 
 
 class AiAssistStepConfigForm(BaseStepConfigForm):

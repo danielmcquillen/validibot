@@ -482,12 +482,11 @@ class WorkflowLaunchForm(forms.Form):
                 case _:
                     widget.attrs["class"] = f"{base_class} form-control".strip()
             if name == "attachment":
+                current_class = widget.attrs.get("class", "")
                 widget.attrs.update(
                     {
                         "data-dropzone-input": "true",
-                        "class": (
-                            f"{widget.attrs.get('class', '')} visually-hidden".strip(),
-                        ),
+                        "class": f"{current_class} visually-hidden".strip(),
                     },
                 )
             if name in {"filename", "metadata", "short_description"}:

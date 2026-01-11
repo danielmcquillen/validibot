@@ -76,11 +76,12 @@ class WorkflowLaunchController {
       this.renderSelectedFile();
     });
 
+    // The browse button is a <label for="..."> which natively opens the file picker.
+    // We only need to stop propagation to prevent the dropzone click handler from
+    // also triggering (which would open the file picker twice).
     this.browseButtons?.forEach((button) => {
       button.addEventListener('click', (event) => {
-        event.preventDefault();
         event.stopPropagation();
-        this.fileInput?.click();
       });
     });
 

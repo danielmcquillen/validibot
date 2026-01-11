@@ -516,6 +516,26 @@ class WorkflowLaunchForm(forms.Form):
             raise forms.ValidationError(
                 _("Select a supported file type."),
             )
+
+        # Validate file extension for uploads
+        if attachment:
+            from validibot.validations.models import get_allowed_extensions_for_workflow
+
+            filename = getattr(attachment, "name", "") or ""
+            ext = ""
+            if "." in filename:
+                ext = filename.rsplit(".", 1)[-1].lower()
+            allowed_extensions = get_allowed_extensions_for_workflow(self.workflow)
+            if allowed_extensions and ext not in allowed_extensions:
+                ext_list = ", ".join(sorted(f".{e}" for e in allowed_extensions))
+                self.add_error(
+                    "attachment",
+                    _(
+                        "File extension '.%(ext)s' is not allowed. "
+                        "Accepted extensions: %(allowed)s"
+                    ) % {"ext": ext, "allowed": ext_list},
+                )
+
         cleaned["payload"] = payload
 
         metadata = cleaned.get("metadata")

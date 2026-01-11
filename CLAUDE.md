@@ -134,6 +134,15 @@ uv run --extra dev mypy validibot
 - Follow Python import order (ruff handles this)
 - **Prefer absolute imports** over relative imports (e.g., `from mypackage.module import foo` not `from .module import foo`)
 
+## CSS and SCSS
+
+When modifying styles, **always edit the source SCSS files**, never the compiled CSS:
+
+- SCSS source: `validibot/static/src/scss/`
+- App-specific styles: `validibot/static/src/scss/app/` (e.g., `_workflow_launch.scss`)
+- Compiled output: `validibot/static/css/project.css` (do not edit directly)
+- Recompile after changes with `npm run build`
+
 ## Documentation Style
 
 - Write in clear, friendly, conversational style

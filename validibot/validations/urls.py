@@ -115,4 +115,9 @@ urlpatterns = [
         views.ValidationRunDeleteView.as_view(),
         name="validation_delete",
     ),
+    path(
+        "catalog-entry/<int:entry_pk>/",
+        views.CatalogEntryDetailView.as_view(),
+        name="catalog_entry_detail",
+    ),
 ]

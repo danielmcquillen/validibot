@@ -2046,3 +2046,17 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
             },
         )
         return breadcrumbs
+
+
+class CatalogEntryDetailView(LoginRequiredMixin, View):
+    """Return modal content for a catalog entry detail view."""
+
+    def get(self, request, entry_pk):
+        entry = get_object_or_404(ValidatorCatalogEntry, pk=entry_pk)
+        return render(
+            request,
+            "validations/library/partials/signal_detail_modal_content.html",
+            {
+                "signal": entry,
+            },
+        )

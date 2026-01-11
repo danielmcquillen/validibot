@@ -136,6 +136,20 @@
     </div>
   </div>
 
+  <div class="modal fade"
+       id="catalogEntryDetailModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content" id="catalog-entry-detail-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.body.addEventListener('close-modal', (event) => {
       const targetId = event.detail?.['close-modal'] || 'workflowAssertionModal';

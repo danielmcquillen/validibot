@@ -104,7 +104,8 @@
     background: var(--bs-body-bg);
     padding: 1rem 0;
 
-    .visually-hidden {
+    // Hide the actual file input - dropzone JS handles interaction
+    input[type="file"] {
       position: absolute;
       width: 1px;
       height: 1px;

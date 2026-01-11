@@ -39,9 +39,9 @@
               <table class="table table-sm align-middle" data-sortable-table>
                 <thead>
                   <tr>
-                    <th class="text-muted small" data-sortable="true">{% trans "Name" %}</th>
-                    <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
+                    <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
                     <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+                    <th class="text-muted small text-end"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -49,17 +49,23 @@
                     <tr data-sv-catalog-entry
                         data-sv-catalog-label="{{ entry.label|default:entry.slug|escape }}"
                         data-sv-catalog-slug="{{ entry.slug|escape }}">
-                      <td class="small">
-                        {{ entry.label|default:entry.slug }}
-                      </td>
                       <td>
-                        <code class="catalog-entry-slug d-inline-block text-truncate"
-                              data-original-text="{{ entry.target_field|escape }}"
-                              style="max-width: 220px;"
-                              title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+                        <code class="small">{{ entry.slug }}</code>
                       </td>
                       <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">
                         {{ entry.get_run_stage_display }}
+                      </td>
+                      <td class="text-end">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#catalogEntryDetailModal"
+                                hx-get="{% org_url 'validations:catalog_entry_detail' entry_pk=entry.pk %}"
+                                hx-target="#catalog-entry-detail-modal-content"
+                                hx-trigger="click"
+                                title="{% trans 'View details' %}">
+                          <i class="bi bi-info-circle"></i>
+                        </button>
                       </td>
                     </tr>
                   {% endfor %}

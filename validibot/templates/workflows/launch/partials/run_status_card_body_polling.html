@@ -9,7 +9,6 @@ This template partial contains the detail we want to show when a run is in progr
 
         <div class="alert alert-secondary d-flex flex-column flex-lg-row align-items-start align-items-lg-center gap-3 mb-4">
             <div class="d-flex flex-column justify-content-center align-items-center mt-3 p-2">
-
                 <p class="fw-semibold text-center mb-1">
                     {% trans "Validation is currently running." %}
                 </p>
@@ -17,6 +16,10 @@ This template partial contains the detail we want to show when a run is in progr
                     {% trans "We refresh this status automatically until the run completes." %}
                 </p>
 
+                <p class="small text-muted text-center mb-0">
+                    {% trans "If you navigate away, you can this URL to check back:" %}
+                    <a href="{{ request.build_absolute_uri }}">{{ request.build_absolute_uri }}</a>
+                </p>
 
             </div>
         </div>

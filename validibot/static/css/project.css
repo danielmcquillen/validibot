@@ -13735,7 +13735,7 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
   background: var(--bs-body-bg);
   padding: 1rem 0;
 }
-#workflow-launch .workflow-drop-wrapper .visually-hidden {
+#workflow-launch .workflow-drop-wrapper input[type=file] {
   position: absolute;
   width: 1px;
   height: 1px;

@@ -42,13 +42,18 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
     ) -> ValidationResult:
         # Store run_context on instance for CEL evaluation methods
         self.run_context = run_context
+        # JSON Schema validators require JSON content. This check is a safety net -
+        # the handler also validates file type compatibility before calling the engine.
         if submission.file_type != SubmissionFileType.JSON:
             return ValidationResult(
                 passed=False,
                 issues=[
                     ValidationIssue(
                         path="",
-                        message=_("This validator only accepts JSON submissions."),
+                        message=_(
+                            "JSON Schema validators require JSON content. "
+                            "Received file type: %(file_type)s"
+                        ) % {"file_type": submission.file_type},
                         severity=Severity.ERROR,
                     ),
                 ],

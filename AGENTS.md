@@ -172,6 +172,15 @@ All other code should be correct and not cause the Rust linter to fail. For exam
 When possible, try not to use 'magic numbers' in code (avoid the linting error PLR2004). For example use HTTPStatus rather than integers.
 Otherwise, create a static variable at the top of the module, and then use that variable in the code. For example MAX_NUMBER_TRIES=3 (and then use MAX_NUMBER_TRIES in code).
 
+# CSS and SCSS
+
+When modifying styles, **always edit the source SCSS files** in `validibot/static/src/scss/`, never the compiled CSS in `validibot/static/css/project.css`. The compiled CSS is generated from SCSS and will be overwritten.
+
+- SCSS source files are in `validibot/static/src/scss/`
+- App-specific styles go in `validibot/static/src/scss/app/` (e.g., `_workflow_launch.scss`)
+- After editing SCSS, recompile with `npm run build` or similar
+- The compiled CSS output is `validibot/static/css/project.css`
+
 # Django Template Conventions
 
 ## Comments

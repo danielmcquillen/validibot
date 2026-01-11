@@ -46,9 +46,6 @@ from validibot.workflows.models import WorkflowStep
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionFileType.JSON,
-        SubmissionFileType.XML,
-        SubmissionFileType.TEXT,
-        SubmissionFileType.YAML,
     ],
     ValidationType.JSON_SCHEMA: [
         SubmissionFileType.JSON,
@@ -80,9 +77,6 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
 VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionDataFormat.JSON,
-        SubmissionDataFormat.XML,
-        SubmissionDataFormat.YAML,
-        SubmissionDataFormat.TEXT,
     ],
     ValidationType.JSON_SCHEMA: [SubmissionDataFormat.JSON],
     ValidationType.XML_SCHEMA: [SubmissionDataFormat.XML],
@@ -103,6 +97,41 @@ VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
         SubmissionDataFormat.TEXT,
     ],
 }
+
+
+# Allowed file extensions for file uploads, keyed by validation type.
+# Extensions should be lowercase without leading dot. These are validated
+# when a user uploads a file (not when pasting text directly).
+VALIDATION_TYPE_ALLOWED_EXTENSIONS: dict[str, list[str]] = {
+    ValidationType.BASIC: ["json"],
+    ValidationType.JSON_SCHEMA: ["json"],
+    ValidationType.XML_SCHEMA: ["xml", "xsd", "rng", "dtd"],
+    ValidationType.ENERGYPLUS: ["idf", "epjson", "json"],
+    ValidationType.FMI: ["fmu", "json"],
+    ValidationType.CUSTOM_VALIDATOR: ["json", "yaml", "yml"],
+    ValidationType.AI_ASSIST: ["json", "txt"],
+}
+
+
+def get_allowed_extensions_for_workflow(workflow) -> set[str]:
+    """
+    Collect allowed file extensions for all validators in a workflow.
+
+    Returns a set of lowercase extensions (without leading dots) that are
+    allowed for file uploads to this workflow.
+    """
+    from validibot.workflows.models import WorkflowStep
+
+    extensions: set[str] = set()
+    steps = WorkflowStep.objects.filter(workflow=workflow).select_related("validator")
+    for step in steps:
+        validator = step.validator
+        if not validator:
+            continue
+        vtype = validator.validation_type
+        step_extensions = VALIDATION_TYPE_ALLOWED_EXTENSIONS.get(vtype, [])
+        extensions.update(ext.lower() for ext in step_extensions)
+    return extensions
 
 
 def default_supported_file_types_for_validation(

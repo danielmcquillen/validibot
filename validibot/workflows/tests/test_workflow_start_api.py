@@ -56,34 +56,39 @@ def user(db):
 
 @pytest.fixture
 def workflow(db, org, user):
+    """
+    Create a test workflow with JSON, XML, and TEXT file types.
+
+    Creates a validator with explicit supported_file_types to match the
+    workflow's allowed file types. This is needed for API tests that
+    submit different content types.
+    """
+    allowed_types = [
+        SubmissionFileType.JSON,
+        SubmissionFileType.XML,
+        SubmissionFileType.TEXT,
+    ]
     if WorkflowFactory:
         wf = WorkflowFactory(
             org=org,
             user=user,
-            allowed_file_types=[
-                SubmissionFileType.JSON,
-                SubmissionFileType.XML,
-                SubmissionFileType.TEXT,
-            ],
+            allowed_file_types=allowed_types,
         )
     else:
         wf = Workflow.objects.create(
             org=org,
             user=user,
             name=f"WF {uuid4().hex}",
-            allowed_file_types=[
-                SubmissionFileType.JSON,
-                SubmissionFileType.XML,
-                SubmissionFileType.TEXT,
-            ],
+            allowed_file_types=allowed_types,
         )
+    # Create validator with explicit file type support to match workflow
+    validator = ValidatorFactory(
+        validation_type=ValidationType.BASIC,
+        supported_file_types=allowed_types,
+    )
     if WorkflowStepFactory:
-        validator = ValidatorFactory(
-            validation_type=ValidationType.BASIC,
-        )
         WorkflowStepFactory(workflow=wf, validator=validator)
     else:
-        validator = ValidatorFactory(org=org, validation_type=ValidationType.BASIC)
         WorkflowStep.objects.create(workflow=wf, order=10, validator=validator)
     with contextlib.suppress(ValueError):
         user.set_current_org(org)

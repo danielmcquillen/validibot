@@ -440,6 +440,11 @@ def save_workflow_step(
     step.notes = (form.cleaned_data.get("notes") or "").strip()
     if "display_schema" in form.cleaned_data:
         step.display_schema = form.cleaned_data.get("display_schema", False)
+    if "show_success_messages" in form.cleaned_data:
+        step.show_success_messages = form.cleaned_data.get(
+            "show_success_messages",
+            False,
+        )
 
     config: dict[str, Any]
     ruleset: Ruleset | None = None
@@ -503,6 +508,7 @@ def save_workflow_action_step(
     step.description = action.description
     step.notes = (form.cleaned_data.get("notes") or "").strip()
     step.display_schema = False
+    step.show_success_messages = form.cleaned_data.get("show_success_messages", False)
     summary = {}
     if hasattr(form, "build_step_summary"):
         summary = form.build_step_summary(action) or {}

@@ -395,9 +395,10 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         ),
     )
     message_template = forms.CharField(
-        label=_("Message"),
+        label=_("Failure message"),
         required=False,
         help_text=_(
+            "Shown when the assertion fails. "
             "Supports {{value}} style placeholders plus filters round, "
             "upper, lower, default."
         ),
@@ -405,6 +406,20 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             attrs={
                 "rows": 2,
                 "placeholder": _("Use template variables like {{value}}"),
+            }
+        ),
+    )
+    success_message = forms.CharField(
+        label=_("Success message"),
+        required=False,
+        help_text=_(
+            "Shown when the assertion passes. "
+            "Supports {{value}} style placeholders."
+        ),
+        widget=forms.Textarea(
+            attrs={
+                "rows": 2,
+                "placeholder": _("e.g. EUI is within acceptable range"),
             }
         ),
     )
@@ -1047,6 +1062,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "severity": assertion.severity,
             "when_expression": assertion.when_expression,
             "message_template": assertion.message_template,
+            "success_message": assertion.success_message,
         }
         if assertion.target_catalog_entry_id:
             initial["target_catalog_entry"] = assertion.target_catalog_entry.slug

@@ -658,6 +658,13 @@ class WorkflowStep(TimeStampedModel):
         default=False,
         help_text=_("Allow launchers to view this schema in public workflow pages."),
     )
+    show_success_messages = models.BooleanField(
+        default=False,
+        help_text=_(
+            "When enabled, assertions display their success message when they pass. "
+            "If an assertion has no success message defined, a default is generated."
+        ),
+    )
 
     validator = models.ForeignKey(
         "validations.Validator",

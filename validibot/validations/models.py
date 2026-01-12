@@ -450,6 +450,12 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Message rendered when the assertion fails."),
     )
 
+    success_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Message rendered when the assertion passes."),
+    )
+
     cel_cache = models.TextField(
         blank=True,
         default="",

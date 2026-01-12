@@ -2598,6 +2598,7 @@ class WorkflowStepAssertionCreateView(WorkflowStepAssertionModalBase):
             rhs=form.cleaned_data["rhs_payload"],
             options=form.cleaned_data["options_payload"],
             message_template=form.cleaned_data.get("message_template") or "",
+            success_message=form.cleaned_data.get("success_message") or "",
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion added."))
@@ -2645,6 +2646,7 @@ class WorkflowStepAssertionUpdateView(WorkflowStepAssertionModalBase):
             rhs=form.cleaned_data["rhs_payload"],
             options=form.cleaned_data["options_payload"],
             message_template=form.cleaned_data.get("message_template") or "",
+            success_message=form.cleaned_data.get("success_message") or "",
             cel_cache=form.cleaned_data.get("cel_cache") or "",
         )
         messages.success(self.request, _("Assertion updated."))

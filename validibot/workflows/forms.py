@@ -625,6 +625,16 @@ class BaseStepConfigForm(forms.Form):
             "When enabled, users can view the schema.",
         ),
     )
+    show_success_messages = forms.BooleanField(
+        label=_("Show success messages for passed assertions"),
+        required=False,
+        initial=False,
+        help_text=_(
+            "When enabled, all assertions in this step will display a success message "
+            "when they pass. If an assertion has no custom success message, a default "
+            "message will be shown."
+        ),
+    )
     notes = forms.CharField(
         label=_("Author notes"),
         required=False,
@@ -659,6 +669,10 @@ class BaseStepConfigForm(forms.Form):
         if "display_schema" in self.fields:
             self.fields["display_schema"].initial = bool(
                 getattr(step, "display_schema", False),
+            )
+        if "show_success_messages" in self.fields:
+            self.fields["show_success_messages"].initial = bool(
+                getattr(step, "show_success_messages", False),
             )
         if step and hasattr(step, "notes") and step.notes:
             self.fields["notes"].initial = step.notes

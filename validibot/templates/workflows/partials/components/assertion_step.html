@@ -39,39 +39,35 @@
                             <i class="bi-pencil-square"></i>
                             <span class="visually-hidden">{% trans "Edit assertion" %}</span>
                         </button>
-                        <form method="post"
-                              action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
-                            {% csrf_token %}
-                            <input type="hidden" name="direction" value="up" />
-                            <button class="btn btn-secondary"
-                                    {% if forloop.first %}
-                                        disabled
-                                    {% endif %}>
-                                <i class="bi-arrow-up"></i>
-                                <span class="visually-hidden">{% trans "Move assertion up" %}</span>
-                            </button>
-                        </form>
-                        <form method="post"
-                              action="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}">
-                            {% csrf_token %}
-                            <input type="hidden" name="direction" value="down" />
-                            <button class="btn btn-secondary"
-                                    {% if forloop.last %}
-                                        disabled
-                                    {% endif %}>
-                                <i class="bi-arrow-down"></i>
-                                <span class="visually-hidden">{% trans "Move assertion down" %}</span>
-                            </button>
-                        </form>
-                        <form method="post"
-                              action="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
-                              onsubmit="return confirm('{% trans "Delete this assertion?" %}');">
-                            {% csrf_token %}
-                            <button class="btn btn-danger">
-                                <i class="bi-trash"></i>
-                                <span class="visually-hidden">{% trans "Delete assertion" %}</span>
-                            </button>
-                        </form>
+                        <button class="btn btn-secondary"
+                                hx-post="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                                hx-vals='{"direction": "up"}'
+                                hx-target="this"
+                                hx-swap="none"
+                                {% if forloop.first %}disabled{% endif %}>
+                            <i class="bi-arrow-up"></i>
+                            <span class="visually-hidden">{% trans "Move assertion up" %}</span>
+                        </button>
+                        <button class="btn btn-secondary"
+                                hx-post="{% org_url 'workflows:workflow_step_assertion_move' workflow.pk step.pk assertion.pk %}"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                                hx-vals='{"direction": "down"}'
+                                hx-target="this"
+                                hx-swap="none"
+                                {% if forloop.last %}disabled{% endif %}>
+                            <i class="bi-arrow-down"></i>
+                            <span class="visually-hidden">{% trans "Move assertion down" %}</span>
+                        </button>
+                        <button class="btn btn-danger"
+                                hx-post="{% org_url 'workflows:workflow_step_assertion_delete' workflow.pk step.pk assertion.pk %}"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                                hx-confirm="{% trans 'Delete this assertion?' %}"
+                                hx-target="this"
+                                hx-swap="none">
+                            <i class="bi-trash"></i>
+                            <span class="visually-hidden">{% trans "Delete assertion" %}</span>
+                        </button>
                     </div>
                 {% endif %}
             </div>

@@ -5,19 +5,36 @@ This engine forwards FMU submissions to Cloud Run Jobs for execution and
 translates the response into Validibot issues. The FMU is executed in a
 containerized environment with the FMI runtime.
 
-The validation flow:
+## Validation Flow
+
 1. Engine receives validator, submission, ruleset from workflow execution
 2. run_context is set by the handler with validation_run and workflow_step
 3. If Cloud Run Jobs is configured, launches async job via launcher
 4. Returns pending ValidationResult
-5. Cloud Run Job executes and POSTs callback to Django
-6. Callback updates ValidationRun with final results
+5. Cloud Run Job executes and writes FMIOutputEnvelope to GCS
+6. Job POSTs callback to Django with result_uri
+7. Callback downloads envelope and evaluates output-stage assertions
+
+## Output Envelope Structure
+
+The FMI Cloud Run Job produces an `FMIOutputEnvelope` (from
+vb_shared.fmi.envelopes) containing:
+
+- outputs.output_values: Dict keyed by catalog slug with simulation outputs
+  - Each key is a catalog entry slug (e.g., "indoor_temp_c")
+  - Values are the simulation outputs for that signal
+
+These output values are extracted via `extract_output_signals()` for use in
+output-stage CEL assertions (e.g., "indoor_temp_c < 26").
+
+If Cloud Run Jobs is not configured (local dev), returns not-implemented error.
 """
 
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from typing import Any
 
 from django.conf import settings
 from django.utils.translation import gettext as _
@@ -46,6 +63,42 @@ class FMIValidationEngine(BaseValidatorEngine):
     This engine uploads the FMU and input bindings to GCS, triggers a Cloud Run
     Job that executes the FMU simulation, and receives results via callback.
     """
+
+    @classmethod
+    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+        """
+        Extract output values from an FMI output envelope.
+
+        FMI envelopes (FMIOutputEnvelope from vb_shared) store simulation outputs
+        in outputs.output_values as a dict keyed by catalog slug.
+
+        Args:
+            output_envelope: FMIOutputEnvelope from the Cloud Run Job.
+
+        Returns:
+            Dict of output values keyed by catalog slug. Returns None if
+            extraction fails.
+        """
+        try:
+            outputs = getattr(output_envelope, "outputs", None)
+            if not outputs:
+                return None
+
+            output_values = getattr(outputs, "output_values", None)
+            if not output_values:
+                return None
+
+            # Handle Pydantic model
+            if hasattr(output_values, "model_dump"):
+                return output_values.model_dump(mode="json")
+
+            # Handle plain dict
+            if isinstance(output_values, dict):
+                return output_values
+        except Exception:
+            logger.debug("Could not extract assertion signals from FMI envelope")
+
+        return None
 
     def validate(
         self,

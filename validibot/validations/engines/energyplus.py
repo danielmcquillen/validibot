@@ -4,13 +4,29 @@ EnergyPlus validation engine powered by Cloud Run Jobs.
 This engine forwards incoming EnergyPlus submissions (epJSON or IDF) to
 Cloud Run Jobs and receives results via callbacks.
 
-The validation flow:
+## Validation Flow
+
 1. Engine receives validator, submission, ruleset from workflow execution
 2. run_context is set by the handler with validation_run and workflow_step
 3. If Cloud Run Jobs is configured, launches async job via launcher
 4. Returns pending ValidationResult
-5. Cloud Run Job executes and POSTs callback to Django
-6. Callback updates ValidationRun with final results
+5. Cloud Run Job executes and writes EnergyPlusOutputEnvelope to GCS
+6. Job POSTs callback to Django with result_uri
+7. Callback downloads envelope and evaluates output-stage assertions
+
+## Output Envelope Structure
+
+The EnergyPlus Cloud Run Job produces an `EnergyPlusOutputEnvelope` (from
+vb_shared.energyplus.envelopes) containing:
+
+- outputs.metrics: EnergyPlusSimulationMetrics with fields like:
+  - site_eui_kwh_m2: Site energy use intensity
+  - site_electricity_kwh: Total electricity consumption
+  - site_natural_gas_kwh: Total gas consumption
+  - etc. (see vb_shared/energyplus/models.py)
+
+These metrics are extracted via `extract_output_signals()` for use in
+output-stage CEL assertions (e.g., "site_eui_kwh_m2 < 100").
 
 If Cloud Run Jobs is not configured (local dev), returns not-implemented error.
 """
@@ -19,6 +35,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from typing import Any
 
 from django.conf import settings
 from django.utils.translation import gettext as _
@@ -47,6 +64,44 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
     This engine triggers async Cloud Run Jobs and returns pending results.
     The ValidationRun is updated via callback when the job completes.
     """
+
+    @classmethod
+    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+        """
+        Extract simulation metrics from an EnergyPlus output envelope.
+
+        EnergyPlus envelopes (EnergyPlusOutputEnvelope from vb_shared) store
+        metrics in outputs.metrics as an EnergyPlusSimulationMetrics Pydantic
+        model. Fields include site_eui_kwh_m2, site_electricity_kwh, etc.
+
+        Args:
+            output_envelope: EnergyPlusOutputEnvelope from the Cloud Run Job.
+
+        Returns:
+            Dict of metrics keyed by field name (matching catalog slugs), with
+            None values filtered out. Returns None if extraction fails.
+        """
+        try:
+            outputs = getattr(output_envelope, "outputs", None)
+            if not outputs:
+                return None
+
+            metrics = getattr(outputs, "metrics", None)
+            if not metrics:
+                return None
+
+            # Pydantic model_dump converts to dict; filter None values
+            if hasattr(metrics, "model_dump"):
+                metrics_dict = metrics.model_dump(mode="json")
+                return {k: v for k, v in metrics_dict.items() if v is not None}
+
+            # Fallback if metrics is already a dict
+            if isinstance(metrics, dict):
+                return {k: v for k, v in metrics.items() if v is not None}
+        except Exception:
+            logger.debug("Could not extract assertion signals from EnergyPlus envelope")
+
+        return None
 
     def validate(
         self,

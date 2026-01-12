@@ -42,58 +42,36 @@ from validibot.validations.services.validation_run import ValidationRunService
 logger = logging.getLogger(__name__)
 
 
-def _extract_output_payload_from_envelope(output_envelope) -> dict | None:
+def _extract_output_payload_from_envelope(
+    output_envelope,
+    validation_type: str,
+) -> dict | None:
     """
     Extract the output payload from an envelope for CEL assertion evaluation.
 
-    Different envelope types store outputs in different structures. This function
-    normalizes them to a dict suitable for CEL evaluation.
-
-    Supported structures:
-    - FMI: outputs.output_values dict keyed by catalog slug
-    - EnergyPlus: outputs.metrics Pydantic model with fields like site_eui_kwh_m2
+    Delegates to the appropriate engine's `extract_output_signals()` method
+    to handle validator-specific envelope structures. Each async engine knows
+    how to extract signals from its own envelope type (EnergyPlus metrics,
+    FMI output values, etc.).
 
     Args:
         output_envelope: The EnergyPlus or FMI output envelope.
+        validation_type: The validator type (e.g., ValidationType.ENERGYPLUS).
 
     Returns:
         A dict of output signals keyed by catalog slug, or None if not available.
     """
+    from validibot.validations.engines.registry import get as get_validator_class
+
     try:
-        outputs = getattr(output_envelope, "outputs", None)
+        engine_cls = get_validator_class(validation_type)
+        return engine_cls.extract_output_signals(output_envelope)
     except Exception:
-        logger.debug("Could not extract output payload from envelope")
+        logger.debug(
+            "Could not extract output payload from envelope for type %s",
+            validation_type,
+        )
         return None
-
-    if not outputs:
-        return None
-
-    # EnergyPlus envelopes: metrics are in outputs.metrics
-    # The metrics model has fields like site_eui_kwh_m2, site_electricity_kwh, etc.
-    metrics = getattr(outputs, "metrics", None)
-    if metrics and hasattr(metrics, "model_dump"):
-        metrics_dict = metrics.model_dump(mode="json")
-        # Filter out None values - only include metrics that have values
-        return {k: v for k, v in metrics_dict.items() if v is not None}
-
-    # FMI envelopes: output_values dict keyed by catalog slug
-    output_values = getattr(outputs, "output_values", None)
-    if output_values:
-        if hasattr(output_values, "model_dump"):
-            return output_values.model_dump(mode="json")
-        if isinstance(output_values, dict):
-            return output_values
-
-    # Fallback: try generic outputs attribute
-    if hasattr(outputs, "outputs"):
-        generic_outputs = getattr(outputs, "outputs", None)
-        if generic_outputs:
-            if hasattr(generic_outputs, "model_dump"):
-                return generic_outputs.model_dump(mode="json")
-            if isinstance(generic_outputs, dict):
-                return generic_outputs
-
-    return None
 
 
 def _evaluate_output_stage_assertions(
@@ -619,7 +597,10 @@ class ValidationCallbackService:
 
         # Evaluate output-stage assertions against the envelope outputs.
         # This includes generating success messages for passed assertions.
-        output_payload = _extract_output_payload_from_envelope(output_envelope)
+        output_payload = _extract_output_payload_from_envelope(
+            output_envelope,
+            validator.validation_type,
+        )
         if output_payload:
             assertion_findings = _evaluate_output_stage_assertions(
                 step_run=step_run,

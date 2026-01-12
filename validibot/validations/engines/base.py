@@ -5,6 +5,35 @@ A validator engine is a class that subclasses BaseValidatorEngine and implements
 the validate() method. The subclass is what does the actual validation work
 in a given validation step.
 
+## Sync vs Async Engines
+
+**Sync engines** (Basic, JSON Schema, XML Schema, AI) execute validation inline
+and return complete results immediately. They evaluate assertions during the
+validate() call.
+
+**Async engines** (EnergyPlus, FMI) launch Cloud Run Jobs and return pending
+results. The job runs externally and POSTs results back via callback. For these
+engines:
+
+1. validate() launches the job and returns passed=None (pending)
+2. Cloud Run Job executes and writes output envelope to GCS
+3. Job POSTs callback with result_uri to Django worker
+4. Callback service downloads envelope and evaluates output-stage assertions
+
+## Output Envelopes and Assertion Signals
+
+Each async validator type produces outputs in its own Pydantic envelope structure
+(defined in vb_shared). For example:
+
+- EnergyPlus: outputs.metrics contains site_eui_kwh_m2, site_electricity_kwh, etc.
+- FMI: outputs.output_values contains a dict keyed by catalog slug
+
+To evaluate assertions after a Cloud Run Job completes, the callback service needs
+to extract these signals from the envelope. Engines implement the class method
+`extract_output_signals()` to handle their specific envelope structure. This
+keeps envelope knowledge localized to the engine rather than scattered across the
+callback service.
+
 You won't find any concrete implementations here; those are in other modules.
 """
 
@@ -104,6 +133,13 @@ class BaseValidatorEngine(ABC):
     Async engines (EnergyPlus, FMI) require run_context for job tracking. Sync
     engines (XML, JSON, Basic, AI) typically don't need it, though the base class
     CEL evaluation methods can use it for cross-step assertions.
+
+    ## Implementing Async Engines
+
+    Async engines that produce output envelopes should override
+    `extract_output_signals()` to extract the signals dict from their
+    envelope structure. This is used by the callback service to evaluate
+    output-stage assertions after the Cloud Run Job completes.
     """
 
     validation_type: ValidationType
@@ -122,6 +158,40 @@ class BaseValidatorEngine(ABC):
         append or remove helpers based on validator metadata.
         """
         return dict(self.cel_helpers)
+
+    # -------------------------------------------------------- Output signal extraction
+
+    @classmethod
+    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+        """
+        Extract assertion signals from an output envelope for CEL evaluation.
+
+        Async engines (EnergyPlus, FMI) produce output envelopes with domain-specific
+        structures containing simulation results. This method extracts the signals
+        that can be referenced in output-stage CEL assertions.
+
+        Override this in subclasses to handle validator-specific envelope structures.
+        The base implementation returns None (no signals available).
+
+        Args:
+            output_envelope: The typed Pydantic envelope from vb_shared containing
+                            validation results (e.g., EnergyPlusOutputEnvelope).
+
+        Returns:
+            Dict mapping catalog slugs to values for CEL evaluation, or None if
+            no signals can be extracted. Keys should match the validator's output
+            catalog entry slugs (e.g., "site_eui_kwh_m2" for EnergyPlus).
+
+        Example (EnergyPlus):
+            The EnergyPlus envelope has outputs.metrics containing fields like
+            site_eui_kwh_m2, site_electricity_kwh, etc. The override extracts
+            these as: {"site_eui_kwh_m2": 75.2, "site_electricity_kwh": 12345, ...}
+
+        Example (FMI):
+            The FMI envelope has outputs.output_values already keyed by catalog
+            slug: {"y": 1.0, "temperature": 293.15, ...}
+        """
+        return None
 
     # ------------------------------------------------------------------ CEL helpers
 

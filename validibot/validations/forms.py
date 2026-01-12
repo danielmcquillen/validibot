@@ -572,6 +572,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 Column("when_expression", css_class="col-12 col-lg-8"),
             ),
             "message_template",
+            "success_message",
         )
         self._append_cel_help_to_label("cel_expression")
 

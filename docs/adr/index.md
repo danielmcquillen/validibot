@@ -2,8 +2,13 @@
 
 This directory captures the architectural decisions that shape Validibot. Each ADR records the context, decision, and consequences so future work can build on shared knowledge.
 
+## Proposed
+
+- [ADR-2026-01-12: Model Context Protocol (MCP) Integration](2026-01-12-mcp-integration.md)
+
 ## Active / In Progress
 
+- [ADR-2026-01-08: Auxiliary Files for Workflow Submissions](2026-01-08-auxiliary-files-for-workflow-submissions.md)
 - [ADR-2026-01-07: Guest Management and Workflow Visibility](2026-01-07-guest-management-ui.md)
 - [ADR-2026-01-06: Org-scoped Web URLs](2026-01-06-org-scoped-web-urls.md)
 - [ADR-2026-01-06: SaaS Reliability Hardening for Worker Internals](2026-01-06-saas-reliability-worker-internals.md)

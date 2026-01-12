@@ -98,3 +98,14 @@ Success messages are useful for:
 
 The SUCCESS severity level is distinct from INFO—it specifically indicates a passed check rather
 than informational output from the validator.
+
+### Async validators (EnergyPlus, FMI)
+
+Success messages work with async validators just like sync validators. When an EnergyPlus or FMI
+Cloud Run Job completes and returns its output envelope, the callback service evaluates any
+output-stage assertions against the envelope outputs. If assertions pass and success messages
+are configured (via `success_message` or `show_success_messages`), SUCCESS findings are created
+alongside any simulation-generated findings.
+
+This means users get the same positive feedback experience regardless of whether their workflow
+uses sync validators (Basic, JSON, XML, AI) or async validators (EnergyPlus, FMI).

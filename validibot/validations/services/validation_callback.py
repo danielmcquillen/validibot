@@ -42,6 +42,134 @@ from validibot.validations.services.validation_run import ValidationRunService
 logger = logging.getLogger(__name__)
 
 
+def _extract_output_payload_from_envelope(output_envelope) -> dict | None:
+    """
+    Extract the output payload from an envelope for CEL assertion evaluation.
+
+    Different envelope types store outputs in different structures. This function
+    normalizes them to a dict suitable for CEL evaluation.
+
+    Args:
+        output_envelope: The EnergyPlus or FMI output envelope.
+
+    Returns:
+        A dict of output signals keyed by catalog slug, or None if not available.
+    """
+    try:
+        # FMI envelopes expose output_values keyed by catalog slug
+        signals = getattr(output_envelope.outputs, "output_values", None)
+        if signals is None and hasattr(output_envelope.outputs, "outputs"):
+            signals = getattr(output_envelope.outputs, "outputs", None)
+    except Exception:
+        logger.debug("Could not extract output payload from envelope")
+        return None
+
+    if not signals:
+        return None
+    # Serialize Pydantic models to dicts for CEL evaluation
+    if hasattr(signals, "model_dump"):
+        return signals.model_dump(mode="json")
+    if isinstance(signals, dict):
+        return signals
+    return None
+
+
+def _evaluate_output_stage_assertions(
+    *,
+    step_run: ValidationStepRun,
+    output_payload: dict,
+) -> list[ValidationFinding]:
+    """
+    Evaluate output-stage CEL assertions after an async validator completes.
+
+    After a Cloud Run Job (EnergyPlus, FMI) completes and returns outputs, this
+    function evaluates any ruleset assertions that target output-stage catalog
+    entries. This includes generating success messages for passed assertions.
+
+    Args:
+        step_run: The ValidationStepRun being finalized.
+        output_payload: Dict of output signals keyed by catalog slug.
+
+    Returns:
+        List of ValidationFinding objects for assertion results (failures and
+        success messages).
+    """
+    from validibot.actions.protocols import RunContext
+    from validibot.validations.engines.registry import get as get_validator_class
+
+    workflow_step = step_run.workflow_step
+    if not workflow_step:
+        return []
+
+    validator = workflow_step.validator
+    ruleset = workflow_step.ruleset
+    if not validator or not ruleset:
+        return []
+
+    # Check if ruleset has any CEL assertions
+    if not ruleset.assertions.filter(assertion_type="cel_expr").exists():
+        return []
+
+    # Get the appropriate engine class for this validator type
+    try:
+        engine_cls = get_validator_class(validator.validation_type)
+    except Exception:
+        logger.warning(
+            "Could not get validator engine class for type %s",
+            validator.validation_type,
+        )
+        return []
+
+    # Create engine instance and set up run_context for success message support
+    engine = engine_cls()
+    engine.run_context = RunContext(step=workflow_step)
+
+    # Evaluate output-stage assertions
+    try:
+        issues = engine.evaluate_cel_assertions(
+            ruleset=ruleset,
+            validator=validator,
+            payload=output_payload,
+            target_stage="output",
+        )
+    except Exception:
+        logger.exception(
+            "Failed to evaluate output-stage assertions for step_run %s",
+            step_run.id,
+        )
+        return []
+
+    # Convert ValidationIssue objects to ValidationFinding records
+    findings: list[ValidationFinding] = []
+    for issue in issues:
+        severity_value = (
+            issue.severity.value
+            if hasattr(issue.severity, "value")
+            else str(issue.severity)
+        )
+        finding = ValidationFinding(
+            validation_run=step_run.validation_run,
+            validation_step_run=step_run,
+            severity=severity_value,
+            code=issue.code or "",
+            message=issue.message or "",
+            path=issue.path or "",
+            meta=issue.meta or {},
+            ruleset_assertion_id=issue.assertion_id,
+        )
+        try:
+            finding._ensure_run_alignment()  # noqa: SLF001
+        except Exception:
+            logger.warning(
+                "Skipping assertion finding due to alignment failure",
+                exc_info=True,
+            )
+            continue
+        findings.append(finding)
+
+    return findings
+
+
 def _coerce_finished_at(finished_at_candidate) -> datetime:
     """Normalize finished_at to an aware datetime in UTC."""
     if finished_at_candidate is None:
@@ -466,6 +594,31 @@ class ValidationCallbackService:
                     "Failed to persist findings for step_run %s; continuing",
                     step_run.id,
                 )
+
+        # Evaluate output-stage assertions against the envelope outputs.
+        # This includes generating success messages for passed assertions.
+        output_payload = _extract_output_payload_from_envelope(output_envelope)
+        if output_payload:
+            assertion_findings = _evaluate_output_stage_assertions(
+                step_run=step_run,
+                output_payload=output_payload,
+            )
+            if assertion_findings:
+                try:
+                    ValidationFinding.objects.bulk_create(
+                        assertion_findings,
+                        batch_size=500,
+                    )
+                    logger.info(
+                        "Created %d assertion findings for step_run %s",
+                        len(assertion_findings),
+                        step_run.id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to persist assertion findings for step_run %s",
+                        step_run.id,
+                    )
 
         # Make outputs available to downstream steps under a namespaced key
         # on the run summary. We use step_run.id as the namespace to avoid

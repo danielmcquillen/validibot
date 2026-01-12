@@ -20,7 +20,11 @@
                          class="green-check" />
                 </div>
                 <div class="w-100 ms-2">
-                    {% trans "Validation successful. No errors reported." %}
+                    {% if run.workflow.success_message %}
+                        {{ run.workflow.success_message }}
+                    {% else %}
+                        {% trans "Validation successful. No errors reported." %}
+                    {% endif %}
                 </div>
                 <div>
                     <img src="{% static 'images/robot_head_bw.png' %}"

@@ -185,6 +185,7 @@ class CustomValidatorType(TextChoices):
 
 
 class Severity(TextChoices):
+    SUCCESS = "SUCCESS", _("Success")
     INFO = "INFO", _("Info")
     WARNING = "WARNING", _("Warning")
     ERROR = "ERROR", _("Error")

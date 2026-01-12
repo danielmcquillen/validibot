@@ -152,6 +152,11 @@ class BasicValidatorEngine(BaseValidatorEngine):
                         message,
                     ),
                 )
+            else:
+                # Assertion passed - emit success issue if configured
+                success_issue = self._maybe_success_issue(assertion)
+                if success_issue:
+                    issues.append(success_issue)
 
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(

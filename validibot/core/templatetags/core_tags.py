@@ -236,9 +236,11 @@ def finding_badge_class(finding) -> str:
     else:
         severity_value = str(severity).upper()
     mapping = {
+        Severity.SUCCESS: "text-bg-success",
         Severity.ERROR: "text-bg-danger",
         Severity.WARNING: "text-bg-warning text-dark",
         Severity.INFO: "text-bg-secondary",
+        "SUCCESS": "text-bg-success",
         "ERROR": "text-bg-danger",
         "WARNING": "text-bg-warning text-dark",
         "INFO": "text-bg-secondary",

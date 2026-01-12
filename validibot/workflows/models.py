@@ -309,6 +309,15 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
+    success_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=_(
+            "Custom message displayed when validation succeeds. "
+            "Leave blank for the default message."
+        ),
+    )
+
     # Methods
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -235,6 +235,7 @@ class WorkflowForm(forms.ModelForm):
             "project",
             "allowed_file_types",
             "data_retention",
+            "success_message",
             "allow_submission_name",
             "allow_submission_meta_data",
             "allow_submission_short_description",
@@ -269,6 +270,7 @@ class WorkflowForm(forms.ModelForm):
             Field("project"),
             Field("allowed_file_types"),
             Field("data_retention"),
+            Field("success_message"),
             Field("allow_submission_name"),
             Field("allow_submission_meta_data"),
             Field("allow_submission_short_description"),
@@ -296,6 +298,21 @@ class WorkflowForm(forms.ModelForm):
         # Configure data retention field
         self.fields["data_retention"].label = _("Data retention")
         self.fields["data_retention"].widget.attrs.update({"class": "form-select"})
+        # Configure success message field
+        self.fields["success_message"].label = _("Success message")
+        self.fields["success_message"].help_text = _(
+            "Custom message shown when validation succeeds. "
+            "Leave blank to use the default message."
+        )
+        self.fields["success_message"].widget = forms.Textarea(
+            attrs={
+                "rows": 2,
+                "class": "form-control",
+                "placeholder": _(
+                    "e.g. Your model passed all validation checks!"
+                ),
+            },
+        )
         self.fields["description_md"].widget.attrs.setdefault("class", "form-control")
         if self.instance and self.instance.pk:
             self.fields["description_md"].initial = (
@@ -630,7 +647,7 @@ class BaseStepConfigForm(forms.Form):
         required=False,
         initial=False,
         help_text=_(
-            "When enabled, all assertions in this step will display a success message "
+            "When enabled, all assertions in this step will return a success message "
             "when they pass. If an assertion has no custom success message, a default "
             "message will be shown."
         ),

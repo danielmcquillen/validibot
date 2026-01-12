@@ -438,7 +438,55 @@ class BaseValidatorEngine(ABC):
                         message=failure_message,
                     ),
                 )
+            else:
+                # Assertion passed - emit success issue if configured
+                success_issue = self._maybe_success_issue(assertion)
+                if success_issue:
+                    issues.append(success_issue)
         return issues
+
+    def _should_emit_success_messages(self) -> bool:
+        """Check if success messages should be emitted for passed assertions."""
+        if not self.run_context or not self.run_context.step:
+            return False
+        return bool(getattr(self.run_context.step, "show_success_messages", False))
+
+    def _maybe_success_issue(self, assertion) -> ValidationIssue | None:
+        """
+        Create a success issue if the assertion has a success_message or
+        the step has show_success_messages enabled.
+        """
+        success_message = getattr(assertion, "success_message", "") or ""
+        has_custom_message = bool(success_message.strip())
+        show_success = self._should_emit_success_messages()
+
+        if not has_custom_message and not show_success:
+            return None
+
+        if has_custom_message:
+            message = success_message.strip()
+        else:
+            # Generate default success message
+            target = getattr(assertion, "target_display", "") or ""
+            condition = getattr(assertion, "condition_display", "") or ""
+            if target and condition:
+                message = _("Assertion passed: %(target)s %(condition)s") % {
+                    "target": target,
+                    "condition": condition,
+                }
+            elif target:
+                message = _("Assertion passed: %(target)s") % {"target": target}
+            else:
+                message = _("Assertion passed.")
+
+        return ValidationIssue(
+            path="",
+            message=message,
+            severity=Severity.SUCCESS,
+            code="assertion_passed",
+            meta={"ruleset_id": assertion.ruleset_id},
+            assertion_id=getattr(assertion, "id", None),
+        )
 
     @abstractmethod
     def validate(

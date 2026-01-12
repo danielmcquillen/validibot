@@ -16,10 +16,12 @@ This template partial contains the detail we want to show when a run is in progr
                     {% trans "We refresh this status automatically until the run completes." %}
                 </p>
 
+                {% if run_detail_absolute_url %}
                 <p class="small text-muted text-center mb-0">
-                    {% trans "If you navigate away, you can this URL to check back:" %}
-                    <a href="{{ request.build_absolute_uri }}">{{ request.build_absolute_uri }}</a>
+                    {% trans "If you navigate away, you can use this URL to check back:" %}<br/>
+                    <a href="{{ run_detail_absolute_url }}">{{ run_detail_absolute_url }}</a>
                 </p>
+                {% endif %}
 
             </div>
         </div>

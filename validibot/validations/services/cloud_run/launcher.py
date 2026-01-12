@@ -179,7 +179,7 @@ def launch_energyplus_validation(
         # TODO: Detect file type (IDF vs epJSON) and use appropriate extension
         logger.info("Uploading submission to %s", model_file_uri)
         upload_file(
-            content=submission.content.encode("utf-8"),
+            content=submission.get_content().encode("utf-8"),
             uri=model_file_uri,
             content_type="application/json",
         )
@@ -343,7 +343,7 @@ def launch_fmi_validation(
 
         # Resolve inputs based on catalog binding paths
         submission_payload = (
-            submission.content if hasattr(submission, "content") else ""
+            submission.get_content() if hasattr(submission, "get_content") else ""
         )
         if isinstance(submission_payload, str):
             # Best effort: parse JSON when possible

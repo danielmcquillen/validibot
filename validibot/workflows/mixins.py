@@ -341,6 +341,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         )
         poll_interval = self.get_poll_interval_seconds()
         run_detail_url = None
+        run_detail_absolute_url = None
         detail_url = None
         cancel_url = None
         if active_run:
@@ -349,6 +350,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 request=self.request,
                 kwargs={"pk": workflow.pk, "run_id": active_run.pk},
             )
+            run_detail_absolute_url = self.request.build_absolute_uri(run_detail_url)
             detail_url = reverse_with_org(
                 "validations:validation_detail",
                 request=self.request,
@@ -379,6 +381,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "poll_interval_seconds": poll_interval,
             "status_url": run_detail_url,
             "run_detail_refresh_url": run_detail_url,
+            "run_detail_absolute_url": run_detail_absolute_url,
             "detail_url": detail_url,
             "cancel_url": cancel_url,
             "launch_url": launch_url,

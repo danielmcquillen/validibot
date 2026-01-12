@@ -60,8 +60,8 @@ class CallbackAssertionEvaluationTests(TestCase):
         )
         self.output_entry = ValidatorCatalogEntryFactory(
             validator=self.validator,
-            slug="site_eui",
-            label="Site EUI",
+            slug="site_eui_kwh_m2",
+            label="Site EUI (kWh/m²)",
             run_stage=CatalogRunStage.OUTPUT,
         )
 
@@ -87,29 +87,50 @@ class CallbackAssertionEvaluationTests(TestCase):
             status=StepStatus.RUNNING,
         )
 
-    def _make_mock_envelope(self, *, output_values: dict | None = None) -> MagicMock:
+    def _make_mock_envelope(self, *, metrics: dict | None = None) -> MagicMock:
         """
-        Create a mock output envelope for the async validator callback.
+        Create a mock EnergyPlus output envelope for the async validator callback.
 
         Args:
-            output_values: Dict of output signals keyed by catalog slug.
+            metrics: Dict of output metrics keyed by field name (e.g., site_eui_kwh_m2).
+                    This matches EnergyPlus's outputs.metrics structure.
         """
         from vb_shared.validations.envelopes import ValidationStatus
 
+        # Create a simple class to hold outputs that won't auto-generate mocks
+        class MockMetrics:
+            def model_dump(self, mode=None):
+                return metrics or {}
+
+        class MockOutputs:
+            def __init__(self):
+                self.metrics = MockMetrics()
+                self.output_values = None
+                self.outputs = None  # Explicitly set to prevent auto-mock
+
+            def model_dump(self, mode=None):
+                return {"metrics": metrics or {}}
+
+        class MockTiming:
+            finished_at = None
+
+        class MockValidator:
+            def __init__(self, validator_id):
+                self.id = validator_id
+                self.version = "1.0.0"
+
         mock_envelope = MagicMock()
         mock_envelope.status = ValidationStatus.SUCCESS
-        mock_envelope.validator = MagicMock()
-        mock_envelope.validator.id = str(self.validator.id)
-        mock_envelope.validator.version = "1.0.0"
+        mock_envelope.validator = MockValidator(str(self.validator.id))
         mock_envelope.run_id = str(self.run.id)
-        mock_envelope.timing = MagicMock()
-        mock_envelope.timing.finished_at = None
+        mock_envelope.timing = MockTiming()
         mock_envelope.messages = []
-        mock_envelope.outputs = MagicMock()
-        mock_envelope.outputs.output_values = output_values or {}
+        mock_envelope.outputs = MockOutputs()
+        # Return JSON-serializable dict - this is what gets stored in step_run.output
         mock_envelope.model_dump.return_value = {
             "status": "success",
             "run_id": str(self.run.id),
+            "outputs": {"metrics": metrics or {}},
         }
         return mock_envelope
 
@@ -131,12 +152,12 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
             target_field="",  # Required: clear target_field when using catalog entry
-            rhs={"expr": "site_eui < 100"},
+            rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
 
         mock_download.return_value = self._make_mock_envelope(
-            output_values={"site_eui": 75},
+            metrics={"site_eui_kwh_m2": 75},
         )
 
         callback_id = str(uuid.uuid4())
@@ -182,12 +203,12 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
             target_field="",  # Required: clear target_field when using catalog entry
-            rhs={"expr": "site_eui < 50"},
+            rhs={"expr": "site_eui_kwh_m2 < 50"},
             message_template="Site EUI is too high!",
         )
 
         mock_download.return_value = self._make_mock_envelope(
-            output_values={"site_eui": 75},
+            metrics={"site_eui_kwh_m2": 75},
         )
 
         callback_id = str(uuid.uuid4())
@@ -236,12 +257,12 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
             target_field="",  # Required: clear target_field when using catalog entry
-            rhs={"expr": "site_eui < 100"},
+            rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="",  # No custom message
         )
 
         mock_download.return_value = self._make_mock_envelope(
-            output_values={"site_eui": 75},
+            metrics={"site_eui_kwh_m2": 75},
         )
 
         callback_id = str(uuid.uuid4())
@@ -286,12 +307,12 @@ class CallbackAssertionEvaluationTests(TestCase):
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
             target_field="",  # Required: clear target_field when using catalog entry
-            rhs={"expr": "site_eui < 100"},
+            rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Custom: Building is energy efficient!",
         )
 
         mock_download.return_value = self._make_mock_envelope(
-            output_values={"site_eui": 75},
+            metrics={"site_eui_kwh_m2": 75},
         )
 
         callback_id = str(uuid.uuid4())

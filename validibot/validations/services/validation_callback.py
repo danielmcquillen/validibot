@@ -49,6 +49,10 @@ def _extract_output_payload_from_envelope(output_envelope) -> dict | None:
     Different envelope types store outputs in different structures. This function
     normalizes them to a dict suitable for CEL evaluation.
 
+    Supported structures:
+    - FMI: outputs.output_values dict keyed by catalog slug
+    - EnergyPlus: outputs.metrics Pydantic model with fields like site_eui_kwh_m2
+
     Args:
         output_envelope: The EnergyPlus or FMI output envelope.
 
@@ -56,21 +60,39 @@ def _extract_output_payload_from_envelope(output_envelope) -> dict | None:
         A dict of output signals keyed by catalog slug, or None if not available.
     """
     try:
-        # FMI envelopes expose output_values keyed by catalog slug
-        signals = getattr(output_envelope.outputs, "output_values", None)
-        if signals is None and hasattr(output_envelope.outputs, "outputs"):
-            signals = getattr(output_envelope.outputs, "outputs", None)
+        outputs = getattr(output_envelope, "outputs", None)
     except Exception:
         logger.debug("Could not extract output payload from envelope")
         return None
 
-    if not signals:
+    if not outputs:
         return None
-    # Serialize Pydantic models to dicts for CEL evaluation
-    if hasattr(signals, "model_dump"):
-        return signals.model_dump(mode="json")
-    if isinstance(signals, dict):
-        return signals
+
+    # EnergyPlus envelopes: metrics are in outputs.metrics
+    # The metrics model has fields like site_eui_kwh_m2, site_electricity_kwh, etc.
+    metrics = getattr(outputs, "metrics", None)
+    if metrics and hasattr(metrics, "model_dump"):
+        metrics_dict = metrics.model_dump(mode="json")
+        # Filter out None values - only include metrics that have values
+        return {k: v for k, v in metrics_dict.items() if v is not None}
+
+    # FMI envelopes: output_values dict keyed by catalog slug
+    output_values = getattr(outputs, "output_values", None)
+    if output_values:
+        if hasattr(output_values, "model_dump"):
+            return output_values.model_dump(mode="json")
+        if isinstance(output_values, dict):
+            return output_values
+
+    # Fallback: try generic outputs attribute
+    if hasattr(outputs, "outputs"):
+        generic_outputs = getattr(outputs, "outputs", None)
+        if generic_outputs:
+            if hasattr(generic_outputs, "model_dump"):
+                return generic_outputs.model_dump(mode="json")
+            if isinstance(generic_outputs, dict):
+                return generic_outputs
+
     return None
 
 

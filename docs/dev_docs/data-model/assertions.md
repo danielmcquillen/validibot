@@ -16,10 +16,11 @@ Each assertion row stores:
 - `rhs` – operator payload (single value, min/max bounds, regex, etc.).
 - `options` – operator metadata (inclusive bounds, case folding, tolerance units, etc.).
 - `cel_cache` – read-only CEL preview rendered from the operator payload for auditability.
-- `message_template` – templated string rendered with evaluation context (e.g., `{{value | round(1)}}`). Supported filters today are:
+- `message_template` – templated string rendered when the assertion **fails** (e.g., `{{value | round(1)}}`). Supported filters today are:
   - `round(digits)` – rounds numeric values (defaults to `0` digits).
   - `upper` / `lower` – coercion to uppercase or lowercase.
   - `default("fallback")` – substitute the provided fallback when the value is blank/`None`.
+- `success_message` – optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
 
 Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
@@ -73,3 +74,27 @@ Once a validation run reaches a step with assertions:
 
 This flow ensures findings remain reproducible: rerunning the same submission with the same ruleset +
 validator version yields identical catalogs, helper allowlists, and assertion logic.
+
+## Success messages
+
+By default, passed assertions are silent—they don't generate any findings. However, Validibot
+supports positive feedback through success messages, which create SUCCESS severity findings when
+assertions pass.
+
+There are two ways to enable success messages:
+
+1. **Per-assertion custom message**: Set the `success_message` field on an individual assertion.
+   When that assertion passes, a SUCCESS finding is created with the custom message.
+
+2. **Step-level toggle**: Enable `show_success_messages` on a WorkflowStep. When this is true,
+   all passed assertions in that step emit success findings. If an assertion has no custom
+   `success_message`, a default message is generated (e.g., "Assertion passed: site_eui < 100").
+
+Success messages are useful for:
+
+- Providing positive reinforcement to users submitting data
+- Documenting which checks passed for audit trails
+- Giving users confidence their data meets requirements
+
+The SUCCESS severity level is distinct from INFO—it specifically indicates a passed check rather
+than informational output from the validator.

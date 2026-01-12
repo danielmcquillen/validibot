@@ -26,7 +26,11 @@ MAX_HEX_COLOR_LENGTH = 6
 def web_tracker(context):
     """
     Include web tracker if conditions are met.
-    Don't want to track in DEBUG nor for superusers unless configured to do so.
+
+    We skip tracking in the following cases:
+    - DEBUG mode is enabled
+    - User is a superuser (unless TRACKER_INCLUDE_SUPERUSER is set)
+    - Browser sends Global Privacy Control signal (Sec-GPC: 1)
     """
     if settings.DEBUG:
         include_tracker = False
@@ -34,11 +38,16 @@ def web_tracker(context):
         include_tracker = True
         try:
             request = getattr(context, "request", None)
-            user = getattr(request, "user", None) if request else None
-            if user:
-                include_tracker = (
-                    not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
-                )
+            if request:
+                # Honor Global Privacy Control signal
+                if request.headers.get("Sec-GPC") == "1":
+                    include_tracker = False
+                else:
+                    user = getattr(request, "user", None)
+                    if user:
+                        include_tracker = (
+                            not user.is_superuser or settings.TRACKER_INCLUDE_SUPERUSER
+                        )
         except Exception:
             include_tracker = not settings.DEBUG
 

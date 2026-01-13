@@ -63,6 +63,11 @@ class TestExampleProductWithCEL(TestCase):
             ruleset=self.ruleset,
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
+            # Set target_catalog_entry to an input entry so the assertion
+            # runs in input stage (resolved_run_stage defaults to OUTPUT
+            # when target_catalog_entry is None).
+            target_catalog_entry=self.price_entry,
+            target_field="",  # Required: must be empty when catalog entry is set
             rhs={"expr": self.expression},
             message_template=self.error_message,
         )
@@ -108,11 +113,12 @@ class TestExampleProductWithCEL(TestCase):
             rhs={"expr": "price > 0"},
         )
         engine = BasicValidatorEngine()
+        # Assertions without target_catalog_entry default to OUTPUT stage
         issues = engine.evaluate_cel_assertions(
             ruleset=ruleset,
             validator=validator,
             payload=self.payload,
-            target_stage="input",
+            target_stage="output",
         )
         self.assertEqual(len(issues), 1)
         self.assertIn("identifier 'price'", issues[0].message)

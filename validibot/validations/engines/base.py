@@ -389,8 +389,10 @@ class BaseValidatorEngine(ABC):
         """
         Evaluate CEL assertions on the given ruleset using a context derived
         from the validator catalog and payload. Returns a list of issues.
-        Only assertions targeting the given run_stage (via target_catalog_entry) are
-        evaluated; assertions without a target_catalog_entry are treated as INPUT-stage.
+
+        Only assertions matching the target_stage are evaluated. The stage is
+        determined by the assertion's resolved_run_stage property, which uses
+        target_catalog_entry.run_stage if set, otherwise defaults to OUTPUT.
         """
 
         if validator is None:
@@ -419,12 +421,8 @@ class BaseValidatorEngine(ABC):
             ]
         issues: list[ValidationIssue] = []
         for assertion in assertions:
-            if (
-                assertion.target_catalog_entry
-                and assertion.target_catalog_entry.run_stage != target_stage
-            ):
-                continue
-            if not assertion.target_catalog_entry and target_stage != "input":
+            # Skip if assertion doesn't match the current evaluation stage
+            if assertion.resolved_run_stage != target_stage:
                 continue
             expr = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
             if len(expr) > CEL_MAX_EXPRESSION_CHARS:

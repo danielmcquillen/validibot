@@ -340,3 +340,63 @@ class CallbackAssertionEvaluationTests(TestCase):
             finding.message,
             "Custom: Building is energy efficient!",
         )
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_callback_evaluates_cel_assertion_without_target_catalog_entry(
+        self,
+        mock_download,
+    ):
+        """
+        CEL assertions without target_catalog_entry should still evaluate.
+
+        This tests the real-world scenario where the assertion form sets
+        target_catalog_entry=None for CEL expression assertions. The stage
+        should be inferred from which signals the expression references.
+        """
+        # Create assertion WITHOUT target_catalog_entry (mimics form behavior)
+        # but referencing an output-stage signal.
+        # Note: DB constraint requires target_field to be non-empty when
+        # target_catalog_entry is null - the form sets it to the CEL expression.
+        assertion = RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type="cel_expr",
+            target_catalog_entry=None,  # Form sets this to None for CEL assertions
+            target_field="site_eui_kwh_m2 < 100",  # Form sets this to the expression
+            rhs={"expr": "site_eui_kwh_m2 < 100"},
+            success_message="Building meets energy efficiency target!",
+        )
+
+        mock_download.return_value = self._make_mock_envelope(
+            metrics={"site_eui_kwh_m2": 75},
+        )
+
+        callback_id = str(uuid.uuid4())
+        response = self.client.post(
+            self.callback_url,
+            data={
+                "run_id": str(self.run.id),
+                "callback_id": callback_id,
+                "status": "success",
+                "result_uri": "gs://bucket/runs/output.json",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Success finding should be created even without target_catalog_entry
+        success_findings = ValidationFinding.objects.filter(
+            validation_step_run=self.step_run,
+            severity=Severity.SUCCESS,
+        )
+        self.assertEqual(
+            success_findings.count(),
+            1,
+            f"Expected 1 SUCCESS finding but found {success_findings.count()}. "
+            "The assertion stage should be inferred from the expression.",
+        )
+        finding = success_findings.first()
+        self.assertEqual(finding.code, "assertion_passed")
+        self.assertEqual(finding.message, "Building meets energy efficiency target!")
+        self.assertEqual(finding.ruleset_assertion_id, assertion.id)

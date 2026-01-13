@@ -93,15 +93,18 @@ class BasicValidatorEngine(BaseValidatorEngine):
                 passed=False, issues=issues, stats={"exception": type(exc).__name__}
             )
 
-        # Evaluate CEL assertions (if any) once using the full payload context.
-        issues.extend(
-            self.evaluate_cel_assertions(
-                ruleset=ruleset,
-                validator=validator,
-                payload=payload,
-                target_stage="input",
-            ),
-        )
+        # Evaluate CEL assertions (if any) using the full payload context.
+        # Basic validators have no external processor, so we evaluate both
+        # input-stage and output-stage assertions together.
+        for stage in ("input", "output"):
+            issues.extend(
+                self.evaluate_cel_assertions(
+                    ruleset=ruleset,
+                    validator=validator,
+                    payload=payload,
+                    target_stage=stage,
+                ),
+            )
 
         assertions = list(
             ruleset.assertions.all()

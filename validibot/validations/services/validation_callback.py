@@ -97,17 +97,50 @@ def _evaluate_output_stage_assertions(
     from validibot.actions.protocols import RunContext
     from validibot.validations.engines.registry import get as get_validator_class
 
+    logger.info(
+        "[ASSERTION DEBUG] _evaluate_output_stage_assertions called for step_run %s",
+        step_run.id,
+    )
+
     workflow_step = step_run.workflow_step
     if not workflow_step:
+        logger.info("[ASSERTION DEBUG] No workflow_step found, returning early")
         return []
 
     validator = workflow_step.validator
     ruleset = workflow_step.ruleset
+    logger.info(
+        "[ASSERTION DEBUG] workflow_step=%s, validator=%s, ruleset=%s, "
+        "show_success_messages=%s",
+        workflow_step.id,
+        validator.id if validator else None,
+        ruleset.id if ruleset else None,
+        getattr(workflow_step, "show_success_messages", None),
+    )
+
     if not validator or not ruleset:
+        logger.info("[ASSERTION DEBUG] No validator or ruleset, returning early")
         return []
 
     # Check if ruleset has any CEL assertions
-    if not ruleset.assertions.filter(assertion_type="cel_expr").exists():
+    cel_assertions = list(ruleset.assertions.filter(assertion_type="cel_expr"))
+    logger.info(
+        "[ASSERTION DEBUG] Found %d CEL assertions in ruleset %s",
+        len(cel_assertions),
+        ruleset.id,
+    )
+    for a in cel_assertions:
+        logger.info(
+            "[ASSERTION DEBUG] Assertion id=%s, rhs=%s, target_catalog_entry=%s, "
+            "resolved_run_stage=%s",
+            a.id,
+            a.rhs,
+            a.target_catalog_entry_id,
+            a.resolved_run_stage,
+        )
+
+    if not cel_assertions:
+        logger.info("[ASSERTION DEBUG] No CEL assertions found, returning early")
         return []
 
     # Get the appropriate engine class for this validator type
@@ -124,6 +157,12 @@ def _evaluate_output_stage_assertions(
     engine = engine_cls()
     engine.run_context = RunContext(step=workflow_step)
 
+    logger.info(
+        "[ASSERTION DEBUG] Calling evaluate_cel_assertions with target_stage='output', "
+        "output_payload keys=%s",
+        list(output_payload.keys()) if output_payload else None,
+    )
+
     # Evaluate output-stage assertions
     try:
         issues = engine.evaluate_cel_assertions(
@@ -132,6 +171,17 @@ def _evaluate_output_stage_assertions(
             payload=output_payload,
             target_stage="output",
         )
+        logger.info(
+            "[ASSERTION DEBUG] evaluate_cel_assertions returned %d issues",
+            len(issues),
+        )
+        for issue in issues:
+            logger.info(
+                "[ASSERTION DEBUG] Issue: severity=%s, code=%s, message=%s",
+                issue.severity,
+                issue.code,
+                issue.message[:100] if issue.message else None,
+            )
     except Exception:
         logger.exception(
             "Failed to evaluate output-stage assertions for step_run %s",

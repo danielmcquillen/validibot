@@ -19,9 +19,28 @@
 
 ## Cross-Repo Awareness
 
-- Always consider the neighbouring projects `vb_shared` (installed here, source in `../vb_shared`) and `vb_validators` (Cloud Run Job containers, source in `../vb_validators`) when assessing behaviour or authoring code, especially for integrations like EnergyPlus.
+- Always consider the neighbouring projects when assessing behaviour or authoring code:
+  - `vb_shared` (installed here, source in `../vb_shared`) - shared Pydantic envelope models
+  - `vb_validators` (source in `../vb_validators`) - Cloud Run Job validator containers
+  - `validibot-commercial` (source in `../validibot-commercial`) - Pro/commercial features (billing, multi-org, advanced validators)
+  - `validibot-marketing` (source in `../validibot-marketing`) - Marketing website for validibot.com
 - At the start of a task, open the relevant modules in those repos so their current contracts guide decisions made in `validibot`.
 - When touching Dockerfiles or compose configs, cross-check the matching patterns in `../cookiecutter-django` to stay aligned.
+
+## Open-Core Code Placement
+
+**CRITICAL**: Validibot follows an open-core model. Before writing new code, determine where it belongs:
+
+| Code Type | Repository | Examples |
+|-----------|------------|----------|
+| Core/Free features | `validibot` (this repo) | Validation engine, built-in validators, basic user management |
+| Pro features | `../validibot-commercial` | Billing, multi-org, advanced validators (EnergyPlus, FMI), team management |
+
+**Decision rule**: If it's a feature that should be gated behind a paid tier, it goes in `validibot-commercial`.
+
+See [ADR: Open-Core Self-Hosted Transformation](docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for the full architectural plan.
+
+**Note**: The `validibot/billing/` app currently exists in this repo but is scheduled for migration to `validibot-commercial`. New billing features should go directly to the commercial repo.
 
 ## Collaboration Principles
 

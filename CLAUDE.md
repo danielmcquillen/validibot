@@ -33,7 +33,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 
 ## Cross-Repo Dependencies
 
-This project works alongside two related repositories:
+This project works alongside several related repositories:
 
 1. **vb_shared** - Shared library for integrations (EnergyPlus, FMI, etc.)
    - Installed from Git in production
@@ -41,12 +41,54 @@ This project works alongside two related repositories:
 2. **vb_validators** - Cloud Run Job validator containers
    - Located at `../vb_validators`
    - Depends on vb_shared via Git URL
+3. **validibot-commercial** - Commercial/Pro features (billing, multi-org, advanced validators)
+   - Located at `../validibot-commercial`
+   - Contains code that should NOT be in the open-source release
+   - See "Open-Core Architecture" section below
+4. **validibot-marketing** - Marketing website (validibot.com)
+   - Located at `../validibot-marketing`
+   - Static site for product marketing, pricing, documentation landing pages
+   - Separate from the self-hosted application (which doesn't need marketing pages)
 
 Always consider these neighboring projects when working on integrations or modifying shared functionality.
 
 Also, the CLI application is at ../validibot-cli
-Please update that CLI whenever appropriate (e.g. when the
-API changes)
+Please update that CLI whenever appropriate (e.g. when the API changes)
+
+## Open-Core Architecture
+
+**IMPORTANT**: Validibot follows an open-core model. The main `validibot` repo will be open-sourced under AGPL, while commercial features live in the private `validibot-commercial` repo.
+
+See [ADR: Open-Core Self-Hosted Transformation](docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for full details.
+
+### Terminology
+
+- **Built-in validators**: Run in the Django process (Basic, JSON Schema, XML Schema, AI)
+- **Advanced validators**: Packaged as self-contained Docker containers (EnergyPlus, FMI, user-added)
+
+### What Goes Where
+
+| Feature | Repository | Reason |
+|---------|------------|--------|
+| Core validation engine | `validibot` (public) | Core open-source functionality |
+| Built-in validators (JSON, XML, Basic, AI) | `validibot` (public) | Free for all users |
+| Workflows, submissions, findings | `validibot` (public) | Core functionality |
+| Basic user management | `validibot` (public) | Single-org mode |
+| **Billing/Stripe integration** | `validibot-commercial` (private) | Pro feature |
+| **Multi-organization support** | `validibot-commercial` (private) | Pro feature |
+| **Advanced validators** (EnergyPlus, FMI, etc.) | `validibot-commercial` (private) | Pro feature |
+| **Team management** | `validibot-commercial` (private) | Pro feature |
+
+### When Writing New Code
+
+Before adding new features, ask: "Is this a Pro/Enterprise feature?"
+
+- **If yes** → Add to `../validibot-commercial`
+- **If no** → Add to `validibot` (this repo)
+
+### Current State
+
+The `validibot/billing/` app and related code still exists in this repo but will be migrated to `validibot-commercial` as part of the open-core transformation. Until migration is complete, be aware that billing code should eventually move.
 
 ### vb_shared Workflow
 

@@ -39,6 +39,7 @@ You won't find any concrete implementations here; those are in other modules.
 
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC
 from abc import abstractmethod
@@ -66,6 +67,8 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Validator
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -422,8 +425,24 @@ class BaseValidatorEngine(ABC):
         issues: list[ValidationIssue] = []
         for assertion in assertions:
             # Skip if assertion doesn't match the current evaluation stage
+            logger.info(
+                "[ASSERTION DEBUG] Checking assertion %s: resolved_run_stage=%r, "
+                "target_stage=%r, match=%s",
+                assertion.id,
+                assertion.resolved_run_stage,
+                target_stage,
+                assertion.resolved_run_stage == target_stage,
+            )
             if assertion.resolved_run_stage != target_stage:
+                logger.info(
+                    "[ASSERTION DEBUG] Skipping assertion %s (stage mismatch)",
+                    assertion.id,
+                )
                 continue
+            logger.info(
+                "[ASSERTION DEBUG] Evaluating assertion %s",
+                assertion.id,
+            )
             expr = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
             if len(expr) > CEL_MAX_EXPRESSION_CHARS:
                 issues.append(

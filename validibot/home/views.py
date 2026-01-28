@@ -1,6 +1,5 @@
 """Views for the home app."""
 
-from django.conf import settings
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
@@ -17,5 +16,5 @@ class HomeView(TemplateView):
     def get(self, request, *args, **kwargs):
         """Redirect authenticated users to the app dashboard."""
         if request.user.is_authenticated:
-            return redirect("dashboard:home")
+            return redirect("dashboard:my_dashboard")
         return super().get(request, *args, **kwargs)

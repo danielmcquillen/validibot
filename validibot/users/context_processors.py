@@ -2,7 +2,6 @@ import logging
 
 from django.conf import settings
 
-from validibot.billing.constants import PlanCode
 from validibot.users.constants import PermissionCode
 from validibot.users.models import ensure_personal_workspace
 from validibot.users.scoping import ensure_active_org_scope
@@ -124,18 +123,9 @@ def _apply_organization_context(request):
         and request.user.has_perm(PermissionCode.VALIDATOR_EDIT.value, active_org)
     )
 
-    # Determine if we should show limited navigation.
-    # Free plan users viewing their personal org see only Workflows + Validation Runs.
-    show_limited_nav = False
-    if active_org and active_org.is_personal:
-        subscription = getattr(active_org, "subscription", None)
-        plan = getattr(subscription, "plan", None) if subscription else None
-        if plan and plan.code == PlanCode.FREE:
-            show_limited_nav = True
-
     return {
         "is_workflow_guest": False,
-        "show_limited_nav": show_limited_nav,
+        "show_limited_nav": False,
         "org_memberships": memberships,
         "active_org": active_org,
         "active_membership": active_membership,

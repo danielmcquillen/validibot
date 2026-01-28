@@ -76,6 +76,7 @@ class TestAuthMeEndpoint:
     def test_rejects_invalid_token(
         self,
         api_client: APIClient,
+        db,
     ):
         """Test that invalid tokens are rejected."""
         api_client.credentials(HTTP_AUTHORIZATION="Bearer invalid-token-12345")

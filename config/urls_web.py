@@ -85,20 +85,6 @@ if settings.ENABLE_APP:
 if settings.ACCOUNT_ALLOW_LOGIN:
     urlpatterns.append(path("accounts/", include("allauth.urls")))
 
-# Stripe webhook and billing URLs
-# djstripe handles automatic webhook signature verification and event processing
-urlpatterns += [
-    path("stripe/", include("djstripe.urls", namespace="djstripe")),
-]
-
-if settings.ENABLE_APP:
-    urlpatterns += [
-        path(
-            "app/billing/",
-            include("validibot.billing.urls", namespace="billing"),
-        ),
-    ]
-
 # Public API surface (available on web). Internal-only endpoints are on worker.
 if settings.ENABLE_API:
     from drf_spectacular.views import SpectacularAPIView

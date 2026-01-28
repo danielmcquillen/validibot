@@ -20,8 +20,6 @@ dependencies = [
   "django==6.0",
   "django-allauth[mfa]==65.13.1",
   "django-anymail[postmark]==14.0",
-  "dj-stripe==2.10.3",
-  "stripe>=13.0.1",
   "django-cloud-tasks>=0.0.4",
   "django-cors-headers==4.9.0",
   "django-crispy-forms==2.5",

@@ -60,14 +60,6 @@
             <span>{% trans "Validation Runs" %}</span>
           </a>
         </li>
-        <li class="nav-item" role="none">
-          <a href="{% url 'billing:dashboard' %}"
-             class="nav-link text-white {% active_link 'billing' %}"
-             role="menuitem">
-            <i class="bi bi-credit-card"></i>
-            <span>{% trans "Subscription" %}</span>
-          </a>
-        </li>
       </ul>
 
     {% else %}
@@ -177,14 +169,6 @@
                role="menuitem">
               <i class="bi bi-person-badge"></i>
               <span>{% trans "Guests" %}</span>
-            </a>
-          </li>
-          <li class="nav-item" role="none">
-            <a href="{% url 'billing:dashboard' %}"
-               class="nav-link text-white {% active_link 'billing' %}"
-               role="menuitem">
-              <i class="bi bi-credit-card"></i>
-              <span>{% trans "Subscription" %}</span>
             </a>
           </li>
         {% endif %}

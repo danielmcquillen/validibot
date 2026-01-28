@@ -27,30 +27,8 @@ def get_selected_plan_from_session(request: HttpRequest) -> dict | None:
     """
     Get the selected plan details from session for template context.
 
-    Returns a dict with plan details if a valid plan is selected,
-    or None if no plan is selected.
+    Returns None - billing has been removed from this application.
     """
-    plan_code = request.session.get(SELECTED_PLAN_SESSION_KEY)
-    if not plan_code:
-        return None
-
-    try:
-        from validibot.billing.models import Plan
-
-        plan = Plan.objects.filter(code=plan_code).first()
-        if plan:
-            return {
-                "code": plan.code,
-                "name": plan.name,
-                "description": plan.description,
-                "monthly_price_dollars": plan.monthly_price_dollars,
-                "basic_launches_limit": plan.basic_launches_limit,
-                "included_credits": plan.included_credits,
-                "max_seats": plan.max_seats,
-            }
-    except Exception:
-        logger.exception("Error fetching plan from session")
-
     return None
 
 
@@ -143,24 +121,6 @@ class AccountAdapter(DefaultAccountAdapter):
             if redirect_url:
                 return redirect_url
 
-        # Standard pricing flow
-        selected_plan = request.session.get(SELECTED_PLAN_SESSION_KEY)
-
-        if selected_plan:
-            # Clear the session key after use (one-time redirect)
-            del request.session[SELECTED_PLAN_SESSION_KEY]
-
-            # Validate the plan exists before redirecting
-            from validibot.billing.constants import PlanCode
-
-            valid_plans = {choice.value for choice in PlanCode}
-            if selected_plan in valid_plans and selected_plan != PlanCode.ENTERPRISE:
-                # Store the intended plan on the subscription for analytics
-                self._store_intended_plan(request.user, selected_plan)
-
-                # Redirect to billing dashboard with welcome flag
-                return f"{reverse('billing:dashboard')}?welcome=1&plan={selected_plan}"
-
         # Default: redirect to standard login redirect
         return settings.LOGIN_REDIRECT_URL
 
@@ -235,38 +195,6 @@ class AccountAdapter(DefaultAccountAdapter):
             logger.warning("Failed to accept workflow invite: %s", e)
             messages.error(request, str(e))
             return None
-
-    def _store_intended_plan(self, user: User, plan_code: str) -> None:
-        """
-        Store the intended plan on the user's subscription.
-
-        Called after signup to record which plan the user selected
-        from the pricing page, for analytics and UX improvements.
-        """
-        try:
-            from validibot.billing.models import Plan
-
-            # Get the user's current org subscription
-            if not user.current_org:
-                return
-
-            subscription = getattr(user.current_org, "subscription", None)
-            if not subscription:
-                return
-
-            # Get the intended plan and store it
-            intended_plan = Plan.objects.filter(code=plan_code).first()
-            if intended_plan:
-                subscription.intended_plan = intended_plan
-                subscription.save(update_fields=["intended_plan"])
-                logger.info(
-                    "Stored intended plan %s for org %s",
-                    plan_code,
-                    user.current_org.id,
-                )
-        except Exception:
-            logger.exception("Failed to store intended plan")
-
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(

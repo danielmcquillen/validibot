@@ -30,11 +30,6 @@ from validibot.validations.services.models import ValidationRunTaskResult
 
 logger = logging.getLogger(__name__)
 
-# Billing enforcement is checked before creating a validation run.
-# If the org has exceeded their limits or trial has expired, the launch fails.
-# These imports are here to avoid circular dependencies.
-BILLING_ENFORCEMENT_ENABLED = True  # Feature flag for gradual rollout
-
 GENERIC_EXECUTION_ERROR = _(
     "This validation run could not be completed. Please try again later.",
 )
@@ -172,11 +167,6 @@ class ValidationRunService:
         if not workflow.can_execute(user=request.user):
             err_msg = "User does not have permission to execute this workflow"
             raise PermissionError(err_msg)
-
-        # Check billing limits before proceeding
-        # For workflow guests, billing is attributed to the workflow owner's org
-        if BILLING_ENFORCEMENT_ENABLED:
-            self._check_billing_limits(org, workflow, user=request.user)
 
         run_user = None
         if getattr(submission, "user_id", None):
@@ -620,67 +610,6 @@ class ValidationRunService:
         return result
 
     # ---------- Private methods ----------
-
-    def _check_billing_limits(
-        self,
-        org: Organization,
-        workflow: Workflow,
-        user: User | None = None,
-    ) -> None:
-        """
-        Check billing limits before creating a validation run.
-
-        For basic workflows: increments the usage counter and checks monthly limit.
-        For advanced workflows: checks credit balance.
-
-        For workflow guests (users with grants but no org membership), billing is
-        attributed to the workflow owner's organization, not the user's org.
-
-        Args:
-            org: The organization passed to launch (may be None for guests).
-            workflow: The workflow being executed.
-            user: The user executing the workflow (used to check guest status).
-
-        Raises:
-            BillingError (or subclass) if limits exceeded or subscription inactive.
-        """
-        # Local imports to avoid circular dependencies
-        from validibot.billing.metering import AdvancedWorkflowMeter
-        from validibot.billing.metering import BasicWorkflowMeter
-
-        # Determine billing org: for guests, use workflow's org
-        billing_org = org
-        if user and getattr(user, "is_workflow_guest", False):
-            # Workflow guests have their usage billed to the workflow owner's org
-            billing_org = workflow.org
-            logger.info(
-                "Guest user %s billing attributed to workflow org %s",
-                user.id,
-                billing_org.id,
-            )
-
-        # Check if billing org has a subscription (it should, but handle edge cases)
-        if not hasattr(billing_org, "subscription"):
-            logger.warning(
-                "Organization %s has no subscription, skipping billing check",
-                billing_org.id,
-            )
-            return
-
-        # Determine if workflow is advanced (uses high-compute validators)
-        is_advanced = getattr(workflow, "is_advanced", False)
-
-        if is_advanced:
-            # For advanced workflows, check credit balance
-            # Credit deduction happens after the run completes
-            AdvancedWorkflowMeter().check_can_launch(
-                billing_org,
-                credits_required=1,
-                user=user,
-            )
-        else:
-            # For basic workflows, check and increment usage counter
-            BasicWorkflowMeter().check_and_increment(billing_org, user=user)
 
     def _start_step_run(
         self,

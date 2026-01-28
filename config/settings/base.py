@@ -109,7 +109,6 @@ THIRD_PARTY_APPS = [
     "django_filters",
     "markdownify",
     "django_cloud_tasks",
-    "djstripe",
     "django_recaptcha",
 ]
 
@@ -124,7 +123,6 @@ LOCAL_APPS = [
     "validibot.submissions",
     "validibot.integrations",
     "validibot.workflows",
-    "validibot.billing",
     "validibot.dashboard",
     "validibot.home",
     "validibot.members",
@@ -222,7 +220,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "validibot.billing.middleware.TrialExpiryMiddleware",
 ]
 
 # STATIC
@@ -273,7 +270,6 @@ TEMPLATES = [
                 "validibot.core.context_processors.site_feature_settings",
                 "validibot.users.context_processors.organization_context",
                 "validibot.notifications.context_processors.notifications_context",
-                "validibot.billing.context_processors.billing_context",
             ],
         },
     },
@@ -586,31 +582,3 @@ CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 # FEATURES
 ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
 
-# STRIPE / DJ-STRIPE
-# ------------------------------------------------------------------------------
-# Stripe API keys (set in environment)
-# Test mode keys start with sk_test_ and pk_test_
-# Live mode keys start with sk_live_ and pk_live_
-STRIPE_TEST_SECRET_KEY = env("STRIPE_TEST_SECRET_KEY", default="")
-STRIPE_LIVE_SECRET_KEY = env("STRIPE_LIVE_SECRET_KEY", default="")
-STRIPE_TEST_PUBLIC_KEY = env("STRIPE_TEST_PUBLIC_KEY", default="")
-STRIPE_LIVE_PUBLIC_KEY = env("STRIPE_LIVE_PUBLIC_KEY", default="")
-STRIPE_LIVE_MODE = env.bool("STRIPE_LIVE_MODE", default=False)
-
-# dj-stripe configuration
-# https://dj-stripe.dev/reference/settings/
-DJSTRIPE_WEBHOOK_SECRET = env("DJSTRIPE_WEBHOOK_SECRET", default="")
-DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"  # Use Stripe IDs as FKs (recommended)
-DJSTRIPE_USE_NATIVE_JSONFIELD = True  # Use native JSONField
-
-# Define which Stripe key to use based on live mode
-STRIPE_SECRET_KEY = (
-    STRIPE_LIVE_SECRET_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_SECRET_KEY
-)
-STRIPE_PUBLIC_KEY = (
-    STRIPE_LIVE_PUBLIC_KEY if STRIPE_LIVE_MODE else STRIPE_TEST_PUBLIC_KEY
-)
-if not STRIPE_SECRET_KEY:
-    logger.warning("STRIPE_SECRET_KEY is not set properly in environment variables.")
-if not STRIPE_PUBLIC_KEY:
-    logger.warning("STRIPE_PUBLIC_KEY is not set properly in environment variables.")

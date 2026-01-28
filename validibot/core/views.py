@@ -6,7 +6,6 @@ from django.http import HttpRequest
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import redirect
-from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.cache import cache_page
@@ -14,7 +13,6 @@ from django.views.decorators.http import require_http_methods
 
 from validibot.core.forms import SupportMessageForm
 from validibot.core.jwks import jwk_from_kms_key
-from validibot.core.utils import is_htmx
 
 
 @login_required

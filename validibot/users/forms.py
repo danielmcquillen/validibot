@@ -10,8 +10,6 @@ from django.contrib.auth import forms as admin_forms
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from validibot.billing.metering import SeatEnforcer
-from validibot.billing.metering import SeatLimitError
 from validibot.users.constants import RESERVED_ORG_SLUGS
 from validibot.users.constants import RoleCode
 from validibot.users.models import MemberInvite
@@ -334,16 +332,6 @@ class OrganizationMemberForm(forms.Form):
         if self.organization is None:
             raise forms.ValidationError("Organization context is required.")
 
-        # Check seat limit before adding member
-        if hasattr(self.organization, "subscription"):
-            try:
-                SeatEnforcer().check_can_add_member(
-                    self.organization,
-                    user=self.request_user,
-                )
-            except SeatLimitError as exc:
-                raise forms.ValidationError(exc.detail) from exc
-
         if hasattr(self, "user"):
             existing = Membership.objects.filter(
                 user=self.user,
@@ -419,16 +407,6 @@ class InviteUserForm(forms.Form):
         cleaned = super().clean()
         if self.organization is None or self.inviter is None:
             raise forms.ValidationError(_("Organization context is required."))
-
-        # Check seat limit before allowing invite
-        if hasattr(self.organization, "subscription"):
-            try:
-                SeatEnforcer().check_can_add_member(
-                    self.organization,
-                    user=self.inviter,
-                )
-            except SeatLimitError as exc:
-                raise forms.ValidationError(exc.detail) from exc
 
         user_id = cleaned.get("invitee_user")
         email = cleaned.get("invitee_email") or cleaned.get("search")

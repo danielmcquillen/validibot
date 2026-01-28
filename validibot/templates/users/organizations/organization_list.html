@@ -45,9 +45,6 @@
                   <th scope="col" class="d-none d-lg-table-cell">
                     {% trans "Members" %}
                   </th>
-                  <th scope="col" class="d-none d-md-table-cell">
-                    {% trans "Subscription" %}
-                  </th>
                   <th scope="col" class="text-end">
                     {% trans "Actions" %}
                   </th>
@@ -65,18 +62,6 @@
                       </td>
                       <td class="d-none d-lg-table-cell">
                         {{ member_count }}
-                      </td>
-                      <td class="d-none d-md-table-cell">
-                        <form method="post"
-                              action="{% url 'users:organization-switch' membership.org.pk %}"
-                              class="d-inline">
-                          {% csrf_token %}
-                          <input type="hidden" name="next" value="{% url 'billing:dashboard' %}" />
-                          <button type="submit" class="btn btn-sm btn-secondary">
-                            <i class="bi bi-credit-card me-1"></i>
-                            {% trans "Manage subscription" %}
-                          </button>
-                        </form>
                       </td>
                       <td class="text-end">
                         <div class="btn-group" role="group">

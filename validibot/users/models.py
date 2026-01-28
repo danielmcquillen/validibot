@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
@@ -115,9 +114,6 @@ def ensure_personal_workspace(user: User) -> Organization | None:
         is_personal=True,
     )
 
-    # Create subscription with trial on Starter plan
-    _create_trial_subscription(personal_org)
-
     membership = Membership.objects.create(
         user=user,
         org=personal_org,
@@ -127,33 +123,6 @@ def ensure_personal_workspace(user: User) -> Organization | None:
     ensure_default_project(personal_org)
     user.set_current_org(personal_org)
     return personal_org
-
-
-def _create_trial_subscription(org: Organization) -> None:
-    """
-    Create a trial subscription for a new organization.
-
-    New orgs start with a 14-day trial on the Starter plan.
-    Uses local imports to avoid circular dependencies with billing app.
-    """
-    # Local imports to avoid circular dependency
-    from validibot.billing.constants import TRIAL_DURATION_DAYS
-    from validibot.billing.constants import PlanCode
-    from validibot.billing.constants import SubscriptionStatus
-    from validibot.billing.models import Plan
-    from validibot.billing.models import Subscription
-
-    now = datetime.now(tz=UTC)
-    starter_plan = Plan.objects.get(code=PlanCode.STARTER)
-
-    Subscription.objects.create(
-        org=org,
-        plan=starter_plan,
-        status=SubscriptionStatus.TRIALING,
-        trial_started_at=now,
-        trial_ends_at=now + timedelta(days=TRIAL_DURATION_DAYS),
-        included_credits_remaining=starter_plan.included_credits,
-    )
 
 
 class Role(models.Model):
@@ -715,13 +684,6 @@ class MemberInvite(TimeStampedModel):
             raise ValueError("Invitee user is not set; cannot accept without user.")
 
         membership_roles = roles or self.roles or []
-
-        # Check seat limit before accepting (seats may have filled since invite
-        # was sent). Local import to avoid circular dependency.
-        from validibot.billing.metering import SeatEnforcer
-
-        if hasattr(self.org, "subscription"):
-            SeatEnforcer().check_can_add_member(self.org, user=self.invitee_user)
 
         membership, _ = Membership.objects.get_or_create(
             user=self.invitee_user,

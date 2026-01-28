@@ -14,7 +14,6 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy
 from rest_framework.response import Response as APIResponse
 
-from validibot.billing.metering import BillingError
 from validibot.core.site_settings import MetadataPolicyError
 from validibot.core.site_settings import get_site_settings
 from validibot.projects.models import Project
@@ -142,14 +141,6 @@ def launch_api_validation_run(
             "detail": gettext_lazy("You do not have permission to run this workflow."),
         }
         return APIResponse(payload, status=HTTPStatus.NOT_FOUND)
-    except BillingError as exc:
-        # Handle billing errors (trial expired, limit exceeded, insufficient credits)
-        # Return 402 Payment Required with the specific error message
-        payload = {
-            "detail": exc.detail,
-            "code": exc.code,
-        }
-        return APIResponse(payload, status=HTTPStatus.PAYMENT_REQUIRED)
     except Exception:  # pragma: no cover - defensive
         logger.exception("Run service errored for workflow %s", workflow.pk)
         payload = {

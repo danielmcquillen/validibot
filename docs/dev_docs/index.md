@@ -38,7 +38,6 @@ This site describes the core concepts, data model, and API for working with vali
 
 ### Integrations
 
-- [Stripe Billing](integrations/stripe.md) - Subscription billing, webhooks, and payment processing
 - [EnergyPlus Modal](integrations/energyplus_modal.md) - Modal-backed EnergyPlus simulation runner
 
 ### Marketing

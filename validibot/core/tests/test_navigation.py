@@ -87,4 +87,3 @@ class NavigationVisibilityTests(TestCase):
         # Should see admin sections
         self.assertIn("Projects", html)
         self.assertIn("Members", html)
-        self.assertIn("Subscription", html)

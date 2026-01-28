@@ -1,17 +1,10 @@
-{% extends "marketing_base.html" %}
+{% extends "core/base.html" %}
 
 {% load i18n static %}
 
 {% block title %}
   {% trans "Page not found" %}
 {% endblock title %}
-
-{% block meta_description %}
-  {% blocktrans %}
-    The page you are looking for could not be found. Head back to the Validibot
-    homepage or explore the resource library.
-  {% endblocktrans %}
-{% endblock meta_description %}
 
 {% block mainclass %}
   container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
@@ -54,11 +47,8 @@
     </figure>
 
     <div class="d-flex flex-row mt-4">
-      <a class="btn btn-secondary " href="{% url 'marketing:home' %}">
+      <a class="btn btn-secondary " href="{% url 'home:home' %}">
         {% trans "Back to homepage" %}
-      </a>
-      <a class="btn btn-secondary ms-2" href="{% url 'marketing:resources' %}">
-        {% trans "Visit resources" %}
       </a>
     </div>
   </div>

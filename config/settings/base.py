@@ -126,8 +126,7 @@ LOCAL_APPS = [
     "validibot.workflows",
     "validibot.billing",
     "validibot.dashboard",
-    "validibot.marketing",
-    "validibot.blog",
+    "validibot.home",
     "validibot.members",
     "validibot.help",
     "validibot.notifications",
@@ -532,7 +531,8 @@ ENABLE_FEATURES_SECTION = env.bool("ENABLE_FEATURES_SECTION", True)
 ENABLE_PRICING_SECTION = env.bool("ENABLE_PRICING_SECTION", True)
 ENABLE_RESOURCES_SECTION = env.bool("ENABLE_RESOURCES_SECTION", True)
 ENABLE_DOCS_SECTION = env.bool("ENABLE_DOCS_SECTION", True)
-ENABLE_BLOG = env.bool("ENABLE_BLOG", True)
+# Blog moved to separate marketing site
+# ENABLE_BLOG = env.bool("ENABLE_BLOG", True)
 ENABLE_HELP_CENTER = env.bool("ENABLE_HELP_CENTER", False)
 ENABLE_SYSTEM_STATUS = env.bool("ENABLE_SYSTEM_STATUS", False)
 ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)

@@ -1,5 +1,6 @@
 {% load i18n core_tags static %}
 
+{# Simplified top nav for self-hosted deployment - marketing pages moved to separate site #}
 <header id="site-top-nav-wrapper"
         class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm">
     <nav id="site-top-nav"
@@ -14,7 +15,7 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <a class="navbar-brand brand-with-mark"
-           href="{% url 'marketing:home' %}">
+           href="{% url 'home:home' %}">
             <img src="{% static 'images/robot_head_bw.png' %}"
                  alt="{% trans 'Validibot logo' %}"
                  class="brand-mark" />
@@ -24,30 +25,6 @@
 
             <ul class="navbar-nav me-auto">
                 {% block left_nav_items %}
-                    {% if ENABLE_FEATURES_SECTION %}
-                        {% include 'marketing/partial/top_nav/features_menu.html' %}
-                    {% endif %}
-                    {% if ENABLE_RESOURCES_SECTION %}
-                        {% include 'marketing/partial/top_nav/resources_menu.html' %}
-                    {% endif %}
-                    {% if ENABLE_PRICING_SECTION %}
-                        <li class="nav-item ">
-                            <a class="nav-link {% active_link 'app' %}"
-                               href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
-                        </li>
-                    {% endif %}
-                    <li class="nav-item ">
-                        <a class="nav-link {% active_link_any 'about' %}"
-                           href="{% url 'marketing:about' %}">{% translate "About" %}</a>
-                    </li>
-                    {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
-                        {% include 'marketing/partial/top_nav/support_menu.html' %}
-                    {% else %}
-                        <li class="nav-item ">
-                            <a class="nav-link {% active_link_any 'contact' %}"
-                               href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
-                        </li>
-                    {% endif %}
                 {% endblock left_nav_items %}
             </ul>
 

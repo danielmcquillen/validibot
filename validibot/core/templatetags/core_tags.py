@@ -198,16 +198,6 @@ def org_url(context, view_name, *args, **kwargs):
     )
 
 
-@register.simple_tag
-def marketing_waitlist_form(origin: str = "hero"):
-    from validibot.marketing.forms import BetaWaitlistForm
-
-    value = origin.strip().lower() if origin else BetaWaitlistForm.ORIGIN_HERO
-    if value not in BetaWaitlistForm.ALLOWED_ORIGINS:
-        value = BetaWaitlistForm.ORIGIN_HERO
-    return BetaWaitlistForm(origin=value)
-
-
 @register.simple_tag(takes_context=True)
 def workflow_launch_preferred_mode(context) -> str:
     default_mode = "upload"

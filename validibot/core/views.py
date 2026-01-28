@@ -20,6 +20,7 @@ from validibot.core.utils import is_htmx
 @login_required
 @require_http_methods(["POST"])
 def submit_support_message(request: HttpRequest) -> HttpResponse:
+    """Submit a support message. Marketing contact page moved to separate site."""
     form = SupportMessageForm(request.POST)
     if form.is_valid():
         support_message = form.save(commit=False)
@@ -27,30 +28,11 @@ def submit_support_message(request: HttpRequest) -> HttpResponse:
         support_message.save()
         _notify_admins(request, form)
 
-        success_context = {
-            "headline": _("Message received"),
-            "body": _(
-                "Thanks for reaching out. A member of the team will respond soon.",
-            ),
-        }
-        if is_htmx(request):
-            return render(
-                request,
-                "marketing/partial/support_message_success.html",
-                success_context,
-                status=201,
-            )
-
-        messages.success(request, success_context["body"])
-        return redirect(reverse("marketing:contact"))
-
-    if is_htmx(request):
-        return render(
+        messages.success(
             request,
-            "marketing/partial/support_message_form.html",
-            {"form": form},
-            status=400,
+            _("Thanks for reaching out. A member of the team will respond soon."),
         )
+        return redirect(reverse("home:home"))
 
     messages.error(
         request,
@@ -59,7 +41,7 @@ def submit_support_message(request: HttpRequest) -> HttpResponse:
             "the highlighted fields and try again.",
         ),
     )
-    return redirect(reverse("marketing:contact"))
+    return redirect(reverse("home:home"))
 
 
 @login_required
@@ -69,7 +51,7 @@ def app_home_redirect(request: HttpRequest) -> HttpResponse:
     org = request.user.get_current_org()
     if not org or not settings.ENABLE_APP:
         messages.error(request, _("You do not belong to any organizations yet."))
-        return redirect("marketing:home")
+        return redirect("home:home")
 
     return redirect(reverse("dashboard:my_dashboard"))
 

@@ -9,14 +9,10 @@
 {% comment %}
 Trial expired page - shows when a user's trial has ended.
 Uses the shared plan_cards partial template for consistent plan display.
-Shows the marketing top nav instead of app top bar, with "App" shown as active.
 {% endcomment %}
 
 {% block top_nav %}
-  {% comment %}
-  Show the marketing top nav with a simplified user dropdown (no "My Profile" link
-  since profile pages are blocked for trial-expired users).
-  {% endcomment %}
+  {# Simplified nav for trial expired page #}
   <header id="site-top-nav-wrapper"
           class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm">
     <nav id="site-top-nav"
@@ -31,7 +27,7 @@ Shows the marketing top nav instead of app top bar, with "App" shown as active.
         <span class="navbar-toggler-icon"></span>
       </button>
       <a class="navbar-brand brand-with-mark"
-         href="{% url 'marketing:home' %}">
+         href="{% url 'home:home' %}">
         <img src="{% static 'images/robot_head_bw.png' %}"
              alt="{% trans 'Validibot logo' %}"
              class="brand-mark" />
@@ -39,34 +35,9 @@ Shows the marketing top nav instead of app top bar, with "App" shown as active.
       </a>
       <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav me-auto">
-          {% if ENABLE_FEATURES_SECTION %}
-            {% include 'marketing/partial/top_nav/features_menu.html' %}
-          {% endif %}
-          {% if ENABLE_RESOURCES_SECTION %}
-            {% include 'marketing/partial/top_nav/resources_menu.html' %}
-          {% endif %}
-          {% if ENABLE_PRICING_SECTION %}
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'marketing:pricing' %}">{% translate "Pricing" %}</a>
-            </li>
-          {% endif %}
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'marketing:about' %}">{% translate "About" %}</a>
-          </li>
-          {% if ENABLE_HELP_CENTER or ENABLE_SYSTEM_STATUS %}
-            {% include 'marketing/partial/top_nav/support_menu.html' %}
-          {% else %}
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'marketing:contact' %}">{% translate "Contact Us" %}</a>
-            </li>
-          {% endif %}
         </ul>
 
         <ul class="navbar-nav">
-          {% comment %}
-          App button - shown as active since this is the app portion of the site.
-          Links to the trial expired page itself (the only accessible app page).
-          {% endcomment %}
           {% if ENABLE_APP %}
             <li class="nav-item app-nav-item">
               <a class="nav-link active btn btn-secondary"
@@ -79,9 +50,6 @@ Shows the marketing top nav instead of app top bar, with "App" shown as active.
             </li>
           {% endif %}
 
-          {% comment %}
-          User dropdown - simplified for trial expired (no My Profile link)
-          {% endcomment %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle"
                href="#"
@@ -103,15 +71,11 @@ Shows the marketing top nav instead of app top bar, with "App" shown as active.
 {% endblock top_nav %}
 
 {% block top_bar %}
-  {% comment %}
-  Hide the app top bar - we're using marketing nav instead.
-  {% endcomment %}
+  {# Hide the app top bar #}
 {% endblock top_bar %}
 
 {% block left_sidebar %}
-  {% comment %}
-  No sidebar for trial expired page - users should focus on subscribing.
-  {% endcomment %}
+  {# No sidebar for trial expired page - users should focus on subscribing #}
 {% endblock left_sidebar %}
 
 {% block app_content %}
@@ -149,20 +113,10 @@ Shows the marketing top nav instead of app top bar, with "App" shown as active.
           </div>
         {% endif %}
 
-        {% comment %}
-      Include the shared plan cards partial using Django 6.0+ partial syntax.
-      Set highlight_intended=True to highlight the plan they selected during signup.
-      Set show_purchase_buttons=True to show "Purchase Plan" instead of "Upgrade".
-        {% endcomment %}
         {% with highlight_intended=True show_purchase_buttons=True %}
           {% include "billing/partials/plan_cards.html#plan_cards_grid" %}
         {% endwith %}
 
-        <p class="text-muted mt-4">
-          {% trans "Need a custom solution?" %}
-          <a href="{% url 'marketing:contact' %}">{% trans "Contact our sales team" %}</a>
-          {% trans "for Enterprise pricing." %}
-        </p>
       </div>
     </div>
   </div>

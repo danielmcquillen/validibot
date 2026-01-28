@@ -2811,7 +2811,7 @@ class WorkflowInviteAcceptView(View):
                 _("This invite is no longer valid (status: %(status)s).")
                 % {"status": invite.get_status_display()},
             )
-            return HttpResponseRedirect(reverse("marketing:home"))
+            return HttpResponseRedirect(reverse("home:home"))
 
         if request.user.is_authenticated:
             # Accept immediately for logged-in users
@@ -2840,7 +2840,7 @@ class WorkflowInviteAcceptView(View):
                 )
             except ValueError as e:
                 messages.error(request, str(e))
-                return HttpResponseRedirect(reverse("marketing:home"))
+                return HttpResponseRedirect(reverse("home:home"))
 
         # For anonymous users, store token in session and redirect to signup
         request.session[self.WORKFLOW_INVITE_SESSION_KEY] = str(token)

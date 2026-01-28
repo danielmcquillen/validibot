@@ -232,7 +232,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               Enterprise shows "Contact Sales", others show "Start free trial".
               {% endcomment %}
               {% if p.code == "ENTERPRISE" %}
-                <a href="{% url 'marketing:contact' %}"
+                <a href="mailto:sales@validibot.com"
                    class="btn btn-secondary w-100">
                   <i class="bi bi-envelope me-1"></i>
                   {% trans "Contact Sales" %}
@@ -281,7 +281,7 @@ The partial uses Django 6.0+ partialdef so it can be:
               {% comment %}
               Enterprise - always contact sales
               {% endcomment %}
-              <a href="{% url 'marketing:contact' %}"
+              <a href="mailto:sales@validibot.com"
                  class="btn btn-secondary w-100">
                 <i class="bi bi-envelope me-1"></i>
                 {% trans "Contact Sales" %}

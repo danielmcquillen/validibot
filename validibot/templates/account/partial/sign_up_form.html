@@ -21,8 +21,8 @@
     {% comment %}
     Terms acceptance checkbox with links to Terms of Service and Privacy Policy.
     {% endcomment %}
-    {% url 'marketing:terms' as terms_url %}
-    {% url 'marketing:privacy' as privacy_url %}
+    {% comment %} Terms and privacy URLs - update these when hosted externally {% endcomment %}
+    {% with terms_url="/terms/" privacy_url="/privacy/" %}
     <div class="mb-3">
         <div class="form-check">
             <input type="checkbox"
@@ -44,6 +44,7 @@
             {% endif %}
         </div>
     </div>
+    {% endwith %}
 
     {% comment %}
     reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY

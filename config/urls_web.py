@@ -1,47 +1,26 @@
 """
 Public-facing URLConf for APP_ROLE=web instances.
 
-These routes serve marketing pages and the application UI only. API routes are
-omitted here to keep the web service surface area small; APIs live on the worker
-service (APP_ROLE=worker) behind IAM.
+These routes serve the application UI only. Marketing pages are served from
+a separate marketing site. API routes are omitted here to keep the web
+service surface area small; APIs live on the worker service (APP_ROLE=worker)
+behind IAM.
 """
 
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.contrib.sitemaps.views import sitemap
 from django.urls import include
 from django.urls import path
-from django.views.decorators.cache import cache_page
-from django.views.generic import TemplateView
 
-from validibot.blog.sitemaps import BlogPostSitemap
 from validibot.core import views as core_views
 from validibot.core.views import jwks_view
-from validibot.marketing import views as marketing_views
-from validibot.marketing.sitemaps import MarketingStaticViewSitemap
+from validibot.home import views as home_views
 from validibot.workflows import views as workflow_views
-
-sitemaps = {
-    "marketing": MarketingStaticViewSitemap(),
-    "blog": BlogPostSitemap(),
-}
 
 urlpatterns = [
     path(".well-known/jwks.json", jwks_view, name="jwks"),
-    path("", include("validibot.marketing.urls", namespace="marketing")),
-    path("robots.txt", marketing_views.robots_txt, name="robots"),
-    path(
-        "sitemap.xml",
-        cache_page(60 * 60)(sitemap),
-        {"sitemaps": sitemaps},
-        name="sitemap",
-    ),
-    path(
-        "about/",
-        TemplateView.as_view(template_name="pages/about.html"),
-        name="about",
-    ),
+    path("", include("validibot.home.urls", namespace="home")),
     path(
         "workflows/",
         workflow_views.PublicWorkflowListView.as_view(),

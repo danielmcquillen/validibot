@@ -110,6 +110,7 @@ THIRD_PARTY_APPS = [
     "markdownify",
     "django_cloud_tasks",
     "django_recaptcha",
+    "django_dramatiq",  # Task queue with admin monitoring
 ]
 
 LOCAL_APPS = [
@@ -565,6 +566,69 @@ DEFAULT_FROM_EMAIL = env(
     default="Validibot <daniel@validibot.com>",
 )
 
+# STORAGE ARCHITECTURE
+# ------------------------------------------------------------------------------
+# Validibot uses a single storage location (bucket or directory) with two prefixes:
+#
+#   storage/
+#   ├── public/                     # Publicly accessible (avatars, workflow images)
+#   └── private/                    # Private files
+#       └── runs/{run_id}/          # Each validation run gets its own directory
+#           ├── input/              # Written by web app (envelope, submission files)
+#           └── output/             # Written by validator container (results, artifacts)
+#
+# This structure is standardized across all platforms (Docker, K8s, GCS, etc.).
+# Validator containers receive STORAGE_ROOT and RUN_PATH environment variables
+# to read from input/ and write to output/.
+#
+# For GCS/S3: The bucket is private by default. The `public/` prefix is made
+# publicly readable via IAM policy (allUsers → objectViewer on public/* prefix).
+#
+# Django STORAGES:
+#   - "default": Public media files (uses public/ prefix)
+#
+# Data Storage (validibot.core.storage):
+#   - Validation pipeline files under private/runs/
+#   - Accessed via signed URLs for user downloads
+#
+# See docs/dev_docs/how-to/configure-storage.md for complete details.
+
+# Storage bucket/root for all files (single bucket architecture)
+STORAGE_BUCKET = env("STORAGE_BUCKET", default="")
+STORAGE_ROOT = env("STORAGE_ROOT", default=str(BASE_DIR / "storage"))
+
+# DATA STORAGE (Validation Pipeline Files)
+# ------------------------------------------------------------------------------
+# Data storage handles validation pipeline files (submissions, envelopes, outputs).
+# These files are private and accessed via signed URLs when users download them.
+#
+# Backend options:
+#   - "local": Local filesystem (default, good for development and self-hosted)
+#   - "gcs": Google Cloud Storage (production GCP)
+#   - "s3": Amazon S3 (future)
+#   - Full class path for custom backends
+#
+# See validibot/core/storage/ for implementation details.
+DATA_STORAGE_BACKEND = env("DATA_STORAGE_BACKEND", default="local")
+
+# For local backend, use private/ subdirectory under STORAGE_ROOT
+DATA_STORAGE_ROOT = env("DATA_STORAGE_ROOT", default=str(Path(STORAGE_ROOT) / "private"))
+
+# For cloud backends, use the same bucket with private/ prefix
+DATA_STORAGE_BUCKET = env("DATA_STORAGE_BUCKET", default=STORAGE_BUCKET)
+DATA_STORAGE_PREFIX = env("DATA_STORAGE_PREFIX", default="private")
+
+# Build DATA_STORAGE_OPTIONS based on backend type
+if DATA_STORAGE_BACKEND == "local":
+    DATA_STORAGE_OPTIONS = {"root": DATA_STORAGE_ROOT}
+elif DATA_STORAGE_BACKEND == "gcs":
+    DATA_STORAGE_OPTIONS = {
+        "bucket_name": DATA_STORAGE_BUCKET,
+        "prefix": DATA_STORAGE_PREFIX,
+    }
+else:
+    DATA_STORAGE_OPTIONS = {}
+
 # Cloud Run Job Validator Settings (overridden in production.py)
 # ------------------------------------------------------------------------------
 # These defaults allow local development without Cloud Run Jobs
@@ -581,4 +645,47 @@ CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 
 # FEATURES
 ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
+
+# DRAMATIQ TASK QUEUE
+# ------------------------------------------------------------------------------
+# Dramatiq is used for background task processing (scheduled tasks, async jobs).
+# Works with Redis as the message broker.
+#
+# Components:
+#   - Worker: Processes background tasks (run with `dramatiq validibot.core.tasks`)
+#   - Scheduler: Triggers periodic tasks (run with `periodiq validibot.core.tasks`)
+#
+# See docs/dev_docs/how-to/configure-scheduled-tasks.md for details.
+
+DRAMATIQ_BROKER = {
+    "BROKER": "dramatiq.brokers.redis.RedisBroker",
+    "OPTIONS": {
+        "url": REDIS_URL,
+    },
+    "MIDDLEWARE": [
+        "dramatiq.middleware.AgeLimit",
+        "dramatiq.middleware.TimeLimit",
+        "dramatiq.middleware.Callbacks",
+        "dramatiq.middleware.Retries",
+        "django_dramatiq.middleware.DbConnectionsMiddleware",
+        "django_dramatiq.middleware.AdminMiddleware",
+    ],
+}
+
+# Result backend stores task results for retrieval (optional but useful for monitoring)
+DRAMATIQ_RESULT_BACKEND = {
+    "BACKEND": "dramatiq.results.backends.redis.RedisBackend",
+    "BACKEND_OPTIONS": {
+        "url": REDIS_URL,
+    },
+    "MIDDLEWARE_OPTIONS": {
+        "result_ttl": 60 * 60 * 1000,  # 1 hour in milliseconds
+    },
+}
+
+# Database to store task history for Django admin monitoring
+DRAMATIQ_TASKS_DATABASE = "default"
+
+# Actors module path - Dramatiq will import this to discover actors
+DRAMATIQ_ACTORS_MODULE = "validibot.core.tasks.scheduled_actors"
 

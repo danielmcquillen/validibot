@@ -69,55 +69,41 @@ SECURE_CONTENT_TYPE_NOSNIFF = env.bool(
 
 # STATIC & MEDIA (GCS)
 # ------------------------------------------------------------------------------
-# File storage strategy for Google Cloud Storage.
+# File storage uses a SINGLE GCS bucket with prefix-based separation:
 #
-# We use two separate buckets to handle different security requirements:
+#   gs://validibot-storage/
+#   ├── public/      # Publicly accessible (avatars, workflow images)
+#   └── private/     # Private files (submissions, validation data, artifacts)
 #
-# 1. MEDIA BUCKET (public): Blog images, workflow featured images, and user
-#    avatars need to be publicly accessible so they can be displayed on public
-#    pages. This bucket is configured with public read permissions in GCP.
+# Security model:
+# - The bucket itself is PRIVATE (no public access at bucket level)
+# - The `public/` prefix is made publicly readable via IAM Conditions:
+#     Principal: allUsers
+#     Role: roles/storage.objectViewer
+#     Condition: resource.name.startsWith("projects/_/buckets/BUCKET/objects/public/")
+# - The `private/` prefix remains private, accessible only to the service account
+# - Users download private files via time-limited signed URLs
 #
-# 2. FILES BUCKET (private): User submissions, FMU uploads, and validation
-#    results contain sensitive data and should only be accessible to our
-#    application. This bucket has no public access.
+# Authentication: Cloud Run provides credentials via the attached service account.
+# No API keys or credential files needed.
 #
-# Authentication: When running on Cloud Run, Google automatically provides
-# credentials through the service account attached to the Cloud Run service.
-# We don't need to manage API keys or credential files - it just works.
-#
-# See docs/dev_docs/how-to/gcs-storage.md for complete details.
-GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
-GCS_FILES_BUCKET = env("GCS_FILES_BUCKET", default=None)
-
-if not GCS_MEDIA_BUCKET or not GCS_FILES_BUCKET:
-    raise Exception("GCS_MEDIA_BUCKET and GCS_FILES_BUCKET are required in production.")  # noqa: TRY002
+# See docs/dev_docs/how-to/configure-storage.md for setup instructions.
+STORAGE_BUCKET = env("STORAGE_BUCKET")
+if not STORAGE_BUCKET:
+    raise django.core.exceptions.ImproperlyConfigured(
+        "STORAGE_BUCKET is required in production."
+    )
 
 STORAGES = {
-    # "default" is used by FileFields that don't specify a storage parameter.
-    # This goes to the PRIVATE bucket since most file uploads (submissions,
-    # FMUs, validation artifacts) should not be publicly accessible.
+    # "default" is used by FileFields without explicit storage parameter.
+    # Public media files (avatars, workflow images) go under public/ prefix.
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
-            "bucket_name": GCS_FILES_BUCKET,  # Private bucket
-            "file_overwrite": False,  # Keep old versions when same filename uploaded
-            # querystring_auth=False means we use direct URLs instead of signed URLs.
-            # This works because our Cloud Run service account has permission to
-            # access this bucket. If we needed temporary URLs for external users,
-            # we'd need signed URLs which require a service account key file.
-            "querystring_auth": False,
-        },
-    },
-    # "public" is explicitly specified on FileFields that need public access
-    # (blog images, workflow images, user avatars). This goes to the PUBLIC
-    # bucket which allows anyone on the internet to read files.
-    "public": {
-        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-        "OPTIONS": {
-            "bucket_name": GCS_MEDIA_BUCKET,  # Public bucket
+            "bucket_name": STORAGE_BUCKET,
+            "location": "public",  # Files stored under public/ prefix
             "file_overwrite": False,
-            # Direct URLs work here because the bucket has public read permissions
-            # configured in GCP (allUsers have objectViewer role).
+            # Direct URLs work because public/ prefix has allUsers read access
             "querystring_auth": False,
         },
     },
@@ -126,8 +112,8 @@ STORAGES = {
     },
 }
 
-# Media URL points to the public bucket
-MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
+# Media URL points to the public prefix
+MEDIA_URL = f"https://storage.googleapis.com/{STORAGE_BUCKET}/public/"
 
 # GOOGLE CLOUD KMS
 # ------------------------------------------------------------------------------
@@ -304,11 +290,22 @@ SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default=None)
 SUPERUSER_EMAIL = env("SUPERUSER_EMAIL", default=None)
 SUPERUSER_NAME = env("SUPERUSER_NAME", default=None)
 
+# DATA STORAGE (Validation Pipeline Files)
+# ------------------------------------------------------------------------------
+# In production, use GCS for validation data (submissions, envelopes, outputs).
+# Uses the same bucket as Django storage, but with private/ prefix.
+DATA_STORAGE_BACKEND = "gcs"
+DATA_STORAGE_BUCKET = STORAGE_BUCKET
+DATA_STORAGE_PREFIX = "private"
+DATA_STORAGE_OPTIONS = {
+    "bucket_name": DATA_STORAGE_BUCKET,
+    "prefix": DATA_STORAGE_PREFIX,
+}
+
 # Cloud Run Job Validator Settings
 # ------------------------------------------------------------------------------
 # Production settings for Cloud Run Jobs infrastructure
-# Note: GCS_FILES_BUCKET is already defined above for file storage
-GCS_VALIDATION_BUCKET = GCS_FILES_BUCKET  # Use same bucket for validation files
+GCS_VALIDATION_BUCKET = STORAGE_BUCKET  # Use same bucket for validation files
 GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="validibot-tasks")
 GCS_ENERGYPLUS_JOB_NAME = env(
     "GCS_ENERGYPLUS_JOB_NAME",

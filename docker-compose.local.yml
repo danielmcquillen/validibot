@@ -4,6 +4,7 @@ volumes:
   validibot_local_postgres_data:
   validibot_local_postgres_backups:
   validibot_local_venv:  # Shared venv for django and worker containers
+  validibot_local_redis_data:
 
 services:
   django: &django
@@ -14,6 +15,7 @@ services:
     depends_on:
       - postgres
       - mailpit
+      - redis
     volumes:
       - validibot_local_venv:/app/.venv
       - .:/app
@@ -36,6 +38,25 @@ services:
     environment:
       - APP_ROLE=worker
 
+  dramatiq_worker:
+    # Dramatiq worker processes background tasks from Redis queue
+    # This handles async tasks like validation run execution
+    <<: *django
+    command: ["python", "manage.py", "rundramatiq", "--processes", "2", "--threads", "4"]
+    ports: []
+    environment:
+      - APP_ROLE=dramatiq_worker
+
+  scheduler:
+    # Periodiq scheduler triggers periodic tasks on cron schedules
+    # Tasks include: purge expired data, cleanup sessions, etc.
+    # Only run ONE scheduler instance to avoid duplicate executions
+    <<: *django
+    command: ["periodiq", "validibot.core.tasks.scheduled_actors"]
+    ports: []
+    environment:
+      - APP_ROLE=scheduler
+
   postgres:
     # Local Postgres for app data
     build:
@@ -53,6 +74,20 @@ services:
     volumes:
       - validibot_local_postgres_data:/var/lib/postgresql/data
       - validibot_local_postgres_backups:/backups
+
+  redis:
+    # Redis for Dramatiq task queue broker and result storage
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_redis_data:/data
 
   mailpit:
     # Local SMTP capture for testing email

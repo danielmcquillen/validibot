@@ -100,9 +100,8 @@ The `WorkflowViewSet.start_validation()` method processes the request:
 
 #### 2.3 Execution Dispatch
 
-The validation work now executes inline for simple validators or triggers a Cloud
-Run Job (via the Cloud Run launcher) for heavier workloads. Celery is no longer
-used. The API returns:
+The validation work executes inline for simple validators or triggers a Cloud
+Run Job (GCP) or Docker container (self-hosted) for heavier workloads. The API returns:
 
 - **201 Created**: If validation completes quickly
 - **202 Accepted**: If a Cloud Run Job was launched or execution is still running; clients poll for status

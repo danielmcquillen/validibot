@@ -1,6 +1,9 @@
-# Cloud Scheduler - Scheduled Jobs
+# Cloud Scheduler - Scheduled Jobs (GCP)
 
-Cloud Scheduler replaces Celery Beat for running periodic tasks. Each job sends an HTTP POST request to an endpoint on the worker service, authenticated via OIDC.
+> **Note**: This document covers GCP Cloud Scheduler for production deployments.
+> For self-hosted/Docker deployments, see [configure-scheduled-tasks.md](../how-to/configure-scheduled-tasks.md) which uses Dramatiq + periodiq instead.
+
+Cloud Scheduler runs periodic tasks in GCP deployments. Each job sends an HTTP POST request to an endpoint on the worker service, authenticated via OIDC.
 
 ## Architecture
 

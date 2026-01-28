@@ -1,106 +1,73 @@
 # Cloud Storage (GCS)
 
-This document covers how Validibot uses Google Cloud Storage for media files, replacing the previous AWS S3 setup.
+This document covers how Validibot uses Google Cloud Storage for file storage.
+
+> **See also**: [Configuring Storage](../how-to/configure-storage.md) for complete setup instructions.
 
 ## Overview
 
-We use Cloud Storage for:
+Validibot uses a single GCS bucket with prefix-based separation:
 
-- User-uploaded files (submissions, validation inputs)
-- Validation artifacts and reports
-- FMU files and related assets
+| Prefix | Access | Contents |
+|--------|--------|----------|
+| `public/` | Public (via IAM condition) | User avatars, workflow images |
+| `private/` | Private (service account only) | Validation submissions, artifacts, reports |
 
-## Buckets
+## Bucket Configuration
 
-We have two buckets in the `australia-southeast1` region:
+### Production
 
-| Environment | Bucket Name           | Purpose                       |
-| ----------- | --------------------- | ----------------------------- |
-| Production  | `validibot-media`     | Production media files        |
-| Development | `validibot-media-dev` | Development and staging files |
+- **Bucket name**: Set via `STORAGE_BUCKET` environment variable
+- **Region**: `australia-southeast1`
+- **Access control**: Uniform bucket-level access (no per-object ACLs)
+- **Public access**: Restricted via IAM to `public/` prefix only
 
-Both buckets have:
+### Development
 
-- **Object versioning enabled** - Protection against accidental deletion
-- **Private ACL** - No public access by default
-- **Lifecycle rules** - Old versions cleaned up automatically
+For local development, you can either:
+
+1. **Use local filesystem** (default) - No configuration needed
+2. **Use GCS** - Set `STORAGE_BUCKET` environment variable
+
+## IAM Configuration
+
+The bucket uses IAM Conditions for prefix-based access control:
+
+```bash
+# Make public/ prefix publicly readable
+gcloud storage buckets add-iam-policy-binding gs://BUCKET \
+    --member="allUsers" \
+    --role="roles/storage.objectViewer" \
+    --condition='expression=resource.name.startsWith("projects/_/buckets/BUCKET/objects/public/"),title=public-prefix-only'
+
+# Service account gets full access
+gcloud storage buckets add-iam-policy-binding gs://BUCKET \
+    --member="serviceAccount:SA@PROJECT.iam.gserviceaccount.com" \
+    --role="roles/storage.objectAdmin"
+```
 
 ## Django Configuration
-
-We use `django-storages` with the Google Cloud backend. The configuration relies on Application Default Credentials (ADC), meaning no explicit credentials are needed in the code.
-
-### Production Settings
 
 ```python
 # config/settings/production.py
 
-GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
-
-if not GCS_MEDIA_BUCKET:
-    raise Exception("GCS_MEDIA_BUCKET is required in production.")
+STORAGE_BUCKET = env("STORAGE_BUCKET")
 
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {
-            "bucket_name": GCS_MEDIA_BUCKET,
-            "file_overwrite": False,
+            "bucket_name": STORAGE_BUCKET,
+            "location": "public",  # Django media files go to public/
         },
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
-MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
+
+# Validation pipeline files go to private/
+DATA_STORAGE_BACKEND = "gcs"
+DATA_STORAGE_BUCKET = STORAGE_BUCKET
+DATA_STORAGE_PREFIX = "private"
 ```
-
-Key points:
-
-- **No explicit credentials** - Uses ADC (service account on Cloud Run, gcloud auth locally)
-- **`file_overwrite: False`** - Prevents accidental overwrites
-- **Static files** - Still served via WhiteNoise (not GCS)
-
-### Local Development Settings
-
-Local development defaults to filesystem storage but can optionally use GCS:
-
-```python
-# config/settings/local.py
-
-GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
-
-if GCS_MEDIA_BUCKET:
-    # Use GCS for media files (matches production)
-    STORAGES = {
-        "default": {
-            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-            "OPTIONS": {
-                "bucket_name": GCS_MEDIA_BUCKET,
-                "file_overwrite": False,
-            },
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-    MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
-else:
-    # Use local filesystem (default for local development)
-    MEDIA_ROOT = BASE_DIR / "media"
-    MEDIA_URL = "/media/"
-    STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-```
-
-## Environment Variables
-
-| Variable           | Description            | Example               |
-| ------------------ | ---------------------- | --------------------- |
-| `GCS_MEDIA_BUCKET` | Name of the GCS bucket | `validibot-media-dev` |
 
 ## Dependencies
 
@@ -108,91 +75,53 @@ The GCS backend requires `django-storages` with the Google extra:
 
 ```toml
 # pyproject.toml
-"django-storages[google]==1.14.6"
+"django-storages[google]"
 ```
 
-This pulls in `google-cloud-storage` and related dependencies automatically.
+This pulls in `google-cloud-storage` automatically.
 
-## Local Development with GCS
+## Authentication
 
-To test GCS locally (optional - filesystem storage works fine for most development):
+### Cloud Run
 
-### 1. Authenticate with gcloud
+Authentication happens automatically via the service account attached to the Cloud Run service. No credentials file needed - `django-storages` uses Application Default Credentials (ADC).
 
-Run this once to set up Application Default Credentials:
+### Local Development
 
 ```bash
+# Authenticate with gcloud (one-time setup)
 gcloud auth application-default login
-```
 
-This opens a browser for OAuth authentication and stores credentials locally.
-
-### 2. Set Environment Variables
-
-```bash
-export GCS_MEDIA_BUCKET=validibot-media-dev
-```
-
-### 3. Run Django
-
-```bash
+# Set bucket and run
+export STORAGE_BUCKET=your-dev-bucket
 source set-env.sh && uv run python manage.py runserver
 ```
-
-Uploads will now go to the dev GCS bucket instead of the local `media/` folder.
-
-## Cloud Run Authentication
-
-On Cloud Run, authentication happens automatically via the service account attached to the Cloud Run service. No credentials file or environment variable is needed - `django-storages` uses ADC which detects the Cloud Run environment.
-
-See [IAM & Service Accounts](iam.md) for details on how service accounts are configured.
-
-## Bucket Permissions
-
-Each environment has a dedicated service account with `Storage Object Admin` role on its bucket:
-
-- `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com` → `validibot-media`
-- `validibot-cloudrun-staging@PROJECT.iam.gserviceaccount.com` → `validibot-media-dev` (future)
-
-This ensures environment isolation - dev can't access prod, and vice versa.
-
-## Migration from S3
-
-The previous AWS S3 configuration used:
-
-- `django-storages[s3]` backend
-- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables
-- S3 buckets (not in Australian region)
-
-Key differences:
-
-| Aspect         | S3                                | GCS                                     |
-| -------------- | --------------------------------- | --------------------------------------- |
-| Authentication | Access key + secret               | Application Default Credentials         |
-| Region         | US/EU (Heroku constraint)         | `australia-southeast1`                  |
-| Django setting | `S3Boto3Storage`                  | `GoogleCloudStorage`                    |
-| URL format     | `https://bucket.s3.amazonaws.com` | `https://storage.googleapis.com/bucket` |
 
 ## Troubleshooting
 
 ### "Could not automatically determine credentials"
 
-This means ADC isn't set up. Solutions:
-
+ADC isn't set up:
 - **Locally**: Run `gcloud auth application-default login`
-- **Cloud Run**: Ensure a service account is attached to the service
+- **Cloud Run**: Ensure service account is attached to the service
 
 ### "403 Forbidden" on uploads
 
-The service account doesn't have permission to the bucket. Check:
+Check:
+1. Service account has `Storage Object Admin` role on the bucket
+2. `STORAGE_BUCKET` environment variable is correct
 
-1. The correct service account is attached to Cloud Run
-2. The service account has `Storage Object Admin` role on the bucket
-3. The `GCS_MEDIA_BUCKET` env var matches the bucket you granted access to
+### Public files returning 403
 
-### Wrong bucket in uploads
+IAM condition may be misconfigured:
+```bash
+gcloud storage buckets get-iam-policy gs://BUCKET
+```
 
-Double-check the `GCS_MEDIA_BUCKET` environment variable in:
+Verify `allUsers` has `objectViewer` with the correct condition.
 
-- Cloud Run service configuration
-- Local `.env` file or shell exports
+### "Need private key to sign credentials"
+
+The service account needs `iam.serviceAccounts.signBlob` permission to generate signed URLs. Either:
+- Add the permission to the service account
+- Use a service account key file (not recommended for Cloud Run)

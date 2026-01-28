@@ -2,7 +2,8 @@
 Pydantic schemas for validator job execution envelopes.
 
 These schemas define the contract between Django and Cloud Run Job validators.
-See docs/adr/2025-12-04-validator-job-interface.md for specification details.
+See validibot-project/docs/adr/completed/2025-12-04-validator-job-interface.md
+for specification details.
 
 This module re-exports schemas from vb_shared for Django app use.
 """

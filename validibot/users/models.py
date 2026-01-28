@@ -19,9 +19,12 @@ from validibot.users.constants import RESERVED_ORG_SLUGS
 from validibot.users.constants import RoleCode
 
 
+# DEPRECATED: select_public_storage is no longer needed.
+# The default storage is now public media. This function is kept for migration
+# compatibility but simply returns the default storage.
 def select_public_storage():
-    """Return the public storage backend from STORAGES['public']."""
-    return storages["public"]
+    """Return the default storage backend (public media)."""
+    return storages["default"]
 
 
 def _workspace_name_for(user: User) -> str:

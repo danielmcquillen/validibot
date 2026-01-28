@@ -172,7 +172,9 @@ The validation engine registry allows new types of validators to be added withou
 
 ### Scalability
 
-Asynchronous processing is handled by Cloud Run Jobs and Cloud Tasks; Celery has been removed.
+Asynchronous processing is handled by:
+- **Self-hosted**: Dramatiq + periodiq with Redis broker
+- **GCP**: Cloud Run Jobs and Cloud Tasks
 
 ### Auditability
 
@@ -186,7 +188,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 
 - **Backend**: Django 5.2+ with Django REST Framework
 - **Database**: PostgreSQL with JSON field support
-- **Task Queue**: Cloud Tasks + Cloud Run Jobs (Celery removed)
+- **Task Queue**: Dramatiq + periodiq (self-hosted) / Cloud Tasks + Cloud Scheduler (GCP)
 - **Validation Engines**: Pluggable architecture supporting JSON Schema, XML Schema, and custom validators
 - **Authentication**: Django's built-in auth with organization-based access control
 - **Storage**: Configurable file storage (local, S3, etc.) for submissions and artifacts

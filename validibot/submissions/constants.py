@@ -1,18 +1,110 @@
+from datetime import timedelta
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
-class DataRetention(models.TextChoices):
+class SubmissionRetention(models.TextChoices):
     """
-    Retention policy for submission data.
+    Retention policy for user-submitted files.
 
     Controls how long user-submitted content is stored before being purged.
-    The actual record is preserved for audit trail; only the content is removed.
+    The actual submission record is preserved for audit trail; only the
+    content (file/inline data) is removed.
+
+    Options:
+        DO_NOT_STORE: Delete immediately after validation completes successfully.
+                      This is the most privacy-respecting option.
+        STORE_1_DAY: Keep for 24 hours (for quick re-downloads).
+        STORE_7_DAYS: Keep for 1 week (default, good balance).
+        STORE_30_DAYS: Keep for 1 month (for longer review cycles).
+        STORE_PERMANENTLY: Never auto-delete (manual deletion only).
     """
 
     DO_NOT_STORE = "DO_NOT_STORE", _("Do not store (delete after validation)")
-    STORE_10_DAYS = "STORE_10_DAYS", _("Store for 10 days")
+    STORE_1_DAY = "STORE_1_DAY", _("Store for 1 day")
+    STORE_7_DAYS = "STORE_7_DAYS", _("Store for 7 days")
     STORE_30_DAYS = "STORE_30_DAYS", _("Store for 30 days")
+    STORE_PERMANENTLY = "STORE_PERMANENTLY", _("Store permanently")
+
+
+# Backwards compatibility alias
+DataRetention = SubmissionRetention
+
+
+class OutputRetention(models.TextChoices):
+    """
+    Retention policy for validator outputs, artifacts, and findings.
+
+    Controls how long validation results are stored before being purged.
+    Unlike submission retention, outputs cannot be set to DO_NOT_STORE
+    because users need time to download/review results.
+
+    Options:
+        STORE_7_DAYS: Keep for 1 week (minimum for users to review).
+        STORE_30_DAYS: Keep for 1 month (default, good for most use cases).
+        STORE_90_DAYS: Keep for 3 months (for audit/compliance needs).
+        STORE_1_YEAR: Keep for 1 year (for long-term records).
+        STORE_PERMANENTLY: Never auto-delete (manual deletion only).
+    """
+
+    STORE_7_DAYS = "STORE_7_DAYS", _("Store for 7 days")
+    STORE_30_DAYS = "STORE_30_DAYS", _("Store for 30 days")
+    STORE_90_DAYS = "STORE_90_DAYS", _("Store for 90 days")
+    STORE_1_YEAR = "STORE_1_YEAR", _("Store for 1 year")
+    STORE_PERMANENTLY = "STORE_PERMANENTLY", _("Store permanently")
+
+
+# Mapping from retention policy to timedelta (None means never expires)
+SUBMISSION_RETENTION_DAYS: dict[str, int | None] = {
+    SubmissionRetention.DO_NOT_STORE: 0,  # Immediate deletion
+    SubmissionRetention.STORE_1_DAY: 1,
+    SubmissionRetention.STORE_7_DAYS: 7,
+    SubmissionRetention.STORE_30_DAYS: 30,
+    SubmissionRetention.STORE_PERMANENTLY: None,  # Never expires
+}
+
+
+OUTPUT_RETENTION_DAYS: dict[str, int | None] = {
+    OutputRetention.STORE_7_DAYS: 7,
+    OutputRetention.STORE_30_DAYS: 30,
+    OutputRetention.STORE_90_DAYS: 90,
+    OutputRetention.STORE_1_YEAR: 365,
+    OutputRetention.STORE_PERMANENTLY: None,  # Never expires
+}
+
+
+def get_submission_retention_timedelta(policy: str) -> timedelta | None:
+    """
+    Get the timedelta for a submission retention policy.
+
+    Args:
+        policy: The retention policy value (e.g., SubmissionRetention.STORE_7_DAYS)
+
+    Returns:
+        timedelta for the policy, or None if the policy is STORE_PERMANENTLY.
+        Returns timedelta(0) for DO_NOT_STORE (immediate deletion).
+    """
+    days = SUBMISSION_RETENTION_DAYS.get(policy)
+    if days is None:
+        return None
+    return timedelta(days=days)
+
+
+def get_output_retention_timedelta(policy: str) -> timedelta | None:
+    """
+    Get the timedelta for an output retention policy.
+
+    Args:
+        policy: The retention policy value (e.g., OutputRetention.STORE_30_DAYS)
+
+    Returns:
+        timedelta for the policy, or None if the policy is STORE_PERMANENTLY.
+    """
+    days = OUTPUT_RETENTION_DAYS.get(policy)
+    if days is None:
+        return None
+    return timedelta(days=days)
 
 
 class SubmissionFileType(models.TextChoices):

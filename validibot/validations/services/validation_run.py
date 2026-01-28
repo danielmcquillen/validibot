@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 from rest_framework import status
 
+from validibot.submissions.constants import get_output_retention_timedelta
 from validibot.tracking.services import TrackingEventService
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
@@ -174,6 +175,17 @@ class ValidationRunService:
         elif getattr(request.user, "is_authenticated", False):
             run_user = request.user
 
+        # Compute output expiry based on workflow's output retention policy
+        output_retention_policy = workflow.output_retention
+        output_expires_at = None
+        retention_delta = get_output_retention_timedelta(output_retention_policy)
+        if retention_delta is not None:
+            # Note: expiry is computed from now, not from run completion.
+            # This is simpler and adequate since runs typically complete quickly.
+            # For very long runs, the expiry will be slightly earlier than
+            # "completion + retention period", which is acceptable.
+            output_expires_at = timezone.now() + retention_delta
+
         with transaction.atomic():
             validation_run = ValidationRun.objects.create(
                 org=org,
@@ -184,6 +196,8 @@ class ValidationRunService:
                 user=run_user,
                 status=ValidationRunStatus.PENDING,
                 source=source,
+                output_retention_policy=output_retention_policy,
+                output_expires_at=output_expires_at,
                 **(extra or {}),
             )
             try:

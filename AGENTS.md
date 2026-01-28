@@ -24,8 +24,13 @@
   - `vb_validators` (source in `../vb_validators`) - Cloud Run Job validator containers
   - `validibot-commercial` (source in `../validibot-commercial`) - Pro/commercial features (billing, multi-org, advanced validators)
   - `validibot-marketing` (source in `../validibot-marketing`) - Marketing website for validibot.com
+  - `validibot-project` (source in `../validibot-project`) - ADRs, strategy docs, and project-level documentation
 - At the start of a task, open the relevant modules in those repos so their current contracts guide decisions made in `validibot`.
 - When touching Dockerfiles or compose configs, cross-check the matching patterns in `../cookiecutter-django` to stay aligned.
+
+## Architecture Decision Records (ADRs)
+
+ADRs are stored in the `validibot-project` repo at `../validibot-project/docs/adr/`. These document significant technical decisions and their rationale. Check ADRs before making architectural changes to understand prior decisions.
 
 ## Open-Core Code Placement
 
@@ -38,7 +43,7 @@
 
 **Decision rule**: If it's a feature that should be gated behind a paid tier, it goes in `validibot-commercial`.
 
-See [ADR: Open-Core Self-Hosted Transformation](docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for the full architectural plan.
+See [ADR: Open-Core Self-Hosted Transformation](../validibot-project/docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for the full architectural plan.
 
 **Note**: The `validibot/billing/` app currently exists in this repo but is scheduled for migration to `validibot-commercial`. New billing features should go directly to the commercial repo.
 

@@ -962,7 +962,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
 
 
 class FMIProbeStartView(CustomValidatorManageMixin, View):
-    """HTMX endpoint to kick off an FMU probe inline (Celery removed)."""
+    """HTMX endpoint to kick off an FMU probe inline."""
 
     def post(self, request, *args, **kwargs):
         validator = get_object_or_404(Validator, pk=kwargs["pk"])

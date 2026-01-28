@@ -43,9 +43,16 @@ To run the tests, check your test coverage, and generate an HTML coverage report
 
 Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/2-local-development/developing-locally.html#using-webpack-or-gulp).
 
-### Celery
+### Background Tasks
 
-Celery has been removed from the project. Validator execution now runs in-process or via Cloud Run Jobs; no worker/beat processes are required.
+**Dramatiq + periodiq** handles background task processing and scheduled jobs for self-hosted deployments:
+
+- **Dramatiq**: Task queue using Redis as broker
+- **periodiq**: Cron-like scheduling for periodic tasks
+
+For GCP deployments, **Cloud Tasks** and **Cloud Scheduler** are used instead.
+
+See [configure-scheduled-tasks.md](docs/dev_docs/how-to/configure-scheduled-tasks.md) for details.
 
 ### Email Server
 

@@ -491,13 +491,13 @@ class Submission(TimeStampedModel):
                 )
                 raise
 
-        # Delete execution bundle folders for all runs
+        # Delete run files for all validation runs
         for run in self.runs.all():
             try:
-                _delete_execution_bundle(run)
+                _delete_run_files(run)
             except Exception:
                 logger.exception(
-                    "Failed to delete execution bundle",
+                    "Failed to delete run files",
                     extra={"submission_id": str(self.id), "run_id": str(run.id)},
                 )
                 # Continue with other runs - don't fail entire purge
@@ -520,88 +520,45 @@ class Submission(TimeStampedModel):
         )
 
 
-def _delete_execution_bundle(run) -> None:
+def _delete_run_files(run) -> None:
     """
-    Delete the GCS execution bundle folder for a validation run.
+    Delete all files associated with a validation run.
 
-    Uses prefix deletion to remove all objects under the run's folder.
+    Uses the storage abstraction to remove all files under the run's directory
+    (runs/{run_id}/). This works for both local filesystem and cloud storage.
+
     This function is called during submission content purge to remove
-    all associated files from cloud storage.
+    all associated files from storage.
 
     Args:
-        run: ValidationRun instance whose step run output (or summary) contains
-            execution bundle metadata.
+        run: ValidationRun instance
 
     Note:
-        - Safe to call if bundle doesn't exist (no-op)
-        - Logs but doesn't raise on individual blob deletion failures
+        - Safe to call if run directory doesn't exist (no-op)
+        - Uses the configured data storage backend (local, GCS, etc.)
     """
-    from urllib.parse import urlparse
+    from validibot.core.storage import get_data_storage
 
-    bundle_uri = ""
-    if isinstance(getattr(run, "summary", None), dict):
-        bundle_uri = run.summary.get("execution_bundle_uri") or ""
-
-    # Backwards-compatible fallback: execution bundle URI is persisted in the
-    # async step run's output when the Cloud Run Job is launched.
-    if not bundle_uri:
-        try:
-            for output in run.step_runs.values_list("output", flat=True):
-                if not isinstance(output, dict):
-                    continue
-                candidate = output.get("execution_bundle_uri")
-                if candidate:
-                    bundle_uri = str(candidate)
-                    break
-        except Exception:
-            logger.exception(
-                "Failed to read execution_bundle_uri from step run outputs",
-                extra={"run_id": str(getattr(run, "id", ""))},
-            )
-
-    if not bundle_uri or not bundle_uri.startswith("gs://"):
-        return
-
-    # Parse bucket and prefix from URI
-    # gs://bucket/runs/org_id/run_id/ -> bucket, runs/org_id/run_id/
-    parsed = urlparse(bundle_uri)
-    bucket_name = parsed.netloc
-    prefix = parsed.path.lstrip("/")
+    run_id = str(run.id)
+    run_path = f"runs/{run_id}/"
 
     try:
-        from google.cloud import storage
+        storage = get_data_storage()
+        count = storage.delete_prefix(run_path)
 
-        client = storage.Client()
-        bucket = client.bucket(bucket_name)
-        blobs = list(bucket.list_blobs(prefix=prefix))
-
-        for blob in blobs:
-            try:
-                blob.delete()
-                logger.debug("Deleted GCS object: %s", blob.name)
-            except Exception:
-                logger.exception("Failed to delete GCS object: %s", blob.name)
-                raise
-
-        if blobs:
+        if count > 0:
             logger.info(
-                "Deleted execution bundle",
+                "Deleted run files",
                 extra={
-                    "run_id": str(run.id),
-                    "bundle_uri": bundle_uri,
-                    "objects_deleted": len(blobs),
+                    "run_id": run_id,
+                    "run_path": run_path,
+                    "files_deleted": count,
                 },
             )
-    except ImportError:
-        # google-cloud-storage not installed (local dev without GCS)
-        logger.warning(
-            "google-cloud-storage not available, skipping execution bundle cleanup",
-            extra={"run_id": str(run.id), "bundle_uri": bundle_uri},
-        )
     except Exception:
         logger.exception(
-            "Failed to delete execution bundle",
-            extra={"run_id": str(run.id), "bundle_uri": bundle_uri},
+            "Failed to delete run files",
+            extra={"run_id": run_id, "run_path": run_path},
         )
         raise
 
@@ -738,9 +695,9 @@ def queue_submission_purge(submission: Submission | None) -> None:
 
     from django.utils import timezone
 
-    from validibot.submissions.constants import DataRetention
+    from validibot.submissions.constants import SubmissionRetention
 
-    if submission.retention_policy != DataRetention.DO_NOT_STORE:
+    if submission.retention_policy != SubmissionRetention.DO_NOT_STORE:
         return
 
     now = timezone.now()

@@ -1,6 +1,6 @@
 # Running Validibot with Docker (and without)
 
-This project was generated without the Cookiecutter Docker option. The files here mirror Cookiecutter Django’s Docker patterns but are simplified for our stack (no Celery/Redis; Cloud Tasks is our queue).
+This project was generated without the Cookiecutter Docker option. The files here mirror Cookiecutter Django's Docker patterns and include Dramatiq + Redis for background task processing.
 
 ## Quick start with Docker (local)
 
@@ -19,11 +19,14 @@ This project was generated without the Cookiecutter Docker option. The files her
 
 5. Visit http://localhost:8000
 
-What’s running:
+What's running:
 
 - `django`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000).
 - `worker`: Same image, serving internal/task endpoints on port 8001 (lets you mimic separate Cloud Run services with different scaling/concurrency).
+- `dramatiq_worker`: Dramatiq worker processing background tasks from Redis queue.
+- `scheduler`: Periodiq scheduler triggering periodic tasks (purge expired data, cleanup sessions, etc.).
 - `postgres`: Postgres built from `compose/production/postgres/Dockerfile`, env vars from `.envs/.local/.postgres`.
+- `redis`: Redis broker for Dramatiq task queue.
 - `mailpit`: Local SMTP capture at http://localhost:8025.
 
 Entrypoint and start scripts live in `compose/local/django/` and wait for Postgres before launching.
@@ -69,7 +72,7 @@ If the **Testing** panel hangs, double-check:
 
 ## Notes and deviations from full Cookiecutter setup
 
-- No Celery/Redis services: we use Google Cloud Tasks for async work, so the compose files only include `web` and `db`.
+- **Dramatiq + Redis** handles background tasks and scheduled jobs for self-hosted deployments. For GCP, Cloud Tasks/Scheduler are used instead.
 - Static/media: Whitenoise still works in-container, but long-term we’ll move static/media to GCS + CDN as per the GCP ADR.
 - Settings: the project already uses `django-environ`; `DATABASE_URL` is honored from the env files.
 - Secrets: keep real secrets out of the repo; the examples are for local/dev only.

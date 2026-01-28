@@ -26,26 +26,25 @@ CACHES = {
 
 # STORAGE
 # -------------------------------------------------------------------------------
-# By default, use local filesystem for media. To test GCS locally, set
-# GCS_MEDIA_BUCKET and GCS_FILES_BUCKET and run `gcloud auth application-default login`.
-GCS_MEDIA_BUCKET = env("GCS_MEDIA_BUCKET", default=None)
-GCS_FILES_BUCKET = env("GCS_FILES_BUCKET", default=None)
+# Validibot uses a single storage location with public/ and private/ prefixes.
+#
+# For local development, files are stored in:
+#   storage/
+#   ├── public/      # Public media (avatars, workflow images) - served directly
+#   └── private/     # Private files (submissions, artifacts) - signed URL access
+#
+# To test with GCS locally, set STORAGE_BUCKET and run:
+#   gcloud auth application-default login
+STORAGE_BUCKET = env("STORAGE_BUCKET", default=None)
 
-if GCS_MEDIA_BUCKET and GCS_FILES_BUCKET:
-    # Use GCS for media files (matches production)
+if STORAGE_BUCKET:
+    # Use GCS for all files (matches production)
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
             "OPTIONS": {
-                "bucket_name": GCS_FILES_BUCKET,
-                "file_overwrite": False,
-                "querystring_auth": False,
-            },
-        },
-        "public": {
-            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-            "OPTIONS": {
-                "bucket_name": GCS_MEDIA_BUCKET,
+                "bucket_name": STORAGE_BUCKET,
+                "location": "public",  # Public media under public/ prefix
                 "file_overwrite": False,
                 "querystring_auth": False,
             },
@@ -54,33 +53,41 @@ if GCS_MEDIA_BUCKET and GCS_FILES_BUCKET:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
-    MEDIA_URL = f"https://storage.googleapis.com/{GCS_MEDIA_BUCKET}/"
+    MEDIA_URL = f"https://storage.googleapis.com/{STORAGE_BUCKET}/public/"
+
+    # Data storage uses same bucket with private/ prefix
+    DATA_STORAGE_BACKEND = "gcs"
+    DATA_STORAGE_BUCKET = STORAGE_BUCKET
+    DATA_STORAGE_PREFIX = "private"
+    DATA_STORAGE_OPTIONS = {
+        "bucket_name": DATA_STORAGE_BUCKET,
+        "prefix": DATA_STORAGE_PREFIX,
+    }
 else:
     # Use local filesystem (default for local development)
-    # Two separate directories to mirror production's two-bucket strategy
-    FILES_ROOT = BASE_DIR / "media" / "files"  # noqa: F405 - Private files
-    MEDIA_ROOT = BASE_DIR / "media" / "public"  # noqa: F405 - Public media
-    MEDIA_URL = "/media/public/"
+    # Single storage root with public/ and private/ subdirectories
+    STORAGE_ROOT = BASE_DIR / "storage"  # noqa: F405
+    PUBLIC_STORAGE_ROOT = STORAGE_ROOT / "public"
+    PRIVATE_STORAGE_ROOT = STORAGE_ROOT / "private"
+    MEDIA_ROOT = PUBLIC_STORAGE_ROOT
+    MEDIA_URL = "/media/"
 
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
             "OPTIONS": {
-                "location": str(FILES_ROOT),
-                "base_url": "/media/files/",
-            },
-        },
-        "public": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-            "OPTIONS": {
-                "location": str(MEDIA_ROOT),
-                "base_url": "/media/public/",
+                "location": str(PUBLIC_STORAGE_ROOT),
+                "base_url": "/media/",
             },
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+
+    # Data storage uses private/ subdirectory
+    DATA_STORAGE_ROOT = str(PRIVATE_STORAGE_ROOT)
+    DATA_STORAGE_OPTIONS = {"root": DATA_STORAGE_ROOT}
 
 # EMAIL
 # ------------------------------------------------------------------------------

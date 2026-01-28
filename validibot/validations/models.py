@@ -16,6 +16,7 @@ from model_utils.models import TimeStampedModel
 from slugify import slugify
 
 from validibot.projects.models import Project
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.constants import data_format_allowed_file_types
@@ -1568,6 +1569,34 @@ class ValidationRun(TimeStampedModel):
         choices=ValidationRunSource.choices,
         default=ValidationRunSource.LAUNCH_PAGE,
         help_text=_("Where this run was initiated (web launch page, API, etc.)."),
+    )
+
+    # Output retention fields
+    # ~---------------------------------------------------------------
+    # These track when validator outputs (results, artifacts, findings) should
+    # be purged. The retention policy is snapshotted from the workflow at
+    # run creation time.
+
+    output_retention_policy = models.CharField(
+        max_length=32,
+        choices=OutputRetention.choices,
+        default=OutputRetention.STORE_30_DAYS,
+        help_text=_("Snapshot of workflow's output retention policy at run time."),
+    )
+
+    output_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=_(
+            "When outputs should be purged (null = never expires or not yet computed)."
+        ),
+    )
+
+    output_purged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_("When outputs were purged (for audit trail)."),
     )
 
     def clean(self):

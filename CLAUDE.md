@@ -24,7 +24,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - **Backend**: Django 5.2.8, Python 3.13
 - **Database**: PostgreSQL (via psycopg3)
 - **Frontend**: Bootstrap 5, HTMx, Chart.js
-- **Task Queue**: Cloud Tasks / Cloud Run Jobs (Celery removed)
+- **Task Queue**: Dramatiq + periodiq (self-hosted) / Cloud Tasks + Cloud Scheduler (GCP)
 - **Package Management**: uv (fast Python package manager)
 - **Linting**: Ruff
 - **Type Checking**: mypy with django-stubs
@@ -55,11 +55,16 @@ Always consider these neighboring projects when working on integrations or modif
 Also, the CLI application is at ../validibot-cli
 Please update that CLI whenever appropriate (e.g. when the API changes)
 
+5. **validibot-project** - Project documentation and ADRs
+   - Located at `../validibot-project`
+   - Contains Architecture Decision Records (ADRs), strategy docs, and project-level documentation
+   - ADRs document significant technical decisions and their rationale
+
 ## Open-Core Architecture
 
 **IMPORTANT**: Validibot follows an open-core model. The main `validibot` repo will be open-sourced under AGPL, while commercial features live in the private `validibot-commercial` repo.
 
-See [ADR: Open-Core Self-Hosted Transformation](docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for full details.
+See [ADR: Open-Core Self-Hosted Transformation](../validibot-project/docs/adr/2026-01-28-open-core-self-hosted-transformation.md) in the validibot-project repo for full details.
 
 ### Terminology
 

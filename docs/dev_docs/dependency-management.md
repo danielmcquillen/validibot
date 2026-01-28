@@ -28,7 +28,7 @@ These are the core packages needed to run the application. They go in the main `
 uv add django-extensions
 
 # Add with a specific version
-uv add "celery>=5.5.0,<6.0"
+uv add "httpx>=0.28.0"
 ```
 
 ### Dev-Only Dependencies

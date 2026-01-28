@@ -23,8 +23,9 @@ from validibot.core.constants import InviteStatus
 from validibot.core.mixins import FeaturedImageMixin
 from validibot.core.utils import render_markdown_safe
 from validibot.projects.models import Project
-from validibot.submissions.constants import DataRetention
+from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionFileType
+from validibot.submissions.constants import SubmissionRetention
 from validibot.users.models import Membership
 from validibot.users.models import Organization
 from validibot.users.models import Role
@@ -69,9 +70,12 @@ def validate_workflow_version(value: str) -> None:
     )
 
 
+# DEPRECATED: select_public_storage is no longer needed.
+# The default storage is now public media. This function is kept for migration
+# compatibility but simply returns the default storage.
 def select_public_storage():
-    """Return the public storage backend from STORAGES['public']."""
-    return storages["public"]
+    """Return the default storage backend (public media)."""
+    return storages["default"]
 
 
 class WorkflowQuerySet(models.QuerySet):
@@ -299,13 +303,27 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
         ),
     )
 
+    # Submission retention: how long to keep user-uploaded files
     data_retention = models.CharField(
         max_length=32,
-        choices=DataRetention.choices,
-        default=DataRetention.DO_NOT_STORE,
+        choices=SubmissionRetention.choices,
+        default=SubmissionRetention.DO_NOT_STORE,
         help_text=_(
-            "How long to keep submission data after validation completes. "
-            "DO_NOT_STORE queues deletion shortly after run completion."
+            "How long to keep user-submitted files after validation completes. "
+            "DO_NOT_STORE deletes the submission immediately after successful "
+            "completion. The submission record is preserved for audit."
+        ),
+    )
+
+    # Output retention: how long to keep validator results, artifacts, findings
+    output_retention = models.CharField(
+        max_length=32,
+        choices=OutputRetention.choices,
+        default=OutputRetention.STORE_30_DAYS,
+        help_text=_(
+            "How long to keep validation outputs (results, artifacts, findings) "
+            "after validation completes. Users need time to download results, "
+            "so immediate deletion is not an option."
         ),
     )
 
@@ -495,6 +513,7 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             is_active=self.is_active,
             allowed_file_types=list(self.allowed_file_types or []),
             data_retention=self.data_retention,
+            output_retention=self.output_retention,
         )
         steps = []
         for step in self.steps.all().order_by("order"):

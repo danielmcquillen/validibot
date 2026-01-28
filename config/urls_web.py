@@ -15,7 +15,6 @@ from django.urls import path
 
 from validibot.core import views as core_views
 from validibot.core.views import jwks_view
-from validibot.home import views as home_views
 from validibot.workflows import views as workflow_views
 
 urlpatterns = [

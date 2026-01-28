@@ -52,11 +52,9 @@ MEDIA_URL = "http://media.testserver/"
 # STORAGES
 # ------------------------------------------------------------------------------
 # Configure storage backends for tests
+# Single storage backend - public media uses public/ prefix (simulated by base_url)
 STORAGES = {
     "default": {
-        "BACKEND": "django.core.files.storage.InMemoryStorage",
-    },
-    "public": {
         "BACKEND": "django.core.files.storage.InMemoryStorage",
     },
     "staticfiles": {

@@ -45,8 +45,12 @@ dependencies = [
   "psycopg[c]==3.3.2",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
-  "redis==7.1.0",
+  "redis>=4.0,<7.0",  # Constrained for dramatiq compatibility
   "sentry-sdk==2.48.0",
+  # Task queue: Dramatiq with Redis broker and periodic scheduling
+  "dramatiq[redis]>=1.17.0",
+  "django-dramatiq>=0.11.6",
+  "periodiq>=0.12.1",
   # vb-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # This Git URL is used when building Docker images (local or production).
   # For local non-Docker development, see [tool.uv.sources] below which overrides

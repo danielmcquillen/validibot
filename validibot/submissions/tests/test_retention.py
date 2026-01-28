@@ -17,7 +17,7 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
-from validibot.submissions.constants import DataRetention
+from validibot.submissions.constants import SubmissionRetention
 from validibot.submissions.models import PurgeRetry
 from validibot.submissions.models import Submission
 from validibot.submissions.models import queue_submission_purge
@@ -95,9 +95,9 @@ class TestSubmissionPurgeContent:
 
         assert submission.is_content_available is False
 
-    @patch("validibot.submissions.models._delete_execution_bundle")
-    def test_purge_content_deletes_execution_bundles(self, mock_delete):
-        """Purging should attempt to delete GCS execution bundles."""
+    @patch("validibot.submissions.models._delete_run_files")
+    def test_purge_content_deletes_run_files(self, mock_delete):
+        """Purging should attempt to delete run files from storage."""
         submission = SubmissionFactory(content='{"test": "data"}')
         run = ValidationRunFactory(submission=submission)
 
@@ -194,7 +194,7 @@ class TestPurgeExpiredSubmissionsCommand:
         """Command should purge submissions past their expires_at date."""
         # Create expired submission (not DO_NOT_STORE)
         expired_submission = SubmissionFactory(
-            retention_policy=DataRetention.STORE_10_DAYS,
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
         )
         # Set expires_at in the past
         Submission.objects.filter(id=expired_submission.id).update(
@@ -203,7 +203,7 @@ class TestPurgeExpiredSubmissionsCommand:
 
         # Create non-expired submission
         future_submission = SubmissionFactory(
-            retention_policy=DataRetention.STORE_30_DAYS,
+            retention_policy=SubmissionRetention.STORE_30_DAYS,
         )
         Submission.objects.filter(id=future_submission.id).update(
             expires_at=timezone.now() + timedelta(days=30),
@@ -223,7 +223,7 @@ class TestPurgeExpiredSubmissionsCommand:
     def test_dry_run_does_not_purge(self):
         """Dry run should report but not actually purge."""
         submission = SubmissionFactory(
-            retention_policy=DataRetention.STORE_10_DAYS,
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
         )
         Submission.objects.filter(id=submission.id).update(
             expires_at=timezone.now() - timedelta(hours=1),
@@ -241,7 +241,7 @@ class TestPurgeExpiredSubmissionsCommand:
         """Command should respect --max-batches parameter."""
         # Create 5 expired submissions
         for _ in range(5):
-            sub = SubmissionFactory(retention_policy=DataRetention.STORE_10_DAYS)
+            sub = SubmissionFactory(retention_policy=SubmissionRetention.STORE_7_DAYS)
             Submission.objects.filter(id=sub.id).update(
                 expires_at=timezone.now() - timedelta(hours=1),
             )
@@ -273,7 +273,7 @@ class TestPurgeExpiredSubmissionsCommand:
         """Command should skip submissions that are already purged."""
         # Create a valid submission first
         submission = SubmissionFactory(
-            retention_policy=DataRetention.STORE_10_DAYS,
+            retention_policy=SubmissionRetention.STORE_7_DAYS,
             content='{"test": "data"}',
         )
         # Mark as already purged using .update() to bypass model validation
@@ -449,7 +449,9 @@ class TestQueueSubmissionPurge:
 
     def test_creates_retry_for_do_not_store_submission(self):
         """queue_submission_purge should enqueue a purge retry for DO_NOT_STORE."""
-        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE,
+        )
 
         queue_submission_purge(submission)
 
@@ -459,7 +461,7 @@ class TestQueueSubmissionPurge:
         """
         queue_submission_purge should not create retries for already-purged content.
         """
-        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+        submission = SubmissionFactory(retention_policy=SubmissionRetention.DO_NOT_STORE)
         Submission.objects.filter(id=submission.id).update(
             content="",
             input_file="",
@@ -473,7 +475,7 @@ class TestQueueSubmissionPurge:
 
     def test_bring_next_retry_forward_when_scheduled_in_future(self):
         """queue_submission_purge should bring next_retry_at forward for fast purge."""
-        submission = SubmissionFactory(retention_policy=DataRetention.DO_NOT_STORE)
+        submission = SubmissionFactory(retention_policy=SubmissionRetention.DO_NOT_STORE)
         retry = PurgeRetry.objects.create(
             submission=submission,
             next_retry_at=timezone.now() + timedelta(hours=1),
@@ -533,25 +535,25 @@ class TestValidationRunNullableSubmission:
 
 
 @pytest.mark.django_db
-class TestDataRetentionPolicy:
+class TestSubmissionRetentionPolicy:
     """Tests for data retention policy constants and behavior."""
 
     def test_retention_policy_choices(self):
-        """DataRetention should have expected choices."""
-        choices = dict(DataRetention.choices)
-        assert DataRetention.DO_NOT_STORE in choices
-        assert DataRetention.STORE_10_DAYS in choices
-        assert DataRetention.STORE_30_DAYS in choices
+        """SubmissionRetention should have expected choices."""
+        choices = dict(SubmissionRetention.choices)
+        assert SubmissionRetention.DO_NOT_STORE in choices
+        assert SubmissionRetention.STORE_7_DAYS in choices
+        assert SubmissionRetention.STORE_30_DAYS in choices
 
     def test_submission_stores_retention_policy(self):
         """Submission should store the retention policy correctly."""
         submission = SubmissionFactory()
 
         # Default should be DO_NOT_STORE
-        assert submission.retention_policy == DataRetention.DO_NOT_STORE
+        assert submission.retention_policy == SubmissionRetention.DO_NOT_STORE
 
         # Can set other policies
-        submission.retention_policy = DataRetention.STORE_30_DAYS
+        submission.retention_policy = SubmissionRetention.STORE_30_DAYS
         submission.save()
         submission.refresh_from_db()
-        assert submission.retention_policy == DataRetention.STORE_30_DAYS
+        assert submission.retention_policy == SubmissionRetention.STORE_30_DAYS

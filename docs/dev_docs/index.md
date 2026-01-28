@@ -92,7 +92,8 @@ This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #3
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
 - [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp-deploy`
-- [Scheduled Jobs](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for background tasks
+- [Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for GCP deployments
+- [Scheduled Tasks (Self-hosted)](how-to/configure-scheduled-tasks.md) - Dramatiq + periodiq for Docker/self-hosted
 - [Go-Live Checklist](deployment/go-live-checklist.md) - Pre-launch tasks for production
 
 ### Data Model

@@ -29,7 +29,7 @@ def test_execute_logs_started_and_success(monkeypatch):
     service = ValidationRunService()
     actor_id = run.user_id or getattr(run.submission, "user_id", None)
 
-    service.execute(validation_run_id=run.id, user_id=actor_id)
+    service.execute_workflow_steps(validation_run_id=run.id, user_id=actor_id)
 
     started_event = TrackingEvent.objects.filter(
         app_event_type=AppEventType.VALIDATION_RUN_STARTED,
@@ -62,7 +62,7 @@ def test_execute_logs_failure(monkeypatch):
     service = ValidationRunService()
     actor_id = run.user_id or getattr(run.submission, "user_id", None)
 
-    service.execute(validation_run_id=run.id, user_id=actor_id)
+    service.execute_workflow_steps(validation_run_id=run.id, user_id=actor_id)
 
     failure_event = TrackingEvent.objects.filter(
         app_event_type=AppEventType.VALIDATION_RUN_FAILED,

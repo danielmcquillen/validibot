@@ -11,14 +11,19 @@ in a given validation step.
 and return complete results immediately. They evaluate assertions during the
 validate() call.
 
-**Async engines** (EnergyPlus, FMI) launch Cloud Run Jobs and return pending
+**Async engines** (EnergyPlus, FMI) launch container jobs and return pending
 results. The job runs externally and POSTs results back via callback. For these
 engines:
 
 1. validate() launches the job and returns passed=None (pending)
-2. Cloud Run Job executes and writes output envelope to GCS
+2. Container job executes and writes output envelope to storage
 3. Job POSTs callback with result_uri to Django worker
 4. Callback service downloads envelope and evaluates output-stage assertions
+
+The container execution varies by deployment:
+- Self-hosted: Docker containers (synchronous)
+- GCP: Cloud Run Jobs (async with callbacks)
+- AWS: AWS Batch (future)
 
 ## Output Envelopes and Assertion Signals
 
@@ -28,7 +33,7 @@ Each async validator type produces outputs in its own Pydantic envelope structur
 - EnergyPlus: outputs.metrics contains site_eui_kwh_m2, site_electricity_kwh, etc.
 - FMI: outputs.output_values contains a dict keyed by catalog slug
 
-To evaluate assertions after a Cloud Run Job completes, the callback service needs
+To evaluate assertions after a container job completes, the callback service needs
 to extract these signals from the envelope. Engines implement the class method
 `extract_output_signals()` to handle their specific envelope structure. This
 keeps envelope knowledge localized to the engine rather than scattered across the
@@ -104,7 +109,7 @@ class ValidationResult:
 
     Attributes:
         passed: True when no ERROR issues were produced. None indicates the
-            validation is still pending (for async validators like Cloud Run).
+            validation is still pending (for async container-based validators).
         issues: List of issues discovered (may include INFO/WARNING).
         stats: Optional extra info (counts, timings, metadata).
         workflow_step_name: Slug of the workflow step that produced this result.
@@ -146,7 +151,7 @@ class BaseValidatorEngine(ABC):
     Async engines that produce output envelopes should override
     `extract_output_signals()` to extract the signals dict from their
     envelope structure. This is used by the callback service to evaluate
-    output-stage assertions after the Cloud Run Job completes.
+    output-stage assertions after the container job completes.
     """
 
     validation_type: ValidationType

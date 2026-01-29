@@ -30,6 +30,11 @@ from .base import DEFAULT_FROM_EMAIL
 from .base import LOGGING
 from .base import env
 
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# Docker Compose deployment uses Dramatiq + Redis for task queue and Docker for validators.
+DEPLOYMENT_TARGET = "docker_compose"
+
 # GENERAL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug

@@ -17,7 +17,7 @@ For synchronous runners (Docker), the launcher:
 4. Downloads and processes the output envelope
 5. Returns the final ValidationResult
 
-For async runners (Cloud Run Jobs), the launcher:
+For async runners (Cloud Run Jobs, AWS Batch), the launcher:
 1-3. Same as above
 4. Returns a pending result immediately
 5. Results are delivered via HTTP callback when the job completes

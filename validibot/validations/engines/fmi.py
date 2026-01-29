@@ -59,10 +59,15 @@ if TYPE_CHECKING:
 @register_engine(ValidationType.FMI)
 class FMIValidationEngine(BaseValidatorEngine):
     """
-    Run FMI validators through Cloud Run Jobs.
+    Run FMI validators through container-based execution.
 
-    This engine uploads the FMU and input bindings to GCS, triggers a Cloud Run
-    Job that executes the FMU simulation, and receives results via callback.
+    This engine dispatches FMU execution to the configured ExecutionBackend:
+    - Self-hosted: Docker containers (synchronous)
+    - GCP: Cloud Run Jobs (async with callbacks)
+    - AWS: AWS Batch (future)
+
+    The FMU file is attached to the validator and uploaded to storage.
+    Results are returned directly (sync) or via callback (async).
     """
 
     @classmethod
@@ -74,7 +79,7 @@ class FMIValidationEngine(BaseValidatorEngine):
         in outputs.output_values as a dict keyed by catalog slug.
 
         Args:
-            output_envelope: FMIOutputEnvelope from the Cloud Run Job.
+            output_envelope: FMIOutputEnvelope from the validator container.
 
         Returns:
             Dict of output values keyed by catalog slug. Returns None if
@@ -111,7 +116,9 @@ class FMIValidationEngine(BaseValidatorEngine):
         """
         Validate an FMI submission.
 
-        Launches a Cloud Run Job asynchronously and returns a pending result.
+        Dispatches the FMU to the configured ExecutionBackend and returns results.
+        For async backends, returns a pending result; the callback delivers final
+        results.
 
         Args:
             validator: FMI validator instance with FMU model attached
@@ -120,8 +127,8 @@ class FMIValidationEngine(BaseValidatorEngine):
             run_context: Required execution context with validation_run and step
 
         Returns:
-            ValidationResult with passed=None (pending) if Cloud Run Jobs configured,
-            or passed=False (error) if not configured or missing context.
+            ValidationResult with passed=None (pending) for async backends,
+            or immediate pass/fail for sync backends (self-hosted Docker).
         """
         # Store run_context on instance for CEL evaluation methods
         self.run_context = run_context

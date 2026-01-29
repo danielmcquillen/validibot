@@ -2,13 +2,16 @@
 Dramatiq actors for scheduled tasks.
 
 This module defines periodic tasks that run on schedules using periodiq.
-These replace the previous Cloud Scheduler + HTTP endpoint approach with
-a self-contained solution that works in any Docker deployment.
+These are used in self-hosted deployments where Dramatiq + Redis handles
+task queuing and scheduling.
 
-Architecture:
+Architecture (Self-hosted / Docker Compose):
     1. Scheduler (periodiq) triggers tasks on schedule
     2. Broker (Redis) queues the task messages
     3. Worker (dramatiq) processes the tasks
+
+For Google Cloud deployments, scheduled tasks are handled by Cloud Scheduler
+triggering HTTP endpoints instead of Dramatiq actors.
 
 Each actor wraps a Django management command, providing:
     - Scheduled execution via cron expressions

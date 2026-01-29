@@ -56,7 +56,7 @@ def build_energyplus_input_envelope(
     Build an EnergyPlusInputEnvelope from Django validation run data.
 
     This function creates a fully typed input envelope for EnergyPlus validators.
-    It takes Django model data and transforms it into the Cloud Run Job input format.
+    It takes Django model data and transforms it into the container input format.
 
     The validator always returns a fixed set of output signals defined in its
     catalog - users don't need to specify which outputs they want.
@@ -69,16 +69,16 @@ def build_energyplus_input_envelope(
         workflow_id: Workflow UUID
         step_id: Workflow step UUID
         step_name: Human-readable step name
-        model_file_uri: GCS URI to IDF/epJSON file
-        weather_file_uri: GCS URI to EPW weather file
-        callback_url: Django endpoint to POST results (IAM protected)
+        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local)
+        weather_file_uri: URI to EPW weather file
+        callback_url: Django endpoint to POST results
         callback_id: Unique identifier for idempotent callback processing
-        execution_bundle_uri: GCS directory for this run's files
+        execution_bundle_uri: Directory URI for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4)
         skip_callback: If True, container won't POST callback after completion
 
     Returns:
-        Fully populated EnergyPlusInputEnvelope ready for GCS upload
+        Fully populated EnergyPlusInputEnvelope ready for storage upload
 
     Example:
         >>> envelope = build_energyplus_input_envelope(
@@ -179,7 +179,7 @@ def build_input_envelope(
         run: ValidationRun Django model instance
         callback_url: Django callback endpoint URL
         callback_id: Unique identifier for idempotent callback processing
-        execution_bundle_uri: GCS directory for this run's files
+        execution_bundle_uri: Directory URI for this run's files
         skip_callback: If True, container won't POST callback after completion.
             Used for synchronous execution where results are read directly.
         input_file_uris: Optional dict of file role to URI (e.g., {'primary_file_uri': 'file://...'}).

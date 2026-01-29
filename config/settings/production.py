@@ -13,6 +13,11 @@ from .base import INSTALLED_APPS
 from .base import SPECTACULAR_SETTINGS
 from .base import env
 
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# GCP production uses Cloud Tasks and Cloud Run Jobs.
+DEPLOYMENT_TARGET = "gcp"
+
 # GENERAL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key

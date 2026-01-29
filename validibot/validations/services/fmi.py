@@ -56,14 +56,14 @@ class _FMIProbeRunner:
     """
     FMI probe runner placeholder.
 
-    TODO: Phase 4b - Implement FMI probing via Cloud Run Jobs.
+    TODO: Phase 4b - Implement FMI probing via container jobs.
     For now, this is a stub that will raise not-implemented errors.
     """
 
     @classmethod
     def _invoke_modal_runner(cls, **kwargs):
         """Stub that raises not-implemented error."""
-        msg = "FMI probing via Cloud Run Jobs is not yet implemented (Phase 4b)"
+        msg = "FMI probing via container jobs is not yet implemented (Phase 4b)"
         raise NotImplementedError(msg)
 
 
@@ -177,29 +177,31 @@ def _run_stage_for_causality(causality: str) -> CatalogRunStage | None:
     return None
 
 
-def _should_use_gcs_storage() -> bool:
+def _should_use_cloud_storage() -> bool:
     """
-    Determine whether FMUs should be uploaded to GCS (cloud) or stored locally.
+    Determine whether FMUs should be uploaded to cloud storage or stored locally.
 
     Local/dev runs should keep files on the filesystem; production/staging
-    enables GCS by configuring GCS_VALIDATION_BUCKET (and storages).
+    enables cloud storage by configuring GCS_VALIDATION_BUCKET (GCP) or
+    equivalent for other platforms.
     """
 
     return bool(settings.GCS_VALIDATION_BUCKET)
 
 
-def _upload_fmu_to_gcs(checksum: str, payload: bytes) -> str:
+def _upload_fmu_to_cloud_storage(checksum: str, payload: bytes) -> str:
     """
-    Upload a validated FMU payload to GCS and return its gs:// URI.
+    Upload a validated FMU payload to cloud storage and return its URI.
 
-    Uses checksum-based naming to deduplicate identical FMUs.
+    Currently supports GCS (gs:// URIs). Uses checksum-based naming to
+    deduplicate identical FMUs.
     """
 
     from google.cloud import storage
 
     bucket_name = settings.GCS_VALIDATION_BUCKET
     if not bucket_name:
-        msg = "GCS_VALIDATION_BUCKET is not configured."
+        msg = "Cloud storage bucket is not configured (GCS_VALIDATION_BUCKET)."
         raise FMUStorageError(msg)
 
     object_path = f"fmus/{checksum}.fmu"
@@ -244,8 +246,8 @@ def create_fmi_validator(
             description=description,
             size_bytes=len(raw_bytes),
             checksum=checksum,
-            gcs_uri=_upload_fmu_to_gcs(checksum, raw_bytes)
-            if _should_use_gcs_storage()
+            gcs_uri=_upload_fmu_to_cloud_storage(checksum, raw_bytes)
+            if _should_use_cloud_storage()
             else "",
         )
         try:

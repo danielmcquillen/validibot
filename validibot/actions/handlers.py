@@ -37,8 +37,8 @@ class ValidatorStepHandler:
         5. Calls engine.validate() with the submission and run_context
         6. Translates ValidationResult → StepResult
 
-    For async engines (EnergyPlus, FMI), the engine launches a Cloud Run Job
-    and returns a pending result. The workflow engine handles the async
+    For async engines (EnergyPlus, FMI), the engine dispatches to a container
+    job and returns a pending result. The workflow engine handles the async
     completion via callbacks.
 
     Example:

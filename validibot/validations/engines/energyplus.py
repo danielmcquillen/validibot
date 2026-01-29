@@ -60,10 +60,14 @@ if TYPE_CHECKING:
 @register_engine(ValidationType.ENERGYPLUS)
 class EnergyPlusValidationEngine(BaseValidatorEngine):
     """
-    Run submitted epJSON through Cloud Run Jobs.
+    Run submitted epJSON through container-based validators.
 
-    This engine triggers async Cloud Run Jobs and returns pending results.
-    The ValidationRun is updated via callback when the job completes.
+    This engine dispatches validation to the configured ExecutionBackend:
+    - Self-hosted: Docker containers (synchronous)
+    - GCP: Cloud Run Jobs (async with callbacks)
+    - AWS: AWS Batch (future)
+
+    The ValidationRun is updated via callback when async jobs complete.
     """
 
     @classmethod
@@ -76,7 +80,7 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         model. Fields include site_eui_kwh_m2, site_electricity_kwh, etc.
 
         Args:
-            output_envelope: EnergyPlusOutputEnvelope from the Cloud Run Job.
+            output_envelope: EnergyPlusOutputEnvelope from the validator container.
 
         Returns:
             Dict of metrics keyed by field name (matching catalog slugs), with
@@ -114,7 +118,9 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         """
         Validate an EnergyPlus submission.
 
-        Launches a Cloud Run Job asynchronously and returns a pending result.
+        Dispatches to the configured ExecutionBackend and returns results.
+        For sync backends (Docker), returns immediately. For async backends
+        (Cloud Run, AWS Batch), returns pending and callback delivers results.
 
         Args:
             validator: EnergyPlus validator instance
@@ -123,8 +129,9 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             run_context: Required execution context with validation_run and step
 
         Returns:
-            ValidationResult with passed=None (pending) if Cloud Run Jobs configured,
-            or passed=False (error) if not configured or missing context.
+            ValidationResult with passed=True/False for sync backends,
+            passed=None (pending) for async backends, or passed=False (error)
+            if not configured or missing context.
         """
         # Store run_context on instance for CEL evaluation methods
         self.run_context = run_context

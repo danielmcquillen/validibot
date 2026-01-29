@@ -64,8 +64,8 @@ def test_energyplus_engine_backend_not_available():
     """
     Test that the EnergyPlus engine returns error when execution backend not available.
 
-    When run_context is provided but the execution backend (Docker or Cloud Run)
-    is not available, the engine should return a helpful error.
+    When run_context is provided but the execution backend is not available,
+    the engine should return a helpful error.
     """
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
     ruleset = _energyplus_ruleset()

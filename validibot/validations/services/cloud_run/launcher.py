@@ -230,7 +230,8 @@ def launch_energyplus_validation(
         )
 
         # 7.5. Update step run status to RUNNING
-        # Note: run.status and run.started_at are already set by execute() when
+        # Note: run.status and run.started_at are already set by
+        # execute_workflow_steps() when
         # the run transitions from PENDING to RUNNING. We only need to mark the
         # step run as running here.
         from datetime import UTC
@@ -436,7 +437,8 @@ def launch_fmi_validation(
         )
 
         # Mark step run as RUNNING
-        # Note: run.status and run.started_at are already set by execute() when
+        # Note: run.status and run.started_at are already set by
+        # execute_workflow_steps() when
         # the run transitions from PENDING to RUNNING. We only need to mark the
         # step run as running here.
         from datetime import UTC

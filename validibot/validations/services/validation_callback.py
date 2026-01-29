@@ -5,9 +5,9 @@ Validator containers (EnergyPlus, FMI) POST a minimal callback payload to the
 worker-only callback endpoint when they complete. The callback handler:
 
 1. Validates the payload shape (Pydantic model from vb_shared)
-2. Downloads the full output envelope from GCS
+2. Downloads the full output envelope from cloud storage
 3. Persists step/run status, findings, and signals for downstream steps
-4. Either enqueues a resume task (when more steps remain) or finalizes the run
+4. Either dispatches a resume task (when more steps remain) or finalizes the run
 
 The public API view should be a thin wrapper around this service.
 """
@@ -82,7 +82,7 @@ def _evaluate_output_stage_assertions(
     """
     Evaluate output-stage CEL assertions after an async validator completes.
 
-    After a Cloud Run Job (EnergyPlus, FMI) completes and returns outputs, this
+    After a container job (EnergyPlus, FMI) completes and returns outputs, this
     function evaluates any ruleset assertions that target output-stage catalog
     entries. This includes generating success messages for passed assertions.
 
@@ -251,11 +251,20 @@ def _coerce_finished_at(finished_at_candidate) -> datetime:
 
 class ValidationCallbackService:
     """
-    Process Cloud Run Job validator callbacks.
+    Process container-based validator callbacks.
 
     This service is invoked by the worker-only callback API endpoint. It contains
     the orchestration logic for idempotency, envelope download, persistence, and
-    resuming/finalizing validation runs.
+    resuming/finalizing a validation run.
+    
+    IMPORTANT: This class is only used if we are running the advanced validator container
+    on a platform where we stop the worker and then expect the container to issue
+    a callback when complete (e.g., Google Cloud Run, AWS Fargate). It is not used
+    for in-process advanced validator execution (e.g., local dev, test mode).
+    
+    Therefore, there should only be a minimum amount of code here -- the basic
+    task is just to receive the callback, download the envelope, and then 
+    ask the ValidationRunService to resume or finalize the run.
     """
 
     def process(self, *, payload: dict) -> Response:
@@ -298,10 +307,9 @@ class ValidationCallbackService:
                     with transaction.atomic():
                         # Try to get existing receipt with lock
                         try:
-                            receipt = (
-                                CallbackReceipt.objects.select_for_update(nowait=True)
-                                .get(callback_id=callback.callback_id)
-                            )
+                            receipt = CallbackReceipt.objects.select_for_update(
+                                nowait=True
+                            ).get(callback_id=callback.callback_id)
                             receipt_created = False
                         except CallbackReceipt.DoesNotExist:
                             # No receipt exists - create one with PROCESSING status
@@ -509,9 +517,7 @@ class ValidationCallbackService:
         step_error = ""
         if output_envelope.status != ValidationStatus.SUCCESS:
             error_messages = [
-                msg.text
-                for msg in output_envelope.messages
-                if msg.severity == "ERROR"
+                msg.text for msg in output_envelope.messages if msg.severity == "ERROR"
             ]
             if error_messages:
                 step_error = "\n".join(error_messages)
@@ -694,7 +700,8 @@ class ValidationCallbackService:
             from validibot.core.tasks import enqueue_validation_run
 
             # user_id can be NULL if the run was created via API without user context.
-            # Pass 0 to signal "no user" - execute() handles this gracefully.
+            # Pass 0 to signal "no user" - execute_workflow_steps() handles this
+            # gracefully.
             enqueue_validation_run(
                 validation_run_id=run.id,
                 user_id=run.user_id or 0,
@@ -756,9 +763,7 @@ class ValidationCallbackService:
             try:
                 cb_status = callback.status
                 status_str = (
-                    cb_status.value
-                    if hasattr(cb_status, "value")
-                    else str(cb_status)
+                    cb_status.value if hasattr(cb_status, "value") else str(cb_status)
                 )
                 receipt.status = status_str
                 receipt.validation_run = run

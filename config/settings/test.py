@@ -15,6 +15,11 @@ from .base import REST_FRAMEWORK
 from .base import TEMPLATES
 from .base import env
 
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# Test environment uses synchronous inline execution (no task queue or HTTP).
+DEPLOYMENT_TARGET = "test"
+
 # GENERAL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key

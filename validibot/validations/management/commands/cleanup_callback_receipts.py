@@ -2,7 +2,7 @@
 Management command to clean up old callback receipts.
 
 Callback receipts are used for idempotency - preventing duplicate processing
-when Cloud Run retries callback deliveries. Old receipts are no longer needed
+when task queues retry callback deliveries. Old receipts are no longer needed
 and can be safely deleted after the retention period.
 
 Usage:

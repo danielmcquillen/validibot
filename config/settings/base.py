@@ -22,6 +22,22 @@ if READ_DOT_ENV_FILE:
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = env.bool("DJANGO_DEBUG", False)
+
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# Identifies the deployment environment for selecting appropriate backends.
+# This setting controls task dispatching, validator execution, and storage.
+#
+# Valid values (from validibot.core.constants.DeploymentTarget):
+#   - "test": Test environment (synchronous inline execution)
+#   - "local_docker_compose": Local Docker Compose (HTTP to worker, Docker validators)
+#   - "docker_compose": Docker Compose production (Dramatiq + Docker)
+#   - "gcp": Google Cloud Platform (Cloud Tasks + Cloud Run Jobs)
+#   - "aws": Amazon Web Services (SQS + ECS/Batch) - future
+#
+# If not set, auto-detection is used based on other settings.
+DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default=None)
+
 # App role (web vs worker). Worker instances expose internal APIs only.
 # Default to "web" for local development; production sets APP_ROLE explicitly.
 APP_ROLE = env(

@@ -1,7 +1,7 @@
 """
-Tests for Cloud Run Job callback idempotency.
+Tests for container job callback idempotency.
 
-These tests verify that duplicate callback deliveries from Cloud Run are
+These tests verify that duplicate callback deliveries from container jobs are
 handled correctly - the first callback is processed, subsequent callbacks
 with the same callback_id are ignored (return 200 without reprocessing).
 """
@@ -29,7 +29,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
 class CallbackIdempotencyTestCase(TestCase):
-    """Test callback idempotency for Cloud Run Job callbacks."""
+    """Test callback idempotency for container job callbacks."""
 
     def setUp(self):
         self.client = APIClient()

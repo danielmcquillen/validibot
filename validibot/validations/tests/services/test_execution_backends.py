@@ -12,7 +12,6 @@ import pytest
 
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
-from validibot.validations.services.execution.registry import _get_backend_name
 from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.services.execution.registry import get_execution_backend
 from validibot.validations.services.execution.self_hosted import (
@@ -164,8 +163,8 @@ class TestExecutionResponse:
 # ==============================================================================
 
 
-class TestBackendRegistry:
-    """Tests for backend registry functions."""
+class TestBackendFactory:
+    """Tests for execution backend factory function."""
 
     @pytest.fixture(autouse=True)
     def clear_cache(self):
@@ -174,39 +173,36 @@ class TestBackendRegistry:
         yield
         clear_backend_cache()
 
-    def test_get_backend_name_default_docker(self, settings):
-        """Test that default backend is docker when nothing is configured."""
+    def test_deployment_target_test_uses_docker(self, settings):
+        """Test that DEPLOYMENT_TARGET=test uses Docker backend."""
         settings.VALIDATOR_RUNNER = None
-        settings.GCP_PROJECT_ID = None
-
-        name = _get_backend_name()
-        assert name == "docker"
-
-    def test_get_backend_name_explicit_setting(self, settings):
-        """Test that explicit VALIDATOR_RUNNER setting is used."""
-        settings.VALIDATOR_RUNNER = "google_cloud_run"
-
-        name = _get_backend_name()
-        assert name == "google_cloud_run"
-
-    def test_get_backend_name_auto_detect_gcp(self, settings):
-        """Test that GCP is auto-detected when GCP_PROJECT_ID is set."""
-        settings.VALIDATOR_RUNNER = None
-        settings.GCP_PROJECT_ID = "test-project"
-
-        name = _get_backend_name()
-        assert name == "google_cloud_run"
-
-    def test_get_execution_backend_docker(self, settings):
-        """Test that get_execution_backend returns Docker backend."""
-        settings.VALIDATOR_RUNNER = "docker"
+        settings.DEPLOYMENT_TARGET = "test"
 
         backend = get_execution_backend()
 
         assert isinstance(backend, SelfHostedExecutionBackend)
         assert backend.is_async is False
 
-    def test_get_execution_backend_cached(self, settings):
+    def test_deployment_target_docker_compose_uses_docker(self, settings):
+        """Test that DEPLOYMENT_TARGET=docker_compose uses Docker backend."""
+        settings.VALIDATOR_RUNNER = None
+        settings.DEPLOYMENT_TARGET = "docker_compose"
+
+        backend = get_execution_backend()
+
+        assert isinstance(backend, SelfHostedExecutionBackend)
+
+    def test_validator_runner_overrides_deployment_target(self, settings):
+        """Test that VALIDATOR_RUNNER setting overrides DEPLOYMENT_TARGET."""
+        settings.VALIDATOR_RUNNER = "docker"
+        settings.DEPLOYMENT_TARGET = "gcp"
+
+        backend = get_execution_backend()
+
+        # Should use docker (from VALIDATOR_RUNNER) not GCP (from DEPLOYMENT_TARGET)
+        assert isinstance(backend, SelfHostedExecutionBackend)
+
+    def test_backend_instance_is_cached(self, settings):
         """Test that backend instance is cached."""
         settings.VALIDATOR_RUNNER = "docker"
 
@@ -215,12 +211,12 @@ class TestBackendRegistry:
 
         assert backend1 is backend2
 
-    def test_get_execution_backend_unknown_raises(self, settings):
-        """Test that unknown backend raises ValueError."""
+    def test_unknown_validator_runner_raises(self, settings):
+        """Test that unknown VALIDATOR_RUNNER raises ValueError."""
         settings.VALIDATOR_RUNNER = "unknown_backend"
         clear_backend_cache()
 
-        with pytest.raises(ValueError, match="Unknown execution backend"):
+        with pytest.raises(ValueError, match="Unknown VALIDATOR_RUNNER"):
             get_execution_backend()
 
 

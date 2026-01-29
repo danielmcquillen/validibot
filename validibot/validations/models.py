@@ -658,7 +658,8 @@ class FMUModel(TimeStampedModel):
         blank=True,
         default="",
         help_text=_(
-            "GCS URI to the canonical FMU object (e.g., gs://bucket/fmus/<checksum>.fmu)."
+            "Cloud storage URI to the canonical FMU object "
+            "(e.g., gs://bucket/fmus/<checksum>.fmu for GCS)."
         ),
     )
     fmi_version = models.CharField(
@@ -2129,11 +2130,12 @@ class Artifact(TimeStampedModel):
 
 class CallbackReceipt(models.Model):
     """
-    Tracks processed Cloud Run Job callbacks for idempotency.
+    Tracks processed container job callbacks for idempotency.
 
-    When a Cloud Run Job completes, it POSTs a callback to the worker service.
-    Cloud Run may retry this callback if the initial delivery fails or times out,
-    which could cause duplicate processing (duplicate findings, incorrect status).
+    When a container job (Docker, Cloud Run, AWS Batch) completes, it POSTs a
+    callback to the worker service. The task queue may retry this callback if
+    the initial delivery fails or times out, which could cause duplicate
+    processing (duplicate findings, incorrect status).
 
     This model records each successfully processed callback. Before processing
     a callback, the handler checks if a receipt exists for the callback_id:
@@ -2141,7 +2143,7 @@ class CallbackReceipt(models.Model):
     - If not found: process the callback and create a receipt
 
     The callback_id is generated at job launch time and embedded in the input
-    envelope. The Cloud Run Job echoes it back in the callback payload.
+    envelope. The container job echoes it back in the callback payload.
 
     Receipts are retained for debugging/audit purposes. A cleanup job can
     delete old receipts after a retention period (e.g., 30 days).
@@ -2177,7 +2179,7 @@ class CallbackReceipt(models.Model):
         max_length=500,
         blank=True,
         default="",
-        help_text=_("GCS URI to the output envelope."),
+        help_text=_("URI to the output envelope (e.g., gs:// for GCS, s3:// for S3)."),
     )
 
     class Meta:

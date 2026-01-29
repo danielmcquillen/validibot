@@ -68,7 +68,7 @@ class ValidationRunErrorCategory(TextChoices):
     TIMEOUT: The validator exceeded the time limit
     OOM: The validator exceeded memory limits (container killed)
     RUNTIME_ERROR: The validator encountered an unexpected error
-    SYSTEM_ERROR: Infrastructure/platform issues (GCS, Cloud Run, etc.)
+    SYSTEM_ERROR: Infrastructure/platform issues (storage, container runtime, etc.)
     """
 
     VALIDATION_FAILED = "VALIDATION_FAILED", _("Validation Failed")

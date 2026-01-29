@@ -108,7 +108,7 @@ Run Job (GCP) or Docker container (self-hosted) for heavier workloads. The API r
 
 ### Phase 3: Validation Execution
 
-The `ValidationRunService.execute` method handles the actual validation work (either inline or coordinating Cloud Run Jobs):
+The `ValidationRunService.execute_workflow_steps` method handles the actual validation work (either inline or coordinating Cloud Run Jobs):
 
 #### 3.1 Execution Setup
 
@@ -167,7 +167,7 @@ The high‑level summary above hides a few practical details that are worth know
 1. **Action steps resolve concrete models** – when `workflow_step.action` is set we now downcast to a subtype such as `SlackMessageAction` or `SignedCertificateAction`. These variants expose strongly typed fields (message text, certificate template, etc.), and fall back to sensible defaults like the bundled signed-certificate template, so execution code and admin tools never have to parse ad hoc JSON blobs.
 2. **Submission content is materialised once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data. Engines call `submission.get_content()` which returns inline text or reads the stored file.
 3. **Validator config is merged before dispatch** – we pass the per-step config directly to the engine (`engine.validate(..., config=step_config)`), allowing engines to interpret selectors, thresholds, or policy definitions without reaching back into the ORM. Engines that do not use runtime configuration can safely ignore unknown keys.
-4. **Execution is wrapped by the service layer** – any exception raised by the engine bubbles up to `execute_workflow_step()`. The caller (`execute()`) catches the error, marks the run as `FAILED`, and records the traceback so the run stops in a predictable manner.
+4. **Execution is wrapped by the service layer** – any exception raised by the engine bubbles up to `execute_workflow_step()`. The caller (`execute_workflow_steps()`) catches the error, marks the run as `FAILED`, and records the traceback so the run stops in a predictable manner.
 5. **Lightweight telemetry is recorded** – we count the number of issues returned, tag the log entry with the step id and validator type, and attach any `stats` payload to the validation summary. This keeps runs observable without persisting per-step rows yet.
 
 This design keeps the step executor intentionally thin: the step definition owns the configuration, the engine owns domain logic, and the service coordinates orchestration and error handling. When we later persist per-step timings or metering information, the hooks already exist in this execution flow.
@@ -221,10 +221,10 @@ sequenceDiagram
     Client->>API: POST /orgs/{org}/workflows/{id}/runs/
     API->>Service: launch(request, workflow, submission)
     Service->>Service: ValidationRun.objects.create(...)
-    Service->>Worker: execute(run_id, user_id, metadata)
+    Service->>Worker: execute_workflow_steps(run_id, user_id, metadata)
     API-->>Client: 201 Created or 202 Accepted (if still running)
 
-    Worker->>Service: execute(run_id, user_id)
+    Worker->>Service: execute_workflow_steps(run_id, user_id)
     Service->>Service: mark run RUNNING\nlog start event
     Service->>Service: load ordered workflow steps
 

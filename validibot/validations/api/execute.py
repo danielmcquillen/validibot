@@ -1,17 +1,29 @@
 """
 API endpoint for executing validation runs.
 
-This endpoint is called by Cloud Tasks to process validation runs on the
+This endpoint is called by task dispatchers to process validation runs on the
 worker instance. It receives a validation_run_id and optional resume_from_step,
-then delegates to ValidationRunService.execute().
+then delegates to ValidationRunService.execute_workflow_steps().
 
-Architecture:
-    Cloud Tasks -> Worker Instance -> This View -> ValidationRunService.execute()
+Architecture varies by deployment target:
 
-Authentication is handled by Cloud Run IAM (OIDC tokens from Cloud Tasks).
-No application-level authentication is required.
+    Local Dev:
+        HTTP POST (direct) -> This View -> ValidationRunService.execute_workflow_steps()
 
-See ADR-001 for detailed architecture documentation.
+    Self-hosted (Docker Compose):
+        Dramatiq Worker -> HTTP POST -> This View -> ValidationRunService.
+            execute_workflow_steps()
+
+    Google Cloud:
+        Cloud Tasks -> Cloud Run Worker -> This View -> ValidationRunService.
+            execute_workflow_steps()
+        (Authentication via Cloud Run IAM with OIDC tokens)
+
+    AWS:
+        TBD (not yet implemented)
+
+The WorkerOnlyAPIView base class ensures this endpoint is only accessible
+on worker instances, not on the public-facing API server.
 """
 
 from __future__ import annotations
@@ -29,21 +41,23 @@ logger = logging.getLogger(__name__)
 
 class ExecuteValidationRunView(WorkerOnlyAPIView):
     """
-    Execute a validation run from a Cloud Tasks delivery.
+    Execute a validation run from a task dispatch.
 
     This endpoint is the worker-side receiver for validation run execution tasks.
-    It's called by Cloud Tasks with a JSON payload containing:
+    It's called by the task dispatcher (HTTP, Dramatiq, Cloud Tasks, etc.) with
+    a JSON payload containing:
     - validation_run_id: ID of the ValidationRun to execute
     - user_id: ID of the user who initiated the run
     - resume_from_step: (optional) Step order to resume from
 
     Authentication:
-        Cloud Run IAM performs authentication via OIDC token.
-        DRF authentication is disabled for this endpoint.
+        - Google Cloud: Cloud Run IAM performs authentication via OIDC token
+        - Self-hosted: Worker-only access enforced by WorkerOnlyAPIView
+        - Local dev: No authentication (direct HTTP calls)
 
     Error Handling:
         Returns 200 OK for all business logic outcomes (success, failure,
-        idempotent skip) so that Cloud Tasks doesn't retry. Returns 500 for
+        idempotent skip) so that task queues don't retry. Returns 500 for
         infrastructure errors (database connection, etc.) which should
         trigger a retry.
 
@@ -63,7 +77,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
 
         Returns:
             200 OK: Task completed (validation succeeded, failed, or was skipped)
-            500 Internal Server Error: Infrastructure error (triggers Cloud Tasks retry)
+            500 Internal Server Error: Infrastructure error (triggers task retry)
         """
         # Parse request data
         validation_run_id = request.data.get("validation_run_id")
@@ -93,7 +107,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
 
         try:
             service = ValidationRunService()
-            result = service.execute(
+            result = service.execute_workflow_steps(
                 validation_run_id=validation_run_id,
                 user_id=user_id,
                 metadata=None,
@@ -118,7 +132,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
             )
 
         except Exception as exc:
-            # Log the exception and return 500 to trigger Cloud Tasks retry
+            # Log the exception and return 500 to trigger task retry
             logger.exception(
                 "Failed to execute validation run %s",
                 validation_run_id,

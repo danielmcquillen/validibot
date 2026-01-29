@@ -6,7 +6,7 @@ to the database via `python manage.py sync_system_validators`.
 
 The catalog entry binding_config["key"] values must match field names in
 vb_shared.energyplus.models.EnergyPlusSimulationMetrics, which is what
-the Cloud Run Job validator populates after running the simulation.
+the container validator populates after running the simulation.
 """
 
 from validibot.validations.constants import CatalogEntryType

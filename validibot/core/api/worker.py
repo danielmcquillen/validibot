@@ -2,9 +2,15 @@
 Shared base classes for worker-only API endpoints.
 
 Worker-only endpoints are deployed on the internal worker service and are called
-by infrastructure components such as Cloud Tasks, Cloud Scheduler, and validator
-Cloud Run Jobs. Cloud Run IAM authenticates these requests before they reach
-Django, so Django REST Framework authentication is disabled for these views.
+by infrastructure components (task dispatchers, schedulers, validator containers).
+The authentication mechanism varies by deployment:
+
+- Self-hosted: Worker runs as a separate service in Docker Compose
+- GCP: Cloud Run IAM authenticates via OIDC tokens
+- AWS: IAM-based authentication (future)
+
+Django REST Framework authentication is disabled for these views since
+authentication is handled at the infrastructure level.
 """
 
 from django.conf import settings
@@ -18,7 +24,8 @@ class WorkerOnlyAPIView(APIView):
 
     This adds a defense-in-depth guard that returns 404 when the code is running
     on a non-worker instance, even if URL routing is misconfigured. Authentication
-    and authorization are enforced by Cloud Run IAM, so DRF auth is disabled.
+    and authorization are enforced at the infrastructure level (e.g., Cloud Run IAM,
+    network isolation), so DRF auth is disabled.
     """
 
     authentication_classes = []

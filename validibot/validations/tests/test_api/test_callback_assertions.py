@@ -1,5 +1,5 @@
 """
-Tests for assertion evaluation during Cloud Run Job callback processing.
+Tests for assertion evaluation during container job callback processing.
 
 After an async validator (EnergyPlus, FMI) completes, the callback service
 evaluates output-stage assertions against the envelope outputs. This includes

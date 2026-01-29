@@ -1,5 +1,5 @@
 """
-Tests for Cloud Run Job callback completion behavior.
+Tests for container job callback completion behavior.
 
 These tests cover correctness concerns beyond basic idempotency:
 

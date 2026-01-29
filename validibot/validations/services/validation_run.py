@@ -67,7 +67,7 @@ class ValidationRunService:
         launch(request, org, workflow, submission, ...)
             Creates a ValidationRun and begins execution. Called by views/API.
 
-        execute(validation_run_id, user_id, metadata)
+        execute_workflow_steps(validation_run_id, user_id, metadata)
             Processes workflow steps sequentially. Called by launch() or can
             be invoked directly to resume a run.
 
@@ -79,9 +79,10 @@ class ValidationRunService:
         - Sync validators (Basic, JSON, XML, AI) execute inline and return
           immediately with passed=True/False.
 
-        - Async validators (EnergyPlus, FMI) launch Cloud Run Jobs and return
+        - Async validators (EnergyPlus, FMI) launch container jobs and return
           passed=None (pending). The workflow pauses and resumes when the
-          job callback arrives.
+          job callback arrives. The container execution varies by deployment:
+          Docker (self-hosted), Cloud Run Jobs (GCP), or AWS Batch (future).
 
         - Action handlers (Slack, Certificate) are dispatched via the action
           registry and follow the same StepHandler protocol.
@@ -114,18 +115,26 @@ class ValidationRunService:
         source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
     ) -> ValidationRunLaunchResults:
         """
-        Create a ValidationRun and enqueue execution via Cloud Tasks.
+        Create a ValidationRun and dispatch execution. 
 
-        This is the main entry point called by views and API endpoints. It:
+        Note: this method is meant to be called as part of the "web" Django
+        service layer.
+
+        This is the main entry point called by views and API endpoints. Therefore
+        it's meant to be this method is meant to be called as part of the "web" Django
+        service layer (not the "worker" layer).
+        
+        It:
 
         1. Validates preconditions (permissions, billing limits)
         2. Creates a ValidationRun record with status=PENDING
-        3. Enqueues a Cloud Task to execute the workflow steps
+        3. Dispatches execution to the appropriate backend (varies by deployment)
         4. Returns immediately with appropriate HTTP status
 
-        Execution happens asynchronously on the worker instance. The run status
-        will transition to RUNNING, then to SUCCEEDED/FAILED when complete.
-        Clients should poll for completion or use webhooks.
+        Execution happens asynchronously on the worker instance (except in test
+        mode where it runs inline). The run status will transition to RUNNING,
+        then to SUCCEEDED/FAILED when complete. Clients should poll for
+        completion or use webhooks.
 
         Args:
             request: The HTTP request object (used for user auth and URI building).
@@ -146,9 +155,6 @@ class ValidationRunService:
             ValueError: If required arguments are missing.
             PermissionError: If user lacks execute permission on workflow.
             BillingError: If org has exceeded limits or subscription is inactive.
-
-        See Also:
-            ADR-001: Validation Run Execution via Cloud Tasks
         """
         from validibot.core.tasks import enqueue_validation_run
 
@@ -221,8 +227,12 @@ class ValidationRunService:
                 extra_data=created_extra or None,
             )
 
-        # Enqueue execution via Cloud Tasks (async)
-        # The worker will call execute() when it receives the task
+        # Dispatch execution to the appropriate backend:
+        # - Test: Synchronous inline execution
+        # - Local dev: HTTP call to worker
+        # - Self-hosted: Dramatiq task queue
+        # - GCP: Cloud Tasks
+        # - AWS: TBD (future)
         try:
             enqueue_validation_run(
                 validation_run_id=validation_run.id,
@@ -238,7 +248,8 @@ class ValidationRunService:
             validation_run.save(update_fields=["status", "error"])
 
         # Refresh from DB to get any updates made during execution
-        # This is primarily for test mode where execute() runs synchronously,
+        # This is primarily for test mode where execute_workflow_steps() runs
+        # synchronously,
         # but also provides correct status if execution completed very quickly
         validation_run.refresh_from_db()
 
@@ -303,9 +314,9 @@ class ValidationRunService:
 
         return run, True
 
-    # ---------- Execute ----------
+    # ---------- Execute workflow steps ----------
 
-    def execute(
+    def execute_workflow_steps(
         self,
         validation_run_id: UUID | str,
         user_id: int | None,
@@ -314,25 +325,30 @@ class ValidationRunService:
     ) -> ValidationRunTaskResult:
         """
         Process workflow steps for a ValidationRun.
+        
+        Note: This method is meant to be called as part of the "worker"
+        Django service layer, ostensibly via a task queue.
 
         Iterates through the workflow's steps in order, dispatching each to the
         appropriate handler (ValidatorStepHandler for validators, or an action
         handler from the registry). Execution stops on first failure or when
         an async validator returns pending.
 
-        For sync validators, all steps execute inline and the run reaches a
-        terminal status (SUCCEEDED/FAILED) before returning.
+        For workflows that only have sync validators and advanced validator, all 
+        steps execute inline and the run reaches a terminal status (SUCCEEDED/FAILED) 
+        before returning.
 
-        For async validators (EnergyPlus, FMI), this method returns while the
-        run is still RUNNING. When the Cloud Run Job callback arrives, it
-        enqueues a new Cloud Task with resume_from_step to continue execution.
+        For workflows that contain steps with advanced validators (EnergyPlus, FMI), 
+        that are run in an async manner (google cloud, AWS), this method returns while 
+        the run is still RUNNING. When the container job callback arrives, a new 
+        task is enqueued with resume_from_step to continue execution.
 
         Idempotency:
             - Initial execution (resume_from_step=None): Only proceeds if status
               is PENDING. Transitions to RUNNING atomically.
             - Resume execution (resume_from_step set): Expects status to be RUNNING.
               No state transition needed.
-            - Cloud Tasks may deliver the same task multiple times. Step-level
+            - Task queues may deliver the same task multiple times. Step-level
               idempotency is handled by _start_step_run() using get_or_create.
 
         Args:
@@ -343,9 +359,6 @@ class ValidationRunService:
 
         Returns:
             ValidationRunTaskResult with the final (or current) run status.
-
-        See Also:
-            ADR-001: Validation Run Execution via Cloud Tasks
         """
         try:
             validation_run: ValidationRun = ValidationRun.objects.select_related(
@@ -372,7 +385,7 @@ class ValidationRunService:
         # See ADR-001 for detailed explanation
         if resume_from_step is None:
             # Initial execution: atomically transition PENDING → RUNNING
-            # This prevents race conditions when Cloud Tasks delivers duplicates
+            # This prevents race conditions when task queues deliver duplicates
             now = timezone.now()
             updated_count = ValidationRun.objects.filter(
                 id=validation_run_id,
@@ -634,7 +647,7 @@ class ValidationRunService:
         """
         Get or create a ValidationStepRun entry for the step.
 
-        This method is idempotent to handle Cloud Tasks retries. If a step run
+        This method is idempotent to handle task queue retries. If a step run
         already exists for this (validation_run, workflow_step) pair, it returns
         the existing one. If the existing step run is already terminal (PASSED,
         FAILED, SKIPPED), the caller should skip re-execution.
@@ -1021,7 +1034,7 @@ class ValidationRunService:
         Returns:
             ValidationResult with passed=True/False for sync handlers, or
             passed=None for async handlers (EnergyPlus, FMI) that have launched
-            a Cloud Run Job and are awaiting callback.
+            a container job and are awaiting callback.
         """
         # 1. Prepare Context
         from validibot.actions.handlers import ValidatorStepHandler
@@ -1085,7 +1098,8 @@ class ValidationRunService:
         step_result = handler.execute(context)
 
         # 5. Map Result (Backwards Compatibility)
-        # We return a ValidationResult because callers (execute method) expect it.
+        # We return a ValidationResult because callers (execute_workflow_steps)
+        # expect it.
         # Future refactor: Update callers to use StepResult directly.
         validation_result = ValidationResult(
             passed=step_result.passed,

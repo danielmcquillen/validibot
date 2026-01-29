@@ -94,7 +94,7 @@ def test_execute_fails_gracefully_when_engine_missing():
     )
 
     service = ValidationRunService()
-    service.execute(
+    service.execute_workflow_steps(
         validation_run_id=validation_run.id,
         user_id=user.id,
         metadata=None,
@@ -204,7 +204,7 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     )
 
     service = ValidationRunService()
-    result = service.execute(
+    result = service.execute_workflow_steps(
         validation_run_id=validation_run.id,
         user_id=user.id,
         metadata=None,

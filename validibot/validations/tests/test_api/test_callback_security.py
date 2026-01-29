@@ -1,14 +1,14 @@
 """
 Security tests for the validation callback endpoint.
 
-The callback endpoint relies on infrastructure-level security (Cloud Run IAM)
-rather than application-level authentication. These tests verify the app-level
-guards are in place to complement the infrastructure controls.
+The callback endpoint relies on infrastructure-level security (e.g., Cloud Run IAM,
+network isolation) rather than application-level authentication. These tests verify
+the app-level guards are in place to complement the infrastructure controls.
 
-Security Model:
-    - Cloud Run ingress is set to "internal" for the worker service
-    - Only Cloud Run Jobs (validators) can reach the callback endpoint
-    - Cloud Scheduler calls are authenticated via OIDC tokens verified by Cloud Run
+Security Model (varies by deployment):
+    - GCP: Cloud Run ingress set to "internal", OIDC token verification
+    - Self-hosted: Network isolation via Docker Compose internal network
+    - AWS: IAM-based authentication (future)
     - App-level: endpoint returns 404 on non-worker instances (defense in depth)
 
 Note: True security testing requires infrastructure verification, which is done
@@ -25,8 +25,8 @@ class TestCallbackEndpointSecurity(TestCase):
     Verify application-level security guards on the callback endpoint.
 
     The callback endpoint (/api/v1/validation-callbacks/) accepts unauthenticated
-    requests because Cloud Run IAM handles authentication. However, it has an
-    app-level guard: it only responds on worker instances (APP_IS_WORKER=True).
+    requests because infrastructure-level security handles authentication. It has
+    an app-level guard: only responds on worker instances (APP_IS_WORKER=True).
     """
 
     def setUp(self):
@@ -39,8 +39,8 @@ class TestCallbackEndpointSecurity(TestCase):
         Callback endpoint must not exist on web instances.
 
         This is a defense-in-depth measure. The primary security control is
-        Cloud Run ingress settings, but web instances should also return 404
-        even if somehow reached (e.g., misconfigured load balancer).
+        infrastructure-level (Cloud Run ingress, network isolation), but web
+        instances should also return 404 even if somehow reached.
 
         Note: We must set ROOT_URLCONF explicitly because config/urls.py
         determines URL patterns at import time based on APP_IS_WORKER. Once

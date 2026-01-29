@@ -6,6 +6,12 @@ from .base import env
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#debug
 DEBUG = True
+
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# Local Docker Compose uses HTTP calls to worker and Docker for validators.
+# Can be overridden via environment variable for testing other targets.
+DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default="local_docker_compose")
 # https://docs.djangoproject.com/en/dev/ref/settings/#secret-key
 SECRET_KEY = env(
     "DJANGO_SECRET_KEY",

@@ -47,11 +47,13 @@ else:
 
 ## Backend Selection
 
-The backend is selected via the `VALIDATOR_RUNNER` setting:
+The backend is selected based on the `DEPLOYMENT_TARGET` setting:
 
-- `"docker"` → SelfHostedExecutionBackend
-- `"google_cloud_run"` → GCPExecutionBackend
-- `"aws_batch"` → AWSBatchExecutionBackend (future)
+- `"test"`, `"local_docker_compose"`, `"docker_compose"` → SelfHostedExecutionBackend (Docker)
+- `"gcp"` → GCPExecutionBackend (Cloud Run Jobs)
+- `"aws"` → AWSBatchExecutionBackend (future)
+
+The `VALIDATOR_RUNNER` setting can override this if needed.
 """
 
 from validibot.validations.services.execution.base import ExecutionBackend

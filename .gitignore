@@ -305,3 +305,7 @@ tests/assets/fmu/*
 # Two-bucket local storage
 /media/files/
 /media/public/
+
+
+# Storage bucket when running locally
+/storage

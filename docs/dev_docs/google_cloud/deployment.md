@@ -96,9 +96,7 @@ Edit the appropriate environment file for your stage:
 
 | Stage | Environment File |
 |-------|------------------|
-| dev | `.envs/.dev/.django` |
-| staging | `.envs/.staging/.django` |
-| prod | `.envs/.production/.django` |
+| prod | `.envs/.production/.google-cloud/.django` |
 
 Replace `PASSWORD_FROM_GCP_INIT` with the actual password from Step 1. Remember to URL-encode special characters in DATABASE_URL (`/` → `%2F`, `=` → `%3D`):
 
@@ -319,21 +317,19 @@ Each stage has its own secrets file and Secret Manager entry:
 
 | Stage | Local File | Secret Name |
 |-------|------------|-------------|
-| dev | `.envs/.dev/.django` | `django-env-dev` |
-| staging | `.envs/.staging/.django` | `django-env-staging` |
-| prod | `.envs/.production/.django` | `django-env` |
+| prod | `.envs/.production/.google-cloud/.django` | `django-env` |
 
 To update secrets:
 
 ```bash
 # Edit the file
-vim .envs/.dev/.django
+vim .envs/.production/.google-cloud/.django
 
 # Upload to Secret Manager
-just gcp-secrets dev
+just gcp-secrets prod
 
 # Redeploy to pick up changes
-just gcp-deploy dev
+just gcp-deploy prod
 ```
 
 ## Operations

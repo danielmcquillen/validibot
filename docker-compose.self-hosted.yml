@@ -4,8 +4,8 @@
 # Suitable for any cloud provider, VPS, or on-premises infrastructure.
 #
 # Usage:
-#   1. Copy .envs/.self-hosted/.django.example to .envs/.self-hosted/.django
-#   2. Copy .envs/.self-hosted/.postgres.example to .envs/.self-hosted/.postgres
+#   1. Copy .envs/.production/.self-hosted/.django.example to .envs/.production/.self-hosted/.django
+#   2. Copy .envs/.production/.self-hosted/.postgres.example to .envs/.production/.self-hosted/.postgres
 #   3. Edit the env files with your configuration
 #   4. Run: docker compose -f docker-compose.self-hosted.yml up -d
 #
@@ -48,8 +48,8 @@ services:
       # Docker socket for running validator containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
     env_file:
-      - .envs/.self-hosted/.django
-      - .envs/.self-hosted/.postgres
+      - .envs/.production/.self-hosted/.django
+      - .envs/.production/.self-hosted/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.self_hosted
     ports:
@@ -102,7 +102,7 @@ services:
     networks:
       - validibot
     env_file:
-      - .envs/.self-hosted/.postgres
+      - .envs/.production/.self-hosted/.postgres
     volumes:
       - validibot_postgres_data:/var/lib/postgresql/data
       - validibot_postgres_backups:/backups

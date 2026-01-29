@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
-from vb_shared.fmi import FMIRunResult
 
 from validibot.actions.protocols import RunContext
 from validibot.submissions.constants import SubmissionFileType
@@ -97,8 +97,8 @@ class FMIEngineTests(TestCase):
         )
         self.assertEqual(result.stats["implementation_status"], "Missing run_context")
 
-    def test_fmi_engine_not_configured(self):
-        """Test that FMI engine returns error when Cloud Run not configured."""
+    def test_fmi_engine_backend_not_available(self):
+        """Test that FMI engine returns error when execution backend not available."""
         org = OrganizationFactory()
         workflow = WorkflowFactory(
             org=org,
@@ -126,37 +126,30 @@ class FMIEngineTests(TestCase):
             file_type=SubmissionFileType.BINARY,
         )
 
-        class _FakeRunner:
-            """Capture Modal calls and return canned FMI run outputs."""
-
-            def __init__(self, response: dict):
-                self.response = response
-                self.calls: list[dict] = []
-
-            def __call__(self, **kwargs):
-                self.calls.append(kwargs)
-                return self.response
-
-        fake_result = FMIRunResult.success(outputs={"y_out": 3.0}).model_dump(
-            mode="json"
-        )
-        _FakeRunner(fake_result)
-
         engine = FMIValidationEngine(config={"inputs": {"u_in": 1.0}})
 
-        # Pass run_context so we get past that check
-        result = engine.validate(
-            validator=validator,
-            submission=submission,
-            ruleset=ruleset,
-            run_context=_mock_run_context(),
-        )
+        # Mock the backend to be unavailable
+        with patch(
+            "validibot.validations.services.execution.get_execution_backend"
+        ) as mock_get_backend:
+            mock_backend = MagicMock()
+            mock_backend.is_available.return_value = False
+            mock_backend.backend_name = "MockBackend"
+            mock_get_backend.return_value = mock_backend
 
-        # Without Cloud Run config, engine returns failure
+            # Pass run_context so we get past that check
+            result = engine.validate(
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                run_context=_mock_run_context(),
+            )
+
+        # Without available execution backend, engine returns failure
         self.assertFalse(result.passed)
         self.assertIn("implementation_status", result.stats)
         self.assertEqual(
-            result.stats["implementation_status"], "FMI Cloud Run not configured"
+            result.stats["implementation_status"], "Backend not available"
         )
 
     def test_fmi_engine_rejects_missing_fmu(self):

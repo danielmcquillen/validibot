@@ -85,7 +85,7 @@ gcloud run services describe validibot-worker \
   --format='value(status.url)'
 ```
 
-Then update your env file (`.envs/.production/.django`, `.envs/.dev/.django`, etc), run `just gcp-secrets <stage>`, and redeploy.
+Then update your env file (`.envs/.production/.google-cloud/.django`), run `just gcp-secrets prod`, and redeploy.
 
 ## Deploying Validator Jobs
 

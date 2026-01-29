@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,7 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.engines.energyplus import EnergyPlusValidationEngine
+from validibot.validations.services.execution.registry import clear_backend_cache
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
 
@@ -58,12 +60,12 @@ def test_energyplus_engine_requires_run_context():
     assert result.stats["implementation_status"] == "Missing run_context"
 
 
-def test_energyplus_engine_not_configured():
+def test_energyplus_engine_backend_not_available():
     """
-    Test that the EnergyPlus engine returns error when Cloud Run not configured.
+    Test that the EnergyPlus engine returns error when execution backend not available.
 
-    When run_context is provided but GCS_VALIDATION_BUCKET and GCS_ENERGYPLUS_JOB_NAME
-    are not configured, the engine should return a helpful error.
+    When run_context is provided but the execution backend (Docker or Cloud Run)
+    is not available, the engine should return a helpful error.
     """
     validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
     ruleset = _energyplus_ruleset()
@@ -78,18 +80,28 @@ def test_energyplus_engine_not_configured():
         downstream_signals={},
     )
 
-    result = engine.validate(
-        validator=validator,
-        submission=submission,
-        ruleset=ruleset,
-        run_context=run_context,
-    )
+    # Mock the backend to be unavailable
+    clear_backend_cache()
+    with patch(
+        "validibot.validations.services.execution.get_execution_backend"
+    ) as mock_get_backend:
+        mock_backend = MagicMock()
+        mock_backend.is_available.return_value = False
+        mock_backend.backend_name = "MockBackend"
+        mock_get_backend.return_value = mock_backend
+
+        result = engine.validate(
+            validator=validator,
+            submission=submission,
+            ruleset=ruleset,
+            run_context=run_context,
+        )
 
     assert result.passed is False
     assert any(
-        "not configured" in issue.message.lower()
+        "not available" in issue.message.lower()
         and issue.severity == Severity.ERROR
         for issue in result.issues
     )
     assert result.stats is not None
-    assert result.stats["implementation_status"] == "Not configured"
+    assert result.stats["implementation_status"] == "Backend not available"

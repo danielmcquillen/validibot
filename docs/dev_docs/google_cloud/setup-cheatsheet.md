@@ -131,7 +131,7 @@ gcloud kms keys add-iam-policy-binding credential-signing-dev \
 
 ### Configure environment
 
-Add to your stage's environment secrets (`.envs/.{stage}/.django`):
+Add to your GCP environment secrets (`.envs/.production/.google-cloud/.django`):
 
 ```bash
 GCP_KMS_SIGNING_KEY="projects/PROJECT_ID/locations/australia-southeast1/keyRings/validibot-keys/cryptoKeys/credential-signing-dev"
@@ -281,17 +281,17 @@ We use the **file-mounted approach** because:
 
 - **Simpler management** - One secret to create/update instead of 20+
 - **Matches local development** - Same `.env` file format used locally
-- **Easier migration** - Can copy the local `.envs/.production/.django` file directly
+- **Easier migration** - Can copy the local `.envs/.production/.google-cloud/.django` file directly
 - **Atomic updates** - All variables update together when you add a new secret version
 
 The tradeoff is less granular access control (all-or-nothing), but for a single-developer project this is acceptable. The start script (`compose/production/django/start.sh`) sources `/secrets/.env` before starting Django.
 
 ### Create the django-env secret
 
-> **Important:** Always use `.envs/.production/.django` (with leading dot). This repo no longer uses a separate `_envs/` directory.
+> **Important:** GCP environment files are in `.envs/.production/.google-cloud/`.
 > Cloud deployments and Docker Compose use `.envs/`, and `source set-env.sh` loads local env vars for host-run commands.
 
-First, update `.envs/.production/.django` with production values:
+First, update `.envs/.production/.google-cloud/.django` with production values:
 
 - `DJANGO_SECRET_KEY` - Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"`
 - `DJANGO_ALLOWED_HOSTS` - `.run.app,.validibot.com`
@@ -318,7 +318,7 @@ Then upload the env file as a secret:
 
 ```bash
 gcloud secrets create django-env \
-  --data-file=.envs/.production/.django \
+  --data-file=.envs/.production/.google-cloud/.django \
   --replication-policy=user-managed \
   --locations=australia-southeast1
 ```
@@ -348,10 +348,10 @@ gcloud projects add-iam-policy-binding project-a509c806-3e21-4fbc-b19 \
 
 ### Update a secret
 
-When you change `.envs/.production/.django`, add a new version:
+When you change `.envs/.production/.google-cloud/.django`, add a new version:
 
 ```bash
-gcloud secrets versions add django-env --data-file=.envs/.production/.django
+gcloud secrets versions add django-env --data-file=.envs/.production/.google-cloud/.django
 
 # Then redeploy Cloud Run to pick up changes
 gcloud run services update validibot-web --region=australia-southeast1
@@ -464,7 +464,7 @@ Bucket naming:
 - `validibot-media` - Production media files
 - `validibot-media-dev` - Development/staging media files
 
-The `GCS_MEDIA_BUCKET` environment variable in `.envs/.production/.django` should be set to `validibot-media`.
+The `GCS_MEDIA_BUCKET` environment variable in `.envs/.production/.google-cloud/.django` should be set to `validibot-media`.
 
 ## Build and Push Docker Image
 

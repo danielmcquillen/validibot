@@ -33,14 +33,18 @@ Entrypoint and start scripts live in `compose/local/django/` and wait for Postgr
 
 ## Production-style compose (for parity/testing)
 
-Copy env:  
-`cp .envs/.production/.django.example .envs/.production/.django`  
-`cp .envs/.production/.postgres.example .envs/.production/.postgres`
+Copy env (GCP example):
+`cp .envs/.production/.google-cloud/.django.example .envs/.production/.google-cloud/.django`
+`cp .envs/.production/.google-cloud/.postgres.example .envs/.production/.google-cloud/.postgres`
 
-Run:  
+Or for self-hosted:
+`cp .envs/.production/.self-hosted/.django.example .envs/.production/.self-hosted/.django`
+`cp .envs/.production/.self-hosted/.postgres.example .envs/.production/.self-hosted/.postgres`
+
+Run:
 `docker compose -f docker-compose.production.yml up --build`
 
-Production-style “web” serves user traffic (gunicorn on 8000). The “worker” runs gunicorn on 8001 for task/internal endpoints so you can mimic separate Cloud Run services with different scaling. Postgres is built from the same Dockerfile as local but uses `.envs/.production/.postgres`.
+Production-style "web" serves user traffic (gunicorn on 8000). The "worker" runs gunicorn on 8001 for task/internal endpoints so you can mimic separate Cloud Run services with different scaling.
 
 ## Running without Docker
 

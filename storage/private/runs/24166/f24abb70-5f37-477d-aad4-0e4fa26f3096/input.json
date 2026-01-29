@@ -1,0 +1,45 @@
+{
+  "schema_version": "validibot.input.v1",
+  "run_id": "f24abb70-5f37-477d-aad4-0e4fa26f3096",
+  "validator": {
+    "id": "3404",
+    "type": "ENERGYPLUS",
+    "version": "24.2.0"
+  },
+  "org": {
+    "id": "24166",
+    "name": "Test Organization 2"
+  },
+  "workflow": {
+    "id": "8045",
+    "step_id": "2384",
+    "step_name": "Step 2"
+  },
+  "input_files": [
+    {
+      "name": "model.idf",
+      "mime_type": "application/vnd.energyplus.idf",
+      "role": "primary-model",
+      "uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/runs/24166/f24abb70-5f37-477d-aad4-0e4fa26f3096/document.json"
+    },
+    {
+      "name": "weather.epw",
+      "mime_type": "application/vnd.energyplus.epw",
+      "role": "weather",
+      "uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/weather/24166/test_weather.epw"
+    }
+  ],
+  "inputs": {
+    "timestep_per_hour": 4,
+    "run_period_days": null,
+    "invocation_mode": "cli"
+  },
+  "context": {
+    "callback_id": "step-run-612",
+    "callback_url": "http://localhost:8000/api/v1/validation-callbacks/",
+    "skip_callback": true,
+    "execution_bundle_uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/runs/24166/f24abb70-5f37-477d-aad4-0e4fa26f3096",
+    "timeout_seconds": 3600,
+    "tags": []
+  }
+}

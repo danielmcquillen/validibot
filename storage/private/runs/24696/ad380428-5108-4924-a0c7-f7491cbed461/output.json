@@ -1,0 +1,44 @@
+{
+  "schema_version": "validibot.output.v1",
+  "run_id": "ad380428-5108-4924-a0c7-f7491cbed461",
+  "validator": {
+    "id": "3524",
+    "type": "ENERGYPLUS",
+    "version": "24.2.0"
+  },
+  "status": "failed_validation",
+  "timing": {
+    "started_at": "2026-01-29T07:52:04.379891Z",
+    "finished_at": "2026-01-29T07:52:05.074761Z"
+  },
+  "messages": [
+    {
+      "severity": "ERROR",
+      "code": "ENERGYPLUS_SEVERE",
+      "text": "Line: 1 Index: 106 - \"{ \"Building\": { \"Simple One Zone (Wireframe DXF)\": { \"loads_convergence_tolerance_value\": 0.04\" is not a valid Object Type.",
+      "tags": []
+    },
+    {
+      "severity": "ERROR",
+      "code": "ENERGYPLUS_FATAL",
+      "text": "Errors occurred on processing input file. Preceding condition(s) cause termination.",
+      "tags": []
+    }
+  ],
+  "metrics": [],
+  "artifacts": [],
+  "outputs": {
+    "outputs": {
+      "eplusout_err": "/tmp/energyplus_run/ad380428-5108-4924-a0c7-f7491cbed461/eplusout.err"
+    },
+    "metrics": {},
+    "logs": {
+      "stdout_tail": "EnergyPlus Starting\nEnergyPlus, Version 25.2.0-cf7368216c, YMD=2026.01.29 07:52\n**FATAL:Errors occurred on processing input file. Preceding condition(s) cause termination.\nEnergyPlus Run Time=00hr 00min  0.20sec\n",
+      "stderr_tail": "Program terminated: EnergyPlus Terminated--Error(s) Detected.\n",
+      "err_tail": "Program Version,EnergyPlus, Version 25.2.0-cf7368216c, YMD=2026.01.29 07:52,\n   ** Severe  ** Line: 1 Index: 106 - \"{\n  \"Building\": {\n    \"Simple One Zone (Wireframe DXF)\": {\n      \"loads_convergence_tolerance_value\": 0.04\" is not a valid Object Type.\n   **  Fatal  ** Errors occurred on processing input file. Preceding condition(s) cause termination.\n   ...Summary of Errors that led to program termination:\n   ..... Reference severe error count=1\n   ..... Last severe error=Line: 1 Index: 106 - \"{\n  \"Building\": {\n    \"Simple One Zone (Wireframe DXF)\": {\n      \"loads_convergence_tolerance_value\": 0.04\" is not a valid Object Type.\n   ************* Warning:  Node connection errors not checked - most system input has not been read (see previous warning).\n   ************* Fatal error -- final processing.  Program exited before simulations began.  See previous error messages.\n   ************* EnergyPlus Warmup Error Summary. During Warmup: 0 Warning; 0 Severe Errors.\n   ************* EnergyPlus Sizing Error Summary. During Sizing: 0 Warning; 0 Severe Errors.\n   ************* EnergyPlus Terminated--Fatal Error Detected. 0 Warning; 1 Severe Errors; Elapsed Time=00hr 00min  0.20sec\n"
+    },
+    "energyplus_returncode": 1,
+    "execution_seconds": 0.6745517253875732,
+    "invocation_mode": "cli"
+  }
+}

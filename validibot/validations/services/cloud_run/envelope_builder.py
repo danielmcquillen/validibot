@@ -167,6 +167,7 @@ def build_input_envelope(
     execution_bundle_uri: str,
     *,
     skip_callback: bool = False,
+    input_file_uris: dict[str, str] | None = None,
 ) -> ValidationInputEnvelope:
     """
     Build the appropriate input envelope based on validator type.
@@ -181,6 +182,8 @@ def build_input_envelope(
         execution_bundle_uri: GCS directory for this run's files
         skip_callback: If True, container won't POST callback after completion.
             Used for synchronous execution where results are read directly.
+        input_file_uris: Optional dict of file role to URI (e.g., {'primary_file_uri': 'file://...'}).
+            If provided, these override values from step.config.
 
     Returns:
         Typed envelope (EnergyPlusInputEnvelope, FMIInputEnvelope, etc.)
@@ -210,21 +213,25 @@ def build_input_envelope(
         msg = f"WorkflowStep {step.id} has no validator configured"
         raise ValueError(msg)
 
+    # Merge input_file_uris with step.config for lookups
+    # input_file_uris takes precedence (they contain dynamically uploaded files)
+    step_config = {**(step.config or {}), **(input_file_uris or {})}
+
     if validator.validation_type == ValidationType.ENERGYPLUS:
-        # Get model file URI (primary file from the workflow step)
-        model_file_uri = step.config.get("primary_file_uri")
+        # Get model file URI (primary file from the workflow step or input_file_uris)
+        model_file_uri = step_config.get("primary_file_uri")
         if not model_file_uri:
             msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
         # Get weather file URI (from step configuration)
-        weather_file_uri = step.config.get("weather_file_uri")
+        weather_file_uri = step_config.get("weather_file_uri")
         if not weather_file_uri:
             msg = f"Step {step.id} has no weather_file_uri in config"
             raise ValueError(msg)
 
         # Get EnergyPlus-specific settings from step config
-        timestep_per_hour = step.config.get("timestep_per_hour", 4)
+        timestep_per_hour = step_config.get("timestep_per_hour", 4)
 
         return build_energyplus_input_envelope(
             run_id=str(run.id),

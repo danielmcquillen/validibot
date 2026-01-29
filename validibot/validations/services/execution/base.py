@@ -234,21 +234,11 @@ class ExecutionBackend(ABC):
             build_input_envelope,
         )
 
-        # Temporarily inject URIs into step config for the envelope builder
-        # TODO: Refactor envelope builder to accept URIs directly
-        original_config = request.step.config
-        request.step.config = {
-            **(original_config or {}),
-            **input_file_uris,
-        }
-
-        try:
-            return build_input_envelope(
-                run=request.run,
-                callback_url=callback_url or "",
-                callback_id=callback_id or "",
-                execution_bundle_uri=execution_bundle_uri,
-                skip_callback=not self.is_async,  # Skip callback for sync backends
-            )
-        finally:
-            request.step.config = original_config
+        return build_input_envelope(
+            run=request.run,
+            callback_url=callback_url or "",
+            callback_id=callback_id or "",
+            execution_bundle_uri=execution_bundle_uri,
+            skip_callback=not self.is_async,  # Skip callback for sync backends
+            input_file_uris=input_file_uris,
+        )

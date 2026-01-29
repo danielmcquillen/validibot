@@ -1,4 +1,4 @@
-## Organizations and access
+## Workspace and access
 
 - **Switch organizations**: Use the org picker in the header to change your current workspace. The help and workflow lists update to match.
 - **Invite members**: Admins and Owners can invite users and assign roles (Owner, Admin, Author, Executor, Viewer).

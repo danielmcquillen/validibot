@@ -39,6 +39,7 @@ def test_help_index_and_links_render(client):
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost"])
 def test_help_markdown_headings_render(client):
+    """Render help markdown as HTML headings in the app layout."""
     org = OrganizationFactory(slug="help-org-headings")
     user = UserFactory(orgs=[org])
     client.force_login(user)
@@ -49,3 +50,17 @@ def test_help_markdown_headings_render(client):
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
     assert "<h3" in html or "<h2" in html
+
+
+@override_settings(ALLOWED_HOSTS=["testserver", "localhost"])
+def test_help_page_includes_app_left_nav(client):
+    """Show the primary app left navigation when viewing help pages."""
+    org = OrganizationFactory(slug="help-org-left-nav")
+    user = UserFactory(orgs=[org])
+    client.force_login(user)
+
+    call_command("sync_help", clear=True)
+
+    response = client.get("/app/help/")
+    assert response.status_code == HTTPStatus.OK
+    assert 'id="app-left-nav"' in response.content.decode()

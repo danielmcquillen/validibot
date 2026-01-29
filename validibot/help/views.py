@@ -6,6 +6,7 @@ from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
+from django.utils.translation import gettext_lazy as _
 
 # Expected in your settings.py, e.g.:
 #
@@ -18,11 +19,11 @@ from django.shortcuts import render
 #
 # If it's missing, we provide a fallback so things still work.
 DEFAULT_HELP_SECTIONS = [
-    ("getting-started", "Getting started"),
-    ("concepts", "Concepts"),
-    ("workflows", "Workflows"),
-    ("validators", "Validators"),
-    ("admin", "Admin"),
+    ("getting-started", _("Getting started")),
+    ("workflows", _("Workflows")),
+    ("validators", _("Validators")),
+    ("concepts", _("Concepts")),
+    ("admin", _("Workspace")),
 ]
 
 SECTION_LIST = getattr(settings, "HELP_SECTIONS", DEFAULT_HELP_SECTIONS)
@@ -41,7 +42,7 @@ def _section_slug_from_url(url: str) -> str:
       "/app/help/workflows/creating/"     -> "workflows"
       "/app/help/admin/organizations/"    -> "admin"
     """
-    # Strip the "/help/" prefix and trailing slash
+    # Strip the "/app/help/" prefix and trailing slash
     if not url.startswith(HELP_URL_PREFIX):
         # Fallback: treat everything else as index
         return "getting-started"
@@ -61,7 +62,7 @@ def _section_label_from_slug(slug: str) -> str:
     falling back to Title Case if not configured.
     """
     if slug == "index":
-        return "Index"
+        return _("Index")
     if slug in SECTION_LABEL:
         return SECTION_LABEL[slug]
     return slug.replace("-", " ").title()
@@ -72,12 +73,12 @@ def help_page(request, path: str = "index"):
     Main help view.
 
     URL patterns (see help/urls.py) should route:
-      /help/                 -> help_page(path="index")
-      /help/getting-started/ -> help_page(path="getting-started/")
-      /help/workflows/run/   -> help_page(path="workflows/run/")
+      /app/help/                 -> help_page(path="index")
+      /app/help/getting-started/ -> help_page(path="getting-started/")
+      /app/help/workflows/run/   -> help_page(path="workflows/run/")
 
     This view:
-      - Resolves the FlatPage for /help/<path>/
+      - Resolves the FlatPage for /app/help/<path>/
       - Builds an ordered list of all help pages for the nav
       - Passes `page` and `nav_items` into the template
     """

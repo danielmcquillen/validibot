@@ -2,6 +2,8 @@ import logging
 
 from django.conf import settings
 
+from validibot.core.license import get_license
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,3 +39,22 @@ def site_feature_settings(request):
         logger.warning("Could not load site feature settings")
 
     return extra_context
+
+
+def license_context(request):
+    """
+    Expose license edition information in templates.
+
+    Provides:
+    - license_edition: The current Edition enum value
+    - is_enterprise: True if Enterprise edition
+    - is_pro: True if Pro or Enterprise edition
+    - is_community: True if Community edition
+    """
+    lic = get_license()
+    return {
+        "license_edition": lic.edition,
+        "is_enterprise": lic.is_enterprise,
+        "is_pro": lic.is_pro,
+        "is_community": lic.is_community,
+    }

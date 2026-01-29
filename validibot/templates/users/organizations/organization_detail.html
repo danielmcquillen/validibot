@@ -2,7 +2,7 @@
 {% load i18n core_tags %}
 
 {% block title %}
-  {{ organization.name }} · {% trans "Organizations" %}
+  {% trans "Organization" %} · Validibot
 {% endblock title %}
 
 {% block left_sidebar %}
@@ -11,22 +11,23 @@
 
 {% block app_content %}
   <div class="container-fluid" id="organization-detail">
-    <div class="app-content-header-bar row align-items-center mb-3">
-      <div class="col-12 col-lg-8">
-        <h1 class="app-page-title mb-1">
-          {{ organization.name }}
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-building me-2"></i>
+          {% trans "Organization" %}
         </h1>
-        <p class="text-muted mb-0">
-          {% trans "Organization overview" %}
-        </p>
+        <div class="app-page-subtitle ms-3">
+          {% trans "View and manage organization settings." %}
+        </div>
       </div>
       <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
         <a class="btn btn-secondary"
            href="{% url 'users:organization-update' organization.pk %}">
           <i class="bi bi-pencil-square me-1"></i>
-          {% trans "Edit organization" %}
+          {% trans "Edit" %}
         </a>
-        {% if not organization.is_personal %}
+        {% if is_enterprise and not organization.is_personal %}
           <a class="btn btn-danger"
              href="{% url 'users:organization-delete' organization.pk %}">
             <i class="bi bi-trash me-1"></i>

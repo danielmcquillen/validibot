@@ -14,6 +14,7 @@
       </a>
     </div>
 
+    <div class="app-left-nav-items">
     {# Workflow guests (no org membership) see minimal navigation #}
     {% if is_workflow_guest %}
       <ul class="nav nav-pills flex-column mt-3" role="menu">
@@ -31,6 +32,14 @@
              role="menuitem">
             <i class="bi bi-shield-check"></i>
             <span>{% trans "My Validation Runs" %}</span>
+          </a>
+        </li>
+        <li class="nav-item" role="none">
+          <a href="{% url 'help:help_index' %}"
+             class="nav-link text-white {% active_link 'help' %}"
+             role="menuitem">
+            <i class="bi bi-question-circle"></i>
+            <span>{% trans "Help" %}</span>
           </a>
         </li>
       </ul>
@@ -60,15 +69,27 @@
             <span>{% trans "Validation Runs" %}</span>
           </a>
         </li>
+        <li class="nav-item" role="none">
+          <a href="{% url 'help:help_index' %}"
+             class="nav-link text-white {% active_link 'help' %}"
+             role="menuitem">
+            <i class="bi bi-question-circle"></i>
+            <span>{% trans "Help" %}</span>
+          </a>
+        </li>
       </ul>
 
     {% else %}
       {# Regular member navigation #}
-      <div class="workspace-selector-wrapper">
-        {% if org_memberships|length > 1 or is_org_admin %}
-          {% include 'app/partial/components/workspace_selector.html' %}
-        {% endif %}
-      </div>
+      {# Enterprise edition: show workspace selector for multi-org switching #}
+      {# Community/Pro editions: hide workspace selector (single-org mode) #}
+      {% if is_enterprise %}
+        <div class="workspace-selector-wrapper">
+          {% if org_memberships|length > 1 or is_org_admin %}
+            {% include 'app/partial/components/workspace_selector.html' %}
+          {% endif %}
+        </div>
+      {% endif %}
 
       <ul class="nav nav-pills flex-column " role="menu">
         {% if has_builder_access %}
@@ -145,8 +166,19 @@
       <ul class="nav nav-pills flex-column mb-auto" role="menu">
         {% if has_builder_access and is_org_admin %}
           <div class="group-label mt-4">
-            Admin
+            {% trans "Admin" %}
           </div>
+          {# Organization link - for Community/Pro editions (single-org mode) #}
+          {% if not is_enterprise and active_org %}
+            <li class="nav-item" role="none">
+              <a href="{% url 'users:organization-update' active_org.pk %}"
+                 class="nav-link text-white {% active_link_views 'users:organization-update' 'users:organization-detail' %}"
+                 role="menuitem">
+                <i class="bi bi-building"></i>
+                <span>{% trans "Organization" %}</span>
+              </a>
+            </li>
+          {% endif %}
           <li class="nav-item" role="none">
             <a href="{% org_url 'projects:project-list' %}"
                class="nav-link text-white {% active_link 'projects' %}"
@@ -172,9 +204,21 @@
             </a>
           </li>
         {% endif %}
+        <div class="group-label mt-4">
+          {% trans "Support" %}
+        </div>
+        <li class="nav-item" role="none">
+          <a href="{% url 'help:help_index' %}"
+             class="nav-link text-white {% active_link 'help' %}"
+             role="menuitem">
+            <i class="bi bi-question-circle"></i>
+            <span>{% trans "Help" %}</span>
+          </a>
+        </li>
       </ul>
     {% endif %}
     {# end navigation conditionals #}
+    </div>
 
   </div>
 {% endwith %}

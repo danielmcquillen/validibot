@@ -42,9 +42,8 @@
       {% url 'members:guest_list' as guests_url %}
       {% blocktrans %}
         <strong>About members:</strong> Members have access to your
-        org, based on the roles you give them. Members can do things likeauthor workflows, manage
-        organization settings and view analytics. Your subscription plan limits the number of 
-        members you can have.
+        organization, based on the roles you give them. Members can do things like author workflows, manage
+        organization settings and view analytics. 
         (<a href="{{ guests_url }}">Guests</a>, on the other hand, can only access specific workflows you've shared with them.
       )
       {% endblocktrans %}

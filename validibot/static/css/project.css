@@ -13472,6 +13472,9 @@ html[data-left-nav-prefers-collapsed=true] #app-left-nav {
 #app-left-nav .left-nav-title .navbar-brand .brand-mark {
   margin-top: -5px;
 }
+#app-left-nav .app-left-nav-items {
+  margin-top: 1.1rem;
+}
 #app-left-nav .workspace-selector-wrapper {
   min-height: 28px;
 }
@@ -14545,7 +14548,7 @@ h6 {
   margin-bottom: 1rem;
   border-radius: 0.5rem;
   padding: 0.2rem 0.2rem 0.2rem 1rem;
-  margin: 10px 0 1rem;
+  margin: 0 0 1rem;
   min-height: 3rem;
 }
 .app-content-header-bar .app-content-header {

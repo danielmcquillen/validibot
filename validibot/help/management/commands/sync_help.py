@@ -45,7 +45,7 @@ class Command(BaseCommand):
             if dry_run:
                 self.stdout.write("[DRY] Clearing all existing help flatpages.")
             else:
-                help_pages = FlatPage.objects.filter(url__startswith="/help/")
+                help_pages = FlatPage.objects.filter(url__startswith=HELP_URL_PREFIX)
                 count = help_pages.count()
                 help_pages.delete()
                 self.stdout.write(f"Cleared {count} existing help flatpages.")

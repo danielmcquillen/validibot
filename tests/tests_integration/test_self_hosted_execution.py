@@ -218,6 +218,26 @@ skip_if_no_energyplus_image = pytest.mark.skipif(
 )
 
 
+def fmi_image_available() -> bool:
+    """Check if the FMI validator image is available."""
+    if not docker_available():
+        return False
+    try:
+        import docker
+
+        client = docker.from_env()
+        images = client.images.list(name="validibot-validator-fmi")
+        return len(images) > 0
+    except Exception:
+        return False
+
+
+skip_if_no_fmi_image = pytest.mark.skipif(
+    not fmi_image_available(),
+    reason="FMI validator image not available",
+)
+
+
 # =============================================================================
 # Built-in Validator Tests (No Docker Required)
 # =============================================================================
@@ -511,6 +531,216 @@ class TestDockerEnergyPlusExecution:
         # For this test, we just verify the run completed (either SUCCESS or FAILED)
         # The model may fail due to missing weather file, but that's OK -
         # we're testing the execution flow, not the model validity
+        assert run_status in ("SUCCEEDED", "FAILED"), (
+            f"Expected terminal status, got {run_status}: {data}"
+        )
+
+        # Log the steps for debugging
+        steps = data.get("steps", [])
+        for step in steps:
+            logger.info(
+                "Step %s: status=%s, issues=%d",
+                step.get("name", "unknown"),
+                step.get("status", "unknown"),
+                len(step.get("issues", [])),
+            )
+
+
+# =============================================================================
+# FMI Docker-Based Validator Tests
+# =============================================================================
+
+
+def load_fmu_asset() -> bytes:
+    """Load the test FMU file from test assets."""
+    asset_path = Path(__file__).parents[1] / "assets" / "fmu" / "Feedthrough.fmu"
+    if not asset_path.exists():
+        pytest.skip(f"Test FMU asset not found: {asset_path}")
+    return asset_path.read_bytes()
+
+
+@pytest.mark.django_db(transaction=True)
+@skip_if_no_docker
+@skip_if_no_fmi_image
+class TestDockerFMIExecution:
+    """
+    Tests for FMI (Functional Mock-up Interface) validation via Docker containers.
+
+    These tests verify the SelfHostedExecutionBackend correctly:
+    1. Creates an FMI validator with an attached FMU file
+    2. Uploads input envelope with FMU URI to local storage
+    3. Runs the FMI Docker container
+    4. Reads the output envelope
+    5. Returns simulation results to the workflow
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup_local_storage(self, tmp_path):
+        """Set up temporary local storage for test isolation."""
+        self.storage_root = tmp_path / "storage"
+        self.storage_root.mkdir(parents=True, exist_ok=True)
+
+        # Clear backend cache to ensure fresh initialization
+        clear_backend_cache()
+
+        yield
+
+        # Cleanup
+        clear_backend_cache()
+
+    @pytest.fixture
+    def fmi_workflow(self, api_client, setup_local_storage):
+        """Create a workflow with an FMI validator using the Feedthrough FMU."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from validibot.submissions.constants import SubmissionFileType
+        from validibot.validations.constants import RulesetType
+        from validibot.validations.models import Ruleset
+        from validibot.validations.services.fmi import create_fmi_validator
+
+        org = OrganizationFactory()
+        user = UserFactory(orgs=[org])
+        user.set_current_org(org)
+        grant_role(user, org, RoleCode.EXECUTOR)
+
+        # Load the FMU and create a SimpleUploadedFile
+        fmu_data = load_fmu_asset()
+        fmu_upload = SimpleUploadedFile(
+            "Feedthrough.fmu",
+            fmu_data,
+            content_type="application/octet-stream",
+        )
+
+        # Create a project for the workflow
+        from validibot.projects.tests.factories import ProjectFactory
+
+        project = ProjectFactory(org=org)
+
+        # Create the FMI validator using the service function
+        # This handles FMU introspection and catalog seeding
+        validator = create_fmi_validator(
+            org=org,
+            project=project,
+            name="Feedthrough FMU Validator",
+            upload=fmu_upload,
+        )
+
+        logger.info(
+            "Created FMI validator: id=%s, fmu_model=%s",
+            validator.id,
+            validator.fmu_model,
+        )
+
+        # Create a ruleset for FMI
+        ruleset = Ruleset.objects.create(
+            org=org,
+            user=user,
+            name="FMI Test Rules",
+            ruleset_type=RulesetType.FMI,
+            version="1",
+            rules_text="{}",
+        )
+
+        # Create workflow that accepts binary files (FMUs)
+        workflow = WorkflowFactory(
+            org=org,
+            user=user,
+            project=project,
+            allowed_file_types=[SubmissionFileType.BINARY],
+        )
+
+        # Create step with FMI validator
+        WorkflowStepFactory(
+            workflow=workflow,
+            validator=validator,
+            ruleset=ruleset,
+            order=1,
+            config={},
+        )
+
+        api_client.force_authenticate(user=user)
+
+        return {
+            "org": org,
+            "user": user,
+            "validator": validator,
+            "ruleset": ruleset,
+            "workflow": workflow,
+            "project": project,
+            "client": api_client,
+            "storage_root": self.storage_root,
+        }
+
+    @override_settings(
+        VALIDATOR_RUNNER="docker",
+        DATA_STORAGE_BACKEND="local",
+    )
+    def test_fmi_execution_via_docker(self, fmi_workflow):
+        """
+        Test FMI validation executes via Docker container.
+
+        This is an integration test that:
+        1. Submits a binary file (FMI input parameters) via the API
+        2. Waits for the Docker container to run the FMU simulation
+        3. Verifies the validation completes with results
+        """
+        from io import BytesIO
+
+        client = fmi_workflow["client"]
+        workflow = fmi_workflow["workflow"]
+        org = fmi_workflow["org"]
+
+        # FMI submissions contain input parameter values as JSON
+        # Submit as binary content (since workflow accepts BINARY files)
+        submission_data = {
+            "input_parameters": {
+                "real_in": 1.5,
+            },
+        }
+        # Encode JSON as binary for submission
+        binary_content = json.dumps(submission_data).encode("utf-8")
+
+        url = start_workflow_url(workflow)
+
+        logger.info("Starting FMI validation via Docker")
+        logger.info("URL: %s", url)
+
+        # Submit as multipart form data with a file
+        resp = client.post(
+            url,
+            data={"file": BytesIO(binary_content)},
+            format="multipart",
+        )
+        assert resp.status_code in (200, 201, 202), (
+            f"Failed to start workflow: {resp.status_code} {resp.content}"
+        )
+
+        # Get polling URL
+        loc = resp.headers.get("Location") or ""
+        poll_url = normalize_poll_url(loc)
+        if not poll_url:
+            data = resp.json()
+            run_id = data.get("id")
+            if run_id:
+                poll_url = f"/api/v1/orgs/{org.slug}/runs/{run_id}/"
+
+        logger.info("Polling for completion: %s", poll_url)
+
+        # Poll with timeout for FMI (container startup + simulation)
+        data, status = poll_until_complete(
+            client,
+            poll_url,
+            timeout_s=60.0,
+            interval_s=2.0,
+        )
+
+        assert status == HTTP_200_OK, f"Polling failed: {status} {data}"
+
+        run_status = (data.get("status") or "").upper()
+        logger.info("Validation completed with status: %s", run_status)
+
+        # For this test, we verify the run completed (either SUCCESS or FAILED)
+        # The FMU may fail for various reasons, but we're testing the execution flow
         assert run_status in ("SUCCEEDED", "FAILED"), (
             f"Expected terminal status, got {run_status}: {data}"
         )

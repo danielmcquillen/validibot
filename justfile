@@ -2398,11 +2398,18 @@ gcp-maintenance-on stage:
     # 5. Stop Cloud SQL instance
     echo "5. Stopping Cloud SQL instance $DB_INSTANCE..."
     echo "   (This saves the most cost but takes ~1 min to restart)"
-    gcloud sql instances patch "$DB_INSTANCE" \
-        --activation-policy NEVER \
+    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project {{gcp_project}} \
-        --quiet
-    echo "   ✓ Database stopped"
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$DB_STATUS" = "RUNNABLE" ]; then
+        gcloud sql instances patch "$DB_INSTANCE" \
+            --activation-policy NEVER \
+            --project {{gcp_project}} \
+            --quiet
+        echo "   ✓ Database stopped"
+    else
+        echo "   - Database already stopped ($DB_STATUS)"
+    fi
 
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -2451,11 +2458,18 @@ gcp-maintenance-off stage:
     # 1. Start Cloud SQL instance first (takes longest)
     echo "1. Starting Cloud SQL instance $DB_INSTANCE..."
     echo "   (This may take 1-2 minutes)"
-    gcloud sql instances patch "$DB_INSTANCE" \
-        --activation-policy ALWAYS \
+    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
         --project {{gcp_project}} \
-        --quiet
-    echo "   ✓ Database starting..."
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$DB_STATUS" = "RUNNABLE" ]; then
+        echo "   - Database already running ($DB_STATUS)"
+    else
+        gcloud sql instances patch "$DB_INSTANCE" \
+            --activation-policy ALWAYS \
+            --project {{gcp_project}} \
+            --quiet
+        echo "   ✓ Database starting..."
+    fi
 
     # 2. Resume Cloud Tasks queue
     echo "2. Resuming Cloud Tasks queue..."

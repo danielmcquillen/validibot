@@ -1,0 +1,40 @@
+{
+  "schema_version": "validibot.input.v1",
+  "run_id": "93aa76d5-0938-4400-beb8-0372277ff3a2",
+  "validator": {
+    "id": "7ba59979-d1a2-42a0-a7f0-a9c3a79e9d7f",
+    "type": "ENERGYPLUS",
+    "version": "1.0.0"
+  },
+  "org": {
+    "id": "d2528dbe-1302-4d88-875a-27c4277c7b58",
+    "name": "Test Organization"
+  },
+  "workflow": {
+    "id": "9fae16f3-d7fa-435e-a7a7-1fc29b788269",
+    "step_id": "4dba92de-ed28-4290-8aff-b15e481ad186",
+    "step_name": "EnergyPlus Validation Test"
+  },
+  "context": {
+    "callback_url": "http://localhost:8000/api/v1/validation-callbacks/",
+    "callback_id": "test-callback-id",
+    "execution_bundle_uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/test-runs/d703bf7b",
+    "skip_callback": true,
+    "timeout_seconds": 600,
+    "tags": [
+      "test"
+    ]
+  },
+  "input_files": [
+    {
+      "name": "model.epjson",
+      "mime_type": "application/vnd.energyplus.epjson",
+      "role": "primary-model",
+      "uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/test-runs/d703bf7b/model.epjson"
+    }
+  ],
+  "inputs": {
+    "timestep_per_hour": 4,
+    "invocation_mode": "cli"
+  }
+}

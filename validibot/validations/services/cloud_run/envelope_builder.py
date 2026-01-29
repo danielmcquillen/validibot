@@ -50,6 +50,7 @@ def build_energyplus_input_envelope(
     callback_id: str | None,
     execution_bundle_uri: str,
     timestep_per_hour: int = 4,
+    skip_callback: bool = False,
 ) -> EnergyPlusInputEnvelope:
     """
     Build an EnergyPlusInputEnvelope from Django validation run data.
@@ -74,6 +75,7 @@ def build_energyplus_input_envelope(
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: GCS directory for this run's files
         timestep_per_hour: EnergyPlus timesteps (default: 4)
+        skip_callback: If True, container won't POST callback after completion
 
     Returns:
         Fully populated EnergyPlusInputEnvelope ready for GCS upload
@@ -141,6 +143,7 @@ def build_energyplus_input_envelope(
         callback_id=callback_id,
         callback_url=callback_url,
         execution_bundle_uri=execution_bundle_uri,
+        skip_callback=skip_callback,
     )
 
     # Build the envelope
@@ -162,6 +165,8 @@ def build_input_envelope(
     callback_url: str,
     callback_id: str | None,
     execution_bundle_uri: str,
+    *,
+    skip_callback: bool = False,
 ) -> ValidationInputEnvelope:
     """
     Build the appropriate input envelope based on validator type.
@@ -174,6 +179,8 @@ def build_input_envelope(
         callback_url: Django callback endpoint URL
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: GCS directory for this run's files
+        skip_callback: If True, container won't POST callback after completion.
+            Used for synchronous execution where results are read directly.
 
     Returns:
         Typed envelope (EnergyPlusInputEnvelope, FMIInputEnvelope, etc.)
@@ -233,6 +240,7 @@ def build_input_envelope(
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
+            skip_callback=skip_callback,
         )
     if validator.validation_type == ValidationType.FMI:
         # FMU location: use gcs_uri when present, otherwise local file path
@@ -267,6 +275,7 @@ def build_input_envelope(
             callback_id=callback_id,
             callback_url=callback_url,
             execution_bundle_uri=execution_bundle_uri,
+            skip_callback=skip_callback,
         )
         return FMIInputEnvelope(
             run_id=str(run.id),

@@ -1,23 +1,27 @@
 """
-FMI validation engine powered by Cloud Run Jobs.
+FMI validation engine.
 
-This engine forwards FMU submissions to Cloud Run Jobs for execution and
-translates the response into Validibot issues. The FMU is executed in a
-containerized environment with the FMI runtime.
+This engine forwards FMU submissions to container-based validators via the
+ExecutionBackend abstraction. The FMU is executed in a containerized environment
+with the FMI runtime.
+
+This works across different deployment targets:
+- Self-hosted: Docker containers via local socket (synchronous)
+- GCP: Cloud Run Jobs (async with callbacks)
+- AWS: AWS Batch (future)
 
 ## Validation Flow
 
 1. Engine receives validator, submission, ruleset from workflow execution
 2. run_context is set by the handler with validation_run and workflow_step
-3. If Cloud Run Jobs is configured, launches async job via launcher
-4. Returns pending ValidationResult
-5. Cloud Run Job executes and writes FMIOutputEnvelope to GCS
-6. Job POSTs callback to Django with result_uri
-7. Callback downloads envelope and evaluates output-stage assertions
+3. Gets the configured ExecutionBackend
+4. Builds ExecutionRequest and calls backend.execute()
+5. For sync backends: Returns ValidationResult immediately
+6. For async backends: Returns pending result, callback delivers results later
 
 ## Output Envelope Structure
 
-The FMI Cloud Run Job produces an `FMIOutputEnvelope` (from
+The FMI validator container produces an `FMIOutputEnvelope` (from
 vb_shared.fmi.envelopes) containing:
 
 - outputs.output_values: Dict keyed by catalog slug with simulation outputs
@@ -26,8 +30,6 @@ vb_shared.fmi.envelopes) containing:
 
 These output values are extracted via `extract_output_signals()` for use in
 output-stage CEL assertions (e.g., "indoor_temp_c < 26").
-
-If Cloud Run Jobs is not configured (local dev), returns not-implemented error.
 """
 
 from __future__ import annotations
@@ -36,7 +38,6 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
-from django.conf import settings
 from django.utils.translation import gettext as _
 
 from validibot.validations.constants import Severity
@@ -150,53 +151,158 @@ class FMIValidationEngine(BaseValidatorEngine):
                 stats={"implementation_status": "Missing run_context"},
             )
 
-        # Check which runner is configured
-        runner_type = getattr(settings, "VALIDATOR_RUNNER", "docker")
+        # Use the unified execution backend system
+        # This handles both self-hosted (Docker) and cloud (GCP, AWS) execution
+        from validibot.validations.services.execution import get_execution_backend
+        from validibot.validations.services.execution.base import ExecutionRequest
 
-        if runner_type == "google_cloud_run":
-            # GCP production: use existing Cloud Run launcher
-            if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_FMI_JOB_NAME:
-                logger.warning(
-                    "Cloud Run Jobs not configured for FMI - "
-                    "returning not-implemented error"
-                )
-                issues = [
-                    ValidationIssue(
-                        path="",
-                        message=_(
-                            "FMI Cloud Run Jobs not configured. "
-                            "Set GCS_VALIDATION_BUCKET and GCS_FMI_JOB_NAME "
-                            "in production settings.",
-                        ),
-                        severity=Severity.ERROR,
+        backend = get_execution_backend()
+
+        if not backend.is_available():
+            logger.warning(
+                "Execution backend '%s' is not available",
+                backend.backend_name,
+            )
+            issues = [
+                ValidationIssue(
+                    path="",
+                    message=_(
+                        "Validation backend is not available. "
+                        "Check your deployment configuration."
                     ),
-                ]
-                return ValidationResult(
-                    passed=False,
-                    issues=issues,
-                    stats={"implementation_status": "FMI Cloud Run not configured"},
-                )
-
-            # Import here to avoid circular dependency
-            from validibot.validations.services.cloud_run.launcher import (
-                launch_fmi_validation,
+                    severity=Severity.ERROR,
+                ),
+            ]
+            return ValidationResult(
+                passed=False,
+                issues=issues,
+                stats={"implementation_status": "Backend not available"},
             )
 
-            return launch_fmi_validation(
-                run=run,
-                validator=validator,
-                submission=submission,
-                ruleset=ruleset,
-                step=step,
-            )
-
-        # Self-hosted or other runners: use unified container launcher
-        from validibot.validations.services.container_launcher import launch_validation
-
-        return launch_validation(
+        # Build execution request
+        request = ExecutionRequest(
             run=run,
             validator=validator,
             submission=submission,
-            ruleset=ruleset,
             step=step,
         )
+
+        # Execute using the backend
+        response = backend.execute(request)
+
+        # Convert ExecutionResponse to ValidationResult
+        return self._response_to_result(response, is_async=backend.is_async)
+
+    def _response_to_result(
+        self,
+        response,  # ExecutionResponse
+        *,
+        is_async: bool,
+    ) -> ValidationResult:
+        """
+        Convert an ExecutionResponse to a ValidationResult.
+
+        For async backends, returns a pending result (passed=None).
+        For sync backends, extracts issues from the output envelope.
+
+        Args:
+            response: ExecutionResponse from the backend
+            is_async: Whether the backend is async
+
+        Returns:
+            ValidationResult with appropriate pass/fail/pending status
+        """
+        # Build stats from response metadata
+        stats = {
+            "execution_id": response.execution_id,
+            "input_uri": response.input_uri,
+            "output_uri": response.output_uri,
+            "execution_bundle_uri": response.execution_bundle_uri,
+            "is_async": is_async,
+        }
+        if response.duration_seconds is not None:
+            stats["duration_seconds"] = response.duration_seconds
+
+        # Async execution - return pending result
+        if is_async and not response.is_complete:
+            return ValidationResult(passed=None, issues=[], stats=stats)
+
+        # Error during execution
+        if response.error_message:
+            issues = [
+                ValidationIssue(
+                    path="",
+                    message=response.error_message,
+                    severity=Severity.ERROR,
+                ),
+            ]
+            return ValidationResult(passed=False, issues=issues, stats=stats)
+
+        # Extract results from output envelope
+        if response.output_envelope is None:
+            issues = [
+                ValidationIssue(
+                    path="",
+                    message="Validation completed but no output envelope received",
+                    severity=Severity.ERROR,
+                ),
+            ]
+            return ValidationResult(passed=False, issues=issues, stats=stats)
+
+        return self._process_output_envelope(response.output_envelope, stats)
+
+    def _process_output_envelope(
+        self,
+        envelope,  # ValidationOutputEnvelope
+        stats: dict,
+    ) -> ValidationResult:
+        """
+        Process a ValidationOutputEnvelope and extract results.
+
+        Args:
+            envelope: The output envelope from the validator container
+            stats: Stats dict to include in the result
+
+        Returns:
+            ValidationResult with pass/fail based on envelope contents
+        """
+        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        issues: list[ValidationIssue] = []
+
+        # Extract messages from envelope
+        for msg in envelope.messages:
+            severity_map = {
+                EnvelopeSeverity.ERROR: Severity.ERROR,
+                EnvelopeSeverity.WARNING: Severity.WARNING,
+                EnvelopeSeverity.INFO: Severity.INFO,
+            }
+            issues.append(
+                ValidationIssue(
+                    path=msg.location.path if msg.location else "",
+                    message=msg.text,
+                    severity=severity_map.get(msg.severity, Severity.INFO),
+                )
+            )
+
+        # Include outputs in stats if available
+        if envelope.outputs:
+            if hasattr(envelope.outputs, "model_dump"):
+                stats["outputs"] = envelope.outputs.model_dump(mode="json")
+            elif isinstance(envelope.outputs, dict):
+                stats["outputs"] = envelope.outputs
+
+        # Determine pass/fail based on status
+        if envelope.status == ValidationStatus.SUCCESS:
+            passed = True
+        elif envelope.status in (
+            ValidationStatus.FAILED_VALIDATION,
+            ValidationStatus.FAILED_RUNTIME,
+        ):
+            passed = False
+        else:
+            # Cancelled or unknown
+            passed = False
+
+        return ValidationResult(passed=passed, issues=issues, stats=stats)

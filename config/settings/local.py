@@ -131,6 +131,30 @@ INSTALLED_APPS += ["django_extensions"]
 # Validibot settings for local development
 # ------------------------------------------------------------------------------
 
+# VALIDATOR RUNNER
+# ------------------------------------------------------------------------------
+# For local development, default to Docker for running validator containers.
+# This uses the same backend as self-hosted deployments.
+#
+# To test with GCP Cloud Run locally, set:
+#   VALIDATOR_RUNNER=google_cloud_run
+#   GCP_PROJECT_ID=your-project
+#   GCS_VALIDATION_BUCKET=your-bucket
+VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
+VALIDATOR_RUNNER_OPTIONS = {
+    "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
+    "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
+    "network": env("VALIDATOR_NETWORK", default=None),
+    "timeout_seconds": env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600),
+}
+
+# Container images for advanced validators
+VALIDATOR_IMAGE_TAG = env("VALIDATOR_IMAGE_TAG", default="latest")
+VALIDATOR_IMAGE_REGISTRY = env("VALIDATOR_IMAGE_REGISTRY", default="")
+
+# Site URL for callbacks
+SITE_URL = env("SITE_URL", default="http://localhost:8000")
+WORKER_URL = env("WORKER_URL", default=SITE_URL)
 
 SUPERUSER_USERNAME = env("SUPERUSER_USERNAME", default="admin")
 SUPERUSER_PASSWORD = env("SUPERUSER_PASSWORD", default="someadminpwchangeforrealz")

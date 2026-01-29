@@ -1,0 +1,27 @@
+{
+  "run_id": "45f2baf9-410f-42d9-97df-e413dc627b87",
+  "validator": {
+    "type": "ENERGYPLUS",
+    "version": "test"
+  },
+  "context": {
+    "callback_url": "http://localhost:8000/api/v1/validation-callbacks/",
+    "callback_id": "test-callback-id",
+    "execution_bundle_uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/test-runs/07eff513",
+    "skip_callback": true,
+    "timeout_seconds": 600,
+    "tags": [
+      "test"
+    ]
+  },
+  "input_files": [
+    {
+      "name": "model.epjson",
+      "role": "primary-model",
+      "uri": "file:///Users/danielmcquillen/projects/validibot/validibot/storage/private/test-runs/07eff513/model.epjson"
+    }
+  ],
+  "inputs": {
+    "run_simulation": false
+  }
+}

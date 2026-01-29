@@ -1,6 +1,95 @@
 # Validator Architecture
 
-This document describes the complete architecture for running validations using Cloud Run Services and Cloud Run Jobs.
+This document describes the architecture for running validations. Validibot supports
+multiple deployment targets through an abstracted execution backend system.
+
+## Execution Backend Architecture
+
+Validibot uses an `ExecutionBackend` abstraction to support different deployment targets.
+The execution layer sits between the validation engine and the infrastructure:
+
+```
+Engine (energyplus.py) → ExecutionBackend → Infrastructure
+                              ↓
+              ┌───────────────┼───────────────┐
+              ↓               ↓               ↓
+    SelfHostedBackend    GCPBackend      AWSBackend
+    (Docker socket)    (Cloud Run+GCS)   (future)
+```
+
+### Backend Selection
+
+The backend is selected via the `VALIDATOR_RUNNER` setting:
+
+- `"docker"` → SelfHostedExecutionBackend (synchronous, local Docker)
+- `"google_cloud_run"` → GCPExecutionBackend (async, Cloud Run Jobs)
+
+If `VALIDATOR_RUNNER` is not set, the system auto-detects:
+
+- If `GCP_PROJECT_ID` is set → Uses GCP backend
+- Otherwise → Uses Docker backend (self-hosted)
+
+### Execution Models
+
+**Synchronous (self-hosted Docker):**
+
+1. Engine calls `backend.execute(request)`
+2. Backend uploads input envelope to local storage (`file://` URI)
+3. Backend runs Docker container and waits for completion
+4. Backend reads output envelope from local storage
+5. Returns complete `ExecutionResponse` with results
+
+**Asynchronous (GCP Cloud Run):**
+
+1. Engine calls `backend.execute(request)`
+2. Backend uploads input envelope to GCS (`gs://` URI)
+3. Backend triggers Cloud Run Job (non-blocking)
+4. Returns `ExecutionResponse` with `is_complete=False`
+5. Container POSTs callback to Django when complete
+6. Callback handler loads output envelope from GCS
+
+### Code Location
+
+```
+validibot/validations/services/execution/
+├── __init__.py          # Exports get_execution_backend()
+├── base.py              # ExecutionBackend ABC, ExecutionRequest, ExecutionResponse
+├── self_hosted.py       # SelfHostedExecutionBackend (Docker)
+├── gcp.py               # GCPExecutionBackend (Cloud Run)
+└── registry.py          # Backend selection and caching
+```
+
+### Usage in Engines
+
+```python
+from validibot.validations.services.execution import get_execution_backend
+from validibot.validations.services.execution.base import ExecutionRequest
+
+backend = get_execution_backend()
+
+request = ExecutionRequest(
+    run=validation_run,
+    validator=validator,
+    submission=submission,
+    step=workflow_step,
+)
+
+response = backend.execute(request)
+
+if backend.is_async:
+    # Results will arrive via callback
+    return ValidationResult(passed=None, issues=[], stats={...})
+else:
+    # Results available immediately
+    return process_output_envelope(response.output_envelope)
+```
+
+---
+
+## GCP Deployment Architecture
+
+The following sections describe the GCP-specific architecture using Cloud Run Services
+and Cloud Run Jobs.
 
 ## Validator Assets
 
@@ -401,3 +490,117 @@ Alert on:
        from vb_shared.xml import XMLInputEnvelope, XMLInputs
        envelope = XMLInputEnvelope(inputs=XMLInputs(...))
    ```
+
+---
+
+## Self-Hosted Deployment
+
+For self-hosted deployments (VPS, on-premise, any Docker-compatible environment),
+validators run as Docker containers via the local Docker socket.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Docker Host                                            │
+│                                                         │
+│  ┌──────────────────┐    ┌──────────────────────────┐  │
+│  │  Django + Worker │    │  Validator Container     │  │
+│  │                  │    │  (validibot-validator-X) │  │
+│  │  - Web app       │───▶│                          │  │
+│  │  - Dramatiq      │    │  Reads: file:///input    │  │
+│  │                  │◀───│  Writes: file:///output  │  │
+│  └──────────────────┘    └──────────────────────────┘  │
+│           │                         │                   │
+│           ▼                         ▼                   │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              Shared Storage Volume               │   │
+│  │              /app/storage (Docker volume)        │   │
+│  └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+Required settings for self-hosted mode:
+
+```python
+# config/settings/self_hosted.py
+VALIDATOR_RUNNER = "docker"
+VALIDATOR_RUNNER_OPTIONS = {
+    "memory_limit": "4g",
+    "cpu_limit": "2.0",
+    "network": "validibot_validibot",  # Docker network name
+    "timeout_seconds": 3600,
+}
+
+# Container images
+VALIDATOR_IMAGE_TAG = "latest"
+VALIDATOR_IMAGE_REGISTRY = ""  # Or your private registry
+```
+
+### Docker Compose Setup
+
+The `docker-compose.self-hosted.yml` file configures:
+
+1. **Django service** with Docker socket mounted
+2. **Dramatiq worker** for background task processing
+3. **Shared storage volume** for file exchange
+4. **Redis** for task queue broker
+
+Key configuration:
+
+```yaml
+services:
+  django:
+    volumes:
+      - validibot_storage:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - VALIDATOR_RUNNER=docker
+      - DATA_STORAGE_ROOT=/app/storage/private
+```
+
+### Building Validator Images
+
+Validator images must be available locally or in a registry:
+
+```bash
+# Build locally
+cd ../vb_validators
+docker build -t validibot-validator-energyplus:latest validators/energyplus/
+
+# Or pull from registry
+docker pull your-registry/validibot-validator-energyplus:latest
+```
+
+### Execution Flow (Self-Hosted)
+
+1. Engine creates `ExecutionRequest` with run, validator, submission, step
+2. `SelfHostedExecutionBackend.execute()` is called
+3. Backend writes input envelope to local storage (`file:///app/storage/...`)
+4. Backend spawns Docker container with input/output URIs as environment variables
+5. Container reads input, processes, writes output to local storage
+6. Backend waits for container completion (synchronous)
+7. Backend reads output envelope from local storage
+8. Returns complete `ExecutionResponse` to engine
+
+### Debugging
+
+Check container logs:
+
+```bash
+# List recent validator containers
+docker ps -a --filter "name=validibot-validator"
+
+# View container logs
+docker logs <container-id>
+```
+
+Check storage:
+
+```bash
+# Inside Django container
+ls -la /app/storage/private/runs/<org-id>/<run-id>/
+cat /app/storage/private/runs/<org-id>/<run-id>/output.json
+```

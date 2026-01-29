@@ -193,13 +193,33 @@ else:
 # ------------------------------------------------------------------------------
 # Self-hosted deployments use Docker socket for running validator containers.
 # This requires the Docker socket to be mounted into the Django container.
+#
+# Available runners:
+#   - "docker": Local Docker socket (synchronous, for self-hosted)
+#   - "google_cloud_run": Google Cloud Run Jobs (async, for GCP deployments)
+#
+# The VALIDATOR_RUNNER setting is used by the ExecutionBackend registry to
+# select the appropriate backend for running advanced validator containers.
 
 VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
 VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
     "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
     "network": env("VALIDATOR_NETWORK", default=None),
+    "timeout_seconds": env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600),
 }
+
+# Container image configuration for advanced validators
+# Images are expected to follow the naming convention: validibot-validator-{type}
+# For example: validibot-validator-energyplus, validibot-validator-fmi
+VALIDATOR_IMAGE_TAG = env("VALIDATOR_IMAGE_TAG", default="latest")
+VALIDATOR_IMAGE_REGISTRY = env("VALIDATOR_IMAGE_REGISTRY", default="")
+
+# Optional: Explicit image mapping (overrides default naming convention)
+# VALIDATOR_IMAGES = {
+#     "energyplus": "my-registry/my-energyplus:v1.0",
+#     "fmi": "my-registry/my-fmi:v1.0",
+# }
 
 # Site URL for callbacks (validators POST results back to Django)
 SITE_URL = env("SITE_URL", default="http://localhost:8000")

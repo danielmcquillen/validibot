@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 BACKEND_ALIASES = {
     "local": "validibot.core.storage.local.LocalDataStorage",
     "gcs": "validibot.core.storage.gcs.GCSDataStorage",
-    # Future backends:
-    # "s3": "validibot.core.storage.s3.S3DataStorage",
+    "s3": "validibot.core.storage.s3.S3DataStorage",
 }
 
 

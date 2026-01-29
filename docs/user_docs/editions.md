@@ -16,11 +16,11 @@ The Pro edition adds everything you need to operationalize validation in your en
 | ------------------------------------------------------------- | :-------: | :--------: |
 | **Validators**                                                |           |            |
 | Basic validators (schema, syntax, structure)                  |     ✓     |     ✓      |
-| Advanced validators (FMU behavioral, simulation-based)        |     ✓     |     ✓      |
+| Advanced validators (FMU, simulation-based)                   |     ✓     |     ✓      |
 | Custom validator development                                  |     ✓     |     ✓      |
 | **Usage**                                                     |           |            |
 | CLI usage                                                     |     ✓     |     ✓      |
-| Run locally / interactively                                   |     ✓     |     ✓      |
+| Run locally / self-host                                       |     ✓     |     ✓      |
 | CI/CD environments (GitHub Actions, GitLab CI, Jenkins, etc.) |           |     ✓      |
 | API access                                                    |           |     ✓      |
 | **Output Formats**                                            |           |            |

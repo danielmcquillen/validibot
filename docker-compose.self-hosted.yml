@@ -1,0 +1,150 @@
+# Validibot Self-Hosted Production Docker Compose
+#
+# This compose file runs Validibot in a self-hosted production environment.
+# Suitable for any cloud provider, VPS, or on-premises infrastructure.
+#
+# Usage:
+#   1. Copy .envs/.self-hosted/.django.example to .envs/.self-hosted/.django
+#   2. Copy .envs/.self-hosted/.postgres.example to .envs/.self-hosted/.postgres
+#   3. Edit the env files with your configuration
+#   4. Run: docker compose -f docker-compose.self-hosted.yml up -d
+#
+# For SSL/HTTPS, place this behind a reverse proxy (nginx, Traefik, Caddy).
+#
+# Architecture:
+#   - django: Main web application
+#   - dramatiq_worker: Background task processor
+#   - scheduler: Periodic task scheduler
+#   - postgres: Database
+#   - redis: Task queue broker
+#
+# Advanced validators run as sibling containers via Docker socket.
+
+volumes:
+  validibot_storage:      # Persistent file storage (public + private files)
+  validibot_postgres_data:
+  validibot_postgres_backups:
+  validibot_redis_data:
+
+networks:
+  validibot:
+    driver: bridge
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: compose/production/django/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - validibot
+    volumes:
+      # Persistent storage for files
+      - validibot_storage:/app/storage
+      # Docker socket for running validator containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file:
+      - .envs/.self-hosted/.django
+      - .envs/.self-hosted/.postgres
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.self_hosted
+    ports:
+      - "8000:5000"  # Gunicorn runs on 5000 internally
+    command: /start
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  dramatiq_worker:
+    # Background task processor (validation execution, etc.)
+    <<: *django
+    ports: []
+    command: ["python", "manage.py", "rundramatiq", "--processes", "2", "--threads", "4"]
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.self_hosted
+      - APP_ROLE=dramatiq_worker
+    healthcheck:
+      # Dramatiq doesn't have a simple health endpoint
+      test: ["CMD", "pgrep", "-f", "rundramatiq"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  scheduler:
+    # Periodic task scheduler (cleanup, maintenance tasks)
+    # Only run ONE scheduler instance to avoid duplicate task execution
+    <<: *django
+    ports: []
+    command: ["periodiq", "validibot.core.tasks.scheduled_actors"]
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.self_hosted
+      - APP_ROLE=scheduler
+    deploy:
+      replicas: 1  # Must be exactly 1
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "periodiq"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    build:
+      context: .
+      dockerfile: compose/production/postgres/Dockerfile
+    networks:
+      - validibot
+    env_file:
+      - .envs/.self-hosted/.postgres
+    volumes:
+      - validibot_postgres_data:/var/lib/postgresql/data
+      - validibot_postgres_backups:/backups
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-validibot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - validibot
+    command: redis-server --appendonly yes
+    volumes:
+      - validibot_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# Optional services (uncomment as needed):
+#
+#  # Reverse proxy with automatic SSL (alternative to nginx)
+#  traefik:
+#    image: traefik:v2.11
+#    command:
+#      - "--api.insecure=true"
+#      - "--providers.docker=true"
+#      - "--entrypoints.web.address=:80"
+#      - "--entrypoints.websecure.address=:443"
+#      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+#      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+#      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock:ro
+#      - traefik_letsencrypt:/letsencrypt
+#    networks:
+#      - validibot

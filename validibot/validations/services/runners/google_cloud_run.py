@@ -32,6 +32,7 @@ import logging
 from django.conf import settings
 
 from validibot.validations.services.runners.base import ExecutionInfo
+from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ExecutionStatus
 from validibot.validations.services.runners.base import ValidatorRunner
 
@@ -146,19 +147,46 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
         *,
         container_image: str,
         input_uri: str,
+        output_uri: str,
+        environment: dict[str, str] | None = None,
+        timeout_seconds: int | None = None,
+    ) -> ExecutionResult:
+        """
+        Run a Cloud Run Job synchronously.
+
+        Cloud Run Jobs are inherently asynchronous, so this method is not
+        supported. Use run_async() instead and handle results via callbacks.
+
+        Raises:
+            NotImplementedError: Always. Use run_async() instead.
+        """
+        raise NotImplementedError(
+            "GoogleCloudRunValidatorRunner does not support synchronous execution. "
+            "Cloud Run Jobs are async - use run_async() and handle results via "
+            "callback when the job completes."
+        )
+
+    def run_async(
+        self,
+        *,
+        container_image: str,
+        input_uri: str,
+        output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
     ) -> str:
         """
-        Start a Cloud Run Job execution.
+        Start a Cloud Run Job execution asynchronously.
 
         The job must already be deployed to Cloud Run. This method triggers
-        an execution of the existing job with the given input_uri.
+        an execution of the existing job with the given input/output URIs.
+        Results are delivered via callback when the job completes.
 
         Args:
             container_image: Container image (used to derive job name)
             input_uri: URI to input envelope (must be gs:// for Cloud Run)
-            environment: Additional environment variables (merged with INPUT_URI)
+            output_uri: URI where container should write output envelope
+            environment: Additional environment variables
             timeout_seconds: Not used (job timeout is set in job definition)
 
         Returns:
@@ -177,8 +205,11 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
             f"projects/{self.project_id}/locations/{self.region}/jobs/{job_name}"
         )
 
-        # Build environment overrides
-        env_vars = [run_v2.EnvVar(name="INPUT_URI", value=input_uri)]
+        # Build environment overrides using standardized env var names
+        env_vars = [
+            run_v2.EnvVar(name="VALIDIBOT_INPUT_URI", value=input_uri),
+            run_v2.EnvVar(name="VALIDIBOT_OUTPUT_URI", value=output_uri),
+        ]
         if environment:
             for key, value in environment.items():
                 env_vars.append(run_v2.EnvVar(name=key, value=value))
@@ -196,9 +227,10 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
 
         try:
             logger.info(
-                "Starting Cloud Run Job: job=%s, input_uri=%s",
+                "Starting Cloud Run Job: job=%s, input_uri=%s, output_uri=%s",
                 job_name,
                 input_uri,
+                output_uri,
             )
 
             # run_job returns a long-running operation

@@ -153,35 +153,52 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
                 stats={"implementation_status": "Missing run_context"},
             )
 
-        # Check if Cloud Run Jobs is configured
-        if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_ENERGYPLUS_JOB_NAME:
-            logger.warning(
-                "Cloud Run Jobs not configured - returning not-implemented error"
-            )
-            issues = [
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "EnergyPlus Cloud Run Jobs not configured. "
-                        "Set GCS_VALIDATION_BUCKET and GCS_ENERGYPLUS_JOB_NAME "
-                        "in production settings.",
+        # Check which runner is configured
+        runner_type = getattr(settings, "VALIDATOR_RUNNER", "docker")
+
+        if runner_type == "google_cloud_run":
+            # GCP production: use existing Cloud Run launcher
+            bucket = settings.GCS_VALIDATION_BUCKET
+            job_name = settings.GCS_ENERGYPLUS_JOB_NAME
+            if not bucket or not job_name:
+                logger.warning(
+                    "Cloud Run Jobs not configured - returning not-implemented error"
+                )
+                issues = [
+                    ValidationIssue(
+                        path="",
+                        message=_(
+                            "EnergyPlus Cloud Run Jobs not configured. "
+                            "Set GCS_VALIDATION_BUCKET and GCS_ENERGYPLUS_JOB_NAME "
+                            "in production settings.",
+                        ),
+                        severity=Severity.ERROR,
                     ),
-                    severity=Severity.ERROR,
-                ),
-            ]
-            return ValidationResult(
-                passed=False,
-                issues=issues,
-                stats={"implementation_status": "Not configured"},
+                ]
+                return ValidationResult(
+                    passed=False,
+                    issues=issues,
+                    stats={"implementation_status": "Not configured"},
+                )
+
+            # Import here to avoid circular dependency
+            from validibot.validations.services.cloud_run.launcher import (
+                launch_energyplus_validation,
             )
 
-        # Import here to avoid circular dependency
-        from validibot.validations.services.cloud_run.launcher import (
-            launch_energyplus_validation,
-        )
+            # Launch Cloud Run Job asynchronously
+            return launch_energyplus_validation(
+                run=run,
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                step=step,
+            )
 
-        # Launch Cloud Run Job asynchronously
-        return launch_energyplus_validation(
+        # Self-hosted or other runners: use unified container launcher
+        from validibot.validations.services.container_launcher import launch_validation
+
+        return launch_validation(
             run=run,
             validator=validator,
             submission=submission,

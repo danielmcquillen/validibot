@@ -101,12 +101,16 @@ class ValidationIssue:
 class ValidationResult:
     """
     Aggregated result of a single validation step.
-    passed: True when no ERROR issues were produced.
-    issues: list of issues discovered (may include INFO/WARNING).
-    stats: optional extra info (counts, timings, metadata).
+
+    Attributes:
+        passed: True when no ERROR issues were produced. None indicates the
+            validation is still pending (for async validators like Cloud Run).
+        issues: List of issues discovered (may include INFO/WARNING).
+        stats: Optional extra info (counts, timings, metadata).
+        workflow_step_name: Slug of the workflow step that produced this result.
     """
 
-    passed: bool
+    passed: bool | None
     issues: list[ValidationIssue]
     workflow_step_name: str | None = None  # slug
     stats: dict[str, Any] | None = None

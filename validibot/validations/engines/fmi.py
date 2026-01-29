@@ -150,35 +150,50 @@ class FMIValidationEngine(BaseValidatorEngine):
                 stats={"implementation_status": "Missing run_context"},
             )
 
-        # Cloud Run configuration required
-        if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_FMI_JOB_NAME:
-            logger.warning(
-                "Cloud Run Jobs not configured for FMI - "
-                "returning not-implemented error"
-            )
-            issues = [
-                ValidationIssue(
-                    path="",
-                    message=_(
-                        "FMI Cloud Run Jobs not configured. "
-                        "Set GCS_VALIDATION_BUCKET and GCS_FMI_JOB_NAME "
-                        "in production settings.",
+        # Check which runner is configured
+        runner_type = getattr(settings, "VALIDATOR_RUNNER", "docker")
+
+        if runner_type == "google_cloud_run":
+            # GCP production: use existing Cloud Run launcher
+            if not settings.GCS_VALIDATION_BUCKET or not settings.GCS_FMI_JOB_NAME:
+                logger.warning(
+                    "Cloud Run Jobs not configured for FMI - "
+                    "returning not-implemented error"
+                )
+                issues = [
+                    ValidationIssue(
+                        path="",
+                        message=_(
+                            "FMI Cloud Run Jobs not configured. "
+                            "Set GCS_VALIDATION_BUCKET and GCS_FMI_JOB_NAME "
+                            "in production settings.",
+                        ),
+                        severity=Severity.ERROR,
                     ),
-                    severity=Severity.ERROR,
-                ),
-            ]
-            return ValidationResult(
-                passed=False,
-                issues=issues,
-                stats={"implementation_status": "FMI Cloud Run not configured"},
+                ]
+                return ValidationResult(
+                    passed=False,
+                    issues=issues,
+                    stats={"implementation_status": "FMI Cloud Run not configured"},
+                )
+
+            # Import here to avoid circular dependency
+            from validibot.validations.services.cloud_run.launcher import (
+                launch_fmi_validation,
             )
 
-        # Import here to avoid circular dependency
-        from validibot.validations.services.cloud_run.launcher import (
-            launch_fmi_validation,
-        )
+            return launch_fmi_validation(
+                run=run,
+                validator=validator,
+                submission=submission,
+                ruleset=ruleset,
+                step=step,
+            )
 
-        return launch_fmi_validation(
+        # Self-hosted or other runners: use unified container launcher
+        from validibot.validations.services.container_launcher import launch_validation
+
+        return launch_validation(
             run=run,
             validator=validator,
             submission=submission,

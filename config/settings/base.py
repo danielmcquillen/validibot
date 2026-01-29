@@ -630,6 +630,29 @@ elif DATA_STORAGE_BACKEND == "gcs":
 else:
     DATA_STORAGE_OPTIONS = {}
 
+# VALIDATOR RUNNER
+# ------------------------------------------------------------------------------
+# Configuration for running container-based validators (EnergyPlus, FMI, etc.).
+#
+# Available runners:
+#   - "docker": Local Docker socket (default, for self-hosted deployments)
+#   - "google_cloud_run": Google Cloud Run Jobs (GCP production)
+#   - "aws_batch": AWS Batch (future)
+#   - Full class path for custom runners
+#
+# See validibot/validations/services/runners/ for implementation details.
+VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
+VALIDATOR_RUNNER_OPTIONS = {
+    "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
+    "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
+    # Docker network for validator containers (set when running in Docker Compose)
+    "network": env("VALIDATOR_NETWORK", default=None),
+    # Named volume for storage (for Docker-in-Docker scenarios)
+    "storage_volume": env("VALIDATOR_STORAGE_VOLUME", default=None),
+    # Mount path for storage volume inside validator containers
+    "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
+}
+
 # Cloud Run Job Validator Settings (overridden in production.py)
 # ------------------------------------------------------------------------------
 # These defaults allow local development without Cloud Run Jobs

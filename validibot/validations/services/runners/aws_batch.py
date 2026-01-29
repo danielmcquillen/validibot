@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 from validibot.validations.services.runners.base import ExecutionInfo
+from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ValidatorRunner
 
 logger = logging.getLogger(__name__)
@@ -94,22 +95,24 @@ class AWSBatchValidatorRunner(ValidatorRunner):
         *,
         container_image: str,
         input_uri: str,
+        output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
-    ) -> str:
+    ) -> ExecutionResult:
         """
-        Start an AWS Batch job.
+        Run an AWS Batch job and wait for completion.
 
         STATUS: STUB - Not yet implemented.
 
         Args:
             container_image: Container image (used to derive job definition name)
             input_uri: URI to input envelope (should be s3:// for AWS)
+            output_uri: URI where container should write output envelope
             environment: Additional environment variables
             timeout_seconds: Job timeout in seconds
 
         Returns:
-            Job ID
+            ExecutionResult with exit_code and output_uri
 
         Raises:
             NotImplementedError: This method is not yet implemented

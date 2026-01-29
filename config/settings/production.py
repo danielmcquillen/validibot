@@ -302,6 +302,15 @@ DATA_STORAGE_OPTIONS = {
     "prefix": DATA_STORAGE_PREFIX,
 }
 
+# VALIDATOR RUNNER
+# ------------------------------------------------------------------------------
+# GCP production uses Google Cloud Run Jobs for container-based validators.
+VALIDATOR_RUNNER = "google_cloud_run"
+VALIDATOR_RUNNER_OPTIONS = {
+    "project_id": env("GCP_PROJECT_ID"),
+    "region": env("GCP_REGION", default="australia-southeast1"),
+}
+
 # Cloud Run Job Validator Settings
 # ------------------------------------------------------------------------------
 # Production settings for Cloud Run Jobs infrastructure

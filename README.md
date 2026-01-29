@@ -137,6 +137,21 @@ The built sites will be created in the `site/` directory.
 
 The following details how to deploy this application.
 
+## Self-Hosted Responsibility
+
+Validibot is self-hosted software. You control the infrastructure, security posture, and operating costs. This section is not legal advice, but it captures the practical responsibilities that come with running the Community edition in production.
+
+**Security checklist (baseline):**
+- Use TLS/HTTPS at the edge and keep internal services private.
+- Lock down secrets and apply least-privilege roles for storage and databases.
+- Do not expose the Docker socket; treat it as root access.
+
+**Resource limit defaults (starting point):**
+- Advanced validator containers: 1 CPU, 2–4 GB RAM, 30-minute timeout.
+- Global concurrency cap for heavy validators: 2 per host.
+
+See the developer docs for a detailed self-hosted responsibility guide.
+
 ### Heroku
 
 See detailed [cookiecutter-django Heroku documentation](https://cookiecutter-django.readthedocs.io/en/latest/3-deployment/deployment-on-heroku.html).

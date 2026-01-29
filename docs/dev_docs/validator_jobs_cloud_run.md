@@ -1,4 +1,11 @@
-# Cloud Run Validator Jobs (web/worker split)
+# Validator Containers (Advanced Validators)
+
+Validator containers run advanced validations like EnergyPlus simulations and FMU execution. They support two deployment modes:
+
+1. **GCP Cloud Run Jobs** (production): Async execution with GCS storage and callbacks
+2. **Self-hosted Docker** (self-hosted): Sync execution with local filesystem storage
+
+## GCP Mode: Cloud Run Jobs (web/worker split)
 
 We deploy one Django image as two Cloud Run services:
 
@@ -194,3 +201,117 @@ These don't affect which buckets or URLs are used - that's all driven by the inp
   `resource.labels.job_name` matching the validator. Fatal errors will include stack traces.
   If Sentry DSN is present in the container, `report_fatal` will forward the exception there.
   (Sentry bootstrap for validator containers is planned; for now, errors always land in Cloud Logging.)
+
+## Self-Hosted Mode: Docker Runner
+
+For self-hosted deployments (single-server, VPS, on-premise), validators run as Docker containers executed synchronously by the Dramatiq worker.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    participant Worker as Dramatiq Worker
+    participant Storage as Local Storage
+    participant Docker as Docker Daemon
+    participant Container as Validator Container
+
+    Worker->>Storage: Write input.json (file://)
+    Worker->>Docker: Run container (sync)
+    Docker->>Container: Start with VALIDIBOT_INPUT_URI
+    Container->>Storage: Read input.json
+    Container->>Container: Run validation
+    Container->>Storage: Write output.json
+    Container-->>Docker: Exit (code 0)
+    Docker-->>Worker: Container completed
+    Worker->>Storage: Read output.json
+    Worker->>Worker: Process results
+```
+
+Key differences from GCP mode:
+- **Synchronous execution**: Worker blocks until container exits
+- **Local filesystem**: Uses `file://` URIs instead of `gs://`
+- **No callbacks**: Results are read directly from storage after container exits
+- **Docker socket**: Worker needs access to `/var/run/docker.sock`
+
+### Configuration
+
+Configure the Docker runner in Django settings:
+
+```python
+# In settings or environment
+VALIDATOR_RUNNER = "docker"
+VALIDATOR_RUNNER_OPTIONS = {
+    "memory_limit": "4g",      # Container memory limit
+    "cpu_limit": "2.0",        # CPU limit (cores)
+    "network": "validibot",    # Docker network for container
+    "timeout_seconds": 3600,   # Max execution time (1 hour)
+}
+```
+
+For Docker Compose deployments, also configure storage volume sharing:
+
+```python
+# Storage volume (for Docker-in-Docker scenarios)
+VALIDATOR_STORAGE_VOLUME = "validibot_local_storage"
+VALIDATOR_STORAGE_MOUNT_PATH = "/app/storage"
+DATA_STORAGE_ROOT = "/app/storage/private"
+```
+
+### Environment Variables
+
+The Docker runner passes these environment variables to containers:
+
+| Variable | Description |
+|----------|-------------|
+| `VALIDIBOT_INPUT_URI` | `file://` URI to input envelope |
+| `VALIDIBOT_OUTPUT_URI` | `file://` URI for output envelope |
+
+Containers also accept `INPUT_URI` for backwards compatibility with Cloud Run Jobs.
+
+### Building Containers for Self-Hosted
+
+```bash
+# From vb_validators directory
+just build energyplus
+just build fmi
+just build-all
+
+# Images are available locally as:
+# validibot-validator-energyplus:latest
+# validibot-validator-fmi:latest
+```
+
+### Docker Compose Configuration
+
+For local development with Docker Compose:
+
+```yaml
+# docker-compose.local.yml
+volumes:
+  validibot_local_storage:  # Shared storage for validation files
+
+services:
+  django:
+    volumes:
+      # Docker socket for spawning validator containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared storage volume
+      - validibot_local_storage:/app/storage
+    environment:
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
+```
+
+### Validator Container Contract
+
+Validator containers must support both storage backends:
+
+1. **Accept input URI** via `VALIDIBOT_INPUT_URI` or `INPUT_URI` environment variable
+2. **Support `file://` URIs** in addition to `gs://` URIs
+3. **Write output** to the URI specified by `VALIDIBOT_OUTPUT_URI` or derived from execution bundle
+4. **Skip callbacks** when `skip_callback` is set (sync mode doesn't need them)
+
+See `vb_validators/validators/core/storage_client.py` for the implementation that handles both URI schemes.

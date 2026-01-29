@@ -91,6 +91,7 @@ This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #3
 ### Deployment
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
+- [Self-Hosted Responsibility](deployment/self-hosted-responsibility.md) - Security, cost, and operational guardrails for self-hosted deployments
 - [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp-deploy`
 - [Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for GCP deployments
 - [Scheduled Tasks (Self-hosted)](how-to/configure-scheduled-tasks.md) - Dramatiq + periodiq for Docker/self-hosted

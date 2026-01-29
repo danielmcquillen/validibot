@@ -7,8 +7,16 @@ suitable for:
 - Local development and testing
 - Single-server deployments
 
-Containers are run in detached mode (fire-and-forget). Results are delivered
-via HTTP callback to Django when the validator completes.
+## Execution Model
+
+Containers run **synchronously** - the run() method blocks until the container
+exits or times out. The Dramatiq worker waits for completion and then reads
+the output envelope from storage.
+
+Environment variables passed to containers:
+- VALIDIBOT_INPUT_URI: Location of input envelope
+- VALIDIBOT_OUTPUT_URI: Where to write output envelope
+- VALIDIBOT_RUN_ID: Validation run ID (for logging)
 
 SECURITY NOTES
 --------------
@@ -20,11 +28,13 @@ SECURITY NOTES
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from django.conf import settings
 
 from validibot.validations.services.runners.base import ExecutionInfo
+from validibot.validations.services.runners.base import ExecutionResult
 from validibot.validations.services.runners.base import ExecutionStatus
 from validibot.validations.services.runners.base import ValidatorRunner
 
@@ -40,9 +50,9 @@ class DockerValidatorRunner(ValidatorRunner):
     """
     Docker-based validator runner using the local Docker socket.
 
-    This runner starts validator containers using the Docker SDK and returns
-    immediately. Containers run in detached mode and POST results back to
-    Django via the callback URL in the input envelope.
+    This runner executes validator containers synchronously - run() blocks
+    until the container exits or times out. The Dramatiq worker waits for
+    completion and then reads the output envelope from storage.
 
     Configuration via settings:
         VALIDATOR_RUNNER = "docker"
@@ -63,6 +73,8 @@ class DockerValidatorRunner(ValidatorRunner):
         cpu_limit: str | None = None,
         network: str | None = None,
         timeout_seconds: int | None = None,
+        storage_volume: str | None = None,
+        storage_mount_path: str | None = None,
     ):
         """
         Initialize Docker validator runner.
@@ -72,11 +84,16 @@ class DockerValidatorRunner(ValidatorRunner):
             cpu_limit: CPU limit as float string (e.g., "2.0")
             network: Docker network to attach containers to
             timeout_seconds: Default timeout for container execution
+            storage_volume: Docker volume name for storage
+                (e.g., "validibot_local_storage")
+            storage_mount_path: Path to mount storage volume (e.g., "/app/storage")
         """
         self.memory_limit = memory_limit or DEFAULT_MEMORY_LIMIT
         self.cpu_limit = cpu_limit or DEFAULT_CPU_LIMIT
         self.network = network
         self.timeout_seconds = timeout_seconds or DEFAULT_TIMEOUT_SECONDS
+        self.storage_volume = storage_volume
+        self.storage_mount_path = storage_mount_path or "/app/storage"
 
         # Docker client initialized lazily
         self._client = None
@@ -112,52 +129,67 @@ class DockerValidatorRunner(ValidatorRunner):
         *,
         container_image: str,
         input_uri: str,
+        output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
-    ) -> str:
+    ) -> ExecutionResult:
         """
-        Start a validator container execution.
+        Run a validator container and wait for completion.
 
-        The container is run in detached mode with:
-        - INPUT_URI environment variable pointing to the input envelope
-        - Volume mount for DATA_STORAGE_ROOT (for file:// URIs)
-        - Memory and CPU limits as configured
-        - Auto-remove after completion
+        The container runs synchronously - this method blocks until the
+        container exits or times out. Container receives:
+        - VALIDIBOT_INPUT_URI: Location of input envelope
+        - VALIDIBOT_OUTPUT_URI: Where to write output envelope
 
         Args:
             container_image: Docker image to run
             input_uri: URI to input envelope (file://, gs://, s3://)
+            output_uri: URI where container should write output envelope
             environment: Additional environment variables
             timeout_seconds: Maximum execution time (uses default if None)
 
         Returns:
-            Container ID (short form)
+            ExecutionResult with exit_code, output_uri, and logs
 
         Raises:
             RuntimeError: If container could not be started
+            TimeoutError: If container did not complete within timeout
         """
-        client = self._get_client()
+        import time
 
-        # Build environment variables
+        client = self._get_client()
+        timeout = timeout_seconds or self.timeout_seconds
+        start_time = time.time()
+
+        # Build environment variables per ADR spec
         env = {
-            "INPUT_URI": input_uri,
+            "VALIDIBOT_INPUT_URI": input_uri,
+            "VALIDIBOT_OUTPUT_URI": output_uri,
         }
         if environment:
             env.update(environment)
 
-        # Build volume mounts for local file access
+        # Build volume mounts for storage access
         volumes = {}
-        storage_root = getattr(settings, "DATA_STORAGE_ROOT", None)
-        if storage_root:
-            # Mount storage root as read-write so validators can write outputs
-            volumes[storage_root] = {"bind": storage_root, "mode": "rw"}
 
-        # Container configuration
+        # If a named volume is configured, use it (for Docker-in-Docker scenarios)
+        if self.storage_volume:
+            volumes[self.storage_volume] = {
+                "bind": self.storage_mount_path,
+                "mode": "rw",
+            }
+        else:
+            # Fall back to host path mounting (for direct Docker usage)
+            storage_root = getattr(settings, "DATA_STORAGE_ROOT", None)
+            if storage_root:
+                # Mount storage root as read-write so validators can write outputs
+                volumes[storage_root] = {"bind": storage_root, "mode": "rw"}
+
+        # Container configuration - NOT detached, we wait for completion
         container_config = {
             "image": container_image,
             "environment": env,
-            "detach": True,
-            "auto_remove": True,  # Clean up after completion
+            "detach": True,  # Still detach to get container object
             "mem_limit": self.memory_limit,
             "nano_cpus": int(float(self.cpu_limit) * 1e9),
         }
@@ -168,30 +200,94 @@ class DockerValidatorRunner(ValidatorRunner):
         if self.network:
             container_config["network"] = self.network
 
+        container = None
         try:
             logger.info(
-                "Starting Docker container: image=%s, input_uri=%s",
+                "Starting Docker container: image=%s, input_uri=%s, output_uri=%s",
                 container_image,
                 input_uri,
+                output_uri,
             )
 
             container = client.containers.run(**container_config)
+            container_id = container.short_id
 
             logger.info(
-                "Started container: id=%s, image=%s",
-                container.short_id,
+                "Started container: id=%s, image=%s, waiting for completion...",
+                container_id,
                 container_image,
             )
+
+            # Wait for container to complete
+            result = container.wait(timeout=timeout)
+            exit_code = result.get("StatusCode", -1)
+            duration = time.time() - start_time
+
+            # Get container logs
+            logs = None
+            try:
+                logs = container.logs(stdout=True, stderr=True).decode("utf-8")
+            except Exception as log_err:
+                logger.warning("Could not retrieve container logs: %s", log_err)
+
+            # Determine error message if failed
+            error_message = None
+            if exit_code != 0:
+                error_message = (
+                    result.get("Error") or f"Container exited with code {exit_code}"
+                )
+                logger.warning(
+                    "Container %s failed: exit_code=%d, error=%s",
+                    container_id,
+                    exit_code,
+                    error_message,
+                )
+            else:
+                logger.info(
+                    "Container %s completed successfully in %.1fs",
+                    container_id,
+                    duration,
+                )
+
+            return ExecutionResult(
+                execution_id=container_id,
+                exit_code=exit_code,
+                output_uri=output_uri,
+                logs=logs,
+                error_message=error_message,
+                duration_seconds=duration,
+            )
+
         except Exception as e:
-            logger.exception("Failed to start Docker container: %s", container_image)
-            msg = f"Failed to start validator container: {e}"
+            # Handle timeout specifically
+            if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                logger.warning(
+                    "Container timed out after %ds: %s", timeout, container_image
+                )
+                # Try to stop the container on timeout
+                if container:
+                    with contextlib.suppress(Exception):
+                        container.stop(timeout=10)
+                msg = f"Validator container timed out after {timeout}s"
+                raise TimeoutError(msg) from e
+
+            logger.exception("Failed to run Docker container: %s", container_image)
+            msg = f"Failed to run validator container: {e}"
             raise RuntimeError(msg) from e
-        else:
-            return container.short_id
+        finally:
+            # Clean up container
+            if container:
+                try:
+                    container.remove(force=True)
+                except Exception as cleanup_err:
+                    logger.debug("Could not remove container: %s", cleanup_err)
 
     def get_execution_status(self, execution_id: str) -> ExecutionInfo:
         """
         Get the status of a container execution.
+
+        Note: This is primarily for debugging. The normal flow uses run()
+        which blocks until completion and returns the result directly.
 
         Args:
             execution_id: Container ID (short or full)
@@ -200,14 +296,14 @@ class DockerValidatorRunner(ValidatorRunner):
             ExecutionInfo with current status
 
         Raises:
-            ValueError: If container is not found
+            ValueError: If container is not found (may have been cleaned up)
         """
         client = self._get_client()
 
         try:
             container = client.containers.get(execution_id)
         except Exception as e:
-            msg = f"Container not found: {execution_id}"
+            msg = f"Container not found: {execution_id} (may have been cleaned up)"
             raise ValueError(msg) from e
 
         # Map Docker status to ExecutionStatus

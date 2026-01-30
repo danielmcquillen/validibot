@@ -76,9 +76,15 @@ class SimpleValidationProcessor(ValidationStepProcessor):
             result.assertion_stats.total,
         )
 
+        # Store any signals for downstream steps
+        stats = dict(result.stats or {})
+        if result.signals:
+            self.store_signals(result.signals)
+            stats["signals"] = result.signals
+
         # Finalize the step
         status = StepStatus.PASSED if result.passed else StepStatus.FAILED
-        self.finalize_step(status, result.stats or {})
+        self.finalize_step(status, stats)
 
         return StepProcessingResult(
             passed=result.passed,

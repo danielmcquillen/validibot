@@ -150,16 +150,16 @@ class ValidationCallbackService:
                             receipt_created = True
 
                         if not receipt_created:
-                                # Receipt already exists - check if it was fully processed.
-                                # If status is still PROCESSING, a previous attempt failed
-                                # mid-processing, so we should retry. Otherwise, it's a true
-                                # duplicate and we return the cached response.
-                                if receipt.status != CallbackReceiptStatus.PROCESSING:
-                                    logger.info(
-                                        "Callback %s already processed at %s",
-                                        callback.callback_id,
-                                        receipt.received_at,
-                                    )
+                            # Receipt already exists - check if it was fully processed.
+                            # If status is still PROCESSING, a previous attempt failed
+                            # mid-processing, so we should retry. Otherwise, it's a true
+                            # duplicate and we return the cached response.
+                            if receipt.status != CallbackReceiptStatus.PROCESSING:
+                                logger.info(
+                                    "Callback %s already processed at %s",
+                                    callback.callback_id,
+                                    receipt.received_at,
+                                )
                                 should_process = False
                             else:
                                 # Status is PROCESSING - previous attempt failed, retry
@@ -388,6 +388,9 @@ class ValidationCallbackService:
             # Determine error category based on envelope status (for runtime vs
             # validation) combined with step status (for assertion failures)
             if step_status == StepStatus.PASSED:
+                error_category = ""
+            elif step_status == StepStatus.SKIPPED:
+                # Cancelled jobs have no error category
                 error_category = ""
             elif output_envelope.status == ValidationStatus.FAILED_RUNTIME:
                 error_category = ValidationRunErrorCategory.RUNTIME_ERROR

@@ -12,7 +12,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
-from vb_shared.fmi import FMIProbeResult
+from vb_shared.fmi import FMIProbeResult as FMIProbeResultSchema
+from vb_shared.fmi import FMIVariableMeta
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
@@ -50,21 +51,6 @@ class FMIIntrospectionError(ValueError):
 
 class FMUStorageError(ValueError):
     """Raised when FMU files cannot be stored or accessed."""
-
-
-class _FMIProbeRunner:
-    """
-    FMI probe runner placeholder.
-
-    TODO: Phase 4b - Implement FMI probing via container jobs.
-    For now, this is a stub that will raise not-implemented errors.
-    """
-
-    @classmethod
-    def _invoke_modal_runner(cls, **kwargs):
-        """Stub that raises not-implemented error."""
-        msg = "FMI probing via container jobs is not yet implemented (Phase 4b)"
-        raise NotImplementedError(msg)
 
 
 def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
@@ -334,22 +320,63 @@ def _persist_variables(
         ).update(catalog_entry=entry)
 
 
-def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbeResult:
+def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
     """
-    Invoke the Modal probe function for an FMU and update metadata + catalog.
+    Read FMU file bytes from local storage or cloud storage.
 
-    A probe is a short, safety-first run that parses modelDescription.xml and
-    confirms the FMU can be opened. We use it to populate variables and mark the
-    FMU as approved before allowing workflow authors to attach assertions.
+    Raises FMIIntrospectionError if the file cannot be read.
     """
+    # Try local file first
+    if fmu_model.file:
+        try:
+            fmu_model.file.open("rb")
+            payload = fmu_model.file.read()
+            fmu_model.file.close()
+        except Exception:  # noqa: S110 - intentionally silent, will try GCS next
+            pass
+        else:
+            return payload
 
-    runner = _FMIProbeRunner()
-    storage_key = (
-        fmu_model.gcs_uri
-        or getattr(fmu_model.file, "path", "")
-        or getattr(fmu_model.file, "name", "")
-    )
-    fmu_url = fmu_model.gcs_uri or getattr(fmu_model.file, "url", None)
+    # Try GCS if configured
+    if fmu_model.gcs_uri:
+        from google.cloud import storage
+
+        # Parse gs://bucket/path format
+        uri = fmu_model.gcs_uri
+        if uri.startswith("gs://"):
+            uri = uri[5:]
+        parts = uri.split("/", 1)
+        bucket_name, object_path = parts[0], parts[1] if len(parts) > 1 else ""
+        if not object_path:
+            msg = f"Invalid GCS URI: {fmu_model.gcs_uri}"
+            raise FMIIntrospectionError(msg)
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(object_path)
+        return blob.download_as_bytes()
+
+    msg = "FMU file not found in local storage or cloud storage."
+    raise FMIIntrospectionError(msg)
+
+
+def run_fmu_probe(
+    fmu_model: FMUModel,
+    *,
+    _return_logs: bool = False,
+) -> FMIProbeResultSchema:
+    """
+    Probe an FMU by parsing its modelDescription.xml and update metadata + catalog.
+
+    This runs in-process (no container needed) since probing just unpacks the ZIP
+    and parses XML to extract variable metadata. We use it to populate variables
+    and mark the FMU as approved before allowing workflow authors to attach
+    assertions.
+
+    The return_logs parameter is kept for API compatibility but unused since
+    in-process probing doesn't produce container logs.
+    """
+    import time
+
     probe_record, _ = FMUProbeResult.objects.get_or_create(
         fmu_model=fmu_model,
         defaults={"status": FMUProbeStatus.PENDING},
@@ -358,32 +385,75 @@ def run_fmu_probe(fmu_model: FMUModel, *, return_logs: bool = False) -> FMIProbe
     probe_record.last_error = ""
     probe_record.save(update_fields=["status", "last_error", "modified"])
 
-    try:
-        raw = runner._invoke_modal_runner(  # noqa: SLF001
-            fmu_storage_key=storage_key,
-            fmu_url=fmu_url,
-            fmu_checksum=fmu_model.checksum,
-            return_logs=return_logs,
-        )
-        result = FMIProbeResult.model_validate(raw)
-    except Exception as exc:  # pragma: no cover - defensive
-        probe_record.mark_failed(str(exc))
-        return FMIProbeResult.failure(errors=[str(exc)])
+    start_time = time.monotonic()
 
-    if result.status == "success":
-        _refresh_variables_from_probe(fmu_model, result.variables)
-        probe_record.status = FMUProbeStatus.SUCCEEDED
-        probe_record.last_error = ""
-        probe_record.details = {"variable_count": len(result.variables)}
-        fmu_model.is_approved = True
-    else:
+    try:
+        payload = _read_fmu_bytes(fmu_model)
+        model_name, fmi_version, variables, _checksum = _validate_fmu_bytes(
+            payload=payload,
+            filename=fmu_model.name or "model.fmu",
+        )
+    except FMIIntrospectionError as exc:
+        elapsed = time.monotonic() - start_time
         probe_record.status = FMUProbeStatus.FAILED
-        probe_record.last_error = "; ".join(result.errors or [])
+        probe_record.last_error = str(exc)
+        probe_record.save(update_fields=["status", "last_error", "modified"])
         fmu_model.is_approved = False
+        fmu_model.save(update_fields=["is_approved", "modified"])
+        return FMIProbeResultSchema.failure(errors=[str(exc)])
+    except Exception as exc:
+        elapsed = time.monotonic() - start_time
+        probe_record.status = FMUProbeStatus.FAILED
+        probe_record.last_error = str(exc)
+        probe_record.save(update_fields=["status", "last_error", "modified"])
+        fmu_model.is_approved = False
+        fmu_model.save(update_fields=["is_approved", "modified"])
+        return FMIProbeResultSchema.failure(errors=[str(exc)])
+
+    elapsed = time.monotonic() - start_time
+
+    # Convert FMIVariable (Django model) to FMIVariableMeta (Pydantic schema)
+    variable_metas = [
+        FMIVariableMeta(
+            name=var.name,
+            causality=var.causality,
+            variability=var.variability or None,
+            value_reference=var.value_reference,
+            value_type=var.value_type,
+            unit=var.unit or None,
+        )
+        for var in variables
+    ]
+
+    # Update FMU metadata
+    fmu_model.fmi_version = fmi_version
+    fmu_model.introspection_metadata = {
+        "model_name": model_name,
+        "variable_count": len(variables),
+    }
+
+    # Refresh variables and catalog entries from probe results
+    _refresh_variables_from_probe(fmu_model, variable_metas)
+
+    # Mark as approved
+    probe_record.status = FMUProbeStatus.SUCCEEDED
+    probe_record.last_error = ""
+    probe_record.details = {"variable_count": len(variables)}
+    fmu_model.is_approved = True
 
     probe_record.save(update_fields=["status", "last_error", "details", "modified"])
-    fmu_model.save(update_fields=["is_approved", "modified"])
-    return result
+    fmu_model.save(update_fields=[
+        "is_approved",
+        "fmi_version",
+        "introspection_metadata",
+        "modified",
+    ])
+
+    return FMIProbeResultSchema.success(
+        variables=variable_metas,
+        execution_seconds=elapsed,
+        messages=[f"Parsed {len(variables)} variables from modelDescription.xml"],
+    )
 
 
 def _refresh_variables_from_probe(

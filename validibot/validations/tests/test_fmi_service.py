@@ -66,6 +66,7 @@ class FMIServiceTests(TestCase):
         self.assertEqual(fmu_model.gcs_uri, "")
 
     def test_run_fmu_probe_refreshes_variables(self):
+        """Probe parses modelDescription.xml in-process and refreshes catalog."""
         upload = _make_fake_fmu()
         validator = create_fmi_validator(
             org=self.org,
@@ -78,4 +79,23 @@ class FMIServiceTests(TestCase):
 
         result = run_fmu_probe(fmu_model)
 
-        self.assertEqual(result.status, "error")
+        # Probe should succeed since parsing happens in-process
+        self.assertEqual(result.status, "success")
+        # Feedthrough FMU declares 11 variables
+        self.assertEqual(len(result.variables), 11)
+        self.assertIsNotNone(result.execution_seconds)
+        self.assertGreater(result.execution_seconds, 0)
+
+        # Verify FMU model was updated
+        fmu_model.refresh_from_db()
+        self.assertTrue(fmu_model.is_approved)
+
+        # Catalog entries should still match (4 inputs + 4 outputs)
+        self.assertEqual(
+            validator.catalog_entries.filter(run_stage=CatalogRunStage.INPUT).count(),
+            4,
+        )
+        self.assertEqual(
+            validator.catalog_entries.filter(run_stage=CatalogRunStage.OUTPUT).count(),
+            4,
+        )

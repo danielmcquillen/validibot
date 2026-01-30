@@ -52,7 +52,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
 
     Authentication:
         - Google Cloud: Cloud Run IAM performs authentication via OIDC token
-        - Self-hosted: Worker-only access enforced by WorkerOnlyAPIView
+        - Self-hosted docker compose: Worker-only access enforced by WorkerOnlyAPIView
         - Local dev: No authentication (direct HTTP calls)
 
     Error Handling:

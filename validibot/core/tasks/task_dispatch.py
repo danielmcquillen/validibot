@@ -36,7 +36,7 @@ def enqueue_validation_run(
     The underlying dispatcher is selected automatically based on environment:
     - Test: Execute synchronously inline
     - Local dev: Call worker via HTTP
-    - Self-hosted: Enqueue via Dramatiq
+    - Self-hosted docker compose: Enqueue via Dramatiq
     - Google Cloud: Enqueue via Cloud Tasks
 
     Args:

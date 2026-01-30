@@ -41,6 +41,9 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
     metadata so it travels with the reusable asset.
     """
 
+    # PUBLIC METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
     def validate(
         self,
         validator: Validator,
@@ -172,6 +175,9 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                 "schema_type": schema_type,
             },
         )
+
+    # PRIVATE METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def _resolve_schema_type(self, ruleset) -> str:
         schema_type = None

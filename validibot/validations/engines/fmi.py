@@ -6,7 +6,7 @@ ExecutionBackend abstraction. The FMU is executed in a containerized environment
 with the FMI runtime.
 
 This works across different deployment targets:
-- Self-hosted: Docker containers via local socket (synchronous)
+- Self-hosted docker compose: Docker containers via local socket (synchronous)
 - GCP: Cloud Run Jobs (async with callbacks)
 - AWS: AWS Batch (future)
 
@@ -42,6 +42,7 @@ from django.utils.translation import gettext as _
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -57,12 +58,12 @@ if TYPE_CHECKING:
 
 
 @register_engine(ValidationType.FMI)
-class FMIValidationEngine(BaseValidatorEngine):
+class FMUValidationEngine(BaseValidatorEngine):
     """
     Run FMI validators through container-based execution.
 
     This engine dispatches FMU execution to the configured ExecutionBackend:
-    - Self-hosted: Docker containers (synchronous)
+    - Self-hosted docker compose: Docker containers (synchronous)
     - GCP: Cloud Run Jobs (async with callbacks)
     - AWS: AWS Batch (future)
 
@@ -70,42 +71,9 @@ class FMIValidationEngine(BaseValidatorEngine):
     Results are returned directly (sync) or via callback (async).
     """
 
-    @classmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
-        """
-        Extract output values from an FMI output envelope.
-
-        FMI envelopes (FMIOutputEnvelope from vb_shared) store simulation outputs
-        in outputs.output_values as a dict keyed by catalog slug.
-
-        Args:
-            output_envelope: FMIOutputEnvelope from the validator container.
-
-        Returns:
-            Dict of output values keyed by catalog slug. Returns None if
-            extraction fails.
-        """
-        try:
-            outputs = getattr(output_envelope, "outputs", None)
-            if not outputs:
-                return None
-
-            output_values = getattr(outputs, "output_values", None)
-            if not output_values:
-                return None
-
-            # Handle Pydantic model
-            if hasattr(output_values, "model_dump"):
-                return output_values.model_dump(mode="json")
-
-            # Handle plain dict
-            if isinstance(output_values, dict):
-                return output_values
-        except Exception:
-            logger.debug("Could not extract assertion signals from FMI envelope")
-
-        return None
-
+    # PUBLIC METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     def validate(
         self,
         validator: Validator,
@@ -121,7 +89,7 @@ class FMIValidationEngine(BaseValidatorEngine):
         results.
 
         Args:
-            validator: FMI validator instance with FMU model attached
+            validator: FMU validator instance with FMU model attached
             submission: Submission with input values
             ruleset: Optional ruleset (not typically used for FMI)
             run_context: Required execution context with validation_run and step
@@ -199,6 +167,149 @@ class FMIValidationEngine(BaseValidatorEngine):
 
         # Convert ExecutionResponse to ValidationResult
         return self._response_to_result(response, is_async=backend.is_async)
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """
+        Process container output and evaluate output-stage assertions.
+
+        Called after container execution completes (either sync or via callback).
+        This method:
+        1. Extracts signals from the envelope via extract_output_signals()
+        2. Evaluates output-stage assertions using those signals
+        3. Extracts issues from envelope messages
+        4. Returns ValidationResult with signals field populated
+
+        Args:
+            output_envelope: FMIOutputEnvelope from the validator container
+            run_context: Execution context for assertion evaluation
+
+        Returns:
+            ValidationResult with output-stage issues, assertion_stats,
+            and signals populated.
+        """
+        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        self.run_context = run_context
+
+        issues: list[ValidationIssue] = []
+
+        # Extract messages from envelope
+        for msg in output_envelope.messages:
+            severity_map = {
+                EnvelopeSeverity.ERROR: Severity.ERROR,
+                EnvelopeSeverity.WARNING: Severity.WARNING,
+                EnvelopeSeverity.INFO: Severity.INFO,
+            }
+            issues.append(
+                ValidationIssue(
+                    path=msg.location.path if msg.location else "",
+                    message=msg.text,
+                    severity=severity_map.get(msg.severity, Severity.INFO),
+                )
+            )
+
+        # Extract signals from envelope for downstream steps and assertion evaluation
+        signals = self.extract_output_signals(output_envelope) or {}
+
+        # Evaluate output-stage assertions if we have context
+        assertion_issues: list[ValidationIssue] = []
+        assertion_total = 0
+        assertion_failures = 0
+        if run_context and run_context.step:
+            # Get the validator and ruleset from the step
+            validator = run_context.step.validator
+            ruleset = run_context.step.ruleset
+
+            if validator and ruleset:
+                assertion_result = self.evaluate_assertions_for_stage(
+                    validator=validator,
+                    ruleset=ruleset,
+                    payload=signals,
+                    stage="output",
+                )
+                assertion_issues = assertion_result.issues
+                assertion_total = assertion_result.total
+                assertion_failures = assertion_result.failures
+                issues.extend(assertion_issues)
+
+        # Determine pass/fail based on envelope status and assertion failures.
+        # Container error messages do not override SUCCESS status.
+        if output_envelope.status == ValidationStatus.SUCCESS:
+            passed = assertion_failures == 0
+        elif output_envelope.status in (
+            ValidationStatus.FAILED_VALIDATION,
+            ValidationStatus.FAILED_RUNTIME,
+        ):
+            passed = False
+        else:
+            # Cancelled or unknown
+            passed = False
+
+        # Build stats with outputs if available
+        stats: dict[str, Any] = {}
+        if output_envelope.outputs:
+            if hasattr(output_envelope.outputs, "model_dump"):
+                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
+            elif isinstance(output_envelope.outputs, dict):
+                stats["outputs"] = output_envelope.outputs
+
+        return ValidationResult(
+            passed=passed,
+            issues=issues,
+            assertion_stats=AssertionStats(
+                total=assertion_total,
+                failures=assertion_failures,
+            ),
+            signals=signals,
+            stats=stats,
+        )
+
+    # CLASS METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @classmethod
+    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+        """
+        Extract output values from an FMI output envelope.
+
+        FMI envelopes (FMIOutputEnvelope from vb_shared) store simulation outputs
+        in outputs.output_values as a dict keyed by catalog slug.
+
+        Args:
+            output_envelope: FMIOutputEnvelope from the validator container.
+
+        Returns:
+            Dict of output values keyed by catalog slug. Returns None if
+            extraction fails.
+        """
+        try:
+            outputs = getattr(output_envelope, "outputs", None)
+            if not outputs:
+                return None
+
+            output_values = getattr(outputs, "output_values", None)
+            if not output_values:
+                return None
+
+            # Handle Pydantic model
+            if hasattr(output_values, "model_dump"):
+                return output_values.model_dump(mode="json")
+
+            # Handle plain dict
+            if isinstance(output_values, dict):
+                return output_values
+        except Exception:
+            logger.debug("Could not extract assertion signals from FMI envelope")
+
+        return None
+
+    # PRIVATE METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def _response_to_result(
         self,

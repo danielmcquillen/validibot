@@ -94,7 +94,7 @@ class TaskDispatcher(ABC):
 
     - Test: synchronous inline execution
     - Local dev: direct HTTP call to worker
-    - Self-hosted: Dramatiq with Redis broker
+    - Self-hosted docker compose: Dramatiq with Redis broker
     - Google Cloud: Cloud Tasks queue
     - AWS: TBD (SQS, Step Functions, etc.)
 

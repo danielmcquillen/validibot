@@ -7,7 +7,7 @@ the app-level guards are in place to complement the infrastructure controls.
 
 Security Model (varies by deployment):
     - GCP: Cloud Run ingress set to "internal", OIDC token verification
-    - Self-hosted: Network isolation via Docker Compose internal network
+    - Self-hosted docker compose: Network isolation via internal network
     - AWS: IAM-based authentication (future)
     - App-level: endpoint returns 404 on non-worker instances (defense in depth)
 

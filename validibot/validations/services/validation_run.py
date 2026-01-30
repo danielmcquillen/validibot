@@ -231,7 +231,7 @@ class ValidationRunService:
         # Dispatch execution to the appropriate backend:
         # - Test: Synchronous inline execution
         # - Local dev: HTTP call to worker
-        # - Self-hosted: Dramatiq task queue
+        # - Self-hosted docker compose: Dramatiq task queue
         # - GCP: Cloud Tasks
         # - AWS: TBD (future)
         try:

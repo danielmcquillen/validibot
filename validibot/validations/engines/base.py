@@ -21,7 +21,7 @@ engines:
 4. Callback service downloads envelope and evaluates output-stage assertions
 
 The container execution varies by deployment:
-- Self-hosted: Docker containers (synchronous)
+- Self-hosted docker compose: Docker containers (synchronous)
 - GCP: Cloud Run Jobs (async with callbacks)
 - AWS: AWS Batch (future)
 
@@ -324,7 +324,7 @@ class BaseValidatorEngine(ABC):
             elif entry.is_required:
                 context[entry.slug] = None
 
-        # Surface downstream signals for CEL expressions 
+        # Surface downstream signals for CEL expressions
         # (e.g., steps.<id>.signals.<slug>).
         steps_context: dict[str, Any] = {}
         run_summary = getattr(

@@ -5,7 +5,7 @@ Worker-only endpoints are deployed on the internal worker service and are called
 by infrastructure components (task dispatchers, schedulers, validator containers).
 The authentication mechanism varies by deployment:
 
-- Self-hosted: Worker runs as a separate service in Docker Compose
+- Self-hosted docker compose: Worker runs as a separate service
 - GCP: Cloud Run IAM authenticates via OIDC tokens
 - AWS: IAM-based authentication (future)
 

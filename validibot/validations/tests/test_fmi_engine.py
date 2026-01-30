@@ -11,7 +11,7 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import RulesetType
-from validibot.validations.engines.fmi import FMIValidationEngine
+from validibot.validations.engines.fmi import FMUValidationEngine
 from validibot.validations.models import Ruleset
 from validibot.validations.services.fmi import create_fmi_validator
 from validibot.workflows.tests.factories import WorkflowFactory
@@ -81,7 +81,7 @@ class FMIEngineTests(TestCase):
             file_type=SubmissionFileType.BINARY,
         )
 
-        engine = FMIValidationEngine(config={})
+        engine = FMUValidationEngine(config={})
 
         # Don't pass run_context - should fail
         result = engine.validate(
@@ -126,7 +126,7 @@ class FMIEngineTests(TestCase):
             file_type=SubmissionFileType.BINARY,
         )
 
-        engine = FMIValidationEngine(config={"inputs": {"u_in": 1.0}})
+        engine = FMUValidationEngine(config={"inputs": {"u_in": 1.0}})
 
         # Mock the backend to be unavailable
         with patch(
@@ -180,7 +180,7 @@ class FMIEngineTests(TestCase):
             workflow=workflow,
             project=workflow.project,
         )
-        engine = FMIValidationEngine(config={})
+        engine = FMUValidationEngine(config={})
 
         # Don't pass run_context - will fail with missing context error
         # which is fine since we're testing that engine handles edge cases

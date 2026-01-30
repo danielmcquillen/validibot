@@ -5,7 +5,7 @@ This engine forwards incoming EnergyPlus submissions (epJSON or IDF) to
 container-based validators via the ExecutionBackend abstraction. This works
 across different deployment targets:
 
-- Self-hosted: Docker containers via local socket (synchronous)
+- Self-hosted docker compose: Docker containers via local socket (synchronous)
 - GCP: Cloud Run Jobs (async with callbacks)
 - AWS: AWS Batch (future)
 
@@ -61,53 +61,19 @@ if TYPE_CHECKING:
 @register_engine(ValidationType.ENERGYPLUS)
 class EnergyPlusValidationEngine(BaseValidatorEngine):
     """
-    Run submitted epJSON through container-based validators.
+    Run submitted energyplus file (and potentially weather file)
+    through container-based validators.
 
     This engine dispatches validation to the configured ExecutionBackend:
-    - Self-hosted: Docker containers (synchronous)
+    - Self-hosted docker compose: Docker containers (synchronous)
     - GCP: Cloud Run Jobs (async with callbacks)
     - AWS: AWS Batch (future)
 
     The ValidationRun is updated via callback when async jobs complete.
     """
-
-    @classmethod
-    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
-        """
-        Extract simulation metrics from an EnergyPlus output envelope.
-
-        EnergyPlus envelopes (EnergyPlusOutputEnvelope from vb_shared) store
-        metrics in outputs.metrics as an EnergyPlusSimulationMetrics Pydantic
-        model. Fields include site_eui_kwh_m2, site_electricity_kwh, etc.
-
-        Args:
-            output_envelope: EnergyPlusOutputEnvelope from the validator container.
-
-        Returns:
-            Dict of metrics keyed by field name (matching catalog slugs), with
-            None values filtered out. Returns None if extraction fails.
-        """
-        try:
-            outputs = getattr(output_envelope, "outputs", None)
-            if not outputs:
-                return None
-
-            metrics = getattr(outputs, "metrics", None)
-            if not metrics:
-                return None
-
-            # Pydantic model_dump converts to dict; filter None values
-            if hasattr(metrics, "model_dump"):
-                metrics_dict = metrics.model_dump(mode="json")
-                return {k: v for k, v in metrics_dict.items() if v is not None}
-
-            # Fallback if metrics is already a dict
-            if isinstance(metrics, dict):
-                return {k: v for k, v in metrics.items() if v is not None}
-        except Exception:
-            logger.debug("Could not extract assertion signals from EnergyPlus envelope")
-
-        return None
+    
+    # PUBLIC METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def validate(
         self,
@@ -203,6 +169,152 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
 
         # Convert ExecutionResponse to ValidationResult
         return self._response_to_result(response, is_async=backend.is_async)
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """
+        Process container output and evaluate output-stage assertions.
+
+        Called after container execution completes (either sync or via callback).
+        This method:
+        1. Extracts signals from the envelope via extract_output_signals()
+        2. Evaluates output-stage assertions using those signals
+        3. Extracts issues from envelope messages
+        4. Returns ValidationResult with signals field populated
+
+        Args:
+            output_envelope: EnergyPlusOutputEnvelope from the validator container
+            run_context: Execution context for assertion evaluation
+
+        Returns:
+            ValidationResult with output-stage issues, assertion_stats,
+            and signals populated.
+        """
+        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        # Store run_context for CEL evaluation methods
+        self.run_context = run_context
+
+        issues: list[ValidationIssue] = []
+
+        # Extract messages from envelope
+        for msg in output_envelope.messages:
+            severity_map = {
+                EnvelopeSeverity.ERROR: Severity.ERROR,
+                EnvelopeSeverity.WARNING: Severity.WARNING,
+                EnvelopeSeverity.INFO: Severity.INFO,
+            }
+            issues.append(
+                ValidationIssue(
+                    path=msg.location.path if msg.location else "",
+                    message=msg.text,
+                    severity=severity_map.get(msg.severity, Severity.INFO),
+                )
+            )
+
+        # Extract signals from envelope for downstream steps and assertion evaluation
+        signals = self.extract_output_signals(output_envelope) or {}
+
+        # Evaluate output-stage assertions if we have context
+        assertion_issues: list[ValidationIssue] = []
+        assertion_total = 0
+        assertion_failures = 0
+        if run_context and run_context.step:
+            # Get the validator and ruleset from the step
+            validator = run_context.step.validator
+            ruleset = run_context.step.ruleset
+
+            if validator and ruleset:
+                assertion_result = self.evaluate_assertions_for_stage(
+                    validator=validator,
+                    ruleset=ruleset,
+                    payload=signals,
+                    stage="output",
+                )
+                assertion_issues = assertion_result.issues
+                assertion_total = assertion_result.total
+                assertion_failures = assertion_result.failures
+                issues.extend(assertion_issues)
+
+        # Determine pass/fail based on envelope status and assertion failures.
+        # Container error messages do not override SUCCESS status.
+        if output_envelope.status == ValidationStatus.SUCCESS:
+            passed = assertion_failures == 0
+        elif output_envelope.status in (
+            ValidationStatus.FAILED_VALIDATION,
+            ValidationStatus.FAILED_RUNTIME,
+        ):
+            passed = False
+        else:
+            # Cancelled or unknown
+            passed = False
+
+        # Build stats with outputs if available
+        stats: dict[str, Any] = {}
+        if output_envelope.outputs:
+            if hasattr(output_envelope.outputs, "model_dump"):
+                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
+            elif isinstance(output_envelope.outputs, dict):
+                stats["outputs"] = output_envelope.outputs
+
+        return ValidationResult(
+            passed=passed,
+            issues=issues,
+            assertion_stats=AssertionStats(
+                total=assertion_total,
+                failures=assertion_failures,
+            ),
+            signals=signals,
+            stats=stats,
+        )
+
+    # CLASS METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @classmethod
+    def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
+        """
+        Extract simulation metrics from an EnergyPlus output envelope.
+
+        EnergyPlus envelopes (EnergyPlusOutputEnvelope from vb_shared) store
+        metrics in outputs.metrics as an EnergyPlusSimulationMetrics Pydantic
+        model. Fields include site_eui_kwh_m2, site_electricity_kwh, etc.
+
+        Args:
+            output_envelope: EnergyPlusOutputEnvelope from the validator container.
+
+        Returns:
+            Dict of metrics keyed by field name (matching catalog slugs), with
+            None values filtered out. Returns None if extraction fails.
+        """
+        try:
+            outputs = getattr(output_envelope, "outputs", None)
+            if not outputs:
+                return None
+
+            metrics = getattr(outputs, "metrics", None)
+            if not metrics:
+                return None
+
+            # Pydantic model_dump converts to dict; filter None values
+            if hasattr(metrics, "model_dump"):
+                metrics_dict = metrics.model_dump(mode="json")
+                return {k: v for k, v in metrics_dict.items() if v is not None}
+
+            # Fallback if metrics is already a dict
+            if isinstance(metrics, dict):
+                return {k: v for k, v in metrics.items() if v is not None}
+        except Exception:
+            logger.debug("Could not extract assertion signals from EnergyPlus envelope")
+
+        return None
+
+    # PRIVATE METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def _response_to_result(
         self,
@@ -322,109 +434,3 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             passed = False
 
         return ValidationResult(passed=passed, issues=issues, stats=stats)
-
-    def post_execute_validate(
-        self,
-        output_envelope: Any,
-        run_context: RunContext | None = None,
-    ) -> ValidationResult:
-        """
-        Process container output and evaluate output-stage assertions.
-
-        Called after container execution completes (either sync or via callback).
-        This method:
-        1. Extracts signals from the envelope via extract_output_signals()
-        2. Evaluates output-stage assertions using those signals
-        3. Extracts issues from envelope messages
-        4. Returns ValidationResult with signals field populated
-
-        Args:
-            output_envelope: EnergyPlusOutputEnvelope from the validator container
-            run_context: Execution context for assertion evaluation
-
-        Returns:
-            ValidationResult with output-stage issues, assertion_stats,
-            and signals populated.
-        """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from vb_shared.validations.envelopes import ValidationStatus
-
-        # Store run_context for CEL evaluation methods
-        self.run_context = run_context
-
-        issues: list[ValidationIssue] = []
-
-        # Extract messages from envelope
-        for msg in output_envelope.messages:
-            severity_map = {
-                EnvelopeSeverity.ERROR: Severity.ERROR,
-                EnvelopeSeverity.WARNING: Severity.WARNING,
-                EnvelopeSeverity.INFO: Severity.INFO,
-            }
-            issues.append(
-                ValidationIssue(
-                    path=msg.location.path if msg.location else "",
-                    message=msg.text,
-                    severity=severity_map.get(msg.severity, Severity.INFO),
-                )
-            )
-
-        # Extract signals from envelope for downstream steps and assertion evaluation
-        signals = self.extract_output_signals(output_envelope) or {}
-
-        # Evaluate output-stage assertions if we have context
-        assertion_issues: list[ValidationIssue] = []
-        assertion_total = 0
-        assertion_failures = 0
-        if run_context and run_context.step:
-            # Get the validator and ruleset from the step
-            validator = run_context.step.validator
-            ruleset = run_context.step.ruleset
-
-            if validator and ruleset:
-                assertion_result = self.evaluate_assertions_for_stage(
-                    validator=validator,
-                    ruleset=ruleset,
-                    payload=signals,
-                    stage="output",
-                )
-                assertion_issues = assertion_result.issues
-                assertion_total = assertion_result.total
-                assertion_failures = assertion_result.failures
-                issues.extend(assertion_issues)
-
-        # Determine pass/fail based on envelope status AND assertion results
-        # A step fails if either the container reported failure OR any ERROR assertions
-        if output_envelope.status == ValidationStatus.SUCCESS:
-            # Container succeeded, but check if any assertions failed
-            has_assertion_errors = any(
-                i.severity == Severity.ERROR for i in issues
-            )
-            passed = not has_assertion_errors
-        elif output_envelope.status in (
-            ValidationStatus.FAILED_VALIDATION,
-            ValidationStatus.FAILED_RUNTIME,
-        ):
-            passed = False
-        else:
-            # Cancelled or unknown
-            passed = False
-
-        # Build stats with outputs if available
-        stats: dict[str, Any] = {}
-        if output_envelope.outputs:
-            if hasattr(output_envelope.outputs, "model_dump"):
-                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
-            elif isinstance(output_envelope.outputs, dict):
-                stats["outputs"] = output_envelope.outputs
-
-        return ValidationResult(
-            passed=passed,
-            issues=issues,
-            assertion_stats=AssertionStats(
-                total=assertion_total,
-                failures=assertion_failures,
-            ),
-            signals=signals,
-            stats=stats,
-        )

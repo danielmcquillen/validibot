@@ -4,7 +4,7 @@ Unified container launcher for advanced validators.
 This module provides a unified interface for launching container-based validators
 (EnergyPlus, FMI, etc.) that works across different deployment targets:
 
-- Self-hosted: Docker containers via local socket (synchronous)
+- Self-hosted docker compose: Docker containers via local socket (synchronous)
 - GCP: Google Cloud Run Jobs (async with callbacks)
 - AWS: AWS Batch (future)
 

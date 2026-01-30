@@ -48,6 +48,14 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
     **Input stage:** Evaluated in `engine.validate()` BEFORE container launch.
     **Output stage:** Evaluated in `engine.post_execute_validate()` AFTER container
     completes.
+
+    ## Status Semantics
+
+    - `ValidationStatus.SUCCESS` from the container is treated as a pass even if
+      the container reported ERROR messages. We surface a warning in the step
+      output and logs when that happens.
+    - Output-stage assertion failures always fail the step, regardless of
+      container status.
     """
 
     def execute(self) -> StepProcessingResult:
@@ -183,10 +191,31 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         # Determine final status
         status = self._map_envelope_status(output_envelope.status)
+        has_assertion_errors = post_result.assertion_stats.failures > 0
+        if has_assertion_errors:
+            status = StepStatus.FAILED
         error = self._extract_error(output_envelope)
 
         # Include full envelope in step output (JSON-safe serialization)
         stats = self._serialize_envelope(output_envelope)
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        if output_envelope.status == ValidationStatus.SUCCESS and any(
+            issue.severity == Severity.ERROR and issue.assertion_id is None
+            for issue in post_result.issues
+        ):
+            warning_msg = (
+                "Note: the advanced validation indicated it passed, "
+                "but there were errors reported."
+            )
+            logger.warning(
+                "Advanced validator reported SUCCESS with ERROR findings: "
+                "step_run_id=%s",
+                self.step_run.id,
+            )
+            warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
+            warnings.append(warning_msg)
+            stats["warnings"] = warnings
         self.finalize_step(status, stats, error)
 
         return StepProcessingResult(

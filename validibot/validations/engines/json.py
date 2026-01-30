@@ -37,6 +37,9 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
     ``rules_file`` (retrieved through ``ruleset.rules``).
     """
 
+    # PUBLIC METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
     def validate(
         self,
         validator: Validator,
@@ -55,7 +58,8 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
                         message=_(
                             "JSON Schema validators require JSON content. "
                             "Received file type: %(file_type)s"
-                        ) % {"file_type": submission.file_type},
+                        )
+                        % {"file_type": submission.file_type},
                         severity=Severity.ERROR,
                     ),
                 ],
@@ -101,6 +105,9 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
             issues=issues,
             stats={"error_count": len(errors)},
         )
+
+    # PRIVATE METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:
         raw_schema = getattr(ruleset, "rules", None)

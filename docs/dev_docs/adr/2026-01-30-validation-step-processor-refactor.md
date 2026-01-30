@@ -1338,7 +1338,7 @@ These changes prepare engines to support the new contract:
    - Implement in `EnergyPlusValidationEngine`:
      - Move output-stage assertion logic from `ValidationCallbackService._evaluate_output_stage_assertions()`
      - Populate `signals` field directly
-   - Implement in `FMIValidationEngine` (same pattern)
+   - Implement in `FMUValidationEngine` (same pattern)
 
 5. **Ensure envelope flows through sync backends**
    - `SelfHostedExecutionBackend` already populates `output_envelope` ✓

@@ -74,13 +74,13 @@ class TestCelAssertion:
         assert context["rating"] == payload_data["rating"]
         assert context["tags"] == payload_data["tags"]
 
-        issues = engine.evaluate_cel_assertions(
+        result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,
             validator=validator,
             payload=payload_data,
-            target_stage="input",
+            stage="input",
         )
-        assert issues == []
+        assert result.issues == []
 
         submission = SubmissionFactory(
             org=org,

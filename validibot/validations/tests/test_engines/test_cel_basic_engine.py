@@ -223,14 +223,14 @@ class CelBasicEngineTests(TestCase):
         )
         self._submission({"price": 1})
         engine = BasicValidatorEngine()
-        # Manually call shared CEL evaluation for output context
-        issues = engine.evaluate_cel_assertions(
+        # Manually call assertion evaluation for output context
+        result = engine.evaluate_assertions_for_stage(
             ruleset=self.ruleset,
             validator=self.validator,
             payload={"result": {"total": 5}},
-            target_stage="output",
+            stage="output",
         )
-        self.assertEqual(len(issues), 0)
+        self.assertEqual(len(result.issues), 0)
 
     def test_startswith_helper_on_output(self):
         RulesetAssertionFactory(
@@ -242,13 +242,13 @@ class CelBasicEngineTests(TestCase):
             rhs={"expr": 'result.status.startsWith("OK")'},
         )
         engine = BasicValidatorEngine()
-        issues = engine.evaluate_cel_assertions(
+        result = engine.evaluate_assertions_for_stage(
             ruleset=self.ruleset,
             validator=self.validator,
             payload={"result": {"status": "OK_PASSED"}},
-            target_stage="output",
+            stage="output",
         )
-        self.assertEqual(len(issues), 0)
+        self.assertEqual(len(result.issues), 0)
 
     def test_simple_string_prefix(self):
         ValidatorCatalogEntryFactory(

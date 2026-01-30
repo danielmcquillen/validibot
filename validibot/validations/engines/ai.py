@@ -557,13 +557,14 @@ class AiAssistEngine(BaseValidatorEngine):
         issues.extend(_heuristic_critiques(parsed))
 
         if ruleset is not None:
-            issues.extend(
-                self.run_cel_assertions_for_stages(
-                    ruleset=ruleset,
-                    validator=validator,
-                    input_payload=parsed,
-                ),
+            # Evaluate assertions using the unified system
+            assertion_result = self.evaluate_assertions_for_stage(
+                validator=validator,
+                ruleset=ruleset,
+                payload=parsed,
+                stage="input",
             )
+            issues.extend(assertion_result.issues)
 
         if rules_raw:
             for rule_data in rules_raw:
@@ -603,17 +604,12 @@ class AiAssistEngine(BaseValidatorEngine):
         # Count assertion failures: only ERROR-severity assertion issues.
         # WARNING/INFO assertions are tracked as issues but don't count toward
         # failures - they're intentionally configured as non-blocking.
-        assertion_failures = sum(
-            1 for issue in issues
-            if issue.assertion_id is not None and issue.severity == Severity.ERROR
-        )
-        # Count total assertions (CEL assertions from ruleset + policy rules)
+        assertion_failures = self._count_assertion_failures(issues)
+        # Count total assertions (policy rules + ruleset assertions)
         total_assertions = len(rules_raw or [])
         if ruleset is not None:
-            total_assertions += ruleset.assertions.filter(
-                assertion_type="cel_expr",
-            ).count()
-        result = ValidationResult(
+            total_assertions += self._count_stage_assertions(ruleset, "input")
+        return ValidationResult(
             passed=not has_error,
             issues=issues,
             assertion_stats=AssertionStats(
@@ -622,4 +618,3 @@ class AiAssistEngine(BaseValidatorEngine):
             ),
             stats=stats,
         )
-        return result

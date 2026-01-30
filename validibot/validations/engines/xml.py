@@ -10,7 +10,6 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
-from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -48,8 +47,6 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
         Validate the provided XML against the configured schema (XSD or Relax NG).
         Returns a ValidationResult with ERROR issues for any schema violations.
         """
-        # Store run_context on instance for CEL evaluation methods
-        self.run_context = run_context
         if submission.file_type != SubmissionFileType.XML:
             return ValidationResult(
                 passed=False,
@@ -161,36 +158,12 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
                 )
                 issues.append(ValidationIssue(path, str(err.message), Severity.ERROR))
 
-        # Evaluate CEL assertions (if any) using the parsed XML as a dict.
-        # Convert lxml element tree to a dict-like structure for CEL evaluation.
-        xml_dict = self._etree_to_dict(doc)
-        assertion_issues = self.evaluate_cel_assertions(
-            ruleset=ruleset,
-            validator=validator,
-            payload=xml_dict,
-            target_stage="input",
-        )
-        issues.extend(assertion_issues)
-
-        # Count assertion failures: only ERROR-severity assertion issues.
-        # WARNING/INFO assertions are tracked as issues but don't count toward
-        # failures - they're intentionally configured as non-blocking.
-        assertion_failures = sum(
-            1 for issue in assertion_issues
-            if issue.severity == Severity.ERROR
-        )
-        total_assertions = self._count_stage_assertions(ruleset, "input")
-
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
             passed=passed,
             issues=issues,
-            assertion_stats=AssertionStats(
-                total=total_assertions,
-                failures=assertion_failures,
-            ),
             stats={
-                "error_count": len(issues) - len(assertion_issues),
+                "error_count": len(issues),
                 "schema_type": schema_type,
             },
         )
@@ -247,46 +220,3 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
             if isinstance(raw_config, str):
                 raw = raw_config
         return raw
-
-    def _etree_to_dict(self, element: Any) -> dict[str, Any]:
-        """
-        Convert an lxml Element tree to a nested dict structure for CEL evaluation.
-
-        This provides a simple dict representation where:
-        - Element tag names become keys
-        - Text content becomes the value (or "_text" key if there are children)
-        - Attributes are stored under an "_attrs" key
-        - Multiple children with the same tag become a list
-        """
-        result: dict[str, Any] = {}
-
-        # Add attributes if present
-        if element.attrib:
-            result["_attrs"] = dict(element.attrib)
-
-        # Process children
-        children: dict[str, list[Any]] = {}
-        for child in element:
-            # Strip namespace prefix for simpler access
-            tag = child.tag
-            if "}" in tag:
-                tag = tag.split("}", 1)[1]
-
-            child_data = self._etree_to_dict(child)
-            if tag not in children:
-                children[tag] = []
-            children[tag].append(child_data)
-
-        # Flatten single-element lists
-        for tag, values in children.items():
-            result[tag] = values[0] if len(values) == 1 else values
-
-        # Handle text content
-        text = (element.text or "").strip()
-        if text:
-            if children or result:
-                result["_text"] = text
-            else:
-                return text  # type: ignore[return-value]
-
-        return result

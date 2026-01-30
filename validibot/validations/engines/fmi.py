@@ -29,7 +29,7 @@ vb_shared.fmi.envelopes) containing:
   - Values are the simulation outputs for that signal
 
 These output values are extracted via `extract_output_signals()` for use in
-output-stage CEL assertions (e.g., "indoor_temp_c < 26").
+output-stage assertions (e.g., "indoor_temp_c < 26").
 """
 
 from __future__ import annotations

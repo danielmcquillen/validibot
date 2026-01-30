@@ -30,7 +30,7 @@ The EnergyPlus validator container produces an `EnergyPlusOutputEnvelope`
   - etc. (see vb_shared/energyplus/models.py)
 
 These metrics are extracted via `extract_output_signals()` for use in
-output-stage CEL assertions (e.g., "site_eui_kwh_m2 < 100").
+output-stage assertions (e.g., "site_eui_kwh_m2 < 100").
 """
 
 from __future__ import annotations
@@ -334,13 +334,13 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         Called after container execution completes (either sync or via callback).
         This method:
         1. Extracts signals from the envelope via extract_output_signals()
-        2. Evaluates output-stage CEL assertions using those signals
+        2. Evaluates output-stage assertions using those signals
         3. Extracts issues from envelope messages
         4. Returns ValidationResult with signals field populated
 
         Args:
             output_envelope: EnergyPlusOutputEnvelope from the validator container
-            run_context: Execution context for CEL evaluation
+            run_context: Execution context for assertion evaluation
 
         Returns:
             ValidationResult with output-stage issues, assertion_stats,
@@ -372,34 +372,26 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         # Extract signals from envelope for downstream steps and assertion evaluation
         signals = self.extract_output_signals(output_envelope) or {}
 
-        # Evaluate output-stage CEL assertions if we have context
+        # Evaluate output-stage assertions if we have context
         assertion_issues: list[ValidationIssue] = []
-        total_assertions = 0
+        assertion_total = 0
+        assertion_failures = 0
         if run_context and run_context.step:
             # Get the validator and ruleset from the step
             validator = run_context.step.validator
             ruleset = run_context.step.ruleset
 
             if validator and ruleset:
-                # Evaluate output-stage assertions using the extracted signals
-                assertion_issues = self.evaluate_cel_assertions(
-                    ruleset=ruleset,
+                assertion_result = self.evaluate_assertions_for_stage(
                     validator=validator,
+                    ruleset=ruleset,
                     payload=signals,
-                    target_stage="output",
+                    stage="output",
                 )
+                assertion_issues = assertion_result.issues
+                assertion_total = assertion_result.total
+                assertion_failures = assertion_result.failures
                 issues.extend(assertion_issues)
-
-                # Count output-stage assertions only
-                total_assertions = self._count_stage_assertions(ruleset, "output")
-
-        # Count assertion failures: only ERROR-severity assertion issues.
-        # WARNING/INFO assertions are tracked as issues but don't count toward
-        # failures - they're intentionally configured as non-blocking.
-        assertion_failures = sum(
-            1 for issue in assertion_issues
-            if issue.severity == Severity.ERROR
-        )
 
         # Determine pass/fail based on envelope status
         if output_envelope.status == ValidationStatus.SUCCESS:
@@ -425,7 +417,7 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             passed=passed,
             issues=issues,
             assertion_stats=AssertionStats(
-                total=total_assertions,
+                total=assertion_total,
                 failures=assertion_failures,
             ),
             signals=signals,

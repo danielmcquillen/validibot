@@ -11,7 +11,6 @@ from jsonschema import FormatChecker
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -41,8 +40,6 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
         ruleset: Ruleset,
         run_context: RunContext | None = None,
     ) -> ValidationResult:
-        # Store run_context on instance for CEL evaluation methods
-        self.run_context = run_context
         # JSON Schema validators require JSON content. This check is a safety net -
         # the handler also validates file type compatibility before calling the engine.
         if submission.file_type != SubmissionFileType.JSON:
@@ -87,40 +84,17 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
                 stats={"exception": type(e).__name__},
             )
 
-        # Now validate against JSON Schema!
+        # Validate against JSON Schema
         v = Draft202012Validator(schema, format_checker=FormatChecker())
         errors = sorted(v.iter_errors(data), key=lambda e: list(e.path))
         issues: list[ValidationIssue] = [
             ValidationIssue("/".join(map(str, e.path)), e.message) for e in errors
         ]
 
-        # Evaluate CEL assertions (if any) using the parsed JSON payload.
-        # This follows the same pattern as BasicValidatorEngine.
-        assertion_issues = self.evaluate_cel_assertions(
-            ruleset=ruleset,
-            validator=validator,
-            payload=data,
-            target_stage="input",
-        )
-        issues.extend(assertion_issues)
-
-        # Count assertion failures: only ERROR-severity assertion issues.
-        # WARNING/INFO assertions are tracked as issues but don't count toward
-        # failures - they're intentionally configured as non-blocking.
-        assertion_failures = sum(
-            1 for issue in assertion_issues
-            if issue.severity == Severity.ERROR
-        )
-        total_assertions = self._count_stage_assertions(ruleset, "input")
-
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
             passed=passed,
             issues=issues,
-            assertion_stats=AssertionStats(
-                total=total_assertions,
-                failures=assertion_failures,
-            ),
             stats={"error_count": len(errors)},
         )
 

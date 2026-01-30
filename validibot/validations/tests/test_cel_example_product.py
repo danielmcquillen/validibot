@@ -75,15 +75,15 @@ class TestExampleProductWithCEL(TestCase):
     def _engine_validate(self, payload: dict):
         self._assertion()
         engine = BasicValidatorEngine()
-        # Basic engine expects JSON string content; we bypass submissions and 
+        # Basic engine expects JSON string content; we bypass submissions and
         # feed payload directly.
-        issues = engine.evaluate_cel_assertions(
+        result = engine.evaluate_assertions_for_stage(
             ruleset=self.ruleset,
             validator=self.validator,
             payload=payload,
-            target_stage="input",
+            stage="input",
         )
-        return issues
+        return result.issues
 
     def test_happy_path_passes(self):
         issues = self._engine_validate(self.payload)
@@ -114,14 +114,14 @@ class TestExampleProductWithCEL(TestCase):
         )
         engine = BasicValidatorEngine()
         # Assertions without target_catalog_entry default to OUTPUT stage
-        issues = engine.evaluate_cel_assertions(
+        result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,
             validator=validator,
             payload=self.payload,
-            target_stage="output",
+            stage="output",
         )
-        self.assertEqual(len(issues), 1)
-        self.assertIn("identifier 'price'", issues[0].message)
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("identifier 'price'", result.issues[0].message)
 
     def test_rating_must_be_high_enough(self):
         payload = {**self.payload, "rating": 80}

@@ -45,7 +45,6 @@ You won't find any concrete implementations here; those are in other modules.
 from __future__ import annotations
 
 import logging
-import re
 from abc import ABC
 from abc import abstractmethod
 from dataclasses import asdict
@@ -59,10 +58,6 @@ from django.conf import settings
 
 from validibot.validations.cel import DEFAULT_HELPERS
 from validibot.validations.cel import CelHelper
-from validibot.validations.cel_eval import evaluate_cel_expression
-from validibot.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
-from validibot.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
-from validibot.validations.constants import CEL_MAX_EXPRESSION_CHARS
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import Severity
@@ -114,6 +109,20 @@ class AssertionStats:
 
     total: int = 0
     failures: int = 0
+
+
+@dataclass
+class AssertionEvaluationResult:
+    """
+    Result of evaluating assertions for a stage.
+
+    Bundles issues with total and failure counts so these values remain
+    consistent and don't require duplicated counting logic in engines.
+    """
+
+    issues: list[ValidationIssue]
+    total: int
+    failures: int
 
 
 @dataclass
@@ -193,8 +202,16 @@ class BaseValidatorEngine(ABC):
 
     def get_cel_helpers(self) -> dict[str, CelHelper]:
         """
-        Return the helper allowlist for this engine. Subclasses can override to
-        append or remove helpers based on validator metadata.
+        Return the helper allowlist for CEL evaluation in this engine.
+
+        CEL helpers are the set of extra functions/variables exposed to CEL
+        expressions at evaluation time. They extend the CEL standard library
+        with domain-specific utilities (for example, normalization, date/time
+        helpers, or convenience predicates) that we explicitly allow.
+
+        This method provides an allowlist so we control what CEL can access.
+        Subclasses can override to append or remove helpers based on validator
+        metadata or security requirements.
         """
         return dict(self.cel_helpers)
 
@@ -203,11 +220,11 @@ class BaseValidatorEngine(ABC):
     @classmethod
     def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:
         """
-        Extract assertion signals from an output envelope for CEL evaluation.
+        Extract assertion signals from an output envelope for assertion evaluation.
 
         Async engines (EnergyPlus, FMI) produce output envelopes with domain-specific
         structures containing simulation results. This method extracts the signals
-        that can be referenced in output-stage CEL assertions.
+        that can be referenced in output-stage assertions.
 
         Override this in subclasses to handle validator-specific envelope structures.
         The base implementation returns None (no signals available).
@@ -370,203 +387,19 @@ class BaseValidatorEngine(ABC):
             assertion_id=getattr(assertion, "id", None),
         )
 
-    def run_cel_assertions_for_stages(
-        self,
-        *,
-        validator: Validator,
-        ruleset: Ruleset,
-        input_payload: Any | None = None,
-        output_payload: Any | None = None,
-    ) -> list[ValidationIssue]:
+    def _count_assertion_failures(self, issues: list[ValidationIssue]) -> int:
         """
-        Convenience wrapper to evaluate CEL assertions for input/output stages.
+        Count assertion failures from a list of issues.
 
-        Engines can pass whichever payloads they have available; this keeps the
-        two-pass CEL pattern consistent across engines while still allowing
-        subclasses to preprocess the stage-specific payloads before invoking.
+        An assertion failure is an issue with an assertion_id that has
+        ERROR severity. WARNING/INFO assertions are still issues but are
+        intentionally configured as non-blocking.
         """
-
-        if validator is None:
-            raise ValueError("validator must be provided.")
-        if ruleset is None:
-            raise ValueError("ruleset is required for CEL evaluation.")
-
-        if input_payload is None and output_payload is None:
-            raise ValueError(
-                "At least one of input_payload or output_payload must be provided."
-            )
-
-        issues: list[ValidationIssue] = []
-        if input_payload is not None:
-            issues.extend(
-                self.evaluate_cel_assertions(
-                    ruleset=ruleset,
-                    validator=validator,
-                    payload=input_payload,
-                    target_stage="input",
-                ),
-            )
-        if output_payload is not None:
-            issues.extend(
-                self.evaluate_cel_assertions(
-                    ruleset=ruleset,
-                    validator=validator,
-                    payload=output_payload,
-                    target_stage="output",
-                ),
-            )
-        return issues
-
-    def evaluate_cel_assertions(
-        self,
-        *,
-        ruleset: Ruleset,
-        validator: Validator,
-        payload: Any,
-        target_stage: str,
-    ) -> list[ValidationIssue]:
-        """
-        Evaluate CEL assertions on the given ruleset using a context derived
-        from the validator catalog and payload. Returns a list of issues.
-
-        Only assertions matching the target_stage are evaluated. The stage is
-        determined by the assertion's resolved_run_stage property, which uses
-        target_catalog_entry.run_stage if set, otherwise defaults to OUTPUT.
-        """
-
-        if validator is None:
-            raise ValueError("validator must be provided.")
-        if ruleset is None:
-            raise ValueError("ruleset is required for CEL evaluation.")
-
-        if payload is None:
-            return []
-        if target_stage not in {"input", "output"}:
-            return []
-        assertions = list(
-            ruleset.assertions.filter(assertion_type="cel_expr").order_by("order", "pk")
+        return sum(
+            1
+            for issue in issues
+            if issue.assertion_id is not None and issue.severity == Severity.ERROR
         )
-        if not assertions:
-            return []
-        try:
-            context = self._build_cel_context(payload, validator)
-        except Exception as exc:
-            return [
-                ValidationIssue(
-                    path="",
-                    message=_("Unable to build CEL context: %(err)s") % {"err": exc},
-                    severity=getattr(validator, "severity", None) or Severity.ERROR,
-                ),
-            ]
-        issues: list[ValidationIssue] = []
-        for assertion in assertions:
-            # Skip if assertion doesn't match the current evaluation stage
-            logger.info(
-                "[ASSERTION DEBUG] Checking assertion %s: resolved_run_stage=%r, "
-                "target_stage=%r, match=%s",
-                assertion.id,
-                assertion.resolved_run_stage,
-                target_stage,
-                assertion.resolved_run_stage == target_stage,
-            )
-            if assertion.resolved_run_stage != target_stage:
-                logger.info(
-                    "[ASSERTION DEBUG] Skipping assertion %s (stage mismatch)",
-                    assertion.id,
-                )
-                continue
-            logger.info(
-                "[ASSERTION DEBUG] Evaluating assertion %s",
-                assertion.id,
-            )
-            expr = (assertion.rhs or {}).get("expr") or assertion.cel_cache or ""
-            if len(expr) > CEL_MAX_EXPRESSION_CHARS:
-                issues.append(
-                    self._issue_from_assertion(
-                        assertion,
-                        path="",
-                        message=_("CEL expression is too long."),
-                    ),
-                )
-                continue
-            if len(context) > CEL_MAX_CONTEXT_SYMBOLS:
-                issues.append(
-                    self._issue_from_assertion(
-                        assertion,
-                        path="",
-                        message=_("CEL context is too large."),
-                    ),
-                )
-                continue
-
-            when_expr = (assertion.when_expression or "").strip()
-            if when_expr:
-                guard_result = evaluate_cel_expression(
-                    expression=when_expr,
-                    context=context,
-                    timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
-                )
-                if not guard_result.success:
-                    issues.append(
-                        self._issue_from_assertion(
-                            assertion,
-                            path="",
-                            message=_("CEL 'when' failed: %(err)s")
-                            % {"err": guard_result.error},
-                        ),
-                    )
-                    continue
-                if not guard_result.value:
-                    continue
-
-            result = evaluate_cel_expression(
-                expression=expr,
-                context=context,
-                timeout_ms=CEL_MAX_EVAL_TIMEOUT_MS,
-            )
-            if not result.success:
-                raw_error = str(result.error)
-                msg = raw_error
-                missing_ref = re.search(
-                    r"undeclared reference to ['\"](?P<ident>[^'\"]+)['\"]",
-                    raw_error,
-                )
-                identifier = None
-                if missing_ref:
-                    identifier = missing_ref.group("ident")
-                elif "undeclared reference to" in raw_error:
-                    tail = raw_error.split("undeclared reference to", 1)[1]
-                    identifier = tail.strip().split()[0].strip(" '\"()\\")
-                if identifier:
-                    msg = _(
-                        "CEL references undefined identifier '%(identifier)s'. "
-                        "Ensure a matching validator catalog entry exists."
-                    ) % {"identifier": identifier}
-                issues.append(
-                    self._issue_from_assertion(
-                        assertion,
-                        path="",
-                        message=_("CEL evaluation failed: %(err)s") % {"err": msg},
-                    ),
-                )
-                continue
-            if not bool(result.value):
-                failure_message = assertion.message_template or _(
-                    "CEL assertion evaluated to false.",
-                )
-                issues.append(
-                    self._issue_from_assertion(
-                        assertion,
-                        path="",
-                        message=failure_message,
-                    ),
-                )
-            else:
-                # Assertion passed - emit success issue if configured
-                success_issue = self._maybe_success_issue(assertion)
-                if success_issue:
-                    issues.append(success_issue)
-        return issues
 
     def _should_emit_success_messages(self) -> bool:
         """Check if success messages should be emitted for passed assertions."""
@@ -639,6 +472,81 @@ class BaseValidatorEngine(ABC):
                 count += 1
         return count
 
+    def evaluate_assertions_for_stage(
+        self,
+        *,
+        validator: Validator,
+        ruleset: Ruleset | None,
+        payload: Any,
+        stage: str,
+    ) -> AssertionEvaluationResult:
+        """
+        Evaluate all assertions for a given stage using the evaluator registry.
+
+        This is the unified entry point for assertion evaluation. It iterates
+        through assertions in order, dispatching each to the appropriate evaluator
+        based on assertion_type. This allows mixed assertion types (BASIC, CEL,
+        future types) to be evaluated in a single ordered pass.
+
+        Args:
+            validator: The Validator model instance.
+            ruleset: The Ruleset model instance (may be None).
+            payload: The data to evaluate assertions against.
+            stage: "input" or "output" - only assertions matching this stage
+                are evaluated.
+
+        Returns:
+            AssertionEvaluationResult with issues, total count, and failure count.
+        """
+        if ruleset is None:
+            return AssertionEvaluationResult(issues=[], total=0, failures=0)
+
+        from validibot.validations.assertions.evaluators.base import AssertionContext
+        from validibot.validations.assertions.evaluators.registry import get_evaluator
+
+        # Get all assertions ordered by (order, pk)
+        assertions = list(
+            ruleset.assertions.all()
+            .select_related("target_catalog_entry")
+            .order_by("order", "pk")
+        )
+
+        # Filter to target stage
+        stage_assertions = [
+            a for a in assertions if a.resolved_run_stage == stage
+        ]
+
+        if not stage_assertions:
+            return AssertionEvaluationResult(issues=[], total=0, failures=0)
+
+        # Build evaluation context (CEL context is lazy-built on first use)
+        context = AssertionContext(validator=validator, engine=self)
+
+        issues: list[ValidationIssue] = []
+        for assertion in stage_assertions:
+            evaluator = get_evaluator(assertion.assertion_type)
+            if not evaluator:
+                logger.warning(
+                    "No evaluator registered for assertion type: %s",
+                    assertion.assertion_type,
+                )
+                continue
+
+            assertion_issues = evaluator.evaluate(
+                assertion=assertion,
+                payload=payload,
+                context=context,
+            )
+            issues.extend(assertion_issues)
+
+        total = len(stage_assertions)
+        failures = self._count_assertion_failures(issues)
+        return AssertionEvaluationResult(
+            issues=issues,
+            total=total,
+            failures=failures,
+        )
+
     @abstractmethod
     def validate(
         self,
@@ -678,7 +586,7 @@ class BaseValidatorEngine(ABC):
         Implementation should:
         1. Extract issues from envelope.messages
         2. Extract signals via extract_output_signals()
-        3. Evaluate output-stage CEL assertions using those signals
+        3. Evaluate output-stage assertions using those signals
         4. Return ValidationResult with signals field populated
 
         Default implementation raises NotImplementedError. Advanced engines

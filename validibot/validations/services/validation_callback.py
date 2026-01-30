@@ -333,28 +333,17 @@ class ValidationCallbackService:
         processor = get_step_processor(run, step_run)
         processor.complete_from_callback(output_envelope)
 
-        # Map step status for run finalization logic
-        step_status_mapping = {
-            ValidationStatus.SUCCESS: StepStatus.PASSED,
-            ValidationStatus.FAILED_VALIDATION: StepStatus.FAILED,
-            ValidationStatus.FAILED_RUNTIME: StepStatus.FAILED,
-            ValidationStatus.CANCELLED: StepStatus.SKIPPED,
-        }
-        step_status = step_status_mapping.get(
-            output_envelope.status,
-            StepStatus.FAILED,
-        )
+        # Refresh step_run to get the final status set by the processor.
+        # The processor's finalize_step() sets step_run.status based on:
+        # 1. Container envelope status (authoritative for container execution)
+        # 2. Output-stage assertion failures (can fail step even if container succeeded)
+        # We must use this status, NOT output_envelope.status, for run-level decisions.
+        step_run.refresh_from_db()
+        step_status = StepStatus(step_run.status)
 
-        # Extract error for run-level error message
-        step_error = ""
-        if output_envelope.status != ValidationStatus.SUCCESS:
-            error_messages = [
-                msg.text
-                for msg in output_envelope.messages
-                if str(msg.severity).upper() == "ERROR"
-            ]
-            if error_messages:
-                step_error = "\n".join(error_messages)
+        # Extract error for run-level error message from step_run
+        # (processor already extracted and stored this)
+        step_error = step_run.error or ""
 
         # NOTE: The processor has already:
         # 1. Persisted findings (envelope messages + assertion results)
@@ -386,31 +375,31 @@ class ValidationCallbackService:
                 step_run.step_order + 1,
             )
         else:
-            status_mapping = {
-                ValidationStatus.SUCCESS: ValidationRunStatus.SUCCEEDED,
-                ValidationStatus.FAILED_VALIDATION: ValidationRunStatus.FAILED,
-                ValidationStatus.FAILED_RUNTIME: ValidationRunStatus.FAILED,
-                ValidationStatus.CANCELLED: ValidationRunStatus.CANCELED,
-            }
-            error_category_mapping = {
-                ValidationStatus.SUCCESS: "",
-                ValidationStatus.FAILED_VALIDATION: (
-                    ValidationRunErrorCategory.VALIDATION_FAILED
-                ),
-                ValidationStatus.FAILED_RUNTIME: (
-                    ValidationRunErrorCategory.RUNTIME_ERROR
-                ),
-                ValidationStatus.CANCELLED: "",
+            # Map step status to run status.
+            # We use step_status (from processor) rather than envelope status because
+            # the processor accounts for output-stage assertion failures that can fail
+            # the step even when the container returned SUCCESS.
+            step_to_run_status = {
+                StepStatus.PASSED: ValidationRunStatus.SUCCEEDED,
+                StepStatus.FAILED: ValidationRunStatus.FAILED,
+                StepStatus.SKIPPED: ValidationRunStatus.CANCELED,
             }
 
-            run.status = status_mapping.get(
-                output_envelope.status,
+            # Determine error category based on envelope status (for runtime vs
+            # validation) combined with step status (for assertion failures)
+            if step_status == StepStatus.PASSED:
+                error_category = ""
+            elif output_envelope.status == ValidationStatus.FAILED_RUNTIME:
+                error_category = ValidationRunErrorCategory.RUNTIME_ERROR
+            else:
+                # FAILED_VALIDATION, SUCCESS with assertion failures, or unknown
+                error_category = ValidationRunErrorCategory.VALIDATION_FAILED
+
+            run.status = step_to_run_status.get(
+                step_status,
                 ValidationRunStatus.FAILED,
             )
-            run.error_category = error_category_mapping.get(
-                output_envelope.status,
-                ValidationRunErrorCategory.RUNTIME_ERROR,
-            )
+            run.error_category = error_category
             run.ended_at = finished_at
             run.error = step_error
 
@@ -431,20 +420,19 @@ class ValidationCallbackService:
             )
             self._queue_purge_if_do_not_store(run)
 
-        # Update the receipt status from PROCESSING to the final status.
+        # Update the receipt status from PROCESSING to the final step status.
+        # We use step_status (not callback.status/envelope status) because the
+        # processor may have failed the step due to assertion failures even when
+        # the container returned SUCCESS.
         if callback.callback_id and receipt:
             try:
-                cb_status = callback.status
-                status_str = (
-                    cb_status.value if hasattr(cb_status, "value") else str(cb_status)
-                )
-                receipt.status = status_str
+                receipt.status = step_status  # TextChoices is string-like
                 receipt.validation_run = run
                 receipt.save(update_fields=["status", "validation_run"])
                 logger.debug(
                     "Updated callback receipt %s to status %s",
                     callback.callback_id,
-                    status_str,
+                    step_status,
                 )
             except Exception:
                 # If receipt update fails, log but don't fail the request.
@@ -455,8 +443,9 @@ class ValidationCallbackService:
                 )
 
         logger.info(
-            "Successfully processed callback for run %s",
+            "Processed callback for run %s, step status=%s",
             callback.run_id,
+            step_status,
         )
 
         return Response(

@@ -120,12 +120,13 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Callback processed successfully")
 
-        # Verify receipt was created and updated to final status
+        # Verify receipt was created and updated to final step status
         receipt = CallbackReceipt.objects.filter(callback_id=callback_id).first()
         self.assertIsNotNone(receipt)
         self.assertEqual(receipt.validation_run_id, self.run.id)
-        # Receipt should be updated from "processing" to final status
-        self.assertEqual(receipt.status, "success")
+        # Receipt should be updated from PROCESSING to final step status (PASSED)
+        # Note: We store step_status (PASSED/FAILED), not callback status (success)
+        self.assertEqual(receipt.status, StepStatus.PASSED)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
@@ -284,6 +285,115 @@ class CallbackIdempotencyTestCase(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_retry_when_processor_fails_receipt_stays_processing(self, mock_download):
+        """
+        Test that when processing fails, the receipt stays PROCESSING and retry works.
+
+        Scenario:
+        1. First callback arrives, receipt created with PROCESSING status
+        2. Processor throws an exception mid-processing
+        3. Receipt stays in PROCESSING state (not updated to terminal)
+        4. Second callback arrives with same callback_id
+        5. System detects PROCESSING status and allows retry
+        6. Second attempt succeeds
+        """
+        from validibot.core.models import CallbackReceiptStatus
+
+        # First call: simulate processor failure by throwing exception
+        mock_download.side_effect = Exception("Simulated GCS download failure")
+
+        callback_id = str(uuid.uuid4())
+        payload = {
+            "run_id": str(self.run.id),
+            "callback_id": callback_id,
+            "status": "success",
+            "result_uri": "gs://bucket/output.json",
+        }
+
+        # First attempt - should fail with 500
+        response1 = self.client.post(
+            self.callback_url,
+            data=payload,
+            format="json",
+        )
+        self.assertEqual(response1.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Verify receipt exists and is in PROCESSING state
+        receipt = CallbackReceipt.objects.get(callback_id=callback_id)
+        self.assertEqual(receipt.status, CallbackReceiptStatus.PROCESSING)
+
+        # Second call: processor succeeds this time
+        mock_download.side_effect = None
+        mock_download.return_value = self._make_mock_envelope()
+
+        # Second attempt - should succeed (retry detected)
+        response2 = self.client.post(
+            self.callback_url,
+            data=payload,
+            format="json",
+        )
+
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.data["message"], "Callback processed successfully")
+        # NOT marked as idempotent_replayed because it was a retry, not a duplicate
+        self.assertNotIn("idempotent_replayed", response2.data)
+
+        # Verify receipt is now updated to terminal step status (PASSED)
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.status, StepStatus.PASSED)
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_no_retry_when_receipt_has_terminal_status(self, mock_download):
+        """
+        Test that callbacks with terminal receipt status are NOT retried.
+
+        Once a callback has been successfully processed (terminal status),
+        subsequent callbacks with the same callback_id should return the
+        idempotent_replayed response, not reprocess.
+        """
+        mock_download.return_value = self._make_mock_envelope()
+
+        callback_id = str(uuid.uuid4())
+        payload = {
+            "run_id": str(self.run.id),
+            "callback_id": callback_id,
+            "status": "success",
+            "result_uri": "gs://bucket/output.json",
+        }
+
+        # First attempt - should succeed
+        response1 = self.client.post(
+            self.callback_url,
+            data=payload,
+            format="json",
+        )
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        self.assertEqual(response1.data["message"], "Callback processed successfully")
+
+        # Verify receipt has terminal step status (PASSED, not "success")
+        receipt = CallbackReceipt.objects.get(callback_id=callback_id)
+        self.assertEqual(receipt.status, StepStatus.PASSED)
+
+        # Reset mock to track if it gets called
+        mock_download.reset_mock()
+
+        # Second attempt - should return idempotent response without reprocessing
+        response2 = self.client.post(
+            self.callback_url,
+            data=payload,
+            format="json",
+        )
+
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertTrue(response2.data.get("idempotent_replayed"))
+        self.assertEqual(response2.data["message"], "Callback already processed")
+
+        # Verify download_envelope was NOT called (no reprocessing)
+        mock_download.assert_not_called()
 
 
 class CallbackReceiptModelTestCase(TestCase):

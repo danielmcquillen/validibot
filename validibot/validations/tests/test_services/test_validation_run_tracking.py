@@ -9,7 +9,6 @@ from validibot.tracking.models import TrackingEvent
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory

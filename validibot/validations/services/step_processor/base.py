@@ -118,11 +118,11 @@ class ValidationStepProcessor(ABC):
             severity = self._coerce_severity(issue.severity)
             severity_counts[severity] += 1
 
-            # Count assertion failures: any assertion issue that is NOT a success.
-            # SUCCESS-severity issues indicate the assertion PASSED (expression=true).
-            # All other severities (ERROR, WARNING, INFO) indicate the assertion
-            # FAILED (expression=false), just with different importance levels.
-            if issue.assertion_id is not None and severity != Severity.SUCCESS.value:
+            # Count assertion failures: only ERROR-severity assertion issues.
+            # WARNING/INFO assertions that evaluate to false are tracked as issues
+            # but don't count toward the failure total - they're intentionally
+            # configured as non-blocking by the author.
+            if issue.assertion_id is not None and severity == Severity.ERROR.value:
                 assertion_failures += 1
 
             finding = ValidationFinding(

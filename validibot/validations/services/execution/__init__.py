@@ -49,7 +49,8 @@ else:
 
 The backend is selected based on the `DEPLOYMENT_TARGET` setting:
 
-- `"test"`, `"local_docker_compose"`, `"docker_compose"` → SelfHostedExecutionBackend (Docker)
+- `"test"`, `"local_docker_compose"`, `"docker_compose"` → SelfHostedExecutionBackend
+
 - `"gcp"` → GCPExecutionBackend (Cloud Run Jobs)
 - `"aws"` → AWSBatchExecutionBackend (future)
 

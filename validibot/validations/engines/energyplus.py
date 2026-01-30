@@ -393,11 +393,12 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
                 # Count output-stage assertions only
                 total_assertions = self._count_stage_assertions(ruleset, "output")
 
-        # Count assertion failures (non-SUCCESS issues from assertions).
-        # SUCCESS-severity issues indicate passed assertions, not failures.
+        # Count assertion failures: only ERROR-severity assertion issues.
+        # WARNING/INFO assertions are tracked as issues but don't count toward
+        # failures - they're intentionally configured as non-blocking.
         assertion_failures = sum(
             1 for issue in assertion_issues
-            if issue.severity != Severity.SUCCESS
+            if issue.severity == Severity.ERROR
         )
 
         # Determine pass/fail based on envelope status

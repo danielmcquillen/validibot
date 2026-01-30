@@ -600,11 +600,12 @@ class AiAssistEngine(BaseValidatorEngine):
                         issues.append(issue)
 
         has_error = any(issue.severity == Severity.ERROR for issue in issues)
-        # Count assertion failures (non-SUCCESS issues from assertion evaluation).
-        # SUCCESS-severity issues indicate passed assertions, not failures.
+        # Count assertion failures: only ERROR-severity assertion issues.
+        # WARNING/INFO assertions are tracked as issues but don't count toward
+        # failures - they're intentionally configured as non-blocking.
         assertion_failures = sum(
             1 for issue in issues
-            if issue.assertion_id is not None and issue.severity != Severity.SUCCESS
+            if issue.assertion_id is not None and issue.severity == Severity.ERROR
         )
         # Count total assertions (CEL assertions from ruleset + policy rules)
         total_assertions = len(rules_raw or [])

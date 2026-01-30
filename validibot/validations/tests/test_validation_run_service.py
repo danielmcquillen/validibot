@@ -1,3 +1,5 @@
+from collections import Counter
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory
@@ -13,8 +15,6 @@ from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
@@ -159,11 +159,6 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     Test that findings, summaries, and assertion stats are correctly persisted
     when executing a validation run via the processor architecture.
     """
-    from collections import Counter
-
-    from validibot.validations.engines.base import AssertionStats
-    from validibot.validations.services.step_processor.result import StepProcessingResult
-
     org = OrganizationFactory()
     user = UserFactory()
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
@@ -197,7 +192,7 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     # Create a fake processor execute result
     def mock_execute_validator_step(self, *, validation_run, step_run):
         # Manually create a finding to simulate what the processor does
-        finding = ValidationFinding.objects.create(
+        ValidationFinding.objects.create(
             validation_run=validation_run,
             validation_step_run=step_run,
             path="price",

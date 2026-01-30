@@ -43,7 +43,7 @@ class AWSBatchValidatorRunner(ValidatorRunner):
     - Use boto3.client("batch") for job submission
     - Job definitions should be pre-created in AWS Batch
     - Map container images to job definition names (similar to Cloud Run Jobs)
-    - Pass INPUT_URI as environment variable override
+    - Pass VALIDIBOT_INPUT_URI as environment variable override
     - Use S3 for input/output files
     """
 

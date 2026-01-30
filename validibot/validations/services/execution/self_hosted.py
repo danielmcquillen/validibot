@@ -201,6 +201,8 @@ class SelfHostedExecutionBackend(ExecutionBackend):
                 container_image=container_image,
                 input_uri=input_envelope_uri,
                 output_uri=output_envelope_uri,
+                run_id=request.run_id,
+                validator_slug=request.validator_type.lower(),
             )
 
             # 7. Process result

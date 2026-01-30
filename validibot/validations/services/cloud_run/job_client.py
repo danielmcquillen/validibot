@@ -90,14 +90,16 @@ def run_validator_job(
                     # overrides (no CLI args). We keep the rest of the contract
                     # in GCS (input_uri) to avoid large payloads in requests.
                     env=[
-                        run_v2.EnvVar(name="INPUT_URI", value=input_uri),
+                        run_v2.EnvVar(name="VALIDIBOT_INPUT_URI", value=input_uri),
                     ],
                 ),
             ],
         ),
     )
 
-    logger.info("Starting Cloud Run Job: %s with INPUT_URI=%s", job_name, input_uri)
+    logger.info(
+        "Starting Cloud Run Job: %s with VALIDIBOT_INPUT_URI=%s", job_name, input_uri
+    )
 
     # run_job returns a long-running operation. Do NOT call operation.result()
     # which would block until the job completes (potentially minutes/hours).

@@ -220,7 +220,17 @@ VALIDATOR_RUNNER_OPTIONS = {
 VALIDATOR_IMAGE_TAG = env("VALIDATOR_IMAGE_TAG", default="latest")
 VALIDATOR_IMAGE_REGISTRY = env("VALIDATOR_IMAGE_REGISTRY", default="")
 
-# Optional: Explicit image mapping (overrides default naming convention)
+# Advanced validator images to enable.
+# These are container images with embedded metadata that the sync_advanced_validators
+# command will read to create/update validator records.
+#
+# Example:
+#   ADVANCED_VALIDATOR_IMAGES=ghcr.io/validibot/energyplus:24.2.0,ghcr.io/validibot/fmi:0.9.0
+#
+# Run `python manage.py sync_advanced_validators` after changing this setting.
+ADVANCED_VALIDATOR_IMAGES = env.list("ADVANCED_VALIDATOR_IMAGES", default=[])
+
+# Optional: Explicit image mapping for get_container_image() (overrides default naming)
 # VALIDATOR_IMAGES = {
 #     "energyplus": "my-registry/my-energyplus:v1.0",
 #     "fmi": "my-registry/my-fmi:v1.0",

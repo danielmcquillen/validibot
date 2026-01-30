@@ -18,6 +18,20 @@ Environment variables passed to containers:
 - VALIDIBOT_OUTPUT_URI: Where to write output envelope
 - VALIDIBOT_RUN_ID: Validation run ID (for logging)
 
+## Container Labels (Ryuk Pattern)
+
+All spawned containers are labeled for robust cleanup:
+- org.validibot.managed: "true" (identifies Validibot containers)
+- org.validibot.run_id: validation run ID
+- org.validibot.validator: validator slug
+- org.validibot.started_at: ISO timestamp
+- org.validibot.timeout_seconds: configured timeout
+
+This enables three cleanup strategies:
+1. On-demand cleanup after each run (normal path)
+2. Periodic sweep for orphaned containers (via cleanup_orphaned_containers())
+3. Startup cleanup for containers from crashed workers
+
 SECURITY NOTES
 --------------
 - Containers run with read-only access to input files
@@ -30,6 +44,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from datetime import UTC
+from datetime import datetime
 
 from django.conf import settings
 
@@ -44,6 +60,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_MEMORY_LIMIT = "4g"
 DEFAULT_CPU_LIMIT = "2.0"
 DEFAULT_TIMEOUT_SECONDS = 3600  # 1 hour
+
+# Container label prefix for Validibot-managed containers
+LABEL_PREFIX = "org.validibot"
+LABEL_MANAGED = f"{LABEL_PREFIX}.managed"
+LABEL_RUN_ID = f"{LABEL_PREFIX}.run_id"
+LABEL_VALIDATOR = f"{LABEL_PREFIX}.validator"
+LABEL_STARTED_AT = f"{LABEL_PREFIX}.started_at"
+LABEL_TIMEOUT_SECONDS = f"{LABEL_PREFIX}.timeout_seconds"
 
 
 class DockerValidatorRunner(ValidatorRunner):
@@ -132,6 +156,8 @@ class DockerValidatorRunner(ValidatorRunner):
         output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
+        run_id: str | None = None,
+        validator_slug: str | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -147,6 +173,8 @@ class DockerValidatorRunner(ValidatorRunner):
             output_uri: URI where container should write output envelope
             environment: Additional environment variables
             timeout_seconds: Maximum execution time (uses default if None)
+            run_id: Validation run ID for labeling (enables orphan cleanup)
+            validator_slug: Validator slug for labeling
 
         Returns:
             ExecutionResult with exit_code, output_uri, and logs
@@ -166,8 +194,21 @@ class DockerValidatorRunner(ValidatorRunner):
             "VALIDIBOT_INPUT_URI": input_uri,
             "VALIDIBOT_OUTPUT_URI": output_uri,
         }
+        if run_id:
+            env["VALIDIBOT_RUN_ID"] = run_id
         if environment:
             env.update(environment)
+
+        # Build container labels for orphan cleanup (Ryuk pattern)
+        labels = {
+            LABEL_MANAGED: "true",
+            LABEL_STARTED_AT: datetime.now(UTC).isoformat(),
+            LABEL_TIMEOUT_SECONDS: str(timeout),
+        }
+        if run_id:
+            labels[LABEL_RUN_ID] = run_id
+        if validator_slug:
+            labels[LABEL_VALIDATOR] = validator_slug
 
         # Build volume mounts for storage access
         volumes = {}
@@ -189,6 +230,7 @@ class DockerValidatorRunner(ValidatorRunner):
         container_config = {
             "image": container_image,
             "environment": env,
+            "labels": labels,
             "detach": True,  # Still detach to get container object
             "mem_limit": self.memory_limit,
             "nano_cpus": int(float(self.cpu_limit) * 1e9),
@@ -360,3 +402,170 @@ class DockerValidatorRunner(ValidatorRunner):
     def get_runner_type(self) -> str:
         """Return runner type identifier."""
         return "docker"
+
+    def list_managed_containers(self) -> list:
+        """
+        List all Validibot-managed containers.
+
+        Returns:
+            List of Docker container objects with org.validibot.managed=true label.
+        """
+        client = self._get_client()
+        return client.containers.list(
+            all=True,
+            filters={"label": f"{LABEL_MANAGED}=true"},
+        )
+
+    def cleanup_orphaned_containers(
+        self,
+        grace_period_seconds: int = 300,
+    ) -> tuple[int, int]:
+        """
+        Clean up orphaned Validibot containers.
+
+        Identifies and removes containers that have exceeded their timeout
+        plus a grace period. This handles cases where the worker crashed
+        before cleaning up.
+
+        Args:
+            grace_period_seconds: Extra time to allow beyond the container's
+                configured timeout before considering it orphaned (default 5 min).
+
+        Returns:
+            Tuple of (containers_removed, containers_failed).
+        """
+        containers = self.list_managed_containers()
+        now = datetime.now(UTC)
+        removed = 0
+        failed = 0
+
+        for container in containers:
+            try:
+                # Get container labels
+                labels = container.labels
+                started_at_str = labels.get(LABEL_STARTED_AT)
+                timeout_str = labels.get(LABEL_TIMEOUT_SECONDS, "3600")
+
+                if not started_at_str:
+                    # No start time label, skip (shouldn't happen)
+                    logger.warning(
+                        "Container %s missing started_at label, skipping",
+                        container.short_id,
+                    )
+                    continue
+
+                # Parse start time
+                started_at = datetime.fromisoformat(started_at_str)
+                timeout = int(timeout_str)
+                max_age = timeout + grace_period_seconds
+
+                # Check if container has exceeded max age
+                age_seconds = (now - started_at).total_seconds()
+                if age_seconds > max_age:
+                    run_id = labels.get(LABEL_RUN_ID, "unknown")
+                    validator = labels.get(LABEL_VALIDATOR, "unknown")
+                    logger.info(
+                        "Removing orphaned container: id=%s, run_id=%s, "
+                        "validator=%s, age=%.0fs, max_age=%ds",
+                        container.short_id,
+                        run_id,
+                        validator,
+                        age_seconds,
+                        max_age,
+                    )
+                    container.remove(force=True)
+                    removed += 1
+
+            except Exception:
+                logger.exception(
+                    "Failed to cleanup container %s", container.short_id
+                )
+                failed += 1
+
+        if removed > 0 or failed > 0:
+            logger.info(
+                "Orphan cleanup complete: removed=%d, failed=%d",
+                removed,
+                failed,
+            )
+
+        return removed, failed
+
+    def cleanup_all_managed_containers(self) -> tuple[int, int]:
+        """
+        Remove all Validibot-managed containers.
+
+        Use this at startup to clean up containers from previous runs
+        that may have been left behind due to crashes.
+
+        Returns:
+            Tuple of (containers_removed, containers_failed).
+        """
+        containers = self.list_managed_containers()
+        removed = 0
+        failed = 0
+
+        for container in containers:
+            try:
+                run_id = container.labels.get(LABEL_RUN_ID, "unknown")
+                validator = container.labels.get(LABEL_VALIDATOR, "unknown")
+                logger.info(
+                    "Removing leftover container: id=%s, run_id=%s, validator=%s",
+                    container.short_id,
+                    run_id,
+                    validator,
+                )
+                container.remove(force=True)
+                removed += 1
+            except Exception:
+                logger.exception(
+                    "Failed to remove container %s", container.short_id
+                )
+                failed += 1
+
+        if removed > 0 or failed > 0:
+            logger.info(
+                "Startup cleanup complete: removed=%d, failed=%d",
+                removed,
+                failed,
+            )
+
+        return removed, failed
+
+
+def cleanup_orphaned_containers(grace_period_seconds: int = 300) -> tuple[int, int]:
+    """
+    Module-level function to clean up orphaned Validibot containers.
+
+    This is a convenience function that creates a runner instance and
+    calls its cleanup method. Suitable for use in management commands
+    or Dramatiq tasks.
+
+    Args:
+        grace_period_seconds: Extra time beyond timeout before cleanup.
+
+    Returns:
+        Tuple of (containers_removed, containers_failed).
+    """
+    runner = DockerValidatorRunner()
+    if not runner.is_available():
+        logger.warning("Docker not available, skipping orphan cleanup")
+        return 0, 0
+    return runner.cleanup_orphaned_containers(grace_period_seconds)
+
+
+def cleanup_all_managed_containers() -> tuple[int, int]:
+    """
+    Module-level function to remove all Validibot-managed containers.
+
+    This is a convenience function for startup cleanup. Use in
+    worker AppConfig.ready() or as a management command.
+
+    Returns:
+        Tuple of (containers_removed, containers_failed).
+    """
+    runner = DockerValidatorRunner()
+    if not runner.is_available():
+        logger.warning("Docker not available, skipping startup cleanup")
+        return 0, 0
+    return runner.cleanup_all_managed_containers()

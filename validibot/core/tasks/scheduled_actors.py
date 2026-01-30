@@ -282,3 +282,53 @@ def clear_sessions() -> dict:
         logger.error("Session cleanup failed: %s", result.get("error", ""))
 
     return result
+
+
+@dramatiq.actor(periodic=cron("*/10 * * * *"))  # Every 10 minutes
+def cleanup_orphaned_containers() -> dict:
+    """
+    Clean up orphaned Docker containers.
+
+    Removes Validibot-managed containers that have exceeded their timeout
+    plus a grace period (5 minutes). This handles cases where a worker
+    crashed while running a validator container.
+
+    This task only runs on self-hosted deployments (Docker Compose).
+    On GCP deployments, container cleanup is handled by Cloud Run.
+
+    Schedule: Every 10 minutes
+    """
+    from django.conf import settings
+
+    # Only run on self-hosted deployments
+    deployment_target = getattr(settings, "DEPLOYMENT_TARGET", "")
+    if deployment_target not in ("docker_compose", "local_docker_compose", "test"):
+        logger.debug(
+            "Skipping container cleanup on deployment target: %s",
+            deployment_target,
+        )
+        return {
+            "status": "skipped",
+            "reason": f"Not applicable for deployment target: {deployment_target}",
+            "timestamp": datetime.now(tz=UTC).isoformat(),
+        }
+
+    logger.info("Starting scheduled cleanup of orphaned containers")
+
+    result = _run_management_command(
+        "cleanup_containers",
+        "--grace-period=300",  # 5 minutes grace period
+    )
+
+    if result["status"] == "completed":
+        logger.info(
+            "Orphaned container cleanup completed: %s",
+            result.get("output", ""),
+        )
+    else:
+        logger.error(
+            "Orphaned container cleanup failed: %s",
+            result.get("error", ""),
+        )
+
+    return result

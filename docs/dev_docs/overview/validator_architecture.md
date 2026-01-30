@@ -585,6 +585,44 @@ docker pull your-registry/validibot-validator-energyplus:latest
 7. Backend reads output envelope from local storage
 8. Returns complete `ExecutionResponse` to engine
 
+### Container Labels (Ryuk Pattern)
+
+All validator containers are labeled for robust cleanup:
+
+```
+org.validibot.managed=true       # Identifies Validibot containers
+org.validibot.run_id=<run-id>    # Validation run ID
+org.validibot.validator=<slug>   # Validator slug (energyplus, fmi)
+org.validibot.started_at=<iso>   # ISO timestamp
+org.validibot.timeout_seconds=N  # Configured timeout
+```
+
+This enables three cleanup strategies:
+
+1. **On-demand cleanup** - Container removed immediately after run completes
+2. **Periodic sweep** - Background task removes orphaned containers every 10 minutes
+3. **Startup cleanup** - Worker removes leftover containers from crashed workers on startup
+
+### Container Cleanup
+
+Orphaned containers can occur if a worker crashes mid-run. Use the management command:
+
+```bash
+# Show what would be cleaned up
+python manage.py cleanup_containers --dry-run
+
+# Remove orphaned containers (exceeded timeout + 5 min grace)
+python manage.py cleanup_containers
+
+# Remove ALL managed containers (for startup cleanup)
+python manage.py cleanup_containers --all
+
+# Custom grace period
+python manage.py cleanup_containers --grace-period=600
+```
+
+The periodic cleanup task runs automatically every 10 minutes on self-hosted deployments.
+
 ### Debugging
 
 Check container logs:
@@ -592,6 +630,9 @@ Check container logs:
 ```bash
 # List recent validator containers
 docker ps -a --filter "name=validibot-validator"
+
+# List Validibot-managed containers by label
+docker ps -a --filter "label=org.validibot.managed=true"
 
 # View container logs
 docker logs <container-id>

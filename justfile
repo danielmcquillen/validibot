@@ -1767,7 +1767,7 @@ validator-deploy name stage: (validator-build-push name)
     echo "✓ $JOB_NAME deployed"
 
     # Grant the service account permission to run this job with overrides
-    # Uses custom role with run.jobs.run + run.jobs.runWithOverrides (for INPUT_URI env)
+    # Uses custom role with run.jobs.run + run.jobs.runWithOverrides (for VALIDIBOT_INPUT_URI env)
     echo "Granting job runner permission to $SA on $JOB_NAME..."
     gcloud run jobs add-iam-policy-binding "$JOB_NAME" \
         --region {{gcp_region}} \

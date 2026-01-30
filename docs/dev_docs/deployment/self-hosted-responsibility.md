@@ -35,6 +35,29 @@ Start with a few simple guardrails: pre-pull validator images, cap heavy-validat
 
 Schedule database backups, rotate secrets on a regular cadence, and apply OS/container security updates quickly. Keep a short incident playbook with the first logs to check and a rollback plan.
 
+## Container cleanup
+
+Validator containers are labeled and automatically cleaned up, but you should understand the cleanup mechanisms:
+
+1. **On-demand cleanup** - Containers are removed immediately after each validation run completes
+2. **Periodic sweep** - A background task runs every 10 minutes to remove orphaned containers that exceeded their timeout plus a 5-minute grace period
+3. **Startup cleanup** - When the Dramatiq worker starts, it removes any leftover containers from previous runs
+
+If you suspect orphaned containers, run:
+
+```bash
+# See what would be cleaned up
+python manage.py cleanup_containers --dry-run
+
+# Clean up orphaned containers
+python manage.py cleanup_containers
+
+# Force remove ALL managed containers
+python manage.py cleanup_containers --all
+```
+
+Containers are identified by the `org.validibot.managed=true` label.
+
 ## Why this is explicit
 
 Open-core projects that ship self-hosted deployments set clear expectations about operator responsibilities. We follow the same approach to reduce surprises, encourage safe deployments, and keep support boundaries clear.

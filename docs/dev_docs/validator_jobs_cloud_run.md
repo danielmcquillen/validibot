@@ -26,20 +26,20 @@ sequenceDiagram
     participant Job as Validator Job (SA)
 
     Web->>JobsAPI: jobs.run (web SA)
-    JobsAPI-->>Job: Start job with env INPUT_URI
+    JobsAPI-->>Job: Start job with env VALIDIBOT_INPUT_URI
     Job->>Job: Download input.json + files from GCS
     Job->>Worker: Callback with result_uri (ID token from job SA)
     Worker->>Worker: Verify ID token + persist results
 ```
 
 IAM roles involved:
-- **Web/Worker service account**: Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
+- **Web/Worker service account**: Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
 - **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 ### Custom IAM Role
 
-The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggering jobs with environment variable overrides (like `INPUT_URI`) requires `run.jobs.runWithOverrides`. We use a project-level custom role:
+The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggering jobs with environment variable overrides (like `VALIDIBOT_INPUT_URI`) requires `run.jobs.runWithOverrides`. We use a project-level custom role:
 
 ```bash
 # Role: projects/project-a509c806-3e21-4fbc-b19/roles/validibot_job_runner
@@ -48,7 +48,7 @@ The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggeri
 
 This role is automatically granted by the `just validator-deploy` command.
 
-Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
+Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `VALIDIBOT_INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
 
 Status tracking: We record the Cloud Run execution name and a `job_status` using `CloudRunJobStatus` (PENDING/RUNNING/SUCCEEDED/FAILED/CANCELLED) in launch stats for observability and fallback polling; run/step lifecycle still uses `ValidationRunStatus`/`StepStatus`.
 
@@ -156,7 +156,7 @@ When Django triggers a validator Cloud Run Job execution, it passes:
 
 | Source | Data | Example |
 |--------|------|---------|
-| `INPUT_URI` env var | GCS path to input envelope | `gs://validibot-files-dev/org123/run456/input.json` |
+| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://validibot-files-dev/org123/run456/input.json` |
 | Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
 | Input envelope | `context.execution_bundle_uri` | `gs://validibot-files-dev/org123/run456/` |
 | Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-files-dev/org123/run456/model.idf` |
@@ -259,14 +259,13 @@ DATA_STORAGE_ROOT = "/app/storage/private"
 
 ### Environment Variables
 
-The Docker runner passes these environment variables to containers:
+All runners pass these standardized environment variables to containers:
 
 | Variable | Description |
 |----------|-------------|
-| `VALIDIBOT_INPUT_URI` | `file://` URI to input envelope |
-| `VALIDIBOT_OUTPUT_URI` | `file://` URI for output envelope |
-
-Containers also accept `INPUT_URI` for backwards compatibility with Cloud Run Jobs.
+| `VALIDIBOT_INPUT_URI` | URI to input envelope (`file://` or `gs://`) |
+| `VALIDIBOT_OUTPUT_URI` | URI for output envelope (`file://` or `gs://`) |
+| `VALIDIBOT_RUN_ID` | Validation run ID (for logging and labeling) |
 
 ### Building Containers for Self-Hosted
 
@@ -309,9 +308,67 @@ services:
 
 Validator containers must support both storage backends:
 
-1. **Accept input URI** via `VALIDIBOT_INPUT_URI` or `INPUT_URI` environment variable
+1. **Accept input URI** via `VALIDIBOT_INPUT_URI` environment variable
 2. **Support `file://` URIs** in addition to `gs://` URIs
 3. **Write output** to the URI specified by `VALIDIBOT_OUTPUT_URI` or derived from execution bundle
 4. **Skip callbacks** when `skip_callback` is set (sync mode doesn't need them)
 
 See `vb_validators/validators/core/storage_client.py` for the implementation that handles both URI schemes.
+
+### Advanced Validator Management
+
+Enable advanced validators by listing container images in settings:
+
+```bash
+# Environment variable
+ADVANCED_VALIDATOR_IMAGES=ghcr.io/validibot/energyplus:24.2.0,ghcr.io/validibot/fmi:0.9.0
+```
+
+Then sync validators from container metadata:
+
+```bash
+# Sync from configured images (reads metadata from Docker labels)
+python manage.py sync_advanced_validators
+
+# Preview without creating (dry run)
+python manage.py sync_advanced_validators --dry-run
+
+# Sync specific image (ignores ADVANCED_VALIDATOR_IMAGES)
+python manage.py sync_advanced_validators --image ghcr.io/validibot/energyplus:24.2.0
+
+# Skip pulling images (if already present locally)
+python manage.py sync_advanced_validators --no-pull
+```
+
+The command reads metadata from Docker labels (`org.validibot.validator.metadata`) and creates/updates Validator records. Validators removed from the settings are soft-deleted (set to DRAFT state).
+
+### Container Cleanup (Ryuk Pattern)
+
+The Docker runner labels all spawned containers for robust cleanup:
+
+| Label | Purpose |
+|-------|---------|
+| `org.validibot.managed` | Identifies Validibot containers |
+| `org.validibot.run_id` | Validation run ID |
+| `org.validibot.validator` | Validator slug |
+| `org.validibot.started_at` | ISO timestamp |
+| `org.validibot.timeout_seconds` | Configured timeout |
+
+Cleanup strategies:
+
+1. **On-demand** - Container removed after each run (normal path)
+2. **Periodic sweep** - Background task cleans up orphaned containers every 10 minutes
+3. **Startup cleanup** - Worker removes leftover containers on startup
+
+Manual cleanup:
+
+```bash
+# Show what would be cleaned up
+python manage.py cleanup_containers --dry-run
+
+# Remove orphaned containers
+python manage.py cleanup_containers
+
+# Remove ALL managed containers
+python manage.py cleanup_containers --all
+```

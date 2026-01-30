@@ -13,8 +13,8 @@ specific execution environment:
 
 The runner interface supports **synchronous execution**:
 1. Caller invokes run() which blocks until the container completes
-2. Container reads input envelope from INPUT_URI environment variable
-3. Container writes output envelope to OUTPUT_URI (or convention-based path)
+2. Container reads input envelope from VALIDIBOT_INPUT_URI environment variable
+3. Container writes output envelope to VALIDIBOT_OUTPUT_URI (or convention-based path)
 4. Container exits with status code (0 = success)
 5. run() returns ExecutionResult with exit_code and output_uri
 
@@ -123,6 +123,8 @@ class ValidatorRunner(ABC):
         output_uri: str,
         environment: dict[str, str] | None = None,
         timeout_seconds: int | None = None,
+        run_id: str | None = None,
+        validator_slug: str | None = None,
     ) -> ExecutionResult:
         """
         Run a validator container and wait for completion.
@@ -137,6 +139,8 @@ class ValidatorRunner(ABC):
             environment: Additional environment variables to pass to container
             timeout_seconds: Maximum execution time
                 (implementation-specific default if None)
+            run_id: Validation run ID for tracking/labeling purposes
+            validator_slug: Validator slug for tracking/labeling purposes
 
         Returns:
             ExecutionResult with exit_code, output_uri, and optional logs

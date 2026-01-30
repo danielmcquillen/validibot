@@ -41,6 +41,7 @@ The following tasks run on schedules:
 | `purge_expired_outputs` | Hourly | Remove expired validation outputs |
 | `process_purge_retries` | Every 5 minutes | Retry failed purge operations |
 | `cleanup_stuck_runs` | Every 10 minutes | Mark hung runs as failed |
+| `cleanup_orphaned_containers` | Every 10 minutes | Remove orphaned Docker containers (self-hosted only) |
 | `cleanup_idempotency_keys` | Daily at 3 AM | Remove expired idempotency keys |
 | `cleanup_callback_receipts` | Weekly (Sunday 4 AM) | Clean old callback receipts |
 | `clearsessions` | Daily at 2 AM | Remove expired Django sessions |
@@ -181,6 +182,10 @@ You can manually trigger any scheduled task via the management command:
 # Run a specific task manually
 docker compose exec django python manage.py purge_expired_submissions --dry-run
 docker compose exec django python manage.py cleanup_stuck_runs
+
+# Container cleanup (self-hosted deployments)
+docker compose exec django python manage.py cleanup_containers --dry-run
+docker compose exec django python manage.py cleanup_containers --all
 ```
 
 ### Testing Scheduled Tasks

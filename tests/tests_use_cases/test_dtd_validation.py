@@ -200,7 +200,7 @@ class TestDtdValidation:
 
         data = _run_and_poll(client, workflow, content=payload)
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.SUCCEEDED.name
+        assert run_status == ValidationRunStatus.SUCCEEDED
         assert extract_issues(data) == []
 
     def test_xml_dtd_missing_required_elements(self, load_xml_asset, workflow_context):
@@ -214,6 +214,6 @@ class TestDtdValidation:
 
         data = _run_and_poll(client, workflow, content=payload)
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.FAILED.name
+        assert run_status == ValidationRunStatus.FAILED
         issues = extract_issues(data)
         assert issues, "Expected DTD validation issues"

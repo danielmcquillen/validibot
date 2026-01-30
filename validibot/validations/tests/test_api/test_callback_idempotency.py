@@ -16,8 +16,10 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from vb_shared.validations.envelopes import ValidationStatus
 
+from validibot.core.models import CallbackReceiptStatus
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
+from validibot.core.models import CallbackReceiptStatus
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
@@ -120,13 +122,12 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Callback processed successfully")
 
-        # Verify receipt was created and updated to final step status
+        # Verify receipt was created and updated to COMPLETED status
         receipt = CallbackReceipt.objects.filter(callback_id=callback_id).first()
         self.assertIsNotNone(receipt)
         self.assertEqual(receipt.validation_run_id, self.run.id)
-        # Receipt should be updated from PROCESSING to final step status (PASSED)
-        # Note: We store step_status (PASSED/FAILED), not callback status (success)
-        self.assertEqual(receipt.status, StepStatus.PASSED)
+        # Receipt should be updated from PROCESSING to COMPLETED
+        self.assertEqual(receipt.status, CallbackReceiptStatus.COMPLETED)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
@@ -341,9 +342,9 @@ class CallbackIdempotencyTestCase(TestCase):
         # NOT marked as idempotent_replayed because it was a retry, not a duplicate
         self.assertNotIn("idempotent_replayed", response2.data)
 
-        # Verify receipt is now updated to terminal step status (PASSED)
+        # Verify receipt is now updated to COMPLETED
         receipt.refresh_from_db()
-        self.assertEqual(receipt.status, StepStatus.PASSED)
+        self.assertEqual(receipt.status, CallbackReceiptStatus.COMPLETED)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")
@@ -374,9 +375,9 @@ class CallbackIdempotencyTestCase(TestCase):
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         self.assertEqual(response1.data["message"], "Callback processed successfully")
 
-        # Verify receipt has terminal step status (PASSED, not "success")
+        # Verify receipt has terminal status (COMPLETED, not "success")
         receipt = CallbackReceipt.objects.get(callback_id=callback_id)
-        self.assertEqual(receipt.status, StepStatus.PASSED)
+        self.assertEqual(receipt.status, CallbackReceiptStatus.COMPLETED)
 
         # Reset mock to track if it gets called
         mock_download.reset_mock()
@@ -419,7 +420,7 @@ class CallbackReceiptModelTestCase(TestCase):
         CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
-            status="success",
+            status=CallbackReceiptStatus.COMPLETED,
         )
 
         # Attempt to create duplicate should raise IntegrityError
@@ -427,7 +428,7 @@ class CallbackReceiptModelTestCase(TestCase):
             CallbackReceipt.objects.create(
                 callback_id=callback_id,
                 validation_run=self.run,
-                status="success",
+                status=CallbackReceiptStatus.COMPLETED,
             )
 
     def test_str_representation(self):
@@ -436,7 +437,7 @@ class CallbackReceiptModelTestCase(TestCase):
         receipt = CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
-            status="success",
+            status=CallbackReceiptStatus.COMPLETED,
         )
 
         expected = f"CallbackReceipt(12345678... for run {self.run.id})"
@@ -450,11 +451,11 @@ class CallbackReceiptModelTestCase(TestCase):
         receipt = CallbackReceipt.objects.create(
             callback_id=callback_id,
             validation_run=self.run,
-            status="failed_validation",
+            status=CallbackReceiptStatus.COMPLETED,
             result_uri=result_uri,
         )
 
         receipt.refresh_from_db()
-        self.assertEqual(receipt.status, "failed_validation")
+        self.assertEqual(receipt.status, CallbackReceiptStatus.COMPLETED)
         self.assertEqual(receipt.result_uri, result_uri)
         self.assertIsNotNone(receipt.received_at)

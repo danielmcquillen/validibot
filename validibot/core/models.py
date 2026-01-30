@@ -170,7 +170,7 @@ class CallbackReceiptStatus(models.TextChoices):
     Status of a callback receipt for validator callbacks.
 
     Used for validator callback deduplication. Callbacks are marked PROCESSING
-    on receipt, then updated to the final validation status when done.
+    on receipt, then updated to COMPLETED when processing finishes.
     """
 
     PROCESSING = "PROCESSING", _("Processing")

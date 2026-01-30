@@ -210,7 +210,7 @@ class TestRelaxNGValidation:
         valid_product_xml = load_xml_asset("valid_product.xml")
         data = _run_and_poll(client, workflow, content=valid_product_xml)
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+        assert run_status == ValidationRunStatus.SUCCEEDED, (
             f"Unexpected status: {run_status} payload={data}"
         )
         issues = extract_issues(data)
@@ -226,7 +226,7 @@ class TestRelaxNGValidation:
         invalid_product_xml = load_xml_asset("invalid_product.xml")
         data = _run_and_poll(client, workflow, content=invalid_product_xml)
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.FAILED.name, (
+        assert run_status == ValidationRunStatus.FAILED, (
             f"Unexpected status: {run_status}"
         )
 

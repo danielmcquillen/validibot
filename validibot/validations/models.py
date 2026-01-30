@@ -15,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 from model_utils.models import TimeStampedModel
 from slugify import slugify
 
+from validibot.core.models import CallbackReceiptStatus
 from validibot.projects.models import Project
 from validibot.submissions.constants import OutputRetention
 from validibot.submissions.constants import SubmissionDataFormat
@@ -2132,10 +2133,10 @@ class CallbackReceipt(models.Model):
     """
     Tracks processed container job callbacks for idempotency.
 
-    When a container job (Docker, Cloud Run, AWS Batch) completes, it POSTs a
-    callback to the worker service. The task queue may retry this callback if
-    the initial delivery fails or times out, which could cause duplicate
-    processing (duplicate findings, incorrect status).
+    When a container job called in an async manner (Cloud Run, AWS Batch) 
+    completes, it POSTs a callback to the worker service. The task queue may 
+    retry this callback if the initial delivery fails or times out, which 
+    could cause duplicate processing (duplicate findings, incorrect status).
 
     This model records each successfully processed callback. Before processing
     a callback, the handler checks if a receipt exists for the callback_id:
@@ -2169,10 +2170,12 @@ class CallbackReceipt(models.Model):
         help_text=_("When this callback was first processed."),
     )
 
-    # Store minimal callback data for debugging
+    # Store minimal callback data for debugging and processing state
     status = models.CharField(
         max_length=50,
-        help_text=_("The validation status from the callback payload."),
+        choices=CallbackReceiptStatus.choices,
+        default=CallbackReceiptStatus.PROCESSING,
+        help_text=_("Processing status of this callback receipt."),
     )
 
     result_uri = models.CharField(

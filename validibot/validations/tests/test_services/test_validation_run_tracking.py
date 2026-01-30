@@ -23,7 +23,7 @@ def test_execute_logs_started_and_success(monkeypatch):
 
     def mock_execute_validator_step(self, *, validation_run, step_run):
         # Mark step as passed (processor normally does this)
-        step_run.status = StepStatus.PASSED.value
+        step_run.status = StepStatus.PASSED
         step_run.save()
         return {
             "step_run": step_run,
@@ -67,11 +67,11 @@ def test_execute_logs_failure(monkeypatch):
 
     def mock_execute_validator_step(self, *, validation_run, step_run):
         # Mark step as failed (processor normally does this)
-        step_run.status = StepStatus.FAILED.value
+        step_run.status = StepStatus.FAILED
         step_run.save()
         return {
             "step_run": step_run,
-            "severity_counts": Counter({Severity.ERROR.value: 1}),
+            "severity_counts": Counter({Severity.ERROR: 1}),
             "total_findings": 1,
             "assertion_failures": 0,
             "assertion_total": 0,

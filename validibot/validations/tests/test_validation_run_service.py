@@ -13,6 +13,7 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
+from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
@@ -205,12 +206,12 @@ def test_execute_persists_findings_and_summary(monkeypatch):
             "assertion_failures": 1,
             "assertion_total": 1,
         }
-        step_run.status = "FAILED"
+        step_run.status = StepStatus.FAILED
         step_run.save()
 
         return {
             "step_run": step_run,
-            "severity_counts": Counter({Severity.ERROR.value: 1}),
+            "severity_counts": Counter({Severity.ERROR: 1}),
             "total_findings": 1,
             "assertion_failures": 1,
             "assertion_total": 1,

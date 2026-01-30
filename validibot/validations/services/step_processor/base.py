@@ -122,7 +122,7 @@ class ValidationStepProcessor(ABC):
             # WARNING/INFO assertions that evaluate to false are tracked as issues
             # but don't count toward the failure total - they're intentionally
             # configured as non-blocking by the author.
-            if issue.assertion_id is not None and severity == Severity.ERROR.value:
+            if issue.assertion_id is not None and severity == Severity.ERROR:
                 assertion_failures += 1
 
             finding = ValidationFinding(
@@ -150,15 +150,15 @@ class ValidationStepProcessor(ABC):
         if isinstance(severity, str):
             # Handle both Severity enum and string values
             severity_upper = severity.upper()
-            if severity_upper in {s.value for s in Severity}:
+            if severity_upper in {s for s in Severity}:
                 return severity_upper
-            # Try to match by name
+            # Try to match by name (for TextChoices, name == value)
             for s in Severity:
-                if s.name == severity_upper:
-                    return s.value
+                if s == severity_upper:
+                    return s
         if hasattr(severity, "value"):
             return severity.value
-        return Severity.ERROR.value
+        return Severity.ERROR
 
     def store_assertion_counts(
         self,

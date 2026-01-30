@@ -3,6 +3,7 @@ import json
 import factory
 from factory.django import DjangoModelFactory
 
+from validibot.core.models import CallbackReceiptStatus
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
@@ -218,7 +219,7 @@ class CallbackReceiptFactory(DjangoModelFactory):
 
     callback_id = factory.Sequence(lambda n: f"cb-uuid-{n}")
     validation_run = factory.SubFactory(ValidationRunFactory)
-    status = "success"
+    status = CallbackReceiptStatus.COMPLETED
     result_uri = factory.LazyAttribute(
         lambda o: f"gs://bucket/runs/{o.validation_run.id}/output.json"
     )

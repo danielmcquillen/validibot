@@ -222,7 +222,7 @@ class TestJsonValidation:
         assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
 
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+        assert run_status == ValidationRunStatus.SUCCEEDED, (
             f"Unexpected status: {run_status} payload={data}"
         )
         issues = extract_issues(data)
@@ -272,7 +272,7 @@ class TestJsonValidation:
         assert last_status == HTTP_200_OK, f"Polling failed: {last_status} {data}"
 
         run_status = (data.get("status") or data.get("state") or "").upper()
-        assert run_status == ValidationRunStatus.FAILED.name, (
+        assert run_status == ValidationRunStatus.FAILED, (
             f"Unexpected status: {run_status}"
         )
 

@@ -831,7 +831,7 @@ class ValidationRunService:
             # WARNING/INFO assertions that evaluate to false are tracked as issues
             # but don't count toward the failure total - they're intentionally
             # configured as non-blocking by the author.
-            if issue.assertion_id and severity_value == Severity.ERROR.value:
+            if issue.assertion_id and severity_value == Severity.ERROR:
                 assertion_failures += 1
             meta = issue.meta or {}
             if meta and not isinstance(meta, dict):
@@ -1014,9 +1014,9 @@ class ValidationRunService:
                 "status": validation_run.status,
                 "completed_at": validation_run.ended_at,
                 "total_findings": total_findings,
-                "error_count": severity_totals.get(Severity.ERROR.value, 0),
-                "warning_count": severity_totals.get(Severity.WARNING.value, 0),
-                "info_count": severity_totals.get(Severity.INFO.value, 0),
+                "error_count": severity_totals.get(Severity.ERROR, 0),
+                "warning_count": severity_totals.get(Severity.WARNING, 0),
+                "info_count": severity_totals.get(Severity.INFO, 0),
                 "assertion_failure_count": assertion_failures,
                 "assertion_total_count": assertion_total,
                 "extras": {},
@@ -1049,9 +1049,9 @@ class ValidationRunService:
                     ),
                     step_order=step_run.step_order or 0,
                     status=step_run.status,
-                    error_count=step_severity_counts.get(Severity.ERROR.value, 0),
-                    warning_count=step_severity_counts.get(Severity.WARNING.value, 0),
-                    info_count=step_severity_counts.get(Severity.INFO.value, 0),
+                    error_count=step_severity_counts.get(Severity.ERROR, 0),
+                    warning_count=step_severity_counts.get(Severity.WARNING, 0),
+                    info_count=step_severity_counts.get(Severity.INFO, 0),
                 ),
             )
 

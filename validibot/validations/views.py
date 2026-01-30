@@ -39,6 +39,7 @@ from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import LibraryLayout
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
@@ -974,7 +975,7 @@ class FMIProbeStartView(CustomValidatorManageMixin, View):
             )
         probe = getattr(fmu, "probe_result", None)
         if probe:
-            probe.status = "PENDING"
+            probe.status = FMUProbeStatus.PENDING
             probe.last_error = ""
             probe.save(update_fields=["status", "last_error", "modified"])
         result = run_fmu_probe(fmu)

@@ -150,16 +150,16 @@ class ValidationCallbackService:
                             receipt_created = True
 
                         if not receipt_created:
-                            # Receipt already exists - check if it was fully processed.
-                            # If status is still PROCESSING, a previous attempt failed
-                            # mid-processing, so we should retry. Otherwise, it's a true
-                            # duplicate and we return the cached response.
-                            if receipt.status != CallbackReceiptStatus.PROCESSING:
-                                logger.info(
-                                    "Callback %s already processed at %s",
-                                    callback.callback_id,
-                                    receipt.received_at,
-                                )
+                                # Receipt already exists - check if it was fully processed.
+                                # If status is still PROCESSING, a previous attempt failed
+                                # mid-processing, so we should retry. Otherwise, it's a true
+                                # duplicate and we return the cached response.
+                                if receipt.status != CallbackReceiptStatus.PROCESSING:
+                                    logger.info(
+                                        "Callback %s already processed at %s",
+                                        callback.callback_id,
+                                        receipt.received_at,
+                                    )
                                 should_process = False
                             else:
                                 # Status is PROCESSING - previous attempt failed, retry
@@ -420,19 +420,17 @@ class ValidationCallbackService:
             )
             self._queue_purge_if_do_not_store(run)
 
-        # Update the receipt status from PROCESSING to the final step status.
-        # We use step_status (not callback.status/envelope status) because the
-        # processor may have failed the step due to assertion failures even when
-        # the container returned SUCCESS.
+        # Update the receipt status from PROCESSING to COMPLETED.
+        # The receipt tracks callback processing, not step outcome.
         if callback.callback_id and receipt:
             try:
-                receipt.status = step_status  # TextChoices is string-like
+                receipt.status = CallbackReceiptStatus.COMPLETED
                 receipt.validation_run = run
                 receipt.save(update_fields=["status", "validation_run"])
                 logger.debug(
                     "Updated callback receipt %s to status %s",
                     callback.callback_id,
-                    step_status,
+                    receipt.status,
                 )
             except Exception:
                 # If receipt update fails, log but don't fail the request.

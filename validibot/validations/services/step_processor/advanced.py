@@ -253,7 +253,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             "assertion_failures": result.assertion_stats.failures,
             **(result.stats or {}),
         }
-        self.step_run.status = StepStatus.RUNNING.value
+        self.step_run.status = StepStatus.RUNNING
         self.step_run.save(update_fields=["output", "status"])
 
     def _get_existing_finding_counts(self) -> Counter:

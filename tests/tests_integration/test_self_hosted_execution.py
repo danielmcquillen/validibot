@@ -324,7 +324,7 @@ class TestBuiltInValidators:
         assert status == HTTP_200_OK, f"Polling failed: {status} {data}"
 
         run_status = (data.get("status") or "").upper()
-        assert run_status == ValidationRunStatus.SUCCEEDED.name, (
+        assert run_status == ValidationRunStatus.SUCCEEDED, (
             f"Expected SUCCEEDED, got {run_status}: {data}"
         )
 
@@ -361,7 +361,7 @@ class TestBuiltInValidators:
         assert status == HTTP_200_OK, f"Polling failed: {status} {data}"
 
         run_status = (data.get("status") or "").upper()
-        assert run_status == ValidationRunStatus.FAILED.name, (
+        assert run_status == ValidationRunStatus.FAILED, (
             f"Expected FAILED, got {run_status}: {data}"
         )
 

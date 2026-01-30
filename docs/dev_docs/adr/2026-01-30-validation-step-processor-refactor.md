@@ -903,6 +903,11 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         }
         return mapping.get(envelope_status, StepStatus.FAILED)
 
+    # Note: SUCCESS means the container reported a passing run even if
+    # ERROR messages were included. We surface a warning in the step output
+    # and logs in that case. Output-stage assertion failures always override
+    # SUCCESS and fail the step.
+
     def _extract_error(self, output_envelope) -> str:
         """Extract error message from envelope."""
         from vb_shared.validations.envelopes import ValidationStatus

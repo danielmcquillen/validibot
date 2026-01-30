@@ -87,13 +87,19 @@ class CallbackAssertionEvaluationTests(TestCase):
             status=StepStatus.RUNNING,
         )
 
-    def _make_mock_envelope(self, *, metrics: dict | None = None) -> MagicMock:
+    def _make_mock_envelope(
+        self,
+        *,
+        metrics: dict | None = None,
+        messages: list | None = None,
+    ) -> MagicMock:
         """
         Create a mock EnergyPlus output envelope for the async validator callback.
 
         Args:
             metrics: Dict of output metrics keyed by field name (e.g., site_eui_kwh_m2).
                     This matches EnergyPlus's outputs.metrics structure.
+            messages: Optional list of envelope message objects.
         """
         from vb_shared.validations.envelopes import ValidationStatus
 
@@ -124,7 +130,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         mock_envelope.validator = MockValidator(str(self.validator.id))
         mock_envelope.run_id = str(self.run.id)
         mock_envelope.timing = MockTiming()
-        mock_envelope.messages = []
+        mock_envelope.messages = messages or []
         mock_envelope.outputs = MockOutputs()
         # Return JSON-serializable dict - this is what gets stored in step_run.output
         mock_envelope.model_dump.return_value = {
@@ -234,6 +240,55 @@ class CallbackAssertionEvaluationTests(TestCase):
         finding = error_findings.first()
         self.assertEqual(finding.message, "Site EUI is too high!")
         self.assertEqual(finding.ruleset_assertion_id, assertion.id)
+
+        # Step should be marked failed when an output-stage assertion fails
+        self.step_run.refresh_from_db()
+        self.assertEqual(self.step_run.status, StepStatus.FAILED)
+
+    @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
+    @patch("validibot.validations.services.validation_callback.download_envelope")
+    def test_callback_success_with_container_errors_adds_warning_but_passes(
+        self,
+        mock_download,
+    ):
+        """
+        SUCCESS status with container ERROR messages should still pass the step,
+        but emit a warning finding.
+        """
+        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+
+        mock_message = MagicMock()
+        mock_message.text = "Container reported an error"
+        mock_message.severity = EnvelopeSeverity.ERROR
+        mock_message.location = None
+
+        mock_download.return_value = self._make_mock_envelope(
+            metrics={"site_eui_kwh_m2": 75},
+            messages=[mock_message],
+        )
+
+        callback_id = str(uuid.uuid4())
+        response = self.client.post(
+            self.callback_url,
+            data={
+                "run_id": str(self.run.id),
+                "callback_id": callback_id,
+                "status": "success",
+                "result_uri": "gs://bucket/runs/output.json",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.step_run.refresh_from_db()
+        self.assertEqual(self.step_run.status, StepStatus.PASSED)
+
+        warning_findings = ValidationFinding.objects.filter(
+            validation_step_run=self.step_run,
+            severity=Severity.WARNING,
+            code="advanced_validation_success_with_errors",
+        )
+        self.assertEqual(warning_findings.count(), 1)
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     @patch("validibot.validations.services.validation_callback.download_envelope")

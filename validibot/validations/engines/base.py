@@ -602,7 +602,9 @@ class BaseValidatorEngine(ABC):
 
         Returns:
             ValidationResult with output-stage issues, assertion_stats,
-            and signals populated.
+            and signals populated. A SUCCESS status is treated as passed even
+            if the envelope contains ERROR messages; output-stage assertion
+            failures are handled separately by the processor.
         """
         raise NotImplementedError(
             f"{self.__class__.__name__} does not support post_execute_validate(). "

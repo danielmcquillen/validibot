@@ -169,6 +169,36 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # 4. Returns ValidationResult with signals field populated
         post_result = engine.post_execute_validate(output_envelope, run_context)
 
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        container_error_issues = [
+            issue
+            for issue in post_result.issues
+            if issue.severity == Severity.ERROR and issue.assertion_id is None
+        ]
+        if (
+            output_envelope.status == ValidationStatus.SUCCESS
+            and container_error_issues
+        ):
+            warning_msg = (
+                "Note: the advanced validation indicated it passed, "
+                "but there were errors reported."
+            )
+            logger.warning(
+                "Advanced validator reported SUCCESS with ERROR findings: "
+                "step_run_id=%s error_count=%s",
+                self.step_run.id,
+                len(container_error_issues),
+            )
+            post_result.issues.append(
+                ValidationIssue(
+                    path="",
+                    message=warning_msg,
+                    severity=Severity.WARNING,
+                    code="advanced_validation_success_with_errors",
+                )
+            )
+
         # Persist output-stage findings (APPEND for callbacks)
         output_counts, output_assertion_failures = self.persist_findings(
             post_result.issues,
@@ -198,23 +228,12 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         # Include full envelope in step output (JSON-safe serialization)
         stats = self._serialize_envelope(output_envelope)
-        from vb_shared.validations.envelopes import ValidationStatus
-
-        if output_envelope.status == ValidationStatus.SUCCESS and any(
-            issue.severity == Severity.ERROR and issue.assertion_id is None
-            for issue in post_result.issues
-        ):
-            warning_msg = (
+        if output_envelope.status == ValidationStatus.SUCCESS and container_error_issues:
+            warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
+            warnings.append(
                 "Note: the advanced validation indicated it passed, "
                 "but there were errors reported."
             )
-            logger.warning(
-                "Advanced validator reported SUCCESS with ERROR findings: "
-                "step_run_id=%s",
-                self.step_run.id,
-            )
-            warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
-            warnings.append(warning_msg)
             stats["warnings"] = warnings
         self.finalize_step(status, stats, error)
 

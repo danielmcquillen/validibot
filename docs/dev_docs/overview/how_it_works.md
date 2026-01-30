@@ -173,6 +173,9 @@ For validator steps, the processor pattern provides a clean separation of concer
    - `assertion_stats`: Structured counts of evaluated assertions
    - `signals`: Extracted metrics for downstream steps (advanced validators)
    - `output_envelope`: Container output (advanced validators, sync mode only)
+   - For advanced validators, a container `ValidationStatus.SUCCESS` is treated
+     as a pass even if ERROR messages are present; the processor emits a warning
+     and logs the discrepancy. Output-stage assertion failures still fail the step.
 
 4. **Finding Persistence**: The processor saves findings to the database
    - Creates `ValidationFinding` records for each issue

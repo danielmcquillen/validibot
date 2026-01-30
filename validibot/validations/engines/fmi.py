@@ -189,7 +189,9 @@ class FMUValidationEngine(BaseValidatorEngine):
 
         Returns:
             ValidationResult with output-stage issues, assertion_stats,
-            and signals populated.
+            and signals populated. A SUCCESS status is treated as passed even
+            if the envelope contains ERROR messages; output-stage assertion
+            failures are handled separately by the processor.
         """
         from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
         from vb_shared.validations.envelopes import ValidationStatus

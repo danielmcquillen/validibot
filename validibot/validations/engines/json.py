@@ -47,6 +47,13 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
         ruleset: Ruleset,
         run_context: RunContext | None = None,
     ) -> ValidationResult:
+        """
+        Validate a JSON document against the configured JSON Schema.
+
+        Parses the submission content as JSON and validates it against the
+        Draft 2020-12 JSON Schema stored in the ruleset. Returns ERROR issues
+        for any schema violations.
+        """
         # JSON Schema validators require JSON content. This check is a safety net -
         # the handler also validates file type compatibility before calling the engine.
         if submission.file_type != SubmissionFileType.JSON:

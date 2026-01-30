@@ -1,3 +1,12 @@
+"""
+Basic validation engine.
+
+Evaluates BASIC assertions against JSON submissions. Assertions are defined
+with paths (e.g., "payload.items[0].price") and operators (eq, ne, gt, etc.).
+All assertion evaluation is delegated to the unified assertion system via
+the BasicAssertionEvaluator.
+"""
+
 from __future__ import annotations
 
 import json
@@ -33,6 +42,9 @@ class BasicValidatorEngine(BaseValidatorEngine):
     paths (for example, ``payload.items[0].price``). Each assertion carries its
     operator payload (rhs/options) which we evaluate inline here.
     """
+
+    # PUBLIC METHODS
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     def validate(
         self,

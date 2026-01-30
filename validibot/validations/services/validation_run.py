@@ -127,7 +127,7 @@ class ValidationRunService:
 
         It:
 
-        1. Validates preconditions (permissions, billing limits)
+        1. Validates preconditions (permissions, usage limits)
         2. Creates a ValidationRun record with status=PENDING
         3. Dispatches execution to the appropriate backend (varies by deployment)
         4. Returns immediately with appropriate HTTP status

@@ -2,13 +2,6 @@
 With these settings, tests run faster.
 """
 
-import os
-
-# Set test-safe Stripe keys before base settings validates them
-# These look like real test keys but are dummy values for testing
-os.environ.setdefault("STRIPE_TEST_SECRET_KEY", "sk_test_dummy_test_key_for_testing")
-os.environ.setdefault("STRIPE_TEST_PUBLIC_KEY", "pk_test_dummy_test_key_for_testing")
-
 from .base import *  # noqa: F403
 from .base import DATABASES
 from .base import REST_FRAMEWORK

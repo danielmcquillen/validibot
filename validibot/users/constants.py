@@ -7,8 +7,7 @@ class RoleCode(models.TextChoices):
     Enum for user roles within an organization.
     """
 
-    # Owner of an organization. All ADMIN permissions plus billing and
-    # subscription management.
+    # Owner of an organization. All ADMIN permissions plus organization settings.
     OWNER = "OWNER", _("Owner")
 
     # Admin of an organization. All AUTHOR permissions plus user and org management.

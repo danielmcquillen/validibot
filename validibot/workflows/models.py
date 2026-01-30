@@ -65,8 +65,10 @@ def validate_workflow_version(value: str) -> None:
         return
 
     raise ValidationError(
-        _("Version must be an integer (e.g., '1') or semantic version "
-          "(e.g., '1.0.0')."),
+        _(
+            "Version must be an integer (e.g., '1') or semantic version "
+            "(e.g., '1.0.0')."
+        ),
     )
 
 
@@ -560,10 +562,6 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
     def is_advanced(self) -> bool:
         """
         Check if this workflow uses any advanced (high-compute) validators.
-
-        Advanced workflows consume credits instead of basic launch quota.
-        This is used by billing enforcement to determine which meter to use.
-
         Returns:
             True if any step uses an advanced validator type.
         """

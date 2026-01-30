@@ -20,8 +20,7 @@ from validibot.users.models import User
 ROLE_HELP_TEXT: dict[str, str] = {
     RoleCode.OWNER: _(
         "ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. "
-        "Sole org authority. All admin rights plus billing/"
-        "subscription control. ."
+        "Sole org authority with all admin rights."
     ),
     RoleCode.ADMIN: _(
         "Includes Author, Executor, Validation Results Viewer, "

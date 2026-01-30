@@ -16,35 +16,16 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Session key for storing the selected plan during signup flow
-SELECTED_PLAN_SESSION_KEY = "signup_selected_plan"
-
 # Session key for storing workflow invite token during signup flow
 WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
-
-
-def get_selected_plan_from_session(request: HttpRequest) -> dict | None:
-    """
-    Get the selected plan details from session for template context.
-
-    Returns None - billing has been removed from this application.
-    """
-    return None
 
 
 class AccountAdapter(DefaultAccountAdapter):
     """
     Custom account adapter for Validibot signup flow.
 
-    Captures the selected plan from pricing page and redirects to checkout
-    after signup to create a seamless pricing-to-trial-to-paid conversion.
-
-    Flow:
-    1. User clicks "Start free trial" on pricing page → /accounts/signup/?plan=TEAM
-    2. Signup page shows plan context ("You selected Team plan")
-    3. User signs up
-    4. After signup, redirected to /app/billing/checkout/?plan=TEAM
-    5. User starts trial (or pays immediately if opt-out trial)
+    Handles workflow invite-based signups where users get access to specific
+    workflows without needing a full organization membership.
     """
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
@@ -63,56 +44,13 @@ class AccountAdapter(DefaultAccountAdapter):
             return True
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
-    def get_login_redirect_url(self, request: HttpRequest) -> str:
-        """
-        Store plan in session when user lands on login/signup page.
-
-        This captures the plan from the URL when user first arrives.
-        """
-        # Capture plan from GET params when landing on page
-        plan_code = request.GET.get("plan")
-        if plan_code:
-            request.session[SELECTED_PLAN_SESSION_KEY] = plan_code
-
-        return super().get_login_redirect_url(request)
-
-    def pre_login(
-        self,
-        request: HttpRequest,
-        user: User,
-        **kwargs,
-    ) -> str | None:
-        """
-        Capture plan selection before login completes.
-
-        Called just before the user is logged in. Captures the plan
-        parameter from the form submission (hidden input).
-
-        Uses **kwargs for compatibility with different allauth versions.
-        """
-        # Capture plan from POST (hidden form field)
-        plan_code = request.POST.get("plan")
-        if plan_code:
-            request.session[SELECTED_PLAN_SESSION_KEY] = plan_code
-
-        return super().pre_login(request, user, **kwargs)
-
     def get_signup_redirect_url(self, request: HttpRequest) -> str:
         """
         Redirect to appropriate destination after signup.
 
-        Handles two flows:
-        1. Workflow invite flow: Accept invite, redirect to workflow launch
-        2. Standard pricing flow: Redirect to billing dashboard
-
-        For workflow invites:
-        - New user is created as a Workflow Guest (no personal workspace)
-        - Invite is accepted, creating a WorkflowAccessGrant
-        - User is redirected to the workflow launch page
-
-        For standard signups:
-        - User gets a personal workspace with trial subscription
-        - Redirected to billing dashboard to view trial/subscribe
+        Handles workflow invite flow: if the user signed up via a workflow
+        invite link, accept the invite and redirect to the workflow.
+        Otherwise, redirect to the default login redirect URL.
         """
         # Check for workflow invite token first
         invite_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)

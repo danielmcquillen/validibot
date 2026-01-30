@@ -11,6 +11,7 @@ from jsonschema import FormatChecker
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -86,16 +87,41 @@ class JsonSchemaValidatorEngine(BaseValidatorEngine):
                 stats={"exception": type(e).__name__},
             )
 
-        # Now validate!
+        # Now validate against JSON Schema!
         v = Draft202012Validator(schema, format_checker=FormatChecker())
         errors = sorted(v.iter_errors(data), key=lambda e: list(e.path))
-        issues = [
+        issues: list[ValidationIssue] = [
             ValidationIssue("/".join(map(str, e.path)), e.message) for e in errors
         ]
+
+        # Evaluate CEL assertions (if any) using the parsed JSON payload.
+        # This follows the same pattern as BasicValidatorEngine.
+        assertion_issues = self.evaluate_cel_assertions(
+            ruleset=ruleset,
+            validator=validator,
+            payload=data,
+            target_stage="input",
+        )
+        issues.extend(assertion_issues)
+
+        # Count assertion failures (non-SUCCESS issues from assertions)
+        # and total assertions for this stage only.
+        # SUCCESS-severity issues indicate passed assertions, not failures.
+        assertion_failures = sum(
+            1 for issue in assertion_issues
+            if issue.severity != Severity.SUCCESS
+        )
+        total_assertions = self._count_stage_assertions(ruleset, "input")
+
+        passed = not any(issue.severity == Severity.ERROR for issue in issues)
         return ValidationResult(
-            passed=not issues,
+            passed=passed,
             issues=issues,
-            stats={"error_count": len(issues)},
+            assertion_stats=AssertionStats(
+                total=total_assertions,
+                failures=assertion_failures,
+            ),
+            stats={"error_count": len(errors)},
         )
 
     def _load_schema(self, *, validator, ruleset) -> dict[str, Any]:

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
 from validibot.events.constants import AppEventType
 from validibot.tracking.models import TrackingEvent
+from validibot.validations.constants import Severity
+from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.engines.base import ValidationResult
 from validibot.validations.services.validation_run import ValidationRunService
@@ -13,17 +17,28 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 
 @pytest.mark.django_db
 def test_execute_logs_started_and_success(monkeypatch):
+    """Test that validation run tracking events are logged correctly on success."""
     run = ValidationRunFactory()
     WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def success_step(self, step, validation_run):
-        return ValidationResult(passed=True, issues=[])
+    def mock_execute_validator_step(self, *, validation_run, step_run):
+        # Mark step as passed (processor normally does this)
+        step_run.status = StepStatus.PASSED.value
+        step_run.save()
+        return {
+            "step_run": step_run,
+            "severity_counts": Counter(),
+            "total_findings": 0,
+            "assertion_failures": 0,
+            "assertion_total": 0,
+            "passed": True,
+        }
 
     monkeypatch.setattr(
         ValidationRunService,
-        "execute_workflow_step",
-        success_step,
+        "_execute_validator_step",
+        mock_execute_validator_step,
     )
 
     service = ValidationRunService()
@@ -46,17 +61,28 @@ def test_execute_logs_started_and_success(monkeypatch):
 
 @pytest.mark.django_db
 def test_execute_logs_failure(monkeypatch):
+    """Test that validation run tracking events are logged correctly on failure."""
     run = ValidationRunFactory()
     failing_step = WorkflowStepFactory(workflow=run.workflow)
     TrackingEvent.objects.all().delete()
 
-    def failure_step(self, step, validation_run):
-        return ValidationResult(passed=False, issues=["boom"])
+    def mock_execute_validator_step(self, *, validation_run, step_run):
+        # Mark step as failed (processor normally does this)
+        step_run.status = StepStatus.FAILED.value
+        step_run.save()
+        return {
+            "step_run": step_run,
+            "severity_counts": Counter({Severity.ERROR.value: 1}),
+            "total_findings": 1,
+            "assertion_failures": 0,
+            "assertion_total": 0,
+            "passed": False,
+        }
 
     monkeypatch.setattr(
         ValidationRunService,
-        "execute_workflow_step",
-        failure_step,
+        "_execute_validator_step",
+        mock_execute_validator_step,
     )
 
     service = ValidationRunService()

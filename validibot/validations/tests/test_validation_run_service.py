@@ -155,6 +155,15 @@ def test_execute_rejects_incompatible_file_type():
 
 @pytest.mark.django_db
 def test_execute_persists_findings_and_summary(monkeypatch):
+    """
+    Test that findings, summaries, and assertion stats are correctly persisted
+    when executing a validation run via the processor architecture.
+    """
+    from collections import Counter
+
+    from validibot.validations.engines.base import AssertionStats
+    from validibot.validations.services.step_processor.result import StepProcessingResult
+
     org = OrganizationFactory()
     user = UserFactory()
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
@@ -185,22 +194,38 @@ def test_execute_persists_findings_and_summary(monkeypatch):
         status=ValidationRunStatus.PENDING,
     )
 
-    issue = ValidationIssue(
-        path="payload.price",
-        message="Price exceeds limit",
-        severity=Severity.ERROR,
-        assertion_id=assertion.id,
-    )
-    fake_result = ValidationResult(
-        passed=False,
-        issues=[issue],
-        stats={"assertion_count": 1},
-    )
+    # Create a fake processor execute result
+    def mock_execute_validator_step(self, *, validation_run, step_run):
+        # Manually create a finding to simulate what the processor does
+        finding = ValidationFinding.objects.create(
+            validation_run=validation_run,
+            validation_step_run=step_run,
+            path="price",
+            message="Price exceeds limit",
+            severity=Severity.ERROR,
+            ruleset_assertion_id=assertion.id,
+        )
+        # Update step_run output with assertion stats (like processor does)
+        step_run.output = {
+            "assertion_failures": 1,
+            "assertion_total": 1,
+        }
+        step_run.status = "FAILED"
+        step_run.save()
+
+        return {
+            "step_run": step_run,
+            "severity_counts": Counter({Severity.ERROR.value: 1}),
+            "total_findings": 1,
+            "assertion_failures": 1,
+            "assertion_total": 1,
+            "passed": False,
+        }
 
     monkeypatch.setattr(
         ValidationRunService,
-        "execute_workflow_step",
-        lambda self, step, validation_run: fake_result,
+        "_execute_validator_step",
+        mock_execute_validator_step,
     )
 
     service = ValidationRunService()

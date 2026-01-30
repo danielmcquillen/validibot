@@ -50,6 +50,7 @@ from abc import ABC
 from abc import abstractmethod
 from dataclasses import asdict
 from dataclasses import dataclass
+from dataclasses import field
 from gettext import gettext as _
 from typing import TYPE_CHECKING
 from typing import Any
@@ -103,6 +104,19 @@ class ValidationIssue:
 
 
 @dataclass
+class AssertionStats:
+    """
+    Assertion evaluation statistics.
+
+    Used by ValidationResult to track assertion counts in a structured way
+    instead of loose dict keys.
+    """
+
+    total: int = 0
+    failures: int = 0
+
+
+@dataclass
 class ValidationResult:
     """
     Aggregated result of a single validation step.
@@ -111,12 +125,20 @@ class ValidationResult:
         passed: True when no ERROR issues were produced. None indicates the
             validation is still pending (for async container-based validators).
         issues: List of issues discovered (may include INFO/WARNING).
-        stats: Optional extra info (counts, timings, metadata).
+        assertion_stats: Structured assertion counts (total and failures).
+        signals: Extracted metrics for downstream steps. For advanced validators,
+            this is populated by post_execute_validate() with output signals.
+        output_envelope: For advanced validators, the typed container output
+            envelope. Populated for sync execution; None for async.
         workflow_step_name: Slug of the workflow step that produced this result.
+        stats: Additional engine-specific metadata (execution_id, URIs, timing).
     """
 
     passed: bool | None
     issues: list[ValidationIssue]
+    assertion_stats: AssertionStats = field(default_factory=AssertionStats)
+    signals: dict[str, Any] | None = None
+    output_envelope: Any | None = None
     workflow_step_name: str | None = None  # slug
     stats: dict[str, Any] | None = None
 
@@ -124,6 +146,11 @@ class ValidationResult:
         return {
             "passed": self.passed,
             "issues": [i.to_dict() for i in self.issues],
+            "assertion_stats": {
+                "total": self.assertion_stats.total,
+                "failures": self.assertion_stats.failures,
+            },
+            "signals": self.signals or {},
             "stats": self.stats or {},
         }
 
@@ -584,6 +611,34 @@ class BaseValidatorEngine(ABC):
             assertion_id=getattr(assertion, "id", None),
         )
 
+    def _count_stage_assertions(self, ruleset, target_stage: str) -> int:
+        """
+        Count ALL assertions that match the given stage.
+
+        The stage is determined by each assertion's resolved_run_stage property,
+        which uses target_catalog_entry.run_stage if set, otherwise defaults
+        to OUTPUT.
+
+        This counts all assertion types (CEL, basic, etc.) for the given stage.
+
+        Args:
+            ruleset: The Ruleset model instance (may be None).
+            target_stage: "input" or "output".
+
+        Returns:
+            Count of assertions matching the stage.
+        """
+        if not ruleset:
+            return 0
+
+        # Count ALL assertion types, not just CEL
+        assertions = ruleset.assertions.all()
+        count = 0
+        for assertion in assertions:
+            if assertion.resolved_run_stage == target_stage:
+                count += 1
+        return count
+
     @abstractmethod
     def validate(
         self,
@@ -606,3 +661,39 @@ class BaseValidatorEngine(ABC):
             ValidationResult with passed status, issues list, and optional stats.
         """
         raise NotImplementedError
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """
+        Process container output and evaluate output-stage assertions.
+
+        Only called for advanced validators after container completion.
+        Called in two scenarios:
+        1. Sync execution: Immediately after validate() returns with envelope
+        2. Async execution: When callback arrives with envelope
+
+        Implementation should:
+        1. Extract issues from envelope.messages
+        2. Extract signals via extract_output_signals()
+        3. Evaluate output-stage CEL assertions using those signals
+        4. Return ValidationResult with signals field populated
+
+        Default implementation raises NotImplementedError. Advanced engines
+        (EnergyPlus, FMI) must override this.
+
+        Args:
+            output_envelope: The typed Pydantic envelope from vb_shared containing
+                validation results (e.g., EnergyPlusOutputEnvelope).
+            run_context: Optional execution context for CEL evaluation.
+
+        Returns:
+            ValidationResult with output-stage issues, assertion_stats,
+            and signals populated.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support post_execute_validate(). "
+            "This is required for advanced validators."
+        )

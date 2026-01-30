@@ -16,6 +16,7 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -162,13 +163,19 @@ class BasicValidatorEngine(BaseValidatorEngine):
                     issues.append(success_issue)
 
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
+        # Count assertion failures (non-SUCCESS issues from assertion evaluation).
+        # SUCCESS-severity issues indicate passed assertions, not failures.
+        assertion_failures = sum(
+            1 for issue in issues
+            if issue.assertion_id is not None and issue.severity != Severity.SUCCESS
+        )
         return ValidationResult(
             passed=passed,
             issues=issues,
-            stats={
-                "assertion_count": len(assertions),
-                "failed_assertions": len(issues),
-            },
+            assertion_stats=AssertionStats(
+                total=len(assertions),
+                failures=assertion_failures,
+            ),
         )
 
     # ------------------------------------------------------------------ Helpers

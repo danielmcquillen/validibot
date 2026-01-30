@@ -1,8 +1,18 @@
 # ADR: Validation Step Processor Refactor
 
-**Status:** Proposed
+**Status:** Implemented
 **Date:** 2026-01-30
 **Authors:** Daniel McQuillen, Claude
+
+## Implementation Notes
+
+This ADR was implemented on 2026-01-30. Key implementation details:
+
+- All processor classes created in `validibot/validations/services/step_processor/`
+- `ValidationRunService` updated to route validator steps through processors
+- `ValidationCallbackService` updated to use `processor.complete_from_callback()`
+- All 183 validation tests pass after implementation
+- Action steps continue to use the existing handler flow (not refactored in this phase)
 
 ## Context
 

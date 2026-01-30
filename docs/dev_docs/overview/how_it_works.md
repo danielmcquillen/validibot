@@ -122,29 +122,62 @@ The `ValidationRunService.execute_workflow_steps` method handles the actual vali
    - Each step is processed sequentially (parallel execution is planned for future versions)
    - Step execution is isolated - failures in one step don't prevent others from running
 
-#### 3.2 Individual Step Execution
+#### 3.2 Step Routing: Validators vs Actions
 
-For each workflow step, the `ValidationRunService.execute_workflow_step()` method:
+The workflow engine routes each step to the appropriate handler based on its type:
 
-1. **Validator Resolution**: Determines which validation engine to use
+**Validator Steps** use the `ValidationStepProcessor` abstraction:
+
+```python
+if step.validator:
+    from validibot.validations.services.step_processor import get_step_processor
+
+    processor = get_step_processor(validation_run, step_run)
+    result = processor.execute()
+```
+
+**Action Steps** use the `StepHandler` protocol:
+
+```python
+else:
+    handler = get_action_handler(step.action.action_type)
+    result = handler.execute(run_context)
+```
+
+For detailed documentation on the processor pattern, see [Validation Step Processor Architecture](step_processor.md).
+
+#### 3.3 Validator Step Execution
+
+For validator steps, the processor pattern provides a clean separation of concerns:
+
+1. **Processor Selection**: The factory chooses the appropriate processor
+
+   - **SimpleValidationProcessor**: For inline validators (JSON Schema, XML Schema, Basic, AI)
+   - **AdvancedValidationProcessor**: For container-based validators (EnergyPlus, FMI)
+
+2. **Engine Dispatch**: The processor calls the validation engine
 
    ```python
-   validator = step.validator  # References a Validator model
-   ruleset = step.ruleset     # Optional ruleset for the validation
-   ```
-
-2. **Engine Dispatch**: The validation registry routes to the appropriate engine
-
-   ```python
-   engine_class = get_engine_for_validator(validator)
-   engine = engine_class()
-   result = engine.validate(submission, ruleset, config)
+   engine = get_engine(validator.validation_type)
+   result = engine.validate(
+       validator=validator,
+       submission=submission,
+       ruleset=ruleset,
+       run_context=run_context,
+   )
    ```
 
 3. **Result Processing**: The engine returns a `ValidationResult` object
-   - `passed`: Boolean indicating overall success
+   - `passed`: Boolean (True/False) or None for async
    - `issues`: List of ValidationIssue objects with details
-   - `stats`: Optional performance and diagnostic information
+   - `assertion_stats`: Structured counts of evaluated assertions
+   - `signals`: Extracted metrics for downstream steps (advanced validators)
+   - `output_envelope`: Container output (advanced validators, sync mode only)
+
+4. **Finding Persistence**: The processor saves findings to the database
+   - Creates `ValidationFinding` records for each issue
+   - Stores assertion counts for run summary
+   - For async validators, preserves input-stage findings when callback arrives
 
 #### How Findings Are Persisted
 
@@ -159,22 +192,41 @@ relational integrity. After the run completes we roll these rows up into the
 `ValidationRunSummary`/`ValidationStepRunSummary` tables so long-term reporting
 remains possible even if old findings are purged.
 
-##### What happens inside `execute_workflow_step()`
+##### How Processors Handle Step Lifecycle
 
-The high‑level summary above hides a few practical details that are worth knowing when you add or debug workflow steps:
+The `ValidationStepProcessor` abstraction consolidates step lifecycle management:
 
-1. **Step metadata is pulled from the database** – the `WorkflowStep` instance supplies the linked `Validator`, optional `Ruleset`, and the JSON `config` column. For AI steps the config contains keys such as `template`, `selectors`, `policy_rules`, `mode`, and `cost_cap_cents`.
-1. **Action steps resolve concrete models** – when `workflow_step.action` is set we now downcast to a subtype such as `SlackMessageAction` or `SignedCertificateAction`. These variants expose strongly typed fields (message text, certificate template, etc.), and fall back to sensible defaults like the bundled signed-certificate template, so execution code and admin tools never have to parse ad hoc JSON blobs.
-2. **Submission content is materialised once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data. Engines call `submission.get_content()` which returns inline text or reads the stored file.
-3. **Validator config is merged before dispatch** – we pass the per-step config directly to the engine (`engine.validate(..., config=step_config)`), allowing engines to interpret selectors, thresholds, or policy definitions without reaching back into the ORM. Engines that do not use runtime configuration can safely ignore unknown keys.
-4. **Execution is wrapped by the service layer** – any exception raised by the engine bubbles up to `execute_workflow_step()`. The caller (`execute_workflow_steps()`) catches the error, marks the run as `FAILED`, and records the traceback so the run stops in a predictable manner.
-5. **Lightweight telemetry is recorded** – we count the number of issues returned, tag the log entry with the step id and validator type, and attach any `stats` payload to the validation summary. This keeps runs observable without persisting per-step rows yet.
+1. **Processor creation** – `get_step_processor()` routes to the appropriate processor class based on validator type.
 
-This design keeps the step executor intentionally thin: the step definition owns the configuration, the engine owns domain logic, and the service coordinates orchestration and error handling. When we later persist per-step timings or metering information, the hooks already exist in this execution flow.
+2. **Engine dispatch** – The processor calls `engine.validate()` (and for advanced validators, `engine.post_execute_validate()`).
+
+3. **Finding persistence** – `persist_findings()` creates `ValidationFinding` records:
+   - For sync validators: all findings are persisted at once
+   - For async validators: input-stage findings are persisted on launch, output-stage findings are appended when callback arrives
+
+4. **Signal storage** – For advanced validators, metrics extracted from container output are stored in `run.summary` for downstream step assertions.
+
+5. **Step finalization** – `finalize_step()` sets `ended_at`, `duration_ms`, `status`, and `output` fields.
+
+##### What happens inside the processor
+
+The processor pattern provides clean separation of concerns:
+
+1. **Step metadata is pulled from the database** – the `WorkflowStep` instance supplies the linked `Validator`, optional `Ruleset`, and the JSON `config` column.
+
+2. **Action steps use handlers instead** – when `workflow_step.action` is set, the service uses the `StepHandler` protocol instead of processors. Handlers like `SlackMessageActionHandler` or `SignedCertificateActionHandler` expose strongly typed fields.
+
+3. **Submission content is materialized once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data.
+
+4. **Assertion evaluation happens in engines** – Engines evaluate CEL assertions during `validate()` (input-stage) and `post_execute_validate()` (output-stage for advanced validators). Processors just persist the results.
+
+5. **Error handling is centralized** – Any exception raised by the engine is caught by the processor, which creates an error finding and finalizes the step as FAILED.
+
+This design keeps the processor focused on lifecycle orchestration: the step definition owns the configuration, the engine owns domain logic and assertion evaluation, and the processor handles persistence and state transitions.
 
 > **Authoring walkthrough:** see [How to Author Workflow Steps](../how-to/author-workflow-steps.md) for the complete UI flow.
 
-#### 3.3 Engine Implementation
+#### 3.4 Engine Implementation
 
 Each validation engine implements the `BaseValidatorEngine` interface:
 

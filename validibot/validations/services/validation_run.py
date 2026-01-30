@@ -467,44 +467,82 @@ class ValidationRunService:
                     # Otherwise, continue to the next step
                     continue
 
-                try:
-                    validation_result: ValidationResult = self.execute_workflow_step(
-                        step=wf_step,
+                # Route to appropriate execution path based on step type
+                if wf_step.validator:
+                    # Use processors for validator steps - they handle both
+                    # execution AND persistence (findings, signals, assertion stats)
+                    try:
+                        metrics = self._execute_validator_step(
+                            validation_run=validation_run,
+                            step_run=step_run,
+                        )
+                    except Exception as exc:
+                        self._finalize_step_run(
+                            step_run=step_run,
+                            status=StepStatus.FAILED,
+                            stats=None,
+                            error=str(exc),
+                        )
+                        step_metrics.append(
+                            {
+                                "step_run": step_run,
+                                "severity_counts": Counter(),
+                                "total_findings": 0,
+                                "assertion_failures": 0,
+                                "assertion_total": 0,
+                            },
+                        )
+                        raise
+                    step_metrics.append(metrics)
+                    # Determine pass/fail/pending from processor result
+                    if metrics.get("passed") is False:
+                        overall_failed = True
+                        failing_step_id = wf_step.id
+                        break
+                    if metrics.get("passed") is None:
+                        # Async validator in progress
+                        pending_async = True
+                        break
+                else:
+                    # Use existing handler flow for action steps
+                    try:
+                        validation_result: ValidationResult = (
+                            self.execute_workflow_step(
+                                step=wf_step,
+                                validation_run=validation_run,
+                            )
+                        )
+                    except Exception as exc:
+                        self._finalize_step_run(
+                            step_run=step_run,
+                            status=StepStatus.FAILED,
+                            stats=None,
+                            error=str(exc),
+                        )
+                        step_metrics.append(
+                            {
+                                "step_run": step_run,
+                                "severity_counts": Counter(),
+                                "total_findings": 0,
+                                "assertion_failures": 0,
+                                "assertion_total": 0,
+                            },
+                        )
+                        raise
+                    metrics = self._record_step_result(
                         validation_run=validation_run,
-                    )
-                except Exception as exc:
-                    self._finalize_step_run(
                         step_run=step_run,
-                        status=StepStatus.FAILED,
-                        stats=None,
-                        error=str(exc),
+                        validation_result=validation_result,
                     )
-                    step_metrics.append(
-                        {
-                            "step_run": step_run,
-                            "severity_counts": Counter(),
-                            "total_findings": 0,
-                            "assertion_failures": 0,
-                            "assertion_total": 0,
-                        },
-                    )
-                    raise
-                metrics = self._record_step_result(
-                    validation_run=validation_run,
-                    step_run=step_run,
-                    validation_result=validation_result,
-                )
-                step_metrics.append(metrics)
-                if validation_result.passed is False:
-                    overall_failed = True
-                    failing_step_id = wf_step.id
-                    # For now we stop on first failure.
-                    break
-                if validation_result.passed is None:
-                    # Async validator in progress; pause the workflow here and wait
-                    # for callback processing to finalize run/step state.
-                    pending_async = True
-                    break
+                    step_metrics.append(metrics)
+                    if validation_result.passed is False:
+                        overall_failed = True
+                        failing_step_id = wf_step.id
+                        break
+                    if validation_result.passed is None:
+                        pending_async = True
+                        break
+
                 if _was_cancelled():
                     cancelled = True
                     break
@@ -784,7 +822,11 @@ class ValidationRunService:
         for issue in issues:
             severity_value = self._severity_value(issue.severity)
             severity_counts[severity_value] += 1
-            if issue.assertion_id:
+            # Count assertion failures: any assertion issue that is NOT a success.
+            # SUCCESS-severity issues indicate the assertion PASSED (expression=true).
+            # All other severities (ERROR, WARNING, INFO) indicate the assertion
+            # FAILED (expression=false), just with different importance levels.
+            if issue.assertion_id and severity_value != Severity.SUCCESS.value:
                 assertion_failures += 1
             meta = issue.meta or {}
             if meta and not isinstance(meta, dict):
@@ -878,7 +920,8 @@ class ValidationRunService:
     def _extract_assertion_total(self, stats: dict[str, Any] | None) -> int:
         if not isinstance(stats, dict):
             return 0
-        for key in ("assertion_count", "assertions_evaluated"):
+        # Check all the possible keys where assertion total might be stored
+        for key in ("assertion_total", "assertion_count", "assertions_evaluated"):
             value = stats.get(key)
             if isinstance(value, int) and value >= 0:
                 return value
@@ -1116,6 +1159,43 @@ class ValidationRunService:
         )
 
         return validation_result
+
+    def _execute_validator_step(
+        self,
+        *,
+        validation_run: ValidationRun,
+        step_run: ValidationStepRun,
+    ) -> dict[str, Any]:
+        """
+        Execute a validator step using the processor abstraction.
+
+        Processors handle both execution (calling the engine) AND persistence
+        (findings, signals, assertion stats). This eliminates the separate
+        _record_step_result() call for validator steps.
+
+        Args:
+            validation_run: The parent ValidationRun being processed.
+            step_run: The ValidationStepRun to execute.
+
+        Returns:
+            A metrics dict compatible with step_metrics list (severity_counts,
+            total_findings, assertion_failures, assertion_total, passed).
+        """
+        from validibot.validations.services.step_processor import get_step_processor
+
+        processor = get_step_processor(validation_run, step_run)
+        result = processor.execute()
+
+        # Convert StepProcessingResult to the metrics dict format expected by
+        # the run summary builder
+        return {
+            "step_run": result.step_run,
+            "severity_counts": result.severity_counts,
+            "total_findings": result.total_findings,
+            "assertion_failures": result.assertion_failures,
+            "assertion_total": result.assertion_total,
+            "passed": result.passed,
+        }
 
     def _extract_downstream_signals(
         self,

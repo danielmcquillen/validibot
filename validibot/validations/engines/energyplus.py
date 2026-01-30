@@ -43,6 +43,7 @@ from django.utils.translation import gettext as _
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -259,7 +260,12 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             ]
             return ValidationResult(passed=False, issues=issues, stats=stats)
 
-        return self._process_output_envelope(response.output_envelope, stats)
+        # For sync backends, include the output_envelope so the processor can call
+        # post_execute_validate() to evaluate output-stage assertions
+        result = self._process_output_envelope(response.output_envelope, stats)
+        # Attach envelope for processor to use
+        result.output_envelope = response.output_envelope
+        return result
 
     def _process_output_envelope(
         self,
@@ -316,3 +322,111 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             passed = False
 
         return ValidationResult(passed=passed, issues=issues, stats=stats)
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """
+        Process container output and evaluate output-stage assertions.
+
+        Called after container execution completes (either sync or via callback).
+        This method:
+        1. Extracts signals from the envelope via extract_output_signals()
+        2. Evaluates output-stage CEL assertions using those signals
+        3. Extracts issues from envelope messages
+        4. Returns ValidationResult with signals field populated
+
+        Args:
+            output_envelope: EnergyPlusOutputEnvelope from the validator container
+            run_context: Execution context for CEL evaluation
+
+        Returns:
+            ValidationResult with output-stage issues, assertion_stats,
+            and signals populated.
+        """
+        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from vb_shared.validations.envelopes import ValidationStatus
+
+        # Store run_context for CEL evaluation methods
+        self.run_context = run_context
+
+        issues: list[ValidationIssue] = []
+
+        # Extract messages from envelope
+        for msg in output_envelope.messages:
+            severity_map = {
+                EnvelopeSeverity.ERROR: Severity.ERROR,
+                EnvelopeSeverity.WARNING: Severity.WARNING,
+                EnvelopeSeverity.INFO: Severity.INFO,
+            }
+            issues.append(
+                ValidationIssue(
+                    path=msg.location.path if msg.location else "",
+                    message=msg.text,
+                    severity=severity_map.get(msg.severity, Severity.INFO),
+                )
+            )
+
+        # Extract signals from envelope for downstream steps and assertion evaluation
+        signals = self.extract_output_signals(output_envelope) or {}
+
+        # Evaluate output-stage CEL assertions if we have context
+        assertion_issues: list[ValidationIssue] = []
+        total_assertions = 0
+        if run_context and run_context.step:
+            # Get the validator and ruleset from the step
+            validator = run_context.step.validator
+            ruleset = run_context.step.ruleset
+
+            if validator and ruleset:
+                # Evaluate output-stage assertions using the extracted signals
+                assertion_issues = self.evaluate_cel_assertions(
+                    ruleset=ruleset,
+                    validator=validator,
+                    payload=signals,
+                    target_stage="output",
+                )
+                issues.extend(assertion_issues)
+
+                # Count output-stage assertions only
+                total_assertions = self._count_stage_assertions(ruleset, "output")
+
+        # Count assertion failures (non-SUCCESS issues from assertions).
+        # SUCCESS-severity issues indicate passed assertions, not failures.
+        assertion_failures = sum(
+            1 for issue in assertion_issues
+            if issue.severity != Severity.SUCCESS
+        )
+
+        # Determine pass/fail based on envelope status
+        if output_envelope.status == ValidationStatus.SUCCESS:
+            passed = True
+        elif output_envelope.status in (
+            ValidationStatus.FAILED_VALIDATION,
+            ValidationStatus.FAILED_RUNTIME,
+        ):
+            passed = False
+        else:
+            # Cancelled or unknown
+            passed = False
+
+        # Build stats with outputs if available
+        stats: dict[str, Any] = {}
+        if output_envelope.outputs:
+            if hasattr(output_envelope.outputs, "model_dump"):
+                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
+            elif isinstance(output_envelope.outputs, dict):
+                stats["outputs"] = output_envelope.outputs
+
+        return ValidationResult(
+            passed=passed,
+            issues=issues,
+            assertion_stats=AssertionStats(
+                total=total_assertions,
+                failures=assertion_failures,
+            ),
+            signals=signals,
+            stats=stats,
+        )

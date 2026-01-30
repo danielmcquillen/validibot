@@ -13,6 +13,7 @@ from django.utils.translation import gettext_lazy as _
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
+from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.base import ValidationResult
@@ -599,5 +600,25 @@ class AiAssistEngine(BaseValidatorEngine):
                         issues.append(issue)
 
         has_error = any(issue.severity == Severity.ERROR for issue in issues)
-        result = ValidationResult(passed=not has_error, issues=issues, stats=stats)
+        # Count assertion failures (non-SUCCESS issues from assertion evaluation).
+        # SUCCESS-severity issues indicate passed assertions, not failures.
+        assertion_failures = sum(
+            1 for issue in issues
+            if issue.assertion_id is not None and issue.severity != Severity.SUCCESS
+        )
+        # Count total assertions (CEL assertions from ruleset + policy rules)
+        total_assertions = len(rules_raw or [])
+        if ruleset is not None:
+            total_assertions += ruleset.assertions.filter(
+                assertion_type="cel_expr",
+            ).count()
+        result = ValidationResult(
+            passed=not has_error,
+            issues=issues,
+            assertion_stats=AssertionStats(
+                total=total_assertions,
+                failures=assertion_failures,
+            ),
+            stats=stats,
+        )
         return result

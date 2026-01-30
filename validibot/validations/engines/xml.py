@@ -27,6 +27,11 @@ class XmlSchemaValidatorEngine(BaseValidatorEngine):
     """
     XML validator that supports XSD (default), Relax NG, and DTD.
 
+    This is a **schema-only** validator. It validates XML documents against an
+    XML schema (XSD, Relax NG, or DTD) and reports structural violations. It does
+    NOT support ruleset assertions (BASIC or CEL) - assertions are not applicable
+    to XML schema validation.
+
     Ruleset requirements:
       * ``ruleset.metadata['schema_type']`` must be one of ``XMLSchemaType``.
       * ``ruleset.rules_text`` or ``ruleset.rules_file`` should provide the schema text.

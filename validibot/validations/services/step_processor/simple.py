@@ -52,7 +52,7 @@ class SimpleValidationProcessor(ValidationStepProcessor):
         try:
             # Call engine.validate() - this does EVERYTHING:
             # - Validation logic (schema checking, AI prompting, etc.)
-            # - Input-stage CEL assertion evaluation
+            # - Input-stage assertion evaluation
             # - Returns combined issues with assertion outcomes
             result = engine.validate(
                 validator=self.validator,

@@ -3,8 +3,9 @@ Tests for GoogleCloudTasksDispatcher service account configuration.
 """
 
 import pytest
-from core.tasks.dispatch.google_cloud_tasks import GoogleCloudTasksDispatcher
 from django.test.utils import override_settings
+
+from validibot.core.tasks.dispatch.google_cloud_tasks import GoogleCloudTasksDispatcher
 
 
 def test_get_invoker_service_account_prefers_explicit_setting():

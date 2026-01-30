@@ -670,7 +670,7 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "description": str(
                     _(
                         "Create a validator with custom inputs, "
-                        "outputs, and CEL assertions.",
+                        "outputs, and assertions.",
                     ),
                 ),
                 "icon": "bi-sliders",

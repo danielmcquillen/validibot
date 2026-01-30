@@ -26,8 +26,12 @@ if TYPE_CHECKING:
 @register_engine(ValidationType.JSON_SCHEMA)
 class JsonSchemaValidatorEngine(BaseValidatorEngine):
     """
-    JSON Schema validator (Draft 2020-12 compatible by default if
-    jsonschema lib supports).
+    JSON Schema validator (Draft 2020-12 compatible).
+
+    This is a **schema-only** validator. It validates JSON documents against a
+    JSON Schema and reports structural violations. It does NOT support ruleset
+    assertions (BASIC or CEL) - use the Basic validator type for assertion-based
+    validation of JSON data.
 
     Expects a JSON Schema stored on the associated ruleset via ``rules_text`` or
     ``rules_file`` (retrieved through ``ruleset.rules``).

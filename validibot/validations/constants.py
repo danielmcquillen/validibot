@@ -137,6 +137,19 @@ class RulesetType(TextChoices):
 
 
 class ValidationType(TextChoices):
+    """
+    Validator engine types.
+
+    Assertion support by type:
+    - BASIC: Supports BASIC and CEL assertions against JSON payload
+    - AI_ASSIST: Supports CEL assertions against JSON payload
+    - ENERGYPLUS: Supports CEL assertions against output signals
+    - FMI: Supports CEL assertions against output signals
+    - JSON_SCHEMA: Schema-only (no assertion support)
+    - XML_SCHEMA: Schema-only (no assertion support)
+    - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
+    """
+
     BASIC = "BASIC", _("Basic Assertions")
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")

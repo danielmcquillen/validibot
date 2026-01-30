@@ -5,6 +5,7 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 from attr import dataclass
 from attr import field
@@ -115,7 +116,7 @@ class ValidationRunService:
         source: ValidationRunSource = ValidationRunSource.LAUNCH_PAGE,
     ) -> ValidationRunLaunchResults:
         """
-        Create a ValidationRun and dispatch execution. 
+        Create a ValidationRun and dispatch execution.
 
         Note: this method is meant to be called as part of the "web" Django
         service layer.
@@ -123,7 +124,7 @@ class ValidationRunService:
         This is the main entry point called by views and API endpoints. Therefore
         it's meant to be this method is meant to be called as part of the "web" Django
         service layer (not the "worker" layer).
-        
+
         It:
 
         1. Validates preconditions (permissions, billing limits)
@@ -325,7 +326,7 @@ class ValidationRunService:
     ) -> ValidationRunTaskResult:
         """
         Process workflow steps for a ValidationRun.
-        
+
         Note: This method is meant to be called as part of the "worker"
         Django service layer, ostensibly via a task queue.
 
@@ -334,20 +335,20 @@ class ValidationRunService:
         handler from the registry). Execution stops on first failure or when
         an async validator returns pending.
 
-        For workflows that only have sync validators and advanced validator, all 
-        steps execute inline and the run reaches a terminal status (SUCCEEDED/FAILED) 
+        For workflows that only have sync validators and advanced validator, all
+        steps execute inline and the run reaches a terminal status (SUCCEEDED/FAILED)
         before returning.
 
-        For workflows that contain steps with advanced validators (EnergyPlus, FMI), 
-        that are run in an async manner (google cloud, AWS), this method returns while 
-        the run is still RUNNING. When the container job callback arrives, a new 
+        For workflows that contain steps with advanced validators (EnergyPlus, FMI),
+        that are run in an async manner (google cloud, AWS), this method returns while
+        the run is still RUNNING. When the container job callback arrives, a new
         task is enqueued with resume_from_step to continue execution.
 
         Idempotency:
             - Initial execution (resume_from_step=None): Only proceeds if status
               is PENDING. Transitions to RUNNING atomically.
-            - Resume execution (resume_from_step set): Expects status to be RUNNING.
-              No state transition needed.
+            - Resume execution (resume_from_step={some step number}): Expects status
+              to be RUNNING. No state transition needed.
             - Task queues may deliver the same task multiple times. Step-level
               idempotency is handled by _start_step_run() using get_or_create.
 
@@ -360,6 +361,8 @@ class ValidationRunService:
         Returns:
             ValidationRunTaskResult with the final (or current) run status.
         """
+
+        # Let's look up the validation run...
         try:
             validation_run: ValidationRun = ValidationRun.objects.select_related(
                 "workflow",
@@ -432,6 +435,7 @@ class ValidationRunService:
             )
 
         def _was_cancelled() -> bool:
+            """Check whether the run has been canceled mid-execution."""
             validation_run.refresh_from_db(fields=["status"])
             return validation_run.status == ValidationRunStatus.CANCELED
 
@@ -816,6 +820,7 @@ class ValidationRunService:
         step_run: ValidationStepRun,
         issues: list[ValidationIssue],
     ) -> tuple[Counter, int]:
+        """Persist ValidationFinding rows and return severity counts."""
         severity_counts: Counter = Counter()
         assertion_failures = 0
         findings: list[ValidationFinding] = []
@@ -862,7 +867,7 @@ class ValidationRunService:
 
         1. Normalizes issues and persists them as ValidationFinding rows.
         2. Extracts any "signals" from stats and stores them in run.summary
-           for downstream CEL assertions to access.
+           for downstream assertions to access.
         3. For sync results (passed=True/False): finalizes the step_run with
            status PASSED/FAILED.
         4. For async results (passed=None): keeps step_run as RUNNING.
@@ -918,6 +923,7 @@ class ValidationRunService:
         }
 
     def _extract_assertion_total(self, stats: dict[str, Any] | None) -> int:
+        """Extract the assertion total count from a stats dict."""
         if not isinstance(stats, dict):
             return 0
         # Check all the possible keys where assertion total might be stored
@@ -986,9 +992,13 @@ class ValidationRunService:
         # Query assertion counts from ALL step runs' output fields.
         # This ensures correct totals in resume scenarios where earlier steps'
         # metrics aren't in the current step_metrics list.
-        all_step_runs = ValidationStepRun.objects.filter(
-            validation_run=validation_run,
-        ).select_related("workflow_step").order_by("step_order")
+        all_step_runs = (
+            ValidationStepRun.objects.filter(
+                validation_run=validation_run,
+            )
+            .select_related("workflow_step")
+            .order_by("step_order")
+        )
 
         assertion_failures = 0
         assertion_total = 0
@@ -1061,7 +1071,7 @@ class ValidationRunService:
         This is the central dispatcher that routes steps to the correct handler:
 
         1. Builds a RunContext with the validation_run, step, and any signals
-           from prior steps (for cross-step CEL assertions).
+           from prior steps (for cross-step assertions).
 
         2. Resolves the handler:
            - For validator steps: uses ValidatorStepHandler
@@ -1202,11 +1212,11 @@ class ValidationRunService:
         validation_run: ValidationRun | None,
     ) -> dict[str, Any]:
         """
-        Collect signals from completed steps for cross-step CEL assertions.
+        Collect signals from completed steps for cross-step assertions.
 
-        When a validator emits signals (e.g., EnergyPlus outputs like zone_temp),
+        When a validator emits output signals (e.g., EnergyPlus outputs like zone_temp),
         they're stored in validation_run.summary["steps"][step_id]["signals"].
-        This method extracts them into a structure that CEL can query:
+        This method extracts them into a structure that assertions can query:
 
             steps.<step_run_id>.signals.<catalog_slug>
 
@@ -1236,7 +1246,8 @@ class ValidationRunService:
         self,
         validation_run: ValidationRun,
         user_id: int | None,
-    ):
+    ) -> User | None:
+        """Resolve the user who initiated or owns the validation run."""
         if getattr(validation_run, "user_id", None):
             return validation_run.user
         submission_user = getattr(
@@ -1246,13 +1257,9 @@ class ValidationRunService:
         )
         if submission_user and getattr(submission_user, "is_authenticated", False):
             return submission_user
-        if user_id:
-            from django.contrib.auth import get_user_model
+        if not user_id:
+            return None
+        from django.contrib.auth import get_user_model
 
-            UserModel = get_user_model()  # noqa: N806
-
-            try:
-                return UserModel.objects.get(pk=user_id)
-            except UserModel.DoesNotExist:
-                return None
-        return None
+        user = get_user_model().objects.filter(pk=user_id).first()
+        return cast("User | None", user)

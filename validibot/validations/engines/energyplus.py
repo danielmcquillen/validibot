@@ -393,9 +393,14 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
                 assertion_failures = assertion_result.failures
                 issues.extend(assertion_issues)
 
-        # Determine pass/fail based on envelope status
+        # Determine pass/fail based on envelope status AND assertion results
+        # A step fails if either the container reported failure OR any ERROR assertions
         if output_envelope.status == ValidationStatus.SUCCESS:
-            passed = True
+            # Container succeeded, but check if any assertions failed
+            has_assertion_errors = any(
+                i.severity == Severity.ERROR for i in issues
+            )
+            passed = not has_assertion_errors
         elif output_envelope.status in (
             ValidationStatus.FAILED_VALIDATION,
             ValidationStatus.FAILED_RUNTIME,

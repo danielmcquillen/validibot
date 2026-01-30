@@ -71,7 +71,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         try:
             # Call engine.validate() - this:
-            # - Evaluates input-stage CEL assertions
+            # - Evaluates input-stage assertions
             # - Launches the container
             # - For sync backends: blocks and returns with output_envelope
             # - For async backends: returns immediately with passed=None
@@ -156,7 +156,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         """
         # Call engine.post_execute_validate() - this:
         # 1. Extracts signals from envelope (for assertion evaluation)
-        # 2. Evaluates output-stage CEL assertions using those signals
+        # 2. Evaluates output-stage assertions using those signals
         # 3. Extracts issues from envelope messages
         # 4. Returns ValidationResult with signals field populated
         post_result = engine.post_execute_validate(output_envelope, run_context)

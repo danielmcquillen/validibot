@@ -501,6 +501,9 @@ class BaseValidatorEngine(ABC):
         if ruleset is None:
             return AssertionEvaluationResult(issues=[], total=0, failures=0)
 
+        # Import the evaluators package to ensure all evaluators are registered
+        # via their @register_evaluator decorators before we look them up.
+        import validibot.validations.assertions.evaluators  # noqa: F401
         from validibot.validations.assertions.evaluators.base import AssertionContext
         from validibot.validations.assertions.evaluators.registry import get_evaluator
 

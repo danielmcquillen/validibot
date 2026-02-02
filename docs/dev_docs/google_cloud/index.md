@@ -7,11 +7,11 @@ This section documents Validibot's integration with Google Cloud Platform (GCP).
 All deployment commands require a stage parameter (`dev`, `staging`, or `prod`):
 
 ```bash
-just gcp-deploy dev       # Deploy web service to dev
-just gcp-deploy-all dev   # Deploy web + worker to dev
-just gcp-migrate dev      # Run database migrations on dev
-just gcp-logs dev         # View recent logs for dev
-just gcp-status dev       # Show dev service URL and status
+just gcp deploy dev       # Deploy web service to dev
+just gcp deploy-all dev   # Deploy web + worker to dev
+just gcp migrate dev      # Run database migrations on dev
+just gcp logs dev         # View recent logs for dev
+just gcp status dev       # Show dev service URL and status
 ```
 
 Run `just` (with no arguments) to see all available commands.
@@ -46,5 +46,4 @@ When using a custom domain (production), keep these base URLs separate:
 
 ## Related
 
-- [Validator Jobs (Cloud Run)](../validator_jobs_cloud_run.md) - Validator container architecture and multi-environment deployment
-- [ADR: Google Cloud Platform Architecture](../../adr/2025-12-02-google-cloud-platform.md) - Platform architecture and implementation
+- [Validator Architecture](../overview/validator_architecture.md) - Validator container architecture and multi-environment deployment

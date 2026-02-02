@@ -74,8 +74,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
   cloudtasks.googleapis.com \
-  storage.googleapis.com \
-  cloudkms.googleapis.com
+  storage.googleapis.com
 ```
 
 | API                               | Purpose                                  |
@@ -87,59 +86,6 @@ gcloud services enable \
 | `cloudbuild.googleapis.com`       | Cloud Build (CI/CD)                      |
 | `cloudtasks.googleapis.com`       | Cloud Tasks (async task queue)           |
 | `storage.googleapis.com`          | Cloud Storage (media files)              |
-| `cloudkms.googleapis.com`         | Cloud KMS (credential signing for JWKS)  |
-
-## Set Up Cloud KMS (Credential Signing)
-
-Cloud KMS is used to sign validation credentials (JWT badges). Each stage gets its own signing key for isolation.
-
-### Create keys using justfile
-
-The easiest way to set up KMS is using the justfile commands:
-
-```bash
-# Create the signing key for a stage
-just gcp-kms-setup dev      # Creates credential-signing-dev
-just gcp-kms-setup staging  # Creates credential-signing-staging
-just gcp-kms-setup prod     # Creates credential-signing
-```
-
-This creates:
-
-- A shared keyring `validibot-keys` (reused across all stages)
-- A stage-specific signing key (EC P-256, ES256 algorithm)
-
-### Grant permissions
-
-The service account needs KMS access. This is done automatically by `just gcp-init-stage`, but can also be done manually:
-
-```bash
-# Grant viewer (for JWKS endpoint)
-gcloud kms keys add-iam-policy-binding credential-signing-dev \
-  --location=australia-southeast1 \
-  --keyring=validibot-keys \
-  --member="serviceAccount:validibot-cloudrun-dev@PROJECT_ID.iam.gserviceaccount.com" \
-  --role=roles/cloudkms.viewer
-
-# Grant signer (for signing credentials)
-gcloud kms keys add-iam-policy-binding credential-signing-dev \
-  --location=australia-southeast1 \
-  --keyring=validibot-keys \
-  --member="serviceAccount:validibot-cloudrun-dev@PROJECT_ID.iam.gserviceaccount.com" \
-  --role=roles/cloudkms.signerVerifier
-```
-
-### Configure environment
-
-Add to your GCP environment secrets (`.envs/.production/.google-cloud/.django`):
-
-```bash
-GCP_KMS_SIGNING_KEY="projects/PROJECT_ID/locations/australia-southeast1/keyRings/validibot-keys/cryptoKeys/credential-signing-dev"
-GCP_KMS_JWKS_KEYS="projects/PROJECT_ID/locations/australia-southeast1/keyRings/validibot-keys/cryptoKeys/credential-signing-dev"
-SV_JWKS_ALG="ES256"
-```
-
-For detailed KMS documentation, see [KMS for Credential Signing](kms.md).
 
 ## Create Cloud Tasks Queue
 
@@ -530,14 +476,14 @@ The `justfile` provides convenient commands for common operations:
 
 ```bash
 # Run database migrations
-just gcp-migrate
+just gcp migrate
 
 # Run setup_all (seeds default data, creates superuser)
-just gcp-setup-all
+just gcp setup-all
 
 # View job logs
-just gcp-job-logs validibot-migrate
-just gcp-job-logs validibot-setup-all
+just gcp job-logs validibot-migrate
+just gcp job-logs validibot-setup-all
 ```
 
 ### Manual job creation

@@ -6,7 +6,7 @@ This checklist covers tasks to complete before launching Validibot to production
 
 ### Infrastructure Upgrades
 
-> Note: `just gcp-init-stage prod` currently provisions the smallest shared-core tier (`db-f1-micro`). Before serving real traffic, bump the prod instance to a larger tier as outlined below.
+> Note: `just gcp init-stage prod` currently provisions the smallest shared-core tier (`db-f1-micro`). Before serving real traffic, bump the prod instance to a larger tier as outlined below.
 
 - [ ] **Upgrade Cloud SQL instance from `db-f1-micro` to `db-g1-small`**
 
@@ -105,7 +105,7 @@ This checklist covers tasks to complete before launching Validibot to production
   Cloud Run “domain mappings” are not available in `australia-southeast1`, so production uses a Global external HTTP(S) Load Balancer in front of Cloud Run.
 
   ```bash
-  just gcp-lb-setup prod validibot.com
+  just gcp lb-setup prod validibot.com
   ```
 
 - [ ] **Point DNSimple at the load balancer IP**

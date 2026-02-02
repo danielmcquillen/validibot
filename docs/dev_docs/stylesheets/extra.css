@@ -1,0 +1,158 @@
+/* Validibot Developer Docs - Custom Styling
+   Matches validibot.com branding
+*/
+
+:root {
+  /* Validibot brand colors */
+  --md-primary-fg-color: #066fd1;
+  --md-primary-fg-color--light: #4299e1;
+  --md-primary-fg-color--dark: #0556a8;
+  --md-accent-fg-color: #066fd1;
+  --md-accent-fg-color--transparent: rgba(6, 111, 209, 0.1);
+
+  /* Typography matching marketing site */
+  --md-text-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --md-code-font: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+/* Header styling */
+.md-header {
+  background-color: #066fd1;
+}
+
+/* Announcement bar for "Back to Validibot" - compact and subtle */
+.md-banner {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  height: auto;
+  padding: 0.25rem 0;
+}
+
+.md-banner__inner {
+  font-size: 0.7rem;
+  padding: 0;
+  margin: 0;
+}
+
+.md-banner a {
+  color: #6c757d;
+  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  text-decoration: none;
+}
+
+.md-banner a:hover {
+  color: #066fd1;
+}
+
+.md-banner .robot-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.md-banner .arrow-icon {
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
+}
+
+/* Links */
+.md-typeset a {
+  color: #066fd1;
+}
+
+.md-typeset a:hover {
+  color: #0556a8;
+}
+
+/* Code blocks */
+.md-typeset code {
+  background-color: #e9f0f9;
+}
+
+/* Navigation active state */
+.md-nav__link--active {
+  color: #066fd1 !important;
+}
+
+/* Footer */
+.md-footer {
+  background-color: #1a1a2e;
+}
+
+/* Admonitions - use brand colors */
+.md-typeset .admonition.note,
+.md-typeset details.note {
+  border-color: #066fd1;
+}
+
+.md-typeset .note > .admonition-title,
+.md-typeset .note > summary {
+  background-color: rgba(6, 111, 209, 0.1);
+}
+
+.md-typeset .note > .admonition-title::before,
+.md-typeset .note > summary::before {
+  background-color: #066fd1;
+}
+
+/* Buttons */
+.md-typeset .md-button--primary {
+  background-color: #066fd1;
+  border-color: #066fd1;
+}
+
+.md-typeset .md-button--primary:hover {
+  background-color: #0556a8;
+  border-color: #0556a8;
+}
+
+/* Search */
+.md-search__form {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-md-color-scheme="slate"] .md-search__form {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) th {
+  background-color: #e9f0f9;
+}
+
+/* Dev docs specific - slightly different accent to distinguish */
+.md-tabs {
+  background-color: #0556a8;
+}
+
+/* Work in progress notice - sticky bottom bar */
+.wip-notice {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 0.4rem 1rem;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  z-index: 100;
+  border-top: 1px solid #ffc107;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.wip-notice svg {
+  color: #856404;
+  flex-shrink: 0;
+}
+
+/* Add padding to main content so it doesn't get hidden behind the sticky bar */
+.md-main {
+  padding-bottom: 2.5rem;
+}

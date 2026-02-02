@@ -69,7 +69,7 @@ Content-Type: application/json
 }
 ```
 
-The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID. See [ADR-2026-01-06](../../adr/completed/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped API routing.
+The `workflow_identifier` can be either the workflow's slug (preferred) or its numeric database ID.
 
 The system supports multiple submission modes:
 

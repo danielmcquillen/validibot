@@ -1499,7 +1499,7 @@ Original ADR had processors calling `engine.evaluate_cel_assertions()`.
 ## References
 
 - [Template Method Pattern](https://refactoring.guru/design-patterns/template-method)
-- [validation_run.py](validibot/validations/services/validation_run.py) - Current implementation
-- [validation_callback.py](validibot/validations/services/validation_callback.py) - Callback service
-- [engines/base.py](validibot/validations/engines/base.py) - Engine base class
-- [engines/energyplus.py](validibot/validations/engines/energyplus.py) - Advanced engine example
+- `validibot/validations/services/validation_run.py` - Current implementation
+- `validibot/validations/services/validation_callback.py` - Callback service
+- `validibot/validations/engines/base.py` - Engine base class
+- `validibot/validations/engines/energyplus.py` - Advanced engine example

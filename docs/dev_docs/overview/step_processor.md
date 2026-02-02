@@ -550,7 +550,6 @@ Full workflow tests verify end-to-end behavior:
 
 ## Related Documentation
 
-- [ADR: Validation Step Processor Refactor](../adr/2026-01-30-validation-step-processor-refactor.md) - Design decision and full specification
 - [Workflow Engine Architecture](workflow_engine.md) - Higher-level orchestration
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview

@@ -47,7 +47,7 @@ The easiest way to view logs is the Cloud Console:
 
 ```bash
 # Recent logs from web service
-just gcp-logs
+just gcp logs
 
 # Or directly with gcloud
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot" --limit=50
@@ -186,5 +186,4 @@ When a validation fails, here's how to investigate:
 ## Related
 
 - [Deployment Guide](deployment.md)
-- [Google Cloud Index](index.md)
-- [Sentry](../error-monitoring.md) for error tracking
+- [Google Cloud Overview](index.md)

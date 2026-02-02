@@ -217,4 +217,3 @@ register_action_handler(MyActionType.CUSTOM, MyCustomHandler)
 - [Validation Step Processor Architecture](step_processor.md) - Deep dive into processor pattern
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview
-- [ADR: Validation Step Processor Refactor](../adr/2026-01-30-validation-step-processor-refactor.md) - Design decision

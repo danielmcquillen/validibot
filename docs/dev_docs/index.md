@@ -10,7 +10,6 @@ This site describes the core concepts, data model, and API for working with vali
 - [Overview](#overview)
 - [How-To Guides](#how-to-guides)
 - [Marketing](#marketing)
-- [Architecture Decision Records](#architecture-decision-records)
 - [Deployment](#deployment)
 - [Data Model](#data-model)
 
@@ -34,7 +33,6 @@ This site describes the core concepts, data model, and API for working with vali
 - [Using a Workflow via the API](how-to/use-workflow.md) - Step-by-step API integration guide
 - [Author Workflow Steps](how-to/author-workflow-steps.md) - Configure validation templates via the UI wizard
 - [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
-- [Configure the Badge JWKS Endpoint](how-to/configure-jwks.md) - Publish KMS-backed signing keys
 
 ### Integrations
 
@@ -45,9 +43,6 @@ This site describes the core concepts, data model, and API for working with vali
 - [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
 - [Feature Pages](marketing/features.md) - Messaging guide for the marketing feature content
 
-### Architecture Decision Records
-
-- [Architecture Decision Records](adr/index.md) - Directory of decisions that guide the platform
 
 ### Testing
 
@@ -77,14 +72,14 @@ docker compose -f docker-compose.local.yml stop postgres mailpit
 
 Django's `live_server` fixture runs a threaded WSGI server. psycopg3 connections are **not** thread-safe, so after a Selenium test makes HTTP requests to the live server, the database connection can become corrupted (status = BAD). Django's `DatabaseWrapper` still holds a reference to this dead connection, and when pytest-django tries to flush the database during teardown, it fails with `OperationalError: the connection is closed`.
 
-The fix lives in [tests/tests_integration/conftest.py](../../tests/tests_integration/conftest.py):
+The fix lives in `tests/tests_integration/conftest.py`:
 
 1. **Autouse fixture** - Resets any BAD psycopg3 connections before and after each test
 2. **Monkey-patched flush command** - Resets connections before Django's flush runs during teardown
 
 When resetting a BAD connection, we must also clear Django's internal state (`closed_in_transaction`, `in_atomic_block`, `savepoint_ids`, `needs_rollback`) or Django will refuse to create new connections.
 
-Additionally, [config/settings/test.py](../../config/settings/test.py) sets `CONN_MAX_AGE = 0` to disable persistent connections for tests.
+Additionally, `config/settings/test.py` sets `CONN_MAX_AGE = 0` to disable persistent connections for tests.
 
 This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #35455).
 
@@ -92,7 +87,7 @@ This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #3
 
 - [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
 - [Self-Hosted Responsibility](deployment/self-hosted-responsibility.md) - Security, cost, and operational guardrails for self-hosted deployments
-- [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp-deploy`
+- [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp deploy`
 - [Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for GCP deployments
 - [Scheduled Tasks (Self-hosted)](how-to/configure-scheduled-tasks.md) - Dramatiq + periodiq for Docker/self-hosted
 - [Go-Live Checklist](deployment/go-live-checklist.md) - Pre-launch tasks for production

@@ -12,8 +12,6 @@ Workflow status: the workflow must be **active**. Disabled workflows return HTTP
 
 Feature flag: set `ENABLE_API=True` (default) to expose these endpoints. When the flag is `False`, all `/api/v1/` routes return 404.
 
-See [ADR-2026-01-06](../../adr/completed/2026-01-06-org-scoped-routing-and-versioned-workflow-identifiers.md) for details on org-scoped routing.
-
 You can submit content in three ways:
 
 ## Idempotency keys: safer retries

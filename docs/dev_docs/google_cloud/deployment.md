@@ -30,22 +30,22 @@ All deployment commands accept a stage parameter:
 
 ```bash
 # Deploy to dev
-just gcp-deploy dev
-just gcp-deploy-worker dev
+just gcp deploy dev
+just gcp deploy-worker dev
 
 # Deploy to production
-just gcp-deploy prod
-just gcp-deploy-worker prod
+just gcp deploy prod
+just gcp deploy-worker prod
 
 # Deploy both services at once
-just gcp-deploy-all dev
+just gcp deploy-all dev
 
 # Run migrations
-just gcp-migrate dev
+just gcp migrate dev
 
 # View logs
-just gcp-logs dev
-just gcp-logs prod
+just gcp logs dev
+just gcp logs prod
 ```
 
 Run `just` to see all available commands.
@@ -68,9 +68,9 @@ To create a new environment from scratch (or verify existing resources):
 
 ```bash
 # Creates service account, database, Cloud Tasks queue, GCS buckets, and secret placeholder
-just gcp-init-stage dev      # For dev environment
-just gcp-init-stage staging  # For staging environment
-just gcp-init-stage prod     # For production environment
+just gcp init-stage dev      # For dev environment
+just gcp init-stage staging  # For staging environment
+just gcp init-stage prod     # For production environment
 ```
 
 This command creates (example for dev):
@@ -110,25 +110,25 @@ Where `<db-instance>` is `validibot-db-dev`, `validibot-db-staging`, or `validib
 ### Step 3: Upload Secrets to Secret Manager
 
 ```bash
-just gcp-secrets <stage>  # e.g., just gcp-secrets dev|staging|prod
+just gcp secrets <stage>  # e.g., just gcp secrets dev|staging|prod
 ```
 
 ### Step 4: Deploy Services
 
 ```bash
 # Deploy both web and worker
-just gcp-deploy-all <stage>
-# e.g., just gcp-deploy-all dev|staging|prod
+just gcp deploy-all <stage>
+# e.g., just gcp deploy-all dev|staging|prod
 ```
 
 ### Step 5: Run Migrations and Seed Data
 
 ```bash
 # Run database migrations
-just gcp-migrate <stage>
+just gcp migrate <stage>
 
 # Seed initial data (validators, default org, etc.)
-just gcp-setup-data <stage>
+just gcp setup-data <stage>
 ```
 
 ### Step 6: Deploy Validators
@@ -142,23 +142,23 @@ just validators-deploy-all <stage>
 
 ```bash
 # Create Cloud Scheduler jobs for cleanup tasks
-just gcp-scheduler-setup <stage>
+just gcp scheduler-setup <stage>
 ```
 
 ### Step 8: Verify Deployment
 
 ```bash
 # Check status and get service URL
-just gcp-status <stage>
+just gcp status <stage>
 
 # View logs
-just gcp-logs <stage>
+just gcp logs <stage>
 
 # List all resources
-just gcp-list-resources <stage>
+just gcp list-resources <stage>
 ```
 
-Optionally, update `DJANGO_ALLOWED_HOSTS` in your stage's env file with the service URL, then run `just gcp-secrets <stage>` and `just gcp-deploy <stage>` again.
+Optionally, update `DJANGO_ALLOWED_HOSTS` in your stage's env file with the service URL, then run `just gcp secrets <stage>` and `just gcp deploy <stage>` again.
 
 ## Regular Deployments
 
@@ -166,17 +166,17 @@ For routine code updates after initial setup:
 
 ```bash
 # Deploy code changes to dev
-just gcp-deploy dev
+just gcp deploy dev
 
 # Deploy to both web and worker
-just gcp-deploy-all dev
+just gcp deploy-all dev
 
 # Run migrations if needed
-just gcp-migrate dev
+just gcp migrate dev
 
 # Deploy to production
-just gcp-deploy-all prod
-just gcp-migrate prod
+just gcp deploy-all prod
+just gcp migrate prod
 ```
 
 ## Custom Domain (DNSimple) via Load Balancer
@@ -186,13 +186,13 @@ Cloud Run’s built-in “domain mappings” are not available in `australia-sou
 The `justfile` includes an idempotent command that creates the load balancer resources and prints the static IP you need to set in DNSimple:
 
 ```bash
-just gcp-lb-setup prod validibot.com
+just gcp lb-setup prod validibot.com
 ```
 
 If you want multiple hostnames on the same cert/load balancer, pass a comma-separated list:
 
 ```bash
-just gcp-lb-setup prod "validibot.com,www.validibot.com"
+just gcp lb-setup prod "validibot.com,www.validibot.com"
 ```
 
 ### DNSimple records
@@ -220,7 +220,7 @@ gcloud compute ssl-certificates describe validibot-cert --global \
 
 ### App configuration notes
 
-- Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp-secrets prod` and redeploy.
+- Make sure `DJANGO_ALLOWED_HOSTS` (in `.envs/.production/.django`) includes your domain(s) (for example `validibot.com` and `www.validibot.com`). Then run `just gcp secrets prod` and redeploy.
 - Set these base URLs in your env file (they serve different purposes):
   - `SITE_URL`: public web base URL (prod: `https://validibot.com`; dev/staging: the web `*.run.app` URL is fine).
   - `WORKER_URL`: internal worker base URL (the worker `*.run.app` URL). Cloud Run Jobs and Cloud Scheduler target the worker service; callbacks should never go to the public domain.
@@ -326,10 +326,10 @@ To update secrets:
 vim .envs/.production/.google-cloud/.django
 
 # Upload to Secret Manager
-just gcp-secrets prod
+just gcp secrets prod
 
 # Redeploy to pick up changes
-just gcp-deploy prod
+just gcp deploy prod
 ```
 
 ## Operations
@@ -338,57 +338,57 @@ just gcp-deploy prod
 
 ```bash
 # Recent logs
-just gcp-logs dev
+just gcp logs dev
 
 # Follow logs in real-time
-just gcp-logs-follow dev
+just gcp logs-follow dev
 
 # View job logs (migrations, setup)
-just gcp-job-logs validibot-migrate-dev
+just gcp job-logs validibot-migrate-dev
 ```
 
 ### Check Status
 
 ```bash
 # Single stage
-just gcp-status dev
+just gcp status dev
 
 # All stages
-just gcp-status-all
+just gcp status-all
 ```
 
 ### Pause/Resume Service
 
 ```bash
 # Block public access (useful during maintenance)
-just gcp-pause dev
+just gcp pause dev
 
 # Restore public access
-just gcp-resume dev
+just gcp resume dev
 ```
 
 ### List Resources
 
 ```bash
 # See all resources for a stage
-just gcp-list-resources dev
+just gcp list-resources dev
 ```
 
 ### Scheduled Jobs (Cloud Scheduler)
 
 ```bash
 # Set up scheduled jobs for a stage
-just gcp-scheduler-setup dev
-just gcp-scheduler-setup prod
+just gcp scheduler-setup dev
+just gcp scheduler-setup prod
 
 # List all scheduler jobs
-just gcp-scheduler-list
+just gcp scheduler-list
 
 # Run a job manually (for testing)
-just gcp-scheduler-run validibot-clear-sessions-dev
+just gcp scheduler-run validibot-clear-sessions-dev
 
 # Delete all scheduler jobs for a stage
-just gcp-scheduler-delete-all dev
+just gcp scheduler-delete-all dev
 ```
 
 ### Validator Jobs
@@ -399,7 +399,7 @@ just validator-deploy energyplus dev
 just validator-deploy energyplus prod
 
 # List validator jobs
-just gcp-jobs-list
+just gcp jobs-list
 ```
 
 ## Build and Push Docker Image
@@ -408,10 +408,10 @@ The `gcp-deploy` commands handle this automatically, but you can also run manual
 
 ```bash
 # Build for Cloud Run (linux/amd64)
-just gcp-build
+just gcp build
 
 # Push to Artifact Registry
-just gcp-push
+just gcp push
 ```
 
 ## Troubleshooting
@@ -447,13 +447,13 @@ gcloud secrets versions access latest --secret=django-env-dev
 gcloud secrets describe django-env-dev
 
 # If not, create it
-just gcp-secrets dev
+just gcp secrets dev
 ```
 
 **"Service account not found" error:**
 ```bash
 # Re-run infrastructure setup
-just gcp-init-stage dev
+just gcp init-stage dev
 ```
 
 **Database connection errors:**

@@ -1,6 +1,6 @@
 site_name: Validibot Developer Docs
 site_description: Internal documentation for Validibot contributors.
-site_url: https://danielmcquillen.github.io/validibot/dev/
+site_url: https://dev.validibot.com/
 
 docs_dir: docs/dev_docs
 site_dir: docs_build/dev
@@ -13,12 +13,38 @@ repo_name: danielmcquillen/validibot
 
 theme:
   name: material
+  custom_dir: docs/dev_docs/overrides
   language: en
+  logo: https://validibot.com/static/marketing/images/robot-tiny.png
+  favicon: https://validibot.com/static/images/favicons/favicon.ico
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
   features:
     - navigation.instant
     - navigation.instant.progress
     - navigation.path
     - navigation.footer
+    - navigation.top
+    - navigation.tabs
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - announce.dismiss
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  homepage: https://validibot.com
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://validibot.com
+      name: Validibot.com
 
 plugins:
   - search
@@ -29,14 +55,17 @@ markdown_extensions:
   - admonition
   - attr_list
   - md_in_html
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - Home: index.md
   - Quick Reference:
       - Quick Reference: quick_reference.md
       - Related Libraries: related_libraries.md
-  - Cheat Sheets:
-      - Architecture: cheat_sheets/architecture-overview-validibot-modal.md
   - Overview:
       - Platform Overview: overview/platform_overview.md
       - Terminology: overview/terminology.md
@@ -50,7 +79,6 @@ nav:
       - Use a Workflow: how-to/use-workflow.md
       - Author Workflow Steps: how-to/author-workflow-steps.md
       - Add a Form: how-to/add-a-form.md
-      - Configure the Badge JWKS Endpoint: how-to/configure-jwks.md
       - Run Integration Tests: how-to/run-integration-tests.md
       - Debug a Run: how-to/debug-a-run.md
       - Manage Organizations & Projects: organization_management.md
@@ -58,11 +86,6 @@ nav:
       - EnergyPlus Modal: integrations/energyplus_modal.md
   - API:
       - Authentication: api/authentication.md
-  - Billing & Stripe:
-      - Overview: billing/index.md
-      - Setup: billing/setup.md
-      - Testing: billing/testing.md
-      - Management: billing/management.md
   - Google Cloud:
       - Overview: google_cloud/index.md
       - Setup Cheatsheet: google_cloud/setup-cheatsheet.md
@@ -83,11 +106,9 @@ nav:
       - Findings: data-model/findings.md
       - Users & Roles: data-model/users_roles.md
       - Deletions: data-model/deletions.md
-  - Architecture Decisions:
-      - ADR Directory: adr/index.md
-      - ADR-0021: adr/2025-10-31-ruleset-and-provider.md
   - Deployment:
       - Deployment Overview: deployment/overview.md
+      - Justfile Guide: deployment/justfile-guide.md
       - Post-Deployment Verification: deployment/post-deployment-verification.md
       - Go-Live Checklist: deployment/go-live-checklist.md
-      - Heroku: deployment/heroku.md
+      - Heroku (Legacy): deployment/heroku.md

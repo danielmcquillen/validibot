@@ -1,6 +1,6 @@
 site_name: Validibot User Guide
 site_description: Product tutorials and walkthroughs for Validibot users.
-site_url: https://validibot.com/resources/docs/
+site_url: https://docs.validibot.com/
 
 docs_dir: docs/user_docs
 site_dir: docs_build/user
@@ -10,9 +10,39 @@ dev_addr: 127.0.0.1:9001
 
 theme:
   name: material
+  custom_dir: docs/user_docs/overrides
   language: en
+  logo: https://validibot.com/static/marketing/images/robot-tiny.png
+  favicon: https://validibot.com/static/images/favicons/favicon.ico
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
   features:
     - navigation.instant
+    - navigation.instant.progress
+    - navigation.footer
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - announce.dismiss
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  homepage: https://validibot.com
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://validibot.com
+      name: Validibot.com
+  # Announcement bar - uses main.html override in custom_dir
+  announce:
+    enabled: true
 
 plugins:
   - search
@@ -22,6 +52,11 @@ markdown_extensions:
       permalink: true
   - admonition
   - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - Welcome: index.md

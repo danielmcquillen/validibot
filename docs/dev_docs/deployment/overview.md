@@ -1,6 +1,20 @@
 # Deployment Overview
 
-Validibot runs on Google Cloud Platform with Australian data residency.
+Validibot supports multiple deployment platforms:
+
+- **Google Cloud Platform (GCP)**: Our primary cloud deployment target
+- **Self-hosted**: Docker Compose for on-premises deployments
+- **AWS**: Planned for future release
+
+All deployment commands use the [Just command runner](justfile-guide.md). Commands are organized by platform:
+
+```bash
+just gcp deploy prod         # GCP deployment
+just selfhosted deploy       # Self-hosted deployment
+just aws deploy prod         # AWS (not yet implemented)
+```
+
+This page focuses on GCP deployment. See the [Justfile Guide](justfile-guide.md) for the full command reference.
 
 ## Deployment Stages
 
@@ -32,16 +46,16 @@ This isolation ensures that dev/staging changes never affect production data.
 
 ```bash
 # Deploy to dev (routine updates)
-just gcp-deploy dev
+just gcp deploy dev
 
 # Deploy to production
-just gcp-deploy prod
+just gcp deploy prod
 
 # Deploy both web and worker services
-just gcp-deploy-all dev
+just gcp deploy-all dev
 
 # Run migrations
-just gcp-migrate dev
+just gcp migrate dev
 ```
 
 See [Google Cloud Deployment](../google_cloud/deployment.md) for full details.
@@ -68,8 +82,8 @@ See the [Go-Live Checklist](go-live-checklist.md) for pre-launch tasks.
 
 1. Run the test suite (`uv run --extra dev pytest`) and linting locally.
 2. Push to GitHub; CI should pass before you merge.
-3. Deploy to dev first: `just gcp-deploy-all dev`
-4. Run migrations: `just gcp-migrate dev`
+3. Deploy to dev first: `just gcp deploy-all dev`
+4. Run migrations: `just gcp migrate dev`
 5. Verify on dev, then promote to staging/prod as needed.
 6. Check Cloud Logging/Sentry for errors after each deployment.
 
@@ -89,11 +103,11 @@ Secrets are stored in Secret Manager and mounted as `/secrets/.env`. Key variabl
 | `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                       |
 | `SENTRY_DSN`               | Optional but recommended.                                    |
 
-Update secrets with `just gcp-secrets <stage>` then redeploy to apply changes.
+Update secrets with `just gcp secrets <stage>` then redeploy to apply changes.
 
 ## Operational Tasks
 
-- **Logs** – `just gcp-logs dev` or view in Cloud Console
+- **Logs** – `just gcp logs dev` or view in Cloud Console
 - **Backups** – Cloud SQL automated backups; test restoration periodically
 - **Scaling** – Adjust min/max instances in Cloud Run settings
 - **Scheduled tasks** – Managed by Cloud Scheduler (see [scheduled-jobs.md](../google_cloud/scheduled-jobs.md))

@@ -54,10 +54,10 @@ Use the justfile command to create all scheduled jobs for a stage:
 
 ```bash
 # Set up all jobs for dev (creates or updates)
-just gcp-scheduler-setup dev
+just gcp scheduler-setup dev
 
 # Set up all jobs for production
-just gcp-scheduler-setup prod
+just gcp scheduler-setup prod
 ```
 
 This command:
@@ -69,19 +69,19 @@ This command:
 
 ```bash
 # List all scheduler jobs (all stages)
-just gcp-scheduler-list
+just gcp scheduler-list
 
 # Run a job manually (for testing)
-just gcp-scheduler-run validibot-cleanup-idempotency-keys-dev
+just gcp scheduler-run validibot-cleanup-idempotency-keys-dev
 
 # Pause a job
-just gcp-scheduler-pause validibot-clear-sessions-dev
+just gcp scheduler-pause validibot-clear-sessions-dev
 
 # Resume a paused job
-just gcp-scheduler-resume validibot-clear-sessions-dev
+just gcp scheduler-resume validibot-clear-sessions-dev
 
 # Delete all scheduler jobs for a stage (use with caution)
-just gcp-scheduler-delete-all dev
+just gcp scheduler-delete-all dev
 ```
 
 ## Environment-Specific Setup
@@ -90,13 +90,13 @@ When setting up a new environment, deploy the services and then set up the sched
 
 ```bash
 # Deploy web and worker services
-just gcp-deploy-all dev
+just gcp deploy-all dev
 
 # Set up scheduler jobs
-just gcp-scheduler-setup dev
+just gcp scheduler-setup dev
 ```
 
-For subsequent deployments (code updates only), use `just gcp-deploy dev` or `just gcp-deploy-all dev` as needed—the scheduler jobs don't need to be recreated unless their configuration changes.
+For subsequent deployments (code updates only), use `just gcp deploy dev` or `just gcp deploy-all dev` as needed—the scheduler jobs don't need to be recreated unless their configuration changes.
 
 ## Adding New Scheduled Jobs
 
@@ -157,7 +157,7 @@ Cloud Scheduler provides built-in monitoring:
 
 View job history in the console:
 ```bash
-just gcp-console  # Opens Cloud Run console
+just gcp console  # Opens Cloud Run console
 # Then navigate to Cloud Scheduler in the sidebar
 ```
 

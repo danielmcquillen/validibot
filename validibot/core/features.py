@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 FEATURE_MULTI_ORG = "multi_org"
 FEATURE_BILLING = "billing"
 FEATURE_ADVANCED_ANALYTICS = "advanced_analytics"
+FEATURE_SIGNED_BADGES = "signed_badges"
 
 # Enterprise features
 FEATURE_GUEST_MANAGEMENT = "guest_management"
@@ -126,6 +127,7 @@ def get_feature_context() -> dict[str, bool]:
         "feature_multi_org": is_feature_enabled(FEATURE_MULTI_ORG),
         "feature_billing": is_feature_enabled(FEATURE_BILLING),
         "feature_advanced_analytics": is_feature_enabled(FEATURE_ADVANCED_ANALYTICS),
+        "feature_signed_badges": is_feature_enabled(FEATURE_SIGNED_BADGES),
         # Enterprise features
         "feature_guest_management": is_feature_enabled(FEATURE_GUEST_MANAGEMENT),
         "feature_ldap_integration": is_feature_enabled(FEATURE_LDAP_INTEGRATION),

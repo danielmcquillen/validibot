@@ -14,11 +14,9 @@ from django.urls import include
 from django.urls import path
 
 from validibot.core import views as core_views
-from validibot.core.views import jwks_view
 from validibot.workflows import views as workflow_views
 
 urlpatterns = [
-    path(".well-known/jwks.json", jwks_view, name="jwks"),
     path("", include("validibot.home.urls", namespace="home")),
     path(
         "workflows/",

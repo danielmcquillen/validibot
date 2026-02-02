@@ -6,11 +6,11 @@ After deploying to any environment, run the PDV smoke tests to verify that criti
 
 ```bash
 # After deploying to dev
-just gcp-deploy-all dev
+just gcp deploy-all dev
 just verify-deployment dev
 
 # After deploying to production
-just gcp-deploy-all prod
+just gcp deploy-all prod
 just verify-deployment prod
 ```
 
@@ -178,13 +178,12 @@ gcloud run services add-iam-policy-binding validibot-worker-dev \
 The worker service may have been deployed with `--allow-unauthenticated`. This is a security issue - redeploy with:
 
 ```bash
-just gcp-deploy-worker <stage>
+just gcp deploy-worker <stage>
 ```
 
 The deploy script uses `--no-allow-unauthenticated` by default.
 
 ## Related
 
-- [Deployment Guide](./index.md)
-- [GCP Security Model](../google_cloud/security.md)
+- [Deployment Overview](./overview.md)
 - [Callback Security](../overview/validator_architecture.md)

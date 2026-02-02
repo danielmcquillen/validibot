@@ -17,7 +17,8 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - `tests/` - Integration tests
 - `.envs/` - Local (Docker + host-run) and cloud deployment environment files
 - `validibot_shared_dev/` - Symlink to shared library code (../validibot-shared)
-- `justfile` - Command runner (similar to Makefile)
+- `justfile` - Root command runner orchestrator
+- `just/` - Modular justfiles for different platforms (see below)
 
 ## Tech Stack
 
@@ -134,6 +135,31 @@ uv run --extra dev mypy validibot
 | `.envs/`  | Local + Docker + cloud deployments | Docker Compose, `set-env.sh`, GCP Secret Manager |
 
 **Important:** Deployment secrets live under `.envs/.production/` and are uploaded to GCP Secret Manager; keep them private and out of git.
+
+### Just Command Runner
+
+Commands are organized by platform using Just modules:
+
+```bash
+# Local development (no prefix needed)
+just up                  # Start containers
+just test                # Run tests
+
+# Platform-specific deployment (use platform prefix)
+just gcp deploy prod     # Deploy to GCP
+just selfhosted deploy   # Deploy self-hosted
+just aws deploy prod     # Deploy to AWS (not yet implemented)
+```
+
+Structure:
+- `justfile` - Root orchestrator
+- `just/common.just` - Shared helpers
+- `just/local.just` - Local dev commands
+- `just/gcp/mod.just` - GCP deployment
+- `just/aws/mod.just` - AWS deployment (stub)
+- `just/selfhosted/mod.just` - Self-hosted deployment
+
+See [docs/dev_docs/deployment/justfile-guide.md](docs/dev_docs/deployment/justfile-guide.md) for full documentation.
 
 ## Django Conventions
 

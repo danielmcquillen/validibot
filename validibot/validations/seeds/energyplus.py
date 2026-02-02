@@ -5,7 +5,7 @@ This defines the validator metadata and catalog entries that get synced
 to the database via `python manage.py sync_system_validators`.
 
 The catalog entry binding_config["key"] values must match field names in
-vb_shared.energyplus.models.EnergyPlusSimulationMetrics, which is what
+validibot_shared.energyplus.models.EnergyPlusSimulationMetrics, which is what
 the container validator populates after running the simulation.
 """
 

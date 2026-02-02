@@ -101,7 +101,7 @@ class CallbackAssertionEvaluationTests(TestCase):
                     This matches EnergyPlus's outputs.metrics structure.
             messages: Optional list of envelope message objects.
         """
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         # Create a simple class to hold outputs that won't auto-generate mocks
         class MockMetrics:
@@ -255,7 +255,7 @@ class CallbackAssertionEvaluationTests(TestCase):
         SUCCESS status with container ERROR messages should still pass the step,
         but emit a warning finding.
         """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
 
         mock_message = MagicMock()
         mock_message.text = "Container reported an error"

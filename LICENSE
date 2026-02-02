@@ -1,0 +1,162 @@
+# Validibot License
+
+Copyright (c) 2025-2026 McQuillen Interactive Pty. Ltd. (ABN 49 600 623 069)
+All rights reserved.
+
+---
+
+## NO WARRANTY
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+See LICENSE-AGPL-3.0.txt for complete open source license terms, or the
+Commercial License Agreement for commercial license terms.
+
+---
+
+## Summary
+
+Validibot is available under a dual license:
+
+1. **Open Source License (AGPL-3.0)**: Free for open source use with copyleft requirements
+2. **Commercial License**: Available for purchase, removes AGPL obligations
+
+If you cannot comply with the AGPL-3.0 terms, you must purchase a Commercial License.
+
+---
+
+## Open Source License
+
+### GNU Affero General Public License v3.0
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/agpl-3.0.html>.
+
+### AGPL Requirements Summary
+
+Under the AGPL-3.0, if you modify this software and make it available over a
+network (e.g., as a web service), you must:
+
+1. Make the complete source code of your modified version available to users
+2. License your modifications under the AGPL-3.0
+3. Preserve all copyright notices and license information
+
+### When You Need a Commercial License
+
+You need a Commercial License if you want to:
+
+- Use Validibot in proprietary software without sharing your source code
+- Distribute Validibot as part of a closed-source product
+- Use Validibot in a SaaS product without AGPL compliance
+- Remove the network disclosure requirements of the AGPL
+- Access Pro features (see https://validibot.com/pricing for details)
+- Access Enterprise features (see https://validibot.com/pricing for details)
+
+**Note**: The Community edition includes ALL validators (including advanced validators
+like EnergyPlus and FMI) and can be used with the CLI anywhere, including CI/CD
+pipelines. Commercial tiers are primarily about removing AGPL obligations and
+accessing team/organization features.
+
+---
+
+## Commercial License
+
+Commercial licenses are available from McQuillen Interactive Pty. Ltd.
+
+### License Tiers
+
+| Tier           | Description                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| **Pro**        | For teams. Removes AGPL obligations, adds multi-org support, advanced analytics, and priority support. |
+| **Enterprise** | For organisations. All Pro features plus SSO/LDAP, guest management, and dedicated support.            |
+
+### Purchasing
+
+Visit [https://validibot.com/pricing](https://validibot.com/pricing) for current pricing and to purchase a license.
+
+Commercial licenses are provided as separate Python packages (`validibot-pro`, `validibot-enterprise`) distributed through a private package index after purchase.
+
+### Commercial License Terms
+
+Commercial licenses are governed by the Validibot Commercial License Agreement. Key terms include:
+
+- **Subscription**: Licenses are annual subscriptions that must be renewed to continue use
+- **Scope**: Licenses are per-organisation and non-transferable
+- **Support**: Commercial licenses include support as specified in your subscription tier
+- **No Warranty**: Software is provided "as is" without warranties
+- **Liability Cap**: Our liability is limited to fees paid in the 12 months preceding any claim
+
+See the full Commercial License Agreement provided with your purchase for complete terms.
+
+---
+
+## Self-Hosted Deployment
+
+Validibot is designed for self-hosted deployment on your own infrastructure.
+McQuillen Interactive Pty. Ltd. does not host, operate, or have access to any
+installation of the Software or any data you process.
+
+**You are solely responsible for:**
+
+- The security, availability, and operation of your infrastructure
+- Backup, disaster recovery, and business continuity
+- Applying security patches and updates
+- Proper configuration and hardening
+- Compliance with applicable data protection and privacy laws
+- All data processed, stored, or transmitted through your installation
+
+We accept no responsibility or liability for any data you process using this
+Software or for security incidents arising from your infrastructure or
+configuration.
+
+---
+
+## Trademarks and Branding
+
+"Validibot", the Validibot logo, the Validibot robot character, and all related
+trademarks, service marks, graphics, and logos are trademarks of McQuillen
+Interactive Pty. Ltd. The AGPL-3.0 license does not grant any rights to use
+these trademarks.
+
+You may use the Validibot name solely to accurately identify that your software
+uses or is based on Validibot, in a manner that does not suggest endorsement or
+affiliation. You may not:
+
+- Use the Validibot name, logo, or robot character in your product name
+- Register domain names or social media accounts using "Validibot"
+- Create logos or branding confusingly similar to Validibot's
+- Remove or alter Validibot branding in the Software's user interface
+
+If you create a fork or derivative work, you must use a different name and
+branding that clearly distinguishes it from Validibot.
+
+---
+
+## Third-Party Components
+
+Validibot includes third-party open source components. See [NOTICE](NOTICE) for
+attributions and license information.
+
+---
+
+## Questions
+
+For licensing questions, contact: licensing@validibot.com
+
+For legal inquiries, contact: legal@validibot.com

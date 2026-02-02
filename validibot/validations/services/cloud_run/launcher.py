@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
-from vb_shared.fmi.envelopes import FMIInputEnvelope
+from validibot_shared.fmi.envelopes import FMIInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity

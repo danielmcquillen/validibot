@@ -54,13 +54,16 @@
             </div>
         {% endfor %}
 
-        <div class="dropdown-divider my-2">
-        </div>
-        <a class="dropdown-item d-flex align-items-center gap-2"
-           href="{% org_url 'users:organization-list' %}">
-            <i class="bi bi-people-fill"></i>
-            <span>{% trans "Manage organizations" %}</span>
-        </a>
+        {# Multi-org management link - only shown for Enterprise #}
+        {% if feature_multi_org %}
+            <div class="dropdown-divider my-2">
+            </div>
+            <a class="dropdown-item d-flex align-items-center gap-2"
+               href="{% org_url 'users:organization-list' %}">
+                <i class="bi bi-people-fill"></i>
+                <span>{% trans "Manage organizations" %}</span>
+            </a>
+        {% endif %}
 
     </div>
 </div>

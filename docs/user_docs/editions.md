@@ -114,4 +114,4 @@ If your legal team has concerns about AGPL, the Pro commercial license removes t
 
 - **Community:** [GitHub Issues](https://github.com/validibot/validibot/issues)
 - **Pro:** Email support included with your license
-- **Documentation:** [docs.validibot.com](https://docs.validibot.com)
+- **Documentation:** [https://validibot.com/resources/docs/](https://validibot.com/resources/docs/)

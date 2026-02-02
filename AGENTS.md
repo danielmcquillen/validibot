@@ -20,12 +20,14 @@
 ## Cross-Repo Awareness
 
 - Always consider the neighbouring projects when assessing behaviour or authoring code:
-  - `vb_shared` (installed here, source in `../vb_shared`) - shared Pydantic envelope models
-  - `vb_validators` (source in `../vb_validators`) - Cloud Run Job validator containers
-  - `validibot-commercial` (source in `../validibot-commercial`) - Pro/commercial features (billing, multi-org, advanced validators)
+  - `validibot-shared` (installed here, source in `../validibot-shared`) - shared Pydantic envelope models
+  - `validibot-validators` (source in `../validibot-validators`) - Cloud Run Job validator containers
+  - `validibot-pro` (source in `../validibot-pro`) - Pro tier commercial features
+  - `validibot-enterprise` (source in `../validibot-enterprise`) - Enterprise tier commercial features
   - `validibot-marketing` (source in `../validibot-marketing`) - Marketing website for validibot.com
   - `validibot-project` (source in `../validibot-project`) - ADRs, strategy docs, and project-level documentation
 - At the start of a task, open the relevant modules in those repos so their current contracts guide decisions made in `validibot`.
+- **Check `../validibot-pro` and `../validibot-enterprise`** to understand what commercial tiers offer before discussing pricing or feature placement.
 - When touching Dockerfiles or compose configs, cross-check the matching patterns in `../cookiecutter-django` to stay aligned.
 
 ## Architecture Decision Records (ADRs)
@@ -36,16 +38,30 @@ ADRs are stored in the `validibot-project` repo at `../validibot-project/docs/ad
 
 **CRITICAL**: Validibot follows an open-core model. Before writing new code, determine where it belongs:
 
-| Code Type | Repository | Examples |
-|-----------|------------|----------|
-| Core/Free features | `validibot` (this repo) | Validation engine, built-in validators, basic user management |
-| Pro features | `../validibot-commercial` | Billing, multi-org, advanced validators (EnergyPlus, FMI), team management |
+| Code Type               | Repository                | Examples                                                                                     |
+| ----------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
+| Core/Community features | `validibot` (this repo)   | Validation engine, all validators (built-in AND advanced), basic user management, single-org |
+| Pro features            | `../validibot-pro`        | see ../validibot-pro for details                                                             |
+| Enterprise features     | `../validibot-enterprise` | see ../validibot-enterprise for features                                                     |
 
-**Decision rule**: If it's a feature that should be gated behind a paid tier, it goes in `validibot-commercial`.
+### Rationale for Commercial Tiers
+
+The **primary value proposition** for Pro and Enterprise tiers is:
+
+1. **Commercial license** - Removes AGPL obligations (no source code disclosure requirements)
+2. **Support** - Priority support from the Validibot team
+3. **Additional features** - Multi-org (Pro), SSO/LDAP (Enterprise), etc.
+
+**Important**: The Community edition includes ALL validators (including advanced validators like EnergyPlus, FMI). The CLI can be used anywhere, including CI/CD pipelines. Commercial tiers do NOT gate basic functionality.
+
+### Feature Placement Decision Rule
+
+Ask: "Is this a feature that only makes sense for larger teams/organizations?"
+
+- **Yes** → Consider Pro or Enterprise
+- **No** → Add to Community (this repo)
 
 See [ADR: Open-Core Self-Hosted Transformation](../validibot-project/docs/adr/2026-01-28-open-core-self-hosted-transformation.md) for the full architectural plan.
-
-**Note**: The `validibot/billing/` app currently exists in this repo but is scheduled for migration to `validibot-commercial`. New billing features should go directly to the commercial repo.
 
 ## Collaboration Principles
 
@@ -86,8 +102,8 @@ contained in `.envs/.local/.django` by running `source set-env.sh`.
 
 The project uses `.envs/` for local development and deployments.
 
-| Directory | Purpose                              | Used By                                |
-| --------- | ------------------------------------ | -------------------------------------- |
+| Directory | Purpose                                | Used By                                          |
+| --------- | -------------------------------------- | ------------------------------------------------ |
 | `.envs/`  | Local dev + Docker + cloud deployments | Docker Compose, `set-env.sh`, GCP Secret Manager |
 
 **Important:** When deploying to GCP or updating secrets, always use files from `.envs/`.

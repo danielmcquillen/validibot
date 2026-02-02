@@ -21,13 +21,13 @@ across different deployment targets:
 ## Output Envelope Structure
 
 The EnergyPlus validator container produces an `EnergyPlusOutputEnvelope`
-(from vb_shared.energyplus.envelopes) containing:
+(from validibot_shared.energyplus.envelopes) containing:
 
 - outputs.metrics: EnergyPlusSimulationMetrics with fields like:
   - site_eui_kwh_m2: Site energy use intensity
   - site_electricity_kwh: Total electricity consumption
   - site_natural_gas_kwh: Total gas consumption
-  - etc. (see vb_shared/energyplus/models.py)
+  - etc. (see validibot_shared/energyplus/models.py)
 
 These metrics are extracted via `extract_output_signals()` for use in
 output-stage assertions (e.g., "site_eui_kwh_m2 < 100").
@@ -195,8 +195,8 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
             if the envelope contains ERROR messages; output-stage assertion
             failures are handled separately by the processor.
         """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         # Store run_context for CEL evaluation methods
         self.run_context = run_context
@@ -282,7 +282,7 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         """
         Extract simulation metrics from an EnergyPlus output envelope.
 
-        EnergyPlus envelopes (EnergyPlusOutputEnvelope from vb_shared) store
+        EnergyPlus envelopes (EnergyPlusOutputEnvelope from validibot_shared) store
         metrics in outputs.metrics as an EnergyPlusSimulationMetrics Pydantic
         model. Fields include site_eui_kwh_m2, site_electricity_kwh, etc.
 
@@ -396,8 +396,8 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
         Returns:
             ValidationResult with pass/fail based on envelope contents
         """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         issues: list[ValidationIssue] = []
 

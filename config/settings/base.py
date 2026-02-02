@@ -285,6 +285,7 @@ TEMPLATES = [
                 "validibot.users.context_processors.allauth_settings",
                 "validibot.core.context_processors.site_feature_settings",
                 "validibot.core.context_processors.license_context",
+                "validibot.core.context_processors.features_context",
                 "validibot.users.context_processors.organization_context",
                 "validibot.notifications.context_processors.notifications_context",
             ],

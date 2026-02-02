@@ -2,8 +2,8 @@
 Tests for envelope_builder service.
 """
 
-from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
-from vb_shared.validations.envelopes import ValidatorType
+from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.validations.envelopes import ValidatorType
 
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,

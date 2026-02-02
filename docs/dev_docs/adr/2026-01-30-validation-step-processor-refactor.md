@@ -297,8 +297,8 @@ Container-based validators produce JSON output that is deserialized into domain-
 #### Type Hierarchy
 
 ```
-ValidationOutputEnvelope (base)          # vb_shared.validations.envelopes
-├── EnergyPlusOutputEnvelope             # vb_shared.energyplus.envelopes
+ValidationOutputEnvelope (base)          # validibot_shared.validations.envelopes
+├── EnergyPlusOutputEnvelope             # validibot_shared.energyplus.envelopes
 │   └── outputs: EnergyPlusOutputs
 │       └── metrics: EnergyPlusSimulationMetrics
 │           ├── site_eui_kwh_m2: float | None
@@ -306,7 +306,7 @@ ValidationOutputEnvelope (base)          # vb_shared.validations.envelopes
 │           ├── site_natural_gas_kwh: float | None
 │           └── ... (domain-specific metrics)
 │
-└── FMIOutputEnvelope                    # vb_shared.fmi.envelopes
+└── FMIOutputEnvelope                    # validibot_shared.fmi.envelopes
     └── outputs: FMIOutputs
         └── simulation_results: dict[str, Any]
             └── ... (FMU-specific outputs)
@@ -893,7 +893,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     def _map_envelope_status(self, envelope_status) -> StepStatus:
         """Map ValidationStatus from envelope to StepStatus."""
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         mapping = {
             ValidationStatus.SUCCESS: StepStatus.PASSED,
@@ -910,7 +910,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     def _extract_error(self, output_envelope) -> str:
         """Extract error message from envelope."""
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         if output_envelope.status == ValidationStatus.SUCCESS:
             return ""

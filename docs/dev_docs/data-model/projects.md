@@ -94,7 +94,7 @@ When workflows move between projects the data flow is:
   `validibot/validations/models.py:1115-1119`).
 - When writing migrations or cleanup jobs, detach project references by setting
   them to `NULL` rather than trying to infer a new project.
-- If integrations in `../sv_modal` or `../vb_shared` need project context,
+- If integrations in `../sv_modal` or `../validibot_shared` need project context,
   fetch it from the submission/run instance passed into the engine rather than
   re-querying the workflow.
 

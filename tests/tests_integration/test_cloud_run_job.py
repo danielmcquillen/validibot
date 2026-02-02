@@ -337,7 +337,7 @@ class CloudRunJobIntegrationTest(TestCase):
         )
 
         # Build a test input envelope matching EnergyPlusInputEnvelope schema
-        # See vb_shared.energyplus.envelopes for the schema definition
+        # See validibot_shared.energyplus.envelopes for the schema definition
         envelope = {
             "schema_version": "validibot.input.v1",
             "run_id": self.test_run_id,

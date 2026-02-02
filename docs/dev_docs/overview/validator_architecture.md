@@ -119,8 +119,8 @@ Each environment has its own bucket:
 The validator system spans three codebases:
 
 - **This repo (`validibot/`)**: the Django web + worker services (Cloud Run Services).
-- **`vb_shared`**: shared Pydantic envelope models (installed here; see `vb_shared_dev/` for the local checkout).
-- **`vb_validators`**: validator job containers (see `vb_validators_dev/` for the local checkout).
+- **`validibot_shared`**: shared Pydantic envelope models (installed here; see `validibot_shared_dev/` for the local checkout).
+- **`validibot_validators`**: validator job containers (see `validibot_validators_dev/` for the local checkout).
 
 ```
 validibot/ (this repo)
@@ -129,10 +129,10 @@ validibot/ (this repo)
 │       ├── services/cloud_run/              # Launcher + Jobs API client
 │       └── api/callbacks.py                 # Worker-only callback endpoint
 │
-├── vb_shared_dev/                           # Local checkout of ../vb_shared (schemas + envelopes)
-│   └── vb_shared/validations/envelopes.py   # ExecutionContext, ValidationCallback, etc.
+├── validibot_shared_dev/                           # Local checkout of ../validibot_shared (schemas + envelopes)
+│   └── validibot_shared/validations/envelopes.py   # ExecutionContext, ValidationCallback, etc.
 │
-└── vb_validators_dev/                       # Local checkout of ../vb_validators (Cloud Run Job containers)
+└── validibot_validators_dev/                       # Local checkout of ../validibot_validators (Cloud Run Job containers)
     └── validators/
         ├── core/callback_client.py          # Posts callbacks (ID token)
         ├── energyplus/                      # EnergyPlus validator container
@@ -155,8 +155,8 @@ Note: The `workflow_identifier` can be either the workflow's slug (preferred) or
 
 ```python
 # In Django (Cloud Run Service)
-from vb_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
-from vb_shared.validations.envelopes import InputFileItem, ExecutionContext
+from validibot_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
+from validibot_shared.validations.envelopes import InputFileItem, ExecutionContext
 
 # Upload user's model to GCS
 model_uri = upload_to_gcs(submission.content, "model.idf")
@@ -229,7 +229,7 @@ execution_name = run_validator_job(
 
 ```python
 # In validators/energyplus/main.py
-from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusOutputEnvelope
+from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope, EnergyPlusOutputEnvelope
 from validators.shared.envelope_loader import load_input_envelope
 from validators.shared.gcs_client import upload_envelope
 from validators.shared.callback_client import post_callback
@@ -334,12 +334,12 @@ def validation_callback(request):
 ```python
 # Django knows which envelope type to use based on validator.type
 if validator.type == "energyplus":
-    from vb_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
+    from validibot_shared.energyplus import EnergyPlusInputEnvelope, EnergyPlusInputs
     envelope = EnergyPlusInputEnvelope(
         inputs=EnergyPlusInputs(...)  # Fully typed!
     )
 elif validator.type == "fmi":
-    from vb_shared.fmi import FMIInputEnvelope, FMIInputs
+    from validibot_shared.fmi import FMIInputEnvelope, FMIInputs
     envelope = FMIInputEnvelope(
         inputs=FMIInputs(...)  # Fully typed!
     )
@@ -352,7 +352,7 @@ upload_envelope(envelope, input_uri)
 
 ```python
 # Validator knows exact envelope type
-from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 
 # Load with full type information
 envelope = load_input_envelope(EnergyPlusInputEnvelope)
@@ -368,7 +368,7 @@ timestep = envelope.inputs.timestep_per_hour  # IDE autocomplete works!
 run = ValidationRun.objects.get(id=callback.run_id)
 
 if run.validator.type == "energyplus":
-    from vb_shared.energyplus import EnergyPlusOutputEnvelope
+    from validibot_shared.energyplus import EnergyPlusOutputEnvelope
     output = download_envelope(callback.result_uri, EnergyPlusOutputEnvelope)
     # output.outputs is typed as EnergyPlusOutputs
     returncode = output.outputs.energyplus_returncode
@@ -457,10 +457,10 @@ Alert on:
 
 ## Adding New Validator Types
 
-1. **Create envelope schemas** in `vb_shared/{domain}/` (see `vb_shared_dev/` in this workspace):
+1. **Create envelope schemas** in `validibot_shared/{domain}/` (see `validibot_shared_dev/` in this workspace):
 
    ```python
-   # vb_shared/xml/envelopes.py
+   # validibot_shared/xml/envelopes.py
    class XMLInputs(BaseModel):
        schema_uri: str
        validation_mode: Literal["strict", "lenient"]
@@ -469,7 +469,7 @@ Alert on:
        inputs: XMLInputs
    ```
 
-2. **Create validator container** in `vb_validators` (see `vb_validators_dev/validators/` in this workspace):
+2. **Create validator container** in `validibot_validators` (see `validibot_validators_dev/validators/` in this workspace):
 
    - Copy `validators/energyplus/` as template
    - Update `Dockerfile` with domain-specific dependencies
@@ -487,7 +487,7 @@ Alert on:
    ```python
    # In Django validator factory
    if validator.type == "xml":
-       from vb_shared.xml import XMLInputEnvelope, XMLInputs
+       from validibot_shared.xml import XMLInputEnvelope, XMLInputs
        envelope = XMLInputEnvelope(inputs=XMLInputs(...))
    ```
 
@@ -567,7 +567,7 @@ Validator images must be available locally or in a registry:
 
 ```bash
 # Build locally
-cd ../vb_validators
+cd ../validibot_validators
 docker build -t validibot-validator-energyplus:latest validators/energyplus/
 
 # Or pull from registry

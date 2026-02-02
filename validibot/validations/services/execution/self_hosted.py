@@ -46,7 +46,7 @@ from validibot.validations.services.execution.base import ExecutionResponse
 from validibot.validations.services.runners import get_validator_runner
 
 if TYPE_CHECKING:
-    from vb_shared.validations.envelopes import ValidationOutputEnvelope
+    from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -320,15 +320,15 @@ class SelfHostedExecutionBackend(ExecutionBackend):
             validator_type = output_dict.get("validator", {}).get("type", "").upper()
 
             if validator_type == "ENERGYPLUS":
-                from vb_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+                from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
 
                 return EnergyPlusOutputEnvelope.model_validate(output_dict)
             if validator_type == "FMI":
-                from vb_shared.fmi.envelopes import FMIOutputEnvelope
+                from validibot_shared.fmi.envelopes import FMIOutputEnvelope
 
                 return FMIOutputEnvelope.model_validate(output_dict)
             # Generic envelope
-            from vb_shared.validations.envelopes import ValidationOutputEnvelope
+            from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
             return ValidationOutputEnvelope.model_validate(output_dict)
 

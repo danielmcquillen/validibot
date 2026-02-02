@@ -23,27 +23,32 @@
     {% endcomment %}
     {% comment %} Terms and privacy URLs - update these when hosted externally {% endcomment %}
     {% with terms_url="/terms/" privacy_url="/privacy/" %}
-    <div class="mb-3">
-        <div class="form-check">
-            <input type="checkbox"
-                   name="terms_accepted"
-                   id="id_terms_accepted"
-                   class="form-check-input {% if form.terms_accepted.errors %}is-invalid{% endif %}"
-                   {% if form.terms_accepted.value %}checked{% endif %}
-                   required>
-            <label class="form-check-label" for="id_terms_accepted">
-                {% blocktrans trimmed %}
-                I agree to the <a href="{{ terms_url }}" target="_blank">Terms of Service</a>
-                and <a href="{{ privacy_url }}" target="_blank">Privacy Policy</a>
-                {% endblocktrans %}
-            </label>
-            {% if form.terms_accepted.errors %}
-                <div class="invalid-feedback">
-                    {{ form.terms_accepted.errors.0 }}
-                </div>
-            {% endif %}
+        <div class="mb-3">
+            <div class="form-check">
+                <input type="checkbox"
+                       name="terms_accepted"
+                       id="id_terms_accepted"
+                       class="form-check-input
+                              {% if form.terms_accepted.errors %}
+                                  is-invalid
+                              {% endif %}"
+                       {% if form.terms_accepted.value %}
+                           checked
+                       {% endif %}
+                       required />
+                <label class="form-check-label" for="id_terms_accepted">
+                    {% blocktrans trimmed %}
+                        I agree to the <a href="{{ terms_url }}" target="_blank">Terms of Service</a>
+                        and <a href="{{ privacy_url }}" target="_blank">Privacy Policy</a>
+                    {% endblocktrans %}
+                </label>
+                {% if form.terms_accepted.errors %}
+                    <div class="invalid-feedback">
+                        {{ form.terms_accepted.errors.0 }}
+                    </div>
+                {% endif %}
+            </div>
         </div>
-    </div>
     {% endwith %}
 
     {% comment %}
@@ -66,15 +71,7 @@
                name="{{ redirect_field_name }}"
                value="{{ redirect_field_value }}" />
     {% endif %}
-    {% if signup_selected_plan_code %}
-        {# Preserve selected plan through form submission for post-signup redirect #}
-        <input type="hidden" name="plan" value="{{ signup_selected_plan_code }}" />
-    {% endif %}
     <button id="sign_up_btn" class="btn btn-secondary" type="submit">
-        {% if signup_selected_plan %}
-            {% trans "Create Account & Start Trial" %} »
-        {% else %}
-            {% trans "Sign Up" %} »
-        {% endif %}
+        {% trans "Sign Up" %} »
     </button>
 </form>

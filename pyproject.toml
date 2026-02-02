@@ -1,3 +1,9 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 # ==== Project metadata ====
 
@@ -7,8 +13,22 @@ version = "0.1.0"
 description = "A simple data validation service"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "Proprietary" }
-authors = [{ name = "Daniel McQuillen" }]
+license = { text = "AGPL-3.0-only" }
+authors = [
+  { name = "Daniel McQuillen", email = "daniel@validibot.com" },
+  { name = "McQuillen Interactive Pty. Ltd." },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: Django :: 6.0",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+]
+keywords = ["validibot", "validation", "django", "data-validation"]
+
 dependencies = [
   "argon2-cffi==25.1.0",
   "authlib==1.6.6",
@@ -45,17 +65,17 @@ dependencies = [
   "psycopg[c]==3.3.2",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
-  "redis>=4.0,<7.0",  # Constrained for dramatiq compatibility
+  "redis>=4.0,<7.0",                  # Constrained for dramatiq compatibility
   "sentry-sdk==2.48.0",
   # Task queue: Dramatiq with Redis broker and periodic scheduling
   "dramatiq[redis]>=1.17.0",
   "django-dramatiq>=0.11.6",
   "periodiq>=0.12.1",
-  # vb-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
+  # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   # This Git URL is used when building Docker images (local or production).
   # For local non-Docker development, see [tool.uv.sources] below which overrides
-  # this to use the local vb_shared_dev folder instead.
-  "vb-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/vb_shared.git@main",
+  # this to use the local validibot_shared_dev folder instead.
+  "validibot-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/validibot-shared.git@main",
   "uvicorn-worker==0.4.0",
   "uvicorn[standard]==0.40.0",
   "whitenoise==6.11.0",
@@ -66,6 +86,11 @@ dependencies = [
   "docker>=7.0.0",
 ]
 
+[project.urls]
+Homepage = "https://validibot.com"
+Documentation = "https://validibot.com/resources/docs/"
+Repository = "https://github.com/danielmcquillen/validibot"
+
 # ==== pytest ====
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -74,7 +99,7 @@ python_files = ["tests.py", "test_*.py"]
 testpaths = [
   "tests",
   "validibot",
-] # exclude sibling dev repos (sv_modal_dev, vb_shared_dev) from discovery
+] # exclude sibling dev repos (sv_modal_dev, validibot_shared_dev) from discovery
 markers = [
   "integration: marks tests as integration (may require platform-specific binaries)",
   "smoke: marks tests as smoke tests (run with -m smoke, skipped by default)",
@@ -83,16 +108,22 @@ markers = [
 # ignore test_use_cases
 norecursedirs = [
   "sv_modal_dev",
-  "vb_shared_dev",
-  "vb_validators_dev",
-  "tests/tests_integration", # We run these manually
+  "validibot_shared_dev",
+  "validibot_validators_dev",
+  "tests/tests_integration",  # We run these manually
 ]
 
 # ==== Coverage ====
 [tool.coverage.run]
 include = ["validibot/**"]
-# We should run tests on sv_modal and vb_shared separately.
-omit = ["*/migrations/*", "*/tests/*", "sv_modal_dev", "vb_shared_dev", "vb_validators_dev"]
+# We should run tests on sv_modal and validibot-shared separately.
+omit = [
+  "*/migrations/*",
+  "*/tests/*",
+  "sv_modal_dev",
+  "validibot_shared_dev",
+  "validibot_validators_dev",
+]
 plugins = ["django_coverage_plugin"]
 
 # ==== mypy ====
@@ -135,7 +166,7 @@ indent_size = 2
 [tool.ruff]
 target-version = "py312"
 # Exclude a variety of commonly ignored directories.
-extend-exclude = ["*/migrations/*.py", "staticfiles/*", ]
+extend-exclude = ["*/migrations/*.py", "staticfiles/*"]
 
 [tool.ruff.lint]
 select = [
@@ -229,14 +260,14 @@ force-single-line = true
 
 # ==== uv source overrides (local development only) ====
 # When developing locally WITHOUT Docker, uv uses this section to override
-# the vb-shared dependency. Instead of cloning from Git, it loads the package
-# from the vb_shared_dev folder (a symlink to ../vb_shared). This allows us to
-# edit vb-shared source code directly while working on Validibot.
+# the validibot-shared dependency. Instead of cloning from Git, it loads the package
+# from the validibot_shared_dev folder (a symlink to ../validibot-shared). This allows us to
+# edit validibot-shared source code directly while working on Validibot.
 #
 # When building Docker images, we pass `--no-sources` to uv sync, which skips
-# this override and installs vb-shared from the Git URL in [project.dependencies].
+# this override and installs validibot-shared from the Git URL in [project.dependencies].
 [tool.uv.sources]
-vb-shared = { path = "vb_shared_dev", editable = true }
+validibot-shared = { path = "validibot_shared_dev", editable = true }
 
 [dependency-groups]
 dev = [
@@ -266,6 +297,6 @@ dev = [
   "mkdocs==1.6.1",
   "mkdocs-material==9.7.0",
   "mkdocs-print-site-plugin==2.8",
-  # Local vb-shared development (uses tool.uv.sources override)
-  "vb-shared",
+  # Local validibot-shared development (uses tool.uv.sources override)
+  "validibot-shared",
 ]

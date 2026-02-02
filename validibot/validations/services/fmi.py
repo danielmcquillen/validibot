@@ -12,8 +12,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
-from vb_shared.fmi import FMIProbeResult as FMIProbeResultSchema
-from vb_shared.fmi import FMIVariableMeta
+from validibot_shared.fmi import FMIProbeResult as FMIProbeResultSchema
+from validibot_shared.fmi import FMIVariableMeta
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType

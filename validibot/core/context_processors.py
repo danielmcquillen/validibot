@@ -2,6 +2,7 @@ import logging
 
 from django.conf import settings
 
+from validibot.core.features import get_feature_context
 from validibot.core.license import get_license
 
 logger = logging.getLogger(__name__)
@@ -58,3 +59,21 @@ def license_context(request):
         "is_pro": lic.is_pro,
         "is_community": lic.is_community,
     }
+
+
+def features_context(request):
+    """
+    Expose commercial feature flags in templates.
+
+    Commercial packages (validibot-pro, validibot-enterprise) register
+    the features they enable. This context processor makes those flags
+    available in templates.
+
+    Provides feature_<name> boolean flags:
+    - feature_multi_org: Multi-organization support (Enterprise)
+    - feature_guest_management: Guest user management (Enterprise)
+    - feature_billing: Billing/Stripe integration (Pro)
+    - feature_advanced_validators: Advanced validator management (Pro)
+    - etc.
+    """
+    return get_feature_context()

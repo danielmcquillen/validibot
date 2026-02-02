@@ -1,6 +1,6 @@
 site_name: Validibot User Guide
 site_description: Product tutorials and walkthroughs for Validibot users.
-site_url: https://docs.validibot.come/
+site_url: https://validibot.com/resources/docs/
 
 docs_dir: docs/user_docs
 site_dir: docs_build/user

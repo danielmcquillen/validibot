@@ -16,7 +16,7 @@ Validibot is a Django-based data validation engine that helps users validate bui
 - `docs/user_docs/` - End-user documentation
 - `tests/` - Integration tests
 - `.envs/` - Local (Docker + host-run) and cloud deployment environment files
-- `vb_shared_dev/` - Symlink to shared library code (../vb_shared)
+- `validibot_shared_dev/` - Symlink to shared library code (../validibot-shared)
 - `justfile` - Command runner (similar to Makefile)
 
 ## Tech Stack
@@ -35,12 +35,12 @@ Validibot is a Django-based data validation engine that helps users validate bui
 
 This project works alongside several related repositories:
 
-1. **vb_shared** - Shared library for integrations (EnergyPlus, FMI, etc.)
+1. **validibot-shared** - Shared library for integrations (EnergyPlus, FMI, etc.)
    - Installed from Git in production
-   - Symlinked to `vb_shared_dev/` for local development
-2. **vb_validators** - Cloud Run Job validator containers
-   - Located at `../vb_validators`
-   - Depends on vb_shared via Git URL
+   - Symlinked to `validibot_shared_dev/` for local development
+2. **validibot-validators** - Cloud Run Job validator containers
+   - Located at `../validibot-validators`
+   - Depends on validibot-shared via Git URL
 3. **validibot-commercial** - Commercial/Pro features (billing, multi-org, advanced validators)
    - Located at `../validibot-commercial`
    - Contains code that should NOT be in the open-source release
@@ -95,11 +95,11 @@ Before adding new features, ask: "Is this a Pro/Enterprise feature?"
 
 The `validibot/billing/` app and related code still exists in this repo but will be migrated to `validibot-commercial` as part of the open-core transformation. Until migration is complete, be aware that billing code should eventually move.
 
-### vb_shared Workflow
+### validibot-shared Workflow
 
-**IMPORTANT**: When making changes to vb_shared that other repos depend on (vb_validators, validibot):
+**IMPORTANT**: When making changes to validibot-shared that other repos depend on (validibot-validators, validibot):
 
-1. Make changes in `../vb_shared`
+1. Make changes in `../validibot-shared`
 2. Commit and push to GitHub
 3. Run `uv sync` in dependent repos to pull the new version
 

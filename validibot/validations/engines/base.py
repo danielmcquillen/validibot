@@ -28,7 +28,7 @@ The container execution varies by deployment:
 ## Output Envelopes and Assertion Signals
 
 Each async validator type produces outputs in its own Pydantic envelope structure
-(defined in vb_shared). For example:
+(defined in validibot_shared). For example:
 
 - EnergyPlus: outputs.metrics contains site_eui_kwh_m2, site_electricity_kwh, etc.
 - FMI: outputs.output_values contains a dict keyed by catalog slug
@@ -230,7 +230,7 @@ class BaseValidatorEngine(ABC):
         The base implementation returns None (no signals available).
 
         Args:
-            output_envelope: The typed Pydantic envelope from vb_shared containing
+            output_envelope: The typed Pydantic envelope from validibot_shared containing
                             validation results (e.g., EnergyPlusOutputEnvelope).
 
         Returns:
@@ -596,7 +596,7 @@ class BaseValidatorEngine(ABC):
         (EnergyPlus, FMI) must override this.
 
         Args:
-            output_envelope: The typed Pydantic envelope from vb_shared containing
+            output_envelope: The typed Pydantic envelope from validibot_shared containing
                 validation results (e.g., EnergyPlusOutputEnvelope).
             run_context: Optional execution context for CEL evaluation.
 

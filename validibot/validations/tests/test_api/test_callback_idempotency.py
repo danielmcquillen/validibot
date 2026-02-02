@@ -14,7 +14,7 @@ from django.test import TestCase
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
-from vb_shared.validations.envelopes import ValidationStatus
+from validibot_shared.validations.envelopes import ValidationStatus
 
 from validibot.core.models import CallbackReceiptStatus
 from validibot.users.tests.factories import OrganizationFactory

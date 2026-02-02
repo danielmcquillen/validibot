@@ -66,7 +66,7 @@ def upload_envelope(
         google.cloud.exceptions.GoogleCloudError: If upload fails
 
     Example:
-        >>> from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+        >>> from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
         >>> envelope = EnergyPlusInputEnvelope(...)
         >>> upload_envelope(envelope, "gs://my-bucket/runs/abc-123/input.json")
     """
@@ -119,7 +119,7 @@ def download_envelope(
         google.cloud.exceptions.GoogleCloudError: If download fails
 
     Example:
-        >>> from vb_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+        >>> from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
         >>> envelope = download_envelope(
         ...     "gs://my-bucket/runs/abc-123/output.json",
         ...     EnergyPlusOutputEnvelope,

@@ -4,7 +4,7 @@ Service layer for processing validator callbacks on the worker service.
 Validator containers (EnergyPlus, FMI) POST a minimal callback payload to the
 worker-only callback endpoint when they complete. The callback handler:
 
-1. Validates the payload shape (Pydantic model from vb_shared)
+1. Validates the payload shape (Pydantic model from validibot_shared)
 2. Downloads the full output envelope from cloud storage
 3. Delegates to ValidationStepProcessor.complete_from_callback() for step completion
 4. Either dispatches a resume task (when more steps remain) or finalizes the run
@@ -26,10 +26,10 @@ from django.db import DatabaseError
 from django.db import transaction
 from rest_framework import status
 from rest_framework.response import Response
-from vb_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
-from vb_shared.fmi.envelopes import FMIOutputEnvelope
-from vb_shared.validations.envelopes import ValidationCallback
-from vb_shared.validations.envelopes import ValidationStatus
+from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+from validibot_shared.fmi.envelopes import FMIOutputEnvelope
+from validibot_shared.validations.envelopes import ValidationCallback
+from validibot_shared.validations.envelopes import ValidationStatus
 
 from validibot.core.models import CallbackReceiptStatus
 from validibot.validations.constants import StepStatus

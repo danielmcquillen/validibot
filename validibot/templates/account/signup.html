@@ -17,109 +17,25 @@
         <div class="card-body d-flex h-100">
 
           <div class="row d-flex h-100 w-100 align-items-stretch">
-            <div class="col-12 col-md-{% if signup_selected_plan %}6{% else %}12{% endif %}">
+            <div class="col-12 col-md-12">
 
               <h3 class="card-body-header">
-                {% if signup_selected_plan %}
-                  {% trans "Create Your Account" %}
-                {% else %}
-                  {% trans "Start Your Free Trial" %}
-                {% endif %}
+                {% trans "Create an Account" %}
               </h3>
 
               <p class="text-muted mb-3">
-                {% if signup_selected_plan %}
-                  {% blocktrans trimmed %}
-                    Sign up to start your 14-day free trial. No credit card required.
-                  {% endblocktrans %}
-                {% else %}
-                  {% blocktrans trimmed %}
-                    Create an account to start validating your data.
-                  {% endblocktrans %}
-                {% endif %}
+                {% blocktrans trimmed %}
+                  Create an account to start validating your data.
+                {% endblocktrans %}
               </p>
 
               <p class="small text-muted">
                 {% trans "Already have an account?" %}
-                {% if signup_selected_plan_code %}
-                  <a href="{{ login_url }}?plan={{ signup_selected_plan_code }}">{% trans "Sign in here" %}</a>.
-                {% else %}
-                  <a href="{{ login_url }}">{% trans "Sign in here" %}</a>.
-                {% endif %}
+                <a href="{{ login_url }}">{% trans "Sign in here" %}</a>.
               </p>
 
               {% include 'account/partial/sign_up_form.html' %}
             </div>
-
-            {% if signup_selected_plan %}
-            <div class="col-12 col-md-6 d-none d-md-block border-start ps-4">
-              {# Plan summary and what happens next - based on Help Scout pattern #}
-              <div class="mb-4">
-                <h5 class="text-muted mb-3">
-                  <i class="bi bi-check-circle-fill text-success me-2"></i>
-                  {% trans "You selected" %}
-                </h5>
-                <div class="card bg-light border-0">
-                  <div class="card-body">
-                    <h4 class="mb-1">{{ signup_selected_plan.name }} {% trans "Plan" %}</h4>
-                    {% if signup_selected_plan.monthly_price_dollars %}
-                    <p class="h5 text-primary mb-2">
-                      ${{ signup_selected_plan.monthly_price_dollars }}<small class="text-muted">/{% trans "month" %}</small>
-                    </p>
-                    {% endif %}
-                    <ul class="list-unstyled small mb-0">
-                      <li class="mb-1">
-                        <i class="bi bi-check text-success me-1"></i>
-                        {% if signup_selected_plan.basic_launches_limit %}
-                          {{ signup_selected_plan.basic_launches_limit|intcomma }} {% trans "workflow launches/month" %}
-                        {% else %}
-                          {% trans "Unlimited workflow launches" %}
-                        {% endif %}
-                      </li>
-                      <li class="mb-1">
-                        <i class="bi bi-check text-success me-1"></i>
-                        {{ signup_selected_plan.included_credits|intcomma }} {% trans "advanced validation credits" %}
-                      </li>
-                      <li class="mb-1">
-                        <i class="bi bi-check text-success me-1"></i>
-                        {% if signup_selected_plan.max_seats %}
-                          {{ signup_selected_plan.max_seats }} {% trans "team seats" %}
-                        {% else %}
-                          {% trans "Unlimited team seats" %}
-                        {% endif %}
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div class="mb-4">
-                <h5 class="text-muted mb-3">
-                  <i class="bi bi-arrow-right-circle me-2"></i>
-                  {% trans "What happens next" %}
-                </h5>
-                <ol class="small ps-3">
-                  <li class="mb-2">
-                    <strong>{% trans "Create your account" %}</strong>
-                    <span class="text-muted d-block">{% trans "Fill out the form to get started" %}</span>
-                  </li>
-                  <li class="mb-2">
-                    <strong>{% trans "Start your 14-day trial" %}</strong>
-                    <span class="text-muted d-block">{% trans "Full access to all features, no credit card needed" %}</span>
-                  </li>
-                  <li class="mb-2">
-                    <strong>{% trans "Subscribe when ready" %}</strong>
-                    <span class="text-muted d-block">{% trans "Continue with your selected plan after the trial" %}</span>
-                  </li>
-                </ol>
-              </div>
-
-              <div class="text-muted small">
-                <i class="bi bi-shield-check me-1"></i>
-                {% trans "Cancel anytime during your trial" %}
-              </div>
-            </div>
-            {% endif %}
 
           </div>
         </div>

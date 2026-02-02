@@ -169,7 +169,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # 4. Returns ValidationResult with signals field populated
         post_result = engine.post_execute_validate(output_envelope, run_context)
 
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         container_error_issues = [
             issue
@@ -270,7 +270,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     def _map_envelope_status(self, envelope_status) -> StepStatus:
         """Map ValidationStatus from envelope to StepStatus."""
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         mapping = {
             ValidationStatus.SUCCESS: StepStatus.PASSED,
@@ -282,7 +282,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     def _extract_error(self, output_envelope) -> str:
         """Extract error message from envelope."""
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         if output_envelope.status == ValidationStatus.SUCCESS:
             return ""

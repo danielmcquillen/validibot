@@ -10,19 +10,19 @@ builder function. This keeps the code straightforward and easy to test.
 
 from typing import Protocol
 
-from vb_shared.energyplus.envelopes import EnergyPlusInputEnvelope
-from vb_shared.energyplus.envelopes import EnergyPlusInputs
-from vb_shared.fmi.envelopes import FMIInputEnvelope
-from vb_shared.fmi.envelopes import FMIInputs
-from vb_shared.fmi.envelopes import FMISimulationConfig
-from vb_shared.validations.envelopes import ExecutionContext
-from vb_shared.validations.envelopes import InputFileItem
-from vb_shared.validations.envelopes import OrganizationInfo
-from vb_shared.validations.envelopes import SupportedMimeType
-from vb_shared.validations.envelopes import ValidationInputEnvelope
-from vb_shared.validations.envelopes import ValidatorInfo
-from vb_shared.validations.envelopes import ValidatorType
-from vb_shared.validations.envelopes import WorkflowInfo
+from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.energyplus.envelopes import EnergyPlusInputs
+from validibot_shared.fmi.envelopes import FMIInputEnvelope
+from validibot_shared.fmi.envelopes import FMIInputs
+from validibot_shared.fmi.envelopes import FMISimulationConfig
+from validibot_shared.validations.envelopes import ExecutionContext
+from validibot_shared.validations.envelopes import InputFileItem
+from validibot_shared.validations.envelopes import OrganizationInfo
+from validibot_shared.validations.envelopes import SupportedMimeType
+from validibot_shared.validations.envelopes import ValidationInputEnvelope
+from validibot_shared.validations.envelopes import ValidatorInfo
+from validibot_shared.validations.envelopes import ValidatorType
+from validibot_shared.validations.envelopes import WorkflowInfo
 
 from validibot.validations.constants import ValidationType
 

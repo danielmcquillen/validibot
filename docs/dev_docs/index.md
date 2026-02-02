@@ -17,7 +17,7 @@ This site describes the core concepts, data model, and API for working with vali
 ## Quick Reference
 
 - [Quick Reference](quick_reference.md) - Summary of core concepts and basic usage
-- [Related Libraries](related_libraries.md) - How `vb_shared` and `sv_modal` connect to Validibot
+- [Related Libraries](related_libraries.md) - How `validibot_shared` and `sv_modal` connect to Validibot
 
 ### Overview
 

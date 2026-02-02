@@ -119,7 +119,8 @@ This component renders the top navigation bar for the app.
                         {% endif %}
                     </a>
                 </li>
-                {% if is_org_admin %}
+                {# Multi-org management is an Enterprise feature #}
+                {% if is_org_admin and feature_multi_org %}
                     <hr class="dropdown-divider" />
                     <li>
                         <a class="dropdown-item
@@ -133,16 +134,14 @@ This component renders the top navigation bar for the app.
                 {% endif %}
 
                 {# Sign out - always visible #}
-                {% if ACCOUNT_ALLOW_LOGIN %}
-                    <li>
-                        <hr class="dropdown-divider" />
-                    </li>
-                    <li>
-                        <a class="dropdown-item text-danger" href="{% url 'account_logout' %}">
-                            {% trans "Sign Out" %}
-                        </a>
-                    </li>
-                {% endif %}
+                <li>
+                    <hr class="dropdown-divider" />
+                </li>
+                <li>
+                    <a class="dropdown-item text-danger" href="{% url 'account_logout' %}">
+                        {% trans "Sign Out" %}
+                    </a>
+                </li>
             </ul>
         </div>
     </div>

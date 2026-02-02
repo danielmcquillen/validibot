@@ -28,8 +28,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from vb_shared.validations.envelopes import ValidationInputEnvelope
-    from vb_shared.validations.envelopes import ValidationOutputEnvelope
+    from validibot_shared.validations.envelopes import ValidationInputEnvelope
+    from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 
     from validibot.submissions.models import Submission
     from validibot.validations.models import ValidationRun

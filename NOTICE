@@ -1,0 +1,191 @@
+# NOTICE
+
+Validibot
+Copyright (c) 2025-2026 McQuillen Interactive Pty. Ltd. (ABN 49 600 623 069)
+All rights reserved.
+
+This product includes software developed by McQuillen Interactive Pty. Ltd.
+
+---
+
+## Third-Party Components
+
+Validibot includes or depends on the following third-party open source software
+components. Each component is subject to its own license terms.
+
+### Core Framework
+
+**Django** - https://www.djangoproject.com/
+License: BSD-3-Clause
+Copyright (c) Django Software Foundation and individual contributors.
+
+**Django REST Framework** - https://www.django-rest-framework.org/
+License: BSD-3-Clause
+Copyright (c) 2011-present, Encode OSS Ltd.
+
+**Pydantic** - https://docs.pydantic.dev/
+License: MIT
+Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors.
+
+### Authentication & Security
+
+**django-allauth** - https://github.com/pennersr/django-allauth
+License: MIT
+Copyright (c) 2010-2024 Raymond Penners and contributors.
+
+**Authlib** - https://authlib.org/
+License: BSD-3-Clause
+Copyright (c) 2017-present, Authlib contributors.
+
+**Argon2-CFFI** - https://github.com/hynek/argon2-cffi
+License: MIT
+Copyright (c) 2015 Hynek Schlawack and the argon2-cffi contributors.
+
+**cryptography** - https://cryptography.io/
+License: Apache-2.0 OR BSD-3-Clause
+Copyright (c) Individual contributors.
+
+### Data Validation
+
+**jsonschema** - https://python-jsonschema.readthedocs.io/
+License: MIT
+Copyright (c) 2012 Julian Berman.
+
+**lxml** - https://lxml.de/
+License: BSD-3-Clause
+Copyright (c) 2003-2024 by the lxml project.
+
+**CEL-Python** - https://github.com/cloud-custodian/cel-python
+License: Apache-2.0
+Copyright (c) Cloud Custodian Authors.
+
+### Simulation Engines
+
+**FMPy** - https://github.com/CATIA-Systems/FMPy
+License: BSD-2-Clause
+Copyright (c) 2017-2024 Dassault Systemes.
+
+### Database & Caching
+
+**psycopg** - https://www.psycopg.org/
+License: LGPL-3.0
+Copyright (c) 2020-2024 The Psycopg Team.
+
+**Redis-py** - https://github.com/redis/redis-py
+License: MIT
+Copyright (c) 2012-present, Redis Inc.
+
+**django-redis** - https://github.com/jazzband/django-redis
+License: BSD-3-Clause
+Copyright (c) 2011-present Andrey Antukh.
+
+### Task Queue
+
+**Dramatiq** - https://dramatiq.io/
+License: LGPL-3.0
+Copyright (c) 2017-present Bogdan Popa.
+
+**Periodiq** - https://github.com/Bogdanp/periodiq
+License: LGPL-3.0
+Copyright (c) 2019-present Bogdan Popa.
+
+### HTTP & Web
+
+**HTTPX** - https://www.python-httpx.org/
+License: BSD-3-Clause
+Copyright (c) 2019-present Encode OSS Ltd.
+
+**Uvicorn** - https://www.uvicorn.org/
+License: BSD-3-Clause
+Copyright (c) 2017-present Encode OSS Ltd.
+
+**Gunicorn** - https://gunicorn.org/
+License: MIT
+Copyright (c) 2009-present Paul J. Davis and contributors.
+
+**WhiteNoise** - http://whitenoise.evans.io/
+License: MIT
+Copyright (c) 2013 David Evans.
+
+### Frontend Libraries
+
+**Bootstrap** - https://getbootstrap.com/
+License: MIT
+Copyright (c) 2011-2024 The Bootstrap Authors.
+
+**HTMX** - https://htmx.org/
+License: BSD-2-Clause
+Copyright (c) 2020, Big Sky Software.
+
+**Chart.js** - https://www.chartjs.org/
+License: MIT
+Copyright (c) 2014-2024 Chart.js Contributors.
+
+### Cloud Services
+
+**Google Cloud Libraries** - https://cloud.google.com/python
+License: Apache-2.0
+Copyright (c) Google LLC.
+
+### Utilities
+
+**Pillow** - https://python-pillow.org/
+License: HPND (Historical Permission Notice and Disclaimer)
+Copyright (c) 1995-2011 by Fredrik Lundh, 2010-present by Jeffrey A. Clark and contributors.
+
+**python-slugify** - https://github.com/un33k/python-slugify
+License: MIT
+Copyright (c) 2012-present Val Neekman.
+
+**defusedxml** - https://github.com/tiran/defusedxml
+License: PSF-2.0
+Copyright (c) 2013 by Christian Heimes.
+
+**Bleach** - https://github.com/mozilla/bleach
+License: Apache-2.0
+Copyright (c) Mozilla Foundation.
+
+**nh3** - https://github.com/messense/nh3
+License: MIT
+Copyright (c) messense.
+
+### Monitoring & Logging
+
+**Sentry SDK** - https://sentry.io/
+License: MIT
+Copyright (c) Sentry (https://sentry.io) and individual contributors.
+
+**python-json-logger** - https://github.com/madzak/python-json-logger
+License: BSD-2-Clause
+Copyright (c) 2011 Zakaria Zajac.
+
+---
+
+## Notice Requirements
+
+Some of the licenses above require that their license text be included with
+distributions. The complete license texts for all dependencies can be found in
+the respective package distributions or their source repositories linked above.
+
+If you are distributing Validibot, ensure you include the appropriate license
+notices as required by the licenses of the included components.
+
+---
+
+## Trademarks
+
+- "Validibot" is a trademark of McQuillen Interactive Pty. Ltd.
+- "Django" is a registered trademark of the Django Software Foundation.
+- "PostgreSQL" is a trademark of the PostgreSQL Global Development Group.
+- "Redis" is a trademark of Redis Ltd.
+- "Google Cloud" is a trademark of Google LLC.
+- "Bootstrap" is a trademark of Twitter, Inc.
+
+All other trademarks are the property of their respective owners.
+
+---
+
+## Questions
+
+For questions about licensing or third-party components, contact:
+licensing@validibot.com

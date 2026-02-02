@@ -93,13 +93,13 @@ Validator containers can be deployed using either justfile. Both are equivalent 
 
 | Location | Command | Notes |
 |----------|---------|-------|
-| `validibot/` | `just validator-deploy energyplus dev` | Uses symlink to `vb_validators_dev/` |
-| `vb_validators/` | `just deploy energyplus dev` | Native repo, shorter command |
+| `validibot/` | `just validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
+| `validibot_validators/` | `just deploy energyplus dev` | Native repo, shorter command |
 
 ### Quick deploy
 
 ```bash
-# From vb_validators directory
+# From validibot_validators directory
 just deploy energyplus dev      # Deploy EnergyPlus to dev
 just deploy fmi prod            # Deploy FMI to prod
 just deploy-all dev             # Deploy all validators to dev
@@ -123,7 +123,7 @@ just validators-deploy-all dev
 ### Viewing logs and job status
 
 ```bash
-# From vb_validators directory
+# From validibot_validators directory
 just list-jobs                      # List all validator jobs
 just describe-job energyplus dev    # Show job details
 just logs energyplus dev            # View recent logs
@@ -270,7 +270,7 @@ All runners pass these standardized environment variables to containers:
 ### Building Containers for Self-Hosted
 
 ```bash
-# From vb_validators directory
+# From validibot_validators directory
 just build energyplus
 just build fmi
 just build-all
@@ -313,7 +313,7 @@ Validator containers must support both storage backends:
 3. **Write output** to the URI specified by `VALIDIBOT_OUTPUT_URI` or derived from execution bundle
 4. **Skip callbacks** when `skip_callback` is set (sync mode doesn't need them)
 
-See `vb_validators/validators/core/storage_client.py` for the implementation that handles both URI schemes.
+See `validibot_validators/validators/core/storage_client.py` for the implementation that handles both URI schemes.
 
 ### Advanced Validator Management
 

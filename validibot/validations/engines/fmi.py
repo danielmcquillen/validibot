@@ -22,7 +22,7 @@ This works across different deployment targets:
 ## Output Envelope Structure
 
 The FMI validator container produces an `FMIOutputEnvelope` (from
-vb_shared.fmi.envelopes) containing:
+validibot_shared.fmi.envelopes) containing:
 
 - outputs.output_values: Dict keyed by catalog slug with simulation outputs
   - Each key is a catalog entry slug (e.g., "indoor_temp_c")
@@ -193,8 +193,8 @@ class FMUValidationEngine(BaseValidatorEngine):
             if the envelope contains ERROR messages; output-stage assertion
             failures are handled separately by the processor.
         """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         self.run_context = run_context
 
@@ -279,7 +279,7 @@ class FMUValidationEngine(BaseValidatorEngine):
         """
         Extract output values from an FMI output envelope.
 
-        FMI envelopes (FMIOutputEnvelope from vb_shared) store simulation outputs
+        FMI envelopes (FMIOutputEnvelope from validibot_shared) store simulation outputs
         in outputs.output_values as a dict keyed by catalog slug.
 
         Args:
@@ -386,8 +386,8 @@ class FMUValidationEngine(BaseValidatorEngine):
         Returns:
             ValidationResult with pass/fail based on envelope contents
         """
-        from vb_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from vb_shared.validations.envelopes import ValidationStatus
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+        from validibot_shared.validations.envelopes import ValidationStatus
 
         issues: list[ValidationIssue] = []
 

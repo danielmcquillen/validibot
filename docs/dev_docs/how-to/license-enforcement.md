@@ -7,15 +7,15 @@ Validibot uses an open-core model with three editions: **Community** (AGPL-3.0),
 The license module (`validibot.core.license`) provides:
 
 - **Edition detection**: Community, Pro, or Enterprise
-- **CI environment detection**: Blocks Community edition in CI/CD
 - **Edition gating**: Restricts code paths based on edition
 - **License provider registration**: Allows commercial packages to unlock editions
 
 ## Philosophy
 
-> Community is for humans. Pro is for machines. Enterprise is for organizations.
+Validibot follows a simple licensing model
+: installing a commercial package activates the license. There's no runtime license key validation - the private package index authentication \*is\* the license enforcement. If you can install `validibot-pro` or `validibot-enterprise`, you have a valid license.
 
-The Community edition gives users full access to all validators for local/interactive use. Pro adds automation features for CI/CD pipelines and machine integrations. Enterprise adds multi-organization support, SSO, and other features for larger organizations.
+The Community edition gives users full access to all built-in validators. Pro adds multi-organization support, advanced team management, and priority support. Enterprise adds SSO/LDAP integration, guest management, and source code escrow.
 
 ## Edition Hierarchy
 
@@ -61,9 +61,9 @@ Use the `require_edition` decorator when you need a minimum edition level:
 ```python
 from validibot.core.license import require_edition, Edition
 
-@require_edition(Edition.PRO, "JUnit XML output")
-def generate_junit_report():
-    """Generate JUnit XML report. Requires Pro or Enterprise."""
+@require_edition(Edition.PRO, "Multi-organization support")
+def create_organization():
+    """Create a new organization. Requires Pro or Enterprise."""
     ...
 
 @require_edition(Edition.ENTERPRISE, "LDAP integration")
@@ -79,47 +79,36 @@ Check manually and raise an error:
 ```python
 from validibot.core.license import get_license, Edition, LicenseError
 
-def generate_report(format: str, results):
+def handle_organization_request(action: str, data):
     license = get_license()
 
-    if format == "junit":
-        license.require_edition(Edition.PRO, "JUnit XML output")
-        return generate_junit(results)
-    elif format == "text":
-        return generate_text(results)  # Always available
+    if action == "create":
+        license.require_edition(Edition.PRO, "Multi-organization support")
+        return create_organization(data)
+    elif action == "list":
+        return list_organizations(data)  # Always available
 ```
 
-### CI Environment Detection
+### Checking Edition Availability
 
-The module automatically detects CI environments and raises `CIEnvironmentError` for Community edition:
+Use `is_edition_available()` for conditional logic without raising errors:
 
 ```python
-from validibot.core.license import check_ci_allowed, CIEnvironmentError
+from validibot.core.license import is_edition_available, Edition
 
-try:
-    check_ci_allowed()
-except CIEnvironmentError as e:
-    print(f"Cannot run in {e.ci_name} with Community edition")
-    print("Upgrade to Pro: https://validibot.com/pricing")
+if is_edition_available(Edition.PRO):
+    show_organization_menu()
+else:
+    show_upgrade_prompt()
 ```
 
-Detected CI environments include:
-
-- GitHub Actions
-- GitLab CI
-- Jenkins
-- CircleCI
-- Travis CI
-- Azure Pipelines
-- Bitbucket Pipelines
-- AWS CodeBuild
-- Google Cloud Build
-- Buildkite
-- TeamCity
-- Drone CI
-- And more (via generic `CI=true` detection)
-
 ## Commercial License Integration
+
+### How It Works
+
+Commercial packages (`validibot-pro`, `validibot-enterprise`) are distributed via a private package index. The authentication required to access this index serves as the license enforcement - if you can install the package, you have paid for it.
+
+When a commercial package is installed and imported, it registers its license provider with the core system. No license key or environment variable is required for activation.
 
 ### Pro License
 
@@ -127,51 +116,67 @@ The `validibot-pro` package registers itself on import:
 
 ```python
 # In validibot_pro/__init__.py
+from validibot_pro.license_provider import register_pro_license
+
+# Auto-register when package is imported
+register_pro_license()
+```
+
+The license provider simply returns a valid Pro license:
+
+```python
+# In validibot_pro/license_provider.py
 from validibot.core.license import register_license_provider, License, Edition
 
-def _get_pro_license():
-    """Load and validate Pro license."""
-    # Check license file, environment variable, etc.
-    if valid_license:
-        return License(
-            edition=Edition.PRO,
-            organization="Customer Org",
-        )
-    return None
+def get_pro_license():
+    """Return a Pro license. Package installation = license activation."""
+    return License(
+        edition=Edition.PRO,
+        organization=os.environ.get("VALIDIBOT_PRO_ORGANIZATION", "Pro License"),
+    )
 
-# Register on import
-register_license_provider(Edition.PRO, _get_pro_license)
+def register_pro_license():
+    register_license_provider(Edition.PRO, get_pro_license)
 ```
 
 ### Enterprise License
 
-The `validibot-enterprise` package works similarly:
+The `validibot-enterprise` package works identically:
 
 ```python
-# In validibot_enterprise/__init__.py
+# In validibot_enterprise/license_provider.py
 from validibot.core.license import register_license_provider, License, Edition
 
-def _get_enterprise_license():
-    """Load and validate Enterprise license."""
-    # Check license file, environment variable, etc.
-    if valid_license:
-        return License(
-            edition=Edition.ENTERPRISE,
-            organization="Enterprise Customer Org",
-        )
-    return None
+def get_enterprise_license():
+    """Return an Enterprise license. Package installation = license activation."""
+    return License(
+        edition=Edition.ENTERPRISE,
+        organization=os.environ.get("VALIDIBOT_ENTERPRISE_ORGANIZATION", "Enterprise License"),
+    )
 
-# Register on import
-register_license_provider(Edition.ENTERPRISE, _get_enterprise_license)
+def register_enterprise_license():
+    register_license_provider(Edition.ENTERPRISE, get_enterprise_license)
 ```
 
 ### Provider Precedence
 
 When both Pro and Enterprise providers are registered, Enterprise takes precedence. The `get_license()` function checks providers in tier order (highest first).
 
+### Plugin Auto-Discovery
+
+Commercial packages register themselves as entry points:
+
+```toml
+# pyproject.toml for validibot-pro
+[project.entry-points."validibot.plugins"]
+pro = "validibot_pro:register_pro_license"
+```
+
+Validibot automatically discovers and loads these plugins at startup via `importlib.metadata.entry_points()`.
+
 ### Installation
 
-Users install commercial editions with:
+Users install commercial editions from the private package index:
 
 ```bash
 # Pro
@@ -181,14 +186,14 @@ pip install validibot-pro --index-url https://<credentials>@packages.validibot.c
 pip install validibot-enterprise --index-url https://<credentials>@packages.validibot.com/simple/
 ```
 
-Then add to Django settings:
+The package is automatically discovered and activated - no configuration required.
 
-```python
-# config/settings/base.py
-INSTALLED_APPS = [
-    ...
-    "validibot_enterprise",  # Or "validibot_pro" - must be before validibot apps
-]
+Optionally, users can customize the organization name displayed in logs:
+
+```bash
+export VALIDIBOT_PRO_ORGANIZATION="Acme Corp"
+# or
+export VALIDIBOT_ENTERPRISE_ORGANIZATION="Enterprise Customer"
 ```
 
 ## Error Handling
@@ -196,17 +201,17 @@ INSTALLED_APPS = [
 License errors include the required edition and helpful upgrade information:
 
 ```python
-from validibot.core.license import LicenseError, CIEnvironmentError
+from validibot.core.license import LicenseError
 
 try:
-    generate_junit_report(results)
+    create_organization(data)
 except LicenseError as e:
     # e.feature_description contains the description
     # e.required_edition contains the minimum required edition
     print(str(e))
-    # "JUnit XML output requires Validibot Pro.
-    #  The Community edition includes all validators for local/interactive use.
-    #  Pro adds additional capabilities for teams and automation.
+    # "Multi-organization support requires Validibot Pro.
+    #  The Community edition includes all validators.
+    #  Pro adds additional capabilities for teams.
     #  Learn more: https://validibot.com/pricing"
 ```
 
@@ -244,10 +249,10 @@ def enterprise_license():
     yield
     reset_license_provider()
 
-def test_junit_output_pro_only(pro_license):
-    """JUnit output should work with Pro license."""
-    result = generate_junit_report(test_results)
-    assert "<testsuites>" in result
+def test_create_org_pro_only(pro_license):
+    """Organization creation should work with Pro license."""
+    result = create_organization({"name": "Test Org"})
+    assert result is not None
 
 def test_ldap_enterprise_only(enterprise_license):
     """LDAP integration should work with Enterprise license."""
@@ -263,7 +268,7 @@ def test_ldap_enterprise_only(enterprise_license):
 
 3. **Graceful degradation**: When possible, fall back to Community-compatible alternatives rather than failing.
 
-4. **Don't over-gate**: Core validation functionality should always work. Only gate automation/integration capabilities.
+4. **Don't over-gate**: Core validation functionality should always work. Only gate organization/team management capabilities.
 
 5. **Test all editions**: Ensure code works correctly for Community, Pro, and Enterprise users.
 

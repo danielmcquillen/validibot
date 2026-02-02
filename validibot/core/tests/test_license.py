@@ -1,109 +1,21 @@
 """
 Tests for the license module.
 
-Tests CI environment detection and edition gating.
+Tests edition gating and license provider registration.
 """
 
 from __future__ import annotations
 
-import os
-from unittest.mock import patch
-
 import pytest
 
-from validibot.core.license import CI_ENVIRONMENT_PATTERNS
-from validibot.core.license import CIEnvironmentError
 from validibot.core.license import Edition
 from validibot.core.license import License
 from validibot.core.license import LicenseError
-from validibot.core.license import check_ci_allowed
-from validibot.core.license import detect_ci_environment
 from validibot.core.license import get_license
-from validibot.core.license import is_ci_environment
 from validibot.core.license import is_edition_available
 from validibot.core.license import register_license_provider
 from validibot.core.license import require_edition
 from validibot.core.license import reset_license_provider
-
-
-class TestCIEnvironmentDetection:
-    """Tests for CI environment detection."""
-
-    def test_detect_ci_environment_github_actions(self):
-        """Should detect GitHub Actions."""
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
-            assert detect_ci_environment() == "GitHub Actions"
-
-    def test_detect_ci_environment_gitlab_ci(self):
-        """Should detect GitLab CI."""
-        with patch.dict(os.environ, {"GITLAB_CI": "true"}, clear=True):
-            assert detect_ci_environment() == "GitLab CI"
-
-    def test_detect_ci_environment_jenkins(self):
-        """Should detect Jenkins via JENKINS_URL."""
-        env = {"JENKINS_URL": "http://jenkins.example.com"}
-        with patch.dict(os.environ, env, clear=True):
-            assert detect_ci_environment() == "Jenkins"
-
-    def test_detect_ci_environment_jenkins_build_id(self):
-        """Should detect Jenkins via BUILD_ID."""
-        with patch.dict(os.environ, {"BUILD_ID": "123"}, clear=True):
-            assert detect_ci_environment() == "Jenkins"
-
-    def test_detect_ci_environment_circleci(self):
-        """Should detect CircleCI."""
-        with patch.dict(os.environ, {"CIRCLECI": "true"}, clear=True):
-            assert detect_ci_environment() == "CircleCI"
-
-    def test_detect_ci_environment_travis(self):
-        """Should detect Travis CI."""
-        with patch.dict(os.environ, {"TRAVIS": "true"}, clear=True):
-            assert detect_ci_environment() == "Travis CI"
-
-    def test_detect_ci_environment_azure_pipelines(self):
-        """Should detect Azure Pipelines."""
-        with patch.dict(os.environ, {"TF_BUILD": "True"}, clear=True):
-            assert detect_ci_environment() == "Azure Pipelines"
-
-    def test_detect_ci_environment_generic_ci(self):
-        """Should detect generic CI=true environment variable."""
-        with patch.dict(os.environ, {"CI": "true"}, clear=True):
-            assert detect_ci_environment() == "CI environment"
-
-    def test_detect_ci_environment_case_insensitive(self):
-        """Should be case-insensitive for value matching."""
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "TRUE"}, clear=True):
-            assert detect_ci_environment() == "GitHub Actions"
-
-        with patch.dict(os.environ, {"CI": "True"}, clear=True):
-            assert detect_ci_environment() == "CI environment"
-
-    def test_detect_ci_environment_not_in_ci(self):
-        """Should return None when not in CI."""
-        with patch.dict(os.environ, {}, clear=True):
-            assert detect_ci_environment() is None
-
-    def test_detect_ci_environment_wrong_value(self):
-        """Should not detect CI if env var has wrong value."""
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=True):
-            # Check that GITHUB_ACTIONS with "false" is not detected
-            result = detect_ci_environment()
-            # May still detect other patterns if present
-            assert result != "GitHub Actions" or result is None
-
-    def test_is_ci_environment(self):
-        """Should return boolean for CI detection."""
-        with patch.dict(os.environ, {"CI": "true"}, clear=True):
-            assert is_ci_environment() is True
-
-        with patch.dict(os.environ, {}, clear=True):
-            assert is_ci_environment() is False
-
-    def test_all_ci_patterns_have_name(self):
-        """All CI patterns should have a human-readable name."""
-        for env_var, _value_pattern, ci_name in CI_ENVIRONMENT_PATTERNS:
-            assert ci_name, f"CI pattern {env_var} missing name"
-            assert isinstance(ci_name, str)
 
 
 class TestEdition:
@@ -236,15 +148,6 @@ class TestLicenseError:
         assert "LDAP integration" in str(error)
         assert "Enterprise" in str(error)
 
-    def test_ci_environment_error(self):
-        """CIEnvironmentError should include CI name and upgrade info."""
-        error = CIEnvironmentError("GitHub Actions")
-
-        assert "GitHub Actions" in str(error)
-        assert "cannot run in CI/CD" in str(error)
-        assert "Validibot Pro" in str(error)
-        assert error.ci_name == "GitHub Actions"
-
 
 class TestGetLicense:
     """Tests for get_license function."""
@@ -334,60 +237,6 @@ class TestGetLicense:
             lic = get_license()
 
             assert lic.edition == Edition.COMMUNITY
-        finally:
-            reset_license_provider()
-
-
-class TestCheckCIAllowed:
-    """Tests for CI check function."""
-
-    def test_check_ci_allowed_not_in_ci(self):
-        """Should not raise when not in CI."""
-        reset_license_provider()
-
-        with patch.dict(os.environ, {}, clear=True):
-            # Should not raise
-            check_ci_allowed()
-
-    def test_check_ci_allowed_community_in_ci(self):
-        """Should raise when Community edition in CI."""
-        reset_license_provider()
-
-        with patch.dict(os.environ, {"CI": "true"}, clear=True):
-            with pytest.raises(CIEnvironmentError) as exc_info:
-                check_ci_allowed()
-
-            assert exc_info.value.ci_name == "CI environment"
-
-    def test_check_ci_allowed_pro_in_ci(self):
-        """Should not raise when Pro edition in CI."""
-        reset_license_provider()
-
-        def pro_provider():
-            return License(edition=Edition.PRO)
-
-        try:
-            register_license_provider(Edition.PRO, pro_provider)
-
-            with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
-                # Should not raise
-                check_ci_allowed()
-        finally:
-            reset_license_provider()
-
-    def test_check_ci_allowed_enterprise_in_ci(self):
-        """Should not raise when Enterprise edition in CI."""
-        reset_license_provider()
-
-        def enterprise_provider():
-            return License(edition=Edition.ENTERPRISE)
-
-        try:
-            register_license_provider(Edition.ENTERPRISE, enterprise_provider)
-
-            with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
-                # Should not raise
-                check_ci_allowed()
         finally:
             reset_license_provider()
 

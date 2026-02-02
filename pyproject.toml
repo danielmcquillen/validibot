@@ -75,7 +75,7 @@ dependencies = [
   # This Git URL is used when building Docker images (local or production).
   # For local non-Docker development, see [tool.uv.sources] below which overrides
   # this to use the local validibot_shared_dev folder instead.
-  "validibot-shared @ git+https://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:x-oauth-basic@github.com/danielmcquillen/validibot-shared.git@main",
+  "validibot-shared",
   "uvicorn-worker==0.4.0",
   "uvicorn[standard]==0.40.0",
   "whitenoise==6.11.0",
@@ -164,7 +164,7 @@ indent_size = 2
 indent_size = 2
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 # Exclude a variety of commonly ignored directories.
 extend-exclude = ["*/migrations/*.py", "staticfiles/*"]
 

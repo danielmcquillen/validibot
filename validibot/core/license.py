@@ -3,14 +3,17 @@ License detection and edition gating for Validibot.
 
 Validibot is available in three editions:
 
-- **Community** (AGPL-3.0): Full validation capabilities for local/interactive use
-- **Pro** (Commercial): Adds CI/CD integration, machine-readable outputs, etc.
-- **Enterprise** (Commercial): Adds multi-org, LDAP, distributed execution, custom SLAs
+- **Community** (AGPL-3.0): Full validation capabilities, all validators included
+- **Pro** (Commercial): Adds multi-org support, removes AGPL obligations
+- **Enterprise** (Commercial): Adds SSO/LDAP, guest management, source code escrow
 
-This module detects the current edition and enforces edition restrictions.
+This module detects the current edition based on installed packages.
 Commercial editions are provided by separate packages:
 - `validibot-pro` - unlocks Pro edition
 - `validibot-enterprise` - unlocks Enterprise edition (includes all Pro capabilities)
+
+License enforcement follows a simple model: installing the package activates
+the edition. The private package index authentication is the license enforcement.
 
 For more on Validibot editions, see: https://validibot.com/pricing
 
@@ -19,7 +22,6 @@ For more on Validibot editions, see: https://validibot.com/pricing
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -78,10 +80,9 @@ class LicenseError(Exception):
         if message is None:
             message = _(
                 "%(feature_description)s requires Validibot %(edition_name)s.\n\n"
-                "The Community edition includes all validators "
-                "for local/interactive use.\n"
-                "%(edition_name)s adds additional capabilities for teams and "
-                "automation.\n\nLearn more: https://validibot.com/pricing"
+                "The Community edition includes all validators.\n"
+                "%(edition_name)s adds additional capabilities for teams.\n\n"
+                "Learn more: https://validibot.com/pricing"
             ) % {
                 "feature_description": feature_description,
                 "edition_name": edition_name,
@@ -91,21 +92,6 @@ class LicenseError(Exception):
         self.required_edition = required_edition
 
 
-class CIEnvironmentError(LicenseError):
-    """Raised when Community edition is run in a CI/CD environment."""
-
-    def __init__(self, ci_name: str):
-        message = _(
-            "Validibot Community edition cannot run in CI/CD environments "
-            "(%(ci_name)s).\n\n"
-            "The Community edition is for local/interactive use only.\n"
-            "For CI/CD integration, you need Validibot Pro.\n\n"
-            "Learn more: https://validibot.com/pricing"
-        ) % {"ci_name": ci_name}
-        super().__init__(_("CI/CD execution"), Edition.PRO, message)
-        self.ci_name = ci_name
-
-
 @dataclass
 class License:
     """
@@ -113,7 +99,7 @@ class License:
 
     Attributes:
         edition: The edition (Community, Pro, or Enterprise)
-        organization: Organization name for commercial licenses
+        organization: Organization name for commercial licenses (optional)
     """
 
     edition: Edition
@@ -159,72 +145,6 @@ class License:
             if not feature_description:
                 feature_description = _("This feature")
             raise LicenseError(feature_description, required_edition=edition)
-
-
-# CI environment detection patterns
-# Each tuple is (env_var, value_pattern, ci_name)
-# If value_pattern is None, just check if the env var exists
-CI_ENVIRONMENT_PATTERNS: list[tuple[str, str | None, str]] = [
-    # GitHub Actions
-    ("GITHUB_ACTIONS", "true", "GitHub Actions"),
-    # GitLab CI
-    ("GITLAB_CI", "true", "GitLab CI"),
-    # Jenkins
-    ("JENKINS_URL", None, "Jenkins"),
-    ("BUILD_ID", None, "Jenkins"),  # Older Jenkins
-    # CircleCI
-    ("CIRCLECI", "true", "CircleCI"),
-    # Travis CI
-    ("TRAVIS", "true", "Travis CI"),
-    # Azure Pipelines
-    ("TF_BUILD", "True", "Azure Pipelines"),
-    ("AZURE_PIPELINES", None, "Azure Pipelines"),
-    # Bitbucket Pipelines
-    ("BITBUCKET_BUILD_NUMBER", None, "Bitbucket Pipelines"),
-    # AWS CodeBuild
-    ("CODEBUILD_BUILD_ID", None, "AWS CodeBuild"),
-    # Google Cloud Build
-    ("BUILDER_OUTPUT", None, "Google Cloud Build"),
-    # Buildkite
-    ("BUILDKITE", "true", "Buildkite"),
-    # TeamCity
-    ("TEAMCITY_VERSION", None, "TeamCity"),
-    # Drone CI
-    ("DRONE", "true", "Drone CI"),
-    # Woodpecker CI
-    ("CI_PIPELINE_ID", None, "Woodpecker CI"),
-    # Semaphore
-    ("SEMAPHORE", "true", "Semaphore"),
-    # AppVeyor
-    ("APPVEYOR", "True", "AppVeyor"),
-    # Harness CI
-    ("HARNESS_BUILD_ID", None, "Harness CI"),
-    # Generic CI indicator (many CI systems set this)
-    ("CI", "true", "CI environment"),
-]
-
-
-def detect_ci_environment() -> str | None:
-    """
-    Detect if running in a CI/CD environment.
-
-    Returns:
-        The name of the detected CI environment, or None if not in CI.
-    """
-    for env_var, value_pattern, ci_name in CI_ENVIRONMENT_PATTERNS:
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            if value_pattern is None:
-                # Just check existence
-                return ci_name
-            if env_value.lower() == value_pattern.lower():
-                return ci_name
-    return None
-
-
-def is_ci_environment() -> bool:
-    """Check if running in a CI/CD environment."""
-    return detect_ci_environment() is not None
 
 
 # Registry for license providers
@@ -297,20 +217,6 @@ def get_license() -> License:
     return License(edition=Edition.COMMUNITY)
 
 
-def check_ci_allowed() -> None:
-    """
-    Check if CI/CD execution is allowed under current license.
-
-    Raises:
-        CIEnvironmentError: If in CI and using Community edition
-    """
-    ci_name = detect_ci_environment()
-    if ci_name is not None:
-        lic = get_license()
-        if lic.is_community:
-            raise CIEnvironmentError(ci_name)
-
-
 def require_edition(
     edition: Edition,
     feature_description: str = "",
@@ -327,8 +233,8 @@ def require_edition(
 
     Example::
 
-        @require_edition(Edition.PRO, "JUnit XML output")
-        def generate_junit_report():
+        @require_edition(Edition.PRO, "Multi-organization support")
+        def create_organization():
             ...
 
         @require_edition(Edition.ENTERPRISE, "LDAP integration")

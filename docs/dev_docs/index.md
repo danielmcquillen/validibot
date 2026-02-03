@@ -1,104 +1,126 @@
-# Validibot Documentation
+# Developer Documentation
 
-Welcome to the **Validibot** documentation.
+This documentation is for developers working on Validibot itself. If you're looking to use Validibot as an end user, see the [User Guide](../user_docs/index.md) instead.
 
-This site describes the core concepts, data model, and API for working with validation workflows.
+---
 
-## Contents
+## Getting Started
 
-- [Quick Reference](#quick-reference)
-- [Overview](#overview)
-- [How-To Guides](#how-to-guides)
-- [Marketing](#marketing)
-- [Deployment](#deployment)
-- [Data Model](#data-model)
+New to the codebase? Start here:
 
-## Quick Reference
+1. **[Platform Overview](overview/platform_overview.md)** — What Validibot is and the problems it solves
+2. **[How It Works](overview/how_it_works.md)** — Technical walkthrough of the validation lifecycle
+3. **[Quick Reference](quick_reference.md)** — Core concepts and basic usage patterns
+4. **[Docker Setup](docker.md)** — Run Validibot locally with Docker
 
-- [Quick Reference](quick_reference.md) - Summary of core concepts and basic usage
-- [Related Libraries](related_libraries.md) - How `validibot_shared` and `sv_modal` connect to Validibot
+---
 
-### Overview
+## Architecture
 
-- [Platform Overview](overview/platform_overview.md) - What Validibot is and why it exists
-- [How It Works](overview/how_it_works.md) - Detailed technical walkthrough of the validation process
-- [Workflow Engine](overview/workflow_engine.md) - Internal architecture of the execution service (StepHandlers)
-- [Settings Reference](overview/settings.md) - Environment and feature flags that shape behaviour locally and in prod
-- [Working Agreements](overview/platform_overview.md#working-agreements-for-developers) - How we keep the project understandable
-- [Submission Modes](overview/request_modes.md) - How API payload shapes are detected
-- [Dashboard](dashboard.md) - Architecture and extension points for the dashboard module
+Understand how the system is built:
 
-### How-To Guides
+- **[Workflow Engine](overview/workflow_engine.md)** — How ValidationRunService orchestrates steps
+- **[Step Processor](overview/step_processor.md)** — The processor pattern for validator execution
+- **[Submission Modes](overview/request_modes.md)** — How API payload shapes are detected
+- **[Settings Reference](overview/settings.md)** — Environment variables and feature flags
+- **[Dashboard](dashboard.md)** — Architecture and extension points for the dashboard module
+- **[Related Libraries](related_libraries.md)** — How `validibot_shared` connects to this project
 
-- [Using a Workflow via the API](how-to/use-workflow.md) - Step-by-step API integration guide
-- [Author Workflow Steps](how-to/author-workflow-steps.md) - Configure validation templates via the UI wizard
-- [Manage Organizations & Projects](organization_management.md) - Admin workflows for organizations and projects
+---
 
-### Integrations
+## How-To Guides
 
-- [EnergyPlus Modal](integrations/energyplus_modal.md) - Modal-backed EnergyPlus simulation runner
+Step-by-step instructions for common tasks:
 
-### Marketing
+- **[Using a Workflow via the API](how-to/use-workflow.md)** — Submit data programmatically
+- **[Author Workflow Steps](how-to/author-workflow-steps.md)** — Configure validation steps in the UI
+- **[Configure Storage](how-to/configure-storage.md)** — Set up file storage backends
+- **[Configure Scheduled Tasks](how-to/configure-scheduled-tasks.md)** — Set up background jobs
+- **[Add a Form](how-to/add-a-form.md)** — Django Crispy Forms patterns
+- **[Manage Organizations & Projects](organization_management.md)** — Admin workflows
 
-- [Homepage Waitlist](marketing/homepage.md) - Structure and automation details for the beta waitlist card
-- [Feature Pages](marketing/features.md) - Messaging guide for the marketing feature content
+---
 
+## Data Model
 
-### Testing
+The entities that make up Validibot:
 
-Pytest ignores `tests_integration` by default (see `pyproject.toml`). Use `just test-integration` for the end-to-end suite; it will:
+- **[Data Model Overview](data-model/index.md)** — Core entities and relationships
+- **[Projects](data-model/projects.md)** — Organization-scoped namespaces
+- **[Submissions](data-model/submissions.md)** — Content being validated
+- **[Runs](data-model/runs.md)** — Validation execution tracking
+- **[Steps](data-model/steps.md)** — Individual validation operations
+- **[Findings](data-model/findings.md)** — Validation results and issues
+- **[Users & Roles](data-model/users_roles.md)** — Organization membership
+- **[Deletions](data-model/deletions.md)** — How deletions are managed
 
-- ensure the `django` image exists (Chromium + chromedriver are baked in for Selenium UI flows). Set `BUILD_DJANGO_IMAGE=1` if you need to force a rebuild after changing the Dockerfile.
-- reset and start Postgres + Mailpit (`docker compose -f docker-compose.local.yml down -v && ... up -d postgres mailpit`)
-- run the tests inside the Django container (service DNS `postgres` resolves; no host browser/driver needed):
-  `docker compose -f docker-compose.local.yml run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test django uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO`
-- stop the containers when done
+---
 
-Notes:
-- Selenium login tests run headless by default. Set `SELENIUM_HEADLESS=0` if you want to watch the browser.
-- If you are running outside Docker for some reason, you must provide a working Chrome/Chromedriver pair and set `CHROME_BIN`/`CHROMEDRIVER_PATH`, or the tests will fail fast with a clear error.
+## Deployment
 
-Manual equivalent:
-```
+Deploy Validibot to production:
+
+- **[Deployment Overview](deployment/overview.md)** — Environments and release workflow
+- **[Google Cloud](google_cloud/deployment.md)** — Deploy to Cloud Run
+- **[Self-Hosted](deployment/self-hosted-responsibility.md)** — Docker Compose deployments
+- **[Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md)** — Cloud Scheduler setup
+- **[Scheduled Tasks (Self-hosted)](how-to/configure-scheduled-tasks.md)** — Dramatiq + periodiq
+- **[Go-Live Checklist](deployment/go-live-checklist.md)** — Pre-launch tasks
+- **[Important Notes](deployment/important_notes.md)** — Common deployment gotchas
+
+---
+
+## Integrations
+
+- **[EnergyPlus Modal](integrations/energyplus_modal.md)** — Modal-backed EnergyPlus simulation runner
+
+---
+
+## Marketing
+
+- **[Homepage Waitlist](marketing/homepage.md)** — Beta waitlist card
+- **[Feature Pages](marketing/features.md)** — Messaging guide for marketing content
+
+---
+
+## Testing
+
+Run the test suite with `uv run --extra dev pytest`. Integration tests require Docker.
+
+### Integration Tests
+
+Pytest ignores `tests_integration` by default. Use `just test-integration` for the end-to-end suite, which:
+
+1. Ensures the `django` Docker image exists (Chromium + chromedriver baked in for Selenium)
+2. Resets and starts Postgres + Mailpit containers
+3. Runs tests inside the Django container
+4. Stops containers when done
+
+```bash
+# Manual equivalent
 docker compose -f docker-compose.local.yml down -v
-# Optional rebuild if you changed Dockerfile/deps:
-# BUILD_DJANGO_IMAGE=1 docker compose -f docker-compose.local.yml build django
 docker compose -f docker-compose.local.yml up -d postgres mailpit
-docker compose -f docker-compose.local.yml run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test django uv run --extra dev pytest tests/tests_integration/ -v --log-cli-level=INFO
+docker compose -f docker-compose.local.yml run --rm \
+  -e DJANGO_SETTINGS_MODULE=config.settings.test \
+  django uv run --extra dev pytest tests/tests_integration/ -v
 docker compose -f docker-compose.local.yml stop postgres mailpit
 ```
 
-#### psycopg3 + live_server threading fix
+**Tips:**
 
-Django's `live_server` fixture runs a threaded WSGI server. psycopg3 connections are **not** thread-safe, so after a Selenium test makes HTTP requests to the live server, the database connection can become corrupted (status = BAD). Django's `DatabaseWrapper` still holds a reference to this dead connection, and when pytest-django tries to flush the database during teardown, it fails with `OperationalError: the connection is closed`.
+- Set `BUILD_DJANGO_IMAGE=1` to force a rebuild after Dockerfile changes
+- Set `SELENIUM_HEADLESS=0` to watch Selenium tests in a browser
+- If running outside Docker, set `CHROME_BIN` and `CHROMEDRIVER_PATH`
 
-The fix lives in `tests/tests_integration/conftest.py`:
+### psycopg3 + live_server Fix
 
-1. **Autouse fixture** - Resets any BAD psycopg3 connections before and after each test
-2. **Monkey-patched flush command** - Resets connections before Django's flush runs during teardown
+Django's `live_server` fixture uses a threaded WSGI server, but psycopg3 connections aren't thread-safe. After Selenium tests hit the live server, database connections can become corrupted.
 
-When resetting a BAD connection, we must also clear Django's internal state (`closed_in_transaction`, `in_atomic_block`, `savepoint_ids`, `needs_rollback`) or Django will refuse to create new connections.
+The fix in `tests/tests_integration/conftest.py`:
 
-Additionally, `config/settings/test.py` sets `CONN_MAX_AGE = 0` to disable persistent connections for tests.
+1. **Autouse fixture** — Resets BAD psycopg3 connections before/after each test
+2. **Monkey-patched flush** — Resets connections before Django's teardown flush
 
-This is a known Django + psycopg3 incompatibility (see Django tickets #32416, #35455).
+Additionally, `config/settings/test.py` sets `CONN_MAX_AGE = 0` to disable persistent connections.
 
-### Deployment
-
-- [Deployment Overview](deployment/overview.md) - Environments, release workflow, and operational checklist
-- [Self-Hosted Responsibility](deployment/self-hosted-responsibility.md) - Security, cost, and operational guardrails for self-hosted deployments
-- [Google Cloud Deployment](google_cloud/deployment.md) - Deploy to Cloud Run with `just gcp deploy`
-- [Scheduled Jobs (GCP)](google_cloud/scheduled-jobs.md) - Cloud Scheduler configuration for GCP deployments
-- [Scheduled Tasks (Self-hosted)](how-to/configure-scheduled-tasks.md) - Dramatiq + periodiq for Docker/self-hosted
-- [Go-Live Checklist](deployment/go-live-checklist.md) - Pre-launch tasks for production
-
-### Data Model
-
-- [Data Model Overview](data-model/index.md) - Core entities and relationships
-- [Projects & Context](data-model/projects.md) - Organization-scoped namespaces and propagation rules
-- [Submissions](data-model/submissions.md) - Content submission and storage
-- [Runs](data-model/runs.md) - Validation execution and tracking
-- [Steps](data-model/steps.md) - Individual validation operations
-- [Findings](data-model/findings.md) - Validation results and issues
-- [Users & Roles](data-model/users_roles.md) - Organization membership and permissions
-- [Deletions](data-model/deletions.md) - How deletions are managed
+This is a known Django + psycopg3 issue (Django tickets #32416, #35455).

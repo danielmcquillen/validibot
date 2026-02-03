@@ -59,11 +59,18 @@
 }
 
 .md-banner .announce-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+  padding: 0 1rem;
+}
+
+.md-banner .announce-bar .back-link {
+  justify-self: start;
+}
+
+.md-banner .announce-bar .wip-notice {
+  justify-self: center;
 }
 
 .md-banner .back-link {

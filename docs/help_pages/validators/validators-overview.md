@@ -1,11 +1,67 @@
-## Validators overview
+# Validators Overview
 
-Validators are the engines that check submissions inside workflow steps.
+Validators are the engines that check your data. Each workflow step uses one validator.
 
-- **Built-in validators**: EnergyPlus IDF, XML Schema, FMI, and others. Each ships with default assertions that always run.
-- **Custom validators**: You can clone a validator template and add your own defaults or schema. Authors can edit their own; Admins/Owners can edit any.
-- **Default assertions**: Shown at the top of the step editor and in the validator detail. They always run when that validator is used.
-- **Step assertions**: For advanced validators, add CEL-based assertions per step to tighten checks for a specific workflow.
-- **File type support**: The selector shows all validators; ones that do not match the workflow’s submission types are disabled with a hint.
+---
 
-Tip: keep validator versions stable. Create a new version rather than overwriting defaults if you need a breaking change.
+## Built-in Validators
+
+| Validator | What it does | File types |
+|-----------|--------------|------------|
+| **JSON Schema** | Validates JSON structure against a schema | JSON |
+| **XML Schema** | Validates XML against an XSD | XML |
+| **Basic** | Custom rules using CEL expressions | JSON, YAML |
+| **AI** | Natural language validation rules | Any text |
+
+Advanced validators (available with Pro):
+
+| Validator | What it does | File types |
+|-----------|--------------|------------|
+| **EnergyPlus** | Runs building energy simulations | IDF, epJSON |
+| **FMI** | Runs FMU simulations | FMU packages |
+
+---
+
+## Assertions
+
+Validators use **assertions** to check your data:
+
+### Default Assertions
+Built into the validator. These always run whenever the validator is used. View them by clicking **View rules** on any step.
+
+### Step Assertions
+Custom rules you add to a specific workflow step. Use these to tighten validation for a particular workflow. Step assertions use [CEL expressions](../concepts/cel-expressions.md).
+
+---
+
+## File Type Compatibility
+
+When adding a step, the validator selector shows:
+
+- **Enabled validators**: Compatible with your workflow's file types
+- **Disabled validators**: Not compatible (shown with a hint explaining why)
+
+Make sure your workflow's allowed file types match what you want to validate.
+
+---
+
+## Custom Validators
+
+Authors can create custom validators by:
+
+1. Cloning an existing validator template
+2. Adding custom default assertions
+3. Uploading a schema file (for schema validators)
+
+**Who can edit:**
+
+- Authors can edit validators they created
+- Admins and Owners can edit any validator
+
+---
+
+## Tips
+
+- **Keep validators stable**: Create a new version rather than changing defaults if you need breaking changes
+- **Use default assertions wisely**: They run on every workflow using this validator
+- **Check compatibility**: Verify your validator supports the file types your workflow accepts

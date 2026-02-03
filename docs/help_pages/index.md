@@ -1,13 +1,48 @@
-## Validibot Community Help
+# Help Center
 
-This help center is tailored for the open source Community edition. It offers quick, task-focused answers while you work in the app.
+Quick answers while you work. This help center covers the Community edition of Validibot. For detailed guides, see the full [User Documentation](../user_docs/index.md).
 
-Use these sections to jump straight to the topic you need:
+---
 
-- **Getting started** — sign in, pick your workspace, and create your first workflow.
-- **Workflows** — add steps, pick validators, and manage archived items.
-- **Validators** — understand built-in and custom validators plus their default assertions.
-- **Concepts** — review the core objects and how they relate.
-- **Workspace** — manage organizations, members, and roles.
+## Quick Links
 
-For deeper background and design details, see the full user docs, but start here for quick reminders and UI guidance. When the commercial edition is enabled, additional help pages may appear for Pro features.
+| I want to... | Go to... |
+|--------------|----------|
+| Create my first workflow | [Getting Started](getting-started/getting-started.md) |
+| Understand how validation works | [How It Works](getting-started/how-it-works.md) |
+| Add steps to my workflow | [Workflows Overview](workflows/workflows-overview.md) |
+| Choose the right validator | [Validators Overview](validators/validators-overview.md) |
+| Write custom validation rules | [CEL Expressions](concepts/cel-expressions.md) |
+| Understand key terms | [Core Concepts](concepts/basic-concepts.md) |
+
+---
+
+## Topics
+
+### Getting Started
+Set up your workspace and create your first workflow.
+
+- [Getting Started](getting-started/getting-started.md)
+- [How It Works](getting-started/how-it-works.md)
+
+### Workflows
+Build, manage, and archive validation workflows.
+
+- [Workflows Overview](workflows/workflows-overview.md)
+
+### Validators
+Understand built-in validators and how to configure them.
+
+- [Validators Overview](validators/validators-overview.md)
+
+### Concepts
+Core ideas and terminology.
+
+- [Basic Concepts](concepts/basic-concepts.md)
+- [CEL Expressions](concepts/cel-expressions.md)
+
+---
+
+## Need More?
+
+For deeper documentation, see the [User Guide](../user_docs/index.md). If you have Pro features enabled, additional help pages will appear in the relevant sections.

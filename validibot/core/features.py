@@ -9,11 +9,15 @@ checks feature availability to gate UI elements and API endpoints.
 
 Usage in commercial packages::
 
-    # In validibot_enterprise/__init__.py
-    from validibot.core.features import register_feature, FEATURE_MULTI_ORG
+    # In validibot_pro/__init__.py
+    from validibot.core.features import register_feature, CommercialFeature
 
-    register_feature(FEATURE_MULTI_ORG)
-    register_feature(FEATURE_GUEST_MANAGEMENT)
+    register_feature(CommercialFeature.TEAM_MANAGEMENT)
+
+    # In validibot_enterprise/__init__.py
+    from validibot.core.features import register_feature, CommercialFeature
+
+    register_feature(CommercialFeature.MULTI_ORG)
 
 Usage in templates::
 
@@ -23,9 +27,9 @@ Usage in templates::
 
 Usage in views::
 
-    from validibot.core.features import is_feature_enabled, FEATURE_MULTI_ORG
+    from validibot.core.features import is_feature_enabled, CommercialFeature
 
-    if is_feature_enabled(FEATURE_MULTI_ORG):
+    if is_feature_enabled(CommercialFeature.MULTI_ORG):
         # Show multi-org UI
         ...
 
@@ -35,30 +39,36 @@ from __future__ import annotations
 
 import logging
 
+from django.db.models import TextChoices
+from django.utils.translation import gettext_lazy as _
+
 logger = logging.getLogger(__name__)
 
 
-# Feature constants
-# Use these constants rather than string literals for type safety
+class CommercialFeature(TextChoices):
+    """
+    Commercial features requiring validibot-pro or validibot-enterprise.
 
-# Pro features (also available in Enterprise)
-FEATURE_MULTI_ORG = "multi_org"
-FEATURE_BILLING = "billing"
-FEATURE_ADVANCED_ANALYTICS = "advanced_analytics"
-FEATURE_SIGNED_BADGES = "signed_badges"
+    Pro features are also available in Enterprise tier.
+    """
 
-# Enterprise features
-FEATURE_GUEST_MANAGEMENT = "guest_management"
-FEATURE_LDAP_INTEGRATION = "ldap_integration"
-FEATURE_SAML_SSO = "saml_sso"
-FEATURE_TEAM_MANAGEMENT = "team_management"
+    # Pro features (requires validibot-pro, also available in Enterprise)
+    TEAM_MANAGEMENT = "team_management", _("Team Management")
+    BILLING = "billing", _("Billing")
+    ADVANCED_ANALYTICS = "advanced_analytics", _("Advanced Analytics")
+    SIGNED_BADGES = "signed_badges", _("Signed Badges")
+
+    # Enterprise features (requires validibot-enterprise)
+    MULTI_ORG = "multi_org", _("Multiple Organizations")
+    LDAP_INTEGRATION = "ldap_integration", _("LDAP Integration")
+    SAML_SSO = "saml_sso", _("SAML Single Sign-On")
 
 
 # Internal registry - commercial packages add features here
 _enabled_features: set[str] = set()
 
 
-def register_feature(feature_name: str) -> None:
+def register_feature(feature: str) -> None:
     """
     Register a feature as enabled.
 
@@ -66,33 +76,33 @@ def register_feature(feature_name: str) -> None:
     which features they provide.
 
     Args:
-        feature_name: The feature constant (e.g., FEATURE_MULTI_ORG)
+        feature: The feature value (e.g., CommercialFeature.TEAM_MANAGEMENT)
     """
-    _enabled_features.add(feature_name)
-    logger.info("Feature registered: %s", feature_name)
+    _enabled_features.add(feature)
+    logger.info("Feature registered: %s", feature)
 
 
-def unregister_feature(feature_name: str) -> None:
+def unregister_feature(feature: str) -> None:
     """
     Unregister a feature (primarily for testing).
 
     Args:
-        feature_name: The feature constant to unregister
+        feature: The feature value to unregister
     """
-    _enabled_features.discard(feature_name)
+    _enabled_features.discard(feature)
 
 
-def is_feature_enabled(feature_name: str) -> bool:
+def is_feature_enabled(feature: str) -> bool:
     """
     Check if a feature is enabled.
 
     Args:
-        feature_name: The feature constant to check
+        feature: The feature value to check
 
     Returns:
         True if the feature has been registered by a commercial package
     """
-    return feature_name in _enabled_features
+    return feature in _enabled_features
 
 
 def get_enabled_features() -> frozenset[str]:
@@ -123,14 +133,24 @@ def get_feature_context() -> dict[str, bool]:
         Dictionary suitable for template context
     """
     return {
-        # Pro features
-        "feature_multi_org": is_feature_enabled(FEATURE_MULTI_ORG),
-        "feature_billing": is_feature_enabled(FEATURE_BILLING),
-        "feature_advanced_analytics": is_feature_enabled(FEATURE_ADVANCED_ANALYTICS),
-        "feature_signed_badges": is_feature_enabled(FEATURE_SIGNED_BADGES),
-        # Enterprise features
-        "feature_guest_management": is_feature_enabled(FEATURE_GUEST_MANAGEMENT),
-        "feature_ldap_integration": is_feature_enabled(FEATURE_LDAP_INTEGRATION),
-        "feature_saml_sso": is_feature_enabled(FEATURE_SAML_SSO),
-        "feature_team_management": is_feature_enabled(FEATURE_TEAM_MANAGEMENT),
+        f"feature_{feature.value}": is_feature_enabled(feature)
+        for feature in CommercialFeature
     }
+
+
+def get_feature_label(feature: str) -> str:
+    """
+    Get the human-readable label for a feature.
+
+    Useful for displaying feature names in upgrade prompts.
+
+    Args:
+        feature: The feature value
+
+    Returns:
+        The translated label for the feature
+    """
+    for choice in CommercialFeature:
+        if choice.value == feature:
+            return str(choice.label)
+    return feature

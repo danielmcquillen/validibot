@@ -2,6 +2,9 @@
    Matches validibot.com branding
 */
 
+/* Import Space Grotesk for brand name */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500&display=swap');
+
 :root {
   /* Validibot brand colors */
   --md-primary-fg-color: #066fd1;
@@ -20,22 +23,51 @@
   background-color: #066fd1;
 }
 
-/* Announcement bar for "Back to Validibot" - compact and subtle */
+/* Custom logo styling to match main site */
+.md-header__button.md-logo.validibot-logo {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+
+.md-header__button.md-logo .validibot-brand-name {
+  font-family: "Space Grotesk", Arial, sans-serif;
+  font-weight: 500;
+  font-size: 1.1rem;
+  color: white;
+}
+
+/* Hide the default site title since we're showing it in the logo */
+.md-header__topic:first-child {
+  display: none;
+}
+
+/* Combined announcement bar - back link + WIP notice */
 .md-banner {
-  background-color: #f8f9fa;
-  color: #6c757d;
+  background-color: #fff3cd;
+  color: #856404;
   height: auto;
-  padding: 0.25rem 0;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #ffc107;
 }
 
 .md-banner__inner {
   font-size: 0.7rem;
   padding: 0;
   margin: 0;
+  max-width: 100%;
 }
 
-.md-banner a {
-  color: #6c757d;
+.md-banner .announce-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.md-banner .back-link {
+  color: #856404;
   font-weight: 400;
   display: inline-flex;
   align-items: center;
@@ -43,7 +75,7 @@
   text-decoration: none;
 }
 
-.md-banner a:hover {
+.md-banner .back-link:hover {
   color: #066fd1;
 }
 
@@ -56,6 +88,17 @@
   width: 10px;
   height: 10px;
   opacity: 0.7;
+}
+
+.md-banner .wip-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #856404;
+}
+
+.md-banner .wip-notice svg {
+  flex-shrink: 0;
 }
 
 /* Links */
@@ -123,36 +166,3 @@
   background-color: #e9f0f9;
 }
 
-/* Dev docs specific - slightly different accent to distinguish */
-.md-tabs {
-  background-color: #0556a8;
-}
-
-/* Work in progress notice - sticky bottom bar */
-.wip-notice {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: #fff3cd;
-  color: #856404;
-  padding: 0.4rem 1rem;
-  font-size: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  z-index: 100;
-  border-top: 1px solid #ffc107;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.wip-notice svg {
-  color: #856404;
-  flex-shrink: 0;
-}
-
-/* Add padding to main content so it doesn't get hidden behind the sticky bar */
-.md-main {
-  padding-bottom: 2.5rem;
-}

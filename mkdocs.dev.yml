@@ -15,7 +15,6 @@ theme:
   name: material
   custom_dir: docs/dev_docs/overrides
   language: en
-  logo: https://validibot.com/static/marketing/images/robot-tiny.png
   favicon: https://validibot.com/static/images/favicons/favicon.ico
   font:
     text: Inter
@@ -30,7 +29,7 @@ theme:
     - navigation.path
     - navigation.footer
     - navigation.top
-    - navigation.tabs
+    - navigation.sections
     - search.suggest
     - search.highlight
     - content.code.copy

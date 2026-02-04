@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <style>
+      .box { stroke: #374151; stroke-width: 2; rx: 8; }
+      .box-primary { fill: #dbeafe; }
+      .box-secondary { fill: #f3e8ff; }
+      .box-storage { fill: #fef3c7; }
+      .box-container { fill: #d1fae5; }
+      .label { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; fill: #1f2937; }
+      .label-bold { font-weight: 600; }
+      .label-small { font-size: 12px; fill: #6b7280; }
+      .arrow { stroke: #6b7280; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-dashed { stroke-dasharray: 6,4; }
+      .section-label { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+    </marker>
+  </defs>
+
+  <!-- Background sections -->
+  <rect x="20" y="80" width="760" height="200" fill="#f9fafb" rx="12" stroke="#e5e7eb" stroke-width="1" />
+  <text x="40" y="100" class="section-label">Validibot Core</text>
+
+  <rect x="20" y="420" width="760" height="160" fill="#f0fdf4" rx="12" stroke="#bbf7d0" stroke-width="1" />
+  <text x="40" y="440" class="section-label">Advanced Validator Containers (Ephemeral)</text>
+
+  <!-- Users -->
+  <rect x="300" y="10" width="200" height="50" class="box box-primary" />
+  <text x="400" y="40" class="label label-bold" text-anchor="middle">Users</text>
+  <text x="400" y="55" class="label-small" text-anchor="middle">Web UI • CLI • API Clients</text>
+
+  <!-- Web Server -->
+  <rect x="280" y="110" width="240" height="80" class="box box-primary" />
+  <text x="400" y="140" class="label label-bold" text-anchor="middle">Django Web Server</text>
+  <text x="400" y="158" class="label-small" text-anchor="middle">REST API • Web UI</text>
+  <text x="400" y="175" class="label-small" text-anchor="middle">Built-in Validators • Workflow Engine</text>
+
+  <!-- Worker -->
+  <rect x="560" y="110" width="200" height="80" class="box box-secondary" />
+  <text x="660" y="140" class="label label-bold" text-anchor="middle">Celery Worker</text>
+  <text x="660" y="158" class="label-small" text-anchor="middle">Async task processing</text>
+  <text x="660" y="175" class="label-small" text-anchor="middle">Launches containers</text>
+
+  <!-- Redis -->
+  <rect x="560" y="220" width="200" height="50" class="box box-storage" />
+  <text x="660" y="250" class="label label-bold" text-anchor="middle">Redis</text>
+  <text x="660" y="265" class="label-small" text-anchor="middle">Task Queue • Cache</text>
+
+  <!-- PostgreSQL -->
+  <rect x="40" y="110" width="200" height="80" class="box box-storage" />
+  <text x="140" y="140" class="label label-bold" text-anchor="middle">PostgreSQL</text>
+  <text x="140" y="158" class="label-small" text-anchor="middle">Workflows • Submissions</text>
+  <text x="140" y="175" class="label-small" text-anchor="middle">Findings • Users</text>
+
+  <!-- File Storage -->
+  <rect x="40" y="220" width="200" height="50" class="box box-storage" />
+  <text x="140" y="250" class="label label-bold" text-anchor="middle">File Storage</text>
+  <text x="140" y="265" class="label-small" text-anchor="middle">Local / GCS / S3</text>
+
+  <!-- Docker Host -->
+  <rect x="280" y="310" width="240" height="50" class="box" style="fill: #fee2e2;" />
+  <text x="400" y="340" class="label label-bold" text-anchor="middle">Docker / Podman</text>
+  <text x="400" y="355" class="label-small" text-anchor="middle">Container Runtime</text>
+
+  <!-- Validator Containers -->
+  <rect x="40" y="460" width="180" height="100" class="box box-container" />
+  <text x="130" y="495" class="label label-bold" text-anchor="middle">EnergyPlus</text>
+  <text x="130" y="515" class="label-small" text-anchor="middle">IDF/epJSON validation</text>
+  <text x="130" y="535" class="label-small" text-anchor="middle">Building energy models</text>
+
+  <rect x="240" y="460" width="180" height="100" class="box box-container" />
+  <text x="330" y="495" class="label label-bold" text-anchor="middle">FMU/FMI</text>
+  <text x="330" y="515" class="label-small" text-anchor="middle">Functional Mock-up Units</text>
+  <text x="330" y="535" class="label-small" text-anchor="middle">Simulation validation</text>
+
+  <rect x="440" y="460" width="180" height="100" class="box box-container" />
+  <text x="530" y="495" class="label label-bold" text-anchor="middle">Custom</text>
+  <text x="530" y="515" class="label-small" text-anchor="middle">Your validator images</text>
+  <text x="530" y="535" class="label-small" text-anchor="middle">Any language/runtime</text>
+
+  <!-- Legend box -->
+  <rect x="640" y="460" width="140" height="100" fill="white" stroke="#e5e7eb" rx="6" />
+  <text x="710" y="480" class="label-small" text-anchor="middle" style="font-weight: 600;">Container Properties</text>
+  <text x="655" y="500" class="label-small">• Isolated network</text>
+  <text x="655" y="518" class="label-small">• Resource limits</text>
+  <text x="655" y="536" class="label-small">• Auto cleanup</text>
+  <text x="655" y="554" class="label-small">• Ephemeral</text>
+
+  <!-- Arrows -->
+  <!-- Users to Web -->
+  <path d="M400 60 L400 110" class="arrow" />
+
+  <!-- Web to PostgreSQL -->
+  <path d="M280 150 L240 150" class="arrow" />
+
+  <!-- Web to Redis (enqueue) -->
+  <path d="M520 150 L560 150" class="arrow" />
+
+  <!-- Worker to Redis (poll) -->
+  <path d="M660 190 L660 220" class="arrow" />
+
+  <!-- Web to File Storage -->
+  <path d="M320 190 L320 230 L240 230 L240 230" class="arrow" />
+
+  <!-- Worker to PostgreSQL -->
+  <path d="M560 170 L540 170 L540 200 L180 200 L180 190" class="arrow arrow-dashed" />
+
+  <!-- Worker to Docker -->
+  <path d="M660 190 L660 290 L480 290 L480 310" class="arrow" />
+
+  <!-- Docker to containers -->
+  <path d="M340 360 L340 400 L130 400 L130 460" class="arrow" />
+  <path d="M400 360 L400 400 L330 400 L330 460" class="arrow" />
+  <path d="M460 360 L460 400 L530 400 L530 460" class="arrow" />
+
+  <!-- Labels on arrows -->
+  <text x="395" y="88" class="label-small" text-anchor="end">HTTP/S</text>
+  <text x="258" y="142" class="label-small">read/write</text>
+  <text x="542" y="142" class="label-small">enqueue</text>
+  <text x="672" y="208" class="label-small">poll</text>
+  <text x="545" y="268" class="label-small">launch</text>
+</svg>

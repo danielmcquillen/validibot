@@ -43,7 +43,7 @@ Validibot is composed of several repositories that work together:
 
 ## What is Validibot?
 
-Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using EnergyPlus), it's designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
+Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using EnergyPlus), it's now designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
 
 **Key problems Validibot solves:**
 
@@ -70,7 +70,9 @@ These validators run as isolated Docker containers for complex domain-specific v
 
 - **EnergyPlus**: Validate IDF and epJSON building energy models
 - **FMU (FMI)**: Validate Functional Mock-up Units via OpenModelica simulation
-- **Custom**: Bring your own validator containers and logic
+- **Custom**: Bring your own validator containers
+
+Validibot defines a simple container interface for advanced validators: read an input envelope, perform validation, write an output envelope. This makes it straightforward to package any validation logic as a container. See the [Validator Architecture Guide](https://dev.validibot.com/overview/validator_architecture/) for the full specification.
 
 ### Workflow Engine
 
@@ -120,58 +122,47 @@ Open http://localhost:8000 and log in with your admin credentials.
 
 For detailed setup instructions, see the [Installation Guide](https://docs.validibot.com/installation).
 
-## Architecture
-
-Validibot uses a **two-layer architecture** for maximum flexibility:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Validibot Core                          │
-├─────────────────────────────────────────────────────────────┤
-│  Built-in Validators     │    Advanced Validators          │
-│  ────────────────────    │    ────────────────────          │
-│  • JSON Schema           │    • EnergyPlus (Docker)        │
-│  • XML Schema            │    • FMU/FMI (Docker)           │
-│  • Basic Assertions      │    • Custom Containers          │
-│  • AI Validation         │                                  │
-│  (runs in Django)        │    (isolated containers)        │
-├─────────────────────────────────────────────────────────────┤
-│  Workflow Engine • REST API • Web UI • Celery Workers      │
-├─────────────────────────────────────────────────────────────┤
-│  PostgreSQL              │    Redis                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Built-in validators** run in the Django process for low-latency validation of common formats.
-
-**Advanced validators** run in isolated Docker containers with resource limits, network isolation, and automatic cleanup—perfect for complex domain-specific tools that need their own dependencies.
-
-See [Architecture Overview](https://dev.validibot.com/architecture) for more details.
-
 ## Self-Hosted Deployment
 
 Validibot is designed for **self-hosted deployment**. You control your infrastructure, data, and security posture.
 
 ### Production Stack
 
-| Component      | Purpose                             |
-| -------------- | ----------------------------------- |
-| **Web**        | Django application (API + UI)       |
-| **Worker**     | Celery workers for async validation |
-| **PostgreSQL** | Primary database                    |
-| **Redis**      | Task queue broker and cache         |
-| **Caddy**      | Reverse proxy with automatic TLS    |
+| Component        | Purpose                                                   |
+| ---------------- | --------------------------------------------------------- |
+| **Web**          | Django application (API + UI)                             |
+| **Worker**       | Celery workers for async validation                       |
+| **PostgreSQL**   | Primary database                                          |
+| **Redis**        | Task queue broker and cache                               |
+| **Reverse Proxy**| User-provided (Caddy, Traefik, nginx) for TLS termination |
 
 ### Deployment Options
 
 - **Docker Compose**: Recommended for most deployments. See [Docker deployment guide](https://docs.validibot.com/deployment/docker).
-- **Kubernetes**: Helm chart coming soon. See [Kubernetes guide](https://docs.validibot.com/deployment/kubernetes).
-- **Cloud Run (GCP)**: For Google Cloud deployments. See [GCP guide](https://docs.validibot.com/deployment/gcp).
+- **Google Cloud Run (GCP)**: For Google Cloud deployments. See [GCP guide](https://docs.validibot.com/deployment/gcp).
+- **AWS**: (planned...)
+- **Kubernetes**: (planned...)
+
+### Reverse Proxy
+
+Validibot doesn't include a reverse proxy by default—most self-hosters already have one in their infrastructure. You'll need to set up your own for TLS termination.
+
+We provide example configurations for:
+
+- **[Caddy](https://dev.validibot.com/deployment/reverse-proxy/#caddy)** — Automatic HTTPS, simplest setup
+- **[Traefik](https://dev.validibot.com/deployment/reverse-proxy/#traefik)** — Docker-native with label-based config
+- **[nginx](https://dev.validibot.com/deployment/reverse-proxy/#nginx)** — Most versatile, widely deployed
+- **[Cloudflare Tunnel](https://dev.validibot.com/deployment/reverse-proxy/#cloudflare-tunnel)** — No open ports, great for home servers
+
+See the [Reverse Proxy Guide](https://dev.validibot.com/deployment/reverse-proxy/) for complete setup instructions.
 
 ### Security Considerations
 
 > [!IMPORTANT]
 > Docker socket access grants root-equivalent privileges on the host. For production deployments, we recommend using [Podman](https://podman.io/) which is rootless by default, or running Docker in rootless mode.
+
+> [!WARNING]
+> Only run advanced validator containers that you have built and control yourself. Never run third-party or untrusted container images as validators—they execute with access to your validation data and could potentially compromise your system.
 
 Key security features:
 

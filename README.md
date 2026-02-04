@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="https://validibot.com/static/marketing/images/robot_scene_schema_validation.png" alt="Validibot - Data Validation Robot" width="400">
+
 # Validibot
 
 **Open-source data validation engine for building energy models and beyond**
@@ -12,6 +16,8 @@
 [Getting Started](https://docs.validibot.com/getting-started) •
 [Community](https://github.com/danielmcquillen/validibot/discussions) •
 [Pricing](https://validibot.com/pricing)
+
+</div>
 
 ---
 
@@ -308,9 +314,19 @@ by the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 ```
 
+## Trademarks
+
+The Validibot name, logo, robot character, and associated branding are trademarks of **McQuillen Interactive Pty. Ltd.** and may not be used without permission. This trademark policy does not limit your rights under the AGPL-3.0 license to use, modify, and distribute the software.
+
+For trademark usage guidelines, contact [hello@validibot.com](mailto:hello@validibot.com).
+
 ---
+
+<div align="center">
 
 [Website](https://validibot.com) •
 [Docs](https://validibot.com/docs) •
 [Community](https://github.com/validibot/validibot/discussions) •
 [Contact](mailto:hello@validibot.com)
+
+</div>

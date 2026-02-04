@@ -180,7 +180,7 @@ Key security features:
 - **Automatic cleanup**: Orphaned containers are cleaned up via the Ryuk pattern
 - **Non-root processes**: Web and worker containers run as non-root users
 
-See the [Security Guide](https://validibot.com/docs/security) for complete recommendations.
+See the [Security Guide](https://docs.validibot.com/security) for complete recommendations.
 
 ## Open-Core Licensing
 
@@ -227,12 +227,12 @@ The AGPL-3.0 license requires that if you modify Validibot and provide it as a n
 
 | Resource                                                      | Description                      |
 | ------------------------------------------------------------- | -------------------------------- |
-| [Getting Started](https://validibot.com/docs/getting-started) | First steps with Validibot       |
-| [Installation Guide](https://validibot.com/docs/installation) | Detailed deployment instructions |
-| [User Guide](https://validibot.com/docs/user-guide)           | How to use the platform          |
-| [API Reference](https://validibot.com/docs/api)               | REST API documentation           |
-| [Developer Docs](https://validibot.com/docs/developers)       | Contributing and architecture    |
-| [CLI Documentation](https://validibot.com/docs/cli)           | Command-line interface usage     |
+| [Getting Started](https://docs.validibot.com/getting-started) | First steps with Validibot       |
+| [Installation Guide](https://docs.validibot.com/installation) | Detailed deployment instructions |
+| [User Guide](https://docs.validibot.com/user-guide)           | How to use the platform          |
+| [API Reference](https://docs.validibot.com/api)               | REST API documentation           |
+| [Developer Docs](https://dev.validibot.com/)                  | Contributing and architecture    |
+| [CLI Documentation](https://docs.validibot.com/cli)           | Command-line interface usage     |
 
 ## Support
 
@@ -242,7 +242,7 @@ The AGPL-3.0 license requires that if you modify Validibot and provide it as a n
 - **GitHub Issues**: [Report bugs](https://github.com/danielmcquillen/validibot/issues)
 
 > [!NOTE]
-> Community support is provided on a best-effort basis by volunteers. For guaranteed response times and priority support, consider [Validibot Pro](https://validibot.com/pricing).
+> Community support is provided on a best-effort basis (by me). For guaranteed response times and priority support, consider [Validibot Pro](https://validibot.com/pricing).
 
 ### Commercial Support
 
@@ -286,7 +286,7 @@ uv run pytest
 uv run ruff check
 ```
 
-See the [Developer Guide](https://validibot.com/docs/developers/setup) for complete instructions.
+See the [Developer Guide](https://dev.validibot.com/setup) for complete instructions.
 
 ## Roadmap
 
@@ -329,7 +329,7 @@ For trademark usage guidelines, contact [hello@validibot.com](mailto:hello@valid
 <div align="center">
 
 [Website](https://validibot.com) •
-[Docs](https://validibot.com/docs) •
+[Docs](https://docs.validibot.com) •
 [Community](https://github.com/validibot/validibot/discussions) •
 [Contact](mailto:hello@validibot.com)
 

@@ -1,0 +1,16 @@
+{% load i18n static %}
+
+{% url 'help:help_page' path='concepts/cel-expressions' as cel_help_url %}
+<span class="ms-1 align-middle help-tooltip">
+  <a href="{{ cel_help_url }}"
+     class="text-decoration-none"
+     target="_blank"
+     rel="noopener"
+     data-bs-toggle="tooltip"
+     data-bs-html="true"
+     data-bs-custom-class="cel-tooltip"
+     title="{% include 'help/partials/cel_hint.html' %}"
+     aria-label="{% trans 'CEL expression help (opens in new tab)' %}">
+    <i class="bi bi-question-circle-fill"></i>
+  </a>
+</span>

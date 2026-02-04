@@ -1,0 +1,206 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Guests" %} · {{ organization.name }} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-person-badge me-2"></i>{% trans "Guests" %}
+            </h1>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <button type="button"
+                  class="btn btn-secondary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#guestInviteModal"
+                  hx-get="{% org_url 'members:guest_invite_create' %}"
+                  hx-target="#guest-invite-modal-content"
+                  hx-swap="innerHTML">
+            <i class="bi-person-plus me-1"></i>{% trans "Invite Guest" %}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-info mb-3" role="alert">
+      {% url 'members:member_list' as members_url %}
+      {% blocktrans %}
+        <strong>About guests:</strong> Guests are Validibot users who can access specific workflows you've shared with them.
+        They are not members of your organization.
+        (<a href="{{ members_url }}">Members</a>, on the other hand, have full access based on their assigned roles.)
+      {% endblocktrans %}
+    </div>
+
+    <div class="row flex-grow-1">
+      <div class="col-12 col-lg-7">
+        <div class="card app-card mb-3">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Current Guests" %}
+              <span class="badge text-bg-secondary ms-2">{{ guest_count }}</span>
+            </div>
+          </div>
+          <div class="card-body">
+            {% if guests %}
+              <div class="list-group">
+                {% for guest in guests %}
+                  <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <div>
+                        <div class="fw-medium">
+                          {{ guest.user.email }}
+                        </div>
+                        {% if guest.user.name %}
+                          <small class="text-muted">{{ guest.user.name }}</small>
+                        {% endif %}
+                        <div class="mt-2">
+                          <span class="badge text-bg-info">
+                            {{ guest.workflow_count }} {% trans "workflow" %}
+                            {% if guest.workflow_count != 1 %}
+                              s
+                            {% endif %}
+                          </span>
+                        </div>
+                        <div class="mt-2">
+                          <small class="text-muted">
+                            {% for grant in guest.grants %}
+                              <span class="badge text-bg-light border me-1">{{ grant.workflow.name }}</span>
+                            {% endfor %}
+                          </small>
+                        </div>
+                      </div>
+                      <div class="d-flex gap-2">
+                        <form method="post"
+                              action="{% org_url 'members:guest_revoke_all' user_id=guest.user.pk %}"
+                              class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit"
+                                  class="btn btn-danger btn-sm"
+                                  onclick="return confirm('{% trans "Remove all workflow access for this user?" %}')">
+                            <i class="bi-x-lg"></i> {% trans "Revoke All" %}
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">
+                {% trans "No guests currently have access to workflows in this organization." %}
+              </p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="card app-card">
+          <div class="card-header">
+            <div class="card-title">
+              {% trans "Pending Invitations" %}
+              {% if pending_invites %}
+                <span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="card-body">
+            {% if pending_invites %}
+              <div class="list-group">
+                {% for invite in pending_invites %}
+                  <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-medium">
+                        {% if invite.invitee_user %}
+                          {{ invite.invitee_user.email }}
+                        {% else %}
+                          {{ invite.invitee_email }}
+                        {% endif %}
+                      </div>
+                      <small class="text-muted">
+                        {% if invite.scope == 'ALL' %}
+                          {% trans "All workflows" %}
+                        {% else %}
+                          {{ invite.workflows.count }} {% trans "selected workflow" %}
+                          {% if invite.workflows.count != 1 %}
+                            s
+                          {% endif %}
+                        {% endif %}
+                        &middot;
+                        {% trans "Invited" %} {{ invite.created|date:"M j, Y" }}
+                        {% if invite.expires_at %}
+                          &middot; {% trans "Expires" %} {{ invite.expires_at|date:"M j, Y" }}
+                        {% endif %}
+                      </small>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center">
+                      <span class="badge text-bg-warning">{% trans "Pending" %}</span>
+                      <form method="post"
+                            action="{% org_url 'members:guest_invite_cancel' invite_id=invite.pk %}"
+                            class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-danger btn-sm"
+                                onclick="return confirm('{% trans "Cancel this invitation?" %}')">
+                          <i class="bi-x-lg"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-muted mb-0">
+                {% trans "No pending invitations." %}
+              </p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}
+
+{% block modal %}
+  {{ block.super }}
+  <div class="modal fade"
+       id="guestInviteModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content" id="guest-invite-modal-content">
+      </div>
+    </div>
+  </div>
+{% endblock modal %}
+
+{% block inline_javascript %}
+  {{ block.super }}
+  <script>
+    document.body.addEventListener('close-modal', function(event) {
+      const modalEl = document.getElementById('guestInviteModal');
+      if (modalEl) {
+        let modal = bootstrap.Modal.getInstance(modalEl);
+        if (!modal) {
+          modal = new bootstrap.Modal(modalEl);
+        }
+        modal.hide();
+      }
+    });
+  </script>
+{% endblock inline_javascript %}

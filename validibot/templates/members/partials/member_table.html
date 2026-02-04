@@ -1,0 +1,90 @@
+{% load i18n core_tags %}
+
+<div id="member-list-card">
+  <div class="card shadow-sm h-100">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="fw-semibold">{% trans "Organization members" %}</span>
+      <div>
+        {% trans "Total members" %}:
+        <span class="badge text-bg-light">{{ memberships|length }}</span>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      {% if memberships %}
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">
+                  {% trans "Member" %}
+                </th>
+                <th scope="col" class="text-center">
+                  {% trans "Roles" %}
+                </th>
+                <th scope="col" class="text-end">
+                  {% trans "Actions" %}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for membership in memberships %}
+                <tr>
+                  <td class="fw-semibold">
+                    {{ membership.user.name|default:membership.user.username }}
+                    <div class="text-muted small">
+                      {{ membership.user.email }}
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    {% for role in membership.role_codes %}
+                      <span class="badge text-bg-secondary me-1 text-uppercase">{{ role }}</span>
+                    {% empty %}
+                      <span class="text-muted small">( {% trans "No roles assigned " %} )</span>
+                    {% endfor %}
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group btn-group-sm" role="group">
+                      <a class="btn btn-secondary"
+                         href="{% org_url 'members:member_edit' member_id=membership.pk %}">
+                        {% trans "Edit" %}
+                      </a>
+                      {% if "OWNER" in membership.role_codes %}
+                        <button type="button"
+                                class="btn btn-danger"
+                                disabled
+                                title="{% trans "The organization owner cannot be removed." %}">
+                          {% trans "Owner" %}
+                        </button>
+                      {% else %}
+                        <button type="button"
+                                class="btn btn-danger"
+                                hx-delete="{% org_url 'members:member_delete' member_id=membership.pk %}"
+                                hx-target="#member-list-card"
+                                hx-swap="outerHTML"
+                                hx-confirm="{% trans "Remove member with username" %} '{{ membership.user.username }}' from this organization?"
+                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                          <i class="bi bi-trash"
+                             data-bs-toggle="tooltip"
+                             title="{% blocktrans %}
+                                      Remove member {{ membership.user.username }}
+                                    {% endblocktrans %}"
+                             aria-label="{% blocktrans %}
+                                           Remove member {{ membership.user.username }}
+                                         {% endblocktrans %}"></i>
+                        </button>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-4 text-center text-muted">
+          {% trans "No members yet." %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>

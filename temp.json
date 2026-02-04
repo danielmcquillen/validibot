@@ -1,0 +1,82 @@
+{
+  "action": "added",
+  "installation": {
+    "id": 77485040,
+    "client_id": "Iv23li0fnghyWjx03Xwd",
+    "account": {
+      "login": "danielmcquillen",
+      "id": 119496,
+      "node_id": "MDQ6VXNlcjExOTQ5Ng==",
+      "avatar_url": "https://avatars.githubusercontent.com/u/119496?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/danielmcquillen",
+      "html_url": "https://github.com/danielmcquillen",
+      "followers_url": "https://api.github.com/users/danielmcquillen/followers",
+      "following_url": "https://api.github.com/users/danielmcquillen/following{/other_user}",
+      "gists_url": "https://api.github.com/users/danielmcquillen/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/danielmcquillen/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/danielmcquillen/subscriptions",
+      "organizations_url": "https://api.github.com/users/danielmcquillen/orgs",
+      "repos_url": "https://api.github.com/users/danielmcquillen/repos",
+      "events_url": "https://api.github.com/users/danielmcquillen/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/danielmcquillen/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "repository_selection": "selected",
+    "access_tokens_url": "https://api.github.com/app/installations/77485040/access_tokens",
+    "repositories_url": "https://api.github.com/installation/repositories",
+    "html_url": "https://github.com/settings/installations/77485040",
+    "app_id": 1661935,
+    "app_slug": "validibot",
+    "target_id": 119496,
+    "target_type": "User",
+    "permissions": {
+      "checks": "write",
+      "contents": "read",
+      "metadata": "read"
+    },
+    "events": ["check_run", "check_suite"],
+    "created_at": "2025-07-25T10:28:46.000+10:00",
+    "updated_at": "2025-07-28T15:45:50.000+10:00",
+    "single_file_name": null,
+    "has_multiple_single_files": false,
+    "single_file_paths": [],
+    "suspended_by": null,
+    "suspended_at": null
+  },
+  "repository_selection": "selected",
+  "repositories_added": [
+    {
+      "id": 1025870761,
+      "node_id": "R_kgDOPSWLqQ",
+      "name": "ValidibotTest",
+      "full_name": "danielmcquillen/ValidibotTest",
+      "private": true
+    }
+  ],
+  "repositories_removed": [],
+  "requester": null,
+  "sender": {
+    "login": "danielmcquillen",
+    "id": 119496,
+    "node_id": "MDQ6VXNlcjExOTQ5Ng==",
+    "avatar_url": "https://avatars.githubusercontent.com/u/119496?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/danielmcquillen",
+    "html_url": "https://github.com/danielmcquillen",
+    "followers_url": "https://api.github.com/users/danielmcquillen/followers",
+    "following_url": "https://api.github.com/users/danielmcquillen/following{/other_user}",
+    "gists_url": "https://api.github.com/users/danielmcquillen/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/danielmcquillen/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/danielmcquillen/subscriptions",
+    "organizations_url": "https://api.github.com/users/danielmcquillen/orgs",
+    "repos_url": "https://api.github.com/users/danielmcquillen/repos",
+    "events_url": "https://api.github.com/users/danielmcquillen/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/danielmcquillen/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  }
+}

@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+
+{% load i18n static %}
+
+{% block title %}
+  {% trans "Server Error" %}
+{% endblock title %}
+
+{% block meta_description %}
+  {% blocktrans %}
+    An unexpected error occurred on the server. Please try refreshing the page, or head back to the Validibot
+    homepage.
+  {% endblocktrans %}
+{% endblock meta_description %}
+
+{% block mainclass %}
+  container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
+{% endblock mainclass %}
+
+{% block content %}
+
+  <style>
+    .robot-500 {
+      max-width: 400px;
+      width: 100%;
+      height: auto;
+    }
+
+    @media (min-width: 992px) {
+      .robot-500 {
+        max-width: 500px;
+      }
+    }
+
+    .message-500 {
+      font-family: "Space Grotesk", Arial, sans-serif;
+      margin: 2rem 0 2rem;
+      font-size: 2rem;
+    }
+  </style>
+
+  <div class="d-flex flex-column align-items-center text-center">
+
+    <div class="message-500">
+      {% blocktrans %}
+         ERROR 500. Not good.
+      {% endblocktrans %}
+    </div>
+
+    <figure class="text-center">
+      <img src="{% static 'images/robot_scene_500.png' %}"
+           alt="{% trans 'Validibot robot dealing with a big issue.' %}"
+           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-500" />
+    </figure>
+
+    <div class="mt-4">
+      <h3>
+        Looks like something went wrong!
+      </h3>
+      <p>
+        We track these errors automatically, but if the problem <br/>persists please contact us. In the meantime, try refreshing.
+      </p>
+    </div>
+
+   
+  </div>
+
+{% endblock content %}

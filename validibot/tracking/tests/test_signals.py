@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from validibot.events.constants import AppEventType
+from validibot.tracking.models import TrackingEvent
+from validibot.users.tests.factories import UserFactory
+
+if TYPE_CHECKING:
+    from django.test import Client
+
+
+@pytest.mark.django_db
+def test_login_emits_tracking_event(client: Client):
+    password = "TestPass!234"  # noqa: S105
+    user = UserFactory(password=password)
+
+    assert client.login(username=user.username, password=password)
+
+    event = TrackingEvent.objects.filter(
+        app_event_type=AppEventType.USER_LOGGED_IN,
+    ).first()
+
+    assert event is not None
+    assert event.user_id == user.id
+
+
+@pytest.mark.django_db
+def test_logout_emits_tracking_event(client: Client):
+    password = "LogOutPass!234"  # noqa: S105
+    user = UserFactory(password=password)
+
+    assert client.login(username=user.username, password=password)
+    client.logout()
+
+    event = TrackingEvent.objects.filter(
+        app_event_type=AppEventType.USER_LOGGED_OUT,
+    ).first()
+
+    assert event is not None

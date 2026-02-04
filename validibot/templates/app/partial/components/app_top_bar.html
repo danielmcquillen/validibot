@@ -1,0 +1,148 @@
+{% load static i18n core_tags %}
+
+{% comment %}
+App top bar component.
+
+This component renders the top navigation bar for the app.
+{% endcomment %}
+
+<div id="app-top-bar">
+
+    <div id="expand-collapse-btn-wrapper">
+        <button id="app-left-nav-toggle"
+                class="btn btn-sm btn-light"
+                type="button"
+                aria-controls="app-left-nav"
+                aria-expanded="true"
+                aria-label="{% trans 'Hide navigation' %}"
+                data-expanded-label="{% trans 'Hide navigation' %}"
+                data-collapsed-label="{% trans 'Show navigation' %}">
+            <i class="bi bi-list"></i>
+        </button>
+    </div>
+
+    <div id="breadcrumbs-wrapper"
+         class="
+                {% block breadcrumbs_styles %}
+                {% endblock breadcrumbs_styles %}">
+        {% include "core/partial/breadcrumbs.html" %}
+    </div>
+
+    <div class="app-header-right">
+        <div class="me-3">
+            <a href="{% url 'notifications:notification-list' %}"
+               class="btn btn-light text-dark position-relative notification-bell-btn"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="{% trans 'Notifications' %}"
+               aria-label="{% trans 'Notifications' %}">
+                <i class="bi bi-bell-fill"></i>
+                {% if unread_notification_count %}
+                    <span class="badge rounded-pill bg-danger notification-bell-badge">
+                        {{ unread_notification_count }}
+                        <span class="visually-hidden">{% trans "unread notifications" %}</span>
+                    </span>
+                {% endif %}
+            </a>
+        </div>
+
+        <div id="user-profile-selector" class="dropdown">
+            <button class="btn btn-dark d-inline-flex align-items-center justify-content-center p-0 rounded-circle overflow-hidden"
+                    type="button"
+                    id="app-user-menu"
+                    data-bs-toggle="dropdown"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    aria-label="{% trans 'Open user menu' %}">
+                {% if request.user.avatar %}
+                    <img src="{{ request.user.avatar.url }}"
+                         alt="{% trans 'User avatar' %}"
+                         class="object-fit-cover user-avatar" />
+                {% else %}
+                    {% with avatar_source=request.user.name|default:request.user.username %}
+                        {% if avatar_source %}
+                            {{ avatar_source|first|upper }}
+                        {% else %}
+                            ?
+                        {% endif %}
+                    {% endwith %}
+                {% endif %}
+                <span class="visually-hidden">
+                    {{ request.user.name|default:request.user.username }}
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm"
+                aria-labelledby="app-user-menu">
+                <li class="dropdown-header">
+                    <span class="fw-semibold">{{ request.user.name|default:request.user.username }}</span>
+                    {% if request.user.email %}
+                        <span class="text-muted">{{ request.user.email }}</span>
+                    {% endif %}
+                </li>
+
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.profile %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:profile' %}">
+                        {% trans "User Profile" %}
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.email %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:email' %}">
+                        {% trans "User Email" %}
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item
+                              {% if user_settings_nav.api_key %}
+                                  active
+                              {% endif %}"
+                       href="{% org_url 'users:api-key' %}">
+                        {% trans "API Key" %}
+                    </a>
+                </li>
+                <hr class="dropdown-divider" />
+                <li>
+                    <a class="dropdown-item d-flex justify-content-between align-items-center"
+                       href="{% url 'notifications:notification-list' %}">
+                        {% trans "Notifications" %}
+                        {% if unread_notification_count %}
+                            <span class="badge rounded-pill bg-danger">
+                                {{ unread_notification_count }}
+                            </span>
+                        {% endif %}
+                    </a>
+                </li>
+                {# Multi-org management is an Enterprise feature #}
+                {% if is_org_admin and feature_multi_org %}
+                    <hr class="dropdown-divider" />
+                    <li>
+                        <a class="dropdown-item
+                                  {% if user_settings_nav.organizations %}
+                                      active
+                                  {% endif %}"
+                           href="{% org_url 'users:organization-list' %}">
+                            {% trans "Manage organizations" %}
+                        </a>
+                    </li>
+                {% endif %}
+
+                {# Sign out - always visible #}
+                <li>
+                    <hr class="dropdown-divider" />
+                </li>
+                <li>
+                    <a class="dropdown-item text-danger" href="{% url 'account_logout' %}">
+                        {% trans "Sign Out" %}
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>

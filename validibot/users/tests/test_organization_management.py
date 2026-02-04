@@ -1,0 +1,237 @@
+from http import HTTPStatus
+
+import pytest
+from django.urls import reverse
+
+from validibot.users.constants import RoleCode
+from validibot.users.models import Membership
+from validibot.users.models import Organization
+from validibot.users.tests.factories import OrganizationFactory
+from validibot.users.tests.factories import UserFactory
+from validibot.users.tests.factories import grant_role
+
+
+@pytest.fixture
+def admin_user(db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    grant_role(user, org, RoleCode.OWNER)
+    user.set_current_org(org)
+    return user, org
+
+
+@pytest.fixture
+def client_logged_in(client, admin_user):
+    user, org = admin_user
+    client.force_login(user)
+    return client, user, org
+
+
+@pytest.mark.django_db
+def test_organization_list_requires_admin(client):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.WORKFLOW_VIEWER)
+    client.force_login(user)
+
+    response = client.get(reverse("users:organization-list"))
+    assert response.status_code == HTTPStatus.OK
+    content = response.content.decode()
+    assert "Personal Workspace" in content or "Workspace" in content
+
+
+@pytest.mark.django_db
+def test_roles_can_be_cleared(client_logged_in):
+    client, admin, org = client_logged_in
+    member = UserFactory()
+    membership = Membership.objects.create(user=member, org=org, is_active=True)
+    membership.set_roles({RoleCode.WORKFLOW_VIEWER})
+
+    url = reverse("members:member_edit", kwargs={"member_id": membership.pk})
+    client.force_login(admin)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.post(url, data={"roles": []}, follow=True)
+    assert response.status_code == HTTPStatus.OK
+    membership.refresh_from_db()
+    assert membership.role_codes == set()
+
+
+@pytest.mark.django_db
+def test_organization_list_shows_admin_orgs(client_logged_in):
+    client, user, org = client_logged_in
+
+    response = client.get(reverse("users:organization-list"))
+    assert response.status_code == HTTPStatus.OK
+    assert org.name in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_organization_create_assigns_admin(client_logged_in):
+    client, user, _ = client_logged_in
+    response = client.post(
+        reverse("users:organization-create"),
+        data={"name": "Research Lab"},
+        follow=True,
+    )
+    assert response.status_code == HTTPStatus.OK
+    org = Organization.objects.get(name="Research Lab")
+    membership = Membership.objects.get(user=user, org=org)
+    assert RoleCode.ADMIN in membership.role_codes
+    assert RoleCode.OWNER in membership.role_codes
+    assert client.session["active_org_id"] == org.id
+
+
+@pytest.mark.django_db
+def test_organization_update_changes_name(client_logged_in):
+    client, user, org = client_logged_in
+    response = client.post(
+        reverse("users:organization-update", args=[org.pk]),
+        data={"name": "Updated Org"},
+        follow=True,
+    )
+    assert response.status_code == HTTPStatus.OK
+    org.refresh_from_db()
+    assert org.name == "Updated Org"
+
+
+@pytest.mark.django_db
+def test_organization_delete_requires_another_admin(client_logged_in):
+    client, user, org = client_logged_in
+    membership = Membership.objects.get(user=user, org=org)
+    assert (
+        not Membership.objects.filter(
+            org=org,
+            is_active=True,
+            membership_roles__role__code=RoleCode.ADMIN,
+        )
+        .exclude(pk=membership.pk)
+        .distinct()
+        .exists()
+    )
+    response = client.post(reverse("users:organization-delete", args=[org.pk]))
+    assert response.status_code == HTTPStatus.FOUND
+    assert Organization.objects.filter(pk=org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_organization_detail_shows_summary(client_logged_in):
+    client, user, org = client_logged_in
+    response = client.get(reverse("users:organization-detail", args=[org.pk]))
+    assert response.status_code == HTTPStatus.OK
+    content = response.content.decode()
+    assert org.name in content
+    assert "Manage members" in content
+
+
+@pytest.mark.django_db
+def test_update_member_roles_requires_remaining_admin(client_logged_in):
+    client, user, org = client_logged_in
+    other = UserFactory(orgs=[org])
+    grant_role(other, org, RoleCode.ADMIN)
+
+    membership = Membership.objects.get(user=other, org=org)
+    response = client.post(
+        reverse("users:organization-member-update", args=[org.pk, membership.pk]),
+        data={"roles": [RoleCode.EXECUTOR]},
+        follow=True,
+    )
+    assert response.status_code == HTTPStatus.OK
+    membership.refresh_from_db()
+    assert RoleCode.ADMIN not in membership.role_codes
+    assert RoleCode.OWNER not in membership.role_codes
+
+
+@pytest.mark.django_db
+def test_update_member_roles_prevents_last_owner_removal(client_logged_in):
+    client, user, org = client_logged_in
+    grant_role(user, org, RoleCode.OWNER)
+    membership = Membership.objects.get(user=user, org=org)
+
+    response = client.post(
+        reverse("users:organization-member-update", args=[org.pk, membership.pk]),
+        data={"roles": [RoleCode.ADMIN]},
+        follow=True,
+    )
+    assert response.status_code == HTTPStatus.OK
+    membership.refresh_from_db()
+    assert RoleCode.OWNER in membership.role_codes
+    assert RoleCode.ADMIN in membership.role_codes
+
+
+@pytest.mark.django_db
+def test_remove_member_prevents_last_owner(client_logged_in):
+    client, user, org = client_logged_in
+    grant_role(user, org, RoleCode.OWNER)
+    membership = Membership.objects.get(user=user, org=org)
+
+    response = client.post(
+        reverse("users:organization-member-delete", args=[org.pk, membership.pk]),
+    )
+    assert response.status_code == HTTPStatus.FOUND
+    assert Membership.objects.filter(user=user, org=org).exists()
+
+
+@pytest.mark.django_db
+def test_remove_member_prevents_last_admin(client_logged_in):
+    client, user, org = client_logged_in
+    response = client.post(
+        reverse(
+            "users:organization-member-delete",
+            args=[org.pk, Membership.objects.get(user=user, org=org).pk],
+        ),
+    )
+    assert response.status_code == HTTPStatus.FOUND
+    assert Membership.objects.filter(user=user, org=org).exists()
+
+
+@pytest.mark.django_db
+def test_switch_current_org_updates_session(client, db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("users:organization-switch", args=[org.pk]),
+        follow=True,
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert client.session["active_org_id"] == org.id
+
+
+@pytest.mark.django_db
+def test_switch_current_org_redirects_to_safe_next(client, db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    client.force_login(user)
+    safe_next = reverse("workflows:workflow_list")
+
+    response = client.post(
+        reverse("users:organization-switch", args=[org.pk]),
+        data={"next": safe_next},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == safe_next
+
+
+@pytest.mark.django_db
+def test_switch_current_org_falls_back_for_unsafe_next(client, db):
+    org = OrganizationFactory()
+    user = UserFactory(orgs=[org])
+    grant_role(user, org, RoleCode.ADMIN)
+    client.force_login(user)
+    unsafe_next = "https://evil.example.com/phish"
+
+    response = client.post(
+        reverse("users:organization-switch", args=[org.pk]),
+        data={"next": unsafe_next},
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response["Location"] == reverse("dashboard:my_dashboard")

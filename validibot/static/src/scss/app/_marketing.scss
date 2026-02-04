@@ -1,0 +1,17 @@
+@use "sass:color";
+@use "../settings";
+
+.custom-consulting-marketing-card {
+  .card-header {
+    color: #fff;
+    background: color.adjust(settings.$blue, $lightness: -20%) !important;
+  }
+  .card-body {
+    color: #fff;
+    background: color.adjust(settings.$blue, $lightness: -20%);
+  }
+  .card-footer {
+    border-top: 1px dotted #fff;
+    background: color.adjust(settings.$blue, $lightness: -20%);
+  }
+}

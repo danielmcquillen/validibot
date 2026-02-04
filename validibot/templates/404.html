@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+
+{% load i18n static %}
+
+{% block title %}
+  {% trans "Page not found" %}
+{% endblock title %}
+
+{% block mainclass %}
+  container py-5 py-lg-5 flex-grow-1 d-flex align-items-center
+{% endblock mainclass %}
+
+{% block content %}
+
+  <style>
+    .robot-404 {
+      max-width: 400px;
+      width: 100%;
+      height: auto;
+    }
+
+    @media (min-width: 992px) {
+      .robot-404 {
+        max-width: 500px;
+      }
+    }
+
+    .message-404 {
+      font-family: "Space Grotesk", Arial, sans-serif;
+      margin: 2rem 0 2rem;
+      font-size: 2rem;
+    }
+  </style>
+
+  <div class="d-flex flex-column align-items-center text-center">
+
+    <div class="message-404">
+      {% blocktrans %}
+         ERROR 404. No page found.
+      {% endblocktrans %}
+    </div>
+
+    <figure class="text-center">
+      <img src="{% static 'images/robot_scene_404.png' %}"
+           alt="{% trans 'Validibot robot holding a map while searching for a missing page.' %}"
+           class="img-fluid mx-auto rounded-4 shadow-sm w-100 robot-404" />
+    </figure>
+
+    <div class="d-flex flex-row mt-4">
+      <a class="btn btn-secondary " href="{% url 'home:home' %}">
+        {% trans "Back to homepage" %}
+      </a>
+    </div>
+  </div>
+
+{% endblock content %}

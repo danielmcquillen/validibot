@@ -1,0 +1,64 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Notifications" %} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column min-vh-100">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-bell me-2"></i>
+          {% trans "Notifications" %}
+        </h1>
+        <form class="ms-auto d-flex align-items-center" method="get">
+          <div class="form-check form-switch">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="showDismissed"
+                   name="show_dismissed"
+                   value="on"
+                   {% if show_dismissed %}
+                     checked
+                   {% endif %}
+                   onchange="this.form.submit()" />
+            <label class="form-check-label me-3" for="showDismissed">
+              {% trans "Show dismissed" %}
+            </label>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="row flex-grow-1">
+      <div class="col-12 p-4 d-flex flex-column h-100">
+        {% if page_obj.object_list %}
+          <div class="list-group list-group-flush mb-3 flex-grow-1">
+            {% for notification in page_obj.object_list %}
+              {% include "notifications/partials/invite_row.html" with notification=notification show_dismissed=show_dismissed %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted small">
+            {% trans "No notifications." %}
+          </div>
+        {% endif %}
+
+        {% if page_obj and page_obj.paginator.count|default:0 >= 10 %}
+          <div class="mt-auto pt-2">
+            {% include "core/partial/pagination.html" with page_obj=page_obj query_string=query_string page_size_options=page_size_options current_page_size=current_page_size %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+{% endblock app_content %}

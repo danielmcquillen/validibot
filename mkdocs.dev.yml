@@ -1,0 +1,131 @@
+site_name: Validibot Developer Docs
+site_description: Internal documentation for Validibot contributors.
+site_url: https://dev.validibot.com/
+
+docs_dir: docs/dev_docs
+site_dir: docs_build/dev
+use_directory_urls: true
+
+dev_addr: 127.0.0.1:9000
+
+repo_url: https://github.com/danielmcquillen/validibot
+repo_name: danielmcquillen/validibot
+
+theme:
+  name: material
+  custom_dir: docs/dev_docs/overrides
+  language: en
+  favicon: https://validibot.com/static/images/favicons/favicon.ico
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.footer
+    - navigation.top
+    - navigation.sections
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - announce.dismiss
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  homepage: https://validibot.com
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://validibot.com
+      name: Validibot.com
+
+plugins:
+  - search
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Quick Reference:
+      - Quick Reference: quick_reference.md
+      - Dependency Management: dependency-management.md
+      - Docker Setup: docker.md
+      - Style Guide: style_guide.md
+      - Related Libraries: related_libraries.md
+  - Overview:
+      - Platform Overview: overview/platform_overview.md
+      - Terminology: overview/terminology.md
+      - Settings: overview/settings.md
+      - User Roles & Permissions: overview/user_roles.md
+      - How It Works: overview/how_it_works.md
+      - Workflow Engine: overview/workflow_engine.md
+      - Step Processor: overview/step_processor.md
+      - Validator Architecture: overview/validator_architecture.md
+      - Submission Modes: overview/request_modes.md
+      - System Administration: overview/system_admin.md
+      - Dashboard: dashboard.md
+  - How-to:
+      - Use a Workflow: how-to/use-workflow.md
+      - Author Workflow Steps: how-to/author-workflow-steps.md
+      - Add a Form: how-to/add-a-form.md
+      - Configure Storage: how-to/configure-storage.md
+      - Configure Scheduled Tasks: how-to/configure-scheduled-tasks.md
+      - License Enforcement: how-to/license-enforcement.md
+      - Run Integration Tests: how-to/run-integration-tests.md
+      - Debug a Run: how-to/debug-a-run.md
+      - Manage Organizations & Projects: organization_management.md
+  - Integrations:
+      - EnergyPlus Modal: integrations/energyplus_modal.md
+  - API:
+      - Authentication: api/authentication.md
+  - Google Cloud:
+      - Overview: google_cloud/index.md
+      - Setup Cheatsheet: google_cloud/setup-cheatsheet.md
+      - Deployment: google_cloud/deployment.md
+      - Logging: google_cloud/logging.md
+      - Storage (GCS): google_cloud/storage.md
+      - Scheduled Jobs: google_cloud/scheduled-jobs.md
+      - IAM & Service Accounts: google_cloud/iam.md
+      - Security: google_cloud/security.md
+  - Marketing:
+      - Homepage Waitlist: marketing/homepage.md
+      - Feature Pages: marketing/features.md
+  - Data Model:
+      - Overview: data-model/index.md
+      - Projects: data-model/projects.md
+      - Validators: data-model/validators.md
+      - Assertions: data-model/assertions.md
+      - Submissions: data-model/submissions.md
+      - Runs: data-model/runs.md
+      - Steps: data-model/steps.md
+      - Findings: data-model/findings.md
+      - Users & Roles: data-model/users_roles.md
+      - Deletions: data-model/deletions.md
+  - Deployment:
+      - Deployment Overview: deployment/overview.md
+      - Justfile Guide: deployment/justfile-guide.md
+      - Self-Hosted Responsibility: deployment/self-hosted-responsibility.md
+      - Post-Deployment Verification: deployment/post-deployment-verification.md
+      - Go-Live Checklist: deployment/go-live-checklist.md
+      - Important Notes: deployment/important_notes.md
+      - Heroku (Legacy): deployment/heroku.md
+  - Advanced:
+      - Validator Containers: validator_jobs_cloud_run.md
+  - Architecture Decision Records:
+      - Step Processor Refactor: adr/2026-01-30-validation-step-processor-refactor.md

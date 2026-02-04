@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+
+{% load static %}
+{% load i18n %}
+{% load account socialaccount %}
+{% load crispy_forms_tags %}
+
+{% block title %}
+  {% trans "Sign In" %}
+{% endblock title %}
+{% block main %}
+  <div id="signin" class="container-fluid entrance-page p-4">
+
+    <div class="row justify-content-center align-items-center h-100">
+      <div class="col-12 col-md-8 col-lg-6">
+
+        <div class="entrance-card-wrapper">
+          <div class="card">
+            <div class="card-body">
+
+              <div class="row d-flex h-100 w-100 align-items-stretch">
+
+                <div class="col-12">
+
+                  <h3 class="card-body-header">
+                    {% trans "Sign In" %}
+                  </h3>
+
+                  {% get_providers as socialaccount_providers %}
+                  {% if socialaccount_providers %}
+                    <p>
+                      {% blocktrans with site.name as site_name %}Please sign in with one
+                                of your existing third party accounts. Or, <a href="{{ signup_url }}">sign up</a>
+                                for a {{ site_name }} account and sign in below:{% endblocktrans %}
+                    </p>
+                    <div class="socialaccount_ballot">
+                      <ul class="socialaccount_providers">
+                        {% include "socialaccount/snippets/provider_list.html" with process="login" %}
+                      </ul>
+                      <div class="login-or">
+                        {% trans 'or' %}
+                      </div>
+                    </div>
+                    {% include "socialaccount/snippets/login_extra.html" %}
+                  {% else %}
+                    <p>
+                      {% blocktrans %}If you have not created an account yet, then please
+                                <a href="{{ signup_url }}">sign up</a> first.{% endblocktrans %}
+                    </p>
+                  {% endif %}
+                  {% include 'account/partial/login_form.html' %}
+                </div>
+                {% comment %}
+            <div class="col-12 col-md-6">
+              put a graphic here someday
+            </div>
+                {% endcomment %}
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock main %}

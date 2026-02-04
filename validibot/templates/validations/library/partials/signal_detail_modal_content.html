@@ -1,0 +1,16 @@
+{% load i18n %}
+
+<div class="modal-header">
+  <h5 class="modal-title">
+    {% trans "Signal Details" %}
+  </h5>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+</div>
+<div class="modal-body">
+  {% include "validations/library/partials/signal_detail_content.html" with signal=signal %}
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+    {% trans "Close" %}
+  </button>
+</div>

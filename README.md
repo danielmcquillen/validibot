@@ -64,7 +64,7 @@ These validators run as isolated Docker containers for complex domain-specific v
 Orchestrate multi-step validation pipelines:
 
 - Ordered sequence of validation steps
-- Mix built-in and advanced validators
+- Mix simple and advanced validators
 - Action steps for notifications (Slack, webhooks)
 - Versioned workflows for safe migrations
 
@@ -284,11 +284,46 @@ Track our progress and upcoming features:
 
 ## Related Projects
 
-| Project                                                                   | Description                     |
-| ------------------------------------------------------------------------- | ------------------------------- |
-| [validibot-cli](https://github.com/validibot/validibot-cli)               | Command-line interface          |
-| [validibot-validators](https://github.com/validibot/validibot-validators) | Advanced validator containers   |
-| [validibot-shared](https://github.com/validibot/validibot-shared)         | Shared library for integrations |
+Validibot is composed of several repositories that work together:
+
+| Repository                                                                          | Description                                                                                | License  |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| **[validibot](https://github.com/danielmcquillen/validibot)** (this repo)           | Core platform — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
+| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines          | MIT      |
+| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validator containers (EnergyPlus, FMI) that run as isolated Docker containers     | MIT      |
+| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators    | MIT      |
+
+### How They Fit Together
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              End Users                                       │
+│                    (Web UI, CLI, REST API clients)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         validibot (this repo)                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Web UI  │  REST API  │  Workflow Engine  │  Built-in Validators   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│            Triggers Docker containers for advanced validations              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+         ┌──────────────────────────┼──────────────────────────┐
+         ▼                          ▼                          ▼
+┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│ validibot-cli   │    │ validibot-validators│    │ validibot-shared    │
+│                 │    │                     │    │                     │
+│ Terminal access │    │ EnergyPlus, FMI     │    │ Pydantic models     │
+│ to API          │    │ containers          │    │ (shared contract)   │
+└─────────────────┘    └─────────────────────┘    └─────────────────────┘
+```
+
+- **validibot-cli** talks to the core platform's REST API
+- **validibot-validators** receive work from core and return results
+- **validibot-shared** defines the envelope format used by both core and validators
 
 ## Acknowledgments
 

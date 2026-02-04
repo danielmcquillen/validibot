@@ -24,7 +24,7 @@
 > [!CAUTION]
 > **Active Development**: Validibot is under active development and not yet ready for production use. APIs, database schemas, and features may change without notice. We welcome early adopters and contributors, but please be aware that breaking changes are expected until we reach v1.0.
 >
-> Watch the repo or [join our Discord](https://validibot.com/discord) to stay updated on progress.
+> Watch the repo or [join the discussion](https://github.com/danielmcquillen/validibot/discussions) to stay updated on progress.
 
 ---
 
@@ -225,9 +225,8 @@ The AGPL-3.0 license requires that if you modify Validibot and provide it as a n
 
 ### Community Support
 
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/validibot/validibot/discussions)
-- **GitHub Issues**: [Report bugs](https://github.com/validibot/validibot/issues)
-- **Discord**: [Join our community](https://validibot.com/discord)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/danielmcquillen/validibot/discussions)
+- **GitHub Issues**: [Report bugs](https://github.com/danielmcquillen/validibot/issues)
 
 > [!NOTE]
 > Community support is provided on a best-effort basis by volunteers. For guaranteed response times and priority support, consider [Validibot Pro](https://validibot.com/pricing).

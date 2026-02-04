@@ -6,7 +6,7 @@
 
 **Open-source data validation engine for energy models, simulations, and beyond**
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/validibot/validibot/ci.yml?branch=main)](https://github.com/validibot/validibot/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/danielmcquillen/validibot/ci.yml?branch=main)](https://github.com/danielmcquillen/validibot/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Django 5.2](https://img.shields.io/badge/django-5.2-green.svg)](https://djangoproject.com/)

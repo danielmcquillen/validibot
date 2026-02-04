@@ -28,6 +28,19 @@
 
 ---
 
+## Related Projects
+
+Validibot is composed of several repositories that work together:
+
+| Repository                                                                          | Description                                                                                | License  |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| **[validibot](https://github.com/danielmcquillen/validibot)** (this repo)           | Core platform — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
+| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines          | MIT      |
+| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validator containers (EnergyPlus, FMI) that run as isolated Docker containers     | MIT      |
+| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators    | MIT      |
+
+---
+
 ## What is Validibot?
 
 Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using EnergyPlus), it's designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
@@ -80,7 +93,7 @@ curl -X POST https://your-instance.com/api/v1/submissions/ \
   -F "workflow_id=wf_abc123"
 ```
 
-See the [API documentation](https://validibot.com/docs/api) for complete reference.
+See the [API documentation](https://docs.validibot.com/api) for complete reference.
 
 ## Quick Start
 
@@ -105,7 +118,7 @@ docker compose exec web python manage.py createsuperuser
 
 Open http://localhost:8000 and log in with your admin credentials.
 
-For detailed setup instructions, see the [Installation Guide](https://validibot.com/docs/installation).
+For detailed setup instructions, see the [Installation Guide](https://docs.validibot.com/installation).
 
 ## Architecture
 
@@ -133,7 +146,7 @@ Validibot uses a **two-layer architecture** for maximum flexibility:
 
 **Advanced validators** run in isolated Docker containers with resource limits, network isolation, and automatic cleanup—perfect for complex domain-specific tools that need their own dependencies.
 
-See [Architecture Overview](https://validibot.com/docs/architecture) for more details.
+See [Architecture Overview](https://dev.validibot.com/architecture) for more details.
 
 ## Self-Hosted Deployment
 
@@ -151,9 +164,9 @@ Validibot is designed for **self-hosted deployment**. You control your infrastru
 
 ### Deployment Options
 
-- **Docker Compose**: Recommended for most deployments. See [Docker deployment guide](https://validibot.com/docs/deployment/docker).
-- **Kubernetes**: Helm chart coming soon. See [Kubernetes guide](https://validibot.com/docs/deployment/kubernetes).
-- **Cloud Run (GCP)**: For Google Cloud deployments. See [GCP guide](https://validibot.com/docs/deployment/gcp).
+- **Docker Compose**: Recommended for most deployments. See [Docker deployment guide](https://docs.validibot.com/deployment/docker).
+- **Kubernetes**: Helm chart coming soon. See [Kubernetes guide](https://docs.validibot.com/deployment/kubernetes).
+- **Cloud Run (GCP)**: For Google Cloud deployments. See [GCP guide](https://docs.validibot.com/deployment/gcp).
 
 ### Security Considerations
 
@@ -281,49 +294,6 @@ Track our progress and upcoming features:
 
 - [Public Roadmap](https://github.com/orgs/validibot/projects/1)
 - [Changelog](CHANGELOG.md)
-
-## Related Projects
-
-Validibot is composed of several repositories that work together:
-
-| Repository                                                                          | Description                                                                                | License  |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
-| **[validibot](https://github.com/danielmcquillen/validibot)** (this repo)           | Core platform — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
-| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines          | MIT      |
-| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validator containers (EnergyPlus, FMI) that run as isolated Docker containers     | MIT      |
-| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators    | MIT      |
-
-### How They Fit Together
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              End Users                                       │
-│                    (Web UI, CLI, REST API clients)                          │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         validibot (this repo)                               │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Web UI  │  REST API  │  Workflow Engine  │  Built-in Validators   │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│            Triggers Docker containers for advanced validations              │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-         ┌──────────────────────────┼──────────────────────────┐
-         ▼                          ▼                          ▼
-┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│ validibot-cli   │    │ validibot-validators│    │ validibot-shared    │
-│                 │    │                     │    │                     │
-│ Terminal access │    │ EnergyPlus, FMI     │    │ Pydantic models     │
-│ to API          │    │ containers          │    │ (shared contract)   │
-└─────────────────┘    └─────────────────────┘    └─────────────────────┘
-```
-
-- **validibot-cli** talks to the core platform's REST API
-- **validibot-validators** receive work from core and return results
-- **validibot-shared** defines the envelope format used by both core and validators
 
 ## Acknowledgments
 

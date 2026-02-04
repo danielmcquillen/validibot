@@ -1,7 +1,18 @@
-# Running Validibot with Docker
+# Running Validibot Locally with Docker
 
 This project uses Docker Compose for local development. All services run in containers,
 matching the Cookiecutter Django patterns with Celery + Redis for background task processing.
+
+## Compose Files
+
+Validibot has separate compose files for different environments. **You must specify which file to use**:
+
+| File | Purpose | Command |
+|------|---------|---------|
+| `docker-compose.local.yml` | Local development (hot reload, runserver) | `docker compose -f docker-compose.local.yml up` |
+| `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `docker compose -f docker-compose.production.yml up` |
+
+There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
 
 ## Quick start (local development)
 
@@ -18,27 +29,32 @@ matching the Cookiecutter Django patterns with Celery + Redis for background tas
 
 3. Build and start:
    ```bash
-   docker compose up --build
+   docker compose -f docker-compose.local.yml up --build
+   ```
+
+   Or use the just command:
+   ```bash
+   just up
    ```
 
 4. Apply migrations (the start script does this, but you can rerun):
    ```bash
-   docker compose exec django uv run python manage.py migrate
+   docker compose -f docker-compose.local.yml exec django uv run python manage.py migrate
    ```
 
 5. Run initial setup (first time only):
    ```bash
-   docker compose exec django uv run python manage.py setup_validibot --domain localhost:8000
+   docker compose -f docker-compose.local.yml exec django uv run python manage.py setup_validibot --domain localhost:8000
    ```
 
 6. Verify setup is correct:
    ```bash
-   docker compose exec django uv run python manage.py check_validibot
+   docker compose -f docker-compose.local.yml exec django uv run python manage.py check_validibot
    ```
 
 7. Create a superuser if needed:
    ```bash
-   docker compose exec django uv run python manage.py createsuperuser
+   docker compose -f docker-compose.local.yml exec django uv run python manage.py createsuperuser
    ```
 
 8. Visit http://localhost:8000
@@ -57,29 +73,37 @@ Entrypoint and start scripts live in `compose/local/django/` and wait for Postgr
 
 ## Production-style compose (for parity/testing)
 
-Create production env files from the templates:
+Use `docker-compose.production.yml` to test production-like behavior locally. This runs Gunicorn instead of the Django dev server and doesn't mount your local code.
 
-For Docker Compose:
-```bash
-mkdir -p .envs/.production/.Docker Compose
-cp .envs.example/.production/.Docker Compose/.django .envs/.production/.Docker Compose/.django
-cp .envs.example/.production/.Docker Compose/.postgres .envs/.production/.Docker Compose/.postgres
-# Edit with your production values
-```
+1. Create production env files from the templates:
 
-For GCP:
-```bash
-mkdir -p .envs/.production/.google-cloud
-cp .envs.example/.production/.google-cloud/.django .envs/.production/.google-cloud/.django
-# Edit with your GCP project values
-```
+   ```bash
+   mkdir -p .envs/.production/.docker-compose
+   cp .envs.example/.production/.docker-compose/.django .envs/.production/.docker-compose/.django
+   cp .envs.example/.production/.docker-compose/.postgres .envs/.production/.docker-compose/.postgres
+   ```
 
-Run:
-```bash
-docker compose -f docker-compose.production.yml up --build
-```
+2. Edit the files with production-appropriate values:
+   - Generate a proper `DJANGO_SECRET_KEY`
+   - Set a strong `POSTGRES_PASSWORD`
+   - Set `SUPERUSER_PASSWORD` and `SUPERUSER_EMAIL`
 
-Production-style "web" serves user traffic (gunicorn on 8000). The "worker" runs gunicorn on 8001 for task/internal endpoints so you can mimic separate Cloud Run services with different scaling.
+3. Build and run:
+
+   ```bash
+   docker compose -f docker-compose.production.yml up --build
+   ```
+
+4. Run initial setup:
+
+   ```bash
+   docker compose -f docker-compose.production.yml exec django python manage.py migrate
+   docker compose -f docker-compose.production.yml exec django python manage.py setup_initial_data
+   ```
+
+5. Visit http://localhost:8000
+
+Production-style "django" serves user traffic via Gunicorn on port 8000. The "celery_worker" processes background tasks. This is the same stack used for [DigitalOcean deployments](deployment/digitalocean.md).
 
 ## VS Code: pytest "Run" button
 
@@ -88,7 +112,7 @@ VS Code's test runner needs environment variables. This repo includes a minimal 
 If the **Testing** panel hangs, double-check:
 
 - VS Code is using the repo interpreter: `.venv/bin/python` (see `.vscode/settings.json`)
-- Docker Compose is running: `docker compose up -d postgres`
+- Docker Compose is running: `docker compose -f docker-compose.local.yml up -d postgres`
 
 ## Notes and deviations from full Cookiecutter setup
 

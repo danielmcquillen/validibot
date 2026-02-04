@@ -1,6 +1,7 @@
 site_name: Validibot User Guide
 site_description: Product tutorials and walkthroughs for Validibot users.
 site_url: https://docs.validibot.com/
+site_author: Daniel McQuillen
 
 repo_url: https://github.com/danielmcquillen/validibot
 repo_name: danielmcquillen/validibot

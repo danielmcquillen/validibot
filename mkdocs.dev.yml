@@ -1,6 +1,7 @@
 site_name: Validibot Developer Docs
 site_description: Internal documentation for Validibot contributors.
 site_url: https://dev.validibot.com/
+site_author: Daniel McQuillen
 
 docs_dir: docs/dev_docs
 site_dir: docs_build/dev

@@ -6,7 +6,7 @@
 
 **Open-source data validation engine for energy models, simulations, and beyond**
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/danielmcquillen/validibot/ci.yml?branch=main)](https://github.com/danielmcquillen/validibot/actions)
+[![Build Status](https://github.com/danielmcquillen/validibot/actions/workflows/ci.yml/badge.svg)](https://github.com/danielmcquillen/validibot/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Django 5.2](https://img.shields.io/badge/django-5.2-green.svg)](https://djangoproject.com/)
@@ -30,7 +30,7 @@
 
 ## What is Validibot?
 
-Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable workflows. Originally built for validating building energy models (EnergyPlus, FMU), it's designed to handle any structured data validation.
+Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using EnergyPlus), it's designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
 
 **Key problems Validibot solves:**
 
@@ -42,9 +42,9 @@ Validibot is an **open-source data validation platform** that transforms fragmen
 
 ## Key Features
 
-### Built-in Validators
+### "Simple" Validators
 
-Run directly in the Django process—no extra infrastructure needed:
+These validators run directly in a Django "worker" process -- no extra infrastructure needed:
 
 - **JSON Schema**: Validate JSON against JSON Schema drafts 4-2020-12
 - **XML Schema (XSD)**: Validate XML against W3C XML Schema
@@ -53,11 +53,11 @@ Run directly in the Django process—no extra infrastructure needed:
 
 ### Advanced Validators
 
-Run as isolated Docker containers for complex domain-specific validation:
+These validators run as isolated Docker containers for complex domain-specific validation:
 
 - **EnergyPlus**: Validate IDF and epJSON building energy models
-- **FMU (FMI)**: Validate Functional Mock-up Units for simulation
-- **Custom**: Bring your own validator containers
+- **FMU (FMI)**: Validate Functional Mock-up Units via OpenModelica simulation
+- **Custom**: Bring your own validator containers and logic
 
 ### Workflow Engine
 

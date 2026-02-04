@@ -4,7 +4,7 @@
 
 # Validibot
 
-**Open-source data validation engine for building energy models and beyond**
+**Open-source data validation engine for energy models, simulations, and beyond**
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/validibot/validibot/ci.yml?branch=main)](https://github.com/validibot/validibot/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)

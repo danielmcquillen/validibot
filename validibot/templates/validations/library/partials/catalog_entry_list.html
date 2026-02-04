@@ -1,0 +1,61 @@
+{% load i18n %}
+
+{% if entries %}
+  <ul class="list-group list-group-flush catalog-entry-list"
+      data-sv-catalog-entry-list>
+    {% for entry in entries %}
+      <li class="list-group-item"
+          data-sv-catalog-entry
+          data-sv-catalog-label="{{ entry.label|escape }}"
+          data-sv-catalog-slug="{{ entry.slug|escape }}">
+
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          {% with display_label=entry.label|default:entry.slug %}
+            <span class="fw-semibold catalog-entry-label"
+                  data-original-text="{{ display_label|escape }}">{{ display_label }}</span>
+          {% endwith %}
+          <span class="badge text-bg-light text-uppercase">
+            {{ entry.get_entry_type_display }}
+            {% if entry.entry_type == 'signal' %}
+              · {{ entry.get_run_stage_display }}
+            {% endif %}
+          </span>
+        </div>
+
+        <dl class="row mb-0 mt-2 ms-2">
+
+          <dt class="col-sm-4">
+            {% trans "Signal name" %}
+          </dt>
+          <dd class="col-sm-8">
+            <code class="catalog-entry-slug"
+                  data-original-text="{{ entry.slug|escape }}">{{ entry.slug }}</code>
+          </dd>
+
+          {% if entry.target_field %}
+            <dt class="col-sm-4">
+              {% trans "Target Path" %}
+            </dt>
+            <dd class="col-sm-8">
+              <code>{{ entry.target_field }}</code>
+            </dd>
+          {% endif %}
+
+          {% if entry.description %}
+            <dt class="col-sm-4">
+              {% trans "Description" %}
+            </dt>
+            <dd class="col-sm-8">
+              {{ entry.description }}
+            </dd>
+          {% endif %}
+
+        </dl>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="text-muted mb-0">
+    {% trans "No catalog entries registered yet." %}
+  </p>
+{% endif %}

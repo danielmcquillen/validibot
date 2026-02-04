@@ -1,0 +1,193 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% blocktrans with step=step.name %}Edit Step · {{ step }}{% endblocktrans %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="assertion-step-builder"
+       class="container-fluid d-flex flex-column flex-grow-1">
+
+    <div class="app-content-header-bar row p-0">
+      <div class="app-content-header">
+        <div class="badge-wrapper h-100">
+          <div class="me-2">
+            <a href="{% url 'workflows:workflow_detail' workflow.pk %}"
+               class="btn btn-secondary btn-sm">
+              <i class="bi bi-chevron-double-left"></i>
+            </a>
+          </div>
+          <span class="badge text-bg-primary me-2">{% trans 'Step' %} {{ step.step_number }}</span>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
+          <h1 class="app-page-title mb-0">
+            {{ step.name|default:"( no name )" }}
+          </h1>
+        </div>
+      </div>
+    </div>
+
+    <div class="row assertion-step-builder-layout flex-grow-1 align-items-stretch">
+      <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
+
+        <div id="assertions-editor-card" class="card app-card">
+
+          <div class="card-header">
+            <div>
+              <span class="fw-semibold">{% trans "Step Assertions" %}</span>
+              <span class="text-muted small ms-2">{% trans "Design the assertions for this step" %}</span>
+            </div>
+            {% if can_manage_assertions and supports_assertions %}
+              <div class="card-header-buttons">
+                <button class="btn btn-secondary btn-sm"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowAssertionModal"
+                        hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}"
+                        hx-target="#workflow-assertion-modal-content"
+                        hx-trigger="click">
+                  <i class="bi bi-plus me-1"></i>
+                  {% trans "Add assertion" %}
+                </button>
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="card-body editor-workspace d-flex flex-column flex-grow-1
+                      {% if uses_signal_stages %}
+                        has-validator-flow
+                      {% endif %}">
+
+            {% if can_manage_assertions and supports_assertions %}
+
+              {% if validator_default_assertions_count %}
+                {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
+              {% endif %}
+
+              {% if uses_signal_stages %}
+
+                {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
+
+                <div class="validator-process-divider">
+                  <span class="validator-process-chip">
+                    {{ validator.processor_name|default:_("Validator process") }}
+                  </span>
+                </div>
+
+                {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
+              {% else %}
+                {% if assertions %}
+                  {% for assertion in assertions %}
+                    {% include 'workflows/partials/components/assertion_step.html' %}
+                  {% endfor %}
+                {% else %}
+                  {% include 'workflows/partials/components/empty_assertions.html' %}
+                {% endif %}
+              {% endif %}
+
+            {% else %}
+              <div class="alert alert-info">
+                {% trans "This validator does not support assertions." %}
+              </div>
+            {% endif %}
+
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4 d-flex flex-column gap-4">
+        {% include 'workflows/partials/components/step_details_card.html' %}
+        {% if catalog_display %}
+          {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix flat_mode=True %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade"
+       id="validatorDefaultAssertionsModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content" id="default-assertions-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade"
+       id="workflowAssertionModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" id="workflow-assertion-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade"
+       id="catalogEntryDetailModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content" id="catalog-entry-detail-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.body.addEventListener('close-modal', (event) => {
+      const targetId = event.detail?.['close-modal'] || 'workflowAssertionModal';
+      const modalEl = document.getElementById(targetId);
+      if (!modalEl) {
+        return;
+      }
+      let modalInstance = bootstrap.Modal.getInstance(modalEl);
+      if (!modalInstance) {
+        modalInstance = new bootstrap.Modal(modalEl);
+      }
+      modalInstance.hide();
+    });
+    document.body.addEventListener('assertions-changed', (event) => {
+      const detail = event.detail?.['assertions-changed'];
+      const focusId = detail && typeof detail === 'object' ? detail['focus_assertion_id'] : null;
+      if (focusId) {
+        sessionStorage.setItem('assertion-focus-id', focusId);
+      }
+      window.location.reload();
+    });
+    window.addEventListener('DOMContentLoaded', () => {
+      const focusId = sessionStorage.getItem('assertion-focus-id');
+      if (!focusId) {
+        return;
+      }
+      sessionStorage.removeItem('assertion-focus-id');
+      const target = document.getElementById(`assertion-card-${focusId}`);
+      if (!target) {
+        return;
+      }
+      target.classList.add('assertion-card-highlight');
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      setTimeout(() => target.classList.remove('assertion-card-highlight'), 4000);
+    });
+  </script>
+
+{% endblock app_content %}

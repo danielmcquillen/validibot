@@ -1,0 +1,199 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "My Validation Runs" %} - Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+
+  <div class="container-fluid" id="guest-validation-list">
+
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <h1 class="app-page-title">
+          <i class="bi bi-shield-check"></i>
+          {% trans "My Validation Runs" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Validation runs you've submitted on shared workflows" %}
+        </p>
+      </div>
+    </div>
+
+    <form method="get" class="row gy-2 gx-3 align-items-end m-2">
+      <div class="col-sm-6 col-md-3 col-lg-2">
+        <label class="form-label" for="org-filter">
+          {% trans "Organization" %}
+        </label>
+        <select class="form-select" id="org-filter" name="org">
+          <option value="">
+            {% trans "All organizations" %}
+          </option>
+          {% for org in org_options %}
+            <option value="{{ org.pk }}"
+                    {% if org.pk|stringformat:'s' == org_filter %}
+                      selected
+                    {% endif %}>
+              {{ org.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-3 col-lg-2">
+        <label class="form-label" for="status-filter">
+          {% trans "Status" %}
+        </label>
+        <select class="form-select" id="status-filter" name="status">
+          <option value="">
+            {% trans "All statuses" %}
+          </option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}"
+                    {% if value == status_filter %}
+                      selected
+                    {% endif %}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-3 col-lg-2">
+        <label class="form-label" for="workflow-filter">
+          {% trans "Workflow" %}
+        </label>
+        <select class="form-select" id="workflow-filter" name="workflow">
+          <option value="">
+            {% trans "All workflows" %}
+          </option>
+          {% for wf in workflow_options %}
+            <option value="{{ wf.pk }}"
+                    {% if wf.pk|stringformat:'s' == request.GET.workflow %}
+                      selected
+                    {% endif %}>
+              {{ wf.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-3 col-lg-2">
+        <label class="form-label" for="sort-by">
+          {% trans "Sort" %}
+        </label>
+        <select class="form-select" id="sort-by" name="sort">
+          <option value="-created"
+                  {% if current_sort == '-created' %}
+                    selected
+                  {% endif %}>
+            {% trans "Newest first" %}
+          </option>
+          <option value="created" {% if current_sort == 'created' %}selected{% endif %}>
+            {% trans "Oldest first" %}
+          </option>
+          <option value="workflow"
+                  {% if current_sort == 'workflow' %}
+                    selected
+                  {% endif %}>
+            {% trans "Workflow A-Z" %}
+          </option>
+          <option value="-workflow"
+                  {% if current_sort == '-workflow' %}
+                    selected
+                  {% endif %}>
+            {% trans "Workflow Z-A" %}
+          </option>
+        </select>
+      </div>
+      <div class="col-sm-6 col-md-4 col-lg-2">
+        <button type="submit" class="btn btn-secondary">
+          {% trans "Filter" %}
+        </button>
+        {% if request.GET %}
+          <a class="btn btn-link text-decoration-none"
+             href="{% url 'validations:guest_validation_list' %}">{% trans "Reset" %}</a>
+        {% endif %}
+      </div>
+
+    </form>
+
+    <div class="table-responsive shadow-sm rounded">
+      <table class="table table-bordered table-hover align-middle mb-0 mt-3">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">
+              {% trans "ID" %}
+            </th>
+            <th scope="col">
+              {% trans "Organization" %}
+            </th>
+            <th scope="col">
+              {% trans "Workflow" %}
+            </th>
+            <th scope="col">
+              {% trans "Submission" %}
+            </th>
+            <th scope="col">
+              {% trans "Status" %}
+            </th>
+            <th scope="col" class="text-nowrap">
+              {% trans "Started" %}
+            </th>
+            <th scope="col" class="text-end">
+              {% trans "Actions" %}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for validation in validations %}
+            <tr id="validation-row-{{ validation.pk }}">
+              <td class="fw-semibold">
+                #{{ validation.pk }}
+              </td>
+              <td>
+                {{ validation.org.name }}
+              </td>
+              <td>
+                {{ validation.workflow.name }}
+              </td>
+              <td>
+                {% if validation.submission %}
+                  {{ validation.submission.name|default:validation.submission.pk }}
+                {% else %}
+                  <span class="text-muted">{% trans "N/A" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge text-bg-secondary text-white {{ validation.status_pill_class }}">{{ validation.get_status_display }}</span>
+              </td>
+              <td>
+                {{ validation.created|date:"M j, Y g:i a" }}
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <a class="btn btn-secondary"
+                     href="{% url 'validations:validation_detail' validation.pk %}">{% trans "View" %}</a>
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center py-5 text-muted">
+                {% trans "No validation runs match your filters yet. Run a workflow to see your results here." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      {% include 'core/partial/pagination.html' %}
+    {% endif %}
+  </div>
+
+{% endblock app_content %}

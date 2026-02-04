@@ -1,0 +1,100 @@
+# Validibot Docker Compose Production Configuration
+# ==============================================================================
+# Copy this file to .envs/.production/.docker-compose/.django
+# Also copy postgres to .envs/.production/.docker-compose/.postgres
+
+# DJANGO
+# ==============================================================================
+DJANGO_SETTINGS_MODULE=config.settings.production
+DEPLOYMENT_TARGET=docker_compose
+DJANGO_SECRET_KEY=your-secret-key-here-change-this
+DJANGO_ALLOWED_HOSTS=validibot.example.com,localhost
+# Generate a secret key with:
+# python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+
+# DATABASE
+# ==============================================================================
+# DATABASE_URL is automatically constructed by the entrypoint script from the
+# POSTGRES_* variables in .postgres. No need to set it here.
+
+# REDIS
+# ==============================================================================
+REDIS_URL=redis://redis:6379/0
+
+# STORAGE
+# ==============================================================================
+# By default, files are stored on the local filesystem in /app/storage.
+# Optionally configure cloud storage:
+#
+# For AWS S3:
+#DATA_STORAGE_BACKEND=s3
+#STORAGE_BUCKET=your-bucket-name
+#AWS_S3_REGION_NAME=us-east-1
+#AWS_ACCESS_KEY_ID=your-access-key
+#AWS_SECRET_ACCESS_KEY=your-secret-key
+#
+# For Google Cloud Storage:
+#DATA_STORAGE_BACKEND=gcs
+#STORAGE_BUCKET=your-bucket-name
+#GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# SENTRY (optional)
+# ==============================================================================
+#SENTRY_DSN=https://your-sentry-dsn
+
+# DEFAULT USERS
+# ==============================================================================
+# Initial superuser created on first run
+SUPERUSER_USERNAME=admin
+SUPERUSER_PASSWORD=change-this-password
+SUPERUSER_EMAIL=admin@example.com
+SUPERUSER_NAME=Admin User
+
+# EMAIL
+# ==============================================================================
+# If not configured, emails are logged to console.
+# Choose ONE of the following email providers:
+#
+# Postmark (recommended):
+#POSTMARK_SERVER_TOKEN=your-postmark-server-token
+#
+# Mailgun:
+#MAILGUN_API_KEY=your-mailgun-api-key
+#MAILGUN_SENDER_DOMAIN=mg.yourdomain.com
+#
+# SendGrid:
+#SENDGRID_API_KEY=your-sendgrid-api-key
+#
+# Generic SMTP:
+#EMAIL_HOST=smtp.example.com
+#EMAIL_PORT=587
+#EMAIL_USE_TLS=true
+#EMAIL_HOST_USER=your-smtp-user
+#EMAIL_HOST_PASSWORD=your-smtp-password
+
+# FEATURE TOGGLES
+# ==============================================================================
+# Registration and login
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
+DJANGO_ACCOUNT_ALLOW_LOGIN=true
+
+# AI-powered validations (requires additional setup)
+ENABLE_AI_VALIDATIONS=false
+
+# URLS
+# ==============================================================================
+SITE_URL=https://validibot.example.com
+
+# ADMIN
+# ==============================================================================
+# Change for security through obscurity
+DJANGO_ADMIN_URL=admin/
+
+# SSL redirect (set to false if your reverse proxy handles SSL)
+DJANGO_SECURE_SSL_REDIRECT=true
+
+# VALIDATOR CONTAINERS
+# ==============================================================================
+# Resource limits for advanced validator containers
+VALIDATOR_MEMORY_LIMIT=4g
+VALIDATOR_CPU_LIMIT=2.0

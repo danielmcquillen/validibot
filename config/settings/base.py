@@ -1,0 +1,771 @@
+# ruff: noqa: E501
+"""Base settings to build other settings files upon."""
+
+import logging
+from pathlib import Path
+
+import environ
+
+logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
+# validibot/
+APPS_DIR = BASE_DIR / "validibot"
+env = environ.Env()
+
+READ_DOT_ENV_FILE = env.bool("DJANGO_READ_DOT_ENV_FILE", default=False)
+if READ_DOT_ENV_FILE:
+    # OS environment variables take precedence over variables from .env
+    env.read_env(str(BASE_DIR / ".env"))
+
+# GENERAL
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#debug
+DEBUG = env.bool("DJANGO_DEBUG", False)
+
+# DEPLOYMENT TARGET
+# ------------------------------------------------------------------------------
+# Identifies the deployment environment for selecting appropriate backends.
+# This setting controls task dispatching, validator execution, and storage.
+#
+# Valid values (from validibot.core.constants.DeploymentTarget):
+#   - "test": Test environment (synchronous inline execution)
+#   - "local_docker_compose": Local Docker Compose (HTTP to worker, Docker validators)
+#   - "docker_compose": Docker Compose production (Celery + Docker)
+#   - "gcp": Google Cloud Platform (Cloud Tasks + Cloud Run Jobs)
+#   - "aws": Amazon Web Services (SQS + ECS/Batch) - future
+#
+# If not set, auto-detection is used based on other settings.
+DEPLOYMENT_TARGET = env("DEPLOYMENT_TARGET", default=None)
+
+# App role (web vs worker). Worker instances expose internal APIs only.
+# Default to "web" for local development; production sets APP_ROLE explicitly.
+APP_ROLE = env(
+    "APP_ROLE",
+    default="web",
+)
+APP_IS_WORKER = APP_ROLE.lower() == "worker"
+# Local time zone. Choices are
+# http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
+# though not all of them may be available with every OS.
+# In Windows, this must be set to your system time zone.
+TIME_ZONE = "UTC"
+# https://docs.djangoproject.com/en/dev/ref/settings/#language-code
+LANGUAGE_CODE = "en-us"
+# https://docs.djangoproject.com/en/dev/ref/settings/#languages
+# from django.utils.translation import gettext_lazy as _
+# LANGUAGES = [
+#     ('en', _('English')),
+#     ('fr-fr', _('French')),
+#     ('pt-br', _('Portuguese')),
+# ]
+# https://docs.djangoproject.com/en/dev/ref/settings/#site-id
+SITE_ID = 1
+# https://docs.djangoproject.com/en/dev/ref/settings/#use-i18n
+USE_I18N = True
+# https://docs.djangoproject.com/en/dev/ref/settings/#use-tz
+USE_TZ = True
+# https://docs.djangoproject.com/en/dev/ref/settings/#locale-paths
+LOCALE_PATHS = [str(BASE_DIR / "locale")]
+
+# DATABASES
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#databases
+
+DATABASES = {
+    "default": env.db(
+        "DATABASE_URL",
+        default="postgres:///validibot",
+    ),
+}
+DATABASES["default"]["ATOMIC_REQUESTS"] = False
+# https://docs.djangoproject.com/en/stable/ref/settings/#std:setting-DEFAULT_AUTO_FIELD
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# URLS
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#root-urlconf
+ROOT_URLCONF = "config.urls"
+# https://docs.djangoproject.com/en/dev/ref/settings/#wsgi-application
+WSGI_APPLICATION = "config.wsgi.application"
+# https://docs.djangoproject.com/en/dev/ref/settings/#asgi-application
+# ASGI_APPLICATION = "config.asgi.application"
+
+GITHUB_APP_ENABLED = env.bool("GITHUB_APP_ENABLED", False)
+ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
+
+# APPS
+# ------------------------------------------------------------------------------
+DJANGO_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.sites",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.humanize",  # Handy template tags
+    "django.contrib.admin",
+    "django.contrib.sitemaps",
+    "django.forms",
+    "django.contrib.flatpages",
+    "django.contrib.postgres",
+]
+THIRD_PARTY_APPS = [
+    "crispy_forms",
+    "crispy_bootstrap5",
+    "allauth",
+    "allauth.account",
+    "allauth.mfa",
+    "allauth.socialaccount",
+    "rest_framework",
+    "rest_framework.authtoken",
+    "corsheaders",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",  # Serves Swagger UI/ReDoc assets locally
+    "django_filters",
+    "markdownify",
+    "django_cloud_tasks",
+    "django_recaptcha",
+    "django_celery_beat",  # Periodic task scheduling via database
+]
+
+LOCAL_APPS = [
+    "validibot.core",
+    "validibot.users",
+    "validibot.validations",
+    "validibot.actions",
+    "validibot.projects",
+    "validibot.events",
+    "validibot.tracking",
+    "validibot.submissions",
+    "validibot.integrations",
+    "validibot.workflows",
+    "validibot.dashboard",
+    "validibot.home",
+    "validibot.members",
+    "validibot.help",
+    "validibot.notifications",
+]
+# https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# COMMERCIAL PLUGINS
+# ------------------------------------------------------------------------------
+# Auto-discover and load commercial plugins (validibot-pro, validibot-enterprise).
+# These packages register their license providers and features when imported.
+# Uses entry points for clean plugin discovery - just `pip install validibot-pro`.
+try:
+    from importlib.metadata import entry_points
+
+    # Python 3.10+ returns SelectableGroups, 3.9 returns dict
+    eps = entry_points()
+    if hasattr(eps, "select"):
+        # Python 3.10+
+        plugin_eps = eps.select(group="validibot.plugins")
+    else:
+        # Python 3.9
+        plugin_eps = eps.get("validibot.plugins", [])
+
+    for ep in plugin_eps:
+        try:
+            # Loading the entry point imports the package, triggering auto-registration
+            ep.load()
+            logger.info("Loaded Validibot plugin: %s", ep.name)
+        except Exception as e:
+            logger.warning("Failed to load Validibot plugin %s: %s", ep.name, e)
+except Exception as e:
+    logger.debug("Plugin discovery failed (expected if no plugins installed): %s", e)
+
+MARKDOWNIFY = {
+    "default": {
+        "WHITELIST_TAGS": [
+            "a",
+            "abbr",
+            "acronym",
+            "b",
+            "blockquote",
+            "code",
+            "em",
+            "i",
+            "li",
+            "ol",
+            "strong",
+            "ul",
+            "p",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "pre",
+            "span",
+        ],
+        "WHITELIST_ATTRS": {
+            "a": ["href", "title"],
+            "span": ["class"],
+            "code": ["class"],
+        },
+    },
+}
+
+# MIGRATIONS
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#migration-modules
+MIGRATION_MODULES = {"sites": "validibot.contrib.sites.migrations"}
+
+# AUTHENTICATION
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#authentication-backends
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "validibot.users.permissions.OrgPermissionBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+# https://docs.djangoproject.com/en/dev/ref/settings/#auth-user-model
+AUTH_USER_MODEL = "users.User"
+# https://docs.djangoproject.com/en/dev/ref/settings/#login-redirect-url
+LOGIN_REDIRECT_URL = "users:redirect"
+# https://docs.djangoproject.com/en/dev/ref/settings/#login-url
+LOGIN_URL = "account_login"
+
+# PASSWORDS
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#password-hashers
+PASSWORD_HASHERS = [
+    # https://docs.djangoproject.com/en/dev/topics/auth/passwords/#using-argon2-with-django
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+]
+# https://docs.djangoproject.com/en/dev/ref/settings/#auth-password-validators
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+    },
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+# MIDDLEWARE
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#middleware
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+]
+
+# STATIC
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#static-root
+STATIC_ROOT = str(BASE_DIR / "staticfiles")
+# https://docs.djangoproject.com/en/dev/ref/settings/#static-url
+STATIC_URL = "/static/"
+# https://docs.djangoproject.com/en/dev/ref/contrib/staticfiles/#std:setting-STATICFILES_DIRS
+STATICFILES_DIRS = [str(APPS_DIR / "static")]
+# https://docs.djangoproject.com/en/dev/ref/contrib/staticfiles/#staticfiles-finders
+STATICFILES_FINDERS = [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+]
+
+# MEDIA
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#media-root
+MEDIA_ROOT = str(APPS_DIR / "media")
+# https://docs.djangoproject.com/en/dev/ref/settings/#media-url
+MEDIA_URL = "/media/"
+
+# TEMPLATES
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#templates
+TEMPLATES = [
+    {
+        # https://docs.djangoproject.com/en/dev/ref/settings/#std:setting-TEMPLATES-BACKEND
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        # https://docs.djangoproject.com/en/dev/ref/settings/#dirs
+        "DIRS": [str(APPS_DIR / "templates")],
+        # https://docs.djangoproject.com/en/dev/ref/settings/#app-dirs
+        "APP_DIRS": True,
+        "OPTIONS": {
+            # https://docs.djangoproject.com/en/dev/ref/settings/#template-context-processors
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.template.context_processors.i18n",
+                "django.template.context_processors.media",
+                "django.template.context_processors.static",
+                "django.template.context_processors.tz",
+                "django.contrib.messages.context_processors.messages",
+                "validibot.users.context_processors.allauth_settings",
+                "validibot.core.context_processors.site_feature_settings",
+                "validibot.core.context_processors.license_context",
+                "validibot.core.context_processors.features_context",
+                "validibot.users.context_processors.organization_context",
+                "validibot.notifications.context_processors.notifications_context",
+            ],
+        },
+    },
+]
+
+# https://docs.djangoproject.com/en/dev/ref/settings/#form-renderer
+FORM_RENDERER = "django.forms.renderers.TemplatesSetting"
+
+# http://django-crispy-forms.readthedocs.io/en/latest/install.html#template-packs
+CRISPY_TEMPLATE_PACK = "bootstrap5"
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+
+# FIXTURES
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#fixture-dirs
+FIXTURE_DIRS = (str(APPS_DIR / "fixtures"),)
+
+# SECURITY
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#session-cookie-httponly
+SESSION_COOKIE_HTTPONLY = True
+# https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-httponly
+CSRF_COOKIE_HTTPONLY = True
+# https://docs.djangoproject.com/en/dev/ref/settings/#x-frame-options
+X_FRAME_OPTIONS = "DENY"
+
+# EMAIL
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
+EMAIL_BACKEND = env(
+    "DJANGO_EMAIL_BACKEND",
+    default="django.core.mail.backends.smtp.EmailBackend",
+)
+# https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
+EMAIL_TIMEOUT = 5
+
+# ADMIN
+# ------------------------------------------------------------------------------
+# Django Admin URL.
+ADMIN_URL = "admin/"
+# https://docs.djangoproject.com/en/dev/ref/settings/#admins
+# Django 6.1+ prefers a list of email strings (tuples are deprecated).
+ADMINS = ["daniel@mcquilleninteractive.com"]
+# https://docs.djangoproject.com/en/dev/ref/settings/#managers
+MANAGERS = ADMINS
+# https://cookiecutter-django.readthedocs.io/en/latest/settings.html#other-environment-settings
+# Force the `admin` sign in process to go through the `django-allauth` workflow
+DJANGO_ADMIN_FORCE_ALLAUTH = env.bool("DJANGO_ADMIN_FORCE_ALLAUTH", default=False)
+
+# LOGGING
+# ------------------------------------------------------------------------------
+# https://docs.djangoproject.com/en/dev/ref/settings/#logging
+# See https://docs.djangoproject.com/en/dev/topics/logging for
+# more details on how to customize your logging configuration.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "DEBUG",
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "django.request": {
+            "level": "ERROR",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+    },
+}
+
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+REDIS_SSL = REDIS_URL.startswith("rediss://")
+
+# Redis is retained for potential caching integrations.
+# django-allauth
+# ------------------------------------------------------------------------------
+ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
+# https://docs.allauth.org/en/latest/account/configuration.html
+ACCOUNT_LOGIN_METHODS = {"username"}
+# https://docs.allauth.org/en/latest/account/configuration.html
+ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
+# https://docs.allauth.org/en/latest/account/configuration.html
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+# https://docs.allauth.org/en/latest/account/configuration.html
+ACCOUNT_ADAPTER = "validibot.users.adapters.AccountAdapter"
+# https://docs.allauth.org/en/latest/account/forms.html
+ACCOUNT_FORMS = {
+    "signup": "validibot.users.forms.UserSignupForm",
+    "login": "validibot.users.forms.UserLoginForm",
+}
+# https://docs.allauth.org/en/latest/socialaccount/configuration.html
+SOCIALACCOUNT_ADAPTER = "validibot.users.adapters.SocialAccountAdapter"
+# https://docs.allauth.org/en/latest/socialaccount/configuration.html
+SOCIALACCOUNT_FORMS = {"signup": "validibot.users.forms.UserSocialSignupForm"}
+# https://docs.allauth.org/en/latest/account/configuration.html
+# Brute force protection: lock out after 5 failed attempts for 5 minutes
+ACCOUNT_RATE_LIMITS = {
+    "login_failed": "5/5m",  # 5 failed attempts per 5 minutes
+}
+
+# django-rest-framework
+# -------------------------------------------------------------------------------
+# django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
+# DMcQ: Using our our custom AgentAwareNegotiation so every API view gets the agent profile.
+REST_FRAMEWORK = {
+    "DEFAULT_CONTENT_NEGOTIATION_CLASS": "validibot.core.api.negotiation.AgentAwareNegotiation",
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
+        "validibot.core.api.authentication.BearerAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "validibot.core.api.pagination.DefaultCursorPagination",
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+    ],
+    # Rate limiting / throttling
+    # See: https://www.django-rest-framework.org/api-guide/throttling/
+    # These protect against abuse while allowing legitimate high-volume usage.
+    # Exceeding limits returns 429 Too Many Requests with Retry-After header.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.UserRateThrottle",
+        # GuestAwareThrottle extends ScopedRateThrottle to apply different rates
+        # for workflow guests (users with grants but no org membership)
+        "validibot.core.throttles.GuestAwareThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        # Authenticated users: generous limits for normal API usage
+        "user": env("DRF_THROTTLE_RATE_USER", default="1000/hour"),
+        # Scoped rates for specific high-value endpoints (set throttle_scope on views)
+        # Workflow launches are expensive (run validators, store data, etc.)
+        "workflow_launch": env("DRF_THROTTLE_RATE_LAUNCH", default="60/minute"),
+        # Guest users (workflow guests without org membership) have lower limits
+        # to prevent abuse while still allowing legitimate usage
+        "guest_workflow_launch": env(
+            "DRF_THROTTLE_RATE_GUEST_LAUNCH",
+            default="20/minute",
+        ),
+        # Burst protection: prevent rapid-fire requests in short windows
+        "burst": env("DRF_THROTTLE_RATE_BURST", default="30/minute"),
+        # Anonymous rate (only used if DRF_ALLOW_ANONYMOUS=True)
+        "anon": env("DRF_THROTTLE_RATE_ANON", default="100/hour"),
+    },
+}
+
+# Toggle for anonymous API access. When False (default), all API endpoints require
+# authentication. Set to True to allow unauthenticated access to public endpoints.
+# When enabled, AnonRateThrottle is added to protect against abuse.
+DRF_ALLOW_ANONYMOUS = env.bool("DRF_ALLOW_ANONYMOUS", default=False)
+
+if DRF_ALLOW_ANONYMOUS:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"].insert(
+        0,
+        "rest_framework.throttling.AnonRateThrottle",
+    )
+
+# django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup
+CORS_URLS_REGEX = r"^/api/.*$"
+# Explicitly disallow cross-origin requests; only same-origin calls are allowed.
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS: list[str] = []
+CORS_ALLOW_CREDENTIALS = False
+
+# By Default swagger ui is available only to admin user(s). You can change permission classes to change that
+# See more configuration options at https://drf-spectacular.readthedocs.io/en/latest/settings.html#settings
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Validibot API",
+    "DESCRIPTION": "Documentation of API endpoints of Validibot",
+    "VERSION": "1.0.0",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    "SCHEMA_PATH_PREFIX": "/api/",
+    # Serve Swagger UI and ReDoc assets locally via sidecar (fixes encoding issues,
+    # works offline, avoids CDN dependencies)
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
+    # Swagger UI enhancements
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,  # Enable deep linking to operations
+        "persistAuthorization": True,  # Remember auth token across page refreshes
+        "displayOperationId": False,  # Hide operation IDs for cleaner UI
+        "filter": True,  # Enable endpoint filtering/search
+        "defaultModelsExpandDepth": 2,  # Expand models by default
+        "docExpansion": "list",  # Show endpoints as list (not expanded)
+    },
+}
+
+# Validibot settings
+# ------------------------------------------------------------------------------
+
+POSTMARK_SERVER_TOKEN = env("POSTMARK_SERVER_TOKEN", default=None)
+POSTMARK_WEBHOOK_ALLOWED_IPS = env.list(
+    "POSTMARK_WEBHOOK_ALLOWED_IPS",
+    default=["3.134.147.250", "50.31.156.6", "50.31.156.77", "18.217.206.57"],
+)
+POSTMARK_WEBHOOK_SIGNING_SECRET = env(
+    "POSTMARK_WEBHOOK_SIGNING_SECRET",
+    default="",
+)
+
+if GITHUB_APP_ENABLED:
+    GITHUB_APP = {
+        "APP_ID": env.int("GITHUB_APP_ID"),
+        "CLIENT_ID": env.str("GITHUB_CLIENT_ID"),
+        "NAME": env.str("GITHUB_NAME"),
+        "PRIVATE_KEY": env.str("GITHUB_PRIVATE_KEY").replace("\\n", "\n"),
+        "WEBHOOK_SECRET": env.str("GITHUB_WEBHOOK_SECRET"),
+        "WEBHOOK_TYPE": "async",  # Use "async" for ASGI projects or "sync" for WSGI projects
+    }
+
+    logger.info("Using GITHUB_APP APP_ID: %s", GITHUB_APP["APP_ID"])
+
+VALIDATION_START_ATTEMPTS = 4  # 4 attempts
+VALIDATION_START_ATTEMPT_TIMEOUT = 5  # 5 seconds per attempt
+JOB_STATUS_RETRY_AFTER = VALIDATION_START_ATTEMPT_TIMEOUT
+
+# Submission settings
+SUBMISSION_INLINE_MAX_BYTES = 10_000_000  # 10MB
+SUBMISSION_FILE_MAX_BYTES = 1_000_000_000  # 1GB
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+
+# Workflow validation run settings
+WORKFLOW_RUN_POLL_INTERVAL_SECONDS = env(
+    "WORKFLOW_RUN_POLL_INTERVAL_SECONDS",
+    default=3,
+)
+
+# Site features
+ACCOUNT_ALLOW_LOGIN = env.bool("DJANGO_ACCOUNT_ALLOW_LOGIN", True)
+
+ENABLE_APP = env.bool("ENABLE_APP", True)
+# API flag is a global admin switch; defaults to True. Route exposure is
+# controlled at the URLConf (web vs worker) rather than here.
+ENABLE_API = env.bool("ENABLE_API", True)
+
+ENABLE_FREE_TRIAL_SIGNUP = env.bool("ENABLE_FREE_TRIAL_SIGNUP", True)
+ENABLE_SYSTEM_STATUS_PAGE = env.bool("ENABLE_SYSTEM_STATUS_PAGE", True)
+
+# Manage content visibility
+ENABLE_FEATURES_SECTION = env.bool("ENABLE_FEATURES_SECTION", True)
+ENABLE_PRICING_SECTION = env.bool("ENABLE_PRICING_SECTION", True)
+ENABLE_RESOURCES_SECTION = env.bool("ENABLE_RESOURCES_SECTION", True)
+ENABLE_DOCS_SECTION = env.bool("ENABLE_DOCS_SECTION", True)
+# Blog moved to separate marketing site
+# ENABLE_BLOG = env.bool("ENABLE_BLOG", True)
+ENABLE_HELP_CENTER = env.bool("ENABLE_HELP_CENTER", False)
+ENABLE_SYSTEM_STATUS = env.bool("ENABLE_SYSTEM_STATUS", False)
+ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
+
+# django-recaptcha (Google reCAPTCHA)
+# https://github.com/django-recaptcha/django-recaptcha
+# Get keys from: https://www.google.com/recaptcha/admin
+RECAPTCHA_PUBLIC_KEY = env("RECAPTCHA_PUBLIC_KEY", default="")
+RECAPTCHA_PRIVATE_KEY = env("RECAPTCHA_PRIVATE_KEY", default="")
+# reCAPTCHA v3 is configured via ReCaptchaV3Field in forms
+# Optional: Set minimum score threshold (default 0.5, range 0.0-1.0)
+# RECAPTCHA_REQUIRED_SCORE = 0.5
+# Disable reCAPTCHA if keys not configured (for local development)
+SILENCED_SYSTEM_CHECKS = ["django_recaptcha.recaptcha_test_key_error"]
+
+TEST_ENERGYPLUS_WEATHER_FILE = env(
+    "TEST_ENERGYPLUS_WEATHER_FILE",
+    default="USA_CA_SF.epw",
+)
+# Validator assets are stored under gs://{bucket}/validator_assets/{asset_type}/
+# Weather data files (EPW) go in the weather_data subdirectory
+GCS_VALIDATOR_ASSETS_PREFIX = "validator_assets"
+GCS_WEATHER_DATA_DIR = env(
+    "GCS_WEATHER_DATA_DIR",
+    default="weather_data",
+)
+
+# PostHog (or other) tracker settings
+TRACKER_INCLUDE_SUPERUSER = env.bool("TRACKER_INCLUDE_SUPERUSER", False)
+
+# EMAIL
+DEFAULT_FROM_EMAIL = env(
+    "DJANGO_DEFAULT_FROM_EMAIL",
+    default="Validibot <daniel@validibot.com>",
+)
+
+# STORAGE ARCHITECTURE
+# ------------------------------------------------------------------------------
+# Validibot uses a single storage location (bucket or directory) with two prefixes:
+#
+#   storage/
+#   ├── public/                     # Publicly accessible (avatars, workflow images)
+#   └── private/                    # Private files
+#       └── runs/{run_id}/          # Each validation run gets its own directory
+#           ├── input/              # Written by web app (envelope, submission files)
+#           └── output/             # Written by validator container (results, artifacts)
+#
+# This structure is standardized across all platforms (Docker, K8s, GCS, etc.).
+# Validator containers receive STORAGE_ROOT and RUN_PATH environment variables
+# to read from input/ and write to output/.
+#
+# For GCS/S3: The bucket is private by default. The `public/` prefix is made
+# publicly readable via IAM policy (allUsers → objectViewer on public/* prefix).
+#
+# Django STORAGES:
+#   - "default": Public media files (uses public/ prefix)
+#
+# Data Storage (validibot.core.storage):
+#   - Validation pipeline files under private/runs/
+#   - Accessed via signed URLs for user downloads
+#
+# See docs/dev_docs/how-to/configure-storage.md for complete details.
+
+# Storage bucket/root for all files (single bucket architecture)
+STORAGE_BUCKET = env("STORAGE_BUCKET", default="")
+STORAGE_ROOT = env("STORAGE_ROOT", default=str(BASE_DIR / "storage"))
+
+# DATA STORAGE (Validation Pipeline Files)
+# ------------------------------------------------------------------------------
+# Data storage handles validation pipeline files (submissions, envelopes, outputs).
+# These files are private and accessed via signed URLs when users download them.
+#
+# Backend options:
+#   - "local": Local filesystem (default, good for development and Docker Compose)
+#   - "gcs": Google Cloud Storage (production GCP)
+#   - "s3": Amazon S3 (future)
+#   - Full class path for custom backends
+#
+# See validibot/core/storage/ for implementation details.
+DATA_STORAGE_BACKEND = env("DATA_STORAGE_BACKEND", default="local")
+
+# For local backend, use private/ subdirectory under STORAGE_ROOT
+DATA_STORAGE_ROOT = env("DATA_STORAGE_ROOT", default=str(Path(STORAGE_ROOT) / "private"))
+
+# For cloud backends, use the same bucket with private/ prefix
+DATA_STORAGE_BUCKET = env("DATA_STORAGE_BUCKET", default=STORAGE_BUCKET)
+DATA_STORAGE_PREFIX = env("DATA_STORAGE_PREFIX", default="private")
+
+# Build DATA_STORAGE_OPTIONS based on backend type
+if DATA_STORAGE_BACKEND == "local":
+    DATA_STORAGE_OPTIONS = {"root": DATA_STORAGE_ROOT}
+elif DATA_STORAGE_BACKEND == "gcs":
+    DATA_STORAGE_OPTIONS = {
+        "bucket_name": DATA_STORAGE_BUCKET,
+        "prefix": DATA_STORAGE_PREFIX,
+    }
+else:
+    DATA_STORAGE_OPTIONS = {}
+
+# VALIDATOR RUNNER
+# ------------------------------------------------------------------------------
+# Configuration for running container-based validators (EnergyPlus, FMI, etc.).
+#
+# Available runners:
+#   - "docker": Local Docker socket (default, for Docker Compose deployments)
+#   - "google_cloud_run": Google Cloud Run Jobs (GCP production)
+#   - "aws_batch": AWS Batch (future)
+#   - Full class path for custom runners
+#
+# See validibot/validations/services/runners/ for implementation details.
+VALIDATOR_RUNNER = env("VALIDATOR_RUNNER", default="docker")
+VALIDATOR_RUNNER_OPTIONS = {
+    "memory_limit": env("VALIDATOR_MEMORY_LIMIT", default="4g"),
+    "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
+    # Docker network for validator containers (set when running in Docker Compose)
+    "network": env("VALIDATOR_NETWORK", default=None),
+    # Named volume for storage (for Docker-in-Docker scenarios)
+    "storage_volume": env("VALIDATOR_STORAGE_VOLUME", default=None),
+    # Mount path for storage volume inside validator containers
+    "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
+}
+
+# Cloud Run Job Validator Settings (overridden in production.py)
+# ------------------------------------------------------------------------------
+# These defaults allow local development without Cloud Run Jobs
+GCP_PROJECT_ID = env("GCP_PROJECT_ID", default="")
+GCP_REGION = env("GCP_REGION", default="australia-southeast1")
+GCS_VALIDATION_BUCKET = env("GCS_VALIDATION_BUCKET", default="")
+GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="")
+GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")
+GCS_FMI_JOB_NAME = env("GCS_FMI_JOB_NAME", default="")
+SITE_URL = env("SITE_URL", default="http://localhost:8000")
+WORKER_URL = env("WORKER_URL", default="")
+CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
+
+
+# FEATURES
+ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)
+
+# CELERY TASK QUEUE
+# ------------------------------------------------------------------------------
+# Celery is used for background task processing in Docker Compose deployments.
+# Works with Redis as the message broker.
+#
+# Components:
+#   - Worker: Processes background tasks (`celery -A config worker`)
+#   - Beat: Triggers periodic tasks (`celery -A config beat`)
+#
+# For GCP deployments, tasks are dispatched via Google Cloud Tasks instead.
+# See validibot/core/tasks/dispatch/ for the dispatcher abstraction.
+#
+# Design decisions (documented in validibot-project ADRs):
+#   - Fire-and-forget: No result backend; all state lives in Django models
+#   - Single worker process with prefork pool (concurrency=1 default)
+#   - No Celery canvas features (chains, groups, chords) - keep it simple
+#   - django-celery-beat for periodic task scheduling via admin UI
+#
+# See docs/dev_docs/how-to/configure-scheduled-tasks.md for details.
+
+# Broker URL - Redis
+CELERY_BROKER_URL = REDIS_URL
+
+# No result backend - fire-and-forget pattern
+# All task state is stored in Django models (ValidationRun, etc.)
+CELERY_RESULT_BACKEND = None
+
+# Task serialization
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+
+# Time zone (use Django's TIME_ZONE)
+CELERY_TIMEZONE = TIME_ZONE
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True  # Track when tasks start (useful for monitoring)
+CELERY_TASK_TIME_LIMIT = 30 * 60  # Hard time limit: 30 minutes
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Soft time limit: 25 minutes (raises SoftTimeLimitExceeded)
+
+# Worker settings
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Don't prefetch; process one task at a time
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=1)
+
+# Beat scheduler - use django-celery-beat's database scheduler
+# This allows managing periodic tasks via Django admin
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# Task routing (optional - all tasks go to default queue for simplicity)
+CELERY_TASK_DEFAULT_QUEUE = "celery"
+
+# Late ack - acknowledge tasks after completion (prevents data loss on worker crash)
+CELERY_TASK_ACKS_LATE = True
+
+# Reject on worker lost - requeue task if worker dies unexpectedly
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+

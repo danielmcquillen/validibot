@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rng:grammar xmlns:rng="http://relaxng.org/ns/structure/1.0"
+             xmlns:xs="http://www.w3.org/2001/XMLSchema-datatypes">
+  <rng:start>
+    <rng:element name="product">
+      <rng:group>
+        <rng:element name="sku">
+          <rng:data type="string" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+            <rng:param name="pattern">[A-Z0-9]{8}</rng:param>
+          </rng:data>
+        </rng:element>
+        <rng:element name="name">
+          <rng:data type="string" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+            <rng:param name="minLength">1</rng:param>
+          </rng:data>
+        </rng:element>
+        <rng:element name="rating">
+          <rng:data type="integer" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+            <rng:param name="minInclusive">0</rng:param>
+            <rng:param name="maxInclusive">100</rng:param>
+          </rng:data>
+        </rng:element>
+        <rng:element name="description">
+          <rng:data type="string" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+            <rng:param name="minLength">1</rng:param>
+          </rng:data>
+        </rng:element>
+        <rng:element name="dimensions">
+          <rng:group>
+            <rng:element name="length">
+              <rng:group>
+                <rng:attribute name="unit">
+                  <rng:choice>
+                    <rng:value>cm</rng:value>
+                    <rng:value>in</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:data type="decimal" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+                  <rng:param name="minExclusive">0</rng:param>
+                </rng:data>
+              </rng:group>
+            </rng:element>
+            <rng:element name="width">
+              <rng:group>
+                <rng:attribute name="unit">
+                  <rng:choice>
+                    <rng:value>cm</rng:value>
+                    <rng:value>in</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:data type="decimal" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+                  <rng:param name="minExclusive">0</rng:param>
+                </rng:data>
+              </rng:group>
+            </rng:element>
+            <rng:element name="height">
+              <rng:group>
+                <rng:attribute name="unit">
+                  <rng:choice>
+                    <rng:value>cm</rng:value>
+                    <rng:value>in</rng:value>
+                  </rng:choice>
+                </rng:attribute>
+                <rng:data type="decimal" datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+                  <rng:param name="minExclusive">0</rng:param>
+                </rng:data>
+              </rng:group>
+            </rng:element>
+          </rng:group>
+        </rng:element>
+      </rng:group>
+    </rng:element>
+  </rng:start>
+</rng:grammar>

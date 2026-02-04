@@ -1,0 +1,46 @@
+{% extends "app_base.html" %}
+
+{% load i18n crispy_forms_tags core_tags %}
+
+{% block title %}
+  {% trans "Create FMI Validator" %} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="fmi-validator-create">
+
+    <div class="app-content-header-bar row ">
+      <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-cpu me-2"></i>
+          {% trans "Create FMI Validator" %}
+        </h1>
+      </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          {% csrf_token %}
+          {{ form|crispy }}
+        </div>
+        <div class="card-footer d-flex justify-content-between flex-wrap gap-2">
+          <a href="{% org_url 'validations:validation_library' %}"
+             class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-1"></i>
+            {% trans "Cancel" %}
+          </a>
+          <button type="submit" class="btn btn-secondary">
+            <i class="bi bi-check2 me-1"></i>
+            {% trans "Create Validator" %}
+          </button>
+        </div>
+      </div>
+    </form>
+
+  </div>
+{% endblock app_content %}

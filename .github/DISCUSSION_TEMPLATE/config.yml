@@ -1,0 +1,18 @@
+# GitHub Discussions category configuration
+# Note: Categories must still be created manually in repo settings,
+# but this documents the intended structure.
+
+# Categories to create:
+# - Questions (Q&A format) - uses questions.yml form
+# - Ideas (Open-ended) - uses ideas.yml form
+# - Show and Tell (Open-ended) - uses show-and-tell.yml form
+# - General (Open-ended) - no custom form
+
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.validibot.com/
+    about: Check our docs before asking - your question might already be answered!
+  - name: Bug Reports
+    url: https://github.com/danielmcquillen/validibot/issues/new
+    about: Found a bug? Please open an issue instead of a discussion.

@@ -1,0 +1,113 @@
+# Validibot GCP Configuration
+# ==============================================================================
+# Copy this file to .envs/.production/.google-cloud/.django
+# This file is for Google Cloud Platform deployments (Cloud Run).
+
+# Environment identifier
+VALIDIBOT_STAGE=prod
+
+# DJANGO
+# ==============================================================================
+DJANGO_SETTINGS_MODULE=config.settings.production
+DEPLOYMENT_TARGET=gcp
+DJANGO_DEBUG=False
+DJANGO_SECRET_KEY=your-secret-key-here-change-this
+DJANGO_ADMIN_URL=admin/
+# Specific Cloud Run hostnames plus custom domain
+# Security: Do NOT use wildcards like .run.app - that allows any Cloud Run service
+DJANGO_ALLOWED_HOSTS=your-service-name.region.run.app,validibot.example.com
+# Generate a secret key with:
+# python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+
+# Security settings for production
+SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO','https')
+
+# DATABASE
+# ==============================================================================
+# Cloud SQL uses Unix socket connection via Cloud SQL Auth Proxy
+# Format: postgres://USER:PASSWORD@/DATABASE?host=/cloudsql/CONNECTION_NAME
+POSTGRES_DB=validibot
+POSTGRES_USER=validibot_user
+POSTGRES_PASSWORD=change-this-password
+CLOUD_SQL_CONNECTION_NAME=your-project:region:your-instance
+
+DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?host=/cloudsql/${CLOUD_SQL_CONNECTION_NAME}
+
+# LOGGING
+# ==============================================================================
+# Sentry error tracking (recommended for production)
+#SENTRY_DSN=https://your-sentry-dsn
+
+# STORAGE (GCS)
+# ==============================================================================
+# On Cloud Run, ADC uses the service account attached to the Cloud Run service.
+# Locally, run `gcloud auth application-default login` first.
+#
+# Single bucket with prefix-based separation:
+#   public/  - Public files (avatars, images) - configure IAM for allUsers read
+#   private/ - Private files (submissions, validation data)
+STORAGE_BUCKET=your-validibot-storage-bucket
+
+# DEFAULT USERS
+# ==============================================================================
+# Initial superuser created on first run
+SUPERUSER_USERNAME=admin
+SUPERUSER_PASSWORD=change-this-password
+SUPERUSER_EMAIL=admin@example.com
+SUPERUSER_NAME=Admin User
+
+# EMAIL
+# ==============================================================================
+# If not configured, emails are logged to console.
+# Postmark (recommended):
+#POSTMARK_SERVER_TOKEN=your-postmark-server-token
+
+# URLS
+# ==============================================================================
+SITE_URL=https://validibot.example.com
+WORKER_URL=https://your-worker-service.region.run.app
+
+# GCP
+# ==============================================================================
+GCP_PROJECT_ID=your-gcp-project-id
+GCP_REGION=australia-southeast1
+
+# Cloud Tasks
+GCS_TASK_QUEUE_NAME=validibot-tasks
+CLOUD_TASKS_SERVICE_ACCOUNT=your-service-account@your-project.iam.gserviceaccount.com
+
+# Validation infrastructure (Cloud Run Jobs)
+GCS_VALIDATION_BUCKET=your-validibot-storage-bucket
+GCS_WEATHER_DATA_DIR=weather_data
+GCS_ENERGYPLUS_JOB_NAME=validibot-validator-energyplus
+GCS_FMI_JOB_NAME=validibot-validator-fmi
+
+# FEATURE TOGGLES
+# ==============================================================================
+# Registration and login
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
+DJANGO_ACCOUNT_ALLOW_LOGIN=true
+
+# AI-powered validations (requires additional setup)
+ENABLE_AI_VALIDATIONS=false
+
+# GOOGLE CLOUD KMS (for JWKS / credential signing)
+# ==============================================================================
+# The signing key for validation credentials (JWT badges).
+# Each stage has its own key for isolation:
+#   prod:    credential-signing
+#   staging: credential-signing-staging
+#   dev:     credential-signing-dev
+GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/validibot-keys/cryptoKeys/credential-signing"
+GCP_KMS_JWKS_KEYS="projects/your-project/locations/region/keyRings/validibot-keys/cryptoKeys/credential-signing"
+SV_JWKS_ALG="ES256"
+
+# GITHUB (optional)
+# ==============================================================================
+# Token for being able to pip install the validibot_shared library (if private)
+#GITHUB_SV_SHARED_TOKEN=your-github-pat
+
+# RECAPTCHA (optional)
+# ==============================================================================
+#RECAPTCHA_PUBLIC_KEY=your-recaptcha-public-key
+#RECAPTCHA_PRIVATE_KEY=your-recaptcha-private-key

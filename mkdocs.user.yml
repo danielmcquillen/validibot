@@ -1,0 +1,82 @@
+site_name: Validibot User Guide
+site_description: Product tutorials and walkthroughs for Validibot users.
+site_url: https://docs.validibot.com/
+site_author: Daniel McQuillen
+
+repo_url: https://github.com/danielmcquillen/validibot
+repo_name: danielmcquillen/validibot
+
+docs_dir: docs/user_docs
+site_dir: docs_build/user
+use_directory_urls: true
+
+dev_addr: 127.0.0.1:9001
+
+theme:
+  name: material
+  custom_dir: docs/user_docs/overrides
+  language: en
+  favicon: https://validibot.com/static/images/favicons/favicon.ico
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.footer
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - announce.dismiss
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  homepage: https://validibot.com
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://validibot.com
+      name: Validibot.com
+  # Announcement bar - uses main.html override in custom_dir
+  announce:
+    enabled: true
+
+plugins:
+  - search
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Welcome: index.md
+  - Quick Start:
+      - Getting Started: getting-started.md
+  - Core Tasks:
+      - Manage Workflows: workflow-management.md
+      - Run Validations: running-validations.md
+      - Review Results: reviewing-results.md
+      - Collaborate & Share: collaboration.md
+  - API Integrations:
+      - API Overview: api-overview.md
+      - Data Shapes & Types: api/data-shapes.md
+      - Authentication: api/authentication.md
+      - Sending Data to the API: api/sending-data.md
+      - Webhooks & Notifications: api/webhooks.md
+  - Reference:
+      - Glossary: glossary.md
+      - Troubleshooting: troubleshooting.md
+      - FAQ: faq.md

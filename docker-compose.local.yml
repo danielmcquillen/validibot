@@ -1,0 +1,139 @@
+
+volumes:
+  media_volume:
+  validibot_local_postgres_data:
+  validibot_local_postgres_backups:
+  validibot_local_venv:  # Shared venv for django and worker containers
+  validibot_local_redis_data:
+  validibot_local_storage:  # Shared storage for validation files
+
+networks:
+  validibot:
+    driver: bridge
+
+services:
+  django: &django
+    # Django app serving user-facing traffic (runserver on 8000)
+    build:
+      context: .
+      dockerfile: compose/local/django/Dockerfile
+    depends_on:
+      - postgres
+      - mailpit
+      - redis
+    networks:
+      - validibot
+    volumes:
+      - validibot_local_venv:/app/.venv
+      - .:/app
+      - ../validibot_shared:/app/validibot_shared_dev
+      - media_volume:/app/media
+      # Shared storage volume for validation files (accessible by validator containers)
+      - validibot_local_storage:/app/storage
+      # Docker socket for spawning validator containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - .envs/.local/.django
+      - .envs/.local/.postgres
+    environment:
+      # Configure validator runner for local Docker
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      # Named volume for validator containers to access storage
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      # Storage root inside the container
+      - DATA_STORAGE_ROOT=/app/storage/private
+      # Callback URL for validator containers to reach Django
+      - SITE_URL=http://django:8000
+      - WORKER_URL=http://worker:8001
+    ports:
+      - "8000:8000"
+    command: /start
+
+  worker:
+    # Django app for internal/task endpoints (runserver on 8001) to mimic separate scaling
+    # APP_ROLE=worker enables the internal API endpoints (execute-validation-run, callbacks)
+    <<: *django
+    command: ["/start-worker"]
+    ports:
+      - "8001:8001"
+    environment:
+      - APP_ROLE=worker
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
+      - SITE_URL=http://django:8000
+      - WORKER_URL=http://worker:8001
+
+  celery_worker:
+    # Celery worker processes background tasks from Redis queue
+    # This handles async tasks like validation run execution
+    <<: *django
+    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
+    ports: []
+    environment:
+      - APP_ROLE=celery_worker
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
+      - SITE_URL=http://django:8000
+      - WORKER_URL=http://worker:8001
+
+  celery_beat:
+    # Celery Beat scheduler triggers periodic tasks on cron schedules
+    # Tasks include: purge expired data, cleanup sessions, etc.
+    # Only run ONE beat instance to avoid duplicate executions
+    <<: *django
+    command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+    ports: []
+    environment:
+      - APP_ROLE=celery_beat
+
+  postgres:
+    # Local Postgres for app data
+    build:
+      context: .
+      dockerfile: compose/production/postgres/Dockerfile
+    networks:
+      - validibot
+    env_file:
+      - .envs/.local/.postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "validibot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_postgres_data:/var/lib/postgresql/data
+      - validibot_local_postgres_backups:/backups
+
+  redis:
+    # Redis for Celery task queue broker
+    image: redis:7-alpine
+    networks:
+      - validibot
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_redis_data:/data
+
+  mailpit:
+    # Local SMTP capture for testing email
+    image: docker.io/axllent/mailpit:latest
+    networks:
+      - validibot
+    ports:
+      - "8025:8025"

@@ -1,0 +1,21 @@
+# PostgreSQL (Docker Compose Production)
+# ------------------------------------------------------------------------------
+# Copy this file to .envs/.production/.docker-compose/.postgres
+#
+# These credentials are used by both the postgres container (to create the database
+# and user on first run) and the django container (to connect to the database).
+#
+# DATABASE_URL is automatically constructed by the entrypoint script from these
+# variables, so you don't need to set it manually.
+#
+# IMPORTANT: Change the password before deploying to production!
+# Use a strong, randomly-generated password (at least 32 characters).
+#
+# Example to generate a password:
+#   python -c 'import secrets; print(secrets.token_urlsafe(32))'
+
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=validibot
+POSTGRES_USER=validibot
+POSTGRES_PASSWORD=!!!CHANGE-THIS-TO-A-SECURE-PASSWORD!!!

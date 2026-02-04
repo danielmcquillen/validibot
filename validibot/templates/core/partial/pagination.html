@@ -1,0 +1,102 @@
+{% load i18n %}
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-2 bg-body-secondary p-3 rounded">
+
+    <div class="text-muted">
+        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} <span class="text-muted">( total items: {{ page_obj.paginator.count }}</span> )
+    </div>
+
+    <div>
+        {% with total=page_obj.paginator.num_pages current=page_obj.number left=current|add:'-2' right=current|add:'2' %}
+            <nav aria-label="{% trans 'Pagination' %}"
+                 class="d-inline-flex align-items-center gap-3">
+                <ul class="pagination mb-0 ">
+
+                    {# First + Prev #}
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?{% if query_string %}{{ query_string }}&{% endif %}page=1"
+                               aria-label="{% trans 'First' %}">‹ first</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}"
+                               rel="prev"
+                               aria-label="{% trans 'Previous' %}">‹</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">‹ first</span>
+                        </li>
+                        <li class="page-item disabled">
+                            <span class="page-link">‹</span>
+                        </li>
+                    {% endif %}
+
+                    {# show current page number #}
+                    <li class="page-item active">
+                        <a class="page-link" aria-current="page">
+                            {{ page_obj.number }}
+                        </a>
+                    </li>
+
+                    {# Next + Last #}
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}"
+                               rel="next"
+                               aria-label="{% trans 'Next' %}">›</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link"
+                               href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ total }}"
+                               aria-label="{% trans 'Last' %}">last ›</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">›</span>
+                        </li>
+                        <li class="page-item disabled">
+                            <span class="page-link">last ›</span>
+                        </li>
+                    {% endif %}
+
+                </ul>
+
+            </nav>
+        {% endwith %}
+    </div>
+
+    <div>
+        <form method="get" class="d-flex align-items-center gap-2 ms-auto">
+            {% for key, values in request.GET.lists %}
+                {% if key != 'page' and key != 'per_page' %}
+                    {% for value in values %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}" />
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+            <label for="per-page-select" class="form-label mb-0 text-muted small">
+                {% trans "Show" %}
+            </label>
+            <select id="per-page-select"
+                    name="per_page"
+                    class="form-select form-select-sm"
+                    onchange="this.form.submit()">
+                {% for option in page_size_options %}
+                    <option value="{{ option }}"
+                            {% if option == current_page_size %}
+                                selected
+                            {% endif %}>
+                        {{ option }}
+                    </option>
+                {% endfor %}
+            </select>
+            <div class="text-muted small me-1 text-nowrap">
+                {% trans "per page" %}
+            </div>
+        </form>
+    </div>
+</div>

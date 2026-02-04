@@ -1,0 +1,54 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Confirm member removal" %} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-person-x me-2"></i>
+          {% trans "Remove member" %}
+        </h1>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <div class="card app-card">
+          <div class="card-body">
+            <p class="lead">
+              {% blocktrans with username=membership.user.username org=organization.name %}
+                Are you sure you want to remove user “{{ username }}” from organization “{{ org }}”?
+              {% endblocktrans %}
+            </p>
+            <p class="text-muted">
+              {% trans "They will lose access to this organization until invited again." %}
+            </p>
+          </div>
+          <div class="card-footer d-flex justify-content-between">
+            <a class="btn btn-secondary"
+               href="{% org_url 'members:member_edit' member_id=membership.id %}">
+              {% trans "Cancel" %}
+            </a>
+            <form method="post"
+                  action="{% org_url 'members:member_delete' member_id=membership.id %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger">
+                {% trans "Yes, remove member" %}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

@@ -1,0 +1,302 @@
+{% load i18n %}
+
+<div class="workflow-step-list d-flex flex-column gap-0"
+     id="workflow-step-list-inner">
+  {% if steps %}
+    {% for step in steps %}
+      {% with config=step.config %}
+        <div class="workflow-step-wrapper" data-step-id="{{ step.id }}">
+          <div class="workflow-step-card card shadow-sm">
+            <div class="card-body">
+              <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                  {% with validator=step.validator action=step.action meta=step.action_meta %}
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                      <span class="badge text-bg-primary">{% trans 'Step' %} {{ step.step_number }}</span>
+                      <h3 class="h6 mb-0">
+                        {{ step.name|default:_("Untitled step") }}
+                      </h3>
+                      {% if validator %}
+                        <span class="badge text-bg-light text-uppercase small">
+                          {{ validator.get_validation_type_display }}
+                        </span>
+                      {% elif action %}
+                        <span class="badge text-bg-light text-uppercase small">
+                          {{ meta.category_label|default:action.definition.get_action_category_display }}
+                        </span>
+                      {% endif %}
+                    </div>
+                    {% if step.description %}
+                      <p class="text-muted small mb-2">
+                        {{ step.description|linebreaksbr }}
+                      </p>
+                    {% endif %}
+                    {% if validator %}
+                      {% if validator.validation_type == 'AI_ASSIST' %}
+                        <p class="text-muted small mb-2">
+                          {% if config.template == 'policy_check' %}
+                            <i class="bi-clipboard-check me-1"></i>{% trans "Policy check" %}
+                          {% else %}
+                            <i class="bi-stars me-1"></i>{% trans "AI critic" %}
+                          {% endif %}
+                          ·
+                          {% if config.mode == 'BLOCKING' %}
+                            {% trans "Blocking" %}
+                          {% else %}
+                            {% trans "Advisory" %}
+                          {% endif %}
+                          {% if config.policy_rules %}
+                            · {{ config.policy_rules|length }} {% trans "rules" %}
+                          {% endif %}
+                        </p>
+                        {% if config.selectors %}
+                          <div class="small text-muted">
+                            <span class="fw-semibold">{% trans "Selectors" %}:</span>
+                            {% for selector in config.selectors %}
+                              <code class="me-1">{{ selector }}</code>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                        {% if config.cost_cap_cents %}
+                          <div class="small text-muted mt-1">
+                            {% trans "Cost cap" %}: {{ config.cost_cap_cents }}¢/run
+                          </div>
+                        {% endif %}
+                      {% elif validator.validation_type == 'JSON_SCHEMA' %}
+                        <p class="text-muted small mb-2">
+                          {% trans "JSON Schema validation" %}
+                          {% if step.ruleset %}
+                            · {{ step.ruleset.name }}
+                          {% endif %}
+                          {% if config.schema_type_label %}
+                            · {{ config.schema_type_label }}
+                          {% endif %}
+                        </p>
+                      {% elif validator.validation_type == 'XML_SCHEMA' %}
+                        <p class="text-muted small mb-2">
+                          {% trans "XML Schema" %}
+                          {% if config.schema_type_label %}
+                            · {{ config.schema_type_label }}
+                          {% endif %}
+                        </p>
+                      {% elif validator.validation_type == 'ENERGYPLUS' %}
+                        <dl class="row small text-muted mb-0">
+                          <dt class="col-sm-4">
+                            {% trans "Simulation" %}
+                          </dt>
+                          <dd class="col-sm-8">
+                            {% if config.run_simulation %}
+                              {% trans "Yes" %}
+                            {% else %}
+                              {% trans "No" %}
+                            {% endif %}
+                          </dd>
+                          {% if config.eui_band.min or config.eui_band.max %}
+                            <dt class="col-sm-4">
+                              {% trans "EUI" %}
+                            </dt>
+                            <dd class="col-sm-8">
+                              {% if config.eui_band.min %}
+                                ≥ {{ config.eui_band.min }}
+                              {% endif %}
+                              {% if config.eui_band.min and config.eui_band.max %}
+                                ·
+                              {% endif %}
+                              {% if config.eui_band.max %}
+                                ≤ {{ config.eui_band.max }}
+                              {% endif %}
+                            </dd>
+                          {% endif %}
+                        </dl>
+                      {% endif %}
+                    {% elif action %}
+                      <p class="text-muted small mb-2">
+                        <i class="bi {{ meta.icon|default:'bi-gear' }} me-1"></i>
+                        {{ meta.definition_name|default:action.definition.name }}
+                        · {{ meta.category_label|default:action.definition.get_action_category_display }}
+                      </p>
+                      {% if action.description %}
+                        <p class="text-muted small mb-2">
+                          {{ action.description|linebreaksbr }}
+                        </p>
+                      {% elif meta.definition_description %}
+                        <p class="text-muted small mb-2">
+                          {{ meta.definition_description|linebreaksbr }}
+                        </p>
+                      {% endif %}
+                      {% with summary=step.action_summary %}
+                        {% if summary.message %}
+                          <p class="text-muted small mb-2">
+                            <span class="fw-semibold">{% trans "Message" %}:</span>
+                            <br />
+                            {{ summary.message|linebreaksbr }}
+                          </p>
+                        {% endif %}
+                        {% if summary.certificate_template %}
+                          <p class="text-muted small mb-2">
+                            <span class="fw-semibold">{% trans "Certificate template" %}:</span>
+                            <code class="text-break">{{ summary.certificate_template }}</code>
+                          </p>
+                        {% endif %}
+                        {% if summary.extras %}
+                          <dl class="row small text-muted mb-0">
+                            {% for key, value in summary.extras.items %}
+                              <dt class="col-sm-4 text-uppercase">
+                                <code class="text-break">{{ key }}</code>
+                              </dt>
+                              <dd class="col-sm-8">
+                                <code class="text-break">{{ value }}</code>
+                              </dd>
+                            {% endfor %}
+                          </dl>
+                        {% endif %}
+                        {% if not summary.message and not summary.certificate_template and not summary.extras %}
+                          <p class="text-muted small mb-0">
+                            {% trans "No additional configuration" %}
+                          </p>
+                        {% endif %}
+                      {% endwith %}
+                    {% endif %}
+                  {% endwith %}
+                </div>
+
+                {% if can_manage_workflow %}
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Step actions' %}">
+                    <a class="btn btn-secondary"
+                       href="{% url 'workflows:workflow_step_edit' workflow.pk step.id %}">
+                      <i class="bi-pencil-square"></i>
+                      <span class="visually-hidden">{% trans "Edit" %}</span>
+                    </a>
+                    <button class="btn btn-secondary"
+                            hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
+                            hx-target="this"
+                            hx-swap="none"
+                            hx-vals='{"direction": "up"}'
+                            {% if forloop.first %}
+                              disabled
+                            {% endif %}>
+                      <i class="bi-arrow-up"></i>
+                      <span class="visually-hidden">{% trans "Move up" %}</span>
+                    </button>
+                    <button class="btn btn-secondary"
+                            hx-post="{% url 'workflows:workflow_step_move' workflow.pk step.id %}"
+                            hx-target="this"
+                            hx-swap="none"
+                            hx-vals='{"direction": "down"}'
+                            {% if forloop.last %}
+                              disabled
+                            {% endif %}>
+                      <i class="bi-arrow-down"></i>
+                      <span class="visually-hidden">{% trans "Move down" %}</span>
+                    </button>
+                    <button class="btn btn-danger"
+                            hx-post="{% url 'workflows:workflow_step_delete' workflow.pk step.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-confirm="{% trans 'Remove this step?' %}"
+                            hx-target="this"
+                            hx-swap="none">
+                      <i class="bi-trash"></i>
+                      <span class="visually-hidden">{% trans "Delete" %}</span>
+                    </button>
+                  </div>
+                {% endif %}
+              </div>
+              {% if config.policy_rules and config.template == 'policy_check' %}
+                <div class="mt-3">
+                  <h4 class="h6 text-muted mb-2">
+                    {% trans "Policy sample" %}
+                  </h4>
+                  <ul class="list-unstyled small mb-0">
+                    {% for rule in config.policy_rules|slice:":3" %}
+                      <li>
+                        <code>{{ rule.path }} {{ rule.operator }}
+                          {% if rule.value %}
+                            {{ rule.value }}
+                          {% endif %}
+                          {% if rule.value_b %}
+                            {{ rule.value_b }}
+                          {% endif %}
+                        </code>
+                        {% if rule.message %}
+                          <span class="text-muted">— {{ rule.message }}</span>
+                        {% endif %}
+                      </li>
+                    {% endfor %}
+                    {% if config.policy_rules|length > 3 %}
+                      <li class="text-muted">
+                        …
+                      </li>
+                    {% endif %}
+                  </ul>
+                </div>
+              {% endif %}
+              {% if show_private_notes and step.notes %}
+                <div class="mt-3 small text-muted border-top pt-2">
+                  <span class="fw-semibold text-secondary">
+                    <i class="bi-pen me-1"></i>{% trans "Author notes" %}:
+                  </span>
+                  {{ step.notes|linebreaksbr }}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          {% if not forloop.last %}
+            <div class="workflow-step-connector" aria-hidden="true">
+              <div class="workflow-step-arrow">
+              </div>
+            </div>
+          {% elif steps|length < max_step_count %}
+            {% if can_manage_workflow %}
+              <div class="workflow-step-connector workflow-step-connector--terminal"
+                   aria-hidden="true">
+                <div class="workflow-step-dotted-line">
+                </div>
+                <button class="workflow-step-add-terminal"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#workflowStepModal"
+                        hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                        hx-target="#workflow-step-modal-content"
+                        hx-swap="innerHTML">
+                  <i class="bi-plus-lg"></i>
+                </button>
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% endfor %}
+  {% else %}
+    <div class="card border-dashed text-center py-5">
+      <div class="card-body">
+        <p class="lead mb-2">
+          {% trans "No workflow steps yet" %}
+        </p>
+        <p class="text-muted mb-0">
+          {% trans "Add workflow steps to build your validation workflow." %}
+        </p>
+
+        {% if can_manage_workflow %}
+          {# add your first step button #}
+          <button class="btn btn-secondary mt-4"
+                  type="button"
+                  data-bs-toggle="modal"
+                  data-bs-target="#workflowStepModal"
+                  hx-get="{% url 'workflows:workflow_step_wizard' workflow.pk %}"
+                  hx-target="#workflow-step-modal-content"
+                  hx-swap="innerHTML">
+            <i class="bi-plus-lg me-2"></i>
+            {% trans "Add your first step" %}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+  {% if steps|length >= max_step_count %}
+    <div class="alert alert-warning" role="alert">
+      {% blocktrans with max=max_step_count %}You have reached the limit of {{ max }} steps for a workflow.{% endblocktrans %}
+    </div>
+  {% endif %}
+</div>

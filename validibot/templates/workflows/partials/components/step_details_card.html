@@ -1,0 +1,61 @@
+{% load i18n core_tags %}
+
+<div class="card app-card">
+    <div class="card-header">
+        <div class="card-title">
+            {% trans "Step details" %}
+        </div>
+        <div class="card-header-buttons">
+            <a class="btn btn-sm btn-secondary"
+               href="{% org_url 'workflows:workflow_step_settings' workflow.pk step.pk %}">
+                <i class="bi bi-pencil-square"></i>
+                <span class="visually-hidden">{% trans "Edit step" %}</span>
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <dl class="row small mb-0">
+            <dt class="col-5">
+                {% trans "Name" %}
+            </dt>
+            <dd class="col-7">
+                {{ step.name }}
+            </dd>
+            <dt class="col-5">
+                {% trans "Validator" %}
+            </dt>
+            <dd class="col-7">
+                {{ validator.name }}
+            </dd>
+            <dt class="col-5">
+                {% trans "Validation type" %}
+            </dt>
+            <dd class="col-7">
+                {{ validator.get_validation_type_display }}
+            </dd>
+            <dt class="col-5">
+                {% trans "Order" %}
+            </dt>
+            <dd class="col-7">
+                {{ step.order }}
+            </dd>
+            {% if step.description %}
+                <dt class="col-5">
+                    {% trans "Description" %}
+                </dt>
+                <dd class="col-7">
+                    {{ step.description }}
+                </dd>
+            {% endif %}
+            {% if step.notes %}
+                <dt class="col-5">
+                    {% trans "Notes" %}
+                </dt>
+                <dd class="col-7">
+                    {{ step.notes }}
+                </dd>
+            {% endif %}
+        </dl>
+
+    </div>
+</div>

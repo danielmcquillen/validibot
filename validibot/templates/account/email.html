@@ -1,0 +1,146 @@
+{% extends "app_base.html" %}
+
+{% load i18n static %}
+
+{% block title %}
+  {% trans "Email Addresses" %}
+{% endblock title %}
+
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="user-email" class="app-page container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 ">
+        <h1 class="app-page-title">
+          {% trans "Email Addresses" %}
+        </h1>
+        <p class="text-muted mb-0">
+          {% trans "Manage the addresses you use to sign in and receive updates." %}
+        </p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-12 col-lg-8">
+        <div class="card shadow-sm account-settings-card">
+          <div class="card-body">
+            {% if emailaddresses %}
+              <form method="post"
+                    action="{% url 'users:email' %}"
+                    class="email-addresses-form"
+                    novalidate>
+                {% csrf_token %}
+                <div class="list-group list-group-flush mb-4">
+                  {% for radio in emailaddress_radios %}
+                    {% with emailaddress=radio.emailaddress %}
+                      <label class="list-group-item list-group-item-action d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2"
+                             for="{{ radio.id }}">
+                        <div class="d-flex align-items-start gap-3">
+                          <input type="radio"
+                                 name="email"
+                                 id="{{ radio.id }}"
+                                 value="{{ emailaddress.email }}"
+                                 class="form-check-input mt-1"
+                                 {% if radio.checked %}
+                                   checked
+                                 {% endif %} />
+                          <div>
+                            <div class="fw-semibold">
+                              {{ emailaddress.email }}
+                            </div>
+                            <div class="small text-muted d-flex flex-wrap gap-2">
+                              {% if emailaddress.verified %}
+                                <span class="badge bg-success-subtle text-success-emphasis">{% trans "Verified" %}</span>
+                              {% else %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis">{% trans "Unverified" %}</span>
+                              {% endif %}
+                              {% if emailaddress.primary %}
+                                <span class="badge bg-primary-subtle text-primary-emphasis">{% trans "Primary" %}</span>
+                              {% endif %}
+                            </div>
+                          </div>
+                        </div>
+                      </label>
+                    {% endwith %}
+                  {% endfor %}
+                </div>
+                <div class="d-flex flex-column flex-md-row justify-content-md-end gap-2">
+                  <button type="submit" name="action_primary" class="btn btn-secondary">
+                    {% trans "Make Primary" %}
+                  </button>
+                  <button type="submit" name="action_send" class="btn btn-secondary">
+                    {% trans "Re-send Verification" %}
+                  </button>
+                  <button type="submit" name="action_remove" class="btn btn-danger">
+                    {% trans "Remove" %}
+                  </button>
+                </div>
+              </form>
+            {% else %}
+              <div class="alert alert-warning" role="alert">
+                {% include "account/snippets/warn_no_email.html" %}
+              </div>
+            {% endif %}
+
+            {% if can_add_email %}
+              <div class="mt-5 pt-4 border-top">
+                <h2 class="h5 mb-3">
+                  {% trans "Add Email Address" %}
+                </h2>
+                <form method="post"
+                      action="{% url 'users:email' %}"
+                      class="row g-3"
+                      novalidate>
+                  {% csrf_token %}
+                  {% for field in form %}
+                    <div class="col-12 col-md-8">
+                      <label class="form-label fw-semibold" for="{{ field.id_for_label }}">
+                        {{ field.label }}
+                      </label>
+                      {{ field }}
+                      {% for error in field.errors %}
+                        <div class="invalid-feedback d-block">
+                          {{ error }}
+                        </div>
+                      {% endfor %}
+                      {% if field.help_text %}
+                        <p class="form-text text-muted">
+                          {{ field.help_text }}
+                        </p>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                  <div class="col-12 d-flex justify-content-start justify-content-md-end">
+                    <button type="submit" name="action_add" class="btn btn-secondary px-4">
+                      {% trans "Add Email" %}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}
+
+{% block inline_javascript %}
+  {{ block.super }}
+  <script src="{% static 'account/js/account.js' %}"></script>
+  <script src="{% static 'account/js/onload.js' %}"></script>
+  <script type="application/json" data-allauth-onload="allauth.account.forms.manageEmailForm">
+    {
+      "i18n": {
+        "confirmDelete": "{% trans 'Do you really want to remove the selected email address?' %}"
+      }
+    }
+  </script>
+{% endblock inline_javascript %}

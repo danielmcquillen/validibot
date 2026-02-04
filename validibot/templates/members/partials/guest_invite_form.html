@@ -1,0 +1,116 @@
+{% load i18n core_tags %}
+
+<div class="modal-header">
+  <h5 class="modal-title">
+    <i class="bi-person-plus me-2"></i>{% trans "Invite Guest" %}
+  </h5>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+</div>
+<form method="post"
+      action="{% org_url 'members:guest_invite_create' %}"
+      hx-post="{% org_url 'members:guest_invite_create' %}"
+      hx-target="#guest-invite-modal-content"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+  <div class="modal-body">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    <p class="text-muted small mb-3">
+      {% blocktrans with name=organization.name %}
+        Invite someone to access workflows in "{{ name }}" as a guest. They won't become a member of your organization.
+      {% endblocktrans %}
+    </p>
+
+    <div class="mb-3">
+      <label for="email" class="form-label">{% trans "Email address" %}</label>
+      <input type="email"
+             class="form-control"
+             id="email"
+             name="email"
+             value="{{ email|default:'' }}"
+             placeholder="guest@example.com"
+             required
+             autofocus>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">{% trans "Workflow Access" %}</label>
+      <div class="form-check">
+        <input class="form-check-input"
+               type="radio"
+               name="scope"
+               id="scope-all"
+               value="ALL"
+               {% if scope == 'ALL' %}checked{% endif %}
+               onchange="toggleWorkflowSelection()">
+        <label class="form-check-label" for="scope-all">
+          <span class="fw-medium">{% trans "All workflows" %}</span>
+          <small class="text-muted d-block">
+            {% trans "Grant access to all current active workflows in this organization." %}
+          </small>
+        </label>
+      </div>
+      <div class="form-check mt-2">
+        <input class="form-check-input"
+               type="radio"
+               name="scope"
+               id="scope-selected"
+               value="SELECTED"
+               {% if scope != 'ALL' %}checked{% endif %}
+               onchange="toggleWorkflowSelection()">
+        <label class="form-check-label" for="scope-selected">
+          <span class="fw-medium">{% trans "Selected workflows" %}</span>
+          <small class="text-muted d-block">
+            {% trans "Choose specific workflows to share." %}
+          </small>
+        </label>
+      </div>
+    </div>
+
+    <div class="mb-3" id="workflow-selection" {% if scope == 'ALL' %}style="display: none;"{% endif %}>
+      <label class="form-label">{% trans "Select workflows" %}</label>
+      <div class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+        {% for workflow in workflows %}
+          <div class="form-check">
+            <input class="form-check-input"
+                   type="checkbox"
+                   name="workflows"
+                   value="{{ workflow.pk }}"
+                   id="workflow-{{ workflow.pk }}"
+                   {% if workflow.pk|stringformat:"s" in selected_workflow_ids %}checked{% endif %}>
+            <label class="form-check-label" for="workflow-{{ workflow.pk }}">
+              {{ workflow.name }}
+            </label>
+          </div>
+        {% empty %}
+          <p class="text-muted mb-0 small">{% trans "No active workflows available." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+      {% trans "Cancel" %}
+    </button>
+    <button type="submit" class="btn btn-secondary">
+      <i class="bi-send me-1"></i>{% trans "Send Invitation" %}
+    </button>
+  </div>
+</form>
+
+<script>
+  function toggleWorkflowSelection() {
+    const scopeAll = document.getElementById('scope-all');
+    const workflowSelection = document.getElementById('workflow-selection');
+    if (scopeAll && workflowSelection) {
+      workflowSelection.style.display = scopeAll.checked ? 'none' : 'block';
+    }
+  }
+</script>

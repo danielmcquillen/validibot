@@ -309,3 +309,7 @@ tests/assets/fmu/*
 
 # Storage bucket when running locally
 /storage
+
+# Temporary files
+temp.json
+temp*.json

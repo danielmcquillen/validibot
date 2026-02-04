@@ -21,9 +21,6 @@ node_modules
 venv
 .git
 .envs/
-# Exclude dev symlinks - these are volume-mounted at runtime
-vb_shared_dev
-sv_modal_dev
 # Exclude validator containers - they build separately
 validators/
 # Exclude generated documentation

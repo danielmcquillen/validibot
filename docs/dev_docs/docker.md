@@ -1,4 +1,4 @@
-# Running Validibot Locally with Docker
+# Running Validibot with Docker
 
 This project uses Docker Compose for local development. All services run in containers,
 matching the Cookiecutter Django patterns with Celery + Redis for background task processing.
@@ -7,9 +7,9 @@ matching the Cookiecutter Django patterns with Celery + Redis for background tas
 
 Validibot has separate compose files for different environments. **You must specify which file to use**:
 
-| File | Purpose | Command |
-|------|---------|---------|
-| `docker-compose.local.yml` | Local development (hot reload, runserver) | `docker compose -f docker-compose.local.yml up` |
+| File                            | Purpose                                    | Command                                              |
+| ------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
+| `docker-compose.local.yml`      | Local development (hot reload, runserver)  | `docker compose -f docker-compose.local.yml up`      |
 | `docker-compose.production.yml` | Production-style (gunicorn, no code mount) | `docker compose -f docker-compose.production.yml up` |
 
 There is no default `docker-compose.yml` — running `docker compose up` without `-f` will fail.
@@ -17,6 +17,7 @@ There is no default `docker-compose.yml` — running `docker compose up` without
 ## Quick start (local development)
 
 1. Create your local env files from the templates:
+
    ```bash
    mkdir -p .envs/.local
    cp .envs.example/.local/.django .envs/.local/.django
@@ -28,31 +29,37 @@ There is no default `docker-compose.yml` — running `docker compose up` without
    > ⚠️ **Important**: The `.envs/` folder contains your actual secrets and is gitignored. Never commit it to version control, especially public repositories. See [Environment Configuration](deployment/environment-configuration.md) for details.
 
 3. Build and start:
+
    ```bash
    docker compose -f docker-compose.local.yml up --build
    ```
 
    Or use the just command:
+
    ```bash
    just up
    ```
 
 4. Apply migrations (the start script does this, but you can rerun):
+
    ```bash
    docker compose -f docker-compose.local.yml exec django uv run python manage.py migrate
    ```
 
 5. Run initial setup (first time only):
+
    ```bash
    docker compose -f docker-compose.local.yml exec django uv run python manage.py setup_validibot --domain localhost:8000
    ```
 
 6. Verify setup is correct:
+
    ```bash
    docker compose -f docker-compose.local.yml exec django uv run python manage.py check_validibot
    ```
 
 7. Create a superuser if needed:
+
    ```bash
    docker compose -f docker-compose.local.yml exec django uv run python manage.py createsuperuser
    ```

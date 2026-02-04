@@ -32,17 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
 
-# Create placeholder for vb_shared_dev (will be volume-mounted at runtime)
-# This allows uv sync to complete during build
-RUN mkdir -p ${APP_HOME}/vb_shared_dev && \
-    echo '[project]' > ${APP_HOME}/vb_shared_dev/pyproject.toml && \
-    echo 'name = "vb-shared"' >> ${APP_HOME}/vb_shared_dev/pyproject.toml && \
-    echo 'version = "0.1.0"' >> ${APP_HOME}/vb_shared_dev/pyproject.toml && \
-    mkdir -p ${APP_HOME}/vb_shared_dev/vb_shared && \
-    touch ${APP_HOME}/vb_shared_dev/vb_shared/__init__.py
-
 # Install dependencies with dev extras for local work
-RUN uv sync --extra dev --frozen
+# --no-install-project skips installing validibot itself (it's not a package, just a Django project)
+RUN uv sync --extra dev --frozen --no-install-project
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/

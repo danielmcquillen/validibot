@@ -30,7 +30,8 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 
 # Install dependencies (no dev extras) for production
 # --no-sources skips [tool.uv.sources] overrides (which point to local dev paths)
-RUN uv sync --no-dev --no-sources
+# --no-install-project skips installing validibot itself (it's not a package, just a Django project)
+RUN uv sync --no-dev --no-sources --no-install-project
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/

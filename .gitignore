@@ -304,9 +304,6 @@ set-env.sh
 
 _envs
 _envs/*
-vb_shared_dev
-sv_modal_dev
-vb_validators_dev
 tests/assets/fmu/*
 .modal.toml
 

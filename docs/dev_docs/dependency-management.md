@@ -92,23 +92,20 @@ uv lock --upgrade && uv sync
 uv pip list --outdated
 ```
 
-## Working with validibot_shared
+## Working with validibot-shared
 
-The `validibot-shared` package is a sibling project installed as an editable local dependency for development. In `pyproject.toml`:
+The `validibot-shared` package is installed from Git. In `pyproject.toml`:
 
 ```toml
 [tool.uv.sources]
-validibot-shared = { path = "validibot_shared_dev", editable = true }
+validibot-shared = { git = "https://github.com/danielmcquillen/validibot-shared" }
 ```
 
-The `validibot_shared_dev` directory is a symlink to `../validibot_shared`. When `validibot_shared` changes:
+When `validibot-shared` changes:
 
-1. Make changes in `../validibot_shared`
-2. Bump the version in `validibot_shared/pyproject.toml`
-3. Push the changes
-4. In this project, run: `uv lock --upgrade-package validibot-shared && uv sync`
-
-For Docker, the real `validibot_shared` is volume-mounted at runtime (see `docker-compose.local.yml`).
+1. Make changes in `../validibot-shared`
+2. Commit and push to GitHub
+3. In this project, run: `uv sync` to pull the latest version
 
 ## Common Workflows
 

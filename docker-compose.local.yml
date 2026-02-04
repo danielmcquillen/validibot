@@ -26,7 +26,6 @@ services:
     volumes:
       - validibot_local_venv:/app/.venv
       - .:/app
-      - ../validibot_shared:/app/validibot_shared_dev
       - media_volume:/app/media
       # Shared storage volume for validation files (accessible by validator containers)
       - validibot_local_storage:/app/storage

@@ -39,13 +39,7 @@ Signed-off-by: Your Name <your.email@example.com>
 
 **Configure git to sign off by default (optional):**
 
-If you want to automatically sign off all commits to this repository:
-
-```bash
-git config commit.gpgsign true
-```
-
-Or add an alias:
+Add an alias to make signing off easier:
 
 ```bash
 git config --global alias.ci 'commit -s'
@@ -82,8 +76,8 @@ Where `n` is the number of commits to sign off.
 1. Fork the repository
 2. Create a feature branch from `main`
 3. Make your changes with signed-off commits
-4. Ensure tests pass: `make test`
-5. Ensure code is formatted: `make lint`
+4. Ensure tests pass: `just test`
+5. Ensure code is formatted: `uv run ruff check`
 6. Submit a pull request
 
 ### Code Style

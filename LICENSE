@@ -1,7 +1,11 @@
-# Validibot License
+# Validibot Community Edition License
 
 Copyright (c) 2025-2026 McQuillen Interactive Pty. Ltd. (ABN 49 600 623 069)
 All rights reserved.
+
+Validibot Community Edition is licensed under AGPL-3.0 (below).
+Validibot Pro and Enterprise are licensed under separate commercial
+terms. See COMM-LICENSE.md for details.
 
 ---
 
@@ -63,10 +67,15 @@ You need a Commercial License if you want to:
 
 - Use Validibot in proprietary software without sharing your source code
 - Distribute Validibot as part of a closed-source product
-- Use Validibot in a SaaS product without AGPL compliance
 - Remove the network disclosure requirements of the AGPL
 - Access Pro features (see https://validibot.com/pricing for details)
 - Access Enterprise features (see https://validibot.com/pricing for details)
+
+**Note on hosted/SaaS use:** The commercial license covers your own internal
+use, including running Validibot as a service for your own organization's users.
+If you want to offer Validibot as a hosted service to third parties (e.g., a
+multi-tenant SaaS for external customers), you need a separate OEM/Embedded
+license. Contact licensing@validibot.com for details.
 
 **Note**: The Community edition includes ALL validators (including advanced validators
 like EnergyPlus and FMI) and can be used with the CLI anywhere, including CI/CD
@@ -141,10 +150,11 @@ affiliation. You may not:
 - Use the Validibot name, logo, or robot character in your product name
 - Register domain names or social media accounts using "Validibot"
 - Create logos or branding confusingly similar to Validibot's
-- Remove or alter Validibot branding in the Software's user interface
 
-If you create a fork or derivative work, you must use a different name and
-branding that clearly distinguishes it from Validibot.
+**For forks and derivative works:** If you create a fork or derivative work,
+you must use a different name and branding that clearly distinguishes it from
+Validibot. This means removing or replacing Validibot branding (name, logo,
+robot character) in the user interface to avoid confusion.
 
 ---
 

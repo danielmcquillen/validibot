@@ -512,7 +512,8 @@ class Command(BaseCommand):
         Create the built-in validators that ship with Validibot.
 
         These include JSON Schema, XML Schema, Basic (field validation),
-        and AI validators.
+        and AI validators. Also syncs advanced validators (EnergyPlus, FMI)
+        with their catalog entries for input/output signals.
         """
         logger.debug("Setting up default validators...")
         self.stdout.write("  Creating default validators...")
@@ -522,8 +523,27 @@ class Command(BaseCommand):
         created, updated = create_default_validators()
         self.stdout.write(
             self.style.SUCCESS(
-                f"  Configured validators ({created} new, {updated} updated)"
+                f"  Configured built-in validators ({created} new, {updated} updated)"
             )
+        )
+
+        # Sync advanced validators (EnergyPlus, FMI) with their catalog entries.
+        # This populates the input/output signals needed for the step editor UI.
+        self.stdout.write("  Syncing advanced validators and catalog entries...")
+
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("sync_advanced_validators", stdout=out)
+
+        # Log the output for debugging
+        output = out.getvalue()
+        logger.debug("sync_advanced_validators output: %s", output)
+
+        self.stdout.write(
+            self.style.SUCCESS("  Advanced validators and catalog entries synced")
         )
 
     # =========================================================================

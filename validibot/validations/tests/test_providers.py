@@ -12,12 +12,12 @@ from validibot.validations.seeds import ENERGYPLUS_SEED
 
 
 @pytest.mark.django_db
-def test_sync_system_validators_creates_energyplus():
+def test_sync_advanced_validators_creates_energyplus():
     """The sync command should create the EnergyPlus validator and catalog entries."""
     # Ensure we start clean
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
 
-    call_command("sync_system_validators")
+    call_command("sync_advanced_validators")
 
     validator = Validator.objects.get(slug="energyplus-idf-validator")
     assert validator.validation_type == ValidationType.ENERGYPLUS
@@ -33,16 +33,16 @@ def test_sync_system_validators_creates_energyplus():
 
 
 @pytest.mark.django_db
-def test_sync_system_validators_is_idempotent():
+def test_sync_advanced_validators_is_idempotent():
     """Running sync twice should not duplicate entries."""
     Validator.objects.filter(slug="energyplus-idf-validator").delete()
 
-    call_command("sync_system_validators")
+    call_command("sync_advanced_validators")
     initial_count = ValidatorCatalogEntry.objects.filter(
         validator__slug="energyplus-idf-validator"
     ).count()
 
-    call_command("sync_system_validators")
+    call_command("sync_advanced_validators")
     final_count = ValidatorCatalogEntry.objects.filter(
         validator__slug="energyplus-idf-validator"
     ).count()

@@ -215,8 +215,8 @@ def create_default_validators():
         )
         validator.save()
 
-    # Note: Catalog entries for system validators are synced separately via:
-    #   python manage.py sync_system_validators
+    # Note: Catalog entries for advanced validators are synced separately via:
+    #   python manage.py sync_advanced_validators
     # This function only creates the validator instances.
 
     return created, updated

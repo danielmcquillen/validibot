@@ -86,11 +86,47 @@ Providers must implement the following contract:
 The provider gives the validator its domain-specific abilities without storing Python dotted paths in
 the database. Version upgrades happen entirely inside code by registering new providers ranges.
 
+## Advanced validator seed data
+
+Advanced validators (EnergyPlus, FMI, etc.) are packaged as Docker containers and have predefined
+input/output signals. These signals are defined as **seed data** in `validibot/validations/seeds/`
+and synced to the database at startup.
+
+The seed data for each advanced validator includes:
+
+1. **Validator metadata** — slug, name, description, validation type, and configuration.
+2. **Input signals** — parameters available before the validator runs (e.g., `expected_floor_area_m2`
+   for EnergyPlus). These enable "Input Assertions" in the step editor.
+3. **Output signals** — metrics produced by the validator (e.g., `site_electricity_kwh` for EnergyPlus).
+   These enable "Output Assertions" in the step editor.
+4. **Derivations** — computed metrics derived from signals (e.g., `total_unmet_hours` calculated from
+   heating and cooling unmet hours).
+
+The seed data binding configurations must match field names in the corresponding shared library models
+(e.g., `validibot_shared.energyplus.models.EnergyPlusSimulationMetrics`), which is what the container
+validator populates after running the simulation.
+
+To sync seed data to the database:
+
+```bash
+python manage.py sync_advanced_validators
+```
+
+This command is idempotent and runs automatically at container startup. It creates validators and
+catalog entries if they don't exist, or updates them if the seed data has changed.
+
+**Versioning (current approach):** The validator `version` field in seed data tracks the overall
+validator version. When signals change significantly, bump this version. The sync command updates
+existing validators but uses `get_or_create` for catalog entries (existing entries are preserved).
+For now, if you need to change existing catalog entries, manually update them in the database or
+delete and re-sync. A more sophisticated versioning system is planned for the future
+([GitHub issue #92](https://github.com/danielmcquillen/validibot/issues/92)).
+
 ## Validator lifecycle
 
 1. **Registration** — migrations or bootstrap logic call `create_default_validators()` to ensure every
-   stock validator row and catalog entry exists. Custom validators are created through the Validator
-   Library UI and stored per org.
+   built-in validator row exists. Advanced validators are synced via `sync_advanced_validators` which
+   populates their catalog entries. Custom validators are created through the Validator Library UI.
 2. **Selection** — workflow steps reference a validator via FK. When the step runs, the engine fetches
    the validator, resolves its provider, and loads the catalog/allowlists.
 3. **Ruleset preparation** — when authors publish a ruleset against a validator, the preparation

@@ -1,8 +1,8 @@
 """
-Seed data for the EnergyPlus system validator.
+Seed data for the EnergyPlus advanced validator.
 
 This defines the validator metadata and catalog entries that get synced
-to the database via `python manage.py sync_system_validators`.
+to the database via `python manage.py sync_advanced_validators`.
 
 The catalog entry binding_config["key"] values must match field names in
 validibot_shared.energyplus.models.EnergyPlusSimulationMetrics, which is what

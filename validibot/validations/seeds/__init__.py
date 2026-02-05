@@ -1,11 +1,11 @@
 """
-Seed data for system validators.
+Seed data for advanced validators.
 
-This module contains the canonical definitions for system validators
-(EnergyPlus, FMI, JSON Schema, etc.) and their catalog entries.
+This module contains the canonical definitions for advanced validators
+(EnergyPlus, FMI, etc.) and their catalog entries.
 
 These are synced to the database via:
-    python manage.py sync_system_validators
+    python manage.py sync_advanced_validators
 """
 
 from validibot.validations.seeds.energyplus import ENERGYPLUS_SEED

@@ -13,6 +13,10 @@ python manage.py migrate --noinput
 if ! python manage.py shell -c "from validibot.users.models import Role; exit(0 if Role.objects.exists() else 1)" 2>/dev/null; then
   echo "First run detected - running initial setup..."
   python manage.py setup_validibot --noinput
+else
+  # Sync advanced validators on every startup to ensure catalog entries are current.
+  # This is fast (idempotent) and ensures EnergyPlus/FMI signals are available.
+  python manage.py sync_advanced_validators
 fi
 
 python manage.py runserver 0.0.0.0:8000

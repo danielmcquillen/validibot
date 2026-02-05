@@ -217,25 +217,34 @@ class Command(BaseCommand):
                 continue
 
             # Create or update the PeriodicTask
+            # Must include schedule in defaults to pass django-celery-beat validation
+            defaults = {
+                "task": task.celery_task,
+                "enabled": task.enabled,
+            }
+            if schedule_type == "interval":
+                defaults["interval"] = schedule
+            else:
+                defaults["crontab"] = schedule
+
             periodic_task, created = PeriodicTask.objects.get_or_create(
                 name=task.name,
-                defaults={
-                    "task": task.celery_task,
-                    "enabled": task.enabled,
-                },
+                defaults=defaults,
             )
 
-            # Update schedule reference
-            if schedule_type == "interval":
-                periodic_task.interval = schedule
-                periodic_task.crontab = None
-            else:
-                periodic_task.crontab = schedule
-                periodic_task.interval = None
+            # Update existing task if needed
+            if not created:
+                # Update schedule reference
+                if schedule_type == "interval":
+                    periodic_task.interval = schedule
+                    periodic_task.crontab = None
+                else:
+                    periodic_task.crontab = schedule
+                    periodic_task.interval = None
 
-            periodic_task.task = task.celery_task
-            periodic_task.enabled = task.enabled
-            periodic_task.save()
+                periodic_task.task = task.celery_task
+                periodic_task.enabled = task.enabled
+                periodic_task.save()
 
             if created:
                 created_count += 1

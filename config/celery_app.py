@@ -48,6 +48,7 @@ app = Celery("validibot")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # Load task modules from all registered Django apps.
+# This finds tasks.py in each app (e.g., validibot/core/tasks.py).
 app.autodiscover_tasks()
 
 

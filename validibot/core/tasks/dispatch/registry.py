@@ -43,7 +43,7 @@ def get_task_dispatcher() -> TaskDispatcher:
 
     dispatchers: dict[DeploymentTarget, type[TaskDispatcher]] = {
         DeploymentTarget.TEST: TestDispatcher,
-        DeploymentTarget.LOCAL_DOCKER_COMPOSE: LocalDevDispatcher,
+        DeploymentTarget.LOCAL_DOCKER_COMPOSE: CeleryDispatcher,  # Uses Celery via Redis
         DeploymentTarget.DOCKER_COMPOSE: CeleryDispatcher,
         DeploymentTarget.GCP: GoogleCloudTasksDispatcher,
         # AWS not yet implemented

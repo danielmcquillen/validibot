@@ -37,10 +37,10 @@ class TaskDispatcherRegistryTests(TestCase):
 
     @override_settings(DEPLOYMENT_TARGET="local_docker_compose")
     def test_local_docker_compose_deployment_target(self):
-        """DEPLOYMENT_TARGET=local_docker_compose should use LocalDevDispatcher."""
+        """DEPLOYMENT_TARGET=local_docker_compose should use CeleryDispatcher."""
         dispatcher = get_task_dispatcher()
-        self.assertEqual(dispatcher.dispatcher_name, "local_dev")
-        self.assertTrue(dispatcher.is_sync)
+        self.assertEqual(dispatcher.dispatcher_name, "celery")
+        self.assertFalse(dispatcher.is_sync)
 
     @override_settings(DEPLOYMENT_TARGET="docker_compose")
     def test_docker_compose_deployment_target(self):

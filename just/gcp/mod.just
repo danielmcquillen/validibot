@@ -46,32 +46,53 @@ export PATH := env_var("HOME") + "/google-cloud-sdk/bin:" + env_var("PATH")
 # GCP Project Configuration
 # =============================================================================
 #
-# These settings are specific to the Validibot GCP project.
-# Update these if deploying to a different GCP project.
+# Configuration is loaded from environment variables. Set these before running:
 #
-# Region choice (australia-southeast1):
-#   - Closest to primary user base
-#   - Has Cloud Run, Cloud SQL, Cloud Tasks, etc.
-#   - Note: Domain mapping not available, so we use Global Load Balancer
+#   export GCP_PROJECT_ID="your-project-id"
+#   export GCP_REGION="us-central1"
+#
+# Or source the config file:
+#
+#   source .envs/.production/.google-cloud/.just
+#
+# See .envs.example/.production/.google-cloud/.just for a template.
 #
 # =============================================================================
 
-gcp_project := "project-a509c806-3e21-4fbc-b19"
-gcp_region := "australia-southeast1"
+# Load from environment variables
+# Use env_var_or_default with empty string to allow non-GCP commands to run.
+# Actual GCP commands will fail with a clear error if not set.
+gcp_project := env_var_or_default("GCP_PROJECT_ID", "")
+gcp_region := env_var_or_default("GCP_REGION", "us-central1")
 
 # Docker image path in Artifact Registry
 # Format: {region}-docker.pkg.dev/{project}/{repository}/{image}
-gcp_image := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
+gcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
 
 # Cloud Run request timeout (1 hour)
 # Long timeout needed for validator jobs that process large files
-gcp_cloud_run_request_timeout := "3600s"
+gcp_cloud_run_request_timeout := env_var_or_default("GCP_CLOUD_RUN_TIMEOUT", "3600s")
 
 # Cloud Scheduler timezone for cron jobs
-gcp_scheduler_timezone := "Australia/Sydney"
+gcp_scheduler_timezone := env_var_or_default("GCP_SCHEDULER_TIMEZONE", "UTC")
 
 # Validator container registry path
-validator_repo := "australia-southeast1-docker.pkg.dev/" + gcp_project + "/validibot"
+validator_repo := gcp_region + "-docker.pkg.dev/" + gcp_project + "/validibot"
+
+# Helper to check GCP_PROJECT_ID is set before running commands
+[private]
+_require-gcp-config:
+    #!/usr/bin/env bash
+    if [ -z "${GCP_PROJECT_ID:-}" ]; then
+        echo "Error: GCP_PROJECT_ID is not set."
+        echo ""
+        echo "Please source your GCP config first:"
+        echo "  source .envs/.production/.google-cloud/.just"
+        echo ""
+        echo "Or set the variable manually:"
+        echo "  export GCP_PROJECT_ID=\"your-project-id\""
+        exit 1
+    fi
 
 # Git SHA for image tagging (inherited from common.just via root justfile)
 git_sha := `git rev-parse --short HEAD`
@@ -114,7 +135,7 @@ _service-account stage:
 # Why linux/amd64?
 #   Cloud Run runs on Linux x86_64, so we must build for that platform
 #   even when building on Apple Silicon (arm64) Macs.
-build:
+build: _require-gcp-config
     @echo "Building image: {{gcp_image}}:{{git_sha}}"
     docker build --platform linux/amd64 \
         -f compose/production/django/Dockerfile \
@@ -142,7 +163,7 @@ push:
 #   - max-instances: prod=4, dev/staging=2
 #   - memory: 1Gi (sufficient for Django + gunicorn)
 #   - allow-unauthenticated: public web access
-deploy stage: build push
+deploy stage: _require-gcp-config build push
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -356,7 +377,7 @@ secrets-init stage:
 
 # View recent Cloud Run logs (last 50 entries)
 # Usage: just gcp logs dev | just gcp logs prod
-logs stage:
+logs stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
@@ -367,7 +388,7 @@ logs stage:
 
 # View logs and follow (stream new logs as they arrive)
 # Usage: just gcp logs-follow dev | just gcp logs-follow prod
-logs-follow stage:
+logs-follow stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
@@ -402,7 +423,7 @@ resume stage:
 
 # Show current service status and URL
 # Usage: just gcp status dev | just gcp status prod
-status stage:
+status stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
@@ -489,7 +510,7 @@ health-check stage:
 # Creates a temporary Cloud Run Job to run migrations against the database.
 #
 # Usage: just gcp migrate dev | just gcp migrate prod
-migrate stage:
+migrate stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
 

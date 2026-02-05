@@ -106,6 +106,19 @@ just test-integration # Run integration tests with Docker
 
 ### Google Cloud Platform
 
+GCP commands require environment variables for your project configuration. Before running any `just gcp` command:
+
+```bash
+# Option 1: Source your config file (recommended)
+source .envs/.production/.google-cloud/.just
+
+# Option 2: Set variables manually
+export GCP_PROJECT_ID="your-project-id"
+export GCP_REGION="us-central1"
+```
+
+Copy `.envs.example/.production/.google-cloud/.just` to `.envs/.production/.google-cloud/.just` and fill in your values. This file is gitignored so your project details stay private.
+
 Commands are prefixed with `gcp`:
 
 ```bash

@@ -52,9 +52,12 @@ class Command(BaseCommand):
             )
 
         if not user:
-            user = User.objects.get(email="daniel@mcquilleninteractive.com")
+            # Fall back to first superuser if no user specified
+            user = User.objects.filter(is_superuser=True).first()
             if not user:
-                raise CommandError(f"User '{user_ident}' not found.")
+                raise CommandError(
+                    "No user found. Specify a user with --user or create a superuser first.",
+                )
 
         # Find the first workflow for this user
         workflow = Workflow.objects.filter(user=user).first()

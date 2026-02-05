@@ -12,11 +12,11 @@ import pytest
 
 from validibot.validations.services.execution.base import ExecutionRequest
 from validibot.validations.services.execution.base import ExecutionResponse
-from validibot.validations.services.execution.registry import clear_backend_cache
-from validibot.validations.services.execution.registry import get_execution_backend
 from validibot.validations.services.execution.docker_compose import (
     DockerComposeExecutionBackend,
 )
+from validibot.validations.services.execution.registry import clear_backend_cache
+from validibot.validations.services.execution.registry import get_execution_backend
 
 # ==============================================================================
 # Mock Models for Testing
@@ -59,7 +59,7 @@ class MockWorkflowStep:
         self.name = "Test Step"
         self.config = {
             "primary_file_uri": "file:///test/model.idf",
-            "weather_file_uri": "file:///test/weather.epw",
+            "resource_file_ids": ["resource-weather-123"],
         }
         self.validator = MockValidator()
 
@@ -326,11 +326,18 @@ class TestSkipCallback:
 
     def test_envelope_builder_skip_callback_true(self):
         """Test envelope builder sets skip_callback=True for sync backends."""
+        from validibot_shared.validations.envelopes import ResourceFileItem
+
         from validibot.validations.services.cloud_run.envelope_builder import (
             build_energyplus_input_envelope,
         )
 
         validator = MockValidator()
+        weather_resource = ResourceFileItem(
+            id="resource-weather-123",
+            type="energyplus_weather",
+            uri="file:///test/weather.epw",
+        )
 
         envelope = build_energyplus_input_envelope(
             run_id="run-123",
@@ -341,7 +348,7 @@ class TestSkipCallback:
             step_id="step-012",
             step_name="Test Step",
             model_file_uri="file:///test/model.idf",
-            weather_file_uri="file:///test/weather.epw",
+            resource_files=[weather_resource],
             callback_url="http://localhost:8000/callbacks/",
             callback_id="cb-123",
             execution_bundle_uri="file:///test/runs/123/",
@@ -352,11 +359,18 @@ class TestSkipCallback:
 
     def test_envelope_builder_skip_callback_false(self):
         """Test envelope builder sets skip_callback=False for async backends."""
+        from validibot_shared.validations.envelopes import ResourceFileItem
+
         from validibot.validations.services.cloud_run.envelope_builder import (
             build_energyplus_input_envelope,
         )
 
         validator = MockValidator()
+        weather_resource = ResourceFileItem(
+            id="resource-weather-123",
+            type="energyplus_weather",
+            uri="gs://bucket/weather.epw",
+        )
 
         envelope = build_energyplus_input_envelope(
             run_id="run-123",
@@ -367,7 +381,7 @@ class TestSkipCallback:
             step_id="step-012",
             step_name="Test Step",
             model_file_uri="gs://bucket/model.idf",
-            weather_file_uri="gs://bucket/weather.epw",
+            resource_files=[weather_resource],
             callback_url="https://api.example.com/callbacks/",
             callback_id="cb-123",
             execution_bundle_uri="gs://bucket/runs/123/",

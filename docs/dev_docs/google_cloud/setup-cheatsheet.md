@@ -2,6 +2,24 @@
 
 This document captures the steps taken to set up Validibot on Google Cloud Platform.
 
+## Before You Start
+
+Set these environment variables before running the commands below:
+
+```bash
+# Source your config file (copy from .envs.example/.production/.google-cloud/.just first)
+source .envs/.production/.google-cloud/.just
+
+# Or set manually:
+export GCP_PROJECT_ID="your-project-id"
+export GCP_REGION="us-central1"
+
+# Get your project number (used for some IAM bindings):
+export GCP_PROJECT_NUMBER=$(gcloud projects describe $GCP_PROJECT_ID --format="value(projectNumber)")
+```
+
+Commands in this guide use `$GCP_PROJECT_ID`, `$GCP_REGION`, and `$GCP_PROJECT_NUMBER` as placeholders.
+
 ## Prerequisites
 
 ### Install gcloud CLI
@@ -53,7 +71,7 @@ gcloud projects update PROJECT_ID --name="New Display Name"
 
 ```bash
 # Set Australia Southeast as default region
-gcloud config set compute/region australia-southeast1
+gcloud config set compute/region $GCP_REGION
 ```
 
 ### 5. Verify Configuration
@@ -93,14 +111,14 @@ Cloud Tasks is available for async orchestration and retries (for example, movin
 
 ```bash
 gcloud tasks queues create validibot-tasks \
-  --location=australia-southeast1 \
-  --project=project-a509c806-3e21-4fbc-b19
+  --location=$GCP_REGION \
+  --project=$GCP_PROJECT_ID
 ```
 
 Verify the queue was created:
 
 ```bash
-gcloud tasks queues list --location=australia-southeast1
+gcloud tasks queues list --location=$GCP_REGION
 ```
 
 ### Grant permissions to create tasks
@@ -109,8 +127,8 @@ The Cloud Run service account needs permission to add tasks to the queue:
 
 ```bash
 gcloud tasks queues add-iam-policy-binding validibot-tasks \
-  --location=australia-southeast1 \
-  --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+  --location=$GCP_REGION \
+  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudtasks.enqueuer"
 ```
 
@@ -132,7 +150,7 @@ gcloud sql instances create validibot-db \
   --database-version=POSTGRES_17 \
   --edition=ENTERPRISE \
   --tier=db-f1-micro \
-  --region=australia-southeast1 \
+  --region=$GCP_REGION \
   --storage-type=SSD \
   --storage-size=10GB \
   --availability-type=zonal \
@@ -145,7 +163,7 @@ gcloud sql instances create validibot-db \
 | `--database-version`  | `POSTGRES_17`          | Latest stable PostgreSQL (as of Dec 2024)                                  |
 | `--edition`           | `ENTERPRISE`           | Required for smaller tiers; `ENTERPRISE_PLUS` requires larger tiers        |
 | `--tier`              | `db-f1-micro`          | Smallest/cheapest tier for dev; use `db-g1-small` or larger for production |
-| `--region`            | `australia-southeast1` | Sydney region                                                              |
+| `--region`            | `$GCP_REGION` | Sydney region                                                              |
 | `--storage-type`      | `SSD`                  | Better performance                                                         |
 | `--storage-size`      | `10GB`                 | Minimum; can auto-grow                                                     |
 | `--availability-type` | `zonal`                | Single zone; use `regional` for HA                                         |
@@ -186,7 +204,7 @@ gcloud sql users set-password validibot_user \
   --password="$(gcloud secrets versions access latest --secret=db-password)"
 
 # Redeploy Cloud Run services to pick up new secret (after deployment)
-# gcloud run services update validibot-web --region=australia-southeast1
+# gcloud run services update validibot-web --region=$GCP_REGION
 ```
 
 ## Create Artifact Registry
@@ -196,20 +214,20 @@ Create a Docker repository for storing container images:
 ```bash
 gcloud artifacts repositories create validibot \
   --repository-format=docker \
-  --location=australia-southeast1 \
+  --location=$GCP_REGION \
   --description="Validibot Docker images"
 ```
 
 Configure Docker to authenticate with Artifact Registry:
 
 ```bash
-gcloud auth configure-docker australia-southeast1-docker.pkg.dev
+gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
 ```
 
 The image URL format is:
 
 ```
-australia-southeast1-docker.pkg.dev/PROJECT_ID/validibot/IMAGE_NAME:TAG
+$GCP_REGION-docker.pkg.dev/PROJECT_ID/validibot/IMAGE_NAME:TAG
 ```
 
 ## Set Up Secrets
@@ -257,7 +275,7 @@ Get the connection name:
 
 ```bash
 gcloud sql instances describe validibot-db --format="value(connectionName)"
-# Returns: project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db
+# Returns: $GCP_PROJECT_ID:$GCP_REGION:validibot-db
 ```
 
 Then upload the env file as a secret:
@@ -266,13 +284,13 @@ Then upload the env file as a secret:
 gcloud secrets create django-env \
   --data-file=.envs/.production/.google-cloud/.django \
   --replication-policy=user-managed \
-  --locations=australia-southeast1
+  --locations=$GCP_REGION
 ```
 
 ### Grant Cloud Run access to secrets
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe project-a509c806-3e21-4fbc-b19 --format="value(projectNumber)")
+PROJECT_NUMBER=$(gcloud projects describe $GCP_PROJECT_ID --format="value(projectNumber)")
 
 gcloud secrets add-iam-policy-binding django-env \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
@@ -284,8 +302,8 @@ gcloud secrets add-iam-policy-binding django-env \
 The Cloud Run service account also needs permission to connect to Cloud SQL:
 
 ```bash
-gcloud projects add-iam-policy-binding project-a509c806-3e21-4fbc-b19 \
-  --member="serviceAccount:220053993828-compute@developer.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+  --member="serviceAccount:$GCP_PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/cloudsql.client"
 ```
 
@@ -300,7 +318,7 @@ When you change `.envs/.production/.google-cloud/.django`, add a new version:
 gcloud secrets versions add django-env --data-file=.envs/.production/.google-cloud/.django
 
 # Then redeploy Cloud Run to pick up changes
-gcloud run services update validibot-web --region=australia-southeast1
+gcloud run services update validibot-web --region=$GCP_REGION
 ```
 
 ### List secrets
@@ -328,7 +346,7 @@ service account with only the permissions needed, following the principle of lea
 gcloud iam service-accounts create validibot-cloudrun-prod \
   --display-name="Validibot Cloud Run SA (Production)" \
   --description="Service account for Validibot production Cloud Run services" \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 ### Grant required roles
@@ -343,13 +361,13 @@ The service account needs these roles:
 
 ```bash
 # Cloud SQL access
-gcloud projects add-iam-policy-binding project-a509c806-3e21-4fbc-b19 \
-  --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudsql.client"
 
 # Secret Manager access (required for custom service accounts with --set-secrets)
-gcloud projects add-iam-policy-binding project-a509c806-3e21-4fbc-b19 \
-  --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
@@ -364,7 +382,7 @@ Create a separate service account for staging:
 ```bash
 gcloud iam service-accounts create validibot-cloudrun-staging \
   --display-name="Validibot Cloud Run SA (Staging)" \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 
 # Grant same roles (but could be more restrictive, e.g., read-only storage)
 ```
@@ -376,17 +394,17 @@ Create a Cloud Storage bucket with prefix-based access control:
 ```bash
 # Production bucket
 gcloud storage buckets create gs://validibot-storage \
-  --location=australia-southeast1 \
+  --location=$GCP_REGION \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 
 # Development bucket
 gcloud storage buckets create gs://validibot-storage-dev \
-  --location=australia-southeast1 \
+  --location=$GCP_REGION \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 ### Grant bucket access to service accounts
@@ -394,7 +412,7 @@ gcloud storage buckets create gs://validibot-storage-dev \
 ```bash
 # Production SA -> Production bucket (full access)
 gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
-  --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 
 # Make public/ prefix publicly readable (for avatars, workflow images)
@@ -405,7 +423,7 @@ gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
 
 # Staging SA -> Dev bucket (when staging is set up)
 # gcloud storage buckets add-iam-policy-binding gs://validibot-storage-dev \
-#   --member="serviceAccount:validibot-cloudrun-staging@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
+#   --member="serviceAccount:validibot-cloudrun-staging@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
 #   --role="roles/storage.objectAdmin"
 ```
 
@@ -430,17 +448,17 @@ Build the production Docker image:
 
 ```bash
 docker build --platform linux/amd64 -f compose/production/django/Dockerfile \
-  -t australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:v1 .
+  -t $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1 .
 ```
 
 Push to Artifact Registry:
 
 ```bash
 # Authenticate Docker (one-time setup)
-gcloud auth configure-docker australia-southeast1-docker.pkg.dev
+gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
 
 # Push image
-docker push australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:v1
+docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1
 ```
 
 ## Deploy to Cloud Run
@@ -449,16 +467,16 @@ Deploy the web service with the dedicated service account, secrets, and Cloud SQ
 
 ```bash
 gcloud run deploy validibot-web \
-  --image australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:v1 \
-  --region australia-southeast1 \
-  --service-account validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com \
-  --add-cloudsql-instances project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db \
+  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1 \
+  --region $GCP_REGION \
+  --service-account validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+  --add-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:validibot-db \
   --set-secrets=/secrets/.env=django-env:latest \
   --min-instances 0 \
   --max-instances 4 \
   --memory 1Gi \
   --allow-unauthenticated \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 | Option                     | Purpose                                                          |
@@ -473,7 +491,7 @@ gcloud run deploy validibot-web \
 After deployment, get the service URL:
 
 ```bash
-gcloud run services describe validibot-web --region=australia-southeast1 --format="value(status.url)"
+gcloud run services describe validibot-web --region=$GCP_REGION --format="value(status.url)"
 ```
 
 ## Running Management Commands
@@ -507,15 +525,15 @@ If you need to run a custom management command:
 
 ```bash
 gcloud run jobs create validibot-manage \
-  --image australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/validibot-web:latest \
-  --region australia-southeast1 \
-  --service-account validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com \
-  --set-cloudsql-instances project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db \
+  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:latest \
+  --region $GCP_REGION \
+  --service-account validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+  --set-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:validibot-db \
   --set-secrets=/secrets/.env=django-env:latest \
   --memory 1Gi \
   --command "/bin/bash" \
   --args "-c,set -a && source /secrets/.env && set +a && python manage.py YOUR_COMMAND" \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 **Key points:**
@@ -528,14 +546,14 @@ gcloud run jobs create validibot-manage \
 ### Execute the job
 
 ```bash
-gcloud run jobs execute validibot-manage --region australia-southeast1 --wait
+gcloud run jobs execute validibot-manage --region $GCP_REGION --wait
 ```
 
 ### Check job logs
 
 ```bash
 gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=validibot-manage" \
-  --project project-a509c806-3e21-4fbc-b19 \
+  --project $GCP_PROJECT_ID \
   --limit 50 \
   --format="table(timestamp,textPayload)"
 ```
@@ -548,9 +566,9 @@ To temporarily block public access without deleting the service:
 
 ```bash
 gcloud run services update validibot-web \
-  --region australia-southeast1 \
+  --region $GCP_REGION \
   --ingress internal \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 This sets ingress to internal-only. The URL will return 403 Forbidden to public requests.
@@ -560,9 +578,9 @@ The service can still scale to zero when idle, so you won't incur compute costs.
 
 ```bash
 gcloud run services update validibot-web \
-  --region australia-southeast1 \
+  --region $GCP_REGION \
   --ingress all \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 > **Note:** You cannot set `--max-instances 0` on Cloud Run - it requires a positive integer.
@@ -570,21 +588,20 @@ gcloud run services update validibot-web \
 
 ---
 
-## Validibot-Specific Configuration
+## Your Configuration
 
-| Setting                | Value                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| Project Name           | Validibot                                                                        |
-| Project ID             | `project-a509c806-3e21-4fbc-b19`                                                 |
-| Project Number         | `220053993828`                                                                   |
-| Region                 | `australia-southeast1`                                                           |
-| Account                | daniel@mcquilleninteractive.com                                                  |
-| Cloud SQL Instance     | `validibot-db`                                                                   |
-| Cloud SQL Connection   | `project-a509c806-3e21-4fbc-b19:australia-southeast1:validibot-db`               |
-| Artifact Registry      | `australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/`  |
-| Service Account (prod) | `validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com` |
-| Secrets                | `django-env`, `db-password`                                                      |
-| GCS Bucket (prod)      | `validibot-storage` (with public/ and private/ prefixes)                         |
-| GCS Bucket (dev)       | `validibot-storage-dev`                                                          |
-| Cloud Tasks Queue      | `validibot-tasks`                                                                |
-| Service URL            | `https://validibot-web-220053993828.australia-southeast1.run.app`                |
+Store your project-specific configuration in `.envs/.production/.google-cloud/.just` (not committed to git). See `.envs.example/.production/.google-cloud/.just` for a template.
+
+Key values you'll need:
+
+| Setting                | Example Value                                                      |
+| ---------------------- | ------------------------------------------------------------------ |
+| Project ID             | `my-project-123456`                                                |
+| Region                 | `us-central1`                                                      |
+| Cloud SQL Instance     | `validibot-db`                                                     |
+| Cloud SQL Connection   | `my-project-123456:us-central1:validibot-db`                       |
+| Artifact Registry      | `us-central1-docker.pkg.dev/my-project-123456/validibot/`          |
+| Service Account (prod) | `validibot-cloudrun-prod@my-project-123456.iam.gserviceaccount.com`|
+| Secrets                | `django-env`, `db-password`                                        |
+| GCS Bucket (prod)      | `my-validibot-storage` (with public/ and private/ prefixes)        |
+| Cloud Tasks Queue      | `validibot-tasks`                                                  |

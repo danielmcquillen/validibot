@@ -18,12 +18,14 @@ from validibot_shared.fmi.envelopes import FMISimulationConfig
 from validibot_shared.validations.envelopes import ExecutionContext
 from validibot_shared.validations.envelopes import InputFileItem
 from validibot_shared.validations.envelopes import OrganizationInfo
+from validibot_shared.validations.envelopes import ResourceFileItem
 from validibot_shared.validations.envelopes import SupportedMimeType
 from validibot_shared.validations.envelopes import ValidationInputEnvelope
 from validibot_shared.validations.envelopes import ValidatorInfo
 from validibot_shared.validations.envelopes import ValidatorType
 from validibot_shared.validations.envelopes import WorkflowInfo
 
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 
 
@@ -45,7 +47,7 @@ def build_energyplus_input_envelope(
     step_id: str,
     step_name: str | None,
     model_file_uri: str,
-    weather_file_uri: str,
+    resource_files: list[ResourceFileItem],
     callback_url: str,
     callback_id: str | None,
     execution_bundle_uri: str,
@@ -70,7 +72,7 @@ def build_energyplus_input_envelope(
         step_id: Workflow step UUID
         step_name: Human-readable step name
         model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local)
-        weather_file_uri: URI to EPW weather file
+        resource_files: List of ResourceFileItem objects (weather files, etc.)
         callback_url: Django endpoint to POST results
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: Directory URI for this run's files
@@ -90,7 +92,7 @@ def build_energyplus_input_envelope(
         ...     step_id=str(run.step.id),
         ...     step_name=run.step.name,
         ...     model_file_uri="gs://bucket/model.idf",
-        ...     weather_file_uri="gs://bucket/weather.epw",
+        ...     resource_files=[ResourceFileItem(id="...", type="energyplus_weather", uri="gs://...")],
         ...     callback_url="https://api.example.com/callbacks/",
         ...     execution_bundle_uri="gs://bucket/runs/abc-123/",
         ...     timestep_per_hour=4,
@@ -117,19 +119,13 @@ def build_energyplus_input_envelope(
         step_name=step_name,
     )
 
-    # Build input files list
+    # Build input files list (only the model file; weather comes via resource_files)
     input_files = [
         InputFileItem(
             name="model.idf",
             mime_type=SupportedMimeType.ENERGYPLUS_IDF,
             role="primary-model",
             uri=model_file_uri,
-        ),
-        InputFileItem(
-            name="weather.epw",
-            mime_type=SupportedMimeType.ENERGYPLUS_EPW,
-            role="weather",
-            uri=weather_file_uri,
         ),
     ]
 
@@ -153,11 +149,77 @@ def build_energyplus_input_envelope(
         org=org_info,
         workflow=workflow_info,
         input_files=input_files,
+        resource_files=resource_files,
         inputs=energyplus_inputs,
         context=execution_context,
     )
 
     return envelope
+
+
+def _resolve_resource_files(
+    resource_file_ids: list[str],
+    *,
+    validator_id: str | None = None,
+    org_id: str | None = None,
+) -> list[ResourceFileItem]:
+    """
+    Resolve resource file IDs to ResourceFileItem objects with storage URIs.
+
+    Enforces runtime authorization: only returns resource files that:
+    - Belong to the specified validator (if validator_id provided)
+    - Are system-wide (org=NULL) OR belong to the specified org (if org_id provided)
+
+    Args:
+        resource_file_ids: List of ValidatorResourceFile UUIDs from step config
+        validator_id: Validator ID to scope resources to (optional but recommended)
+        org_id: Organization ID - resources must be system-wide or match this org
+
+    Returns:
+        List of ResourceFileItem objects with resolved URIs
+
+    Raises:
+        ValueError: If any requested resource file is not accessible
+    """
+    if not resource_file_ids:
+        return []
+
+    from django.db.models import Q
+
+    from validibot.validations.models import ValidatorResourceFile
+
+    # Build query with authorization scoping
+    queryset = ValidatorResourceFile.objects.filter(id__in=resource_file_ids)
+
+    # Scope to validator if provided
+    if validator_id:
+        queryset = queryset.filter(validator_id=validator_id)
+
+    # Scope to org: must be system-wide (org=NULL) OR match the run's org
+    if org_id:
+        queryset = queryset.filter(Q(org__isnull=True) | Q(org_id=org_id))
+
+    resource_files = list(queryset)
+
+    # Verify all requested IDs were found and authorized
+    found_ids = {str(rf.id) for rf in resource_files}
+    requested_ids = set(resource_file_ids)
+    missing_ids = requested_ids - found_ids
+    if missing_ids:
+        msg = (
+            f"Resource files not found or not authorized: {missing_ids}. "
+            f"validator_id={validator_id}, org_id={org_id}"
+        )
+        raise ValueError(msg)
+
+    return [
+        ResourceFileItem(
+            id=str(rf.id),
+            type=rf.resource_type,
+            uri=rf.get_storage_uri(),
+        )
+        for rf in resource_files
+    ]
 
 
 def build_input_envelope(
@@ -224,10 +286,21 @@ def build_input_envelope(
             msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
-        # Get weather file URI (from step configuration)
-        weather_file_uri = step_config.get("weather_file_uri")
-        if not weather_file_uri:
-            msg = f"Step {step.id} has no weather_file_uri in config"
+        # Resolve resource files from IDs stored in step config
+        # Pass validator and org for runtime authorization scoping
+        resource_file_ids = step_config.get("resource_file_ids", [])
+        resource_files = _resolve_resource_files(
+            resource_file_ids,
+            validator_id=str(validator.id),
+            org_id=str(run.org.id),
+        )
+
+        # Validate that we have a weather file for EnergyPlus
+        has_weather = any(
+            rf.type == ResourceFileType.ENERGYPLUS_WEATHER for rf in resource_files
+        )
+        if not has_weather:
+            msg = f"Step {step.id} has no weather file configured in resource_file_ids"
             raise ValueError(msg)
 
         # Get EnergyPlus-specific settings from step config
@@ -242,7 +315,7 @@ def build_input_envelope(
             step_id=str(step.id),
             step_name=step.name,
             model_file_uri=model_file_uri,
-            weather_file_uri=weather_file_uri,
+            resource_files=resource_files,
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,

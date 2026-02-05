@@ -302,6 +302,24 @@ class AssertionOperator(TextChoices):
     CEL_EXPR = "cel_expr", _("CEL expression")
 
 
+class ResourceFileType(TextChoices):
+    """
+    Types of resource files that can be attached to validators.
+
+    Resource files are auxiliary files needed by advanced validators to run.
+    Each type is specific to a validator and its requirements.
+
+    Currently supported:
+    - ENERGYPLUS_WEATHER: EPW weather files for EnergyPlus simulations
+
+    Future types might include:
+    - FMI_LIBRARY: Shared libraries for FMI validators
+    - CONFIG: Configuration files
+    """
+
+    ENERGYPLUS_WEATHER = "energyplus_weather", _("EnergyPlus Weather File (EPW)")
+
+
 # CEL evaluation limits (adjust as needed)
 # Timeout can be overridden via settings.CEL_MAX_EVAL_TIMEOUT_MS for tests
 CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 100)

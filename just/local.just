@@ -68,21 +68,31 @@ clean:
 # Django Commands in Container
 # =============================================================================
 
+# Helper to construct DATABASE_URL from individual POSTGRES_* env vars
+# The entrypoint sets this at container start, but `docker compose exec` bypasses it
+_db_url := 'DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"'
+
 # Open a bash shell in the Django container
 # Useful for running arbitrary commands, debugging, or exploring
 shell:
-    docker compose -f {{local_compose}} exec django bash
+    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} exec bash'
+
+# Open a Django shell in the container
+# Usage: just djshell
+djshell:
+    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py shell'
 
 # Run Django migrations in the local container
 # Applies any pending database migrations
 migrate:
-    docker compose -f {{local_compose}} exec django python manage.py migrate
+    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py migrate'
 
 # Run a Django management command in the container
-# Usage: just manage "createsuperuser"
-# Usage: just manage "shell_plus"
-manage command:
-    docker compose -f {{local_compose}} exec django python manage.py {{command}}
+# Usage: just manage createsuperuser
+# Usage: just manage "shell_plus --ipython"
+# Usage: just manage seed_weather_files
+manage +command:
+    docker compose -f {{local_compose}} exec web bash -c '{{_db_url}} python manage.py {{command}}'
 
 # =============================================================================
 # Testing
@@ -101,18 +111,18 @@ test *args:
 # Prereqs: Docker Compose available; BUILD_DJANGO_IMAGE=1 to force image rebuild
 test-integration *args:
     @echo "Starting integration dependencies (postgres, mailpit)..."
-    @echo "Ensuring django image (with Chromium & chromedriver) exists..."
-    @if [ "${BUILD_DJANGO_IMAGE:-0}" -eq 1 ] || ! docker image inspect validibot-django:latest >/dev/null 2>&1; then \
-        docker compose -f {{local_compose}} build django; \
+    @echo "Ensuring web image (with Chromium & chromedriver) exists..."
+    @if [ "${BUILD_DJANGO_IMAGE:-0}" -eq 1 ] || ! docker image inspect validibot-web:latest >/dev/null 2>&1; then \
+        docker compose -f {{local_compose}} build web; \
     else \
-        echo "Reusing existing validibot-django image (set BUILD_DJANGO_IMAGE=1 to force rebuild)"; \
+        echo "Reusing existing validibot-web image (set BUILD_DJANGO_IMAGE=1 to force rebuild)"; \
     fi
     docker compose -f {{local_compose}} down -v
     docker compose -f {{local_compose}} up -d postgres mailpit
     @echo "Running integration tests..."
     docker compose -f {{local_compose}} run --rm \
         -e DJANGO_SETTINGS_MODULE=config.settings.test \
-        django \
+        web \
         uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
     @echo "Stopping integration dependencies..."
     docker compose -f {{local_compose}} stop postgres mailpit

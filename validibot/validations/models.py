@@ -32,6 +32,7 @@ from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
@@ -2195,3 +2196,152 @@ class CallbackReceipt(models.Model):
     def __str__(self):
         short_id = self.callback_id[:8]
         return f"CallbackReceipt({short_id}... for run {self.validation_run_id})"
+
+
+def _resource_file_upload_path(instance: ValidatorResourceFile, filename: str) -> str:
+    """Generate upload path for validator resource files."""
+    # Use resource file's own UUID for uniqueness (shorter path than nested UUID)
+    # Format: resource_files/<resource_uuid>/<filename>
+    return f"resource_files/{instance.id}/{filename}"
+
+
+class ValidatorResourceFile(TimeStampedModel):
+    """
+    Auxiliary files needed by advanced validators to run.
+
+    Resource files are validator-specific files (weather data, libraries, configs)
+    that are not submission data but are required for validation. Examples:
+    - Weather files (EPW) for EnergyPlus simulations
+    - Libraries for FMI validators
+    - Configuration files for custom validators
+
+    ## Scoping
+
+    Resource files can be system-wide or organization-specific:
+    - `org=NULL`: System-wide resource, visible to all organizations
+    - `org=<org>`: Organization-specific, only visible to that org
+
+    System admins can create system-wide resources. Org admins can create
+    org-specific resources.
+
+    ## Usage Flow
+
+    1. Admin uploads resource file via Validator Library UI
+    2. Workflow step editor shows dropdown of available resources (filtered by type)
+    3. User selects resource → step config stores `resource_file_ids: [uuid, ...]`
+    4. At execution time, envelope builder resolves IDs to storage URIs
+    5. Validator container downloads files from URIs
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    validator = models.ForeignKey(
+        Validator,
+        on_delete=models.CASCADE,
+        related_name="resource_files",
+        help_text=_("The validator this resource file is for."),
+    )
+
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="validator_resource_files",
+        null=True,
+        blank=True,
+        help_text=_(
+            "Owning organization (NULL for system-wide resources visible to all orgs)."
+        ),
+    )
+
+    resource_type = models.CharField(
+        max_length=32,
+        choices=ResourceFileType.choices,
+        help_text=_("Type of resource (weather, library, config, etc.)."),
+    )
+
+    name = models.CharField(
+        max_length=200,
+        help_text=_("Human-readable name (e.g., 'San Francisco TMY3')."),
+    )
+
+    filename = models.CharField(
+        max_length=255,
+        help_text=_("Original filename (e.g., 'USA_CA_San.Francisco...epw')."),
+    )
+
+    file = models.FileField(
+        upload_to=_resource_file_upload_path,
+        max_length=500,
+        help_text=_("The resource file stored in default media storage (public/ prefix)."),
+    )
+
+    is_default = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Show this resource in dropdowns by default. "
+            "System defaults are shown to all orgs; org defaults only to that org."
+        ),
+    )
+
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=_("Optional description or notes about this resource."),
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=_("Validator-specific metadata (e.g., location info for weather)."),
+    )
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+        indexes = [
+            models.Index(fields=["validator", "resource_type"]),
+            models.Index(fields=["org", "resource_type"]),
+        ]
+
+    def __str__(self):
+        scope = "system" if self.org is None else f"org:{self.org_id}"
+        return f"{self.name} ({self.resource_type}, {scope})"
+
+    @property
+    def is_system(self) -> bool:
+        """True if this is a system-wide resource (no org)."""
+        return self.org_id is None
+
+    def get_storage_uri(self) -> str:
+        """
+        Get the storage URI for this resource file.
+
+        Returns a URI that can be used by validator containers to download
+        the file. The URI scheme depends on the storage backend:
+        - Local storage: file:///path/to/file
+        - GCS: gs://bucket/location/path/to/file
+
+        Note: Resource files are stored via Django's FileField (media storage),
+        so we use the file's actual storage path to construct the URI.
+
+        Important: For GCS, the storage may have a `location` prefix (e.g., "public")
+        that's not included in file.name. We must include it in the URI.
+        """
+        # Get the actual file path from Django's storage
+        file_storage = self.file.storage
+
+        # Check if this is GCS storage (django-storages GoogleCloudStorage)
+        storage_class_name = file_storage.__class__.__name__
+        if storage_class_name == "GoogleCloudStorage":
+            # GCS: gs://bucket/location/path
+            # The storage may have a location prefix (e.g., "public") that
+            # isn't included in file.name but IS part of the actual object path
+            bucket_name = getattr(file_storage, "bucket_name", "")
+            location = getattr(file_storage, "location", "")
+            if location:
+                return f"gs://{bucket_name}/{location}/{self.file.name}"
+            return f"gs://{bucket_name}/{self.file.name}"
+
+        # Local filesystem storage
+        # The file.path gives the absolute path
+        file_path = self.file.path
+        return f"file://{file_path}"

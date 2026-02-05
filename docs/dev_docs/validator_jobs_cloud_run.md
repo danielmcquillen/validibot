@@ -42,7 +42,7 @@ IAM roles involved:
 The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggering jobs with environment variable overrides (like `VALIDIBOT_INPUT_URI`) requires `run.jobs.runWithOverrides`. We use a project-level custom role:
 
 ```bash
-# Role: projects/project-a509c806-3e21-4fbc-b19/roles/validibot_job_runner
+# Role: projects/$GCP_PROJECT_ID/roles/validibot_job_runner
 # Permissions: run.jobs.run, run.jobs.runWithOverrides
 ```
 
@@ -80,8 +80,8 @@ To populate `WORKER_URL` for a stage, fetch the worker service URL and add it to
 ```bash
 # prod example
 gcloud run services describe validibot-worker \
-  --region australia-southeast1 \
-  --project project-a509c806-3e21-4fbc-b19 \
+  --region $GCP_REGION \
+  --project $GCP_PROJECT_ID \
   --format='value(status.url)'
 ```
 
@@ -112,7 +112,7 @@ just validators-deploy-all dev
 ### What the deploy command does
 
 1. **Builds** the container image with `linux/amd64` platform (required by Cloud Run)
-2. **Pushes** to Artifact Registry at `australia-southeast1-docker.pkg.dev/project-xxx/validibot/`
+2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
 3. **Deploys** the Cloud Run Job with:
    - Stage-appropriate job name (`validibot-validator-energyplus-dev` for dev, `validibot-validator-energyplus` for prod)
    - Stage-appropriate service account (`validibot-cloudrun-dev@...` for dev)
@@ -129,7 +129,7 @@ just describe-job energyplus dev    # Show job details
 just logs energyplus dev            # View recent logs
 
 # From validibot directory (equivalent)
-gcloud run jobs list --filter "name~validibot-validator" --region australia-southeast1
+gcloud run jobs list --filter "name~validibot-validator" --region $GCP_REGION
 ```
 
 ### Deleting a validator job

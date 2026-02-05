@@ -284,15 +284,8 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         self.storage.write(submission_path, submission_bytes)
         input_file_uris["primary_file_uri"] = self.storage.get_uri(submission_path)
 
-        # Check for weather file in step config (for EnergyPlus)
-        step_config = request.step.config or {}
-        if "weather_file_id" in step_config:
-            # Weather file is stored separately - get its URI
-            # For now, assume weather files are already in storage
-            # TODO: Handle weather file upload properly
-            weather_uri = step_config.get("weather_file_uri")
-            if weather_uri:
-                input_file_uris["weather_file_uri"] = weather_uri
+        # Note: Weather files and other resource files are resolved from
+        # resource_file_ids in the envelope builder, not here.
 
         return input_file_uris
 
@@ -320,7 +313,9 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             validator_type = output_dict.get("validator", {}).get("type", "").upper()
 
             if validator_type == "ENERGYPLUS":
-                from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
+                from validibot_shared.energyplus.envelopes import (
+                    EnergyPlusOutputEnvelope,
+                )
 
                 return EnergyPlusOutputEnvelope.model_validate(output_dict)
             if validator_type == "FMI":

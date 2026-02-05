@@ -21,7 +21,7 @@ ARCHITECTURE
 SECURITY
 --------
 - Jobs run with the Cloud Run service account
-- Input/output files are in GCS (private bucket with signed URLs)
+- Input/output files are in GCS (private/ prefix with signed URLs)
 - Callbacks are authenticated via Cloud Run's IAM (service-to-service auth)
 """
 

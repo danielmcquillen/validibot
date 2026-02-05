@@ -52,12 +52,21 @@ docker compose -f docker-compose.production.yml up -d
 # Create the directory structure
 mkdir -p .envs/.production/.google-cloud
 
-# Copy the template
+# Copy both template files
 cp .envs.example/.production/.google-cloud/.django .envs/.production/.google-cloud/.django
+cp .envs.example/.production/.google-cloud/.just .envs/.production/.google-cloud/.just
 
-# Edit with your GCP project values
-# Deploy via Cloud Build or your CI/CD pipeline
+# Edit .django with your GCP project values (uploaded to Secret Manager)
+# Edit .just with your GCP project ID and region (used locally by just commands)
+
+# Source the just config before running deployment commands
+source .envs/.production/.google-cloud/.just
+just gcp deploy prod
 ```
+
+**Two types of config files:**
+- `.django` - Django runtime settings, uploaded to Secret Manager
+- `.just` - Just command runner settings (project ID, region), sourced locally
 
 ### AWS (Future)
 
@@ -85,7 +94,8 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/
-    │   └── .django
+    │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
+    │   └── .just           # Just command runner settings (sourced locally)
     └── .aws/
         └── .django
 
@@ -98,7 +108,8 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/
-    │   └── .django
+    │   ├── .django
+    │   └── .just
     └── .aws/
         └── .django
 ```

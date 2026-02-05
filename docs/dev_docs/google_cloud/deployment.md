@@ -102,7 +102,7 @@ Replace `PASSWORD_FROM_GCP_INIT` with the actual password from Step 1. Remember 
 
 ```
 POSTGRES_PASSWORD=<actual-password-here>
-DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/project-a509c806-3e21-4fbc-b19:australia-southeast1:<db-instance>
+DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/$GCP_PROJECT_ID:$GCP_REGION:<db-instance>
 ```
 
 Where `<db-instance>` is `validibot-db-dev`, `validibot-db-staging`, or `validibot-db` (for prod).
@@ -181,7 +181,7 @@ just gcp migrate prod
 
 ## Custom Domain (DNSimple) via Load Balancer
 
-Cloud Run’s built-in “domain mappings” are not available in `australia-southeast1`, so production custom domains (like `validibot.com`) are served via a Global external HTTP(S) Load Balancer that routes to Cloud Run using a serverless NEG.
+Cloud Run’s built-in “domain mappings” are not available in `$GCP_REGION`, so production custom domains (like `validibot.com`) are served via a Global external HTTP(S) Load Balancer that routes to Cloud Run using a serverless NEG.
 
 The `justfile` includes an idempotent command that creates the load balancer resources and prints the static IP you need to set in DNSimple:
 
@@ -211,11 +211,11 @@ Useful status commands:
 ```bash
 # See the reserved IP (prod)
 gcloud compute addresses describe validibot-ip --global \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 
 # See certificate status (prod)
 gcloud compute ssl-certificates describe validibot-cert --global \
-  --project project-a509c806-3e21-4fbc-b19
+  --project $GCP_PROJECT_ID
 ```
 
 ### App configuration notes
@@ -228,8 +228,8 @@ gcloud compute ssl-certificates describe validibot-cert --global \
 
   ```bash
   gcloud run services describe validibot-worker \
-    --region australia-southeast1 \
-    --project project-a509c806-3e21-4fbc-b19 \
+    --region $GCP_REGION \
+    --project $GCP_PROJECT_ID \
     --format='value(status.url)'
   ```
 - After you confirm the domain works, you can block direct public access to the `*.run.app` URL and only allow traffic via the load balancer:
@@ -237,8 +237,8 @@ gcloud compute ssl-certificates describe validibot-cert --global \
   ```bash
   gcloud run services update validibot-web \
     --ingress internal-and-cloud-load-balancing \
-    --region australia-southeast1 \
-    --project project-a509c806-3e21-4fbc-b19
+    --region $GCP_REGION \
+    --project $GCP_PROJECT_ID
   ```
 
 ### Timeouts (avoiding “30s” surprises)
@@ -282,7 +282,7 @@ gcloud compute ssl-certificates describe validibot-cert --global \
 Before deploying, ensure you have completed the [Setup Cheatsheet](setup-cheatsheet.md):
 
 - [x] gcloud CLI installed and authenticated
-- [x] Project configured (`project-a509c806-3e21-4fbc-b19`)
+- [x] Project configured (`$GCP_PROJECT_ID`)
 - [x] Required APIs enabled
 - [x] Artifact Registry created (`validibot`)
 - [x] Docker authentication configured
@@ -420,7 +420,7 @@ just gcp push
 
 ```bash
 # Real-time logs for web service
-gcloud run services logs tail validibot-web-dev --region=australia-southeast1
+gcloud run services logs tail validibot-web-dev --region=$GCP_REGION
 
 # Historical logs with filtering
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-web-dev" --limit=100

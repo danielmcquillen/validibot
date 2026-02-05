@@ -554,16 +554,29 @@ def test_create_ai_policy_requires_rules(client):
 
 
 def test_create_energyplus_step_with_idf_checks(client):
+    from validibot.validations.constants import ResourceFileType
+    from validibot.validations.models import ValidatorResourceFile
+
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     validator = ensure_validator(ValidationType.ENERGYPLUS, "energyplus", "EnergyPlus")
+
+    # Create a weather file resource for the dropdown
+    weather_resource = ValidatorResourceFile.objects.create(
+        validator=validator,
+        org=None,  # System-wide
+        resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        name="San Francisco, CA (TMY3)",
+        filename="USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+        is_default=True,
+    )
 
     create_url = _select_validator(client, workflow, validator)
     response = client.post(
         create_url,
         data={
             "name": "EnergyPlus QA",
-            "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+            "weather_file": str(weather_resource.id),
             "run_simulation": "on",
             "idf_checks": ["duplicate-names", "hvac-sizing"],
         },
@@ -574,6 +587,7 @@ def test_create_energyplus_step_with_idf_checks(client):
     assert step is not None
     assert step.config["idf_checks"] == ["duplicate-names", "hvac-sizing"]
     assert step.config["run_simulation"] is True
+    assert step.config["resource_file_ids"] == [str(weather_resource.id)]
 
 
 def test_step_settings_does_not_expose_validator_selector(client):

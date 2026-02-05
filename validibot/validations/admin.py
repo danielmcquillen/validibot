@@ -7,6 +7,7 @@ from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.models import ValidatorResourceFile
 
 
 @admin.register(Ruleset)
@@ -97,6 +98,80 @@ class CustomValidatorAdmin(admin.ModelAdmin):
     )
     list_filter = ("custom_type", "base_validation_type")
     search_fields = ("validator__name", "org__name")
+
+
+@admin.register(ValidatorResourceFile)
+class ValidatorResourceFileAdmin(admin.ModelAdmin):
+    """
+    Admin for managing validator resource files (weather files, libraries, etc.).
+
+    Resource files can be:
+    - System-wide (org=NULL): visible to all organizations
+    - Org-specific (org=<uuid>): visible only to that organization
+    """
+
+    list_display = (
+        "name",
+        "validator",
+        "resource_type",
+        "scope_display",
+        "is_default",
+        "filename",
+        "created",
+    )
+    list_filter = (
+        "resource_type",
+        "is_default",
+        "validator",
+        ("org", admin.RelatedOnlyFieldListFilter),
+    )
+    search_fields = ("name", "filename", "validator__name", "org__name")
+    ordering = ("validator", "-is_default", "name")
+    readonly_fields = ("id", "created", "modified")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "validator",
+                    "resource_type",
+                    "file",
+                ),
+            },
+        ),
+        (
+            "Scope",
+            {
+                "fields": ("org", "is_default"),
+                "description": (
+                    "Leave 'Org' empty for system-wide resources visible to all "
+                    "organizations. Set an org to restrict visibility to that org only."
+                ),
+            },
+        ),
+        (
+            "Details",
+            {
+                "fields": ("filename", "description", "metadata"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("id", "created", "modified"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    @admin.display(description="Scope")
+    def scope_display(self, obj):
+        """Display whether resource is system-wide or org-specific."""
+        if obj.org is None:
+            return "System-wide"
+        return f"Org: {obj.org.name}"
 
 
 class ValidationStepRunInline(admin.TabularInline):

@@ -402,8 +402,12 @@ def build_xml_schema_config(
 
 
 def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
+    # Store weather file UUID in resource_file_ids list
+    weather_file_id = form.cleaned_data.get("weather_file", "")
+    resource_file_ids = [weather_file_id] if weather_file_id else []
+
     return {
-        "weather_file": form.cleaned_data.get("weather_file", ""),
+        "resource_file_ids": resource_file_ids,
         "idf_checks": form.cleaned_data.get("idf_checks", []),
         "run_simulation": form.cleaned_data.get("run_simulation", False),
     }

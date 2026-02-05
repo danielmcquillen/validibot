@@ -17,7 +17,8 @@ Environment configuration uses a template-based approach:
     │   ├── .django
     │   └── .postgres
     ├── .google-cloud/      # Google Cloud Platform deployment
-    │   └── .django
+    │   ├── .django         # Django runtime settings (uploaded to Secret Manager)
+    │   └── .just           # Just command runner settings (sourced locally)
     └── .aws/               # AWS deployment (future)
         └── .django
 
@@ -166,7 +167,24 @@ GCP deployments use completely different infrastructure:
 - Cloud Run Jobs for validator containers
 - GCS for file storage
 
-Secrets are stored in Secret Manager and mounted at `/secrets/.env`. The justfile commands handle uploading secrets:
+**Two types of environment files**:
+
+| File | Purpose | Usage |
+|------|---------|-------|
+| `.django` | Django runtime settings | Uploaded to Secret Manager, mounted at `/secrets/.env` |
+| `.just` | Just command runner settings | Sourced locally before running `just gcp` commands |
+
+The `.just` file contains your GCP project ID and region, which the justfile needs to run deployment commands. Source it before running any `just gcp` commands:
+
+```bash
+# Source your GCP config
+source .envs/.production/.google-cloud/.just
+
+# Now you can run GCP commands
+just gcp deploy prod
+```
+
+The `.django` file contains Django settings and is uploaded to Secret Manager:
 
 ```bash
 just gcp secrets dev   # Upload secrets for dev environment

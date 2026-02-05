@@ -668,8 +668,10 @@ class BaseStepConfigForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, step=None, **kwargs):
+    def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
         self.step = step
+        self.org = org
+        self.validator = validator
         super().__init__(*args, **kwargs)
         if not self.show_display_schema:
             self.fields.pop("display_schema", None)
@@ -935,30 +937,6 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
         return cleaned
 
 
-ENERGYPLUS_WEATHER_FILE_CHOICES = (
-    (
-        "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
-        _("San Francisco, CA (TMY3)"),
-    ),
-    (
-        "USA_CO_Golden-NREL.724666_TMY3.epw",
-        _("Golden/Denver, CO (TMY3)"),
-    ),
-    (
-        "USA_FL_Tampa.Intl.AP.722110_TMY3.epw",
-        _("Tampa, FL (TMY3)"),
-    ),
-    (
-        "USA_IL_Chicago-OHare.Intl.AP.725300_TMY3.epw",
-        _("Chicago O'Hare, IL (TMY3)"),
-    ),
-    (
-        "USA_VA_Sterling-Washington.Dulles.Intl.AP.724030_TMY3.epw",
-        _("Washington Dulles, VA (TMY3)"),
-    ),
-)
-
-
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
     """Collects EnergyPlus step configuration options.
 
@@ -967,12 +945,16 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     against the returned signals.
 
     Example:
-        form = EnergyPlusStepConfigForm(data={"run_simulation": True})
+        form = EnergyPlusStepConfigForm(
+            data={"run_simulation": True},
+            org=my_org,
+            validator=energyplus_validator,
+        )
     """
 
     weather_file = forms.ChoiceField(
-        label=_("Default weather file"),
-        choices=ENERGYPLUS_WEATHER_FILE_CHOICES,
+        label=_("Weather file"),
+        choices=[],
         help_text=_(
             "Weather file (EPW) used for EnergyPlus simulations. "
             "This determines the climate data for the simulation."
@@ -992,14 +974,21 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
     )
 
-    def __init__(self, *args, step=None, **kwargs):
-        super().__init__(*args, step=step, **kwargs)
+    def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
+        super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
         self.fields.pop("display_schema", None)
+
+        # Populate weather file choices from ValidatorResourceFile
+        self._populate_weather_file_choices(org, validator)
+
         if step:
             config = step.config or {}
+            # Get weather file from resource_file_ids (new format)
+            resource_file_ids = config.get("resource_file_ids", [])
+            weather_file_id = resource_file_ids[0] if resource_file_ids else ""
             self.initial.update(
                 {
-                    "weather_file": config.get("weather_file", ""),
+                    "weather_file": weather_file_id,
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
                 }
@@ -1007,6 +996,39 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             for key, value in self.initial.items():
                 if key in self.fields and value not in (None, ""):
                     self.fields[key].initial = value
+
+    def _populate_weather_file_choices(self, org, validator):
+        """Populate weather file dropdown from ValidatorResourceFile."""
+        from django.db.models import Q
+
+        from validibot.validations.constants import ResourceFileType
+        from validibot.validations.models import ValidatorResourceFile
+
+        choices = [("", _("— Select a weather file —"))]
+
+        if validator:
+            # Query resource files: system-wide (org=NULL) or org-specific
+            query = Q(org__isnull=True)  # System-wide resources
+            if org:
+                query |= Q(org=org)  # Plus org-specific resources
+
+            resource_files = (
+                ValidatorResourceFile.objects.filter(
+                    query,
+                    validator=validator,
+                    resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+                )
+                .select_related("org")
+                .order_by("-is_default", "name")
+            )
+
+            for rf in resource_files:
+                label = rf.name
+                if rf.org:
+                    label = f"{rf.name} (org)"
+                choices.append((str(rf.id), label))
+
+        self.fields["weather_file"].choices = choices
 
 
 class AiAssistStepConfigForm(BaseStepConfigForm):

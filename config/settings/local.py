@@ -152,6 +152,10 @@ VALIDATOR_RUNNER_OPTIONS = {
     "cpu_limit": env("VALIDATOR_CPU_LIMIT", default="2.0"),
     "network": env("VALIDATOR_NETWORK", default=None),
     "timeout_seconds": env.int("VALIDATOR_TIMEOUT_SECONDS", default=3600),
+    # Named volume for storage (Docker-in-Docker: validator containers mount this volume)
+    "storage_volume": env("VALIDATOR_STORAGE_VOLUME", default=None),
+    # Mount path for storage volume inside validator containers
+    "storage_mount_path": env("VALIDATOR_STORAGE_MOUNT_PATH", default="/app/storage"),
 }
 
 # Container images for advanced validators

@@ -52,10 +52,24 @@ def stage() -> str:
 
 @pytest.fixture(scope="session")
 def gcp_config() -> dict:
-    """GCP project and region configuration."""
+    """
+    GCP project and region configuration.
+
+    Loaded from environment variables:
+      - GCP_PROJECT_ID (required)
+      - GCP_REGION (default: us-central1)
+
+    Source your config first: source .envs/.production/.google-cloud/.just
+    """
+    project = os.environ.get("GCP_PROJECT_ID")
+    if not project:
+        pytest.skip(
+            "GCP_PROJECT_ID must be set. "
+            "Run: source .envs/.production/.google-cloud/.just",
+        )
     return {
-        "project": "project-a509c806-3e21-4fbc-b19",
-        "region": "australia-southeast1",
+        "project": project,
+        "region": os.environ.get("GCP_REGION", "us-central1"),
     }
 
 

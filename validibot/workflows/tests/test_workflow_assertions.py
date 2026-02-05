@@ -7,7 +7,9 @@ from validibot.users.tests.utils import ensure_all_roles_exist
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
+from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -297,6 +299,14 @@ class WorkflowStepAssertionsTests(TestCase):
         workflow = WorkflowFactory()
         step = self._make_energyplus_step(workflow)
         _login_as_author(self.client, workflow)
+
+        # Create a resource file for the weather dropdown
+        resource_file = ValidatorResourceFile.objects.create(
+            validator=step.validator,
+            name="San Francisco TMY3",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        )
+
         url = reverse(
             "workflows:workflow_step_settings",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
@@ -306,7 +316,7 @@ class WorkflowStepAssertionsTests(TestCase):
             data={
                 "name": "Energy check",
                 "description": "",
-                "weather_file": "USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw",
+                "weather_file": str(resource_file.id),
                 "run_simulation": True,
                 "idf_checks": [],
             },

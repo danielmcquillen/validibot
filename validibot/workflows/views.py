@@ -2062,6 +2062,11 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
         kwargs["step"] = self.get_step()
         if self.is_action_step():
             kwargs["definition"] = self.get_action_definition()
+        else:
+            # Pass org and validator for forms that need them (e.g., EnergyPlus)
+            workflow = self.get_workflow()
+            kwargs["org"] = workflow.org
+            kwargs["validator"] = self.get_validator()
         return kwargs
 
     def form_valid(self, form):

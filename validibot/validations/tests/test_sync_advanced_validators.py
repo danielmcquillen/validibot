@@ -1,103 +1,20 @@
 """
 Tests for the sync_advanced_validators management command.
+
+This command syncs advanced validators (EnergyPlus, FMI) and their catalog
+entries from seed data in validibot.validations.seeds to the database.
 """
 
-import json
-import sys
 from io import StringIO
-from unittest.mock import MagicMock
-from unittest.mock import patch
 
 from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.test import TestCase
-from django.test import override_settings
 
+from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import ValidationType
-from validibot.validations.constants import ValidatorReleaseState
-from validibot.validations.management.commands.sync_advanced_validators import (
-    METADATA_LABEL,
-)
-from validibot.validations.management.commands.sync_advanced_validators import (
-    ValidatorMetadata,
-)
 from validibot.validations.models import Validator
-
-
-def create_mock_docker():
-    """Create a mock docker module."""
-    mock_docker = MagicMock()
-    mock_client = MagicMock()
-    mock_docker.from_env.return_value = mock_client
-    return mock_docker, mock_client
-
-
-class ValidatorMetadataTests(TestCase):
-    """Tests for ValidatorMetadata dataclass."""
-
-    def test_from_dict_creates_metadata(self):
-        """Test that from_dict creates metadata from a dictionary."""
-        data = {
-            "id": "energyplus",
-            "slug": "energyplus",
-            "display_name": "EnergyPlus",
-            "version": "24.2.0",
-            "description": "EnergyPlus validator",
-            "validation_type": "ENERGYPLUS",
-        }
-        metadata = ValidatorMetadata.from_dict(data, "test-image:latest")
-
-        self.assertEqual(metadata.id, "energyplus")
-        self.assertEqual(metadata.slug, "energyplus")
-        self.assertEqual(metadata.display_name, "EnergyPlus")
-        self.assertEqual(metadata.version, "24.2.0")
-        self.assertEqual(metadata.validation_type, "ENERGYPLUS")
-        self.assertEqual(metadata.container_image, "test-image:latest")
-
-    def test_validate_returns_empty_for_valid_metadata(self):
-        """Test that validate returns no errors for valid metadata."""
-        metadata = ValidatorMetadata(
-            id="energyplus",
-            slug="energyplus",
-            display_name="EnergyPlus",
-            version="24.2.0",
-            description="",
-            validation_type="ENERGYPLUS",
-        )
-        errors = metadata.validate()
-        self.assertEqual(errors, [])
-
-    def test_validate_returns_errors_for_missing_fields(self):
-        """Test that validate returns errors for missing required fields."""
-        metadata = ValidatorMetadata(
-            id="",
-            slug="",
-            display_name="",
-            version="",
-            description="",
-            validation_type="",
-        )
-        errors = metadata.validate()
-
-        self.assertIn("Missing required field: id", errors)
-        self.assertIn("Missing required field: slug", errors)
-        self.assertIn("Missing required field: display_name", errors)
-        self.assertIn("Missing required field: validation_type", errors)
-
-    def test_validate_returns_error_for_invalid_validation_type(self):
-        """Test that validate returns error for invalid validation_type."""
-        metadata = ValidatorMetadata(
-            id="test",
-            slug="test",
-            display_name="Test",
-            version="1.0",
-            description="",
-            validation_type="INVALID_TYPE",
-        )
-        errors = metadata.validate()
-
-        self.assertEqual(len(errors), 1)
-        self.assertIn("Invalid validation_type", errors[0])
+from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.seeds import SYSTEM_VALIDATOR_SEEDS
 
 
 class SyncAdvancedValidatorsCommandTests(TestCase):
@@ -116,214 +33,142 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
         )
         return out.getvalue(), err.getvalue()
 
-    def test_command_warns_when_no_images_configured(self):
-        """Test that command warns when ADVANCED_VALIDATOR_IMAGES is empty."""
-        with override_settings(ADVANCED_VALIDATOR_IMAGES=[]):
-            out, _ = self.call_command()
-            self.assertIn("No advanced validator images configured", out)
+    def test_command_creates_validators_from_seeds(self):
+        """Test that command creates validators from seed data."""
+        out, _ = self.call_command()
 
-    def test_command_fails_when_docker_unavailable(self):
-        """Test that command fails when Docker is not available."""
-        mock_docker = MagicMock()
-        mock_docker.from_env.side_effect = Exception("Docker not running")
+        # Verify output mentions sync complete
+        self.assertIn("Sync complete", out)
 
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                with self.assertRaises(CommandError) as ctx:
-                    self.call_command()
+        # Verify validators were created
+        for seed in SYSTEM_VALIDATOR_SEEDS:
+            slug = seed["validator"]["slug"]
+            self.assertTrue(
+                Validator.objects.filter(slug=slug).exists(),
+                f"Validator {slug} should exist",
+            )
 
-                self.assertIn("Docker is not available", str(ctx.exception))
+    def test_command_creates_energyplus_validator(self):
+        """Test that EnergyPlus validator is created with correct attributes."""
+        self.call_command()
 
-    def test_command_creates_validator_from_label_metadata(self):
-        """Test that command creates validator from Docker label metadata."""
-        mock_docker, mock_client = create_mock_docker()
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        # Setup mock image with metadata label
-        metadata = {
-            "id": "energyplus",
-            "slug": "energyplus-test",
-            "display_name": "EnergyPlus Test",
-            "version": "24.2.0",
-            "description": "Test EnergyPlus validator",
-            "validation_type": "ENERGYPLUS",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
-
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                out, _ = self.call_command("--no-pull")
-
-        # Verify validator was created
-        self.assertIn("Created: EnergyPlus Test", out)
-        self.assertTrue(
-            Validator.objects.filter(slug="energyplus-test").exists()
-        )
-
-        validator = Validator.objects.get(slug="energyplus-test")
-        self.assertEqual(validator.name, "EnergyPlus Test")
-        self.assertEqual(validator.version, "24.2.0")
+        self.assertEqual(validator.name, "EnergyPlus Validation")
         self.assertEqual(validator.validation_type, ValidationType.ENERGYPLUS)
         self.assertTrue(validator.is_system)
-        self.assertEqual(validator.release_state, ValidatorReleaseState.PUBLISHED)
+        self.assertTrue(validator.has_processor)
+        self.assertEqual(validator.processor_name, "EnergyPlus Simulation")
+
+    def test_command_creates_catalog_entries(self):
+        """Test that catalog entries are created for validators."""
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+
+        # Should have both input and output catalog entries
+        input_entries = ValidatorCatalogEntry.objects.filter(
+            validator=validator,
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage="input",
+        )
+        output_entries = ValidatorCatalogEntry.objects.filter(
+            validator=validator,
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage="output",
+        )
+
+        self.assertTrue(input_entries.exists(), "Should have input signal entries")
+        self.assertTrue(output_entries.exists(), "Should have output signal entries")
+
+    def test_command_creates_specific_output_signals(self):
+        """Test that specific output signals are created."""
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+
+        # Check for specific output signals
+        expected_signals = [
+            "site_electricity_kwh",
+            "site_eui_kwh_m2",
+            "unmet_heating_hours",
+            "floor_area_m2",
+        ]
+
+        for slug in expected_signals:
+            self.assertTrue(
+                ValidatorCatalogEntry.objects.filter(
+                    validator=validator,
+                    slug=slug,
+                ).exists(),
+                f"Signal {slug} should exist",
+            )
+
+    def test_command_creates_derivation_entries(self):
+        """Test that derivation entries are created."""
+        self.call_command()
+
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+
+        derivations = ValidatorCatalogEntry.objects.filter(
+            validator=validator,
+            entry_type=CatalogEntryType.DERIVATION,
+        )
+
+        self.assertTrue(derivations.exists(), "Should have derivation entries")
+
+        # Check for specific derivation
+        total_unmet = ValidatorCatalogEntry.objects.filter(
+            validator=validator,
+            slug="total_unmet_hours",
+            entry_type=CatalogEntryType.DERIVATION,
+        )
+        self.assertTrue(
+            total_unmet.exists(),
+            "total_unmet_hours derivation should exist",
+        )
+
+    def test_command_is_idempotent(self):
+        """Test that running command multiple times doesn't create duplicates."""
+        # Run twice
+        self.call_command()
+        self.call_command()
+
+        # Should only have one of each validator
+        for seed in SYSTEM_VALIDATOR_SEEDS:
+            slug = seed["validator"]["slug"]
+            count = Validator.objects.filter(slug=slug).count()
+            self.assertEqual(
+                count,
+                1,
+                f"Should have exactly 1 validator with slug {slug}, found {count}",
+            )
 
     def test_command_updates_existing_validator(self):
-        """Test that command updates existing validator."""
-        # Create existing validator
+        """Test that command updates existing validator fields."""
+        # Create a validator with different name
         Validator.objects.create(
-            slug="energyplus-update",
+            slug="energyplus-idf-validator",
             name="Old Name",
-            version="23.0.0",
             validation_type=ValidationType.ENERGYPLUS,
             is_system=True,
         )
 
-        mock_docker, mock_client = create_mock_docker()
+        out, _ = self.call_command()
 
-        # Setup mock image with updated metadata
-        metadata = {
-            "id": "energyplus",
-            "slug": "energyplus-update",
-            "display_name": "New Name",
-            "version": "24.2.0",
-            "description": "Updated description",
-            "validation_type": "ENERGYPLUS",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
+        # Verify output mentions update
+        self.assertIn("Updated", out)
 
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                out, _ = self.call_command("--no-pull")
+        # Verify name was updated
+        validator = Validator.objects.get(slug="energyplus-idf-validator")
+        self.assertEqual(validator.name, "EnergyPlus Validation")
 
-        # Verify validator was updated
-        self.assertIn("Updated: New Name", out)
+    def test_command_reports_creation_counts(self):
+        """Test that command reports how many validators/entries were created."""
+        out, _ = self.call_command()
 
-        validator = Validator.objects.get(slug="energyplus-update")
-        self.assertEqual(validator.name, "New Name")
-        self.assertEqual(validator.version, "24.2.0")
+        # Should report validators created
+        self.assertIn("validators created", out.lower())
 
-    def test_command_dry_run_does_not_create(self):
-        """Test that --dry-run does not create validators."""
-        mock_docker, mock_client = create_mock_docker()
-
-        # Setup mock image
-        metadata = {
-            "id": "test",
-            "slug": "test-dry-run",
-            "display_name": "Test Dry Run",
-            "version": "1.0",
-            "description": "",
-            "validation_type": "FMI",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
-
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                out, _ = self.call_command("--no-pull", "--dry-run")
-
-        # Verify dry run output
-        self.assertIn("DRY RUN", out)
-        self.assertIn("Would create", out)
-
-        # Verify validator was NOT created
-        self.assertFalse(
-            Validator.objects.filter(slug="test-dry-run").exists()
-        )
-
-    def test_command_disables_removed_validators(self):
-        """Test that validators not in config are disabled (soft delete)."""
-        # Create existing validator that won't be in config
-        Validator.objects.create(
-            slug="old-validator",
-            name="Old Validator",
-            version="1.0",
-            validation_type=ValidationType.ENERGYPLUS,
-            is_system=True,
-            release_state=ValidatorReleaseState.PUBLISHED,
-        )
-
-        mock_docker, mock_client = create_mock_docker()
-
-        # Setup mock image for new validator
-        metadata = {
-            "id": "new",
-            "slug": "new-validator",
-            "display_name": "New Validator",
-            "version": "1.0",
-            "description": "",
-            "validation_type": "ENERGYPLUS",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
-
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                out, _ = self.call_command("--no-pull")
-
-        # Verify old validator was disabled
-        self.assertIn("Disabled 1 validator", out)
-
-        old_validator = Validator.objects.get(slug="old-validator")
-        self.assertEqual(old_validator.release_state, ValidatorReleaseState.DRAFT)
-
-    def test_command_reports_invalid_metadata(self):
-        """Test that command reports invalid metadata."""
-        mock_docker, mock_client = create_mock_docker()
-
-        # Setup mock image with invalid metadata (missing required fields)
-        metadata = {
-            "id": "",
-            "slug": "",
-            "display_name": "",
-            "version": "",
-            "description": "",
-            "validation_type": "",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
-
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=["test-image:latest"]):
-                out, _ = self.call_command("--no-pull")
-
-        # Verify errors were reported
-        self.assertIn("Missing required field", out)
-        self.assertIn("1 failed", out)
-
-    def test_command_single_image_option(self):
-        """Test that --image option syncs a single image."""
-        mock_docker, mock_client = create_mock_docker()
-
-        # Setup mock image
-        metadata = {
-            "id": "single",
-            "slug": "single-image-test",
-            "display_name": "Single Image Test",
-            "version": "1.0",
-            "description": "",
-            "validation_type": "FMI",
-        }
-        mock_image = MagicMock()
-        mock_image.labels = {METADATA_LABEL: json.dumps(metadata)}
-        mock_client.images.get.return_value = mock_image
-
-        # Call with --image (ignores ADVANCED_VALIDATOR_IMAGES)
-        with patch.dict(sys.modules, {"docker": mock_docker}):
-            with override_settings(ADVANCED_VALIDATOR_IMAGES=[]):
-                out, _ = self.call_command(
-                    "--no-pull",
-                    "--image=custom-image:latest",
-                )
-
-        # Verify validator was created
-        self.assertIn("Created: Single Image Test", out)
-        self.assertTrue(
-            Validator.objects.filter(slug="single-image-test").exists()
-        )
+        # Should report catalog entries created
+        self.assertIn("catalog entries created", out.lower())

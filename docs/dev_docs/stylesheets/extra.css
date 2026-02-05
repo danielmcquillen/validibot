@@ -173,3 +173,10 @@
   background-color: #e9f0f9;
 }
 
+/* Align left navigation top with page title
+   Default sidebar has padding: 1.2rem 0, content area has ~1rem before h1.
+   Reduce sidebar padding to align the nav title with page header. */
+.md-sidebar--primary {
+  padding-top: 1rem;
+}
+

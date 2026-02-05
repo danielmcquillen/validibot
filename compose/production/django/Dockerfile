@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gettext \
     # Git for installing vb-shared from GitHub
     git \
+    # curl for healthchecks
+    curl \
+    # gosu for dropping privileges after Docker socket setup
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -37,23 +41,26 @@ RUN uv sync --no-dev --no-sources --no-install-project
 COPY . ${APP_HOME}/
 
 # Create non-root user and own the app directory
-RUN addgroup --system django && adduser --system --ingroup django django && chown -R django:django ${APP_HOME}
-USER django
+# Also create docker group for socket access - entrypoint will adjust GID to match host
+RUN addgroup --system django \
+  && adduser --system --ingroup django django \
+  && chown -R django:django ${APP_HOME} \
+  && (getent group docker || groupadd docker) \
+  && usermod -aG docker django
 
 # Copy entrypoint/start scripts and make executable
 USER root
 COPY compose/production/django/entrypoint.sh /entrypoint
 COPY compose/production/django/start.sh /start
-COPY compose/production/django/start-worker.sh /start-worker
-RUN chmod +x /entrypoint /start /start-worker && chown django:django /entrypoint /start /start-worker
-
-# Drop back to non-root
-USER django
+RUN chmod +x /entrypoint /start
 
 # Place executables in the environment at the front of the path
 ENV PATH="${APP_HOME}/.venv/bin:${PATH}"
 
-# Use entrypoint (waits for DB); compose sets the command (/start or /start-worker)
+# Entrypoint runs as root to fix Docker socket permissions, then drops to django via gosu
+USER root
+
+# Use entrypoint (waits for DB, fixes docker perms, drops to django)
 ENTRYPOINT ["/entrypoint"]
 
 # Default command - run the web server

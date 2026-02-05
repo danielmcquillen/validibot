@@ -3,7 +3,7 @@ Local filesystem storage backend for validation data.
 
 This backend stores files on the local filesystem, suitable for:
 - Local development (native or Docker)
-- Self-hosted deployments using Docker volumes
+- Docker Compose deployments using Docker volumes
 - Testing
 
 Files are stored under a configurable root directory (DATA_STORAGE_ROOT).

@@ -59,7 +59,7 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 - Service account: `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `validibot-db`
 - Cloud Tasks queue: `validibot-tasks`
-- GCS buckets: `validibot-media`, `validibot-files`
+- GCS bucket: `validibot-storage` (with public/ and private/ prefixes)
 - Secret: `django-env`
 
 To create a new environment from scratch (or verify existing resources):
@@ -79,10 +79,10 @@ This command creates (example for dev):
 - Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `validibot-validation-queue-dev`
-- GCS buckets: `validibot-media-dev`, `validibot-files-dev`
+- GCS bucket: `validibot-storage-dev` (with public/ and private/ prefixes)
 - Secret placeholder: `django-env-dev`
 
-For production, resource names have no suffix (e.g., `validibot-db`, `validibot-media`).
+For production, resource names have no suffix (e.g., `validibot-db`, `validibot-storage`).
 
 !!! warning "Save the database password!"
     The command outputs a generated password for the database user. **Copy this password immediately** - you'll need it in the next step. If you lose it, you'll need to reset the database user password manually.

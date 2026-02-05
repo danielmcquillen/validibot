@@ -369,48 +369,60 @@ gcloud iam service-accounts create validibot-cloudrun-staging \
 # Grant same roles (but could be more restrictive, e.g., read-only storage)
 ```
 
-## Create GCS Buckets for Media Storage
+## Create GCS Bucket for Storage
 
-Create Cloud Storage buckets for user-uploaded files and media:
+Create a Cloud Storage bucket with prefix-based access control:
 
 ```bash
 # Production bucket
-gcloud storage buckets create gs://validibot-media \
+gcloud storage buckets create gs://validibot-storage \
   --location=australia-southeast1 \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --public-access-prevention \
   --project project-a509c806-3e21-4fbc-b19
 
 # Development bucket
-gcloud storage buckets create gs://validibot-media-dev \
+gcloud storage buckets create gs://validibot-storage-dev \
   --location=australia-southeast1 \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
-  --public-access-prevention \
   --project project-a509c806-3e21-4fbc-b19
 ```
 
 ### Grant bucket access to service accounts
 
 ```bash
-# Production SA -> Production bucket
-gcloud storage buckets add-iam-policy-binding gs://validibot-media \
+# Production SA -> Production bucket (full access)
+gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
   --member="serviceAccount:validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 
+# Make public/ prefix publicly readable (for avatars, workflow images)
+gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
+  --member="allUsers" \
+  --role="roles/storage.objectViewer" \
+  --condition='expression=resource.name.startsWith("projects/_/buckets/validibot-storage/objects/public/"),title=public-prefix-only'
+
 # Staging SA -> Dev bucket (when staging is set up)
-# gcloud storage buckets add-iam-policy-binding gs://validibot-media-dev \
+# gcloud storage buckets add-iam-policy-binding gs://validibot-storage-dev \
 #   --member="serviceAccount:validibot-cloudrun-staging@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com" \
 #   --role="roles/storage.objectAdmin"
 ```
 
+Bucket structure:
+
+```
+validibot-storage/
+├── public/      # Publicly readable (avatars, workflow images)
+└── private/     # Private (validation submissions, artifacts)
+```
+
 Bucket naming:
 
-- `validibot-media` - Production media files
-- `validibot-media-dev` - Development/staging media files
+- `validibot-storage` - Production (public/ and private/ prefixes)
+- `validibot-storage-dev` - Development/staging
 
-The `GCS_MEDIA_BUCKET` environment variable in `.envs/.production/.google-cloud/.django` should be set to `validibot-media`.
+The `STORAGE_BUCKET` environment variable in `.envs/.production/.google-cloud/.django` should be set to `validibot-storage`.
 
 ## Build and Push Docker Image
 
@@ -572,7 +584,7 @@ gcloud run services update validibot-web \
 | Artifact Registry      | `australia-southeast1-docker.pkg.dev/project-a509c806-3e21-4fbc-b19/validibot/`  |
 | Service Account (prod) | `validibot-cloudrun-prod@project-a509c806-3e21-4fbc-b19.iam.gserviceaccount.com` |
 | Secrets                | `django-env`, `db-password`                                                      |
-| GCS Bucket (prod)      | `validibot-media`                                                                |
-| GCS Bucket (dev)       | `validibot-media-dev`                                                            |
+| GCS Bucket (prod)      | `validibot-storage` (with public/ and private/ prefixes)                         |
+| GCS Bucket (dev)       | `validibot-storage-dev`                                                          |
 | Cloud Tasks Queue      | `validibot-tasks`                                                                |
 | Service URL            | `https://validibot-web-220053993828.australia-southeast1.run.app`                |

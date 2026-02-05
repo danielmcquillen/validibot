@@ -111,7 +111,7 @@ Currently, submissions are retained for audit purposes. If you have compliance r
 
 **Is my data encrypted?**
 
-Data at rest and in transit should be encrypted per your deployment's security configuration. Self-hosted deployments control their own encryption settings. See your administrator or the deployment documentation for specifics.
+Data at rest and in transit should be encrypted per your deployment's security configuration. Docker Compose deployments control their own encryption settings. See your administrator or the deployment documentation for specifics.
 
 **Who can see my validation results?**
 

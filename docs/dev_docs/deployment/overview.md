@@ -35,8 +35,7 @@ Each stage has completely isolated infrastructure:
 | Worker service       | `validibot-worker-dev`               | `validibot-worker-staging`               | `validibot-worker`               |
 | EnergyPlus validator | `validibot-validator-energyplus-dev` | `validibot-validator-energyplus-staging` | `validibot-validator-energyplus` |
 | FMI validator        | `validibot-validator-fmi-dev`        | `validibot-validator-fmi-staging`        | `validibot-validator-fmi`        |
-| Media bucket         | `validibot-media-dev`                | `validibot-media-staging`                | `validibot-media`                |
-| Files bucket         | `validibot-files-dev`                | `validibot-files-staging`                | `validibot-files`                |
+| Storage bucket       | `validibot-storage-dev`              | `validibot-storage-staging`              | `validibot-storage`              |
 | Tasks queue          | `validibot-validation-queue-dev`     | `validibot-validation-queue-staging`     | `validibot-tasks`                |
 | Secret               | `django-env-dev`                     | `django-env-staging`                     | `django-env`                     |
 
@@ -99,7 +98,7 @@ Secrets are stored in Secret Manager and mounted as `/secrets/.env`. Key variabl
 | `DATABASE_URL`             | Cloud SQL connection string.                                  |
 | `SITE_URL`                 | Public base URL (prod: `https://validibot.com`).              |
 | `WORKER_URL`               | Worker base URL (worker `*.run.app` URL) for callbacks/tasks. |
-| `GCS_MEDIA_BUCKET`         | Cloud Storage bucket for media files.                         |
+| `STORAGE_BUCKET`           | Cloud Storage bucket (with public/ and private/ prefixes).    |
 | `EMAIL_URL` or `ANYMAIL_*` | Postmark/SMTP settings for transactional mail.                |
 | `POSTMARK_SERVER_TOKEN`    | Required for waitlist e-mail delivery.                        |
 | `SENTRY_DSN`               | Optional but recommended.                                     |

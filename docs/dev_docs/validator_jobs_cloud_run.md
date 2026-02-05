@@ -156,10 +156,10 @@ When Django triggers a validator Cloud Run Job execution, it passes:
 
 | Source | Data | Example |
 |--------|------|---------|
-| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://validibot-files-dev/org123/run456/input.json` |
+| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://validibot-storage-dev/private/runs/run456/input.json` |
 | Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
-| Input envelope | `context.execution_bundle_uri` | `gs://validibot-files-dev/org123/run456/` |
-| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-files-dev/org123/run456/model.idf` |
+| Input envelope | `context.execution_bundle_uri` | `gs://validibot-storage-dev/private/runs/run456/` |
+| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-storage-dev/private/runs/run456/model.idf` |
 
 The validator reads the input envelope, downloads files from the provided GCS URIs, runs the simulation, uploads outputs to the execution bundle URI, and POSTs results to the callback URL.
 
@@ -169,7 +169,7 @@ Stage isolation is enforced by:
 
 1. **Django** creates envelopes with stage-appropriate bucket names and callback URLs
 2. **Service accounts** - each stage's validator job uses a stage-specific SA that only has access to its own buckets
-3. **GCS bucket permissions** - `validibot-cloudrun-dev` can only access `validibot-files-dev`, not prod buckets
+3. **GCS bucket permissions** - `validibot-cloudrun-dev` can only access `validibot-storage-dev`, not prod buckets
 
 ### Deploy-time environment variables
 

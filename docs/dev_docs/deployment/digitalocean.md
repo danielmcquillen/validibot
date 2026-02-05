@@ -397,7 +397,7 @@ Spaces provides S3-compatible object storage for uploaded files:
 
 1. **Create a Space:**
    - Go to **Spaces → Create a Space**
-   - Choose a region and name (e.g., `validibot-files`)
+   - Choose a region and name (e.g., `validibot-storage`)
    - Enable CDN if desired
 
 2. **Create access keys:**
@@ -409,7 +409,7 @@ Spaces provides S3-compatible object storage for uploaded files:
 
    ```bash
    DATA_STORAGE_BACKEND=s3
-   STORAGE_BUCKET=validibot-files
+   STORAGE_BUCKET=validibot-storage
    AWS_S3_ENDPOINT_URL=https://nyc3.digitaloceanspaces.com
    AWS_S3_REGION_NAME=nyc3
    AWS_ACCESS_KEY_ID=your-spaces-key

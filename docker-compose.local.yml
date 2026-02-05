@@ -1,9 +1,8 @@
 
 volumes:
-  media_volume:
   validibot_local_postgres_data:
   validibot_local_postgres_backups:
-  validibot_local_venv:  # Shared venv for django and worker containers
+  validibot_local_venv:  # Shared venv for web and worker containers
   validibot_local_redis_data:
   validibot_local_storage:  # Shared storage for validation files
 
@@ -12,21 +11,24 @@ networks:
     driver: bridge
 
 services:
-  django: &django
-    # Django app serving user-facing traffic (runserver on 8000)
+  web: &django
+    # Web app serving user-facing traffic (runserver on 8000)
+    # This is the ONLY container that runs migrations
     build:
       context: .
       dockerfile: compose/local/django/Dockerfile
     depends_on:
-      - postgres
-      - mailpit
-      - redis
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      redis:
+        condition: service_healthy
     networks:
       - validibot
     volumes:
       - validibot_local_venv:/app/.venv
       - .:/app
-      - media_volume:/app/media
       # Shared storage volume for validation files (accessible by validator containers)
       - validibot_local_storage:/app/storage
       # Docker socket for spawning validator containers
@@ -43,20 +45,37 @@ services:
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       # Storage root inside the container
       - DATA_STORAGE_ROOT=/app/storage/private
-      # Callback URL for validator containers to reach Django
-      - SITE_URL=http://django:8000
-      - WORKER_URL=http://worker:8001
+      - SITE_URL=http://web:8000
     ports:
       - "8000:8000"
+    healthcheck:
+      # Check that Django is responding (migrations complete, server running)
+      # Uses root URL - any response (even redirect to login) means Django is up
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/", "-o", "/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     command: /start
 
   worker:
-    # Django app for internal/task endpoints (runserver on 8001) to mimic separate scaling
-    # APP_ROLE=worker enables the internal API endpoints (execute-validation-run, callbacks)
+    # Worker processes background tasks from the Redis queue
+    # For Docker Compose: this is a Celery worker that pulls tasks from Redis
+    # For GCP/AWS: this would be a Django HTTP server receiving tasks via Cloud Tasks/SQS
     <<: *django
-    command: ["/start-worker"]
-    ports:
-      - "8001:8001"
+    depends_on:
+      web:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
+    ports: []
+    healthcheck:
+      # Celery worker health check - verify process is running
+      # Using pgrep instead of celery inspect which can be slow/flaky
+      test: ["CMD-SHELL", "pgrep -f 'celery.*worker' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     environment:
       - APP_ROLE=worker
       - VALIDATOR_RUNNER=docker
@@ -64,34 +83,28 @@ services:
       - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       - DATA_STORAGE_ROOT=/app/storage/private
-      - SITE_URL=http://django:8000
-      - WORKER_URL=http://worker:8001
+      - SITE_URL=http://web:8000
 
-  celery_worker:
-    # Celery worker processes background tasks from Redis queue
-    # This handles async tasks like validation run execution
-    <<: *django
-    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
-    ports: []
-    environment:
-      - APP_ROLE=celery_worker
-      - VALIDATOR_RUNNER=docker
-      - VALIDATOR_NETWORK=validibot_validibot
-      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
-      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
-      - DATA_STORAGE_ROOT=/app/storage/private
-      - SITE_URL=http://django:8000
-      - WORKER_URL=http://worker:8001
-
-  celery_beat:
+  scheduler:
     # Celery Beat scheduler triggers periodic tasks on cron schedules
     # Tasks include: purge expired data, cleanup sessions, etc.
-    # Only run ONE beat instance to avoid duplicate executions
+    # Only run ONE scheduler instance to avoid duplicate executions
     <<: *django
+    depends_on:
+      web:
+        condition: service_healthy
+      worker:
+        condition: service_started
     command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
     ports: []
     environment:
-      - APP_ROLE=celery_beat
+      - APP_ROLE=scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   postgres:
     # Local Postgres for app data

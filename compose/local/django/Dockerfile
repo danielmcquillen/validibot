@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
     sudo \
+    # gosu for dropping privileges after Docker socket setup
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -40,10 +42,13 @@ RUN uv sync --extra dev --frozen --no-install-project
 COPY . ${APP_HOME}/
 
 # Create non-root user with a real home and own the app directory
+# Also create a docker group - the entrypoint will adjust the GID to match the host socket
 RUN addgroup --system django \
   && adduser --system --home /home/django --shell /bin/bash --ingroup django django \
   && mkdir -p /home/django \
-  && chown -R django:django ${APP_HOME} /home/django
+  && chown -R django:django ${APP_HOME} /home/django \
+  && (getent group docker || groupadd docker) \
+  && usermod -aG docker django
 
 # Copy entrypoint/start scripts and make executable
 USER root
@@ -53,17 +58,18 @@ COPY compose/local/django/start-worker.sh /start-worker
 RUN chmod +x /entrypoint /start /start-worker
 
 # Devcontainer-style user (optional, useful for VS Code Remote)
-RUN groupadd --gid 1000 dev-user \
-  && useradd --uid 1000 --gid dev-user --shell /bin/bash --create-home dev-user \
+# Use flexible GID/UID creation to handle cases where 1000 already exists
+RUN (getent group 1000 || groupadd --gid 1000 dev-user) \
+  && (id -u 1000 &>/dev/null || useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home dev-user) \
   && echo dev-user ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/dev-user \
   && chmod 0440 /etc/sudoers.d/dev-user
 
 # Place executables in the environment at the front of the path
 ENV PATH="${APP_HOME}/.venv/bin:${PATH}"
-ENV PYTHONPATH="${APP_HOME}/.venv/lib/python3.13/site-packages:${PYTHONPATH}"
+ENV PYTHONPATH="${APP_HOME}/.venv/lib/python3.13/site-packages"
 
-# Drop to non-root (default app user)
-USER django
+# Entrypoint runs as root to fix Docker socket permissions, then drops to django via gosu
+USER root
 
-# Use entrypoint (waits for DB) and default to /start (runserver)
+# Use entrypoint (waits for DB, fixes docker perms, drops to django) and default to /start
 ENTRYPOINT ["/entrypoint"]

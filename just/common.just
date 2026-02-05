@@ -54,13 +54,13 @@ _validate-stage stage:
 #   - Services:  validibot-web, validibot-worker
 #   - Database:  validibot-db
 #   - Secrets:   django-env
-#   - Buckets:   validibot-media, validibot-files
+#   - Bucket:    validibot-storage (with public/ and private/ prefixes)
 #
 # Non-production (stage=dev|staging):
 #   - Services:  validibot-web-{stage}, validibot-worker-{stage}
 #   - Database:  validibot-db-{stage}
 #   - Secrets:   django-env-{stage}
-#   - Buckets:   validibot-media-{stage}, validibot-files-{stage}
+#   - Bucket:    validibot-storage-{stage} (with public/ and private/ prefixes)
 #
 # This convention ensures:
 #   1. Production resources have clean names (no suffix)
@@ -101,17 +101,11 @@ _db-instance stage:
 _secret-name stage:
     @if [ "{{stage}}" = "prod" ]; then echo "django-env"; else echo "django-env-{{stage}}"; fi
 
-# Helper to compute media bucket name
+# Helper to compute storage bucket name (single bucket with public/ and private/ prefixes)
 [private]
 [no-cd]
-_media-bucket stage:
-    @if [ "{{stage}}" = "prod" ]; then echo "validibot-media"; else echo "validibot-media-{{stage}}"; fi
-
-# Helper to compute files bucket name
-[private]
-[no-cd]
-_files-bucket stage:
-    @if [ "{{stage}}" = "prod" ]; then echo "validibot-files"; else echo "validibot-files-{{stage}}"; fi
+_storage-bucket stage:
+    @if [ "{{stage}}" = "prod" ]; then echo "validibot-storage"; else echo "validibot-storage-{{stage}}"; fi
 
 # =============================================================================
 # Environment File Paths

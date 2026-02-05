@@ -176,7 +176,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
         description="Clear expired Django sessions",
     ),
     # -------------------------------------------------------------------------
-    # Self-Hosted Only Tasks
+    # Docker Compose Only Tasks
     # -------------------------------------------------------------------------
     ScheduledTaskDefinition(
         id="cleanup-orphaned-containers",

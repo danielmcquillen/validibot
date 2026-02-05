@@ -1,6 +1,6 @@
 # Validibot Production Docker Compose
 #
-# This compose file runs Validibot in a Docker Compose production environment.
+# This compose file runs Validibot in a production Docker Compose environment.
 # Suitable for any cloud provider, VPS, or on-premises infrastructure.
 #
 # Usage:
@@ -12,9 +12,9 @@
 # For SSL/HTTPS, place this behind a reverse proxy (nginx, Traefik, Caddy).
 #
 # Architecture:
-#   - django: Main web application
-#   - celery_worker: Background task processor
-#   - celery_beat: Periodic task scheduler
+#   - web: Main web application (Gunicorn)
+#   - worker: Background task processor (Celery worker)
+#   - scheduler: Periodic task scheduler (Celery Beat)
 #   - postgres: Database
 #   - redis: Task queue broker
 #
@@ -31,7 +31,7 @@ networks:
     driver: bridge
 
 services:
-  django: &django
+  web: &django
     build:
       context: .
       dockerfile: compose/production/django/Dockerfile
@@ -46,53 +46,78 @@ services:
       # Persistent storage for files
       - validibot_storage:/app/storage
       # Docker socket for running validator containers
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - .envs/.production/.docker-compose/.django
       - .envs/.production/.docker-compose/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
+      # Configure validator runner for Docker Compose
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
     ports:
-      - "8000:5000"  # Gunicorn runs on 5000 internally
+      - "8000:8000"
     command: /start
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
-  celery_worker:
+  worker:
     # Background task processor (validation execution, etc.)
-    # Single worker with prefork pool; scale concurrency via CELERY_WORKER_CONCURRENCY env var
+    # For Docker Compose: Celery worker pulling from Redis
     <<: *django
+    depends_on:
+      web:
+        condition: service_healthy
     ports: []
-    command: ["celery", "-A", "config", "worker", "--loglevel=info"]
+    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
+    env_file:
+      - .envs/.production/.docker-compose/.django
+      - .envs/.production/.docker-compose/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      - APP_ROLE=celery_worker
-      - CELERY_WORKER_CONCURRENCY=1  # Default to 1; increase for more parallelism
+      - APP_ROLE=worker
+      - VALIDATOR_RUNNER=docker
+      - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
     healthcheck:
-      test: ["CMD", "celery", "-A", "config", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      test: ["CMD-SHELL", "pgrep -f 'celery.*worker' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
-  celery_beat:
+  scheduler:
     # Periodic task scheduler (cleanup, maintenance tasks)
-    # Only run ONE beat instance to avoid duplicate task execution
+    # Only run ONE scheduler instance to avoid duplicate task execution
     <<: *django
+    depends_on:
+      web:
+        condition: service_healthy
+      worker:
+        condition: service_started
     ports: []
     command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+    env_file:
+      - .envs/.production/.docker-compose/.django
+      - .envs/.production/.docker-compose/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      - APP_ROLE=celery_beat
+      - APP_ROLE=scheduler
     deploy:
       replicas: 1  # Must be exactly 1
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "celery.*beat"]
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -109,7 +134,7 @@ services:
       - validibot_postgres_data:/var/lib/postgresql/data
       - validibot_postgres_backups:/backups
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-validibot}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-validibot}"]
       interval: 10s
       timeout: 5s
       retries: 5

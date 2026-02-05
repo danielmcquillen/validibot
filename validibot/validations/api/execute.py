@@ -10,7 +10,7 @@ Architecture varies by deployment target:
     Local Dev:
         HTTP POST (direct) -> This View -> ValidationRunService.execute_workflow_steps()
 
-    Self-hosted (Docker Compose):
+    Docker Compose:
         Celery Worker -> HTTP POST -> This View -> ValidationRunService.
             execute_workflow_steps()
 
@@ -52,7 +52,7 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
 
     Authentication:
         - Google Cloud: Cloud Run IAM performs authentication via OIDC token
-        - Self-hosted docker compose: Worker-only access enforced by WorkerOnlyAPIView
+        - Docker Compose: Worker-only access enforced by WorkerOnlyAPIView
         - Local dev: No authentication (direct HTTP calls)
 
     Error Handling:

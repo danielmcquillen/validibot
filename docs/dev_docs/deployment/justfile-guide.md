@@ -144,7 +144,7 @@ just gcp maintenance-on dev            # Put in maintenance mode
 just gcp maintenance-off dev           # Resume from maintenance
 ```
 
-### Self-Hosted Docker Compose
+### Docker Compose
 
 Commands are prefixed with `docker-compose`:
 

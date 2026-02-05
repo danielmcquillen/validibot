@@ -888,34 +888,42 @@ init-stage stage:
     fi
     echo ""
 
-    # Step 6: Create GCS buckets
-    echo "6. Creating GCS buckets"
+    # Step 6: Create GCS bucket (single bucket with public/ and private/ prefixes)
+    echo "6. Creating GCS bucket"
     if [ "{{stage}}" = "prod" ]; then
-        MEDIA_BUCKET="validibot-media"
-        FILES_BUCKET="validibot-files"
+        STORAGE_BUCKET="validibot-storage"
     else
-        MEDIA_BUCKET="validibot-media-{{stage}}"
-        FILES_BUCKET="validibot-files-{{stage}}"
+        STORAGE_BUCKET="validibot-storage-{{stage}}"
     fi
 
-    for BUCKET in "$MEDIA_BUCKET" "$FILES_BUCKET"; do
-        if gcloud storage buckets describe "gs://$BUCKET" --project={{gcp_project}} &>/dev/null; then
-            echo "   Bucket '$BUCKET' already exists"
-        else
-            gcloud storage buckets create "gs://$BUCKET" \
-                --location={{gcp_region}} \
-                --project={{gcp_project}}
-            echo "   Bucket '$BUCKET' created"
-        fi
-
-        # Grant objectUser role on this specific bucket
-        gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
-            --member="serviceAccount:$SA_EMAIL" \
-            --role="roles/storage.objectUser" \
+    if gcloud storage buckets describe "gs://$STORAGE_BUCKET" --project={{gcp_project}} &>/dev/null; then
+        echo "   Bucket '$STORAGE_BUCKET' already exists"
+    else
+        gcloud storage buckets create "gs://$STORAGE_BUCKET" \
+            --location={{gcp_region}} \
             --project={{gcp_project}} \
-            --quiet >/dev/null
-        echo "   Granted objectUser on $BUCKET"
-    done
+            --uniform-bucket-level-access
+        echo "   Bucket '$STORAGE_BUCKET' created"
+    fi
+
+    # Grant objectAdmin role on the bucket (service account needs full access)
+    gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="serviceAccount:$SA_EMAIL" \
+        --role="roles/storage.objectAdmin" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   Granted objectAdmin on $STORAGE_BUCKET"
+
+    # Make public/ prefix publicly readable via IAM Condition
+    # This allows avatars, workflow images, etc. to be served directly
+    echo "   Configuring public/ prefix for public read access..."
+    gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="allUsers" \
+        --role="roles/storage.objectViewer" \
+        --condition="expression=resource.name.startsWith(\"projects/_/buckets/$STORAGE_BUCKET/objects/public/\"),title=public-prefix-only" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null 2>&1 || echo "   (public prefix IAM already configured)"
+    echo "   Public prefix configured (public/ is publicly readable, private/ is protected)"
     echo ""
 
     # Step 7: Grant KMS permissions for credential signing
@@ -972,7 +980,7 @@ init-stage stage:
     echo "  Service account: $SA_EMAIL"
     echo "  Cloud SQL: $DB_INSTANCE (database: $DB_NAME)"
     echo "  Cloud Tasks queue: $QUEUE_NAME"
-    echo "  GCS buckets: $MEDIA_BUCKET, $FILES_BUCKET"
+    echo "  GCS bucket: $STORAGE_BUCKET (public/ and private/ prefixes)"
     echo "  KMS permissions: cloudkms.viewer, cloudkms.signerVerifier"
     echo "  Secret: $SECRET_NAME"
     echo ""
@@ -1433,10 +1441,10 @@ sync-weather env:
 
     case "{{env}}" in
         dev)
-            sync_to_bucket "validibot-files-dev" "dev"
+            sync_to_bucket "validibot-storage-dev" "dev"
             ;;
         staging)
-            sync_to_bucket "validibot-files-staging" "staging"
+            sync_to_bucket "validibot-storage-staging" "staging"
             ;;
         prod)
             echo "WARNING: You are about to sync weather files to PRODUCTION"
@@ -1445,16 +1453,16 @@ sync-weather env:
                 echo "Aborted."
                 exit 1
             fi
-            sync_to_bucket "validibot-files" "prod"
+            sync_to_bucket "validibot-storage" "prod"
             ;;
         all)
-            sync_to_bucket "validibot-files-dev" "dev"
-            sync_to_bucket "validibot-files-staging" "staging"
+            sync_to_bucket "validibot-storage-dev" "dev"
+            sync_to_bucket "validibot-storage-staging" "staging"
             echo ""
             echo "WARNING: About to sync to PRODUCTION"
             read -p "Continue with prod sync? (yes/no): " confirm
             if [ "$confirm" == "yes" ]; then
-                sync_to_bucket "validibot-files" "prod"
+                sync_to_bucket "validibot-storage" "prod"
             else
                 echo "Skipped prod sync."
             fi
@@ -1479,13 +1487,13 @@ list-weather env:
 
     case "{{env}}" in
         dev)
-            BUCKET="validibot-files-dev"
+            BUCKET="validibot-storage-dev"
             ;;
         staging)
-            BUCKET="validibot-files-staging"
+            BUCKET="validibot-storage-staging"
             ;;
         prod)
-            BUCKET="validibot-files"
+            BUCKET="validibot-storage"
             ;;
         *)
             echo "Error: Invalid environment '{{env}}'"

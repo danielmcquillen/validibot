@@ -42,8 +42,10 @@ down:
 
 # Rebuild and start all containers
 # Use this after changing Dockerfile, requirements, or dependencies
-build:
-    docker compose -f {{local_compose}} up -d --build
+# Usage: just build           # detached (background)
+# Usage: just build --attach  # attached (shows logs, Ctrl+C to stop)
+build *args:
+    docker compose -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
 
 # Follow logs from all containers (Ctrl+C to exit)
 # Shows interleaved logs from all services
@@ -57,10 +59,10 @@ ps:
 # Restart all containers (stop then start)
 restart: down up
 
-# Stop containers and remove volumes
+# Stop containers and remove volumes (clean slate)
 # WARNING: This deletes all database data! Use for clean slate only.
 clean:
-    docker compose -f {{local_compose}} down -v
+    docker compose -f {{local_compose}} down -v --remove-orphans
 
 # =============================================================================
 # Django Commands in Container

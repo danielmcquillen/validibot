@@ -37,10 +37,12 @@ services:
       - .envs/.local/.django
       - .envs/.local/.postgres
     environment:
-      # Configure validator runner for local Docker
+      # Configure advanced validator runner for local Docker
       - VALIDATOR_RUNNER=docker
-      - VALIDATOR_NETWORK=validibot_validibot
-      # Named volume for validator containers to access storage
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
+      # Named volume for advanced validator containers to access storage
       - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       # Storage root inside the container
@@ -79,7 +81,9 @@ services:
     environment:
       - APP_ROLE=worker
       - VALIDATOR_RUNNER=docker
-      - VALIDATOR_NETWORK=validibot_validibot
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
       - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       - DATA_STORAGE_ROOT=/app/storage/private

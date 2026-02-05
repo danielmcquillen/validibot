@@ -34,10 +34,10 @@ This enables three cleanup strategies:
 
 SECURITY NOTES
 --------------
-- Containers run with read-only access to input files
-- Network access is restricted to callback URL (configurable)
+- Containers run with no network access by default (network_mode='none')
+- Network access can be enabled by setting VALIDATOR_NETWORK if needed
 - Memory and CPU limits can be set via VALIDATOR_RUNNER_OPTIONS
-- Consider running validators in a separate Docker network for isolation
+- Input/output uses shared volume, no network required for normal operation
 """
 
 from __future__ import annotations
@@ -83,9 +83,14 @@ class DockerValidatorRunner(ValidatorRunner):
         VALIDATOR_RUNNER_OPTIONS = {
             "memory_limit": "4g",      # Container memory limit
             "cpu_limit": "2.0",        # CPU limit (cores)
-            "network": "validibot",    # Docker network for containers
+            "network": None,           # None = no network (default, most secure)
             "timeout_seconds": 3600,   # Default timeout
         }
+
+    By default, containers run with network_mode='none' (no network access).
+    This is secure because validators read/write via the shared storage volume.
+    Set network="bridge" or a specific network name only if validators need
+    external network access (e.g., downloading files from URLs).
 
     For local development, ensure DATA_STORAGE_ROOT is mounted into containers
     so they can read input files and write outputs.
@@ -239,8 +244,14 @@ class DockerValidatorRunner(ValidatorRunner):
         if volumes:
             container_config["volumes"] = volumes
 
+        # Network configuration: default to no network access (most secure)
+        # Validators communicate via shared storage volume, not network
         if self.network:
+            # Explicit network specified - attach to it
             container_config["network"] = self.network
+        else:
+            # No network = maximum isolation (cannot reach other containers or internet)
+            container_config["network_mode"] = "none"
 
         container = None
         try:

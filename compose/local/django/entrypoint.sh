@@ -22,11 +22,15 @@ done
 # The docker group GID in the container may not match the host socket's GID
 if [ -S /var/run/docker.sock ]; then
   DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
-  CURRENT_DOCKER_GID=$(getent group docker | cut -d: -f3)
-  if [ "${CURRENT_DOCKER_GID}" != "${DOCKER_SOCK_GID}" ]; then
+  CURRENT_DOCKER_GID=$(getent group docker | cut -d: -f3 || echo "")
+  if [ -n "${CURRENT_DOCKER_GID}" ] && [ "${CURRENT_DOCKER_GID}" != "${DOCKER_SOCK_GID}" ]; then
     # Modify docker group to match socket GID
     groupmod -g "${DOCKER_SOCK_GID}" docker 2>/dev/null || true
+    echo "Docker socket GID adjusted: ${CURRENT_DOCKER_GID} -> ${DOCKER_SOCK_GID}"
   fi
+  # Ensure django user is in the docker group (may need re-adding after GID change)
+  usermod -aG docker django 2>/dev/null || true
+  echo "Docker socket configured for django user (GID: ${DOCKER_SOCK_GID})"
 fi
 
 # Drop privileges and run command as django user

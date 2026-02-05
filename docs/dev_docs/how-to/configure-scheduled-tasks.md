@@ -228,19 +228,19 @@ You can manually trigger any scheduled task via the management command:
 
 ```bash
 # Run a specific task manually
-docker compose exec django python manage.py purge_expired_submissions --dry-run
-docker compose exec django python manage.py cleanup_stuck_runs
+docker compose exec web python manage.py purge_expired_submissions --dry-run
+docker compose exec web python manage.py cleanup_stuck_runs
 
 # Container cleanup (Docker Compose deployments)
-docker compose exec django python manage.py cleanup_containers --dry-run
-docker compose exec django python manage.py cleanup_containers --all
+docker compose exec web python manage.py cleanup_containers --dry-run
+docker compose exec web python manage.py cleanup_containers --all
 ```
 
 Or trigger via Celery directly:
 
 ```bash
 # Send a task from Django shell
-docker compose exec django python manage.py shell
+docker compose exec web python manage.py shell
 >>> from validibot.core.tasks.scheduled_tasks import purge_expired_submissions
 >>> purge_expired_submissions.delay()
 ```

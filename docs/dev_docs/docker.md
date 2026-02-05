@@ -40,38 +40,29 @@ There is no default `docker-compose.yml` — running `docker compose up` without
    just up
    ```
 
-4. Apply migrations (the start script does this, but you can rerun):
+   On first run, the web container automatically:
+   - Applies database migrations
+   - Runs `setup_validibot` to configure site settings, roles, validators, etc.
+
+4. (Optional) Verify setup is correct:
 
    ```bash
-   docker compose -f docker-compose.local.yml exec django uv run python manage.py migrate
+   docker compose -f docker-compose.local.yml exec web python manage.py check_validibot
    ```
 
-5. Run initial setup (first time only):
+5. (Optional) Create a superuser if you didn't set `SUPERUSER_USERNAME` in `.envs/.local/.django`:
 
    ```bash
-   docker compose -f docker-compose.local.yml exec django uv run python manage.py setup_validibot --domain localhost:8000
+   docker compose -f docker-compose.local.yml exec web python manage.py createsuperuser
    ```
 
-6. Verify setup is correct:
-
-   ```bash
-   docker compose -f docker-compose.local.yml exec django uv run python manage.py check_validibot
-   ```
-
-7. Create a superuser if needed:
-
-   ```bash
-   docker compose -f docker-compose.local.yml exec django uv run python manage.py createsuperuser
-   ```
-
-8. Visit http://localhost:8000
+6. Visit http://localhost:8000
 
 ## What's running
 
-- `django`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000).
-- `worker`: Same image, serving internal/task endpoints on port 8001 (lets you mimic separate Cloud Run services with different scaling/concurrency).
-- `celery_worker`: Celery worker processing background tasks from Redis queue.
-- `celery_beat`: Celery Beat scheduler triggering periodic tasks (purge expired data, cleanup sessions, etc.).
+- `web`: Django app from `compose/local/django/Dockerfile`, mounted with your local code for hot reload (`runserver` on 8000). Runs migrations and initial setup on startup.
+- `worker`: Celery worker processing background tasks from Redis queue. Spawns validator containers via Docker socket.
+- `scheduler`: Celery Beat scheduler triggering periodic tasks (purge expired data, cleanup sessions, etc.).
 - `postgres`: Postgres built from `compose/production/postgres/Dockerfile`, env vars from `.envs/.local/.postgres`.
 - `redis`: Redis broker for Celery task queue.
 - `mailpit`: Local SMTP capture at http://localhost:8025.
@@ -101,16 +92,15 @@ Use `docker-compose.production.yml` to test production-like behavior locally. Th
    docker compose -f docker-compose.production.yml up --build
    ```
 
-4. Run initial setup:
+   On first run, the web container automatically:
+   - Applies database migrations
+   - Collects static files
+   - Runs `setup_validibot` to configure site settings, roles, validators, etc.
+   - Creates a superuser if `SUPERUSER_USERNAME` is set in the env file
 
-   ```bash
-   docker compose -f docker-compose.production.yml exec django python manage.py migrate
-   docker compose -f docker-compose.production.yml exec django python manage.py setup_initial_data
-   ```
+4. Visit http://localhost:8000
 
-5. Visit http://localhost:8000
-
-Production-style "django" serves user traffic via Gunicorn on port 8000. The "celery_worker" processes background tasks. This is the same stack used for [DigitalOcean deployments](deployment/digitalocean.md).
+Production-style "web" serves user traffic via Gunicorn on port 8000. The "worker" processes background tasks via Celery. The "scheduler" runs Celery Beat for periodic tasks. This is the same stack used for [DigitalOcean deployments](deployment/digitalocean.md).
 
 ## VS Code: pytest "Run" button
 
@@ -120,6 +110,18 @@ If the **Testing** panel hangs, double-check:
 
 - VS Code is using the repo interpreter: `.venv/bin/python` (see `.vscode/settings.json`)
 - Docker Compose is running: `docker compose -f docker-compose.local.yml up -d postgres`
+
+## Advanced validators
+
+The worker container spawns advanced validator containers (EnergyPlus, FMI, etc.) via the Docker socket. This requires:
+
+1. **Docker socket mounted** — Already configured in the compose files
+2. **Correct volume names** — The compose files assume `COMPOSE_PROJECT_NAME=validibot`
+3. **Validator images available** — Must be pre-pulled or accessible from your registry
+
+**Network isolation:** By default, advanced validator containers run with no network access (`network_mode='none'`). This is the most secure configuration — containers read/write via the shared storage volume and cannot reach other services or the internet. To enable network access (if validators need to download external files), uncomment `VALIDATOR_NETWORK` in the compose files.
+
+For private registries, configure Docker credentials on the host before running validations. See [Execution Backends](overview/execution_backends.md) for details on registry authentication, network isolation, and naming requirements.
 
 ## Notes and deviations from full Cookiecutter setup
 
@@ -135,7 +137,5 @@ If the **Testing** panel hangs, double-check:
 - `compose/production/django/Dockerfile`: base image for production (no dev extras).
 - `docker-compose.local.yml`: local dev (runserver, code mounted) with web + worker + postgres + mailpit.
 - `docker-compose.production.yml`: production-like (gunicorn, no code mount) with web + worker + postgres.
-- `compose/local/django/entrypoint.sh` and `start.sh`: wait for DB, run migrations, start dev server on 8000.
-- `compose/local/django/start-worker.sh`: wait for DB, run migrations, start dev server on 8001 for task/internal endpoints.
-- `compose/production/django/entrypoint.sh` and `start.sh`: wait for DB, run migrations, collectstatic, start gunicorn on 8000.
-- `compose/production/django/start-worker.sh`: wait for DB, run migrations, start gunicorn on 8001 for task/internal endpoints.
+- `compose/local/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions, run migrations, first-run setup, start dev server on 8000.
+- `compose/production/django/entrypoint.sh` and `start.sh`: wait for DB, fix Docker socket permissions, run migrations, collectstatic, first-run setup, start Gunicorn on 8000.

@@ -11,8 +11,12 @@ from drf_spectacular.views import SpectacularAPIView
 from drf_spectacular.views import SpectacularRedocView
 from drf_spectacular.views import SpectacularSwaggerView
 
+from validibot.core.health import health_check
+
 # Internal-only API surface
 urlpatterns = [
+    # Health check endpoint for container orchestration (Docker, Kubernetes)
+    path("health/", health_check, name="health-check"),
     path("api/v1/", include("config.api_internal_router")),
     # auth-token endpoint disabled - users should create API keys via web UI
     # from rest_framework.authtoken.views import obtain_auth_token

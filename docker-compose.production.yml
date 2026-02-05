@@ -52,9 +52,11 @@ services:
       - .envs/.production/.docker-compose/.postgres
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
-      # Configure validator runner for Docker Compose
+      # Configure advanced validator runner for Docker Compose
       - VALIDATOR_RUNNER=docker
-      - VALIDATOR_NETWORK=validibot_validibot
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
       - VALIDATOR_STORAGE_VOLUME=validibot_validibot_storage
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       - DATA_STORAGE_ROOT=/app/storage/private
@@ -85,7 +87,9 @@ services:
       - DJANGO_SETTINGS_MODULE=config.settings.production
       - APP_ROLE=worker
       - VALIDATOR_RUNNER=docker
-      - VALIDATOR_NETWORK=validibot_validibot
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
       - VALIDATOR_STORAGE_VOLUME=validibot_validibot_storage
       - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
       - DATA_STORAGE_ROOT=/app/storage/private
@@ -113,8 +117,9 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.production
       - APP_ROLE=scheduler
-    deploy:
-      replicas: 1  # Must be exactly 1
+    # Note: Only run ONE scheduler instance to avoid duplicate task execution.
+    # If scaling horizontally, use external orchestration (Kubernetes, Swarm)
+    # to ensure exactly one replica.
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]

@@ -333,14 +333,20 @@ docker compose -f docker-compose.production.yml ps
 VALIDIBOT_DOMAIN=validibot.example.com docker compose -f docker-compose.caddy.yml up -d
 ```
 
-### Run initial setup
+### First-run setup
+
+On first startup, the web container automatically runs migrations and `setup_validibot` to configure the site. This includes:
+
+- Database migrations
+- Site domain configuration (from `VALIDIBOT_SITE_DOMAIN` env var)
+- Background job schedules
+- Default validators and roles
+- Superuser creation (if `SUPERUSER_USERNAME` is set in `.django`)
+
+You can verify setup completed successfully:
 
 ```bash
-# Run migrations
-docker compose -f docker-compose.production.yml exec django python manage.py migrate
-
-# Create superuser (uses env vars from .django file)
-docker compose -f docker-compose.production.yml exec django python manage.py setup_initial_data
+docker compose -f docker-compose.production.yml exec web python manage.py check_validibot
 ```
 
 ### Verify the deployment
@@ -354,7 +360,7 @@ docker compose -f docker-compose.caddy.yml ps
 curl -I https://validibot.example.com/health/
 
 # Check logs if something isn't working
-docker compose -f docker-compose.production.yml logs django
+docker compose -f docker-compose.production.yml logs web
 docker compose -f docker-compose.caddy.yml logs caddy
 ```
 
@@ -416,6 +422,29 @@ Spaces provides S3-compatible object storage for uploaded files:
    AWS_SECRET_ACCESS_KEY=your-spaces-secret
    ```
 
+### Using advanced validators
+
+Advanced validators (EnergyPlus, FMI, etc.) run as separate Docker containers spawned by the worker. To use them:
+
+1. **Pre-pull validator images:**
+
+   ```bash
+   # Pull the validators you need
+   docker pull ghcr.io/validibot/validibot-validator-energyplus:latest
+   docker pull ghcr.io/validibot/validibot-validator-fmi:latest
+   ```
+
+2. **For private registries**, configure Docker credentials on the Droplet:
+
+   ```bash
+   # Log in to your private registry
+   docker login ghcr.io -u USERNAME -p TOKEN
+   ```
+
+3. **Network isolation** — By default, advanced validator containers run with no network access for security. If validators need to download external files, uncomment `VALIDATOR_NETWORK` in the compose files.
+
+4. **Verify the setup** — The compose files already configure the Docker socket mount and storage volume. See [Execution Backends](../overview/execution_backends.md) for details on registry authentication, network isolation, and naming requirements.
+
 ### Set up automated backups
 
 If you're running PostgreSQL in Docker, set up automated backups:
@@ -467,7 +496,7 @@ git pull origin main
 docker compose -f docker-compose.production.yml up -d --build
 
 # Run migrations if needed
-docker compose -f docker-compose.production.yml exec django python manage.py migrate
+docker compose -f docker-compose.production.yml exec web python manage.py migrate
 
 # Check logs
 docker compose -f docker-compose.production.yml logs -f --tail=100 django
@@ -482,7 +511,7 @@ docker compose -f docker-compose.production.yml logs -f --tail=100 django
 docker compose -f docker-compose.production.yml ps -a
 
 # View logs
-docker compose -f docker-compose.production.yml logs django
+docker compose -f docker-compose.production.yml logs web
 
 # Common issues:
 # - Database connection failed: Check POSTGRES_* env vars

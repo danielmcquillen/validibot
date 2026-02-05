@@ -147,7 +147,7 @@ VALIDATOR_RUNNER = "docker"
 VALIDATOR_RUNNER_OPTIONS = {
     "memory_limit": "4g",
     "cpu_limit": "2.0",
-    "network": "validibot_validibot",  # Docker network name
+    "network": None,            # None = no network (default, most secure)
     "timeout_seconds": 3600,
 }
 
@@ -155,6 +155,122 @@ VALIDATOR_RUNNER_OPTIONS = {
 VALIDATOR_IMAGE_TAG = "latest"
 VALIDATOR_IMAGE_REGISTRY = ""  # Or your private registry
 ```
+
+### Network Isolation (Security)
+
+By default, advanced validator containers run with **no network access** (`network_mode='none'`). This is the most secure configuration because:
+
+- Containers cannot reach other services (web, database, redis)
+- Containers cannot access the internet
+- All I/O happens via the shared storage volume
+
+This works because:
+1. Input files are written to the shared volume before the container starts
+2. The container reads inputs and writes outputs to the same volume
+3. The worker reads the output after the container exits
+
+**When to enable network access:**
+
+Set `VALIDATOR_NETWORK` only if advanced validators need to:
+- Download files from external URLs during execution
+- Call external APIs as part of validation logic
+
+```yaml
+# In docker-compose.*.yml, uncomment to enable network:
+environment:
+  - VALIDATOR_NETWORK=validibot_validibot
+```
+
+With network enabled, advanced validator containers can reach:
+- Other containers on the same Docker network
+- External internet (if the host has connectivity)
+
+### Compose Project Naming Requirements
+
+The Docker Compose backend requires specific naming for networks and volumes. By default, Docker Compose prefixes resource names with the project name (derived from the directory name or `COMPOSE_PROJECT_NAME`).
+
+The shipped compose files assume `COMPOSE_PROJECT_NAME=validibot`, which creates:
+
+| Resource | Full Name |
+|----------|-----------|
+| Network | `validibot_validibot` |
+| Storage Volume | `validibot_validibot_storage` (production) |
+| Storage Volume | `validibot_validibot_local_storage` (local) |
+
+These names are configured in the compose files via environment variables:
+
+```yaml
+environment:
+  - VALIDATOR_NETWORK=validibot_validibot
+  - VALIDATOR_STORAGE_VOLUME=validibot_validibot_storage
+```
+
+**If you change the project name** (via `COMPOSE_PROJECT_NAME` or running from a different directory), you must update these environment variables to match. Otherwise, the worker cannot attach advanced validator containers to the correct network or volume.
+
+To check your current project name:
+
+```bash
+# The project name is the prefix before the underscore in container names
+docker compose -f docker-compose.production.yml ps --format "{{.Name}}"
+# Example output: validibot_web_1 → project name is "validibot"
+```
+
+To override explicitly:
+
+```bash
+# Set project name explicitly
+COMPOSE_PROJECT_NAME=validibot docker compose -f docker-compose.production.yml up -d
+```
+
+### Private Registry Authentication
+
+By default, validator images are pulled from Docker Hub. If you're using a private registry (GitHub Container Registry, AWS ECR, Google Artifact Registry, etc.), you need to configure Docker credentials on the host.
+
+**Option 1: Docker login on the host**
+
+```bash
+# Log in to your registry on the Docker host
+docker login ghcr.io -u USERNAME -p TOKEN
+
+# Or for AWS ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+```
+
+The Docker daemon stores credentials in `~/.docker/config.json` and uses them for pulls. Since the worker spawns containers via the host's Docker socket, these credentials apply to validator image pulls automatically.
+
+**Option 2: Pass credentials via environment**
+
+For registries that support credential helpers, configure them on the host:
+
+```bash
+# Install and configure credential helper (e.g., for GCR)
+gcloud auth configure-docker
+```
+
+**Image naming:**
+
+Configure the validator image registry in your environment:
+
+```bash
+# .envs/.production/.docker-compose/.django
+VALIDATOR_IMAGE_REGISTRY=ghcr.io/your-org
+VALIDATOR_IMAGE_TAG=v1.2.0
+```
+
+Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/validibot-validator-{type}:{tag}`. For example:
+- `ghcr.io/your-org/validibot-validator-energyplus:v1.2.0`
+- `ghcr.io/your-org/validibot-validator-fmi:v1.2.0`
+
+**Image availability:**
+
+The Docker backend does not automatically pull images. Ensure validator images are available before running validations:
+
+```bash
+# Pre-pull images on the host
+docker pull ghcr.io/your-org/validibot-validator-energyplus:v1.2.0
+```
+
+Or configure a pull policy by extending the runner options if automatic pulls are needed.
 
 ### Container Management
 

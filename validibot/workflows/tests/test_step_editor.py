@@ -21,9 +21,11 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.users.tests.utils import ensure_all_roles_exist
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationType
-from validibot.validations.constants import ValidatorRuleType
+from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import Validator
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import ValidatorFactory
@@ -769,11 +771,16 @@ def test_step_editor_shows_default_assertions_card(client):
         validation_type=ValidationType.CUSTOM_VALIDATOR,
         slug="custom-validator-with-defaults",
     )
-    validator.rules.create(
-        name="Baseline price check",
-        rule_type=ValidatorRuleType.CEL_EXPRESSION,
-        expression="payload.price > 0",
+    default_ruleset = validator.ensure_default_ruleset()
+    RulesetAssertion.objects.create(
+        ruleset=default_ruleset,
+        assertion_type=AssertionType.CEL_EXPRESSION,
+        target_field="payload.price > 0",
+        rhs={"expr": "payload.price > 0"},
+        severity=Severity.ERROR,
         order=0,
+        message_template="Baseline price check",
+        cel_cache="payload.price > 0",
     )
     step = WorkflowStepFactory(workflow=workflow, validator=validator, order=10)
 

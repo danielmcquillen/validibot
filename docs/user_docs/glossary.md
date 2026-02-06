@@ -11,7 +11,7 @@ A workflow step that performs an action other than validation, such as sending a
 A role that can manage organization members, invite new users, and edit all workflows. Admins cannot delete organizations or manage billing. See [Collaboration](collaboration.md).
 
 **Assertion**
-A rule that must be true for validation to pass. Assertions can be built into validators (default assertions) or added to individual workflow steps (step assertions). Assertions often use CEL expressions.
+A rule that must be true for validation to pass. There are two tiers: *default assertions* are defined by the validator author and run automatically whenever the validator executes; *step assertions* are defined by the workflow author on individual workflow steps. Default assertions are always evaluated first, then step assertions. Both tiers produce findings and contribute to assertion statistics. Assertions often use CEL expressions.
 
 **Author**
 A role that can create and edit workflows, manage validators, and run validations. Authors can only edit workflows they created, unlike Admins who can edit any workflow. See [Collaboration](collaboration.md).

@@ -224,7 +224,7 @@ The processor pattern provides clean separation of concerns:
 
 3. **Submission content is materialized once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data.
 
-4. **Assertion evaluation happens in engines** – Engines evaluate CEL assertions during `validate()` (input-stage) and `post_execute_validate()` (output-stage for advanced validators). Processors just persist the results.
+4. **Assertion evaluation happens in engines** – Engines evaluate CEL assertions during `validate()` (input-stage) and `post_execute_validate()` (output-stage for advanced validators). The engine merges assertions from both the validator's `default_ruleset` (evaluated first) and the step-level ruleset (evaluated second) into a single pass. Processors just persist the results.
 
 5. **Error handling is centralized** – Any exception raised by the engine is caught by the processor, which creates an error finding and finalizes the step as FAILED.
 

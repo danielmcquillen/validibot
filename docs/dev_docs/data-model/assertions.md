@@ -1,38 +1,75 @@
 # Ruleset Assertions
 
-Ruleset Assertions capture the checks that a validator will execute once a workflow step
-reaches the validation engine. They live in the `ruleset_assertions` table and are referenced by a
-ruleset revision so authors can version and reuse collections of checks without mutating workflow
-steps directly.
+All assertions in Validibot are `RulesetAssertion` rows. The same model serves
+two roles depending on which ruleset the assertion belongs to:
 
-Each assertion row stores:
+- **Default assertions** live on a validator's `default_ruleset`. They are
+  authored by the validator creator and run automatically whenever that validator
+  executes in any workflow step. Think of them as built-in checks the validator
+  always performs.
+- **Step assertions** live on a step-level ruleset attached to a workflow step.
+  They are authored by the workflow creator and are specific to one step.
 
-- `assertion_type` – coarse mode (`basic` vs. `cel_expr`).
-- `operator` – normalized comparison operator (only meaningful for `basic` assertions).
-- `target_catalog_entry` / `target_field` – FK to a catalog entry or a JSON-style path when the
+There is no separate model for "validator rules" — the two tiers are expressed
+entirely through which `Ruleset` the assertion belongs to.
+
+## Two-tier evaluation
+
+When the engine evaluates assertions for a step, it merges both tiers into a
+single pass:
+
+1. Assertions from the validator's `default_ruleset` run first (ordered by
+   `order`, then `pk`).
+2. Assertions from the step-level ruleset run second (same ordering).
+
+Both tiers produce findings with the same severity model, and both contribute
+to the step's assertion statistics (total evaluated, failures).
+
+## Assertion fields
+
+Each `RulesetAssertion` row stores:
+
+- `assertion_type` — coarse mode (`basic` vs. `cel_expr`).
+- `operator` — normalized comparison operator (only meaningful for `basic` assertions).
+- `target_catalog_entry` / `target_field` — FK to a catalog entry or a JSON-style path when the
   validator allows free-form bindings.
-- `severity` – maps to the normalized Finding severity (`error`, `warning`, `info`).
-- `when_expression` – optional CEL guard that determines whether the assertion runs.
-- `rhs` – operator payload (single value, min/max bounds, regex, etc.).
-- `options` – operator metadata (inclusive bounds, case folding, tolerance units, etc.).
-- `cel_cache` – read-only CEL preview rendered from the operator payload for auditability.
-- `message_template` – templated string rendered when the assertion **fails** (e.g., `{{value | round(1)}}`). Supported filters today are:
-  - `round(digits)` – rounds numeric values (defaults to `0` digits).
-  - `upper` / `lower` – coercion to uppercase or lowercase.
-  - `default("fallback")` – substitute the provided fallback when the value is blank/`None`.
-- `success_message` – optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
+- `severity` — maps to the normalized Finding severity (`error`, `warning`, `info`).
+- `when_expression` — optional CEL guard that determines whether the assertion runs.
+- `rhs` — operator payload (single value, min/max bounds, regex, etc.).
+- `options` — operator metadata (inclusive bounds, case folding, tolerance units, etc.).
+- `cel_cache` — read-only CEL preview rendered from the operator payload for auditability.
+- `message_template` — templated string rendered when the assertion **fails** (e.g., `{{value | round(1)}}`). Supported filters today are:
+  - `round(digits)` — rounds numeric values (defaults to `0` digits).
+  - `upper` / `lower` — coercion to uppercase or lowercase.
+  - `default("fallback")` — substitute the provided fallback when the value is blank/`None`.
+- `success_message` — optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
 
 Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
 persisted in `target_field`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
-`target_*` columns for consistency. BASIC validators always run in “custom target” mode because there
+`target_*` columns for consistency. BASIC validators always run in "custom target" mode because there
 is no provider catalog; authors add assertions manually and the system persists exactly what they enter.
+
+## Default assertions
+
+Every `Validator` has a `default_ruleset` FK that is auto-populated on save via
+`ensure_default_ruleset()`. Validator authors manage default assertions through
+the validator detail page, which provides a simplified CEL-only form
+(`ValidatorRuleForm`). Under the hood these are regular `RulesetAssertion` rows
+on the validator's `default_ruleset`.
+
+Default assertions are always evaluated — the engine merges them with any
+step-level assertions before running the evaluation loop. This means validator
+authors can encode domain knowledge (e.g., "site EUI must be positive") that
+workflow authors cannot accidentally skip.
 
 ## Relationship to validators and rulesets
 
 1. The author selects a validator (system or custom) while editing the workflow step.
-2. The ruleset tied to that step references catalog slugs owned by the validator.
-3. Assertions inherit the validator’s helper allowlist, catalog metadata, and provider behavior.
+2. The validator's `default_ruleset` provides base assertions that always run.
+3. The step-level ruleset (optional) adds per-step assertions authored by the
+   workflow creator.
+4. Assertions inherit the validator's helper allowlist, catalog metadata, and provider behavior.
 
 Validators cannot be deleted while rulesets reference them. Catalog edits (for example renaming a
 signal) require updating the validator, which in turn triggers validation for every ruleset so slugs

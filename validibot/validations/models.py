@@ -41,7 +41,6 @@ from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
-from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import XMLSchemaType
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
@@ -1079,6 +1078,36 @@ class Validator(TimeStampedModel):
         if self.org_id:
             self.is_system = False
         super().save(*args, **kwargs)
+        self.ensure_default_ruleset()
+
+    def ensure_default_ruleset(self) -> Ruleset:
+        """Ensure this validator has a default_ruleset, creating one if needed.
+
+        The default ruleset holds validator-level assertions that run on every
+        workflow step using this validator. It's auto-created on first save.
+
+        Returns:
+            The existing or newly created default Ruleset.
+        """
+        if self.default_ruleset_id:
+            return self.default_ruleset
+
+        # Map validation_type to RulesetType. They share the same values
+        # except AI_ASSIST which falls back to BASIC.
+        ruleset_type = self.validation_type
+        if ruleset_type not in RulesetType.values:
+            ruleset_type = RulesetType.BASIC
+
+        ruleset = Ruleset.objects.create(
+            name=f"{self.name} - Default Assertions",
+            ruleset_type=ruleset_type,
+            org=self.org,
+        )
+        # Use update() to avoid re-triggering save/full_clean
+        Validator.objects.filter(pk=self.pk).update(default_ruleset=ruleset)
+        self.default_ruleset = ruleset
+        self.default_ruleset_id = ruleset.pk
+        return ruleset
 
     @property
     def is_custom(self) -> bool:
@@ -1357,14 +1386,6 @@ class ValidatorCatalogEntry(TimeStampedModel):
     order = models.PositiveIntegerField(default=0)
 
     def delete(self, *args, **kwargs):
-        if self.referencing_rules.exists():
-            raise ValidationError(
-                {
-                    "catalog_entry": _(
-                        "Cannot delete a signal/derivation referenced by rules.",
-                    ),
-                },
-            )
         return super().delete(*args, **kwargs)
 
     def clean(self):
@@ -1993,99 +2014,6 @@ class ValidationFinding(TimeStampedModel):
         super().save(*args, **kwargs)
 
 
-class ValidatorCatalogRule(TimeStampedModel):
-    """
-    Default assertion defined at the validator level (for example, CEL expressions).
-
-    Default assertions run automatically whenever the validator executes and can
-    reference one or more catalog entries. The meaning of an assertion is driven by
-    ``rule_type`` and the stored ``expression``/``metadata``.
-    """
-
-    class Meta:
-        ordering = ["order", "name"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["validator", "name"],
-                name="uq_validator_rule_name",
-            ),
-            models.CheckConstraint(
-                name="ck_validator_rule_order_nonnegative",
-                condition=models.Q(order__gte=0),
-            ),
-        ]
-
-    validator = models.ForeignKey(
-        "Validator",
-        on_delete=models.CASCADE,
-        related_name="rules",
-    )
-    name = models.CharField(max_length=200)
-    description = models.TextField(blank=True, default="")
-    rule_type = models.CharField(
-        max_length=32,
-        choices=ValidatorRuleType.choices,
-        default=ValidatorRuleType.CEL_EXPRESSION,
-    )
-    expression = models.TextField(
-        help_text=_("Rule definition (e.g., CEL expression)."),
-    )
-    metadata = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=_("Additional structured data for this rule."),
-    )
-    order = models.PositiveIntegerField(
-        default=0,
-        help_text=_("Relative ordering for evaluation/display."),
-    )
-
-    def clean(self):
-        super().clean()
-        if not self.name or not self.name.strip():
-            raise ValidationError({"name": _("Default assertion name is required.")})
-        if not self.expression or not str(self.expression).strip():
-            raise ValidationError(
-                {"expression": _("Default assertion expression is required.")}
-            )
-
-    def __str__(self):
-        return f"{self.validator.slug}:{self.name}"
-
-
-class ValidatorCatalogRuleEntry(models.Model):
-    """
-    Join table linking default assertions to catalog entries they reference.
-    """
-
-    rule = models.ForeignKey(
-        ValidatorCatalogRule,
-        on_delete=models.CASCADE,
-        related_name="rule_entries",
-    )
-
-    catalog_entry = models.ForeignKey(
-        ValidatorCatalogEntry,
-        on_delete=models.CASCADE,
-        related_name="referencing_rules",
-    )
-
-    class Meta:
-        unique_together = (
-            "rule",
-            "catalog_entry",
-        )
-        indexes = [
-            models.Index(
-                fields=[
-                    "rule",
-                    "catalog_entry",
-                ],
-            ),
-        ]
-
-    def __str__(self):
-        return f"{self.rule} -> {self.catalog_entry}"
 
 
 def artifact_upload_to(instance, filename: str) -> str:

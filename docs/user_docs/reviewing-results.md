@@ -104,7 +104,10 @@ At the bottom of each step (and summarized for the run), you'll see assertion st
 - **Failed**: Rules that generated error findings
 - **Warnings**: Rules that generated warning findings
 
-These statistics help you understand coverage—how thoroughly your data was checked.
+These totals include both default assertions (defined by the validator author)
+and step assertions (defined by the workflow author). Both tiers contribute
+equally to the statistics, so you get a complete picture of how thoroughly
+your data was checked.
 
 ## Sharing Results
 

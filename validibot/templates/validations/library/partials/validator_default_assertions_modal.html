@@ -16,19 +16,14 @@
         <div class="list-group-item">
           <div class="d-flex flex-column gap-1">
             <div class="d-flex align-items-center gap-2">
-              <span class="badge text-bg-secondary">{{ assertion.get_rule_type_display }}</span>
+              <span class="badge text-bg-secondary">{{ assertion.get_assertion_type_display }}</span>
               <span class="badge text-bg-light text-dark">{% trans "Order" %}: {{ assertion.order }}</span>
             </div>
-            <div class="fw-semibold">{{ assertion.name }}</div>
-            {% if assertion.description %}
-              <div class="text-muted small">{{ assertion.description }}</div>
-            {% endif %}
-            <pre class="bg-light border rounded p-2 mb-0"><code>{{ assertion.expression }}</code></pre>
-            {% if assertion.rule_entries.all %}
+            <div class="fw-semibold">{{ assertion.message_template }}</div>
+            <pre class="bg-light border rounded p-2 mb-0"><code>{{ assertion.cel_cache }}</code></pre>
+            {% if assertion.target_catalog_entry %}
               <div class="d-flex flex-wrap gap-1 pt-1">
-                {% for link in assertion.rule_entries.all %}
-                  <span class="badge bg-light text-dark border">{{ link.catalog_entry.slug }}</span>
-                {% endfor %}
+                <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
               </div>
             {% endif %}
           </div>

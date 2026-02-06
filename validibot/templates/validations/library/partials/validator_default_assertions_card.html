@@ -16,7 +16,7 @@
               {% trans "Type" %}
             </th>
             <th scope="col" class="text-muted small">
-              {% trans "Signals" %}
+              {% trans "Signal" %}
             </th>
             {% if can_edit_validator %}
               <th scope="col" class="text-muted small text-end">
@@ -32,18 +32,14 @@
                 {{ assertion.order }}
               </td>
               <td class="fw-semibold">
-                {{ assertion.name }}
+                {{ assertion.message_template }}
               </td>
               <td class="text-muted small">
-                {{ assertion.get_rule_type_display }}
+                {{ assertion.get_assertion_type_display }}
               </td>
               <td class="text-muted small">
-                {% if assertion.rule_entries.all %}
-                  <div class="d-flex flex-wrap gap-1">
-                    {% for link in assertion.rule_entries.all %}
-                      <span class="badge bg-light text-dark border">{{ link.catalog_entry.slug }}</span>
-                    {% endfor %}
-                  </div>
+                {% if assertion.target_catalog_entry %}
+                  <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
                 {% else %}
                   <span class="text-muted">—</span>
                 {% endif %}
@@ -59,7 +55,7 @@
                       <i class="bi bi-pencil-square"></i>
                     </button>
                     <button class="btn btn-secondary"
-                            hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=validator.pk rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-vals='{"direction": "up"}'
                             hx-target="#validator-default-assertions-card"
@@ -70,7 +66,7 @@
                       <i class="bi bi-arrow-up"></i>
                     </button>
                     <button class="btn btn-secondary"
-                            hx-post="{% org_url 'validations:validator_rule_move' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=validator.pk rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-vals='{"direction": "down"}'
                             hx-target="#validator-default-assertions-card"
@@ -81,11 +77,11 @@
                       <i class="bi bi-arrow-down"></i>
                     </button>
                     <button class="btn btn-danger"
-                            hx-delete="{% org_url 'validations:validator_rule_delete' pk=assertion.validator_id rule_pk=assertion.id %}"
+                            hx-delete="{% org_url 'validations:validator_rule_delete' pk=validator.pk rule_pk=assertion.id %}"
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-target="#validator-assertion-{{ assertion.id }}"
                             hx-swap="outerHTML"
-                            hx-confirm="{% blocktrans trimmed with name=assertion.name %}
+                            hx-confirm="{% blocktrans trimmed with name=assertion.message_template %}
                                           Delete default assertion '{{ name }}'?
                                         {% endblocktrans %}">
                       <i class="bi bi-trash"></i>

@@ -2322,7 +2322,11 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         uses_signal_stages = bool(
             validator and validator.has_signal_stages() and allow_assertions,
         )
-        default_assertions_count = validator.rules.count() if validator else 0
+        default_assertions_count = (
+            validator.default_ruleset.assertions.count()
+            if validator and validator.default_ruleset_id
+            else 0
+        )
         context.update(
             {
                 "workflow": workflow,

@@ -38,9 +38,11 @@ from validibot.core.utils import truthy
 from validibot.users.permissions import PermissionCode
 from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KEY
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
+from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import LibraryLayout
+from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
@@ -49,13 +51,12 @@ from validibot.validations.forms import CustomValidatorUpdateForm
 from validibot.validations.forms import FMIValidatorCreateForm
 from validibot.validations.forms import ValidatorCatalogEntryForm
 from validibot.validations.forms import ValidatorRuleForm
+from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
-from validibot.validations.models import ValidatorCatalogRule
-from validibot.validations.models import ValidatorCatalogRuleEntry
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.serializers import ValidationRunSerializer
 from validibot.validations.services.fmi import FMIIntrospectionError
@@ -523,9 +524,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             Validator.objects.select_related("custom_validator", "org")
             .prefetch_related(
                 "catalog_entries",
-                "rules",
-                "rules__rule_entries",
-                "rules__rule_entries__catalog_entry",
+                "default_ruleset",
+                "default_ruleset__assertions",
             )
             .order_by("validation_type", "name")
         )
@@ -746,9 +746,13 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
         display = validator.catalog_display
-        default_assertions = validator.rules.order_by("order", "name").prefetch_related(
-            "rule_entries",
-            "rule_entries__catalog_entry",
+        default_ruleset = validator.default_ruleset
+        default_assertions = (
+            default_ruleset.assertions.all()
+            .select_related("target_catalog_entry")
+            .order_by("order", "pk")
+            if default_ruleset
+            else RulesetAssertion.objects.none()
         )
         signal_choices = [
             (entry.id, f"{entry.slug}")
@@ -882,12 +886,17 @@ class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
+        default_ruleset = validator.default_ruleset
+        assertions = (
+            default_ruleset.assertions.all()
+            .select_related("target_catalog_entry")
+            .order_by("order", "pk")
+            if default_ruleset
+            else RulesetAssertion.objects.none()
+        )
         context.update(
             {
-                "validator_default_assertions": validator.rules.order_by(
-                    "order",
-                    "name",
-                ),
+                "validator_default_assertions": assertions,
                 "can_view_validator_detail": True,
             },
         )
@@ -1603,29 +1612,31 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
             ],
         )
         if form.is_valid():
-            signals = form.cleaned_data.get("signals") or []
-            selected_entries = self._resolve_selected_entries(signals)
             available_entries = list(
                 self.validator.catalog_entries.order_by("slug"),
             )
+            cel_expr = form.cleaned_data["cel_expression"]
             referenced_entries = self._validate_cel_expression(
-                form.cleaned_data["cel_expression"],
+                cel_expr,
                 available_entries,
             )
-            entries = list({*selected_entries, *referenced_entries})
-            rule = ValidatorCatalogRule.objects.create(
-                validator=self.validator,
-                name=form.cleaned_data["name"],
-                description=form.cleaned_data.get("description") or "",
-                rule_type=form.cleaned_data["rule_type"],
-                expression=form.cleaned_data["cel_expression"],
+            # Pick the first referenced catalog entry as the assertion target.
+            # CEL assertions don't strictly need one, but it's useful for
+            # display and deletion-protection.
+            target_entry = referenced_entries[0] if referenced_entries else None
+            default_ruleset = self.validator.ensure_default_ruleset()
+            RulesetAssertion.objects.create(
+                ruleset=default_ruleset,
+                assertion_type=AssertionType.CEL_EXPRESSION,
+                operator="",
+                target_catalog_entry=target_entry,
+                target_field="" if target_entry else cel_expr,
+                rhs={"expr": cel_expr},
+                severity=Severity.ERROR,
                 order=form.cleaned_data.get("order") or 0,
+                message_template=form.cleaned_data["name"],
+                cel_cache=cel_expr,
             )
-            for entry in entries:
-                ValidatorCatalogRuleEntry.objects.create(
-                    rule=rule,
-                    catalog_entry=entry,
-                )
             messages.success(request, _("Default assertion created."))
             if request.headers.get("HX-Request"):
                 return self._hx_redirect()
@@ -1648,10 +1659,11 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
     form_class = ValidatorRuleForm
 
     def post(self, request, *args, **kwargs):
-        rule = get_object_or_404(
-            ValidatorCatalogRule,
+        default_ruleset = self.validator.default_ruleset
+        assertion = get_object_or_404(
+            RulesetAssertion,
             pk=self.kwargs.get("rule_pk"),
-            validator=self.validator,
+            ruleset=default_ruleset,
         )
         form = self.form_class(
             request.POST,
@@ -1661,28 +1673,22 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
             ],
         )
         if form.is_valid():
-            signals = form.cleaned_data.get("signals") or []
-            selected_entries = self._resolve_selected_entries(signals)
             available_entries = list(
                 self.validator.catalog_entries.order_by("slug"),
             )
+            cel_expr = form.cleaned_data["cel_expression"]
             referenced_entries = self._validate_cel_expression(
-                form.cleaned_data["cel_expression"],
+                cel_expr,
                 available_entries,
             )
-            entries = list({*selected_entries, *referenced_entries})
-            rule.name = form.cleaned_data["name"]
-            rule.description = form.cleaned_data.get("description") or ""
-            rule.rule_type = form.cleaned_data["rule_type"]
-            rule.expression = form.cleaned_data["cel_expression"]
-            rule.order = form.cleaned_data.get("order") or 0
-            rule.save()
-            rule.rule_entries.all().delete()
-            for entry in entries:
-                ValidatorCatalogRuleEntry.objects.create(
-                    rule=rule,
-                    catalog_entry=entry,
-                )
+            target_entry = referenced_entries[0] if referenced_entries else None
+            assertion.message_template = form.cleaned_data["name"]
+            assertion.rhs = {"expr": cel_expr}
+            assertion.cel_cache = cel_expr
+            assertion.order = form.cleaned_data.get("order") or 0
+            assertion.target_catalog_entry = target_entry
+            assertion.target_field = "" if target_entry else cel_expr
+            assertion.save()
             messages.success(request, _("Default assertion updated."))
             if request.headers.get("HX-Request"):
                 return self._hx_redirect()
@@ -1693,7 +1699,7 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
                 "validations/library/partials/modal_rule_edit.html",
                 {
                     "validator": self.validator,
-                    "rule_id": rule.id,
+                    "rule_id": assertion.id,
                     "form": form,
                 },
                 status=400,
@@ -1708,41 +1714,40 @@ class ValidatorRuleMoveView(ValidatorRuleMixin, View):
     def post(self, request, *args, **kwargs):
         if not self._can_move_rule():
             return HttpResponse(status=403)
+        default_ruleset = self.validator.default_ruleset
+        if not default_ruleset:
+            return HttpResponse(status=404)
         direction = request.POST.get("direction")
-        rule = get_object_or_404(
-            ValidatorCatalogRule,
+        assertion = get_object_or_404(
+            RulesetAssertion,
             pk=self.kwargs.get("rule_pk"),
-            validator=self.validator,
+            ruleset=default_ruleset,
         )
-        rules = list(
-            ValidatorCatalogRule.objects.filter(validator=self.validator).order_by(
-                "order",
-                "pk",
-            )
+        items = list(
+            default_ruleset.assertions.order_by("order", "pk"),
         )
         try:
-            index = rules.index(rule)
+            index = items.index(assertion)
         except ValueError:
             return HttpResponse(status=404)
 
         if direction == "up" and index > 0:
-            rules[index - 1], rules[index] = rules[index], rules[index - 1]
-        elif direction == "down" and index < len(rules) - 1:
-            rules[index], rules[index + 1] = rules[index + 1], rules[index]
+            items[index - 1], items[index] = items[index], items[index - 1]
+        elif direction == "down" and index < len(items) - 1:
+            items[index], items[index + 1] = items[index + 1], items[index]
         else:
             return HttpResponse(status=204)
 
         with transaction.atomic():
-            for pos, item in enumerate(rules, start=1):
-                ValidatorCatalogRule.objects.filter(pk=item.pk).update(order=pos * 10)
+            for pos, item in enumerate(items, start=1):
+                RulesetAssertion.objects.filter(pk=item.pk).update(
+                    order=pos * 10,
+                )
 
         assertions = (
-            ValidatorCatalogRule.objects.filter(validator=self.validator)
-            .order_by("order", "name")
-            .prefetch_related(
-                "rule_entries",
-                "rule_entries__catalog_entry",
-            )
+            default_ruleset.assertions.all()
+            .select_related("target_catalog_entry")
+            .order_by("order", "pk")
         )
         if request.headers.get("HX-Request"):
             return render(
@@ -1763,12 +1768,13 @@ class ValidatorRuleMoveView(ValidatorRuleMixin, View):
 
 class ValidatorRuleDeleteView(ValidatorRuleMixin, TemplateView):
     def post(self, request, *args, **kwargs):
-        rule = get_object_or_404(
-            ValidatorCatalogRule,
+        default_ruleset = self.validator.default_ruleset
+        assertion = get_object_or_404(
+            RulesetAssertion,
             pk=self.kwargs.get("rule_pk"),
-            validator=self.validator,
+            ruleset=default_ruleset,
         )
-        rule.delete()
+        assertion.delete()
         messages.success(request, _("Default assertion deleted."))
         if request.headers.get("HX-Request"):
             return self._hx_redirect()

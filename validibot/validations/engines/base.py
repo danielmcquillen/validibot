@@ -444,32 +444,34 @@ class BaseValidatorEngine(ABC):
             assertion_id=getattr(assertion, "id", None),
         )
 
-    def _count_stage_assertions(self, ruleset, target_stage: str) -> int:
+    def _count_stage_assertions(
+        self,
+        ruleset,
+        target_stage: str,
+        *,
+        default_ruleset=None,
+    ) -> int:
         """
         Count ALL assertions that match the given stage.
 
-        The stage is determined by each assertion's resolved_run_stage property,
-        which uses target_catalog_entry.run_stage if set, otherwise defaults
-        to OUTPUT.
-
-        This counts all assertion types (CEL, basic, etc.) for the given stage.
+        Includes assertions from both the default_ruleset (validator-level)
+        and the step-level ruleset.
 
         Args:
-            ruleset: The Ruleset model instance (may be None).
+            ruleset: The step-level Ruleset model instance (may be None).
             target_stage: "input" or "output".
+            default_ruleset: The validator's default Ruleset (may be None).
 
         Returns:
             Count of assertions matching the stage.
         """
-        if not ruleset:
-            return 0
-
-        # Count ALL assertion types, not just CEL
-        assertions = ruleset.assertions.all()
         count = 0
-        for assertion in assertions:
-            if assertion.resolved_run_stage == target_stage:
-                count += 1
+        for rs in (default_ruleset, ruleset):
+            if not rs:
+                continue
+            for assertion in rs.assertions.all():
+                if assertion.resolved_run_stage == target_stage:
+                    count += 1
         return count
 
     def evaluate_assertions_for_stage(
@@ -483,14 +485,21 @@ class BaseValidatorEngine(ABC):
         """
         Evaluate all assertions for a given stage using the evaluator registry.
 
-        This is the unified entry point for assertion evaluation. It iterates
-        through assertions in order, dispatching each to the appropriate evaluator
-        based on assertion_type. This allows mixed assertion types (BASIC, CEL,
-        future types) to be evaluated in a single ordered pass.
+        This is the unified entry point for assertion evaluation. It merges
+        assertions from two sources, evaluated in this order:
+
+        1. **Default assertions** from ``validator.default_ruleset`` - these are
+           validator-level assertions that always run regardless of step config.
+        2. **Step assertions** from the ``ruleset`` parameter - these are
+           per-step assertions configured by the workflow author.
+
+        Both sets are evaluated in a single pass, with default assertions
+        ordered first. Within each set, assertions are ordered by
+        ``(order, pk)``.
 
         Args:
             validator: The Validator model instance.
-            ruleset: The Ruleset model instance (may be None).
+            ruleset: The step-level Ruleset model instance (may be None).
             payload: The data to evaluate assertions against.
             stage: "input" or "output" - only assertions matching this stage
                 are evaluated.
@@ -498,7 +507,8 @@ class BaseValidatorEngine(ABC):
         Returns:
             AssertionEvaluationResult with issues, total count, and failure count.
         """
-        if ruleset is None:
+        default_ruleset = getattr(validator, "default_ruleset", None)
+        if ruleset is None and default_ruleset is None:
             return AssertionEvaluationResult(issues=[], total=0, failures=0)
 
         # Import the evaluators package to ensure all evaluators are registered
@@ -507,17 +517,20 @@ class BaseValidatorEngine(ABC):
         from validibot.validations.assertions.evaluators.base import AssertionContext
         from validibot.validations.assertions.evaluators.registry import get_evaluator
 
-        # Get all assertions ordered by (order, pk)
-        assertions = list(
-            ruleset.assertions.all()
-            .select_related("target_catalog_entry")
-            .order_by("order", "pk")
-        )
-
-        # Filter to target stage
-        stage_assertions = [
-            a for a in assertions if a.resolved_run_stage == stage
-        ]
+        # Merge assertions: default_ruleset first, then step-level ruleset.
+        # Default assertions always run and are evaluated first.
+        stage_assertions: list = []
+        for rs in (default_ruleset, ruleset):
+            if rs is None:
+                continue
+            assertions = list(
+                rs.assertions.all()
+                .select_related("target_catalog_entry")
+                .order_by("order", "pk")
+            )
+            stage_assertions.extend(
+                a for a in assertions if a.resolved_run_stage == stage
+            )
 
         if not stage_assertions:
             return AssertionEvaluationResult(issues=[], total=0, failures=0)

@@ -215,6 +215,12 @@ def create_default_validators():
         )
         validator.save()
 
+        # Ensure every system validator has a default_ruleset for holding
+        # validator-level assertions. The save() method calls
+        # ensure_default_ruleset(), but for validators created before this
+        # feature existed we also call it explicitly here.
+        validator.ensure_default_ruleset()
+
     # Note: Catalog entries for advanced validators are synced separately via:
     #   python manage.py sync_advanced_validators
     # This function only creates the validator instances.

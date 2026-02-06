@@ -98,17 +98,36 @@ From the workflow detail page, click **Edit** (or the settings icon) to modify:
 
 **Public Information**: Update the description shown to users who run this workflow.
 
-## Step Assertions
+## Assertions
 
-Beyond the validator's built-in checks, you can add custom assertions to individual steps. Assertions use CEL (Common Expression Language) to define additional rules.
+Validibot evaluates two tiers of assertions for each workflow step. Both
+produce findings visible in the run results, and both count toward the step's
+assertion statistics.
 
-### When to Use Step Assertions
+### Default Assertions
+
+Default assertions are defined by the validator author on the validator itself.
+They run automatically whenever the validator executes, regardless of which
+workflow step is using it. Validator authors manage them from the validator
+detail page.
+
+Default assertions are always evaluated first. Workflow authors cannot override
+or remove them — they represent the validator's built-in domain checks (for
+example, "site EUI must be positive"). When you view a workflow step in the
+editor, a card shows how many default assertions the selected validator has.
+
+### Step Assertions
+
+Step assertions are authored by the workflow creator and are specific to one
+workflow step. They let you add custom rules on top of the validator's defaults.
+
+**When to use step assertions:**
 
 - To tighten validation beyond the default checks
 - To enforce business rules specific to your use case
 - To check relationships between data fields
 
-### Adding Assertions
+**Adding step assertions:**
 
 1. Edit the workflow step.
 2. In the "Assertions" section, click **Add Assertion**.
@@ -117,6 +136,15 @@ Beyond the validator's built-in checks, you can add custom assertions to individ
    - **Message**: The error message shown when the assertion fails
    - **Severity**: Error, Warning, or Info
 4. Save the step.
+
+### Evaluation Order
+
+When a step runs, assertions are evaluated in this order:
+
+1. Default assertions from the validator (always run first)
+2. Step assertions defined on the workflow step (run second)
+
+Findings from both tiers appear together in the results.
 
 ## Workflow Lifecycle
 

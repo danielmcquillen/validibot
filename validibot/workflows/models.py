@@ -714,8 +714,28 @@ class WorkflowStep(TimeStampedModel):
         on_delete=models.SET_NULL,
     )
 
-    # Optional per-step config (e.g., severity thresholds, mapping)
+    # Optional per-step config (e.g., severity thresholds, mapping).
+    # Use the typed_config property for type-safe access — see step_configs.py.
     config = models.JSONField(default=dict, blank=True)
+
+    @property
+    def typed_config(self):
+        """Return this step's config as a typed Pydantic model.
+
+        Parses the raw config JSONField into the appropriate Pydantic model
+        based on the step's validator or action type. For example, an
+        EnergyPlus step returns an EnergyPlusStepConfig instance with typed
+        fields like ``resource_file_ids: list[str]``.
+
+        Returns BaseStepConfig for unknown types (still gives dict-like access
+        via ``extra="allow"``).
+
+        See Also:
+            validibot.workflows.step_configs for available config models.
+        """
+        from validibot.workflows.step_configs import get_step_config
+
+        return get_step_config(self)
 
     @property
     def step_number(self) -> int:
@@ -766,6 +786,21 @@ class WorkflowStep(TimeStampedModel):
 
         if self.action and self.display_schema:
             self.display_schema = False
+
+        # Validate config against the typed Pydantic model for this step type.
+        # This catches typos and type mismatches at save time rather than at
+        # runtime during validation execution.
+        if self.config:
+            from pydantic import ValidationError as PydanticValidationError
+
+            from validibot.workflows.step_configs import get_step_config
+
+            try:
+                get_step_config(self)
+            except PydanticValidationError as exc:
+                raise ValidationError(
+                    {"config": str(exc)},
+                ) from exc
 
 
 class WorkflowRoleAccess(models.Model):

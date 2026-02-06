@@ -19,6 +19,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
+from validibot.validations.services.step_orchestrator import StepOrchestrator
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -219,7 +220,7 @@ def test_execute_persists_findings_and_summary(monkeypatch):
         }
 
     monkeypatch.setattr(
-        ValidationRunService,
+        StepOrchestrator,
         "_execute_validator_step",
         mock_execute_validator_step,
     )

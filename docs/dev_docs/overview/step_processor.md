@@ -4,18 +4,25 @@ This document provides a comprehensive guide to how Validibot executes validatio
 
 ## Overview
 
-The **Validation Step Processor** is the core abstraction that orchestrates the execution of individual validation steps within a workflow. It sits between the high-level workflow orchestration (`ValidationRunService`) and the low-level validation logic (engines), providing a clean separation of concerns.
+The **Validation Step Processor** is the core abstraction that orchestrates the execution of individual validation steps within a workflow. It sits between the step orchestrator (which iterates through workflow steps) and the low-level validation logic (engines), providing a clean separation of concerns.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    ValidationRunService                              │
-│                 (Workflow Orchestration)                             │
+│               ValidationRunService (Facade)                         │
+│            (Launch, Cancel, Delegation)                              │
+└──────────────────────────┬──────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    StepOrchestrator                                  │
+│                 (Step Iteration & Dispatch)                          │
 │                                                                      │
 │   Responsibilities:                                                  │
 │   - Loop through workflow steps                                      │
 │   - Create ValidationStepRun records                                 │
-│   - Aggregate results into run summary                               │
+│   - Route to processors (validators) or handlers (actions)           │
 │   - Handle workflow-level status transitions                         │
+│   - Delegate to SummaryBuilder and FindingsPersistence               │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -42,6 +49,9 @@ The **Validation Step Processor** is the core abstraction that orchestrates the 
 │   - Extract signals/metrics from outputs                             │
 │   - Return structured ValidationResult                               │
 └─────────────────────────────────────────────────────────────────────┘
+
+See [Service Layer Architecture](service_architecture.md) for the full
+decomposition of the service layer.
 ```
 
 ## Two Types of Validators
@@ -178,7 +188,10 @@ This is the simplest case - a single method call that completes synchronously.
 
 **Code path:**
 ```
-validibot/validations/services/validation_run.py
+validibot/validations/services/validation_run.py  (facade)
+  └── execute_workflow_steps() → delegates to StepOrchestrator
+
+validibot/validations/services/step_orchestrator.py
   └── execute_workflow_steps()
       └── _execute_validator_step()
           └── processor.execute()

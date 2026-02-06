@@ -77,6 +77,7 @@ nav:
       - How It Works: overview/how_it_works.md
       - Workflow Engine: overview/workflow_engine.md
       - Step Processor: overview/step_processor.md
+      - Service Architecture: overview/service_architecture.md
       - Advanced Validator Interface: overview/validator_architecture.md
       - Execution Backends: overview/execution_backends.md
       - Submission Modes: overview/request_modes.md

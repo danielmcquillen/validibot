@@ -108,23 +108,26 @@ Run Job (GCP) or Docker container (Docker Compose) for heavier workloads. The AP
 
 ### Phase 3: Validation Execution
 
-The `ValidationRunService.execute_workflow_steps` method handles the actual validation work (either inline or coordinating Cloud Run Jobs):
+The `ValidationRunService` facade delegates execution to the `StepOrchestrator`,
+which handles the actual validation work (either inline or coordinating Cloud Run
+Jobs). See [Service Layer Architecture](service_architecture.md) for the full
+decomposition.
 
 #### 3.1 Execution Setup
 
-1. **Run Initialization**: The task loads the ValidationRun and associated data
+1. **Run Initialization**: The orchestrator loads the ValidationRun and associated data
 
    - Validates the run is in PENDING state
    - Loads the workflow and its configured steps
    - Marks the run as RUNNING with start timestamp
 
-2. **Step Sequencing**: The system executes workflow steps in order
+2. **Step Sequencing**: The orchestrator executes workflow steps in order
    - Each step is processed sequentially (parallel execution is planned for future versions)
    - Step execution is isolated - failures in one step don't prevent others from running
 
 #### 3.2 Step Routing: Validators vs Actions
 
-The workflow engine routes each step to the appropriate handler based on its type:
+The `StepOrchestrator` routes each step to the appropriate handler based on its type:
 
 **Validator Steps** use the `ValidationStepProcessor` abstraction:
 
@@ -268,33 +271,32 @@ class JsonSchemaEngine(BaseValidatorEngine):
 sequenceDiagram
     actor Client
     participant API as WorkflowViewSet.start_validation()
-    participant Service as ValidationRunService
-    participant Worker as execute_validation_run
+    participant Facade as ValidationRunService (facade)
+    participant Orch as StepOrchestrator
     participant Registry as Engine Registry
     participant Engine as BaseValidatorEngine
 
     Client->>API: POST /orgs/{org}/workflows/{id}/runs/
-    API->>Service: launch(request, workflow, submission)
-    Service->>Service: ValidationRun.objects.create(...)
-    Service->>Worker: execute_workflow_steps(run_id, user_id, metadata)
+    API->>Facade: launch(request, workflow, submission)
+    Facade->>Facade: ValidationRun.objects.create(...)
+    Facade->>Orch: execute_workflow_steps(run_id, user_id, metadata)
     API-->>Client: 201 Created or 202 Accepted (if still running)
 
-    Worker->>Service: execute_workflow_steps(run_id, user_id)
-    Service->>Service: mark run RUNNING\nlog start event
-    Service->>Service: load ordered workflow steps
+    Orch->>Orch: mark run RUNNING\nlog start event
+    Orch->>Orch: load ordered workflow steps
 
     loop For each workflow step
-        Service->>Service: resolve validator, ruleset, config
-        Service->>Registry: get(validation_type)
-        Registry-->>Service: engine class
-        Service->>Engine: validate(submission, ruleset, config)
-        Engine-->>Service: ValidationResult (passed, issues, stats)
-        Service->>Service: append step summary\nstop loop on first failure
+        Orch->>Orch: resolve validator, ruleset, config
+        Orch->>Registry: get(validation_type)
+        Registry-->>Orch: engine class
+        Orch->>Engine: validate(submission, ruleset, config)
+        Engine-->>Orch: ValidationResult (passed, issues, stats)
+        Orch->>Orch: append step summary\nstop loop on first failure
     end
 
-    Service->>Service: aggregate summary\nupdate ValidationRun status
-    Service-->>Worker: ValidationRunTaskResult
-    note over Client,Worker: Client polls run detail\nendpoint until status terminal
+    Orch->>Orch: aggregate summary\nupdate ValidationRun status
+    Orch-->>Facade: ValidationRunTaskResult
+    note over Client,Orch: Client polls run detail\nendpoint until status terminal
 ```
 
 ### Phase 4: Result Aggregation
@@ -532,3 +534,10 @@ Currently, workflow steps execute sequentially. Future versions will support:
 - **IDE Plugins**: Integration with development environments
 
 This architecture provides a solid foundation for scalable, reliable data validation while remaining flexible enough to adapt to evolving requirements.
+
+## Related Documentation
+
+- [Service Layer Architecture](service_architecture.md) — how the service layer is decomposed into focused modules
+- [Step Processor Architecture](step_processor.md) — processor pattern details
+- [Workflow Engine](workflow_engine.md) — higher-level orchestration
+- [Validator Architecture](validator_architecture.md) — execution backends

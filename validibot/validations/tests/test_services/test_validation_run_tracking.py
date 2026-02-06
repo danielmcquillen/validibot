@@ -9,6 +9,7 @@ from validibot.tracking.models import TrackingEvent
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
+from validibot.validations.services.step_orchestrator import StepOrchestrator
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -35,7 +36,7 @@ def test_execute_logs_started_and_success(monkeypatch):
         }
 
     monkeypatch.setattr(
-        ValidationRunService,
+        StepOrchestrator,
         "_execute_validator_step",
         mock_execute_validator_step,
     )
@@ -79,7 +80,7 @@ def test_execute_logs_failure(monkeypatch):
         }
 
     monkeypatch.setattr(
-        ValidationRunService,
+        StepOrchestrator,
         "_execute_validator_step",
         mock_execute_validator_step,
     )

@@ -1,0 +1,205 @@
+{% load i18n core_tags static %}
+
+{% user_settings_nav_state as user_settings_nav %}
+{% with has_builder_access=has_author_admin_owner %}
+  <div id="app-left-nav" class="text-bg-dark d-flex flex-column h-100">
+    <div class="left-nav-title">
+      <a href="{% url 'home:home' %}" class="navbar-brand brand-with-mark">
+        <img src="{% static 'images/robot_head_bw.png' %}"
+             alt="{% trans 'Validibot logo' %}"
+             class="brand-mark" />
+        <span class="brand-name">Validibot</span>
+      </a>
+    </div>
+    <div class="app-left-nav-items">
+      {# Workflow guests (no org membership) see minimal navigation #}
+      {% if is_workflow_guest %}
+        <ul class="nav nav-pills flex-column mt-3" role="menu">
+          <li class="nav-item" role="none">
+            <a href="{% url 'workflows:guest_workflow_list' %}"
+               class="nav-link text-white {% active_link 'workflows' %}"
+               role="menuitem">
+              <i class="bi bi-boxes"></i>
+              <span>{% trans "Shared Workflows" %}</span>
+            </a>
+          </li>
+          <li class="nav-item" role="none">
+            <a href="{% url 'validations:guest_validation_list' %}"
+               class="nav-link text-white {% active_link_views 'validations:guest_validation_list' 'validations:validation_detail' %}"
+               role="menuitem">
+              <i class="bi bi-shield-check"></i>
+              <span>{% trans "My Validation Runs" %}</span>
+            </a>
+          </li>
+          <li class="nav-item" role="none">
+            <a href="{% url 'help:help_index' %}"
+               class="nav-link text-white {% active_link 'help' %}"
+               role="menuitem">
+              <i class="bi bi-question-circle"></i>
+              <span>{% trans "Help" %}</span>
+            </a>
+          </li>
+        </ul>
+        {# Free plan users on personal org see limited navigation (Workflows + Validation Runs) #}
+      {% elif show_limited_nav %}
+        <div class="workspace-selector-wrapper">
+          {% if org_memberships|length > 1 %}
+            {% include 'app/partial/components/workspace_selector.html' %}
+          {% endif %}
+        </div>
+        <ul class="nav nav-pills flex-column" role="menu">
+          <li class="nav-item" role="none">
+            <a href="{% org_url 'workflows:workflow_list' %}"
+               class="nav-link text-white {% active_link 'workflows' %}"
+               role="menuitem">
+              <i class="bi bi-boxes"></i>
+              <span>{% trans "Workflows" %}</span>
+            </a>
+          </li>
+          <li class="nav-item" role="none">
+            <a href="{% org_url 'validations:validation_list' %}"
+               class="nav-link text-white {% active_link_views 'validations:validation_list' 'validations:validation_detail' %}"
+               role="menuitem">
+              <i class="bi bi-shield-check"></i>
+              <span>{% trans "Validation Runs" %}</span>
+            </a>
+          </li>
+          <li class="nav-item" role="none">
+            <a href="{% url 'help:help_index' %}"
+               class="nav-link text-white {% active_link 'help' %}"
+               role="menuitem">
+              <i class="bi bi-question-circle"></i>
+              <span>{% trans "Help" %}</span>
+            </a>
+          </li>
+        </ul>
+      {% else %}
+        {# Regular member navigation #}
+        {# Multi-org feature: show workspace selector for org switching #}
+        {# Community/Pro editions: hide workspace selector (single-org mode) #}
+        {% if feature_multi_org %}
+          <div class="workspace-selector-wrapper">
+            {% if org_memberships|length > 1 or is_org_admin %}
+              {% include 'app/partial/components/workspace_selector.html' %}
+            {% endif %}
+          </div>
+        {% endif %}
+        <ul class="nav nav-pills flex-column " role="menu">
+          {% if has_builder_access %}
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'dashboard:my_dashboard' %}"
+                 class="nav-link text-white {% active_link 'dashboard' %}"
+                 role="menuitem">
+                <i class="bi bi-speedometer2"></i>
+                <span>{% trans "Dashboard" %}</span>
+              </a>
+            </li>
+          {% endif %}
+        </ul>
+        {% if has_builder_access %}
+          <div class="group-label mt-4">Design</div>
+          <ul class="nav nav-pills flex-column " role="menu">
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'workflows:workflow_list' %}"
+                 class="nav-link text-white {% active_link 'workflows' %}"
+                 role="menuitem">
+                <i class="bi bi-boxes"></i>
+                <span>{% trans "Workflows" %}</span>
+              </a>
+            </li>
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'validations:validation_library' %}"
+                 class="nav-link text-white {% active_link_views 'validations:validation_library' 'validations:custom_validator_create' 'validations:custom_validator_update' 'validations:custom_validator_delete' 'validations:validator_detail' %}"
+                 role="menuitem">
+                <i class="bi bi-journal-bookmark"></i>
+                <span>{% trans "Validator Library" %}</span>
+              </a>
+            </li>
+          </ul>
+          <div class="group-label mt-4">Analytics</div>
+          <ul class="nav nav-pills flex-column" role="menu">
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'validations:validation_list' %}"
+                 class="nav-link text-white {% active_link_views 'validations:validation_list' 'validations:validation_detail' 'validations:validation_delete' %}"
+                 role="menuitem">
+                <i class="bi bi-shield-check"></i>
+                <span>{% trans "Validation Runs" %}</span>
+              </a>
+            </li>
+          </ul>
+        {% elif has_any_org_roles %}
+          <ul class="nav nav-pills flex-column" role="menu">
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'workflows:workflow_list' %}"
+                 class="nav-link text-white {% active_link 'workflows' %}"
+                 role="menuitem">
+                <i class="bi bi-boxes"></i>
+                <span>{% trans "Workflows" %}</span>
+              </a>
+            </li>
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'validations:validation_list' %}"
+                 class="nav-link text-white {% active_link_views 'validations:validation_list' 'validations:validation_detail' 'validations:validation_delete' %}"
+                 role="menuitem">
+                <i class="bi bi-shield-check"></i>
+                <span>{% trans "Validation Runs" %}</span>
+              </a>
+            </li>
+          </ul>
+        {% endif %}
+        <ul class="nav nav-pills flex-column mb-auto" role="menu">
+          {% if has_builder_access and is_org_admin %}
+            <div class="group-label mt-4">{% trans "Admin" %}</div>
+            {# Organization link - for single-org mode (when multi-org is not enabled) #}
+            {% if not feature_multi_org and active_org %}
+              <li class="nav-item" role="none">
+                <a href="{% url 'users:organization-update' active_org.pk %}"
+                   class="nav-link text-white {% active_link_views 'users:organization-update' 'users:organization-detail' %}"
+                   role="menuitem">
+                  <i class="bi bi-building"></i>
+                  <span>{% trans "Organization" %}</span>
+                </a>
+              </li>
+            {% endif %}
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'projects:project-list' %}"
+                 class="nav-link text-white {% active_link 'projects' %}"
+                 role="menuitem">
+                <i class="bi bi-collection"></i>
+                <span>{% trans "Projects" %}</span>
+              </a>
+            </li>
+            <li class="nav-item" role="none">
+              <a href="{% org_url 'members:member_list' %}"
+                 class="nav-link text-white {% active_link_views 'members:member_list' 'members:member_edit' 'members:member_delete' %}"
+                 role="menuitem">
+                <i class="bi bi-people"></i>
+                <span>{% trans "Members" %}</span>
+              </a>
+            </li>
+            {% if feature_guest_management %}
+              <li class="nav-item" role="none">
+                <a href="{% org_url 'members:guest_list' %}"
+                   class="nav-link text-white {% active_link_views 'members:guest_list' %}"
+                   role="menuitem">
+                  <i class="bi bi-person-badge"></i>
+                  <span>{% trans "Guests" %}</span>
+                </a>
+              </li>
+            {% endif %}
+          {% endif %}
+          <div class="group-label mt-4">{% trans "Support" %}</div>
+          <li class="nav-item" role="none">
+            <a href="{% url 'help:help_index' %}"
+               class="nav-link text-white {% active_link 'help' %}"
+               role="menuitem">
+              <i class="bi bi-question-circle"></i>
+              <span>{% trans "Help" %}</span>
+            </a>
+          </li>
+        </ul>
+      {% endif %}
+      {# end navigation conditionals #}
+    </div>
+  </div>
+{% endwith %}

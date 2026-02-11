@@ -1,0 +1,14 @@
+{% load i18n %}
+
+<div class="assertion-group" data-assertion-stage="{{ stage }}">
+  <div class="assertion-group-panel">
+    <div class="assertion-group-label">{{ label }}</div>
+    {% if assertions %}
+      {% for assertion in assertions %}
+        {% include 'workflows/partials/components/assertion_step.html' with assertion=assertion run_stage=stage %}
+      {% endfor %}
+    {% else %}
+      <div class="assertion-group-empty text-muted">{{ empty_label|default:_("No assertions defined yet.") }}</div>
+    {% endif %}
+  </div>
+</div>

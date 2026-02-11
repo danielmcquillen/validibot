@@ -1,0 +1,47 @@
+{% load i18n core_tags %}
+
+<div class="modal-header">
+  <h1 class="modal-title h5">
+    {% blocktrans with name=validator.name %}Default assertions for {{ name }}{% endblocktrans %}
+  </h1>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="{% trans 'Close' %}"></button>
+</div>
+<div class="modal-body">
+  {% if validator_default_assertions %}
+    <div class="list-group list-group-flush">
+      {% for assertion in validator_default_assertions %}
+        <div class="list-group-item">
+          <div class="d-flex flex-column gap-1">
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge text-bg-secondary">{{ assertion.get_assertion_type_display }}</span>
+              <span class="badge text-bg-light text-dark">{% trans "Order" %}: {{ assertion.order }}</span>
+            </div>
+            <div class="fw-semibold">{{ assertion.message_template }}</div>
+            <pre class="bg-light border rounded p-2 mb-0"><code>{{ assertion.cel_cache }}</code></pre>
+            {% if assertion.target_catalog_entry %}
+              <div class="d-flex flex-wrap gap-1 pt-1">
+                <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted mb-0">{% trans "This validator has no default assertions." %}</p>
+  {% endif %}
+</div>
+<div class="modal-footer d-flex justify-content-between">
+  {% if can_view_validator_detail %}
+    <a class="btn btn-secondary"
+       target="_blank"
+       rel="noopener"
+       href="{% org_url 'validations:validator_detail' slug=validator.slug %}">
+      {% trans "View Validator Assertions" %}
+    </a>
+  {% endif %}
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
+</div>

@@ -1,0 +1,55 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Edit member roles" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid" id="organization-member-form">
+    <div class="row">
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h1 class="h5 mb-3">{% trans "Edit member roles" %}</h1>
+            <form method="post" novalidate>
+              {% csrf_token %}
+              {% if form.non_field_errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.non_field_errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if form.roles.errors %}
+                <div class="alert alert-danger" role="alert">
+                  {% for error in form.roles.errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if form.owner_locked %}
+                <div class="alert alert-info" role="status">
+                  {% trans "This member is the organization owner and already has every permission. Ownership changes require Validibot support." %}
+                </div>
+              {% endif %}
+              <span class="form-label fw-semibold d-block mb-2">{{ form.fields.roles.label }}</span>
+              {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
+              <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
+              <div class="d-flex justify-content-end gap-2">
+                <a href="{% url 'users:organization-detail' organization.pk %}"
+                   class="btn btn-secondary">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

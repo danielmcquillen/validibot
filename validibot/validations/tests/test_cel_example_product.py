@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from django.test import TestCase
+
+from validibot.validations.constants import AssertionOperator
+from validibot.validations.constants import AssertionType
+from validibot.validations.constants import CatalogEntryType
+from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import RulesetType
+from validibot.validations.constants import ValidationType
+from validibot.validations.engines.basic import BasicValidatorEngine
+from validibot.validations.tests.factories import RulesetAssertionFactory
+from validibot.validations.tests.factories import RulesetFactory
+from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+from validibot.validations.tests.factories import ValidatorFactory
+
+
+class TestExampleProductWithCEL(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.payload = json.loads(
+            Path("tests/assets/json/example_product.json").read_text(),
+        )
+        cls.validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+        )
+        # Catalog entries needed for CEL context resolution.
+        cls.price_entry = ValidatorCatalogEntryFactory(
+            validator=cls.validator,
+            slug="price",
+            run_stage=CatalogRunStage.INPUT,
+            entry_type=CatalogEntryType.SIGNAL,
+        )
+        cls.rating_entry = ValidatorCatalogEntryFactory(
+            validator=cls.validator,
+            slug="rating",
+            run_stage=CatalogRunStage.INPUT,
+            entry_type=CatalogEntryType.SIGNAL,
+        )
+        cls.tags_entry = ValidatorCatalogEntryFactory(
+            validator=cls.validator,
+            slug="tags",
+            run_stage=CatalogRunStage.INPUT,
+            entry_type=CatalogEntryType.SIGNAL,
+        )
+        cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
+        cls.error_message = (
+            " Your prices has to be greater than 0 AND rating greater "
+            'than 90 AND "mini" '
+            "has to be in the tags!!!"
+        )
+
+    def setUp(self):
+        """Create fresh ruleset for each test to avoid assertion accumulation."""
+        self.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+
+    def _assertion(self):
+        return RulesetAssertionFactory(
+            ruleset=self.ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            # Set target_catalog_entry to an input entry so the assertion
+            # runs in input stage (resolved_run_stage defaults to OUTPUT
+            # when target_catalog_entry is None).
+            target_catalog_entry=self.price_entry,
+            target_field="",  # Required: must be empty when catalog entry is set
+            rhs={"expr": self.expression},
+            message_template=self.error_message,
+        )
+
+    def _engine_validate(self, payload: dict):
+        self._assertion()
+        engine = BasicValidatorEngine()
+        # Basic engine expects JSON string content; we bypass submissions and
+        # feed payload directly.
+        result = engine.evaluate_assertions_for_stage(
+            ruleset=self.ruleset,
+            validator=self.validator,
+            payload=payload,
+            stage="input",
+        )
+        return result.issues
+
+    def test_happy_path_passes(self):
+        issues = self._engine_validate(self.payload)
+        self.assertEqual(len(issues), 0)
+
+    def test_price_must_be_positive(self):
+        payload = {**self.payload, "price": 0}
+        issues = self._engine_validate(payload)
+        self.assertEqual(len(issues), 1)
+        self.assertIn(self.error_message, issues[0].message)
+
+    def test_missing_catalog_entry_reports_identifier(self):
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+            allow_custom_assertion_targets=False,
+        )
+        validator.allow_custom_assertion_targets = False
+        validator.save(update_fields=["allow_custom_assertion_targets"])
+        validator.refresh_from_db()
+        self.assertFalse(validator.allow_custom_assertion_targets)
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            rhs={"expr": "price > 0"},
+        )
+        engine = BasicValidatorEngine()
+        # Assertions without target_catalog_entry default to OUTPUT stage
+        result = engine.evaluate_assertions_for_stage(
+            ruleset=ruleset,
+            validator=validator,
+            payload=self.payload,
+            stage="output",
+        )
+        self.assertEqual(len(result.issues), 1)
+        self.assertIn("identifier 'price'", result.issues[0].message)
+
+    def test_rating_must_be_high_enough(self):
+        payload = {**self.payload, "rating": 80}
+        issues = self._engine_validate(payload)
+        self.assertEqual(len(issues), 1)
+        self.assertIn(self.error_message, issues[0].message)
+
+    def test_mini_must_be_in_tags(self):
+        payload = {**self.payload, "tags": ["gadgets"]}
+        issues = self._engine_validate(payload)
+        self.assertEqual(len(issues), 1)
+        self.assertIn(self.error_message, issues[0].message)

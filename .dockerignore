@@ -1,0 +1,36 @@
+.venv
+__pycache__
+*.pyc
+node_modules
+.git
+.gitignore
+.DS_Store
+*/__pycache__
+*.sqlite3
+*.log
+# keep lockfiles for dependency installs
+.editorconfig
+.gitattributes
+.github
+.gitignore
+.gitlab-ci.yml
+.idea
+.pre-commit-config.yaml
+.readthedocs.yml
+.travis.yml
+venv
+.git
+.envs/
+# Exclude validator containers - they build separately
+validators/
+# Exclude generated documentation
+docs_build/
+# Exclude test and dev files
+tests/
+*.md
+README*
+LICENSE*
+# Exclude build artifacts
+dist/
+build/
+*.egg-info/

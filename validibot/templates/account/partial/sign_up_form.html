@@ -1,0 +1,56 @@
+{% load i18n core_tags %}
+{% load static %}
+{% load crispy_forms_filters %}
+
+<form class="signup"
+      id="signup_form"
+      method="post"
+      action="{% url 'account_signup' %}">
+  {% csrf_token %}
+  {% comment %}
+    Render all form fields except terms_accepted (rendered with links) and captcha
+    (rendered at the end before the submit button).
+  {% endcomment %}
+  {% for field in form %}
+    {% if field.name != 'terms_accepted' and field.name != 'captcha' %}{{ field|as_crispy_field }}{% endif %}
+  {% endfor %}
+  {% comment %}
+    Terms acceptance checkbox with links to Terms of Service and Privacy Policy.
+  {% endcomment %}
+  {% comment %} Terms and privacy URLs - update these when hosted externally {% endcomment %}
+  {% with terms_url="/terms/" privacy_url="/privacy/" %}
+    <div class="mb-3">
+      <div class="form-check">
+        <input type="checkbox"
+               name="terms_accepted"
+               id="id_terms_accepted"
+               class="form-check-input {% if form.terms_accepted.errors %}is-invalid{% endif %}"
+               {% if form.terms_accepted.value %}checked{% endif %}
+               required />
+        <label class="form-check-label" for="id_terms_accepted">
+          {% blocktrans trimmed %}
+            I agree to the <a href="{{ terms_url }}" target="_blank">Terms of Service</a>
+            and <a href="{{ privacy_url }}" target="_blank">Privacy Policy</a>
+          {% endblocktrans %}
+        </label>
+        {% if form.terms_accepted.errors %}<div class="invalid-feedback">{{ form.terms_accepted.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+  {% endwith %}
+  {% comment %}
+    reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
+    are configured in settings. The captcha widget will render its own UI.
+  {% endcomment %}
+  {% if form.captcha %}
+    <div class="mb-3">
+      {{ form.captcha }}
+      {% if form.captcha.errors %}<div class="text-danger small mt-1">{{ form.captcha.errors.0 }}</div>{% endif %}
+    </div>
+  {% endif %}
+  {% if redirect_field_value %}
+    <input type="hidden"
+           name="{{ redirect_field_name }}"
+           value="{{ redirect_field_value }}" />
+  {% endif %}
+  <button id="sign_up_btn" class="btn btn-secondary" type="submit">{% trans "Sign Up" %} »</button>
+</form>

@@ -1,0 +1,201 @@
+html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
+  width: 0;
+  min-width: 0;
+  flex-basis: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#app-left-nav {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 100vh;
+  height: auto !important; // override bootstrap h-100 so flexbox can stretch to page height
+  align-self: stretch;
+  width: 200px;
+  flex: 0 0 200px;
+  position: relative;
+  background-color: #04070f; // fallback when gradients are unavailable
+  // Layered gradients create the dark-blue background (anchored to a darkened Bootstrap primary hue) with a subtle texture while keeping the layout light.
+  background-image: radial-gradient(
+      circle at 20% 18%,
+      rgba(255, 255, 255, 0.08),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 80% 65%,
+      rgba(255, 255, 255, 0.05),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #1a3562 0%, #132748 100%);
+  background-repeat: no-repeat;
+  overflow: visible;
+  color: rgba(255, 255, 255, 0.85);
+  transition: width 0.28s ease, flex-basis 0.28s ease, opacity 0.2s ease,
+    visibility 0.2s ease;
+
+  &.is-collapsed {
+    width: 0;
+    min-width: 0;
+    flex-basis: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  // Subtle drop shadow to the right
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+
+  hr {
+    margin: 0.5rem 0;
+  }
+
+  .group-label {
+    color: #ffffff66;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .left-nav-title {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    min-height: 45px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 1rem;
+
+    .navbar-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1rem;
+      padding: 0.2rem 0;
+      font-family: "Space Grotesk", Arial, sans-serif !important;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.9);
+      text-decoration: none;
+      .brand-mark {
+        margin-top: -5px;
+      }
+    }
+  }
+
+  .app-left-nav-items {
+    margin-top: 1.1rem;
+  }
+
+  .workspace-selector-wrapper {
+    min-height: 28px;
+  }
+
+  .workspace-label {
+    margin-left: 0.5rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+  }
+
+  #workspace-selector {
+    margin-top: 25px;
+    position: relative;
+
+    .workspace-selector-btn {
+      min-height: 3rem;
+      border: 1px dotted rgba(255, 255, 255, 0.25);
+      width: 100%;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .left-nav-org-avatar {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.2);
+      width: 40px;
+      height: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.25rem;
+      opacity: 0.5;
+    }
+
+    .dropdown-menu {
+      min-width: 280px; // wider than the 200px sidebar
+      width: max-content; // grow to fit long org names
+      left: 0; // keep it anchored to the button
+      right: auto;
+      color: var(--bs-body-color);
+
+      .dropdown-item {
+        position: relative;
+        padding-left: 1.75rem;
+
+        &.active::before {
+          content: "";
+          position: absolute;
+          left: 0.75rem;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 0.5rem;
+          height: 0.5rem;
+          border-radius: 50%;
+          background-color: #0d6efd; // bootstrap primary blue
+        }
+      }
+    }
+  }
+
+  .dropdown-header {
+    font-size: 0.7rem !important;
+    margin-left: -0.5rem;
+  }
+
+  .nav-item {
+    // add a border bottom to the last item
+    &:last-child {
+      border-bottom: 1px dotted rgba(255, 255, 255, 0.18);
+    }
+
+    .nav-link {
+      display: flex;
+      padding: 0.5rem 1.5rem 0.5rem 1rem;
+      transition: background 0.3s;
+      text-decoration: none;
+      align-items: center;
+      border-top: 1px dotted rgba(255, 255, 255, 0.18);
+      border-radius: 0;
+      color: rgba(255, 255, 255, 0.8);
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+      }
+
+      // Active state - light blue background with rounded right edge
+      &.active {
+        background-color: var(--bs-info); // Bootstrap info (light blue)
+        color: white;
+        i {
+          color: white;
+        }
+      }
+
+      i {
+        padding-right: 0.75rem;
+        color: rgba(255, 255, 255, 0.6);
+      }
+    }
+  }
+}

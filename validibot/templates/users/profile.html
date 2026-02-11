@@ -1,0 +1,50 @@
+{% extends "app_base.html" %}
+
+{% load i18n crispy_forms_tags %}
+
+{% block title %}
+  {% trans "Account Settings" %}  · Validibot
+{% endblock title %}
+{% block bodyclass %}
+  {{ block.super }} account-settings-page
+{% endblock bodyclass %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="user-profile" class="container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 ">
+        <h1 class="app-page-title">{% trans "Your User Profile" %}</h1>
+        <p class="text-muted mb-0">{% trans "Update how you appear to teammates and across the product." %}</p>
+      </div>
+    </div>
+    <form method="post"
+          enctype="multipart/form-data"
+          class="card shadow-sm account-settings-form"
+          novalidate>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-12 col-lg-8">
+            {% csrf_token %}
+            <div class="text-center text-md-start mb-4">
+              {% if form.instance.avatar %}
+                <img src="{{ form.instance.avatar.url }}"
+                     alt="{% trans "Current avatar" %}"
+                     class="img-fluid rounded-circle shadow-sm mb-3 settings-avatar__image" />
+              {% else %}
+                <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-body-secondary mb-3 settings-avatar__placeholder">
+                  <span class="fs-2 fw-semibold text-primary">{{ user.name|default:user.username|first|upper }}</span>
+                </div>
+              {% endif %}
+            </div>
+            {{ form|crispy }}
+          </div>
+          <div class="card-footer text-end bg-transparent border-top-0 pt-0">
+            <button type="submit" class="btn btn-secondary">{% trans "Save changes" %}</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+{% endblock app_content %}

@@ -1,0 +1,26 @@
+{% extends "core/base.html" %}
+
+{% load static i18n core_tags %}
+
+{% comment %}
+app_base.html is meant to be used for all application-style pages, where
+the user is doing actual work. It has a left sidebar, a right sidebar,
+a top navigation bar, and a messages section below the top nav bar.
+
+It extends base.html, which has the basic HTML structure, head, and body tags.
+
+{% endcomment %}
+{% block top_nav %}
+  {# comment  do not show top nav when viewing app #}
+{% endblock top_nav %}
+{% block top_bar %}
+  {% include "app/partial/components/app_top_bar.html" %}
+{% endblock top_bar %}
+{% block left_sidebar %}
+{% endblock left_sidebar %}
+{% block content %}
+  <div id="app-content">
+    {% block app_content %}
+    {% endblock app_content %}
+  </div>
+{% endblock content %}

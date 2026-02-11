@@ -1,0 +1,21 @@
+{% load i18n %}
+
+<div class='text-start'>
+  <p>
+    <strong>{% trans 'CEL Hints' %}</strong>
+  </p>
+  <p>
+    When creating a CEL expression you can either use the name of the target signals or the data path path directly.
+  </p>
+  <p>Some validators only support one style or the other.</p>
+  <p>Generic examples of CEL expressions:</p>
+  <ul class='mb-2 ps-3'>
+    <li>
+      <code class='target-signal-name'>price</code> &gt; 0
+    </li>
+    <li>
+      <code class='target-signal-name'>thermostat[3].setpoint</code> &lt; 78
+    </li>
+  </ul>
+  <p>Click to open full CEL expression help in a new tab.</p>
+</div>

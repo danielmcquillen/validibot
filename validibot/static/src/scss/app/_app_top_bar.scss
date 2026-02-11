@@ -1,0 +1,55 @@
+#app-top-bar {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1px dotted #ccc;
+  min-height: 45px;
+  align-items: center;
+  justify-content: space-between;
+
+  #expand-collapse-btn-wrapper {
+    margin-left: 0.5rem;
+    width: 1.8rem;
+  }
+
+  #breadcrumbs-wrapper {
+    width: 100%;
+  }
+
+  .app-header-right {
+    margin-right: 1rem;
+    display: flex;
+    flex-direction: row;
+  }
+
+  .notification-bell-btn {
+    padding: 0.35rem 0.5rem;
+    min-width: 2.5rem;
+    position: relative;
+    overflow: visible;
+  }
+
+  .notification-bell-badge {
+    position: absolute;
+    top: -0.4rem;
+    right: -0.6rem;
+    transform: none;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+  }
+
+  #user-profile-selector {
+    button {
+      width: 2.2rem;
+      height: 2.2rem;
+    }
+    .user-avatar {
+      width: 100%;
+      height: 100%;
+    }
+  }
+}

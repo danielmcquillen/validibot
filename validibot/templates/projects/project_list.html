@@ -1,0 +1,89 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Projects" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="project-list" class="container-fluid">
+    <div class="app-content-header-bar row ">
+      <div class="app-content-header col-12 col-lg-6 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
+        <h1 class="app-page-title me-3">
+          <i class="bi bi-collection me-2"></i>
+          {% trans "Projects" %}
+        </h1>
+      </div>
+      <div class="col-12 col-lg-6 d-flex justify-content-end p-0">
+        <a class="btn btn-secondary" href="{{ create_url }}">
+          <i class="bi bi-plus-lg me-1"></i>
+          {% trans "New project" %}
+        </a>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        {% if projects %}
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">{% trans "Name" %}</th>
+                  <th scope="col" class="text-center">{% trans "Color" %}</th>
+                  <th scope="col" class="d-none d-md-table-cell">{% trans "Description" %}</th>
+                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for project in projects %}
+                  <tr id="project-row-{{ project.pk }}"
+                      class="{% if project.is_default %} table-active {% endif %}">
+                    <td class="fw-semibold">
+                      {{ project.name }}
+                      {% if project.is_default %}
+                        <span class="badge text-bg-light ms-2">{% trans "Default" %}</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-center">
+                      <span class="project-color-swatch"
+                            style="background-color: {{ project.color }}"
+                            aria-hidden="true"></span>
+                      <span class="text-muted small ms-2 project-color-code">{{ project.color }}</span>
+                    </td>
+                    <td class="d-none d-md-table-cell text-muted">{{ project.description|default:_("No description") }}</td>
+                    <td class="text-end">
+                      {% if project.is_default %}
+                        <span class="text-muted small">{% trans "Protected" %}</span>
+                      {% else %}
+                        <div class="btn-group" role="group">
+                          <a class="btn btn-sm btn-secondary"
+                             href="{% url 'projects:project-update' project.pk %}">{% trans "Edit" %}</a>
+                          <button type="button"
+                                  class="btn btn-sm btn-danger"
+                                  hx-post="{% url 'projects:project-delete' project.pk %}"
+                                  hx-target="#project-row-{{ project.pk }}"
+                                  hx-swap="outerHTML"
+                                  hx-confirm="{% trans 'Delete this project?' %}"
+                                  data-bs-toggle="tooltip"
+                                  title="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}"
+                                  aria-label="{% blocktrans %}Delete project {{ project.name }}{% endblocktrans %}">
+                            <i class="bi bi-trash"></i>
+                          </button>
+                        </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted">{% trans "No projects yet." %}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

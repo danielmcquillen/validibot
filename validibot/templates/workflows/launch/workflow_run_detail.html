@@ -1,0 +1,22 @@
+{% extends "app_base.html" %}
+
+{% load i18n humanize core_tags %}
+
+{% block title %}
+  {{ workflow.name }} · {% trans "Workflow Run" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid" id="workflow-run-detail">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12">
+        <h1 class="app-page-title">
+          <i class="bi bi-activity me-2"></i>{% trans "Status for workflow:" %} {{ workflow.name|truncatechars:100 }}
+        </h1>
+      </div>
+    </div>
+    <div id="workflow-run-detail-panel">{% include "workflows/launch/partials/run_status_card.html" %}</div>
+  </div>
+{% endblock app_content %}

@@ -1,0 +1,133 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Workflows" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="workflow-list" class="container-fluid d-flex flex-column h-100">
+    <div class="app-content-header-bar row ">
+      <!-- Title -->
+      <div class="app-content-header col-12 col-lg-4 d-flex flex-row align-items-center mb-2 mb-lg-0">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0">
+              <i class="bi bi-boxes me-2"></i>
+              {% trans "Workflow List" %}
+            </h1>
+          </div>
+          {% if workflow.version %}
+            <div class="text-muted small">
+              <i class="bi-tag me-1"></i>{% trans "Version" %} {{ workflow.version }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Search -->
+      <div class="app-content-header-search col-12 col-lg-5 d-flex flex-row align-items-center mb-2 mb-lg-0">
+        <form method="get" class="row w-100">
+          <div class="col">
+            <label class="visually-hidden" for="workflow-search">{% trans "Search workflows" %}</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi-search"></i></span>
+              <input id="workflow-search"
+                     type="search"
+                     name="q"
+                     value="{{ search_query }}"
+                     class="form-control 0"
+                     placeholder="{% trans "Search workflows" %}" />
+            </div>
+          </div>
+          <div class="col-auto ">
+            <button type="submit" class="btn btn-secondary">{% trans "Search" %}</button>
+          </div>
+          {% if search_query %}
+            <div class="col">
+              <a class="btn btn-link text-decoration-none"
+                 href="{% org_url 'workflows:workflow_list' %}">{% trans "Clear" %}</a>
+            </div>
+          {% endif %}
+        </form>
+      </div>
+      <!-- Action buttons -->
+      <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0 pe-1">
+        {% if can_toggle_archived %}
+          <div class="btn-group me-2"
+               role="group"
+               aria-label="{% trans 'Archived toggle' %}">
+            {% if show_archived %}
+              <a class="btn btn-dark active"
+                 href="{{ archived_toggle_urls.hide }}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 aria-pressed="true"
+                 title="{% trans 'Hide archived workflows' %}">
+                <i class="bi bi-archive"></i>
+              </a>
+            {% else %}
+              <a class="btn btn-light"
+                 href="{{ archived_toggle_urls.show }}"
+                 data-bs-toggle="tooltip"
+                 data-bs-placement="top"
+                 aria-pressed="false"
+                 title="{% trans 'Show archived workflows' %}">
+                <i class="bi bi-archive"></i>
+              </a>
+            {% endif %}
+          </div>
+        {% endif %}
+        <!-- toggle grid/table -->
+        <div class="btn-group me-1"
+             role="group"
+             aria-label="{% trans 'Toggle layout' %}">
+          <a class="btn {% if current_layout == 'table' %} btn-dark active {% else %} btn-light {% endif %}"
+             href="{{ layout_urls.table }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'table' %} true {% else %} false {% endif %}"
+             title="{% trans 'List view' %}">
+            <i class="bi bi-list"></i>
+          </a>
+          <a class="btn {% if current_layout == 'grid' %} btn-dark active {% else %} btn-light {% endif %}"
+             href="{{ layout_urls.grid }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'grid' %} true {% else %} false {% endif %}"
+             title="{% trans 'Grid view' %}">
+            <i class="bi bi-grid-fill"></i>
+          </a>
+        </div>
+        {% if can_create_workflow %}
+          <a class="btn btn-secondary ms-2" href="{{ create_url }}">
+            <i class="bi-plus-lg"></i>
+            {% trans "New Workflow" %}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    {% if workflows %}
+      {% if current_layout == 'table' %}
+        {% include "workflows/partials/components/workflow_list_table.html" %}
+      {% else %}
+        {% include "workflows/partials/components/workflow_list_grid.html" %}
+      {% endif %}
+    {% else %}
+      <div class="row">
+        <div class="col-12 d-flex flex-row justify-content-center align-items-center h-100">
+          <div class="text-center p-5 border rounded bg-body-tertiary mt-5">
+            <h2 class="h5">{% trans "No workflows yet" %}</h2>
+            <p class="text-muted">{% trans "Get started by creating your first workflow." %}</p>
+            <a class="btn btn-secondary" href="{{ create_url }}">
+              <i class="bi-plus-lg me-1"></i>
+              {% trans "Create a workflow" %}
+            </a>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock app_content %}

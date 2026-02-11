@@ -1,0 +1,12 @@
+<!ELEMENT product (sku, name, rating, description, dimensions)>
+<!ELEMENT sku (#PCDATA)>
+<!ELEMENT name (#PCDATA)>
+<!ELEMENT rating (#PCDATA)>
+<!ELEMENT description (#PCDATA)>
+<!ELEMENT dimensions (length, width, height)>
+<!ELEMENT length (#PCDATA)>
+<!ATTLIST length unit (cm | in) "cm">
+<!ELEMENT width (#PCDATA)>
+<!ATTLIST width unit (cm | in) "cm">
+<!ELEMENT height (#PCDATA)>
+<!ATTLIST height unit (cm | in) "cm">

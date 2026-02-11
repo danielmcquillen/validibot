@@ -1,0 +1,21 @@
+{% load i18n %}
+
+<div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <thead>
+      <tr>
+        <th scope="col">{% trans "Name" %}</th>
+        <th scope="col">{% trans "Type" %}</th>
+        <th scope="col">{% trans "Description" %}</th>
+        <th scope="col" class="text-end">{% trans "Actions" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for validator in validators %}
+        {% with row_id='validator-card-'|add:validator.id %}
+          {% include "validations/library/partials/validator_library_table_row.html" with validator=validator can_manage_validators=can_manage_validators row_id=row_id %}
+        {% endwith %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

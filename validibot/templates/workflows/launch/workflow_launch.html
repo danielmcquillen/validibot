@@ -1,0 +1,58 @@
+{% extends "app_base.html" %}
+
+{% load i18n humanize core_tags %}
+
+{% block title %}
+  {{ workflow.name }} · {% trans "Launch Workflow" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid" id="workflow-launch">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-boxes me-2"></i>{% trans "Launch Workflow " %} : "{{ workflow.name }}"
+        </h1>
+      </div>
+    </div>
+    <div id="workflow-launch-panel">
+      {% with mode=panel_mode|default:'form' %}
+        {% if mode != 'status' and not workflow.is_active %}
+          <div class="alert alert-warning d-flex align-items-start gap-2"
+               role="alert">
+            <i class="bi-pause-circle-fill fs-4"></i>
+            <div>
+              <p class="mb-1 fw-semibold">{% trans "This workflow is currently inactive." %}</p>
+              <p class="mb-1">{% trans "Re-enable the workflow from the settings page before launching new runs." %}</p>
+              <a class="btn btn-sm btn-secondary mt-2"
+                 href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">{% trans "Manage workflow" %}</a>
+            </div>
+          </div>
+        {% elif mode != 'status' and not has_steps %}
+          <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+            <i class="bi-diagram-3 fs-4"></i>
+            <div>
+              <p class="mb-1 fw-semibold">{% trans "This workflow has no steps yet." %}</p>
+              <p class="mb-1">{% trans "Add at least one validation step before launching new runs." %}</p>
+              <a class="btn btn-sm btn-secondary mt-2"
+                 href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">{% trans "Manage workflow" %}</a>
+            </div>
+          </div>
+        {% elif mode != 'status' and not can_execute %}
+          <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <i class="bi-exclamation-triangle-fill me-2"></i>
+            <div>
+              {% blocktrans %}
+                  You do not have permission to run this workflow. Contact an organization admin to request the Executor role.
+                {% endblocktrans %}
+            </div>
+          </div>
+          <p class="text-muted">{% trans "You can still review the workflow configuration from the Info tab." %}</p>
+        {% else %}
+          {% include "workflows/launch/partials/submit_content_form.html" %}
+        {% endif %}
+      {% endwith %}
+    </div>
+  {% endblock app_content %}

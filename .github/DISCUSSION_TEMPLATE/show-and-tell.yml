@@ -1,0 +1,39 @@
+title: "[Show & Tell] "
+labels:
+  - show-and-tell
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Built something cool with Validibot? We'd love to see it!
+
+        Share your custom validators, workflow configurations, integrations, tutorials, or anything else you've created.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What did you build?
+      description: Tell us about your project
+      placeholder: I created a custom validator that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: How does it work?
+      description: Share some details about the implementation
+      placeholder: The validator uses...
+
+  - type: input
+    id: link
+    attributes:
+      label: Link
+      description: Repository, blog post, or demo URL (if available)
+      placeholder: https://github.com/...
+
+  - type: textarea
+    id: lessons
+    attributes:
+      label: Lessons Learned
+      description: Any tips or gotchas for others trying something similar?

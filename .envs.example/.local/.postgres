@@ -1,0 +1,19 @@
+# PostgreSQL
+# ------------------------------------------------------------------------------
+# These credentials are used by both the postgres container (to create the database
+# and user) and the django container (to connect to the database).
+#
+# POSTGRES_HOST is the Docker network hostname. In Docker Compose, containers
+# communicate via service names, so "postgres" refers to the postgres container.
+#
+# DATABASE_URL is automatically constructed by the entrypoint script from these
+# variables, so you don't need to set it manually.
+#
+# For local development, you can use simple credentials like shown below.
+# For production, use strong randomly-generated passwords.
+
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=validibot
+POSTGRES_USER=validibot
+POSTGRES_PASSWORD=validibot

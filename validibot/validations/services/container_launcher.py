@@ -209,7 +209,8 @@ def launch_validation(
         )
 
         # Temporarily set step config with URIs for the envelope builder
-        # TODO: Refactor envelope builder to accept URIs directly
+        # NOTE: Envelope builder currently reads URIs from step.config rather
+        # than accepting them as direct arguments. This should be refactored.
         step_config = step.config or {}
         step.config = {
             **step_config,

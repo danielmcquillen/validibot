@@ -1,15 +1,19 @@
 #!/bin/bash
 # ==============================================================================
-# PERSONAL DEVELOPMENT TOOL - NOT PART OF THE COMMUNITY PROJECT
+# Host-mode development helper
 # ==============================================================================
-# This script is for running Django directly on the host machine (without Docker).
-# It's a personal convenience tool and is gitignored.
+# This script sets environment variables for running Django directly on your
+# machine (without Docker). It sources credentials from your local .envs/ files,
+# which are gitignored and must be created by you.
 #
 # The recommended way to run Validibot locally is with Docker Compose:
 #   docker compose up
 #
-# If you want to run Django on your host machine instead, you can create your
-# own version of this script or set environment variables manually.
+# If you prefer running Django on the host instead, copy the example env files
+# and fill in your values:
+#   cp -r .envs.example .envs
+#   # edit .envs/.local/.django and .envs/.local/.postgres
+#   source set-env.sh
 # ==============================================================================
 #
 # Usage:

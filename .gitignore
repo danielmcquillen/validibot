@@ -168,11 +168,7 @@ typings/
 
 
 ### VisualStudioCode template
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+.vscode/
 *.code-workspace
 
 # Local History for devcontainer
@@ -298,9 +294,6 @@ validibot/media/
 # Committing it to a public repository would expose your deployment to attackers.
 # Templates are in .envs.example/ (which IS committed for reference).
 .envs/
-
-# Personal development script for running Django on host (not in Docker)
-set-env.sh
 
 _envs
 _envs/*

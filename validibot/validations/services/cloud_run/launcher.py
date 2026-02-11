@@ -176,7 +176,8 @@ def launch_energyplus_validation(
         input_envelope_uri = f"{execution_bundle_uri}/input.json"
 
         # 3. Upload submission file to GCS
-        # TODO: Detect file type (IDF vs epJSON) and use appropriate extension
+        # NOTE: Currently assumes epJSON. IDF support requires detecting file type
+        # and using the appropriate extension here.
         logger.info("Uploading submission to %s", model_file_uri)
         upload_file(
             content=submission.get_content().encode("utf-8"),

@@ -154,7 +154,7 @@ class SlackMessageActionHandler:
     """
     Handler for SlackMessageAction.
 
-    TODO: Implement actual Slack integration using slack_sdk.
+    Not yet implemented. Contributions welcome — see CONTRIBUTING.md.
     """
 
     def execute(self, run_context: RunContext) -> StepResult:
@@ -168,7 +168,7 @@ class SignedCertificateActionHandler:
     """
     Handler for SignedCertificateAction.
 
-    TODO: Implement PDF certificate generation and attachment.
+    Not yet implemented. Contributions welcome — see CONTRIBUTING.md.
     """
 
     def execute(self, run_context: RunContext) -> StepResult:

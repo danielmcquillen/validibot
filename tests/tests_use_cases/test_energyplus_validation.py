@@ -37,7 +37,8 @@ def energyplus_workflow(api_client):
     """
     Build a minimal workflow configured for the EnergyPlus validation engine.
 
-    TODO: Phase 4 - Update this to work with Cloud Run Jobs.
+    Note: These tests currently verify stub behavior. They will be updated
+    once the Cloud Run Jobs integration is complete.
     """
     org = OrganizationFactory()
     user = UserFactory(orgs=[org])
@@ -93,15 +94,16 @@ class TestEnergyPlusValidation:
     """
     End-to-end EnergyPlus validation tests.
 
-    TODO: Phase 4 - Update these tests for Cloud Run Jobs.
-    For now, they verify the not-implemented behavior.
+    These tests currently verify stub behavior. They will be updated
+    once the Cloud Run Jobs integration is complete.
     """
 
     def test_energyplus_workflow_not_implemented(self, energyplus_workflow):
         """
         Test that EnergyPlus workflows return not-implemented error.
 
-        TODO: Phase 4 - Replace with real Cloud Run Jobs test.
+        Will be replaced with a real Cloud Run Jobs test once that integration
+        is complete.
         """
         client = energyplus_workflow["client"]
         workflow = energyplus_workflow["workflow"]
@@ -124,4 +126,5 @@ class TestEnergyPlusValidation:
             resp.content
         )
 
-        # TODO: Phase 4 - Add polling and verification of Cloud Run Jobs execution
+        # Polling and verification of Cloud Run Jobs execution will be added
+        # once that integration is complete.

@@ -1,0 +1,43 @@
+{% load i18n crispy_forms_tags core_tags %}
+
+<style>
+  .modal-body {
+    max-height: 70vh;
+  }
+</style>
+{% with modal_id=modal_id|default:"modal-signal-create" modal_title=modal_title|default:_("Add signal") %}
+  <div class="modal fade"
+       id="{{ modal_id }}"
+       tabindex="-1"
+       aria-labelledby="{{ modal_id }}-label"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content" id="{{ modal_id }}-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="{{ modal_id }}-label">{{ modal_title }}</h5>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="modal"
+                  aria-label="{% trans 'Close' %}"></button>
+        </div>
+        <form hx-post="{% org_url 'validations:validator_signal_create' pk=validator.id %}"
+              hx-target="#{{ modal_id }}-content"
+              hx-swap="innerHTML"
+              novalidate>
+          <div class="modal-body overflow-auto">
+            {% csrf_token %}
+            {% if modal_form.non_field_errors %}
+              <div class="alert alert-danger">{{ modal_form.non_field_errors }}</div>
+            {% endif %}
+            {% if help_text %}<p class="text-muted small mb-2">{{ help_text }}</p>{% endif %}
+            {{ modal_form|crispy }}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+            <button type="submit" class="btn btn-secondary">{% trans "Save signal" %}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endwith %}

@@ -1,0 +1,130 @@
+{% extends "core/base.html" %}
+
+{% comment %}
+Presents a public viewing page for a workflow, showing its
+description, metadata, and other information.
+
+A logged in user will be presented with navigation to go to the launch page.
+An anonymous user will be presented with a prompt to log in or sign up
+to launch the workflow.
+
+{% endcomment %}
+{% load i18n humanize %}
+
+{% block page_title %}
+  {{ workflow.name }} · {% trans "Workflow overview" %}
+{% endblock page_title %}
+{% block content %}
+  <section class="py-4 mb-5">
+    <div id="workflow-public-view">
+      {% with public_info=workflow.get_public_info %}
+        <div class="row">
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body p-3 validation-steps-card">
+                <div class="row">
+                  <div class="col-12 col-lg-7 d-flex flex-column ">
+                    <div class="ps-3">
+                      <div class="text-muted fw-semibold mb-1 small">{% trans "Validibot Workflow Information" %}</div>
+                      <h1 class="display-6 fw-semibold mb-2">{{ workflow.name }}</h1>
+                    </div>
+                  </div>
+                  <div class="col-12 col-lg-5 d-flex flex-column justify-content-center ">
+                    <div class="mb-2">
+                      {% if request.user.is_authenticated %}
+                        {% if user_has_access %}
+                          {% blocktrans %} You can manage this workflow from the internal app. {% endblocktrans %}
+                        {% else %}
+                          {% blocktrans %} You do not currently have permission to run this workflow. Contact the workflow owner to request access. {% endblocktrans %}
+                        {% endif %}
+                      {% else %}
+                        {% blocktrans %} Sign in to your Validibot account to request access or launch this workflow. {% endblocktrans %}
+                      {% endif %}
+                    </div>
+                    <div>
+                      {% if request.user.is_authenticated %}
+                        {% if user_has_access %}
+                          <a href="{% url 'workflows:workflow_launch' workflow.pk %}"
+                             class="btn btn-secondary">{% trans "Open in app" %}</a>
+                        {% endif %}
+                      {% else %}
+                        <a href="{% url 'account_login' %}" class="btn btn-secondary">{% trans "Sign in" %}</a>
+                        <a href="{% url 'account_signup' %}" class="btn btn-secondary">{% trans "Start trial" %}</a>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-12 col-lg-7 order-2 order-lg-1">
+            <div class="card app-card public-steps-card mt-4">
+              <div class="card-header">{% trans "Workflow Validation Steps" %}</div>
+              <div class="card-body p-4 p-lg-5">
+                {% if steps %}
+                  {% for step in steps %}
+                    {% include 'workflows/partials/components/public_step_card.html' %}
+                  {% endfor %}
+                  <div class="workflow-step-connector workflow-step-connector--terminal"
+                       aria-hidden="true">
+                    <div class="workflow-step-dotted-line"></div>
+                    <div class="workflow-step-complete-pill">{% trans "Workflow complete" %}</div>
+                  </div>
+                {% else %}
+                  {# show a 'no steps' message on the blue background #}
+                  <div class="alert alert-light mb-0" role="alert">
+                    <em>{% trans "No validation steps have been defined for this workflow." %}</em>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-5 order-1 order-lg-2">
+            <div class="card app-card public-details-card mt-4 ">
+              <div class="card-header">{% trans "Workflow Details" %}</div>
+              {% if workflow.has_featured_image %}
+                <div class="ratio ratio-21x9 bg-body-tertiary card-image">
+                  <img src="{{ workflow.get_featured_image_url }}"
+                       alt="{{ workflow.get_featured_image_alt }}"
+                       class="object-fit-cover w-100 h-100" />
+                </div>
+              {% endif %}
+              <div class="card-body ">
+                <div class="p-1 mb-3">
+                  <dl class="row small mb-0">
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">{% trans "Created" %}</dt>
+                    <dd class="col-sm-7">
+                      {{ workflow.created|date:"M j, Y" }} · {{ workflow.created|naturaltime }}
+                    </dd>
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">{% trans "Updated" %}</dt>
+                    <dd class="col-sm-7">
+                      {{ workflow.modified|date:"M j, Y" }} · {{ workflow.modified|naturaltime }}
+                    </dd>
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">{% trans "UUID" %}</dt>
+                    <dd class="col-sm-7">
+                      <code>{{ workflow.uuid }}</code>
+                    </dd>
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">{% trans "Slug" %}</dt>
+                    <dd class="col-sm-7">
+                      <code>{{ workflow.slug }}</code>
+                    </dd>
+                    <dt class="col-sm-5 text-uppercase text-muted fw-semibold">{% trans "File types" %}</dt>
+                    <dd class="col-sm-7">
+                      {{ workflow.allowed_file_type_labels|join:", " }}
+                    </dd>
+                  </dl>
+                </div>
+                {% if public_info.get_html_content %}
+                  <div class="col-sm-5 text-uppercase text-muted fw-semibold mb-2 description-header">{% trans "Description" %}</div>
+                  <div class="markdown-content description-text">{{ public_info.get_html_content|safe }}</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endwith %}
+    </div>
+  </section>
+{% endblock content %}

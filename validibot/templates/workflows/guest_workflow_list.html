@@ -1,0 +1,90 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Shared Workflows" %} - Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="guest-workflow-list"
+       class="container-fluid d-flex flex-column h-100">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 d-flex flex-row align-items-center mb-2">
+        <div class="d-flex flex-column gap-2">
+          <h1 class="app-page-title mb-0">
+            <i class="bi bi-boxes me-2"></i>
+            {% trans "Shared Workflows" %}
+          </h1>
+          <p class="text-muted mb-0">{% trans "Workflows you've been invited to use" %}</p>
+        </div>
+      </div>
+    </div>
+    <div class="app-content-body flex-grow-1 overflow-auto">
+      {% if workflows %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+          {% for workflow in workflows %}
+            <div class="col">
+              <div class="card app-card workflow-card mb-3">
+                <div class="card-header">
+                  <div class="card-title text-truncate">
+                    <i class="bi bi-box me-2"></i>{{ workflow.name }}
+                  </div>
+                  <div class="card-header-status">
+                    <span class="badge text-bg-success ms-1">{% trans "Active" %}</span>
+                  </div>
+                </div>
+                <div class="card-body d-flex flex-column">
+                  <dl class="card-data-item">
+                    <dt>{% trans "Organization" %}:</dt>
+                    <dd>
+                      {{ workflow.org.name }}
+                    </dd>
+                  </dl>
+                  {% if workflow.project %}
+                    <dl class="card-data-item">
+                      <dt>{% trans "Project" %}:</dt>
+                      <dd>
+                        <span class="badge rounded-pill border border-1 workflow-project-badge"
+                              style="background-color: {{ workflow.project.color }};
+                                     color: {{ workflow.project.badge_text_color }};
+                                     border-color: {{ workflow.project.badge_border_color }}"
+                              title="{{ workflow.project.name }}">{{ workflow.project.name }}</span>
+                      </dd>
+                    </dl>
+                  {% endif %}
+                  <dl class="card-data-item">
+                    <dt>{% trans "Version" %}:</dt>
+                    <dd>
+                      <span class="badge text-bg-light align-self-start">
+                        {% if workflow.version %}
+                          {{ workflow.version }}
+                        {% else %}
+                          {% trans "Unversioned" %}
+                        {% endif %}
+                      </span>
+                    </dd>
+                  </dl>
+                </div>
+                <div class="card-footer d-flex flex-row justify-content-end align-items-center gap-2">
+                  <a href="{% url 'workflows:workflow_launch' pk=workflow.pk %}"
+                     class="btn btn-sm btn-secondary">
+                    <i class="bi bi-play-fill me-1"></i>
+                    {% trans "Run" %}
+                  </a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle me-2"></i>
+          {% trans "No shared workflows yet. You'll see workflows here once you've been invited to use them." %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock app_content %}

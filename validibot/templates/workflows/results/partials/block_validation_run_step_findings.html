@@ -1,0 +1,74 @@
+{% load i18n core_tags static %}
+
+<div class="card validation-info-card">
+  <div class="card-header">{% trans "Findings" %}</div>
+  <div class="card-body">
+    {% if run.user_friendly_error %}
+      <div class="alert alert-danger small w-100 mb-4" role="alert">
+        <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
+      </div>
+    {% endif %}
+    {% if run.status == "SUCCEEDED" %}
+      <div class="alert validation-success-alert alert-success mb-4 d-flex flex-row align-items-center">
+        <div>
+          <img src="{% static 'images/app/green_check.svg' %}"
+               alt="{% trans 'Success' %}"
+               class="green-check" />
+        </div>
+        <div class="w-100 ms-2">
+          {% if run.workflow.success_message %}
+            {{ run.workflow.success_message }}
+          {% else %}
+            {% trans "Validation successful. No errors reported." %}
+          {% endif %}
+        </div>
+        <div>
+          <img src="{% static 'images/robot_head_bw.png' %}"
+               class="robot-image"
+               alt="{% trans 'robot image' %}" />
+        </div>
+      </div>
+    {% endif %}
+    {% for step_run in step_runs %}
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge text-bg-secondary">
+          {% trans "Step" %} {{ step_run.workflow_step.step_number|default:step_run.step_order }}
+        </span>
+        <h4 class="mb-0">{{ step_run.workflow_step.name|default:_("Step") }}</h4>
+      </div>
+      {% with findings=step_run.findings.all %}
+        {% if findings %}
+          {% regroup findings by get_severity_display as grouped %}
+          <table class="table table-sm table-bordered mb-5">
+            <thead>
+              <tr>
+                <th>{% trans "Severity" %}</th>
+                <th>{% trans "Path" %}</th>
+                <th>{% trans "Message" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for group in grouped %}
+                <tr>
+                  <td colspan="3" class="fw-semibold">{{ group.grouper }}</td>
+                </tr>
+                {% for finding in group.list %}
+                  <tr>
+                    <td class="align-middle">
+                      {% finding_badge_class finding as badge_class %}
+                      <span class="badge text-uppercase {{ badge_class }}">{{ finding.get_severity_display }}</span>
+                    </td>
+                    <td class="align-middle">{{ finding.path|default:"–" }}</td>
+                    <td class="align-middle">{{ finding.message }}</td>
+                  </tr>
+                {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted small mb-0">{% trans "No errors, warnings, or info for this step." %}</p>
+        {% endif %}
+      {% endwith %}
+    {% endfor %}
+  </div>
+</div>

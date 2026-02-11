@@ -1,0 +1,28 @@
+{% load i18n core_tags %}
+
+{% org_url 'dashboard:widget-detail' widget.slug as widget_refresh_url %}
+<div class="{{ definition.width }} dashboard-widget"
+     data-dashboard-widget
+     data-widget-slug="{{ widget.slug }}"
+     data-base-hx-get="{{ widget_refresh_url }}"
+     hx-get="{{ widget_refresh_url }}?time_range={{ time_range.slug }}"
+     hx-trigger="dashboard:refresh"
+     hx-target="this"
+     hx-swap="outerHTML">
+  <div class="card shadow-sm border-0 h-100">
+    <div class="card-header border-0 bg-transparent pb-0">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <h2 class="h6 text-uppercase text-muted mb-1">{{ widget.title }}</h2>
+          {% if widget.description %}<p class="text-muted small mb-0">{{ widget.description }}</p>{% endif %}
+        </div>
+        {% block widget_header_right %}
+        {% endblock widget_header_right %}
+      </div>
+    </div>
+    <div class="card-body">
+      {% block widget_body %}
+      {% endblock widget_body %}
+    </div>
+  </div>
+</div>

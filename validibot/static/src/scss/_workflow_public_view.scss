@@ -1,0 +1,84 @@
+#workflow-public-view {
+  margin-bottom: 10rem;
+  .public-steps-card {
+    min-height: 70vh;
+    .card-body {
+      background: url("/static/marketing/images/notebook.png");
+      height: 100%;
+    }
+  }
+
+  .public-details-card {
+    min-height: 70vh;
+  }
+
+  .public-workflow-hero .hero-image {
+    max-height: 300px;
+  }
+
+  .public-step-item {
+    position: relative;
+    display: flex;
+    gap: 1.5rem;
+    align-items: stretch;
+    margin-bottom: 0;
+  }
+
+  .public-step-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .public-step-marker {
+    width: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .public-step-marker .marker-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid rgba(13, 110, 253, 0.8);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9);
+  }
+
+  .public-step-marker .marker-line {
+    flex: 1;
+    width: 2px;
+    background: rgba(13, 110, 253, 0.2);
+    margin-top: 0.5rem;
+  }
+
+  .public-step-item:last-child .marker-line {
+    display: none;
+  }
+
+  .public-step-card {
+    background: #fff;
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.02);
+    border: 1px solid rgba(var(--bs-primary-rgb), 0.25);
+    padding: 1.5rem;
+    flex: 1;
+  }
+
+  .public-step-card .badge-step-index {
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .public-step-card .badge-type {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+
+  .description-header {
+    font-size: 0.9rem;
+  }
+  .description-text {
+    min-height: 10rem;
+  }
+}

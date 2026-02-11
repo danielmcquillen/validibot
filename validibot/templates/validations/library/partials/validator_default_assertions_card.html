@@ -1,0 +1,86 @@
+{% load i18n core_tags %}
+
+<div id="validator-default-assertions-card">
+  {% if assertions %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th scope="col" class="text-muted small">{% trans "Order" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Assertion" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Type" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Signal" %}</th>
+            {% if can_edit_validator %}
+              <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for assertion in assertions %}
+            <tr id="validator-assertion-{{ assertion.id }}">
+              <td class="text-muted small">{{ assertion.order }}</td>
+              <td class="fw-semibold">{{ assertion.message_template }}</td>
+              <td class="text-muted small">{{ assertion.get_assertion_type_display }}</td>
+              <td class="text-muted small">
+                {% if assertion.target_catalog_entry %}
+                  <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              {% if can_edit_validator %}
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Default assertion actions' %}">
+                    <button class="btn btn-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-rule-edit-{{ assertion.id }}">
+                      <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="btn btn-secondary"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=validator.pk rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-vals='{"direction": "up"}'
+                            hx-target="#validator-default-assertions-card"
+                            hx-swap="outerHTML"
+                            {% if forloop.first %}disabled{% endif %}>
+                      <i class="bi bi-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-secondary"
+                            hx-post="{% org_url 'validations:validator_rule_move' pk=validator.pk rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-vals='{"direction": "down"}'
+                            hx-target="#validator-default-assertions-card"
+                            hx-swap="outerHTML"
+                            {% if forloop.last %}disabled{% endif %}>
+                      <i class="bi bi-arrow-down"></i>
+                    </button>
+                    <button class="btn btn-danger"
+                            hx-delete="{% org_url 'validations:validator_rule_delete' pk=validator.pk rule_pk=assertion.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-target="#validator-assertion-{{ assertion.id }}"
+                            hx-swap="outerHTML"
+                            hx-confirm="{% blocktrans trimmed with name=assertion.message_template %} Delete default assertion '{{ name }}'? {% endblocktrans %}">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="my-5 w-100 text-center">
+      <p class="text-muted small">
+        {% if validator.is_system %}
+          {% trans "No default assertions in this validator." %}
+        {% else %}
+          {% trans "No default assertions yet." %}
+        {% endif %}
+      </p>
+    </div>
+  {% endif %}
+</div>

@@ -1,0 +1,21 @@
+{% load core_tags %}
+
+{% org_url 'dashboard:widget-detail' definition.slug as widget_refresh_url %}
+<div class="{{ definition.width }} dashboard-widget"
+     data-dashboard-widget
+     data-widget-slug="{{ definition.slug }}"
+     data-base-hx-get="{{ widget_refresh_url }}"
+     hx-get="{{ widget_refresh_url }}?time_range={{ time_range.slug }}"
+     hx-trigger="load, dashboard:refresh"
+     hx-target="this"
+     hx-swap="outerHTML">
+  <div class="card shadow-sm border-0 h-100">
+    <div class="card-body d-flex flex-column justify-content-center align-items-center py-5">
+      <div class="spinner-grow text-primary mb-3"
+           role="status"
+           aria-hidden="true"></div>
+      <p class="text-muted fw-semibold mb-1">Loading insights…</p>
+      <p class="text-muted small mb-0">We are gathering the latest metrics for you.</p>
+    </div>
+  </div>
+</div>

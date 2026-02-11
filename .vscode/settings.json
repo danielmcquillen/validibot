@@ -1,0 +1,47 @@
+{
+    // Treat .django and .postgres files as plain text (they're env files, not Dockerfiles)
+    "files.associations": {
+        "**/.envs/**/.django": "properties",
+        "**/.envs/**/.postgres": "properties",
+        "**/.envs.example/**/.django": "properties",
+        "**/.envs.example/**/.postgres": "properties"
+    },
+    "python.languageServer": "Pylance",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.extraPaths": [
+        "./validibot",
+    ],
+    "python.testing.unittestEnabled": false,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "[html][django-html][handlebars][hbs][mustache][jinja][jinja-html][nj][njk][nunjucks][twig]": {
+        "editor.defaultFormatter": "monosans.djlint"
+    },
+    "[markdown]": {
+        "editor.formatOnSave": true,
+        "editor.wordWrap": "on",
+        "editor.renderWhitespace": "all",
+        "editor.acceptSuggestionOnEnter": "off"
+    },
+    "[django-html]": {
+        "editor.defaultFormatter": "monosans.djlint"
+    },
+    "python.analysis.ignore": [
+        "*"
+    ],
+    "xml.fileAssociations": [
+        {
+            "pattern": "**/imsmanifest.xml",
+            "systemId": "http://www.imsglobal.org/profile/cc/ccv1p3/ccv1p3_imscp_v1p2_v1p0.xsd"
+        }
+    ],
+    "python.testing.pytestEnabled": true,
+    "python.envFile": "${workspaceFolder}/.vscode/.env",
+}

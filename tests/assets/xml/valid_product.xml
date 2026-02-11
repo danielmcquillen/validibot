@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<product>
+    <sku>ABCD1234</sku>
+    <name>Widget Mini</name>
+    <rating>95</rating>
+    <description>This is a great product.</description>
+    <dimensions>
+        <length unit="cm">10</length>
+        <width unit="cm">5</width>
+        <height unit="cm">2</height>
+    </dimensions>
+</product>

@@ -1,0 +1,63 @@
+# Organization & Project Management
+
+This guide summarises the new administrative tooling introduced for
+organization owners. Only members with the `ADMIN` role can create or delete
+organizations, manage membership, or edit projects. Regular members continue
+to use the organization picker to switch context, but do not see the
+management links.
+
+## Organization Picker
+
+- The picker lives at the top of the application sidebar.
+- It displays the currently scoped organization and supports switching by
+  posting to `users:organization-switch`.
+- Switching updates both the session (`active_org_id`) and the user’s
+  `current_org` field so the selection persists across requests (subdomains can
+  later be layered on top).
+- Session scope is self-healing: if `active_org_id` references an organization
+  the user can no longer access, the app now clears the stale value and falls
+  back to the next available membership before rendering any admin view.
+
+## Organization CRUD
+
+- **List view** (`users:organization-list`) shows every org where the current
+  user is an admin and provides shortcuts to edit or review membership.
+- **Create** (`users:organization-create`) automatically assigns the creator
+  the `ADMIN`, `OWNER`, and `EXECUTOR` roles and scopes the session to the new org.
+- **Edit** (`users:organization-update`) allows renaming.
+- **Delete** (`users:organization-delete`) requires at least one other admin
+  before removal, prohibits deleting personal workspaces, and re-scopes the session
+  to the next available org.
+
+## Membership Management
+
+- **Detail view** (`users:organization-detail`) lists active members.
+- Admins can invite an existing user by email and select initial roles.
+- Updating roles or removing a member prevents the final admin from being
+  demoted or removed, safeguarding against orphaned organizations.
+
+## Projects
+
+- **List/Create/Edit/Delete** views live under the `projects` app and are
+  restricted to admins of the active organization.
+- Projects are soft-deleted; default projects (created automatically for every
+  organization) cannot be removed. HTMX actions keep the list responsive.
+- The project form includes a GitHub-style color picker with a quick randomize
+  action; the chosen color is used for workflow badges so teams can spot context
+  quickly.
+- Workflow editors can reassign an existing workflow to any other project within
+  the same organization directly from the workflow settings form. Use this when
+  teams restructure projects; it no longer requires cloning and deleting the
+  original workflow.
+- Deleting a project detaches submissions, validation runs, and tracking events
+  from the project so historical data remains intact.
+
+## Navigation Changes
+
+- The left sidebar now includes the organization picker and admin-only links to
+  “Manage organizations” and “Manage projects”.
+- Non-admins only see the picker and their standard navigation items.
+
+See the tests under `validibot/users/tests/test_organization_management.py`
+and `validibot/projects/tests/test_project_management.py` for examples of
+expected behaviour and permission boundaries.

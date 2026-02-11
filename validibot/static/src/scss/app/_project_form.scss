@@ -1,0 +1,85 @@
+.project-color-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.project-color-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.55rem;
+  border-width: 1px;
+  border-style: solid;
+  cursor: pointer;
+  transition: transform 0.12s ease-in-out, filter 0.12s ease-in-out;
+  position: relative;
+
+  &:focus-visible {
+    outline: 3px solid rgba(9, 105, 218, 0.55);
+    outline-offset: 2px;
+  }
+
+  &:hover {
+    filter: brightness(1.05);
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  }
+
+  .project-color-preview-icon {
+    position: relative;
+    font-size: 1.1rem;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+.project-color-input {
+  width: 8.25rem;
+  max-width: 10rem;
+  min-width: 6.5rem;
+  font-family: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+  text-transform: uppercase;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(27, 31, 36, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+
+  &:focus {
+    border-color: #1f6feb;
+    box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.25);
+  }
+}
+
+.project-color-swatch {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(22, 27, 34, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  vertical-align: middle;
+}
+
+.project-color-swatch + .text-muted,
+.project-color-code {
+  margin-left: 0.45rem;
+  font-family: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+}

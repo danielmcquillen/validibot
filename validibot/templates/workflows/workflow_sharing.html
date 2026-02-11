@@ -1,0 +1,106 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Sharing" %} · {{ workflow.name }} · {% trans "Workflows" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8">
+        <div class="d-flex flex-column gap-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h1 class="app-page-title mb-0 text-truncate">
+              <i class="bi bi-share me-2"></i>{% trans "Sharing" %}: {{ workflow.name }}
+            </h1>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <a class="btn btn-secondary"
+             href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+            <i class="bi-arrow-left me-1"></i>{% trans "Back to Workflow" %}
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="row flex-grow-1">
+      <div class="col-12 col-lg-8">
+        {# Visibility Section #}
+        {% include "workflows/partials/workflow_visibility_section.html" %}
+        {# Guest Access Section - only for private workflows #}
+        {% if not workflow.is_public %}
+          {% include "workflows/partials/workflow_guest_access_section.html" %}
+        {% else %}
+          <div class="card app-card mb-3">
+            <div class="card-body">
+              <div class="d-flex align-items-center">
+                <i class="bi-globe text-primary fs-3 me-3"></i>
+                <div>
+                  <p class="mb-0 fw-medium">{% trans "This workflow is public" %}</p>
+                  <p class="text-muted small mb-0">
+                    {% trans "Any authenticated user can launch this workflow. Guest access management is not needed for public workflows." %}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="card app-card">
+          <div class="card-header">
+            <div class="card-title">{% trans "About Sharing" %}</div>
+          </div>
+          <div class="card-body">
+            <dl class="mb-0">
+              <dt>
+                <i class="bi-lock me-1"></i> {% trans "Private" %}
+              </dt>
+              <dd class="text-muted small mb-3">
+                {% trans "Only org members and invited guests can launch this workflow." %}
+              </dd>
+              <dt>
+                <i class="bi-globe me-1"></i> {% trans "Public" %}
+              </dt>
+              <dd class="text-muted small mb-0">
+                {% trans "Any logged-in user can launch this workflow. Usage is billed to your organization." %}
+              </dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}
+{% block modal %}
+  {{ block.super }}
+  <div class="modal fade"
+       id="guestInviteModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" id="guest-invite-modal-content"></div>
+    </div>
+  </div>
+{% endblock modal %}
+{% block inline_javascript %}
+  {{ block.super }}
+  <script>
+    document.body.addEventListener('close-modal', function(event) {
+      const modalEl = document.getElementById('guestInviteModal');
+      if (modalEl) {
+        let modal = bootstrap.Modal.getInstance(modalEl);
+        if (!modal) {
+          modal = new bootstrap.Modal(modalEl);
+        }
+        modal.hide();
+      }
+    });
+  </script>
+{% endblock inline_javascript %}

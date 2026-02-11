@@ -1,0 +1,170 @@
+{% load i18n core_tags %}
+
+{% workflow_launch_preferred_mode as workflow_launch_mode %}
+<form method="post"
+      action="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
+      enctype="multipart/form-data"
+      class="card app-card submit-content-card"
+      id="workflow-launch-form"
+      data-workflow-launch-form="true"
+      data-default-mode="{{ workflow_launch_mode }}">
+  {% csrf_token %}
+  {% comment %}
+        <div class="card-header">
+          <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+            <span class="fw-semibold">{% trans "Submit content" %}</span>
+          </div>
+        </div>
+  {% endcomment %}
+  <div class="card submit-content-card">
+    <div class="card-header">
+      <ul class="nav nav-tabs card-header-tabs " role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active"
+                  id="workflow-launch-content-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#workflow-launch-tab-pane"
+                  type="button"
+                  role="tab"
+                  aria-controls="workflow-launch-tab-pane"
+                  aria-selected="true">{% trans "Submit content" %}</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link"
+                  id="workflow-launch-meta-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#workflow-launch-meta-pane"
+                  type="button"
+                  role="tab"
+                  aria-controls="workflow-launch-meta-pane"
+                  aria-selected="false">{% trans "Extra data" %}</button>
+        </li>
+      </ul>
+    </div>
+    <div class="card-body">
+      {% if launch_form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">
+          {% for error in launch_form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+        </div>
+      {% endif %}
+      <div class="tab-content">
+        <div class="tab-pane show active"
+             id="workflow-launch-tab-pane"
+             role="tabpanel"
+             aria-labelledby="workflow-launch-content-tab">
+          <div class="file-type-selection-wrapper">
+            <label class="fw-semibold">{{ launch_form.file_type.label }}</label>
+            {% if launch_form.single_file_type_label %}
+              <div class="form-control-plaintext">{{ launch_form.single_file_type_label }}</div>
+              {{ launch_form.file_type }}
+            {% else %}
+              {{ launch_form.file_type }}
+            {% endif %}
+            {{ launch_form.file_type.errors }}
+          </div>
+          <div class="workflow-input-mode mb-3 d-flex flex-column flex-lg-row align-items-lg-center gap-2">
+            <label class="fw-semibold">{% trans "Input mode" %}</label>
+            <input type="hidden"
+                   name="input_mode"
+                   value="{{ workflow_launch_mode }}"
+                   data-input-mode-field />
+            <div class="btn-group btn-group-sm"
+                 role="group"
+                 aria-label="{% trans 'Select input mode' %}">
+              <button class="btn btn-secondary {% if workflow_launch_mode != 'paste' %}active{% endif %}"
+                      type="button"
+                      data-content-mode="upload">
+                <i class="bi-cloud-upload me-1"></i>{% trans "Upload file" %}
+              </button>
+              <button class="btn btn-secondary {% if workflow_launch_mode == 'paste' %}active{% endif %}"
+                      type="button"
+                      data-content-mode="paste">
+                <i class="bi-file-text me-1"></i>{% trans "Paste text" %}
+              </button>
+            </div>
+          </div>
+          <div class="workflow-drop-wrapper {% if workflow_launch_mode == 'paste' %}d-none{% endif %}"
+               data-upload-section>
+            <div class="workflow-dropzone"
+                 data-dropzone
+                 role="button"
+                 tabindex="0"
+                 aria-label="{% trans 'Upload file by browsing or dropping it here' %}">
+              <div class="workflow-dropzone__icon">
+                <i class="bi-cloud-arrow-up"></i>
+              </div>
+              <div class="workflow-dropzone__text">
+                <strong>{% trans "Drag & drop a file" %}</strong>
+                <span class="text-muted d-block">{% trans "or click to browse" %}</span>
+              </div>
+              <label class="btn btn-secondary btn-sm mt-2 mb-0"
+                     data-dropzone-browse
+                     for="{{ launch_form.attachment.id_for_label }}"
+                     role="button">{% trans "Browse files" %}</label>
+              <div class="workflow-dropzone__file text-muted small mt-2"
+                   data-dropzone-file
+                   data-empty-label="{% trans 'No file selected yet.' %}">{% trans "No file selected yet." %}</div>
+            </div>
+            {{ launch_form.attachment }}
+            {{ launch_form.attachment.errors }}
+          </div>
+          <div class="workflow-paste-wrapper mb-3 {% if workflow_launch_mode != 'paste' %}d-none{% endif %}"
+               data-paste-section>
+            <label class="form-label fw-semibold"
+                   for="{{ launch_form.payload.id_for_label }}">{{ launch_form.payload.label }}</label>
+            {{ launch_form.payload }}
+            {% if launch_form.payload.help_text %}<div class="form-text">{{ launch_form.payload.help_text }}</div>{% endif %}
+            {{ launch_form.payload.errors }}
+          </div>
+        </div>
+        <div class="tab-pane"
+             id="workflow-launch-meta-pane"
+             role="tabpanel"
+             aria-labelledby="workflow-launch-meta-tab">
+          {% if workflow.allow_submission_name %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold"
+                     for="{{ launch_form.filename.id_for_label }}">{{ launch_form.filename.label }}</label>
+              {{ launch_form.filename }}
+              {% if launch_form.filename.help_text %}<div class="form-text">{{ launch_form.filename.help_text }}</div>{% endif %}
+              {{ launch_form.filename.errors }}
+            </div>
+          {% endif %}
+          {% if workflow.allow_submission_short_description %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold"
+                     for="{{ launch_form.short_description.id_for_label }}">
+                {{ launch_form.short_description.label }}
+              </label>
+              {{ launch_form.short_description }}
+              {% if launch_form.short_description.help_text %}
+                <div class="form-text">{{ launch_form.short_description.help_text }}</div>
+              {% endif %}
+              {{ launch_form.short_description.errors }}
+            </div>
+          {% endif %}
+          {% if workflow.allow_submission_meta_data %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold"
+                     for="{{ launch_form.metadata.id_for_label }}">{{ launch_form.metadata.label }}</label>
+              {{ launch_form.metadata }}
+              {% if launch_form.metadata.help_text %}<div class="form-text">{{ launch_form.metadata.help_text }}</div>{% endif %}
+              {{ launch_form.metadata.errors }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="card-footer d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center justify-content-between">
+      <small class="text-muted">
+        {% blocktrans trimmed %}
+          The workflow runs asynchronously. After submission you'll be redirected to the run status page.
+        {% endblocktrans %}
+      </small>
+      <button type="submit"
+              class="btn btn-success ms-md-auto text-white"
+              data-launch-submit
+              data-submitting-label="{% trans 'Submitting...' %}">{% trans "Launch Validation" %}</button>
+    </div>
+  </div>
+</form>

@@ -1,0 +1,103 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Signals" %} · {{ validator.name }} · {% trans "Validator Library" %}
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="validator-signals-list" class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi {{ validator.display_icon }} me-2"></i>
+          {% blocktrans trimmed with name=validator.name %}
+            Signals for "{{ name }}"
+          {% endblocktrans %}
+        </h1>
+      </div>
+    </div>
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-title mb-0">
+          {% trans "All Signals" %}
+          <span class="badge text-bg-secondary ms-2">{{ signals|length }}</span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle" data-sortable-table>
+            <thead class="table-light">
+              <tr>
+                <th class="text-muted small" data-sortable="true">{% trans "Signal Name" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Label" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Data Type" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Target Path" %}</th>
+                <th class="text-muted small" data-sortable="true">{% trans "Entry Type" %}</th>
+                <th class="text-muted small">{% trans "Description" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for signal in signals %}
+                <tr>
+                  <td>
+                    <strong>{{ signal.slug }}</strong>
+                  </td>
+                  <td>
+                    {% if signal.label %}
+                      {{ signal.label }}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="badge text-bg-secondary">{{ signal.get_run_stage_display }}</span>
+                  </td>
+                  <td>{{ signal.get_data_type_display }}</td>
+                  <td>
+                    {% if signal.target_field %}
+                      <code class="d-inline-block text-truncate"
+                            style="max-width: 250px"
+                            title="{{ signal.target_field }}">{{ signal.target_field }}</code>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ signal.get_entry_type_display }}</td>
+                  <td>
+                    {% if signal.description %}
+                      <span class="d-inline-block text-truncate"
+                            style="max-width: 200px"
+                            title="{{ signal.description }}">{{ signal.description }}</span>
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="7" class="text-center py-5 text-muted">
+                    {% trans "No signals have been defined for this validator." %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <a href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
+         class="btn btn-secondary">
+        <i class="bi bi-arrow-left me-1"></i>
+        {% blocktrans trimmed with name=validator.name %}
+          Back to "{{ name }}"
+        {% endblocktrans %}
+      </a>
+    </div>
+  </div>
+{% endblock app_content %}

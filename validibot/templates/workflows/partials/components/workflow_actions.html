@@ -1,0 +1,91 @@
+{% load i18n core_tags %}
+
+<div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center w-100">
+  {% if workflow.curr_user_can_execute %}
+    <a class="btn btn-sm btn-success bg-success-subtle me-auto"
+       href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
+       data-bs-toggle="tooltip"
+       data-bs-placement="top"
+       title="{% trans "Launch workflow" %}"
+       aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Launch {{ workflow_name }} {% endblocktrans %}">
+      <i class="bi bi-rocket"></i>
+      {% trans "Launch" %}
+    </a>
+  {% else %}
+    <div data-bs-toggle="tooltip"
+         data-bs-placement="top"
+         {% if workflow.is_active %} title="{% trans "Executor access required to run this workflow" %}" {% else %} title="{% trans "This workflow is archived and cannot be launched" %}" {% endif %}>
+      <div class="btn btn-sm btn-secondary disabled"
+           role="button"
+           aria-disabled="true">
+        <i class="bi bi-rocket"></i>
+        {% trans "Launch" %}
+      </div>
+    </div>
+  {% endif %}
+  {% if workflow.curr_user_can_view %}
+    <a class="btn btn-sm btn-secondary"
+       data-bs-toggle="tooltip"
+       data-bs-placement="top"
+       title="{% if workflow.is_active %} {% trans "Edit workflow" %} {% else %} {% trans "View workflow (archived)" %} {% endif %}"
+       aria-label="{% if workflow.is_active %} {% trans "Edit workflow" %} {% else %} {% trans "View workflow" %} {% endif %}"
+       href="{% org_url 'workflows:workflow_detail' pk=workflow.pk %}">
+      {% if workflow.is_active %}
+        <i class="bi bi-pencil-square"></i> {% trans "Edit" %}
+      {% else %}
+        <i class="bi bi-eye"></i> {% trans "View" %}
+      {% endif %}
+    </a>
+  {% endif %}
+  {# Delete/Archive buttons - hidden when hide_delete_buttons is set (e.g., in card view where they're in header) #}
+  {% if not hide_delete_buttons %}
+    {% if workflow.curr_user_can_delete %}
+      {% if workflow.is_archived %}
+        <button type="button"
+                class="btn btn-sm btn-success ms-3"
+                hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"unarchive": "1", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Unarchive workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Unarchive {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Unarchive this workflow?" %}">
+          <i class="bi-arrow-counterclockwise"></i>
+        </button>
+      {% elif workflow.has_runs %}
+        <button type="button"
+                class="btn btn-sm btn-warning ms-3"
+                hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Archive workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Archive {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Archive and disable this workflow? Existing runs will be allowed to finish." %}">
+          <i class="bi-archive"></i>
+        </button>
+      {% else %}
+        <button type="button"
+                class="btn btn-sm btn-danger ms-3"
+                hx-post="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"show_archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Delete workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Delete {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Delete this workflow?" %}">
+          <i class="bi-trash"></i>
+        </button>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</div>

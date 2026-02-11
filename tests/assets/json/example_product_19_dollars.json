@@ -1,0 +1,10 @@
+
+{
+  "sku": "ABCD1234",
+  "name": "Widget Mini",
+  "price": 19.00,
+  "rating": 95,
+  "tags": ["gadgets", "mini"],
+  "dimensions": { "width": 3.5, "height": 1.2 },
+  "in_stock": true
+}

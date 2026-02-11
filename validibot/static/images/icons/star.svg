@@ -1,0 +1,66 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <!-- Soft glow behind the star -->
+        <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFF9D7" stop-opacity="0.9" />
+            <stop offset="100%" stop-color="#F9D34A" stop-opacity="0" />
+        </radialGradient>
+
+        <!-- Main shiny gradient for the star -->
+        <linearGradient id="starFill" x1="50%" y1="0%" x2="50%" y2="100%">
+            <stop offset="0%" stop-color="#FFF9D7" />
+            <stop offset="45%" stop-color="#FFE36A" />
+            <stop offset="100%" stop-color="#F6B500" />
+        </linearGradient>
+
+        <!-- Slight inner highlight -->
+        <linearGradient id="starHighlight" x1="50%" y1="0%" x2="50%" y2="100%">
+            <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.8" />
+            <stop offset="60%" stop-color="#FFFFFF" stop-opacity="0" />
+        </linearGradient>
+
+        <!-- Subtle shadow -->
+        <filter id="starShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.25" />
+        </filter>
+    </defs>
+
+    <!-- Glow background -->
+    <circle cx="32" cy="32" r="28" fill="url(#starGlow)" />
+
+    <!-- Main star -->
+    <g filter="url(#starShadow)">
+        <path
+            d="M32 6
+         L38.9 22.2
+         L56 23.8
+         L42 35
+         L46.2 52
+         L32 42.5
+         L17.8 52
+         L22 35
+         L8 23.8
+         L25.1 22.2
+         Z"
+            fill="url(#starFill)"
+            stroke="#D89500"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+        />
+
+        <!-- Highlight on upper portion of the star -->
+        <path
+            d="M32 6
+         L38.9 22.2
+         L56 23.8
+         L42 35
+         L32 28
+         L22 35
+         L8 23.8
+         L25.1 22.2
+         Z"
+            fill="url(#starHighlight)"
+            stroke="none"
+        />
+    </g>
+</svg>

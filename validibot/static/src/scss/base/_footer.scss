@@ -1,0 +1,139 @@
+/* Footer */
+@use "sass:color";
+@use "../settings" as *;
+
+#marketing-footer {
+  border-top: 1px solid #aaa;
+  background-color: #f1f1f1;
+  font-size: 0.8rem;
+
+  .brand-mark {
+    margin-top: -8px;
+  }
+
+  h1 {
+    font-size: 1.1rem !important;
+  }
+
+  h2 {
+    font-size: 0.8rem;
+    color: #555;
+  }
+
+  .logo {
+    margin-top: 0.8rem;
+    height: 60px;
+  }
+
+  .background {
+    margin-top: 1rem;
+    color: #333;
+    font-size: 16px;
+    font-weight: 300;
+  }
+
+  .copyright {
+    margin-top: 20px;
+    color: #333;
+    font-size: 14px;
+    font-weight: 300;
+    line-height: 1.625;
+  }
+
+  p {
+    font-style: normal;
+    font-weight: 300;
+    font-size: 16px;
+    color: #333;
+  }
+
+  h1 {
+    text-transform: uppercase;
+    margin: 10px 0 10px;
+    padding: 0 0 5px;
+    font-size: 1em;
+    color: #000;
+    text-align: left;
+    border-bottom: 1px dotted #aaa;
+  }
+
+  .site-map {
+    color: #000;
+
+    li {
+      font-weight: 400 !important;
+      list-style: none;
+      margin: 0;
+      padding-top: 0.2rem;
+      position: relative;
+      transition: transform 0.2s ease;
+
+      &::before {
+        content: "\203A";
+        color: rgba(51, 51, 51, 0.25);
+        display: inline-block;
+        margin-right: 0.45rem;
+        transform: translateY(-0.05rem);
+        transition: transform 0.2s ease;
+      }
+
+      a {
+        font: inherit;
+        text-decoration: none;
+        color: #333;
+
+        &:hover,
+        &:focus {
+          color: #000;
+        }
+      }
+
+      &:hover::before,
+      &:focus-within::before {
+        transform: translate(0.15rem, -0.05rem);
+        color: #000;
+      }
+    }
+
+    ul {
+      list-style-image: none;
+      margin-left: 0;
+      padding-left: 10px;
+    }
+
+    .newsletter-form {
+      label {
+        font-style: normal;
+      }
+      input {
+        font-style: normal;
+      }
+      .nav-note {
+        margin-top: 30px;
+        max-width: 250px;
+      }
+    }
+
+    .logo-footer {
+      max-width: 260px;
+    }
+
+    .read-more {
+      color: #000;
+      text-decoration: none;
+    }
+
+    .newsletter-column {
+      margin-bottom: 6em;
+
+      a {
+        color: #000 !important;
+        text-decoration: none;
+        border-bottom: 1px dotted #aaa;
+      }
+    }
+  }
+  .copyright-wrapper {
+    border-top: 1px dotted #aaa;
+  }
+}

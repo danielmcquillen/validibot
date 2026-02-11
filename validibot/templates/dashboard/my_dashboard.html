@@ -1,0 +1,75 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {% trans "Dashboard" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div id="dashboard-root" class="container-fluid">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-speedometer2 me-2"></i>
+          {% trans "Dashboard" %}
+        </h1>
+      </div>
+      <div class="col-12 col-lg-6 d-flex justify-content-end pe-0">
+        <div class="d-flex flex-row gap-3 align-items-center flex-wrap">
+          <div class="dashboard-filter d-flex flex-row align-items-center">
+            <label class="form-label fw-semibold small mb-0 pe-2"
+                   for="dashboard-time-range">{% trans "Range" %}</label>
+            <select id="dashboard-time-range"
+                    class="form-control form-select form-select-sm"
+                    data-dashboard-time-range>
+              {% for option in time_range_options %}
+                <option value="{{ option.slug }}"
+                        {% if option.slug == time_range.slug %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dashboard-widgets row g-4 mt-2" data-dashboard-widgets>
+      {% for definition in widget_definitions %}
+        {% include "dashboard/widgets/includes/loading.html" with definition=definition time_range=time_range %}
+      {% endfor %}
+    </div>
+  </div>
+{% endblock app_content %}
+{% block inline_javascript %}
+  {{ block.super }}
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const timeSelect = document.querySelector('[data-dashboard-time-range]');
+      if (!timeSelect) {
+        return;
+      }
+      const updateWidgetUrl = (element, timeRange) => {
+        const baseUrl = element.getAttribute('data-base-hx-get');
+        if (!baseUrl) {
+          return;
+        }
+        const newUrl = `${baseUrl}?time_range=${timeRange}`;
+        element.setAttribute('hx-get', newUrl);
+      };
+      const refreshWidgets = (timeRange) => {
+        document.querySelectorAll('[data-dashboard-widget]').forEach((widgetEl) => {
+          updateWidgetUrl(widgetEl, timeRange);
+          htmx.trigger(widgetEl, 'dashboard:refresh');
+        });
+      };
+      timeSelect.addEventListener('change', (event) => {
+        const selectedTimeRange = event.target.value;
+        refreshWidgets(selectedTimeRange);
+        const url = new URL(window.location.href);
+        url.searchParams.set('time_range', selectedTimeRange);
+        window.history.replaceState({}, '', url);
+      });
+    });
+  </script>
+{% endblock inline_javascript %}

@@ -91,6 +91,8 @@ curl -X POST https://your-instance.com/api/v1/submissions/ \
 
 See the [API documentation](https://docs.validibot.com/api) for complete reference.
 
+(And check out the **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)** for a simple way to access the API...)
+
 ## Quick Start
 
 ### Prerequisites

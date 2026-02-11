@@ -51,6 +51,7 @@ Validibot is an **open-source data validation platform** that transforms fragmen
 ### "Simple" Validators
 
 These validators run directly in a Django "worker" process -- no extra infrastructure needed:
+(Note : validators are at various stages of development):
 
 - **JSON Schema**: Validate JSON against JSON Schema drafts 4-2020-12
 - **XML Schema (XSD)**: Validate XML against W3C XML Schema

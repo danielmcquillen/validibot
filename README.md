@@ -149,7 +149,7 @@ See the [Reverse Proxy Guide](https://dev.validibot.com/deployment/reverse-proxy
 > Docker socket access grants root-equivalent privileges on the host. For production deployments, we recommend using [Podman](https://podman.io/) which is rootless by default, or running Docker in rootless mode.
 
 > [!WARNING]
-> Only run advanced validator containers that you have built and control yourself. Never run third-party or untrusted container images as validators—they execute with access to your validation data and could potentially compromise your system.
+> **Only run advanced validator containers that you have built and control yourself.** Never run third-party or untrusted container images as validators—they execute with access to your validation data and could potentially compromise your system.
 
 Key security features:
 

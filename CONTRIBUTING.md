@@ -3,6 +3,13 @@
 Thank you for your interest in contributing to Validibot! This document outlines
 the process for contributing to this project.
 
+## Project Status
+
+Validibot is under active development. We follow semver and the API will
+stabilize for v1.0, but until then breaking changes to APIs, database schemas,
+and configuration are possible between minor versions. If you're building on
+Validibot, watch the repo or [join the discussion](https://github.com/danielmcquillen/validibot/discussions) to stay updated.
+
 ## Developer Certificate of Origin (DCO)
 
 This project uses the Developer Certificate of Origin (DCO) to ensure that

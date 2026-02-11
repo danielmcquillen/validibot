@@ -19,15 +19,6 @@
 
 </div>
 
----
-
-> [!CAUTION]
-> **Active Development**: Validibot is under active development and not yet ready for production use. APIs, database schemas, and features may change without notice. We welcome early adopters and contributors, but please be aware that breaking changes are expected until we reach v1.0.
->
-> Watch the repo or [join the discussion](https://github.com/danielmcquillen/validibot/discussions) to stay updated on progress.
-
----
-
 ## Related Projects
 
 Validibot is composed of several repositories that work together:

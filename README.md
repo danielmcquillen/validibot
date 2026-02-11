@@ -133,7 +133,7 @@ Validibot is designed for **deployment on your own infrastructure**. You control
 ### Deployment Options
 
 - **Docker Compose**: Recommended for most deployments. See [Docker deployment guide](https://docs.validibot.com/deployment/docker).
-- **Google Cloud Run (GCP)**: For Google Cloud deployments. See [GCP guide](https://docs.validibot.com/deployment/gcp).
+- **Google Cloud Run (GCP)**: For Google Cloud deployments. (Guide coming soon...).
 - **AWS**: (planned...)
 - **Kubernetes**: (planned...)
 

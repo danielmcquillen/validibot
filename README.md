@@ -25,12 +25,12 @@
 
 Validibot is composed of several repositories that work together:
 
-| Repository                                                                          | Description                                                                                | License  |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------- |
+| Repository                                                                          | Description                                                                                            | License  |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
-| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines          | MIT      |
-| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validator containers (EnergyPlus, FMI) that run as isolated Docker containers     | MIT      |
-| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators    | MIT      |
+| **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines                      | MIT      |
+| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validator containers (EnergyPlus, FMI) that run as isolated Docker containers                 | MIT      |
+| **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 ---
 

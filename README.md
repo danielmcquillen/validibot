@@ -56,7 +56,7 @@ These validators run directly in a Django "worker" process -- no extra infrastru
 - **JSON Schema**: Validate JSON against JSON Schema drafts 4-2020-12
 - **XML Schema (XSD)**: Validate XML against W3C XML Schema
 - **Basic Assertions**: Flexible field validation with CEL expressions
-- **AI Validation**: Natural language rules powered by LLMs
+- **AI Validation**: Natural language rules powered by LLMs (coming soon...)
 
 ### "Advanced" Validators
 

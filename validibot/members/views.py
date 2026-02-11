@@ -513,7 +513,8 @@ class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateVie
                 "guests": list(guests.values()),
                 "guest_count": len(guests),
                 "pending_invites": [
-                    inv for inv in pending_invites
+                    inv
+                    for inv in pending_invites
                     if inv.status == GuestInvite.Status.PENDING
                 ],
             },
@@ -535,14 +536,11 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
         """Return the invite form modal content."""
         from validibot.workflows.models import Workflow
 
-        workflows = (
-            Workflow.objects.filter(
-                org=self.organization,
-                is_active=True,
-                is_archived=False,
-            )
-            .order_by("name")
-        )
+        workflows = Workflow.objects.filter(
+            org=self.organization,
+            is_active=True,
+            is_archived=False,
+        ).order_by("name")
 
         context = {
             "organization": self.organization,
@@ -667,14 +665,11 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
         """Render the form with errors."""
         from validibot.workflows.models import Workflow
 
-        workflows = (
-            Workflow.objects.filter(
-                org=self.organization,
-                is_active=True,
-                is_archived=False,
-            )
-            .order_by("name")
-        )
+        workflows = Workflow.objects.filter(
+            org=self.organization,
+            is_active=True,
+            is_archived=False,
+        ).order_by("name")
 
         context = {
             "organization": self.organization,

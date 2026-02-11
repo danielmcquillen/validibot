@@ -139,10 +139,12 @@ def http_session() -> requests.Session:
     This session does NOT include any authentication headers.
     """
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "validibot-smoke-tests/1.0",
-        "Accept": "application/json",
-    })
+    session.headers.update(
+        {
+            "User-Agent": "validibot-smoke-tests/1.0",
+            "Accept": "application/json",
+        }
+    )
     return session
 
 
@@ -164,9 +166,11 @@ def authenticated_http_session(gcp_config: dict) -> requests.Session:
     token = result.stdout.strip()
 
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "validibot-smoke-tests/1.0",
-        "Accept": "application/json",
-        "Authorization": f"Bearer {token}",
-    })
+    session.headers.update(
+        {
+            "User-Agent": "validibot-smoke-tests/1.0",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+    )
     return session

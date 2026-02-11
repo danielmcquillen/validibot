@@ -10,11 +10,9 @@
   {% endif %}
   · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid" id="project-form">
     <div class="row">
@@ -32,13 +30,8 @@
               {% csrf_token %}
               {{ form|crispy }}
               <div class="d-flex justify-content-end gap-2 mt-3">
-                <a href="{% url 'projects:project-list' %}"
-                   class="btn btn-secondary">
-                  {% trans "Cancel" %}
-                </a>
-                <button type="submit" class="btn btn-secondary">
-                  {% trans "Save" %}
-                </button>
+                <a href="{% url 'projects:project-list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
               </div>
             </form>
           </div>
@@ -47,7 +40,6 @@
     </div>
   </div>
 {% endblock app_content %}
-
 {% block inline_javascript %}
   {{ block.super }}
   <script>

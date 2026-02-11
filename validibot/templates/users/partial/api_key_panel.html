@@ -6,25 +6,19 @@
     <span class="badge text-bg-light text-uppercase small">{% trans "Personal" %}</span>
   </div>
   <div class="card-body">
-    <p class="text-muted small mb-3">
-      {% trans "Use this key to authenticate API requests with the application API." %}
-    </p>
-    <label class="form-label fw-semibold" for="api-key-value">
-      {% trans "API key" %}
-    </label>
+    <p class="text-muted small mb-3">{% trans "Use this key to authenticate API requests with the application API." %}</p>
+    <label class="form-label fw-semibold" for="api-key-value">{% trans "API key" %}</label>
     <div class="input-group mb-3">
       <input id="api-key-value"
              type="text"
              class="form-control font-monospace"
              value="{{ api_token.key }}"
-             readonly>
+             readonly />
       <button type="button"
               class="btn btn-secondary"
               data-copy-target="#api-key-value"
               data-copy-timeout="1600"
-              data-copied-label="{% trans "Copied" %}">
-        {% trans "Copy" %}
-      </button>
+              data-copied-label="{% trans "Copied" %}">{% trans "Copy" %}</button>
     </div>
     <div class="d-grid d-sm-flex gap-2">
       <button type="button"

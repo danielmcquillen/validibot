@@ -93,8 +93,7 @@ class S3DataStorage(DataStorage):
                 import boto3
             except ImportError as e:
                 msg = (
-                    "boto3 is required for S3 storage. "
-                    "Install with: pip install boto3"
+                    "boto3 is required for S3 storage. Install with: pip install boto3"
                 )
                 raise ImportError(msg) from e
 

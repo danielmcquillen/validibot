@@ -5,21 +5,16 @@
 {% block page_title %}
   {% trans "All Workflows" %}
 {% endblock page_title %}
-
 {% block content %}
   <section class="py-4 py-lg-5">
     <div class="container-fluid">
-
       <div class="row mb-4">
         <div class="col-12 col-lg-10 col-xl-8">
           <header>
-            <h1>
-              {% trans "All Workflows" %}
-            </h1>
+            <h1>{% trans "All Workflows" %}</h1>
           </header>
         </div>
       </div>
-
       <div class="row">
         <div class="col-12 col-lg-10">
           <form method="get" class="mb-4">
@@ -28,9 +23,7 @@
             <div class="row g-3 align-items-center">
               <div class="col-12 col-lg-6">
                 <label class="form-label text-muted small text-uppercase mb-1"
-                       for="workflow-search">
-                  {% trans "Search workflows" %}
-                </label>
+                       for="workflow-search">{% trans "Search workflows" %}</label>
                 <div class="input-group">
                   <span class="input-group-text">
                     <i class="bi bi-search"></i>
@@ -55,12 +48,7 @@
                  title="{% trans 'Grid view' %}"
                  aria-label="{% trans 'Workflow layout toggle' %}">
               <a href="{{ layout_urls.grid }}"
-                 class="btn
-                        {% if current_layout == 'grid' %}
-                          btn-secondary
-                        {% else %}
-                          btn-secondary
-                        {% endif %}">
+                 class="btn {% if current_layout == 'grid' %} btn-secondary {% else %} btn-secondary {% endif %}">
                 <i class="bi bi-grid-3x3-gap-fill me-1"></i>
                 {# % trans "Grid" % #}
               </a>
@@ -68,12 +56,7 @@
                  data-bs-toggle="tooltip"
                  data-bs-placement="top"
                  title="{% trans 'List view' %}"
-                 class="btn
-                        {% if current_layout == 'list' %}
-                          btn-secondary
-                        {% else %}
-                          btn-secondary
-                        {% endif %}">
+                 class="btn {% if current_layout == 'list' %} btn-secondary {% else %} btn-secondary {% endif %}">
                 <i class="bi bi-view-list me-1"></i>
                 {#  % trans "List" % #}
               </a>
@@ -81,8 +64,6 @@
           </div>
         </div>
       </div>
-
-
       {% if workflows %}
         {% if current_layout == "grid" %}
           <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4">
@@ -94,9 +75,7 @@
                       <div>
                         <h2 class="h5 mb-1">
                           <a href="{% url 'workflow_public_info' workflow_uuid=workflow.uuid %}"
-                             class="stretched-link text-decoration-none">
-                            {{ workflow.name }}
-                          </a>
+                             class="stretched-link text-decoration-none">{{ workflow.name }}</a>
                         </h2>
                         <div class="text-muted small">
                           {% if workflow.project %}
@@ -120,17 +99,11 @@
                   </div>
                   <div class="card-footer bg-white border-top-0 pt-0">
                     <div class="d-flex justify-content-between align-items-center text-muted small">
-                      <span>
-                        {% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}
-                      </span>
+                      <span>{% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}</span>
                       {% if workflow.make_info_page_public %}
-                        <span class="badge text-bg-light">
-                          {% trans "Public" %}
-                        </span>
+                        <span class="badge text-bg-light">{% trans "Public" %}</span>
                       {% else %}
-                        <span class="badge text-bg-secondary">
-                          {% trans "Member access" %}
-                        </span>
+                        <span class="badge text-bg-secondary">{% trans "Member access" %}</span>
                       {% endif %}
                     </div>
                   </div>
@@ -147,9 +120,7 @@
                     <div>
                       <h2 class="h5 mb-1">
                         <a href="{% url 'workflow_public_info' workflow_uuid=workflow.uuid %}"
-                           class="stretched-link text-decoration-none">
-                          {{ workflow.name }}
-                        </a>
+                           class="stretched-link text-decoration-none">{{ workflow.name }}</a>
                       </h2>
                       <div class="text-muted small mb-2">
                         {% if workflow.project %}
@@ -170,17 +141,11 @@
                       {% endwith %}
                     </div>
                     <div class="text-muted text-md-end small">
-                      <div>
-                        {% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}
-                      </div>
+                      <div>{% trans "Updated" %} {{ workflow.modified|date:"M j, Y" }}</div>
                       {% if workflow.make_info_page_public %}
-                        <span class="badge text-bg-light mt-2">
-                          {% trans "Public" %}
-                        </span>
+                        <span class="badge text-bg-light mt-2">{% trans "Public" %}</span>
                       {% else %}
-                        <span class="badge text-bg-secondary mt-2">
-                          {% trans "Member access" %}
-                        </span>
+                        <span class="badge text-bg-secondary mt-2">{% trans "Member access" %}</span>
                       {% endif %}
                     </div>
                   </div>
@@ -200,7 +165,6 @@
           {% endif %}
         </div>
       {% endif %}
-
       {% if page_obj %}
         <div class="mt-4">
           {% include "core/partial/pagination.html" with page_obj=page_obj query_string=query_string page_size_options=page_size_options current_page_size=current_page_size %}

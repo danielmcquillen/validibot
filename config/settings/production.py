@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """
 Production settings for Validibot.
 
@@ -198,86 +197,85 @@ elif DEPLOYMENT_TARGET == "aws":
         "endpoint_url": AWS_S3_ENDPOINT_URL,
     }
 
-else:  # docker_compose
-    # Docker Compose can use local storage or cloud storage
-    if STORAGE_BUCKET:
-        # Cloud storage configured
-        if DATA_STORAGE_BACKEND == "gcs":
-            STORAGES = {
-                "default": {
-                    "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
-                    "OPTIONS": {
-                        "bucket_name": STORAGE_BUCKET,
-                        "location": "public",
-                        "file_overwrite": False,
-                        "querystring_auth": False,
-                    },
-                },
-                "staticfiles": {
-                    "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-                },
-            }
-            MEDIA_URL = f"https://storage.googleapis.com/{STORAGE_BUCKET}/public/"
-            DATA_STORAGE_OPTIONS = {
-                "bucket_name": STORAGE_BUCKET,
-                "prefix": "private",
-            }
-        elif DATA_STORAGE_BACKEND == "s3":
-            AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
-            AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
-
-            STORAGES = {
-                "default": {
-                    "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-                    "OPTIONS": {
-                        "bucket_name": STORAGE_BUCKET,
-                        "location": "public",
-                        "file_overwrite": False,
-                        "querystring_auth": False,
-                        "region_name": AWS_S3_REGION_NAME,
-                        "endpoint_url": AWS_S3_ENDPOINT_URL,
-                    },
-                },
-                "staticfiles": {
-                    "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-                },
-            }
-            MEDIA_URL = f"https://{STORAGE_BUCKET}.s3.amazonaws.com/public/"
-            DATA_STORAGE_OPTIONS = {
-                "bucket_name": STORAGE_BUCKET,
-                "prefix": "private",
-                "region_name": AWS_S3_REGION_NAME,
-                "endpoint_url": AWS_S3_ENDPOINT_URL,
-            }
-        else:
-            raise django.core.exceptions.ImproperlyConfigured(
-                f"DATA_STORAGE_BACKEND must be 'gcs' or 's3' when STORAGE_BUCKET is set, "
-                f"got: {DATA_STORAGE_BACKEND}"
-            )
-    else:
-        # Local filesystem storage (default for simple Docker Compose deployments)
-        STORAGE_ROOT = BASE_DIR / "storage"
-        PUBLIC_STORAGE_ROOT = STORAGE_ROOT / "public"
-        PRIVATE_STORAGE_ROOT = STORAGE_ROOT / "private"
-        MEDIA_ROOT = PUBLIC_STORAGE_ROOT
-        MEDIA_URL = "/media/"
-
+# Docker Compose can use local storage or cloud storage
+elif STORAGE_BUCKET:
+    # Cloud storage configured
+    if DATA_STORAGE_BACKEND == "gcs":
         STORAGES = {
             "default": {
-                "BACKEND": "django.core.files.storage.FileSystemStorage",
+                "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
                 "OPTIONS": {
-                    "location": str(PUBLIC_STORAGE_ROOT),
-                    "base_url": "/media/",
+                    "bucket_name": STORAGE_BUCKET,
+                    "location": "public",
+                    "file_overwrite": False,
+                    "querystring_auth": False,
                 },
             },
             "staticfiles": {
                 "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
             },
         }
+        MEDIA_URL = f"https://storage.googleapis.com/{STORAGE_BUCKET}/public/"
+        DATA_STORAGE_OPTIONS = {
+            "bucket_name": STORAGE_BUCKET,
+            "prefix": "private",
+        }
+    elif DATA_STORAGE_BACKEND == "s3":
+        AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
+        AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
 
-        DATA_STORAGE_BACKEND = "local"
-        DATA_STORAGE_ROOT = str(PRIVATE_STORAGE_ROOT)
-        DATA_STORAGE_OPTIONS = {"root": DATA_STORAGE_ROOT}
+        STORAGES = {
+            "default": {
+                "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+                "OPTIONS": {
+                    "bucket_name": STORAGE_BUCKET,
+                    "location": "public",
+                    "file_overwrite": False,
+                    "querystring_auth": False,
+                    "region_name": AWS_S3_REGION_NAME,
+                    "endpoint_url": AWS_S3_ENDPOINT_URL,
+                },
+            },
+            "staticfiles": {
+                "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            },
+        }
+        MEDIA_URL = f"https://{STORAGE_BUCKET}.s3.amazonaws.com/public/"
+        DATA_STORAGE_OPTIONS = {
+            "bucket_name": STORAGE_BUCKET,
+            "prefix": "private",
+            "region_name": AWS_S3_REGION_NAME,
+            "endpoint_url": AWS_S3_ENDPOINT_URL,
+        }
+    else:
+        raise django.core.exceptions.ImproperlyConfigured(
+            f"DATA_STORAGE_BACKEND must be 'gcs' or 's3' when STORAGE_BUCKET is set, "
+            f"got: {DATA_STORAGE_BACKEND}"
+        )
+else:
+    # Local filesystem storage (default for simple Docker Compose deployments)
+    STORAGE_ROOT = BASE_DIR / "storage"
+    PUBLIC_STORAGE_ROOT = STORAGE_ROOT / "public"
+    PRIVATE_STORAGE_ROOT = STORAGE_ROOT / "private"
+    MEDIA_ROOT = PUBLIC_STORAGE_ROOT
+    MEDIA_URL = "/media/"
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": str(PUBLIC_STORAGE_ROOT),
+                "base_url": "/media/",
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+    DATA_STORAGE_BACKEND = "local"
+    DATA_STORAGE_ROOT = str(PRIVATE_STORAGE_ROOT)
+    DATA_STORAGE_OPTIONS = {"root": DATA_STORAGE_ROOT}
 
 # VALIDATOR RUNNER
 # ------------------------------------------------------------------------------

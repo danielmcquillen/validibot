@@ -33,7 +33,7 @@ class FMIProbeViewTests(TestCase):
 
     def test_probe_start_returns_queue_status(self):
         url = reverse("validations:fmi_probe_start", args=[self.validator.pk])
-        response = self.client.post(url, HTTP_HX_REQUEST="true")
+        response = self.client.post(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("status", data)
@@ -41,7 +41,7 @@ class FMIProbeViewTests(TestCase):
 
     def test_probe_status_returns_data(self):
         url = reverse("validations:fmi_probe_status", args=[self.validator.pk])
-        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        response = self.client.get(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("status", data)

@@ -22,7 +22,7 @@ def _build_request_metadata(request):
     if not request:
         return {}
     meta = {}
-    user_agent = request.META.get("HTTP_USER_AGENT")
+    user_agent = request.headers.get("user-agent")
     if user_agent:
         meta["user_agent"] = user_agent
     path = getattr(request, "path", None)

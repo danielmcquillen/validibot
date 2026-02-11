@@ -29,16 +29,14 @@ class APISubmissionSettings(BaseModel):
     metadata_key_value_only: bool = Field(
         default=False,
         description=(
-            "When true, metadata values must be scalars "
-            "(no nested lists/dicts)."
+            "When true, metadata values must be scalars (no nested lists/dicts)."
         ),
     )
     metadata_max_bytes: int = Field(
         default=4096,
         ge=0,
         description=(
-            "Maximum size (in bytes) of stored metadata. "
-            "Zero disables the limit."
+            "Maximum size (in bytes) of stored metadata. Zero disables the limit."
         ),
     )
 

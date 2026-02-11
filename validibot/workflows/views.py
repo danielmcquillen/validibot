@@ -164,9 +164,7 @@ class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
             matches = queryset.filter(**filter_kwargs)
             if matches.count() > 1:
                 # Return helpful error with disambiguation options
-                orgs = list(
-                    matches.values_list("org__slug", "version").distinct()
-                )
+                orgs = list(matches.values_list("org__slug", "version").distinct())
                 raise DRFValidationError(
                     {
                         "detail": _(
@@ -174,9 +172,7 @@ class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
                             "Use ?org=<org-slug> to disambiguate."
                         )
                         % {"slug": lookup_value},
-                        "matches": [
-                            {"org": org, "version": ver} for org, ver in orgs
-                        ],
+                        "matches": [{"org": org, "version": ver} for org, ver in orgs],
                     },
                 )
 
@@ -1718,11 +1714,15 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         are included but will be disabled in the UI.
         """
         validators: list[Validator] = []
-        for validator in Validator.objects.filter(
-            models.Q(org__isnull=True) | models.Q(org=workflow.org),
-        ).exclude(
-            release_state=ValidatorReleaseState.DRAFT,
-        ).order_by("validation_type", "name", "pk"):
+        for validator in (
+            Validator.objects.filter(
+                models.Q(org__isnull=True) | models.Q(org=workflow.org),
+            )
+            .exclude(
+                release_state=ValidatorReleaseState.DRAFT,
+            )
+            .order_by("validation_type", "name", "pk")
+        ):
             self._ensure_validator_defaults(validator)
             validators.append(validator)
         return validators

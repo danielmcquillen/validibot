@@ -5,20 +5,16 @@
 {% block title %}
   {% trans "Delete Validation" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid py-5">
     <div class="row">
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-danger">
           <div class="card-header text-bg-danger">
-            <h1 class="h5 mb-0">
-              {% trans "Confirm deletion" %}
-            </h1>
+            <h1 class="h5 mb-0">{% trans "Confirm deletion" %}</h1>
           </div>
           <div class="card-body">
             <p class="mb-4">
@@ -30,12 +26,8 @@
               {% csrf_token %}
               <div class="d-flex justify-content-end gap-2">
                 <a class="btn btn-secondary"
-                   href="{% url 'validations:validation_detail' object.pk %}">
-                  {% trans "Cancel" %}
-                </a>
-                <button type="submit" class="btn btn-danger">
-                  {% trans "Delete" %}
-                </button>
+                   href="{% url 'validations:validation_detail' object.pk %}">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-danger">{% trans "Delete" %}</button>
               </div>
             </form>
           </div>

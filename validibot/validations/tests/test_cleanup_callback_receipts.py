@@ -45,7 +45,9 @@ class TestCleanupCallbackReceipts:
         # Create a receipt from 15 days ago
         receipt = CallbackReceiptFactory()
         time_15_days_ago = timezone.now() - timedelta(days=15)
-        CallbackReceipt.objects.filter(id=receipt.id).update(received_at=time_15_days_ago)
+        CallbackReceipt.objects.filter(id=receipt.id).update(
+            received_at=time_15_days_ago
+        )
 
         # With default 30 days, receipt should survive
         out = StringIO()
@@ -110,7 +112,10 @@ class TestCleanupCallbackReceipts:
         # All old receipts deleted
         assert CallbackReceipt.objects.filter(id__in=old_receipts).count() == 0
         # Recent receipts preserved
-        assert CallbackReceipt.objects.filter(
-            id__in=[r.id for r in recent_receipts]
-        ).count() == 2  # noqa: PLR2004
+        assert (
+            CallbackReceipt.objects.filter(
+                id__in=[r.id for r in recent_receipts]
+            ).count()
+            == 2
+        )  # noqa: PLR2004
         assert "Deleted 5" in out.getvalue()

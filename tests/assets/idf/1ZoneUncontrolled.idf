@@ -462,4 +462,3 @@
     0;                       !- Fraction Lost
 
   Schedule:Constant,AlwaysOn,On/Off,1.0;
-

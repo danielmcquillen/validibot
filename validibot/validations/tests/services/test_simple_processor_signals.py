@@ -1,10 +1,10 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from validibot.validations.constants import StepStatus
 from validibot.validations.engines.base import AssertionStats
 from validibot.validations.engines.base import ValidationResult
-from unittest.mock import patch
-
 from validibot.validations.services.step_processor.simple import (
     SimpleValidationProcessor,
 )

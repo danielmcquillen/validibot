@@ -4,7 +4,10 @@
   <h5 class="modal-title">
     <i class="bi-person-plus me-2"></i>{% trans "Invite Guest" %}
   </h5>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="{% trans 'Close' %}"></button>
 </div>
 <form method="post"
       action="{% org_url 'workflows:workflow_guest_invite' pk=workflow.pk %}"
@@ -15,19 +18,21 @@
   <div class="modal-body">
     {% if messages %}
       {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
+             role="alert">
           {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="alert"
+                  aria-label="{% trans 'Close' %}"></button>
         </div>
       {% endfor %}
     {% endif %}
-
     <p class="text-muted small mb-3">
       {% blocktrans with name=workflow.name %}
         Invite someone to access the workflow "{{ name }}". They will be able to launch validations but won't become a member of your organization.
       {% endblocktrans %}
     </p>
-
     <div class="mb-3">
       <label for="email" class="form-label">{% trans "Email address" %}</label>
       <input type="email"
@@ -37,16 +42,12 @@
              value="{{ email|default:'' }}"
              placeholder="guest@example.com"
              required
-             autofocus>
-      <div class="form-text">
-        {% trans "Enter the email address of the person you want to invite." %}
-      </div>
+             autofocus />
+      <div class="form-text">{% trans "Enter the email address of the person you want to invite." %}</div>
     </div>
   </div>
   <div class="modal-footer">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-      {% trans "Cancel" %}
-    </button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
     <button type="submit" class="btn btn-secondary">
       <i class="bi-send me-1"></i>{% trans "Send Invitation" %}
     </button>

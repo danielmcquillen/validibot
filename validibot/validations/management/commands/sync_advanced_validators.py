@@ -64,7 +64,8 @@ class Command(BaseCommand):
                     entry_type = entry_data["entry_type"]
 
                     defaults = {
-                        k: v for k, v in entry_data.items()
+                        k: v
+                        for k, v in entry_data.items()
                         if k not in ("slug", "entry_type")
                     }
 

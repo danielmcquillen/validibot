@@ -1,163 +1,125 @@
 {% load i18n static core_tags %}
 
-<div class="card app-card workflow-card
-            {% if workflow.is_archived %}
-                archived
-            {% endif %}
-            mb-3"
+<div class="card app-card workflow-card {% if workflow.is_archived %}archived{% endif %} mb-3"
      id="workflow-card-{{ workflow.pk }}">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <div class="card-title text-truncate">
-            <i class="bi bi-box me-2"></i>{{ workflow.name }}
-            {% if workflow.is_locked %}
-                <span class="badge text-bg-warning text-dark ms-2">
-                    {% trans "Locked" %}
-                </span>
-            {% endif %}
-        </div>
-        {# Delete/Archive/Unarchive button in header #}
-        {% if workflow.curr_user_can_delete %}
-            {% if workflow.is_archived %}
-                <button type="button"
-                        class="btn btn-sm btn-link text-success p-0"
-                        hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-vals='{"unarchive": "1", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
-                        hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
-                        hx-swap="outerHTML"
-                        data-bs-toggle="tooltip"
-                        data-bs-placement="top"
-                        title="{% trans "Unarchive workflow" %}"
-                        aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
-                                        Unarchive {{ workflow_name }}
-                                    {% endblocktrans %}"
-                        hx-confirm="{% trans "Unarchive this workflow?" %}">
-                    <i class="bi bi-arrow-counterclockwise"></i>
-                </button>
-            {% elif workflow.has_runs %}
-                <button type="button"
-                        class="btn btn-sm btn-link text-warning p-0"
-                        hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-vals='{"archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
-                        hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
-                        hx-swap="outerHTML"
-                        data-bs-toggle="tooltip"
-                        data-bs-placement="top"
-                        title="{% trans "Archive workflow" %}"
-                        aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
-                                        Archive {{ workflow_name }}
-                                    {% endblocktrans %}"
-                        hx-confirm="{% trans "Archive and disable this workflow? Existing runs will be allowed to finish." %}">
-                    <i class="bi bi-archive"></i>
-                </button>
-            {% else %}
-                <button type="button"
-                        class="btn btn-sm btn-light text-danger"
-                        hx-post="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-vals='{"show_archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}"}'
-                        hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
-                        hx-swap="outerHTML"
-                        data-bs-toggle="tooltip"
-                        data-bs-placement="top"
-                        title="{% trans "Delete workflow" %}"
-                        aria-label="{% blocktrans with workflow_name=workflow.name trimmed %}
-                                        Delete {{ workflow_name }}
-                                    {% endblocktrans %}"
-                        hx-confirm="{% trans "Delete this workflow?" %}">
-                    <i class="bi bi-trash"></i>
-                </button>
-            {% endif %}
-        {% endif %}
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-title text-truncate">
+      <i class="bi bi-box me-2"></i>{{ workflow.name }}
+      {% if workflow.is_locked %}
+        <span class="badge text-bg-warning text-dark ms-2">{% trans "Locked" %}</span>
+      {% endif %}
     </div>
-    <div class="card-body d-flex flex-column">
-
-    <dl class="card-data-item">
-
-        <dt>
-            {% trans "Status" %}:
-        </dt>
-        <dd class="value">
-            {% if workflow.is_archived %}
-                <span class="badge text-bg-warning">
-                    {% trans "Archived" %}
-                </span>
-            {% elif workflow.is_active %}
-                <span class="badge text-bg-success">
-                    {% trans "Active" %}
-                </span>
-            {% else %}
-                <span class="badge text-bg-secondary">
-                    {% trans "Inactive" %}
-                </span>
-            {% endif %}
-        </dd>
-    </dl>
-
-    <dl class="card-data-item">
-        <dt>
-            {% trans "Project" %}:
-        </dt>
-        <dd>
-            {% if workflow.project %}
-                <span class="badge rounded-pill border border-1 workflow-project-badge"
-                      style="background-color: {{ workflow.project.color }};
-                             color: {{ workflow.project.badge_text_color }};
-                             border-color: {{ workflow.project.badge_border_color }}"
-                      title="{{ workflow.project.name }}">
-                    {{ workflow.project.name }}
-                </span>
-            {% endif %}
-        </dd>
-    </dl>
-
-    <dl class="card-data-item">
-        <dt>
-            {% trans "Slug" %}:
-        </dt>
-        <dd class="value">
-            {{ workflow.slug }}
-        </dd>
-    </dl>
-
-    <dl class="card-data-item">
-        <dt>
-            {% trans "Version" %}:
-        </dt>
-        <dd>
-            <span class="badge text-bg-light align-self-start">
-                {% if workflow.version %}
-                    {{ workflow.version }}
-                {% else %}
-                    {% trans "Unversioned" %}
-                {% endif %}
-            </span>
-        </dd>
-    </dl>
-
-    <dl class="card-data-item">
-        <dt>
-            {% trans "Updated" %}:
-        </dt>
-        <dd>
-            {{ workflow.modified|date:"M j, Y" }}
-        </dd>
-    </dl>
-
-    {% if workflow.guest_count %}
-        <dl class="card-data-item">
-            <dt>
-                <i class="bi-person-badge me-1"></i>{% trans "Guests" %}:
-            </dt>
-            <dd>
-                <span class="badge text-bg-info">{{ workflow.guest_count }}</span>
-            </dd>
-        </dl>
+    {# Delete/Archive/Unarchive button in header #}
+    {% if workflow.curr_user_can_delete %}
+      {% if workflow.is_archived %}
+        <button type="button"
+                class="btn btn-sm btn-link text-success p-0"
+                hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"unarchive": "1", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Unarchive workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Unarchive {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Unarchive this workflow?" %}">
+          <i class="bi bi-arrow-counterclockwise"></i>
+        </button>
+      {% elif workflow.has_runs %}
+        <button type="button"
+                class="btn btn-sm btn-link text-warning p-0"
+                hx-post="{% org_url 'workflows:workflow_archive' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}", "show_archived": "{{ show_archived|yesno:"1,0" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Archive workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Archive {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Archive and disable this workflow? Existing runs will be allowed to finish." %}">
+          <i class="bi bi-archive"></i>
+        </button>
+      {% else %}
+        <button type="button"
+                class="btn btn-sm btn-light text-danger"
+                hx-post="{% org_url 'workflows:workflow_delete' pk=workflow.pk %}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                hx-vals='{"show_archived": "{{ show_archived|yesno:"1,0" }}", "layout": "{{ current_layout|default:"" }}"}'
+                hx-target="#workflow-item-wrapper-{{ workflow.pk }}"
+                hx-swap="outerHTML"
+                data-bs-toggle="tooltip"
+                data-bs-placement="top"
+                title="{% trans "Delete workflow" %}"
+                aria-label="{% blocktrans with workflow_name=workflow.name trimmed %} Delete {{ workflow_name }} {% endblocktrans %}"
+                hx-confirm="{% trans "Delete this workflow?" %}">
+          <i class="bi bi-trash"></i>
+        </button>
+      {% endif %}
     {% endif %}
-
-    </div>
-    <div class="card-footer d-flex flex-row justify-content-end align-items-center gap-2">
-        {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow show_archived=show_archived current_layout=current_layout target_id="workflow-item-wrapper-"|add:workflow.pk hide_delete_buttons=True %}
-    </div>
+  </div>
+  <div class="card-body d-flex flex-column">
+    <dl class="card-data-item">
+      <dt>{% trans "Status" %}:</dt>
+      <dd class="value">
+        {% if workflow.is_archived %}
+          <span class="badge text-bg-warning">{% trans "Archived" %}</span>
+        {% elif workflow.is_active %}
+          <span class="badge text-bg-success">{% trans "Active" %}</span>
+        {% else %}
+          <span class="badge text-bg-secondary">{% trans "Inactive" %}</span>
+        {% endif %}
+      </dd>
+    </dl>
+    <dl class="card-data-item">
+      <dt>{% trans "Project" %}:</dt>
+      <dd>
+        {% if workflow.project %}
+          <span class="badge rounded-pill border border-1 workflow-project-badge"
+                style="background-color: {{ workflow.project.color }};
+                       color: {{ workflow.project.badge_text_color }};
+                       border-color: {{ workflow.project.badge_border_color }}"
+                title="{{ workflow.project.name }}">{{ workflow.project.name }}</span>
+        {% endif %}
+      </dd>
+    </dl>
+    <dl class="card-data-item">
+      <dt>{% trans "Slug" %}:</dt>
+      <dd class="value">
+        {{ workflow.slug }}
+      </dd>
+    </dl>
+    <dl class="card-data-item">
+      <dt>{% trans "Version" %}:</dt>
+      <dd>
+        <span class="badge text-bg-light align-self-start">
+          {% if workflow.version %}
+            {{ workflow.version }}
+          {% else %}
+            {% trans "Unversioned" %}
+          {% endif %}
+        </span>
+      </dd>
+    </dl>
+    <dl class="card-data-item">
+      <dt>{% trans "Updated" %}:</dt>
+      <dd>
+        {{ workflow.modified|date:"M j, Y" }}
+      </dd>
+    </dl>
+    {% if workflow.guest_count %}
+      <dl class="card-data-item">
+        <dt>
+          <i class="bi-person-badge me-1"></i>{% trans "Guests" %}:
+        </dt>
+        <dd>
+          <span class="badge text-bg-info">{{ workflow.guest_count }}</span>
+        </dd>
+      </dl>
+    {% endif %}
+  </div>
+  <div class="card-footer d-flex flex-row justify-content-end align-items-center gap-2">
+    {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow show_archived=show_archived current_layout=current_layout target_id="workflow-item-wrapper-"|add:workflow.pk hide_delete_buttons=True %}
+  </div>
 </div>

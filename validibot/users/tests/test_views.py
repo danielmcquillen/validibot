@@ -72,6 +72,7 @@ class TestUserUpdateView:
         messages_sent = [m.message for m in messages.get_messages(request)]
         assert messages_sent == [_("Profile updated successfully")]
 
+
 class TestUserRedirectView:
     def test_get_redirect_url(self, user: User, rf: RequestFactory):
         view = UserRedirectView()

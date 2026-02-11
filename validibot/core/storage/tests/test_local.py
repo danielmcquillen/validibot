@@ -234,7 +234,7 @@ class TestLocalStorageSignedUrls:
 
         settings.SECRET_KEY = "test-secret-key"  # noqa: S105
         expires_at = int(time.time()) + 3600
-        token = temp_storage._generate_token("test.txt", expires_at)  # noqa: SLF001
+        token = temp_storage._generate_token("test.txt", expires_at)
 
         assert LocalDataStorage.verify_token("test.txt", expires_at, token)
 
@@ -244,7 +244,7 @@ class TestLocalStorageSignedUrls:
 
         settings.SECRET_KEY = "test-secret-key"  # noqa: S105
         expires_at = int(time.time()) - 1  # Already expired
-        token = temp_storage._generate_token("test.txt", expires_at)  # noqa: SLF001
+        token = temp_storage._generate_token("test.txt", expires_at)
 
         assert not LocalDataStorage.verify_token("test.txt", expires_at, token)
 
@@ -254,7 +254,7 @@ class TestLocalStorageSignedUrls:
 
         settings.SECRET_KEY = "test-secret-key"  # noqa: S105
         expires_at = int(time.time()) + 3600
-        token = temp_storage._generate_token("test.txt", expires_at)  # noqa: SLF001
+        token = temp_storage._generate_token("test.txt", expires_at)
 
         # Try with different path
         assert not LocalDataStorage.verify_token("other.txt", expires_at, token)

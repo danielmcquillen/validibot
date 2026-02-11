@@ -46,11 +46,13 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
 
     def is_available(self) -> bool:
         """Check if required settings are configured."""
-        return all([
-            getattr(settings, "GCP_PROJECT_ID", None),
-            getattr(settings, "GCS_TASK_QUEUE_NAME", None),
-            getattr(settings, "WORKER_URL", None),
-        ])
+        return all(
+            [
+                getattr(settings, "GCP_PROJECT_ID", None),
+                getattr(settings, "GCS_TASK_QUEUE_NAME", None),
+                getattr(settings, "WORKER_URL", None),
+            ]
+        )
 
     def dispatch(self, request: TaskDispatchRequest) -> TaskDispatchResponse:
         """Enqueue task via Google Cloud Tasks."""

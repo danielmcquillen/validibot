@@ -2,68 +2,56 @@
 
 <div id="workspace-selector"
      class="dropdown left-nav-organization mb-4 ms-1 me-1">
-    <button class="btn btn-dark workspace-selector-btn"
-            type="button"
-            data-bs-toggle="dropdown"
-            aria-expanded="false">
-        <div class="d-flex align-items-center gap-2 overflow-hidden m-0 p-0">
-            <div class="left-nav-org-avatar">
-                {% if active_org %}
-                    {{ active_org.name|first|upper }}
-                {% else %}
-                    ?
-                {% endif %}
-            </div>
-            <div class="d-block left-nav-org-name text-truncate">
-                {% if active_org %}
-                    {{ active_org.name }}
-                {% else %}
-                    {% trans "Select organization" %}
-                {% endif %}
-            </div>
-        </div>
-        <i class="bi bi-caret-down-fill small"></i>
-    </button>
-    <div class="dropdown-menu w-100 p-2 shadow-sm">
-        <h6 class="dropdown-header text-uppercase small text-muted">
-            {% trans "Switch workspace to org:" %}
-        </h6>
-        {% for membership in org_memberships %}
-            <form method="post"
-                  action="{% url 'users:organization-switch' membership.org_id %}"
-                  class="mb-1">
-                {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-                <button type="submit"
-                        class="dropdown-item d-flex align-items-center justify-content-between
-                               {% if membership.org_id == active_org.id %}
-                                   active
-                               {% endif %}"
-                        {% if membership.org_id == active_org.id %}
-                            disabled
-                        {% endif %}>
-                    <span>{{ membership.org.name }}</span>
-                    {% if membership.is_admin %}
-                        <span class="badge text-bg-light text-uppercase ms-2">{% trans "Admin" %}</span>
-                    {% endif %}
-                </button>
-            </form>
-        {% empty %}
-            <div class="text-muted small px-2 py-1">
-                {% trans "No organizations available" %}
-            </div>
-        {% endfor %}
-
-        {# Multi-org management link - only shown for Enterprise #}
-        {% if feature_multi_org %}
-            <div class="dropdown-divider my-2">
-            </div>
-            <a class="dropdown-item d-flex align-items-center gap-2"
-               href="{% org_url 'users:organization-list' %}">
-                <i class="bi bi-people-fill"></i>
-                <span>{% trans "Manage organizations" %}</span>
-            </a>
+  <button class="btn btn-dark workspace-selector-btn"
+          type="button"
+          data-bs-toggle="dropdown"
+          aria-expanded="false">
+    <div class="d-flex align-items-center gap-2 overflow-hidden m-0 p-0">
+      <div class="left-nav-org-avatar">
+        {% if active_org %}
+          {{ active_org.name|first|upper }}
+        {% else %}
+          ?
         {% endif %}
-
+      </div>
+      <div class="d-block left-nav-org-name text-truncate">
+        {% if active_org %}
+          {{ active_org.name }}
+        {% else %}
+          {% trans "Select organization" %}
+        {% endif %}
+      </div>
     </div>
+    <i class="bi bi-caret-down-fill small"></i>
+  </button>
+  <div class="dropdown-menu w-100 p-2 shadow-sm">
+    <h6 class="dropdown-header text-uppercase small text-muted">{% trans "Switch workspace to org:" %}</h6>
+    {% for membership in org_memberships %}
+      <form method="post"
+            action="{% url 'users:organization-switch' membership.org_id %}"
+            class="mb-1">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+        <button type="submit"
+                class="dropdown-item d-flex align-items-center justify-content-between {% if membership.org_id == active_org.id %}active{% endif %}"
+                {% if membership.org_id == active_org.id %}disabled{% endif %}>
+          <span>{{ membership.org.name }}</span>
+          {% if membership.is_admin %}
+            <span class="badge text-bg-light text-uppercase ms-2">{% trans "Admin" %}</span>
+          {% endif %}
+        </button>
+      </form>
+    {% empty %}
+      <div class="text-muted small px-2 py-1">{% trans "No organizations available" %}</div>
+    {% endfor %}
+    {# Multi-org management link - only shown for Enterprise #}
+    {% if feature_multi_org %}
+      <div class="dropdown-divider my-2"></div>
+      <a class="dropdown-item d-flex align-items-center gap-2"
+         href="{% org_url 'users:organization-list' %}">
+        <i class="bi bi-people-fill"></i>
+        <span>{% trans "Manage organizations" %}</span>
+      </a>
+    {% endif %}
+  </div>
 </div>

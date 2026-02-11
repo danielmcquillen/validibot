@@ -15,7 +15,6 @@ from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
-from django.test import override_settings
 
 
 def create_mock_docker():
@@ -107,7 +106,9 @@ class DockerValidatorRunnerCleanupTests(TestCase):
             runner = DockerValidatorRunner()
             runner._client = mock_client
 
-            removed, failed = runner.cleanup_orphaned_containers(grace_period_seconds=300)
+            removed, failed = runner.cleanup_orphaned_containers(
+                grace_period_seconds=300
+            )
 
             self.assertEqual(removed, 1)
             self.assertEqual(failed, 0)
@@ -183,7 +184,10 @@ class DockerValidatorRunnerCleanupTests(TestCase):
             started_at=datetime.now(UTC) - timedelta(hours=2),
         )
 
-        mock_client.containers.list.return_value = [failing_container, success_container]
+        mock_client.containers.list.return_value = [
+            failing_container,
+            success_container,
+        ]
 
         with patch.dict(sys.modules, {"docker": mock_docker}):
             from validibot.validations.services.runners.docker import (
@@ -193,7 +197,9 @@ class DockerValidatorRunnerCleanupTests(TestCase):
             runner = DockerValidatorRunner()
             runner._client = mock_client
 
-            removed, failed = runner.cleanup_orphaned_containers(grace_period_seconds=300)
+            removed, failed = runner.cleanup_orphaned_containers(
+                grace_period_seconds=300
+            )
 
             self.assertEqual(removed, 1)
             self.assertEqual(failed, 1)
@@ -285,13 +291,15 @@ class ContainerLabelsTests(TestCase):
         mock_client.containers.run.return_value = mock_container
 
         with patch.dict(sys.modules, {"docker": mock_docker}):
+            from validibot.validations.services.runners.docker import LABEL_MANAGED
+            from validibot.validations.services.runners.docker import LABEL_RUN_ID
+            from validibot.validations.services.runners.docker import LABEL_STARTED_AT
+            from validibot.validations.services.runners.docker import (
+                LABEL_TIMEOUT_SECONDS,
+            )
+            from validibot.validations.services.runners.docker import LABEL_VALIDATOR
             from validibot.validations.services.runners.docker import (
                 DockerValidatorRunner,
-                LABEL_MANAGED,
-                LABEL_RUN_ID,
-                LABEL_STARTED_AT,
-                LABEL_TIMEOUT_SECONDS,
-                LABEL_VALIDATOR,
             )
 
             runner = DockerValidatorRunner()

@@ -4,44 +4,33 @@
 {% load crispy_forms_tags crispy_forms_filters %}
 
 <form class="login" method="post" action="{% url 'account_login' %}">
-    {% csrf_token %}
-
-    {% comment %}
+  {% csrf_token %}
+  {% comment %}
     Render all form fields except captcha (rendered separately at the end).
-    {% endcomment %}
-    {% for field in form %}
-        {% if field.name != 'captcha' %}
-            {{ field|as_crispy_field }}
-        {% endif %}
-    {% endfor %}
-
-    {% comment %}
+  {% endcomment %}
+  {% for field in form %}
+    {% if field.name != 'captcha' %}{{ field|as_crispy_field }}{% endif %}
+  {% endfor %}
+  {% comment %}
     reCAPTCHA field - only present if RECAPTCHA_PUBLIC_KEY and RECAPTCHA_PRIVATE_KEY
     are configured in settings. The captcha widget will render its own UI.
-    {% endcomment %}
-    {% if form.captcha %}
-        <div class="mb-3">
-            {{ form.captcha }}
-            {% if form.captcha.errors %}
-                <div class="text-danger small mt-1">
-                    {{ form.captcha.errors.0 }}
-                </div>
-            {% endif %}
-        </div>
-    {% endif %}
-
-    {% with redirect_target=redirect_field_value|default:"/app/dashboard/" %}
-        <input type="hidden"
-               name="{{ redirect_field_name }}"
-               value="{{ redirect_target }}" />
-    {% endwith %}
-    <div class="d-flex flex-row justify-content-end align-items-center mt-5">
-        <a class="button secondaryAction"
-           href="{% url 'account_reset_password' %}">{% trans "Forgot Password?" %}</a>
-        <button id="sign_in_btn"
-                class="primaryAction btn btn-secondary ms-4"
-                type="submit">
-            {% trans "Sign In" %}
-        </button>
+  {% endcomment %}
+  {% if form.captcha %}
+    <div class="mb-3">
+      {{ form.captcha }}
+      {% if form.captcha.errors %}<div class="text-danger small mt-1">{{ form.captcha.errors.0 }}</div>{% endif %}
     </div>
+  {% endif %}
+  {% with redirect_target=redirect_field_value|default:"/app/dashboard/" %}
+    <input type="hidden"
+           name="{{ redirect_field_name }}"
+           value="{{ redirect_target }}" />
+  {% endwith %}
+  <div class="d-flex flex-row justify-content-end align-items-center mt-5">
+    <a class="button secondaryAction"
+       href="{% url 'account_reset_password' %}">{% trans "Forgot Password?" %}</a>
+    <button id="sign_in_btn"
+            class="primaryAction btn btn-secondary ms-4"
+            type="submit">{% trans "Sign In" %}</button>
+  </div>
 </form>

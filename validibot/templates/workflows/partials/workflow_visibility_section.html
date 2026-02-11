@@ -14,15 +14,9 @@
                id="visibility-private"
                value="private"
                {% if not workflow.is_public %}checked{% endif %}
-               {% if can_manage_sharing %}
-                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}"
-                 hx-target="#workflow-visibility-section"
-                 hx-swap="outerHTML"
-                 hx-vals='{"is_public": "false"}'
-               {% else %}
-                 disabled
-               {% endif %}>
-        <label class="form-check-label d-flex align-items-start gap-2" for="visibility-private">
+               {% if can_manage_sharing %} hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"is_public": "false"}' {% else %} disabled {% endif %} />
+        <label class="form-check-label d-flex align-items-start gap-2"
+               for="visibility-private">
           <div>
             <span class="fw-medium">
               <i class="bi-lock me-1"></i>{% trans "Private" %}
@@ -30,13 +24,10 @@
             {% if not workflow.is_public %}
               <span class="badge text-bg-secondary ms-2">{% trans "Current" %}</span>
             {% endif %}
-            <p class="text-muted small mb-0 mt-1">
-              {% trans "Only org members and invited guests can launch this workflow." %}
-            </p>
+            <p class="text-muted small mb-0 mt-1">{% trans "Only org members and invited guests can launch this workflow." %}</p>
           </div>
         </label>
       </div>
-
       {# Public option #}
       <div class="form-check">
         <input class="form-check-input"
@@ -45,15 +36,9 @@
                id="visibility-public"
                value="public"
                {% if workflow.is_public %}checked{% endif %}
-               {% if can_manage_sharing %}
-                 hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}"
-                 hx-target="#workflow-visibility-section"
-                 hx-swap="outerHTML"
-                 hx-vals='{"is_public": "true"}'
-               {% else %}
-                 disabled
-               {% endif %}>
-        <label class="form-check-label d-flex align-items-start gap-2" for="visibility-public">
+               {% if can_manage_sharing %} hx-post="{% org_url 'workflows:workflow_visibility_update' pk=workflow.pk %}" hx-target="#workflow-visibility-section" hx-swap="outerHTML" hx-vals='{"is_public": "true"}' {% else %} disabled {% endif %} />
+        <label class="form-check-label d-flex align-items-start gap-2"
+               for="visibility-public">
           <div>
             <span class="fw-medium">
               <i class="bi-globe me-1"></i>{% trans "Public" %}
@@ -68,7 +53,6 @@
         </label>
       </div>
     </div>
-
     {% if workflow.is_public %}
       <div class="alert alert-info mt-3 mb-0 small">
         <i class="bi-info-circle me-1"></i>

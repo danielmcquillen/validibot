@@ -114,9 +114,7 @@ class Command(BaseCommand):
                     with transaction.atomic():
                         submission.purge_content()
                     total_purged += 1
-                    self.stdout.write(
-                        self.style.SUCCESS(f"  Purged: {submission.id}")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"  Purged: {submission.id}"))
                 except Exception as e:
                     total_failed += 1
                     self.stdout.write(

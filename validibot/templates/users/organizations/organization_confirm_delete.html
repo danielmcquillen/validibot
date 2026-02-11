@@ -1,35 +1,29 @@
 {% extends "app_base.html" %}
+
 {% load i18n %}
 
 {% block title %}
   {% blocktrans with name=object.name %}Delete {{ name }}{% endblocktrans %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid" id="organization-delete">
     <div class="row">
       <div class="col-12 col-lg-8">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h1 class="h4 mb-3 text-danger">
-              {% blocktrans with name=object.name %}Delete {{ name }}{% endblocktrans %}
-            </h1>
+            <h1 class="h4 mb-3 text-danger">{% blocktrans with name=object.name %}Delete {{ name }}{% endblocktrans %}</h1>
             <p class="text-muted">
               {% trans "This action cannot be undone. All associated memberships and projects will be removed." %}
             </p>
             <form method="post">
               {% csrf_token %}
               <div class="d-flex justify-content-end gap-2">
-                <a href="{% url 'users:organization-detail' object.pk %}" class="btn btn-secondary">
-                  {% trans "Cancel" %}
-                </a>
-                <button type="submit" class="btn btn-danger">
-                  {% trans "Delete organization" %}
-                </button>
+                <a href="{% url 'users:organization-detail' object.pk %}"
+                   class="btn btn-secondary">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-danger">{% trans "Delete organization" %}</button>
               </div>
             </form>
           </div>

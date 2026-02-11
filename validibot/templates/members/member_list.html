@@ -5,11 +5,9 @@
 {% block title %}
   {% trans "Members" %} · {{ organization.name }} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="member-list"
        class="container-fluid d-flex flex-column flex-grow-1">
@@ -37,18 +35,16 @@
         </div>
       </div>
     </div>
-
     <div class="alert alert-info mb-3" role="alert">
       {% url 'members:guest_list' as guests_url %}
       {% blocktrans %}
         <strong>About members:</strong> Members have access to your
         organization, based on the roles you give them. Members can do things like author workflows, manage
-        organization settings and view analytics. 
+        organization settings and view analytics.
         (<a href="{{ guests_url }}">Guests</a>, on the other hand, can only access specific workflows you've shared with them.
       )
       {% endblocktrans %}
     </div>
-
     <div class="row flex-grow-1">
       <div class="col-12 col-lg-7">
         <div class="card app-card mb-3" id="member-list-card">
@@ -58,20 +54,15 @@
               <span class="badge text-bg-secondary ms-2">{{ memberships|length }}</span>
             </div>
           </div>
-          <div class="card-body">
-            {% include "members/partials/member_table.html" %}
-          </div>
+          <div class="card-body">{% include "members/partials/member_table.html" %}</div>
         </div>
       </div>
-
       <div class="col-12 col-lg-5">
         <div class="card app-card">
           <div class="card-header">
             <div class="card-title">
               {% trans "Pending Invitations" %}
-              {% if pending_invites %}
-                <span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>
-              {% endif %}
+              {% if pending_invites %}<span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>{% endif %}
             </div>
           </div>
           <div class="card-body">
@@ -112,9 +103,7 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="text-muted mb-0">
-                {% trans "No pending invitations." %}
-              </p>
+              <p class="text-muted mb-0">{% trans "No pending invitations." %}</p>
             {% endif %}
           </div>
         </div>
@@ -122,7 +111,6 @@
     </div>
   </div>
 {% endblock app_content %}
-
 {% block modal %}
   {{ block.super }}
   <div class="modal fade"
@@ -130,12 +118,10 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content" id="member-invite-modal-content">
-      </div>
+      <div class="modal-content" id="member-invite-modal-content"></div>
     </div>
   </div>
 {% endblock modal %}
-
 {% block inline_javascript %}
   {{ block.super }}
   <script>

@@ -5,15 +5,12 @@
 {% block title %}
   Welcome to Validibot
 {% endblock title %}
-
 {% block top_nav %}
   {# Minimal nav for the home page #}
 {% endblock top_nav %}
-
 {% block breadcrumbs %}
   {# No breadcrumbs on home page #}
 {% endblock breadcrumbs %}
-
 {% block content %}
   <div class="container py-5">
     <div class="row justify-content-center">
@@ -23,13 +20,10 @@
           {% trans "Data validation engine for building energy models and technical data." %}
         </p>
         <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
-          <a href="{% url 'account_login' %}" class="btn btn-primary btn-lg px-4">
-            {% trans "Sign In" %}
-          </a>
+          <a href="{% url 'account_login' %}" class="btn btn-primary btn-lg px-4">{% trans "Sign In" %}</a>
           {% if ACCOUNT_ALLOW_REGISTRATION %}
-            <a href="{% url 'account_signup' %}" class="btn btn-outline-secondary btn-lg px-4">
-              {% trans "Create Account" %}
-            </a>
+            <a href="{% url 'account_signup' %}"
+               class="btn btn-outline-secondary btn-lg px-4">{% trans "Create Account" %}</a>
           {% endif %}
         </div>
       </div>

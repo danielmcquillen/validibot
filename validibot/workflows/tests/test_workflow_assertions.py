@@ -99,7 +99,7 @@ class WorkflowStepAssertionsTests(TestCase):
                 "when_expression": "",
                 "message_template": "Too high",
             },
-            HTTP_HX_REQUEST="true",
+            headers={"hx-request": "true"},
         )
         self.assertEqual(response.status_code, 204)
         step.refresh_from_db()
@@ -122,7 +122,7 @@ class WorkflowStepAssertionsTests(TestCase):
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        response = self.client.get(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("Assertion Type", body)
@@ -195,7 +195,7 @@ class WorkflowStepAssertionsTests(TestCase):
             "workflows:workflow_step_assertion_create",
             kwargs={"pk": workflow.pk, "step_id": step.pk},
         )
-        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        response = self.client.get(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
 
     def test_cel_expression_requires_known_signal(self):
@@ -214,7 +214,7 @@ class WorkflowStepAssertionsTests(TestCase):
                 "severity": "ERROR",
                 "message_template": "",
             },
-            HTTP_HX_REQUEST="true",
+            headers={"hx-request": "true"},
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
@@ -238,7 +238,7 @@ class WorkflowStepAssertionsTests(TestCase):
                 "comparison_value": "0.8",
                 "severity": "WARNING",
             },
-            HTTP_HX_REQUEST="true",
+            headers={"hx-request": "true"},
         )
         self.assertEqual(response.status_code, 204)
 
@@ -261,7 +261,7 @@ class WorkflowStepAssertionsTests(TestCase):
                 "when_expression": "",
                 "message_template": "Bad",
             },
-            HTTP_HX_REQUEST="true",
+            headers={"hx-request": "true"},
         )
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
@@ -275,7 +275,8 @@ class WorkflowStepAssertionsTests(TestCase):
             allow_custom_assertion_targets=True,
         )
         ValidatorCatalogEntryFactory(
-            validator=validator, slug="facility_electric_demand_w",
+            validator=validator,
+            slug="facility_electric_demand_w",
         )
         step = WorkflowStepFactory(workflow=workflow, validator=validator)
         create_url = reverse(
@@ -291,7 +292,7 @@ class WorkflowStepAssertionsTests(TestCase):
                 "comparison_value": "42",
                 "severity": "ERROR",
             },
-            HTTP_HX_REQUEST="true",
+            headers={"hx-request": "true"},
         )
         self.assertEqual(response.status_code, 204)
 

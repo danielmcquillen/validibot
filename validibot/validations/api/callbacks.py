@@ -25,4 +25,3 @@ class ValidationCallbackView(WorkerOnlyAPIView):
     def post(self, request):
         """Process a validator callback payload."""
         return ValidationCallbackService().process(payload=request.data)
-

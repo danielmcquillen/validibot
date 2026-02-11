@@ -59,7 +59,7 @@ def compute_request_hash(request) -> str:
 
 def get_client_ip(request) -> str | None:
     """Extract client IP from request for debugging."""
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    x_forwarded_for = request.headers.get("x-forwarded-for")
     if x_forwarded_for:
         return x_forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
@@ -268,7 +268,7 @@ def _process_idempotency_key(
                 status=IdempotencyKeyStatus.PROCESSING,
                 expires_at=now + timezone.timedelta(hours=IDEMPOTENCY_KEY_TTL_HOURS),
                 request_ip=get_client_ip(request),
-                user_agent=request.META.get("HTTP_USER_AGENT", "")[:500],
+                user_agent=request.headers.get("user-agent", "")[:500],
             )
             return {"action": "process", "key_record": key_record}
     except IntegrityError:

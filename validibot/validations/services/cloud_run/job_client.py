@@ -177,4 +177,3 @@ def get_execution_status(execution_name: str) -> dict:
         "succeeded_count": execution.succeeded_count,
         "running_count": execution.running_count,
     }
-

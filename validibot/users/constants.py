@@ -61,10 +61,12 @@ class PermissionCode(models.TextChoices):
 
 # Reserved organization slugs that can only be created by superusers.
 # These are used for integration testing and system purposes.
-RESERVED_ORG_SLUGS = frozenset({
-    "test-org",
-    "test",
-    "admin",
-    "system",
-    "validibot",
-})
+RESERVED_ORG_SLUGS = frozenset(
+    {
+        "test-org",
+        "test",
+        "admin",
+        "system",
+        "validibot",
+    }
+)

@@ -31,9 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Runner backend class paths
 RUNNER_ALIASES = {
-    "docker": (
-        "validibot.validations.services.runners.docker.DockerValidatorRunner"
-    ),
+    "docker": ("validibot.validations.services.runners.docker.DockerValidatorRunner"),
     "google_cloud_run": (
         "validibot.validations.services.runners.google_cloud_run"
         ".GoogleCloudRunValidatorRunner"

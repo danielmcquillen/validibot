@@ -375,6 +375,7 @@ def _process_execution_result(
             return ValidationResult(passed=False, issues=issues, stats=stats)
 
         import json
+
         output_envelope = json.loads(output_data)
 
     except Exception as e:

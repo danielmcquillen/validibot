@@ -97,9 +97,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    f"[DRY RUN] Would mark {count} run(s) as TIMED_OUT:"
-                )
+                self.style.WARNING(f"[DRY RUN] Would mark {count} run(s) as TIMED_OUT:")
             )
             for run in stuck_runs:
                 minutes_running = (timezone.now() - run.started_at).total_seconds() / 60

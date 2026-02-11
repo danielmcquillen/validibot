@@ -40,7 +40,9 @@ org_router.register("runs", OrgScopedRunViewSet, basename="org-runs")
 # URL: /orgs/<org_slug>/workflows/<workflow_slug>/versions/
 version_router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 version_router.register(
-    "versions", WorkflowVersionViewSet, basename="workflow-versions",
+    "versions",
+    WorkflowVersionViewSet,
+    basename="workflow-versions",
 )
 
 app_name = "api"

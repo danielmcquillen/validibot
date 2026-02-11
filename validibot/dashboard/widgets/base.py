@@ -28,7 +28,6 @@ class WidgetRegistrationError(RuntimeError):
     """Raised when a widget fails to register with the dashboard registry."""
 
 
-
 class DashboardWidget:
     """
     Base class for dashboard widgets.

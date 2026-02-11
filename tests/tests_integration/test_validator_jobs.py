@@ -480,7 +480,9 @@ class EnergyPlusValidatorE2ETest(TestCase):
             )
 
         # At least one error should be present (since we used an invalid model)
-        error_messages = [m for m in messages if m.get("severity", "").lower() == "error"]
+        error_messages = [
+            m for m in messages if m.get("severity", "").lower() == "error"
+        ]
         logger.info("  error messages count: %d", len(error_messages))
         self.assertGreater(
             len(error_messages),
@@ -593,7 +595,9 @@ class FMIValidatorE2ETest(TestCase):
             prefix = f"runs/{self.test_org_id}/{self.test_run_id}/"
             blobs = list(bucket.list_blobs(prefix=prefix))
             logger.info(
-                "Cleaning up %d GCS artifacts with prefix: %s", len(blobs), prefix,
+                "Cleaning up %d GCS artifacts with prefix: %s",
+                len(blobs),
+                prefix,
             )
             for blob in blobs:
                 blob.delete()
@@ -637,7 +641,9 @@ class FMIValidatorE2ETest(TestCase):
         gcs_path = f"runs/{self.test_org_id}/{self.test_run_id}/model.fmu"
         logger.info(
             "Uploading FMU: %s -> gs://%s/%s",
-            fmu_path.name, settings.GCS_VALIDATION_BUCKET, gcs_path,
+            fmu_path.name,
+            settings.GCS_VALIDATION_BUCKET,
+            gcs_path,
         )
         return self._upload_bytes_to_gcs(
             gcs_path,
@@ -662,10 +668,13 @@ class FMIValidatorE2ETest(TestCase):
 
         logger.info(
             "Polling for output at: gs://%s/%s",
-            settings.GCS_VALIDATION_BUCKET, output_path,
+            settings.GCS_VALIDATION_BUCKET,
+            output_path,
         )
         logger.info(
-            "Timeout: %ds, Poll interval: %ds", timeout_seconds, poll_interval_seconds,
+            "Timeout: %ds, Poll interval: %ds",
+            timeout_seconds,
+            poll_interval_seconds,
         )
 
         start = time.time()
@@ -678,7 +687,9 @@ class FMIValidatorE2ETest(TestCase):
                 content = blob.download_as_bytes()
                 output = json.loads(content)
                 logger.info(
-                    "Output envelope found after %.1fs (%d polls)", elapsed, poll_count,
+                    "Output envelope found after %.1fs (%d polls)",
+                    elapsed,
+                    poll_count,
                 )
                 return output
             logger.info("Poll %d: No output yet (%.1fs elapsed)", poll_count, elapsed)
@@ -686,7 +697,8 @@ class FMIValidatorE2ETest(TestCase):
 
         logger.warning(
             "Timeout: No output found after %ds (%d polls)",
-            timeout_seconds, poll_count,
+            timeout_seconds,
+            poll_count,
         )
         return None
 
@@ -829,7 +841,8 @@ class FMIValidatorE2ETest(TestCase):
         logger.info("  timing.started_at: %s", timing.get("started_at"))
         logger.info("  timing.finished_at: %s", timing.get("finished_at"))
         self.assertIsNotNone(
-            timing.get("started_at"), "timing.started_at should be present",
+            timing.get("started_at"),
+            "timing.started_at should be present",
         )
 
         # Log any messages
@@ -838,7 +851,9 @@ class FMIValidatorE2ETest(TestCase):
             logger.info("  Messages (%d):", len(messages))
             for msg in messages:
                 logger.info(
-                    "    [%s] %s", msg.get("severity", "?"), msg.get("text", ""),
+                    "    [%s] %s",
+                    msg.get("severity", "?"),
+                    msg.get("text", ""),
                 )
 
         # If successful, validate FMI-specific outputs
@@ -879,7 +894,8 @@ class FMIValidatorE2ETest(TestCase):
             logger.info("TEST PASSED: test_fmi_envelope_shape")
         else:
             logger.warning(
-                "Job did not succeed (status=%s), skipping output validation", status,
+                "Job did not succeed (status=%s), skipping output validation",
+                status,
             )
             # Log any error details
             if "outputs" in output:
@@ -1045,7 +1061,9 @@ class FMIValidatorE2ETest(TestCase):
         bucket = client.bucket(settings.GCS_VALIDATION_BUCKET)
         bucket_exists = bucket.exists()
         logger.info(
-            "  Bucket %s exists: %s", settings.GCS_VALIDATION_BUCKET, bucket_exists,
+            "  Bucket %s exists: %s",
+            settings.GCS_VALIDATION_BUCKET,
+            bucket_exists,
         )
         self.assertTrue(
             bucket_exists,

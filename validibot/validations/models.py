@@ -2014,8 +2014,6 @@ class ValidationFinding(TimeStampedModel):
         super().save(*args, **kwargs)
 
 
-
-
 def artifact_upload_to(instance, filename: str) -> str:
     f = (
         f"artifacts/org-{instance.org_id}/runs/{instance.run_id}/"
@@ -2062,9 +2060,9 @@ class CallbackReceipt(models.Model):
     """
     Tracks processed container job callbacks for idempotency.
 
-    When a container job called in an async manner (Cloud Run, AWS Batch) 
-    completes, it POSTs a callback to the worker service. The task queue may 
-    retry this callback if the initial delivery fails or times out, which 
+    When a container job called in an async manner (Cloud Run, AWS Batch)
+    completes, it POSTs a callback to the worker service. The task queue may
+    retry this callback if the initial delivery fails or times out, which
     could cause duplicate processing (duplicate findings, incorrect status).
 
     This model records each successfully processed callback. Before processing
@@ -2200,7 +2198,9 @@ class ValidatorResourceFile(TimeStampedModel):
     file = models.FileField(
         upload_to=_resource_file_upload_path,
         max_length=500,
-        help_text=_("The resource file stored in default media storage (public/ prefix)."),
+        help_text=_(
+            "The resource file stored in default media storage (public/ prefix)."
+        ),
     )
 
     is_default = models.BooleanField(

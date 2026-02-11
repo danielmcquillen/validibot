@@ -5,11 +5,9 @@
 {% block title %}
   {% trans "Guests" %} · {{ organization.name }} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid d-flex flex-column flex-grow-1">
     <div class="app-content-header-bar row">
@@ -36,7 +34,6 @@
         </div>
       </div>
     </div>
-
     <div class="alert alert-info mb-3" role="alert">
       {% url 'members:member_list' as members_url %}
       {% blocktrans %}
@@ -45,7 +42,6 @@
         (<a href="{{ members_url }}">Members</a>, on the other hand, have full access based on their assigned roles.)
       {% endblocktrans %}
     </div>
-
     <div class="row flex-grow-1">
       <div class="col-12 col-lg-7">
         <div class="card app-card mb-3">
@@ -62,18 +58,12 @@
                   <div class="list-group-item">
                     <div class="d-flex justify-content-between align-items-start">
                       <div>
-                        <div class="fw-medium">
-                          {{ guest.user.email }}
-                        </div>
-                        {% if guest.user.name %}
-                          <small class="text-muted">{{ guest.user.name }}</small>
-                        {% endif %}
+                        <div class="fw-medium">{{ guest.user.email }}</div>
+                        {% if guest.user.name %}<small class="text-muted">{{ guest.user.name }}</small>{% endif %}
                         <div class="mt-2">
                           <span class="badge text-bg-info">
                             {{ guest.workflow_count }} {% trans "workflow" %}
-                            {% if guest.workflow_count != 1 %}
-                              s
-                            {% endif %}
+                            {% if guest.workflow_count != 1 %}s{% endif %}
                           </span>
                         </div>
                         <div class="mt-2">
@@ -101,22 +91,17 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="text-muted mb-0">
-                {% trans "No guests currently have access to workflows in this organization." %}
-              </p>
+              <p class="text-muted mb-0">{% trans "No guests currently have access to workflows in this organization." %}</p>
             {% endif %}
           </div>
         </div>
       </div>
-
       <div class="col-12 col-lg-5">
         <div class="card app-card">
           <div class="card-header">
             <div class="card-title">
               {% trans "Pending Invitations" %}
-              {% if pending_invites %}
-                <span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>
-              {% endif %}
+              {% if pending_invites %}<span class="badge text-bg-warning ms-2">{{ pending_invites|length }}</span>{% endif %}
             </div>
           </div>
           <div class="card-body">
@@ -137,9 +122,7 @@
                           {% trans "All workflows" %}
                         {% else %}
                           {{ invite.workflows.count }} {% trans "selected workflow" %}
-                          {% if invite.workflows.count != 1 %}
-                            s
-                          {% endif %}
+                          {% if invite.workflows.count != 1 %}s{% endif %}
                         {% endif %}
                         &middot;
                         {% trans "Invited" %} {{ invite.created|date:"M j, Y" }}
@@ -165,9 +148,7 @@
                 {% endfor %}
               </div>
             {% else %}
-              <p class="text-muted mb-0">
-                {% trans "No pending invitations." %}
-              </p>
+              <p class="text-muted mb-0">{% trans "No pending invitations." %}</p>
             {% endif %}
           </div>
         </div>
@@ -175,7 +156,6 @@
     </div>
   </div>
 {% endblock app_content %}
-
 {% block modal %}
   {{ block.super }}
   <div class="modal fade"
@@ -183,12 +163,10 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content" id="guest-invite-modal-content">
-      </div>
+      <div class="modal-content" id="guest-invite-modal-content"></div>
     </div>
   </div>
 {% endblock modal %}
-
 {% block inline_javascript %}
   {{ block.super }}
   <script>

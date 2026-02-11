@@ -148,9 +148,7 @@ class FMIEngineTests(TestCase):
         # Without available execution backend, engine returns failure
         self.assertFalse(result.passed)
         self.assertIn("implementation_status", result.stats)
-        self.assertEqual(
-            result.stats["implementation_status"], "Backend not available"
-        )
+        self.assertEqual(result.stats["implementation_status"], "Backend not available")
 
     def test_fmi_engine_rejects_missing_fmu(self):
         """Test that FMI engine handles missing FMU gracefully."""

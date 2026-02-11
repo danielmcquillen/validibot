@@ -4,17 +4,13 @@
 This template partial contains the detail we want to show when a run is done and we're no longer polling.
 So the run might have completed successfully, failed, or been canceled.
 {% endcomment %}
-
 <div id="validation-run-results" class="card-body">
-    <div class="row w-100">
-
-        <div class="col-12 col-xxl-7 mb-3">
-            {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs %}
-        </div>
-
-        <div class="col-12 col-xxl-5 order-first order-xxl-last mb-3">
-            {% include "workflows/results/partials/block_validation_run_summary.html" %}
-        </div>
-
+  <div class="row w-100">
+    <div class="col-12 col-xxl-7 mb-3">
+      {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs %}
     </div>
+    <div class="col-12 col-xxl-5 order-first order-xxl-last mb-3">
+      {% include "workflows/results/partials/block_validation_run_summary.html" %}
+    </div>
+  </div>
 </div>

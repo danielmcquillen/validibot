@@ -442,12 +442,14 @@ def run_fmu_probe(
     fmu_model.is_approved = True
 
     probe_record.save(update_fields=["status", "last_error", "details", "modified"])
-    fmu_model.save(update_fields=[
-        "is_approved",
-        "fmi_version",
-        "introspection_metadata",
-        "modified",
-    ])
+    fmu_model.save(
+        update_fields=[
+            "is_approved",
+            "fmi_version",
+            "introspection_metadata",
+            "modified",
+        ]
+    )
 
     return FMIProbeResultSchema.success(
         variables=variable_metas,

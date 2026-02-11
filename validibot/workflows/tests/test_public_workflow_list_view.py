@@ -21,8 +21,12 @@ def _force_login_for_workflow(client, workflow):
 
 
 def test_public_list_shows_public_workflows_only(client):
-    public_workflow = WorkflowFactory(name="Public Workflow", make_info_page_public=True)
-    private_workflow = WorkflowFactory(name="Private Workflow", make_info_page_public=False)
+    public_workflow = WorkflowFactory(
+        name="Public Workflow", make_info_page_public=True
+    )
+    private_workflow = WorkflowFactory(
+        name="Private Workflow", make_info_page_public=False
+    )
 
     response = client.get(reverse("public_workflow_list"))
 

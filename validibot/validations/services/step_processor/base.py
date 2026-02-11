@@ -136,8 +136,8 @@ class ValidationStepProcessor(ABC):
                 ruleset_assertion_id=issue.assertion_id,
             )
             # Call model methods to ensure consistency
-            finding._ensure_run_alignment()  # noqa: SLF001
-            finding._strip_payload_prefix()  # noqa: SLF001
+            finding._ensure_run_alignment()
+            finding._strip_payload_prefix()
             findings_to_create.append(finding)
 
         if findings_to_create:

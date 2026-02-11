@@ -32,7 +32,7 @@ class AgentAwareNegotiation(DefaultContentNegotiation):
     def select_renderer(
         self, request, renderers, format_suffix=None
     ) -> tuple[object, str]:
-        accept = request.META.get("HTTP_ACCEPT", "")
+        accept = request.headers.get("accept", "")
 
         if _accept_includes(accept, A2A_MEDIA):
             profile = "a2a"
@@ -41,7 +41,7 @@ class AgentAwareNegotiation(DefaultContentNegotiation):
             profile = "agent"
             wants_vendor_json = True
         else:
-            hdr = (request.META.get("HTTP_X_AGENT_PROFILE", "") or "").lower()
+            hdr = (request.headers.get("x-agent-profile", "") or "").lower()
             profile = hdr if hdr in VALID_PROFILES else "human"
             wants_vendor_json = False
 

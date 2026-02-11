@@ -2,18 +2,13 @@
 
 <div class="modal-header">
   <div>
-    <h5 class="modal-title">
-      {% trans "Add workflow step" %}
-    </h5>
-    <p class="text-muted small mb-0">
-      {% trans "Choose the type of operation to run in this step." %}
-    </p>
+    <h5 class="modal-title">{% trans "Add workflow step" %}</h5>
+    <p class="text-muted small mb-0">{% trans "Choose the type of operation to run in this step." %}</p>
   </div>
   <button type="button"
           class="btn-close"
           data-bs-dismiss="modal"
-          aria-label="{% trans 'Close' %}">
-  </button>
+          aria-label="{% trans 'Close' %}"></button>
 </div>
 <div class="modal-body p-0">
   {% if limit_reached %}
@@ -32,17 +27,9 @@
       <input type="hidden" name="stage" value="select" />
       {% if form.errors %}
         <div class="alert alert-danger" role="alert">
-          {% for error in form.non_field_errors %}
-            <div>
-              {{ error }}
-            </div>
-          {% endfor %}
+          {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
           {% for field in form %}
-            {% for error in field.errors %}
-              <div>
-                {{ error }}
-              </div>
-            {% endfor %}
+            {% for error in field.errors %}<div>{{ error }}</div>{% endfor %}
           {% endfor %}
         </div>
       {% endif %}
@@ -51,21 +38,14 @@
           <ul class="nav nav-tabs" role="tablist">
             {% for tab in validator_tabs %}
               <li class="nav-item" role="presentation">
-                <button class="nav-link
-                               {% if tab.slug == selected_tab %}
-                                 active
-                               {% endif %}"
+                <button class="nav-link {% if tab.slug == selected_tab %}active{% endif %}"
                         id="workflow-tab-{{ tab.slug }}-tab"
                         data-bs-toggle="tab"
                         type="button"
                         role="tab"
                         data-bs-target="#workflow-tab-{{ tab.slug }}"
                         aria-controls="workflow-tab-{{ tab.slug }}"
-                        aria-selected="{% if tab.slug == selected_tab %}
-                                         true
-                                       {% else %}
-                                         false
-                                       {% endif %}">
+                        aria-selected="{% if tab.slug == selected_tab %} true {% else %} false {% endif %}">
                   {{ tab.label }}
                 </button>
               </li>
@@ -73,11 +53,7 @@
           </ul>
           <div class="tab-content pt-3 flex-grow-1 d-flex flex-column">
             {% for tab in validator_tabs %}
-              <div class="tab-pane fade
-                          {% if tab.slug == selected_tab %}
-                            show active
-                          {% endif %}
-                          flex-grow-1"
+              <div class="tab-pane fade {% if tab.slug == selected_tab %}show active{% endif %} flex-grow-1"
                    id="workflow-tab-{{ tab.slug }}"
                    role="tabpanel"
                    aria-labelledby="workflow-tab-{{ tab.slug }}-tab">
@@ -90,40 +66,27 @@
                                  type="radio"
                                  name="choice"
                                  id="{{ input_id }}"
-                                 value="{{ entry.value }}"{% if entry.disabled %} disabled{% endif %}
-                                 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
-                                   checked
-                                 {% endif %}
+                                 value="{{ entry.value }}"
+                                 {% if entry.disabled %}disabled{% endif %}
+                                 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}checked{% endif %}
                                  autocomplete="off"
                                  required />
-                          <label class="validator-card h-100 mb-3
-                                        {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}
-                                          is-selected
-                                        {% endif %}
-                                        {% if entry.disabled %}
-                                          is-disabled
-                                        {% endif %}"
+                          <label class="validator-card h-100 mb-3 {% if selected_value and selected_value|stringformat:'s' == entry.value|stringformat:'s' %}is-selected{% endif %} {% if entry.disabled %}is-disabled{% endif %}"
                                  for="{{ input_id }}">
                             <div class="validator-card__icon mb-3">
                               <i class="bi {{ entry.icon }}"></i>
                             </div>
-                            <div class="validator-card__title mb-1">
-                              {{ entry.name }}
-                            </div>
+                            <div class="validator-card__title mb-1">{{ entry.name }}</div>
                             {% comment %}
                             <div class="validator-card__subtitle text-uppercase">
                               {{ entry.subtitle }}
                             </div>
                             {% endcomment %}
                             {% if entry.short_description %}
-                              <p class="validator-card__description small mb-0 mt-2">
-                                {{ entry.short_description }}
-                              </p>
+                              <p class="validator-card__description small mb-0 mt-2">{{ entry.short_description }}</p>
                             {% endif %}
                             {% if entry.disabled and entry.disabled_reason %}
-                              <p class="text-danger small mb-0 mt-2">
-                                {{ entry.disabled_reason }}
-                              </p>
+                              <p class="text-danger small mb-0 mt-2">{{ entry.disabled_reason }}</p>
                             {% endif %}
                           </label>
                         </div>
@@ -131,23 +94,15 @@
                     {% endfor %}
                   </div>
                 {% else %}
-                  <div class="alert alert-info mb-0" role="alert">
-                    {% trans "No custom validators available yet." %}
-                  </div>
+                  <div class="alert alert-info mb-0" role="alert">{% trans "No custom validators available yet." %}</div>
                 {% endif %}
               </div>
             {% endfor %}
           </div>
         </div>
         <div class="card-footer bg-body-tertiary d-flex justify-content-end gap-2">
-          <button type="button"
-                  class="btn btn-secondary"
-                  data-bs-dismiss="modal">
-            {% trans "Cancel" %}
-          </button>
-          <button type="submit" class="btn btn-secondary">
-            {% trans "Continue" %}
-          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="submit" class="btn btn-secondary">{% trans "Continue" %}</button>
         </div>
       </div>
     </form>

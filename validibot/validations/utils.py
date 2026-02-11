@@ -33,7 +33,7 @@ def create_default_validators():
             "description": _(
                 """
                 <p>Workflow authors can use the 'Basic Validator' as a starting point
-                for creating assertions directly. There are no signals 
+                for creating assertions directly. There are no signals
                 or predefined assertions.
                 Perfect for lightweight checks or ad-hoc rules expressed in CEL.</p>
                 """
@@ -55,7 +55,7 @@ def create_default_validators():
                 <p>
                 This validator validates JSON payloads against a predefined JSON schema.
                 When a workflow author selects this validator, they must attach
-                a valid JSON schema. 
+                a valid JSON schema.
                 </p>
                 """
             ),
@@ -73,10 +73,10 @@ def create_default_validators():
             "description": _(
                 """
                 <p>
-                This validator validates XML submissions against an XSD, DTD 
+                This validator validates XML submissions against an XSD, DTD
                 or RelaxNG schema.
                 When a workflow author selects this validator, they must attach
-                a valid schema. 
+                a valid schema.
                 </p>
                 """
             ),
@@ -92,8 +92,8 @@ def create_default_validators():
             ),
             "description": _(
                 """
-                <p>Validate EnergyPlus IDF files for correctness and expected outputs. 
-                Run simulations, surface findings, and keep building models 
+                <p>Validate EnergyPlus IDF files for correctness and expected outputs.
+                Run simulations, surface findings, and keep building models
                 reliable.</p>
                 """
             ),
@@ -111,21 +111,21 @@ def create_default_validators():
             "description": _(
                 """
                 <p>
-                This validator allows a workflow author to write assertions 
+                This validator allows a workflow author to write assertions
                 against incoming data.
-                It allows a workflow author to validating incoming data as 
+                It allows a workflow author to validating incoming data as
                 well as simulation outputs.
                 </p>
                 <p>
-                The validator sends inputs using the Functional Mock-up Interface (FMI) 
-                standard to an 
-                FMU-based simulation running in an isolated runtime. If the 
+                The validator sends inputs using the Functional Mock-up Interface (FMI)
+                standard to an
+                FMU-based simulation running in an isolated runtime. If the
                 simulation succeeds it
-                gathers outputs and returns them as output signals for further 
+                gathers outputs and returns them as output signals for further
                 validation, if defined.
                 </p>
                 <p>
-                The workflow author to write assertions against simulation 
+                The workflow author to write assertions against simulation
                 output signals.
                 </p>
                 """

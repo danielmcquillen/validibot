@@ -36,4 +36,3 @@ class WorkerOnlyAPIView(APIView):
         if not getattr(settings, "APP_IS_WORKER", False):
             raise Http404
         super().initial(request, *args, **kwargs)
-

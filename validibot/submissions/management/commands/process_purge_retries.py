@@ -47,10 +47,14 @@ class Command(BaseCommand):
         now = timezone.now()
 
         # Find retries that are due and haven't exceeded max attempts
-        pending_retries = PurgeRetry.objects.filter(
-            next_retry_at__lte=now,
-            attempt_count__lt=PurgeRetry.MAX_ATTEMPTS,
-        ).select_related("submission").order_by("next_retry_at")[:batch_size]
+        pending_retries = (
+            PurgeRetry.objects.filter(
+                next_retry_at__lte=now,
+                attempt_count__lt=PurgeRetry.MAX_ATTEMPTS,
+            )
+            .select_related("submission")
+            .order_by("next_retry_at")[:batch_size]
+        )
 
         retries_to_process = list(pending_retries)
 
@@ -73,9 +77,7 @@ class Command(BaseCommand):
             if submission.content_purged_at:
                 if not dry_run:
                     retry.delete()
-                self.stdout.write(
-                    f"  Skipped (already purged): {submission.id}"
-                )
+                self.stdout.write(f"  Skipped (already purged): {submission.id}")
                 skip_count += 1
                 continue
 

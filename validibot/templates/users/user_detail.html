@@ -5,15 +5,12 @@
 {% block title %}
   {{ object.name|default:object.username }}
 {% endblock title %}
-
 {% block bodyclass %}
   {{ block.super }} account-settings-page
 {% endblock bodyclass %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="user-profile-overview" class="app-page container-fluid">
     <div class="app-content-header-bar row">
@@ -36,7 +33,6 @@
         </p>
       </div>
     </div>
-
     <div class="row">
       <div class="col-12 col-lg-8 col-xxl-6">
         <div class="account-settings-card card shadow-sm border-0">
@@ -48,71 +44,46 @@
                        alt="{{ object.username }}"
                        class="img-fluid rounded-circle settings-avatar__image" />
                 {% else %}
-                  <span class="fs-1 fw-semibold text-primary">
-                    {{ object.name|default:object.username|first|upper }}
-                  </span>
+                  <span class="fs-1 fw-semibold text-primary">{{ object.name|default:object.username|first|upper }}</span>
                 {% endif %}
               </div>
-              <h2 class="h3 mb-1">
-                {{ object.name|default:object.username }}
-              </h2>
+              <h2 class="h3 mb-1">{{ object.name|default:object.username }}</h2>
               {% if object.job_title or object.company %}
                 <p class="text-muted mb-0">
                   {{ object.job_title }}
-                  {% if object.job_title and object.company %}
-                    ·
-                  {% endif %}
+                  {% if object.job_title and object.company %}·{% endif %}
                   {{ object.company }}
                 </p>
               {% endif %}
-              {% if object.location %}
-                <p class="text-muted mb-0">
-                  {{ object.location }}
-                </p>
-              {% endif %}
+              {% if object.location %}<p class="text-muted mb-0">{{ object.location }}</p>{% endif %}
             </div>
-
             {% if object.bio %}
               <div class="mb-4">
-                <h3 class="h6 text-uppercase text-muted fw-semibold mb-2">
-                  {% trans "About" %}
-                </h3>
-                <p class="mb-0">
-                  {{ object.bio }}
-                </p>
+                <h3 class="h6 text-uppercase text-muted fw-semibold mb-2">{% trans "About" %}</h3>
+                <p class="mb-0">{{ object.bio }}</p>
               </div>
             {% endif %}
-
             <div class="border rounded-3 p-3 bg-light-subtle">
               <dl class="row mb-0 small text-muted">
-                <dt class="col-4">
-                  {% trans "Username" %}
-                </dt>
+                <dt class="col-4">{% trans "Username" %}</dt>
                 <dd class="col-8 text-body">
                   {{ object.username }}
                 </dd>
-                <dt class="col-4">
-                  {% trans "Email" %}
-                </dt>
+                <dt class="col-4">{% trans "Email" %}</dt>
                 <dd class="col-8 text-body">
                   {{ object.email }}
                 </dd>
                 {% if object.timezone %}
-                  <dt class="col-4">
-                    {% trans "Timezone" %}
-                  </dt>
+                  <dt class="col-4">{% trans "Timezone" %}</dt>
                   <dd class="col-8 text-body">
                     {{ object.timezone }}
                   </dd>
                 {% endif %}
               </dl>
             </div>
-
             {% if object == request.user %}
               <div class="mt-4 text-center">
-                <a href="{% org_url 'users:profile' %}" class="btn btn-secondary">
-                  {% trans "Edit profile" %}
-                </a>
+                <a href="{% org_url 'users:profile' %}" class="btn btn-secondary">{% trans "Edit profile" %}</a>
               </div>
             {% endif %}
           </div>

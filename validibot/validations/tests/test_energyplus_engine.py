@@ -52,8 +52,7 @@ def test_energyplus_engine_requires_run_context():
 
     assert result.passed is False
     assert any(
-        "workflow context" in issue.message.lower()
-        and issue.severity == Severity.ERROR
+        "workflow context" in issue.message.lower() and issue.severity == Severity.ERROR
         for issue in result.issues
     )
     assert result.stats is not None
@@ -99,8 +98,7 @@ def test_energyplus_engine_backend_not_available():
 
     assert result.passed is False
     assert any(
-        "not available" in issue.message.lower()
-        and issue.severity == Severity.ERROR
+        "not available" in issue.message.lower() and issue.severity == Severity.ERROR
         for issue in result.issues
     )
     assert result.stats is not None

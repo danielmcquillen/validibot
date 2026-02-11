@@ -1,9 +1,7 @@
 {% load i18n %}
 
 {% if matches %}
-  <p class="small text-muted mb-2">
-    {% trans "Select a user to invite:" %}
-  </p>
+  <p class="small text-muted mb-2">{% trans "Select a user to invite:" %}</p>
   {% for user in matches %}
     <div class="form-check">
       <input class="form-check-input"

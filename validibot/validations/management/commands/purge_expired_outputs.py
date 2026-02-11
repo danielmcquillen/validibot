@@ -79,12 +79,16 @@ class Command(BaseCommand):
 
             # Find runs with expired outputs that haven't been purged yet
             # Exclude runs with STORE_PERMANENTLY policy (output_expires_at is null)
-            expired_runs = ValidationRun.objects.filter(
-                output_expires_at__lte=now,
-                output_purged_at__isnull=True,
-            ).exclude(
-                output_retention_policy=OutputRetention.STORE_PERMANENTLY,
-            ).order_by("output_expires_at")[:batch_size]
+            expired_runs = (
+                ValidationRun.objects.filter(
+                    output_expires_at__lte=now,
+                    output_purged_at__isnull=True,
+                )
+                .exclude(
+                    output_retention_policy=OutputRetention.STORE_PERMANENTLY,
+                )
+                .order_by("output_expires_at")[:batch_size]
+            )
 
             # Convert to list to avoid queryset changes during iteration
             runs_to_process = list(expired_runs)
@@ -121,9 +125,7 @@ class Command(BaseCommand):
                     with transaction.atomic():
                         self._purge_run_outputs(run)
                     total_purged += 1
-                    self.stdout.write(
-                        self.style.SUCCESS(f"  Purged outputs: {run.id}")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"  Purged outputs: {run.id}"))
                 except Exception as e:
                     total_failed += 1
                     self.stdout.write(

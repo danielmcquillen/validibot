@@ -1,14 +1,13 @@
 {% extends "app_base.html" %}
+
 {% load i18n %}
 
 {% block title %}
   {% trans "Edit member roles" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid" id="organization-member-form">
     <div class="row">
@@ -20,12 +19,18 @@
               {% csrf_token %}
               {% if form.non_field_errors %}
                 <div class="alert alert-danger" role="alert">
-                  {% for error in form.non_field_errors %}{{ error }}<br />{% endfor %}
+                  {% for error in form.non_field_errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
                 </div>
               {% endif %}
               {% if form.roles.errors %}
                 <div class="alert alert-danger" role="alert">
-                  {% for error in form.roles.errors %}{{ error }}<br />{% endfor %}
+                  {% for error in form.roles.errors %}
+                    {{ error }}
+                    <br />
+                  {% endfor %}
                 </div>
               {% endif %}
               {% if form.owner_locked %}
@@ -37,12 +42,9 @@
               {% include "users/partials/role_checkbox_list.html" with role_options=form.role_options field_name="roles" %}
               <p class="form-text small text-muted mt-2">{{ form.fields.roles.help_text }}</p>
               <div class="d-flex justify-content-end gap-2">
-                <a href="{% url 'users:organization-detail' organization.pk %}" class="btn btn-secondary">
-                  {% trans "Cancel" %}
-                </a>
-                <button type="submit" class="btn btn-secondary">
-                  {% trans "Save" %}
-                </button>
+                <a href="{% url 'users:organization-detail' organization.pk %}"
+                   class="btn btn-secondary">{% trans "Cancel" %}</a>
+                <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
               </div>
             </form>
           </div>

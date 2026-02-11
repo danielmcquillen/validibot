@@ -19,7 +19,6 @@ from validibot_shared.validations.envelopes import ValidationStatus
 from validibot.core.models import CallbackReceiptStatus
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
-from validibot.core.models import CallbackReceiptStatus
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType

@@ -112,9 +112,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.HTTP_INFO("  Welcome to Validibot Setup"))
         self.stdout.write(self.style.HTTP_INFO("=" * 60))
         self.stdout.write("")
-        self.stdout.write(
-            "This command will configure your Validibot installation."
-        )
+        self.stdout.write("This command will configure your Validibot installation.")
         self.stdout.write(
             "It's safe to run multiple times - existing data will be updated."
         )
@@ -155,17 +153,13 @@ class Command(BaseCommand):
         self.stdout.write("")
 
         # Step 6: User workspaces and projects
-        self.stdout.write(
-            self.style.MIGRATE_HEADING("Step 6/7: Workspaces & Projects")
-        )
+        self.stdout.write(self.style.MIGRATE_HEADING("Step 6/7: Workspaces & Projects"))
         self.stdout.write("-" * 40)
         self._setup_workspaces_and_projects()
         self.stdout.write("")
 
         # Step 7: Default actions and superuser
-        self.stdout.write(
-            self.style.MIGRATE_HEADING("Step 7/7: Actions & Admin User")
-        )
+        self.stdout.write(self.style.MIGRATE_HEADING("Step 7/7: Actions & Admin User"))
         self.stdout.write("-" * 40)
         self._setup_default_actions()
         self._setup_local_superuser()
@@ -220,12 +214,8 @@ class Command(BaseCommand):
         # Interactive prompt if we have a terminal
         if not options.get("no_input") and sys.stdin.isatty():
             self.stdout.write("")
-            self.stdout.write(
-                "  What domain will users use to access Validibot?"
-            )
-            self.stdout.write(
-                "  Examples: validibot.mycompany.com, localhost:8000"
-            )
+            self.stdout.write("  What domain will users use to access Validibot?")
+            self.stdout.write("  Examples: validibot.mycompany.com, localhost:8000")
             self.stdout.write("")
 
             while True:
@@ -245,9 +235,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.WARNING(f"  No domain provided. Using default: {default_domain}")
         )
-        self.stdout.write(
-            "  You can update this later by running:"
-        )
+        self.stdout.write("  You can update this later by running:")
         self.stdout.write(
             "    python manage.py setup_validibot --domain yourdomain.com"
         )
@@ -317,9 +305,7 @@ class Command(BaseCommand):
             action = "Updated"
             logger.debug("Updated existing Site record")
 
-        self.stdout.write(
-            self.style.SUCCESS(f"  {action} site configuration:")
-        )
+        self.stdout.write(self.style.SUCCESS(f"  {action} site configuration:"))
         self.stdout.write(f"    Domain: {site.domain}")
         self.stdout.write(f"    Name:   {site.name}")
 
@@ -352,13 +338,9 @@ class Command(BaseCommand):
         except ImportError:
             logger.warning("django_celery_beat not installed, skipping schedule setup")
             self.stdout.write(
-                self.style.WARNING(
-                    "  Skipped: django_celery_beat is not installed."
-                )
+                self.style.WARNING("  Skipped: django_celery_beat is not installed.")
             )
-            self.stdout.write(
-                "  Background job schedules require Celery Beat."
-            )
+            self.stdout.write("  Background job schedules require Celery Beat.")
             self.stdout.write(
                 "  If you're using GCP Cloud Scheduler, this is expected."
             )
@@ -496,9 +478,7 @@ class Command(BaseCommand):
                 )
                 if created:
                     grants_created += 1
-                    logger.debug(
-                        f"Granted {role.code} to membership {membership.id}"
-                    )
+                    logger.debug(f"Granted {role.code} to membership {membership.id}")
 
         if owner_memberships.exists() and grants_created > 0:
             self.stdout.write(f"  Updated {grants_created} role grants for owners")
@@ -639,9 +619,9 @@ class Command(BaseCommand):
 
         # Assign default projects to workflows without one
         workflows_updated = 0
-        for workflow in Workflow.objects.filter(
-            project__isnull=True
-        ).select_related("org"):
+        for workflow in Workflow.objects.filter(project__isnull=True).select_related(
+            "org"
+        ):
             if not workflow.org:
                 continue
             project = (
@@ -665,9 +645,7 @@ class Command(BaseCommand):
             results.append(f"{workflows_updated} workflows updated")
 
         if results:
-            self.stdout.write(
-                self.style.SUCCESS(f"  Created {', '.join(results)}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"  Created {', '.join(results)}"))
         else:
             self.stdout.write(self.style.SUCCESS("  All workspaces up to date"))
 

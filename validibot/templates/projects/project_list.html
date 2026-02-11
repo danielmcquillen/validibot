@@ -5,11 +5,9 @@
 {% block title %}
   {% trans "Projects" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="project-list" class="container-fluid">
     <div class="app-content-header-bar row ">
@@ -26,7 +24,6 @@
         </a>
       </div>
     </div>
-
     <div class="card shadow-sm">
       <div class="card-body p-0">
         {% if projects %}
@@ -34,26 +31,16 @@
             <table class="table align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th scope="col">
-                    {% trans "Name" %}
-                  </th>
-                  <th scope="col" class="text-center">
-                    {% trans "Color" %}
-                  </th>
-                  <th scope="col" class="d-none d-md-table-cell">
-                    {% trans "Description" %}
-                  </th>
-                  <th scope="col" class="text-end">
-                    {% trans "Actions" %}
-                  </th>
+                  <th scope="col">{% trans "Name" %}</th>
+                  <th scope="col" class="text-center">{% trans "Color" %}</th>
+                  <th scope="col" class="d-none d-md-table-cell">{% trans "Description" %}</th>
+                  <th scope="col" class="text-end">{% trans "Actions" %}</th>
                 </tr>
               </thead>
               <tbody>
                 {% for project in projects %}
                   <tr id="project-row-{{ project.pk }}"
-                      class="{% if project.is_default %}
-                               table-active
-                             {% endif %}">
+                      class="{% if project.is_default %} table-active {% endif %}">
                     <td class="fw-semibold">
                       {{ project.name }}
                       {% if project.is_default %}
@@ -62,24 +49,18 @@
                     </td>
                     <td class="text-center">
                       <span class="project-color-swatch"
-                            style="background-color: {{ project.color }};"
+                            style="background-color: {{ project.color }}"
                             aria-hidden="true"></span>
-                      <span class="text-muted small ms-2 project-color-code">
-                        {{ project.color }}
-                      </span>
+                      <span class="text-muted small ms-2 project-color-code">{{ project.color }}</span>
                     </td>
-                    <td class="d-none d-md-table-cell text-muted">
-                      {{ project.description|default:_("No description") }}
-                    </td>
+                    <td class="d-none d-md-table-cell text-muted">{{ project.description|default:_("No description") }}</td>
                     <td class="text-end">
                       {% if project.is_default %}
                         <span class="text-muted small">{% trans "Protected" %}</span>
                       {% else %}
                         <div class="btn-group" role="group">
                           <a class="btn btn-sm btn-secondary"
-                             href="{% url 'projects:project-update' project.pk %}">
-                            {% trans "Edit" %}
-                          </a>
+                             href="{% url 'projects:project-update' project.pk %}">{% trans "Edit" %}</a>
                           <button type="button"
                                   class="btn btn-sm btn-danger"
                                   hx-post="{% url 'projects:project-delete' project.pk %}"
@@ -100,9 +81,7 @@
             </table>
           </div>
         {% else %}
-          <div class="p-4 text-center text-muted">
-            {% trans "No projects yet." %}
-          </div>
+          <div class="p-4 text-center text-muted">{% trans "No projects yet." %}</div>
         {% endif %}
       </div>
     </div>

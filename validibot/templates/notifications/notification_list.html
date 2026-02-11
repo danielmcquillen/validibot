@@ -5,14 +5,11 @@
 {% block title %}
   {% trans "Notifications" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid d-flex flex-column min-vh-100">
-
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 d-flex flex-row align-items-center mb-2 mb-lg-0 p-0">
         <h1 class="app-page-title">
@@ -26,18 +23,13 @@
                    id="showDismissed"
                    name="show_dismissed"
                    value="on"
-                   {% if show_dismissed %}
-                     checked
-                   {% endif %}
+                   {% if show_dismissed %}checked{% endif %}
                    onchange="this.form.submit()" />
-            <label class="form-check-label me-3" for="showDismissed">
-              {% trans "Show dismissed" %}
-            </label>
+            <label class="form-check-label me-3" for="showDismissed">{% trans "Show dismissed" %}</label>
           </div>
         </form>
       </div>
     </div>
-
     <div class="row flex-grow-1">
       <div class="col-12 p-4 d-flex flex-column h-100">
         {% if page_obj.object_list %}
@@ -47,11 +39,8 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="text-muted small">
-            {% trans "No notifications." %}
-          </div>
+          <div class="text-muted small">{% trans "No notifications." %}</div>
         {% endif %}
-
         {% if page_obj and page_obj.paginator.count|default:0 >= 10 %}
           <div class="mt-auto pt-2">
             {% include "core/partial/pagination.html" with page_obj=page_obj query_string=query_string page_size_options=page_size_options current_page_size=current_page_size %}
@@ -60,5 +49,4 @@
       </div>
     </div>
   </div>
-
 {% endblock app_content %}

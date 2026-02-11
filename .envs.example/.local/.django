@@ -30,7 +30,7 @@ SUPERUSER_NAME=Admin
 # Email (optional)
 # ------------------------------------------------------------------------------
 # If not set, emails are printed to the console (useful for local development).
-# To test actual email delivery, get a token from an email service provider. 
+# To test actual email delivery, get a token from an email service provider.
 # Postmark (recommended):
 # POSTMARK_SERVER_TOKEN=your-postmark-server-token
 

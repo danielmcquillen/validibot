@@ -413,8 +413,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         label=_("Success message"),
         required=False,
         help_text=_(
-            "Shown when the assertion passes. "
-            "Supports {{value}} style placeholders."
+            "Shown when the assertion passes. Supports {{value}} style placeholders."
         ),
         widget=forms.Textarea(
             attrs={

@@ -20,6 +20,7 @@ from django.urls import resolve
 class UrlRoleRoutingTests(SimpleTestCase):
     def _reload_urls(self):
         import config.urls
+
         clear_url_caches()
         importlib.reload(config.urls)
 

@@ -5,19 +5,14 @@
 {% block title %}
   {% trans "Validation Run" %} #{{ run.pk }} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid" id="validation-detail">
-
     <div class="app-content-header-bar row">
       <div class="app-content-header col-8">
-        <h1 class="app-page-title">
-          {% trans "Validation Run" %} #{{ run.pk }}
-        </h1>
+        <h1 class="app-page-title">{% trans "Validation Run" %} #{{ run.pk }}</h1>
       </div>
       <div class="col-4 d-flex justify-content-end align-items-center gap-2 app-page-actions">
         <a class="btn btn-secondary"
@@ -35,21 +30,14 @@
         </button>
       </div>
     </div>
-
     <div class="row">
-
       <div class="col-12 col-xxl-7 mb-3">
         {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs %}
       </div>
-
       <div class="col-12 col-xxl-5 order-first order-xxl-last mb-3">
-
         {% include "workflows/results/partials/block_validation_run_summary.html" with run=run step_runs=step_runs %}
-
       </div>
-
     </div>
-
   </div>
 </div>
 {% endblock app_content %}

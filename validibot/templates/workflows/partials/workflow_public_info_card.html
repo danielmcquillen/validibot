@@ -2,25 +2,17 @@
 
 <div id="workflow-public-info-card" class="card app-card mb-3">
   <div class="card-header">
-    <div class="card-title">
-      {% trans "Public Info" %}
-    </div>
+    <div class="card-title">{% trans "Public Info" %}</div>
   </div>
   <div class="card-body">
     <dl class="row mb-0">
-      <dt class="col-sm-4 ps-4">
-        {% trans "Status" %}
-      </dt>
+      <dt class="col-sm-4 ps-4">{% trans "Status" %}</dt>
       <dd class="col-sm-8">
         <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
           {% if workflow.make_info_page_public %}
-            <span class="badge text-bg-primary py-2">
-              {% trans "Visible" %}
-            </span>
+            <span class="badge text-bg-primary py-2">{% trans "Visible" %}</span>
           {% else %}
-            <span class="badge text-bg-dark py-2">
-              {% trans "Private" %}
-            </span>
+            <span class="badge text-bg-dark py-2">{% trans "Private" %}</span>
           {% endif %}
           {% if can_manage_public_info %}
             <form method="post"
@@ -70,9 +62,7 @@
         </small>
       </dd>
       {% if can_manage_workflow %}
-        <dt class="col-sm-4 ps-4">
-          {% trans "Edit" %}
-        </dt>
+        <dt class="col-sm-4 ps-4">{% trans "Edit" %}</dt>
         <dd class="col-sm-8">
           <div class="d-flex flex-row flex-wrap gap-2 align-items-center">
             <a class="btn btn-sm btn-secondary"

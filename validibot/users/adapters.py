@@ -134,6 +134,7 @@ class AccountAdapter(DefaultAccountAdapter):
             messages.error(request, str(e))
             return None
 
+
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(
         self,

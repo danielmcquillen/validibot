@@ -2013,9 +2013,7 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
         # Get all signals ordered by stage then name
-        signals = list(
-            validator.catalog_entries.all().order_by("run_stage", "slug")
-        )
+        signals = list(validator.catalog_entries.all().order_by("run_stage", "slug"))
         context.update(
             {
                 "signals": signals,

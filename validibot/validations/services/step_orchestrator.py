@@ -124,14 +124,12 @@ class StepOrchestrator:
 
         # Look up the validation run
         try:
-            validation_run: ValidationRun = (
-                ValidationRun.objects.select_related(
-                    "workflow",
-                    "org",
-                    "project",
-                    "submission",
-                ).get(id=validation_run_id)
-            )
+            validation_run: ValidationRun = ValidationRun.objects.select_related(
+                "workflow",
+                "org",
+                "project",
+                "submission",
+            ).get(id=validation_run_id)
         except ValidationRun.DoesNotExist:
             logger.exception(
                 "ValidationRun %s missing when execution task started.",
@@ -186,8 +184,7 @@ class StepOrchestrator:
         elif validation_run.status != ValidationRunStatus.RUNNING:
             # Resume from callback: expect status to be RUNNING
             logger.warning(
-                "Validation run %s not RUNNING for resume (status=%s), "
-                "skipping",
+                "Validation run %s not RUNNING for resume (status=%s), skipping",
                 validation_run_id,
                 validation_run.status,
             )
@@ -322,9 +319,7 @@ class StepOrchestrator:
             validation_run.status = ValidationRunStatus.FAILED
             validation_run.ended_at = timezone.now()
             validation_run.error = GENERIC_EXECUTION_ERROR
-            validation_run.error_category = (
-                ValidationRunErrorCategory.RUNTIME_ERROR
-            )
+            validation_run.error_category = ValidationRunErrorCategory.RUNTIME_ERROR
             validation_run.summary = {}
             validation_run.save(
                 update_fields=[
@@ -356,9 +351,7 @@ class StepOrchestrator:
 
         if cancelled or _was_cancelled():
             validation_run.status = ValidationRunStatus.CANCELED
-            validation_run.error = (
-                validation_run.error or RUN_CANCELED_MESSAGE
-            )
+            validation_run.error = validation_run.error or RUN_CANCELED_MESSAGE
             if not validation_run.ended_at:
                 validation_run.ended_at = timezone.now()
             validation_run.summary = {}
@@ -405,9 +398,7 @@ class StepOrchestrator:
             validation_run.error = _(
                 "One or more validation steps failed.",
             )
-            validation_run.error_category = (
-                ValidationRunErrorCategory.VALIDATION_FAILED
-            )
+            validation_run.error_category = ValidationRunErrorCategory.VALIDATION_FAILED
         else:
             validation_run.status = ValidationRunStatus.SUCCEEDED
             validation_run.error = ""
@@ -437,9 +428,7 @@ class StepOrchestrator:
         completion_extra: dict[str, Any] = {
             "step_count": len(step_metrics),
             "failing_step_id": failing_step_id,
-            "finding_count": (
-                summary_record.total_findings if summary_record else 0
-            ),
+            "finding_count": (summary_record.total_findings if summary_record else 0),
         }
         extra_payload = {
             **{k: v for k, v in completion_extra.items() if v is not None},
@@ -503,8 +492,7 @@ class StepOrchestrator:
                 }:
                     # Already terminal - skip execution
                     logger.info(
-                        "Step run %s already terminal (status=%s), "
-                        "skipping",
+                        "Step run %s already terminal (status=%s), skipping",
                         step_run.id,
                         step_run.status,
                     )
@@ -513,8 +501,7 @@ class StepOrchestrator:
                 # Step is RUNNING - this is a retry. Clear any prior
                 # findings to avoid duplicates, then re-execute.
                 logger.info(
-                    "Step run %s is RUNNING (retry scenario), "
-                    "clearing findings",
+                    "Step run %s is RUNNING (retry scenario), clearing findings",
                     step_run.id,
                 )
                 ValidationFinding.objects.filter(
@@ -609,9 +596,7 @@ class StepOrchestrator:
         # 3. Handle missing handler gracefully
         if handler is None:
             if step.action:
-                error_msg = (
-                    f"No handler registered for action type: {action_type}"
-                )
+                error_msg = f"No handler registered for action type: {action_type}"
                 logger.error(
                     "No handler for action: type=%s step_id=%s run_id=%s",
                     action_type,
@@ -623,8 +608,7 @@ class StepOrchestrator:
                     "WorkflowStep has no validator or action configured.",
                 )
                 logger.error(
-                    "WorkflowStep has no validator or action: "
-                    "step_id=%s run_id=%s",
+                    "WorkflowStep has no validator or action: step_id=%s run_id=%s",
                     getattr(step, "id", None),
                     validation_run.id,
                 )
@@ -688,10 +672,7 @@ class StepOrchestrator:
 
         Returns a metrics dict used for building the run summary.
         """
-        issues = [
-            normalize_issue(issue)
-            for issue in (validation_result.issues or [])
-        ]
+        issues = [normalize_issue(issue) for issue in (validation_result.issues or [])]
         severity_counts, assertion_failures = persist_findings(
             validation_run=validation_run,
             step_run=step_run,
@@ -721,9 +702,7 @@ class StepOrchestrator:
             finalized_step = step_run
         else:
             step_status = (
-                StepStatus.PASSED
-                if validation_result.passed
-                else StepStatus.FAILED
+                StepStatus.PASSED if validation_result.passed else StepStatus.FAILED
             )
             finalized_step = self._finalize_step_run(
                 step_run=step_run,
@@ -822,7 +801,9 @@ class StepOrchestrator:
             None,
         )
         if submission_user and getattr(
-            submission_user, "is_authenticated", False,
+            submission_user,
+            "is_authenticated",
+            False,
         ):
             return submission_user
         if not user_id:

@@ -86,9 +86,8 @@ class ValidatorStepHandler:
                 issues=[
                     ValidationIssue(
                         path="",
-                        message=_(
-                            "File type '%(ft)s' not supported by this validator."
-                        ) % {"ft": submission.file_type},
+                        message=_("File type '%(ft)s' not supported by this validator.")
+                        % {"ft": submission.file_type},
                         severity=Severity.ERROR,
                         code="unsupported_file_type",
                     )

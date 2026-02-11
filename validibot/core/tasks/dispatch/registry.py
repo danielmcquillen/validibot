@@ -36,7 +36,6 @@ def get_task_dispatcher() -> TaskDispatcher:
     from validibot.core.tasks.dispatch.google_cloud_tasks import (
         GoogleCloudTasksDispatcher,
     )
-    from validibot.core.tasks.dispatch.local_dev import LocalDevDispatcher
     from validibot.core.tasks.dispatch.test_dispatcher import TestDispatcher
 
     target = get_deployment_target()

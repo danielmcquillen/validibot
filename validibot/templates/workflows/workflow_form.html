@@ -10,14 +10,11 @@
     {% trans "New Workflow" %} · Validibot
   {% endif %}
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="workflow-edit" class="container-fluid">
-
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 d-flex align-items-start mb-2 mb-lg-0">
         <h1 class="app-page-title">
@@ -30,7 +27,6 @@
         </h1>
       </div>
     </div>
-
     <div class="row">
       <div class="col-12 ">
         <div class="card shadow-sm app-form-card">
@@ -38,14 +34,9 @@
             <form method="post" enctype="multipart/form-data" novalidate>
               {% csrf_token %}
               {% crispy form %}
-
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <a class="btn btn-secondary"
-                   {% if object %}
-                     href="{% url 'workflows:workflow_detail' object.id %}"
-                   {% else %}
-                     href="{% url 'workflows:workflow_list' %}"
-                   {% endif %}>
+                   {% if object %} href="{% url 'workflows:workflow_detail' object.id %}" {% else %} href="{% url 'workflows:workflow_list' %}" {% endif %}>
                   {% trans "Cancel" %}
                 </a>
                 <button type="submit" class="btn btn-secondary">

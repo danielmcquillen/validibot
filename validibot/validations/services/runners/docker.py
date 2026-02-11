@@ -488,9 +488,7 @@ class DockerValidatorRunner(ValidatorRunner):
                     removed += 1
 
             except Exception:
-                logger.exception(
-                    "Failed to cleanup container %s", container.short_id
-                )
+                logger.exception("Failed to cleanup container %s", container.short_id)
                 failed += 1
 
         if removed > 0 or failed > 0:
@@ -529,9 +527,7 @@ class DockerValidatorRunner(ValidatorRunner):
                 container.remove(force=True)
                 removed += 1
             except Exception:
-                logger.exception(
-                    "Failed to remove container %s", container.short_id
-                )
+                logger.exception("Failed to remove container %s", container.short_id)
                 failed += 1
 
         if removed > 0 or failed > 0:

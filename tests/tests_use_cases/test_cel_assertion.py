@@ -69,7 +69,7 @@ class TestCelAssertion:
 
         engine = BasicValidatorEngine()
         assert validator.allow_custom_assertion_targets is True
-        context = engine._build_cel_context(payload_data, validator)  # noqa: SLF001
+        context = engine._build_cel_context(payload_data, validator)
         assert context["price"] == payload_data["price"]
         assert context["rating"] == payload_data["rating"]
         assert context["tags"] == payload_data["tags"]

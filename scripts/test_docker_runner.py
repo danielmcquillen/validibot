@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -142,7 +141,13 @@ def main():
     base_path = f"test-runs/{test_id}"
 
     # Load the example EnergyPlus JSON
-    example_path = Path(__file__).parent.parent / "tests" / "data" / "energyplus" / "example_epjson.json"
+    example_path = (
+        Path(__file__).parent.parent
+        / "tests"
+        / "data"
+        / "energyplus"
+        / "example_epjson.json"
+    )
     if not example_path.exists():
         print(f"   ERROR: Example file not found: {example_path}")
         sys.exit(1)
@@ -151,7 +156,13 @@ def main():
     print(f"   Loaded example model ({len(submission_content)} bytes)")
 
     # Load the weather file
-    weather_path = Path(__file__).parent.parent / "tests" / "data" / "energyplus" / "test_weather.epw"
+    weather_path = (
+        Path(__file__).parent.parent
+        / "tests"
+        / "data"
+        / "energyplus"
+        / "test_weather.epw"
+    )
     if not weather_path.exists():
         print(f"   ERROR: Weather file not found: {weather_path}")
         sys.exit(1)
@@ -160,7 +171,9 @@ def main():
     print(f"   Loaded weather file ({len(weather_content)} bytes)")
 
     # Create and upload envelope
-    envelope = create_test_envelope(storage, base_path, submission_content, weather_content)
+    envelope = create_test_envelope(
+        storage, base_path, submission_content, weather_content
+    )
     input_envelope_path = f"{base_path}/input.json"
     storage.write(input_envelope_path, json.dumps(envelope, indent=2))
     input_uri = storage.get_uri(input_envelope_path)
@@ -221,7 +234,9 @@ def main():
         if messages:
             print(f"   Messages ({len(messages)}):")
             for msg in messages[:5]:
-                print(f"     - [{msg.get('severity', '?')}] {msg.get('message', '')[:60]}")
+                print(
+                    f"     - [{msg.get('severity', '?')}] {msg.get('message', '')[:60]}"
+                )
             if len(messages) > 5:
                 print(f"     ... and {len(messages) - 5} more")
     else:

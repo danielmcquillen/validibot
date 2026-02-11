@@ -5,11 +5,9 @@
 {% block title %}
   {% trans "Confirm member removal" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid">
     <div class="app-content-header-bar row">
@@ -20,7 +18,6 @@
         </h1>
       </div>
     </div>
-
     <div class="row">
       <div class="col-12 col-lg-8">
         <div class="card app-card">
@@ -30,21 +27,15 @@
                 Are you sure you want to remove user “{{ username }}” from organization “{{ org }}”?
               {% endblocktrans %}
             </p>
-            <p class="text-muted">
-              {% trans "They will lose access to this organization until invited again." %}
-            </p>
+            <p class="text-muted">{% trans "They will lose access to this organization until invited again." %}</p>
           </div>
           <div class="card-footer d-flex justify-content-between">
             <a class="btn btn-secondary"
-               href="{% org_url 'members:member_edit' member_id=membership.id %}">
-              {% trans "Cancel" %}
-            </a>
+               href="{% org_url 'members:member_edit' member_id=membership.id %}">{% trans "Cancel" %}</a>
             <form method="post"
                   action="{% org_url 'members:member_delete' member_id=membership.id %}">
               {% csrf_token %}
-              <button type="submit" class="btn btn-danger">
-                {% trans "Yes, remove member" %}
-              </button>
+              <button type="submit" class="btn btn-danger">{% trans "Yes, remove member" %}</button>
             </form>
           </div>
         </div>

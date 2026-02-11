@@ -58,8 +58,7 @@ class Command(BaseCommand):
         except ImportError:
             self.stderr.write(
                 self.style.ERROR(
-                    "Docker package not installed. "
-                    "Install with: pip install docker"
+                    "Docker package not installed. Install with: pip install docker"
                 )
             )
             return
@@ -70,8 +69,7 @@ class Command(BaseCommand):
         if not runner.is_available():
             self.stderr.write(
                 self.style.ERROR(
-                    "Docker is not available. "
-                    "Ensure Docker is running and accessible."
+                    "Docker is not available. Ensure Docker is running and accessible."
                 )
             )
             return
@@ -102,9 +100,7 @@ class Command(BaseCommand):
         grace_period = options["grace_period"]
         cleanup_all = options["all"]
 
-        self.stdout.write(
-            f"Found {len(containers)} Validibot-managed container(s):\n"
-        )
+        self.stdout.write(f"Found {len(containers)} Validibot-managed container(s):\n")
 
         for container in containers:
             labels = container.labels
@@ -135,9 +131,7 @@ class Command(BaseCommand):
                 f"age={age_seconds:.0f}s"
             )
             if would_remove:
-                self.stdout.write(
-                    self.style.WARNING("    ^ Would be removed")
-                )
+                self.stdout.write(self.style.WARNING("    ^ Would be removed"))
 
     def _cleanup_all(self, runner):
         """Remove all managed containers."""
@@ -145,9 +139,7 @@ class Command(BaseCommand):
         removed, failed = runner.cleanup_all_managed_containers()
 
         if removed > 0:
-            self.stdout.write(
-                self.style.SUCCESS(f"Removed {removed} container(s).")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Removed {removed} container(s)."))
         if failed > 0:
             self.stdout.write(
                 self.style.ERROR(f"Failed to remove {failed} container(s).")
@@ -158,8 +150,7 @@ class Command(BaseCommand):
     def _cleanup_orphaned(self, runner, grace_period: int):
         """Remove only orphaned containers."""
         self.stdout.write(
-            f"Cleaning up orphaned containers "
-            f"(grace period: {grace_period}s)..."
+            f"Cleaning up orphaned containers (grace period: {grace_period}s)..."
         )
         removed, failed = runner.cleanup_orphaned_containers(grace_period)
 

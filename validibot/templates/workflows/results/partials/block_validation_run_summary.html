@@ -4,151 +4,110 @@
 This template lists out the summary results of the validation workflow run.
 (It doesn't show step-by-step findings; those are in a different block.)
 {% endcomment %}
-
 <div class="card validation-info-card">
-    <div class="card-header">
-        {% trans "Run Summary" %}
-    </div>
-    <div class="card-body">
-
+  <div class="card-header">{% trans "Run Summary" %}</div>
+  <div class="card-body">
+    <section>
+      <dl class="row small mb-0">
+        <dt class="col-5 col-lg-4">{% trans "Status" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {% if run.status == "SUCCEEDED" %}
+            <span class="badge text-bg-success">{{ run.get_status_display }}</span>
+          {% elif run.status == "FAILED" %}
+            <span class="badge text-bg-danger">{{ run.get_status_display }}</span>
+          {% elif run.status == "RUNNING" %}
+            <span class="badge text-bg-primary">{{ run.get_status_display }}</span>
+          {% elif run.status == "PENDING" %}
+            <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+          {% elif run.status == "CANCELED" %}
+            <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+          {% elif run.status == "TIMED_OUT" %}
+            <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
+          {% else %}
+            <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
+          {% endif %}
+        </dd>
+      </dl>
+    </section>
+    {% if run.submission and run.submission.name or run.short_description %}
+      <section>
+        <dl class="row small">
+          {% if run.submission and run.submission.name %}
+            <dt class="col-sm-4">{% trans "Submission name" %}</dt>
+            <dd class="col-sm-8">
+              {{ run.submission.name }}
+            </dd>
+          {% endif %}
+          {% if run.short_description %}
+            <dt class="col-sm-4">{% trans "Short description" %}</dt>
+            <dd class="col-sm-8">
+              {{ run.short_description }}
+            </dd>
+          {% endif %}
+        </dl>
+      </section>
+    {% endif %}
+    {% with summary_record=run.summary_record %}
+      {% if summary_record %}
         <section>
-            <dl class="row small mb-0">
-                <dt class="col-5 col-lg-4">
-                    {% trans "Status" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                    {% if run.status == "SUCCEEDED" %}
-                        <span class="badge text-bg-success">{{ run.get_status_display }}</span>
-                    {% elif run.status == "FAILED" %}
-                        <span class="badge text-bg-danger">{{ run.get_status_display }}</span>
-                    {% elif run.status == "RUNNING" %}
-                        <span class="badge text-bg-primary">{{ run.get_status_display }}</span>
-                    {% elif run.status == "PENDING" %}
-                        <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
-                    {% elif run.status == "CANCELED" %}
-                        <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
-                    {% elif run.status == "TIMED_OUT" %}
-                        <span class="badge text-bg-warning text-dark">{{ run.get_status_display }}</span>
-                    {% else %}
-                        <span class="badge text-bg-secondary">{{ run.get_status_display }}</span>
-                    {% endif %}
-                </dd>
-            </dl>
+          <dl class="row small">
+            <dt class="col-5 col-lg-4">{% trans "Errors" %}</dt>
+            <dd class="col-7 col-lg-8">
+              <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
+            </dd>
+            <dt class="col-5 col-lg-4">{% trans "warnings" %}</dt>
+            <dd class="col-7 col-lg-8">
+              <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
+            </dd>
+            <dt class="col-5 col-lg-4">{% trans "info" %}</dt>
+            <dd class="col-7 col-lg-8">
+              <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
+            </dd>
+            <dt class="col-5 col-lg-4">{% trans "Total findings" %}</dt>
+            <dd class="col-7 col-lg-8">
+              {{ summary_record.total_findings }}
+            </dd>
+          </dl>
         </section>
-
-        {% if run.submission and run.submission.name or run.short_description %}
-            <section>
-                <dl class="row small">
-                    {% if run.submission and run.submission.name %}
-                        <dt class="col-sm-4">
-                            {% trans "Submission name" %}
-                        </dt>
-                        <dd class="col-sm-8">
-                            {{ run.submission.name }}
-                        </dd>
-                    {% endif %}
-                    {% if run.short_description %}
-                        <dt class="col-sm-4">
-                            {% trans "Short description" %}
-                        </dt>
-                        <dd class="col-sm-8">
-                            {{ run.short_description }}
-                        </dd>
-                    {% endif %}
-                </dl>
-            </section>
-        {% endif %}
-
-        {% with summary_record=run.summary_record %}
-            {% if summary_record %}
-                <section>
-                    <dl class="row small">
-                        <dt class="col-5 col-lg-4">
-                            {% trans "Errors" %}
-                        </dt>
-                        <dd class="col-7 col-lg-8">
-                            <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
-                        </dd>
-
-                        <dt class="col-5 col-lg-4">
-                            {% trans "warnings" %}
-                        </dt>
-                        <dd class="col-7 col-lg-8">
-                            <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
-                        </dd>
-
-                        <dt class="col-5 col-lg-4">
-                            {% trans "info" %}
-                        </dt>
-                        <dd class="col-7 col-lg-8">
-                            <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
-                        </dd>
-
-                        <dt class="col-5 col-lg-4">
-                            {% trans "Total findings" %}
-                        </dt>
-                        <dd class="col-7 col-lg-8">
-                            {{ summary_record.total_findings }}
-                        </dd>
-                    </dl>
-                </section>
+      {% endif %}
+    {% endwith %}
+    <section>
+      <dl class="row small">
+        <dt class="col-5 col-lg-4">{% trans "Source" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {{ run.get_source_display }}
+        </dd>
+        <dt class="col-sm-4">{% trans "Organization" %}</dt>
+        <dd class="col-sm-8">
+          {{ run.org.name }}
+        </dd>
+        <dt class="col-5 col-lg-4 ">{% trans "Started" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
+        </dd>
+        <dt class="col-5 col-lg-4">{% trans "Completed" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
+        </dd>
+        <dt class="col-5 col-lg-4">{% trans "Duration" %}</dt>
+        <dd class="col-7 col-lg-8">
+          {% with duration=run.computed_duration_ms %}
+            {% if duration %}
+              {{ duration|floatformat:0 }} ms
+            {% elif is_polling %}
+              <span class="text-muted">{% trans "Running…" %}</span>
+            {% else %}
+              <span class="text-muted">{% trans "Not captured" %}</span>
             {% endif %}
-        {% endwith %}
-
-        <section>
-            <dl class="row small">
-                <dt class="col-5 col-lg-4">
-                    {% trans "Source" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                    {{ run.get_source_display }}
-                </dd>
-                <dt class="col-sm-4">
-                    {% trans "Organization" %}
-                </dt>
-                <dd class="col-sm-8">
-                    {{ run.org.name }}
-                </dd>
-
-                <dt class="col-5 col-lg-4 ">
-                    {% trans "Started" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                    {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
-                </dd>
-
-                <dt class="col-5 col-lg-4">
-                    {% trans "Completed" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                    {{ run.ended_at|date:"M j, Y g:i a"|default:_("Pending") }}
-                </dd>
-
-                <dt class="col-5 col-lg-4">
-                    {% trans "Duration" %}
-                </dt>
-                <dd class="col-7 col-lg-8">
-                    {% with duration=run.computed_duration_ms %}
-                        {% if duration %}
-                            {{ duration|floatformat:0 }} ms
-                        {% elif is_polling %}
-                            <span class="text-muted">{% trans "Running…" %}</span>
-                        {% else %}
-                            <span class="text-muted">{% trans "Not captured" %}</span>
-                        {% endif %}
-                    {% endwith %}
-                </dd>
-            </dl>
-        </section>
-
-        {% if run.submission and run.submission.metadata %}
-            <section>
-                <h6 class="fw-semibold">
-                    {% trans "Submission metadata" %}
-                </h6>
-                <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
-            </section>
-        {% endif %}
-
-    </div>
+          {% endwith %}
+        </dd>
+      </dl>
+    </section>
+    {% if run.submission and run.submission.metadata %}
+      <section>
+        <h6 class="fw-semibold">{% trans "Submission metadata" %}</h6>
+        <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
+      </section>
+    {% endif %}
+  </div>
 </div>

@@ -5,17 +5,12 @@
 {% block title %}
   {% trans "Workflows" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
-
   <div id="workflow-list" class="container-fluid d-flex flex-column h-100">
-
     <div class="app-content-header-bar row ">
-
       <!-- Title -->
       <div class="app-content-header col-12 col-lg-4 d-flex flex-row align-items-center mb-2 mb-lg-0">
         <div class="d-flex flex-column gap-2">
@@ -32,14 +27,11 @@
           {% endif %}
         </div>
       </div>
-
       <!-- Search -->
       <div class="app-content-header-search col-12 col-lg-5 d-flex flex-row align-items-center mb-2 mb-lg-0">
         <form method="get" class="row w-100">
           <div class="col">
-            <label class="visually-hidden" for="workflow-search">
-              {% trans "Search workflows" %}
-            </label>
+            <label class="visually-hidden" for="workflow-search">{% trans "Search workflows" %}</label>
             <div class="input-group">
               <span class="input-group-text"><i class="bi-search"></i></span>
               <input id="workflow-search"
@@ -51,24 +43,18 @@
             </div>
           </div>
           <div class="col-auto ">
-            <button type="submit" class="btn btn-secondary">
-              {% trans "Search" %}
-            </button>
+            <button type="submit" class="btn btn-secondary">{% trans "Search" %}</button>
           </div>
           {% if search_query %}
             <div class="col">
               <a class="btn btn-link text-decoration-none"
-                 href="{% org_url 'workflows:workflow_list' %}">
-                {% trans "Clear" %}
-              </a>
+                 href="{% org_url 'workflows:workflow_list' %}">{% trans "Clear" %}</a>
             </div>
           {% endif %}
         </form>
       </div>
-
       <!-- Action buttons -->
       <div class="col-12 col-lg-3 d-flex flex-row align-items-center justify-content-end mb-2 mb-lg-0 pe-1">
-
         {% if can_toggle_archived %}
           <div class="btn-group me-2"
                role="group"
@@ -94,42 +80,23 @@
             {% endif %}
           </div>
         {% endif %}
-
         <!-- toggle grid/table -->
         <div class="btn-group me-1"
              role="group"
              aria-label="{% trans 'Toggle layout' %}">
-          <a class="btn
-                    {% if current_layout == 'table' %}
-                      btn-dark active
-                    {% else %}
-                      btn-light
-                    {% endif %}"
+          <a class="btn {% if current_layout == 'table' %} btn-dark active {% else %} btn-light {% endif %}"
              href="{{ layout_urls.table }}"
              data-bs-toggle="tooltip"
              data-bs-placement="top"
-             aria-pressed="{% if current_layout == 'table' %}
-                             true
-                           {% else %}
-                             false
-                           {% endif %}"
+             aria-pressed="{% if current_layout == 'table' %} true {% else %} false {% endif %}"
              title="{% trans 'List view' %}">
             <i class="bi bi-list"></i>
           </a>
-          <a class="btn
-                    {% if current_layout == 'grid' %}
-                      btn-dark active
-                    {% else %}
-                      btn-light
-                    {% endif %}"
+          <a class="btn {% if current_layout == 'grid' %} btn-dark active {% else %} btn-light {% endif %}"
              href="{{ layout_urls.grid }}"
              data-bs-toggle="tooltip"
              data-bs-placement="top"
-             aria-pressed="{% if current_layout == 'grid' %}
-                             true
-                           {% else %}
-                             false
-                           {% endif %}"
+             aria-pressed="{% if current_layout == 'grid' %} true {% else %} false {% endif %}"
              title="{% trans 'Grid view' %}">
             <i class="bi bi-grid-fill"></i>
           </a>
@@ -142,7 +109,6 @@
         {% endif %}
       </div>
     </div>
-
     {% if workflows %}
       {% if current_layout == 'table' %}
         {% include "workflows/partials/components/workflow_list_table.html" %}
@@ -153,12 +119,8 @@
       <div class="row">
         <div class="col-12 d-flex flex-row justify-content-center align-items-center h-100">
           <div class="text-center p-5 border rounded bg-body-tertiary mt-5">
-            <h2 class="h5">
-              {% trans "No workflows yet" %}
-            </h2>
-            <p class="text-muted">
-              {% trans "Get started by creating your first workflow." %}
-            </p>
+            <h2 class="h5">{% trans "No workflows yet" %}</h2>
+            <p class="text-muted">{% trans "Get started by creating your first workflow." %}</p>
             <a class="btn btn-secondary" href="{{ create_url }}">
               <i class="bi-plus-lg me-1"></i>
               {% trans "Create a workflow" %}

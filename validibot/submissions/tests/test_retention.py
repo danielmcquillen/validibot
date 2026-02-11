@@ -461,7 +461,9 @@ class TestQueueSubmissionPurge:
         """
         queue_submission_purge should not create retries for already-purged content.
         """
-        submission = SubmissionFactory(retention_policy=SubmissionRetention.DO_NOT_STORE)
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE
+        )
         Submission.objects.filter(id=submission.id).update(
             content="",
             input_file="",
@@ -475,7 +477,9 @@ class TestQueueSubmissionPurge:
 
     def test_bring_next_retry_forward_when_scheduled_in_future(self):
         """queue_submission_purge should bring next_retry_at forward for fast purge."""
-        submission = SubmissionFactory(retention_policy=SubmissionRetention.DO_NOT_STORE)
+        submission = SubmissionFactory(
+            retention_policy=SubmissionRetention.DO_NOT_STORE
+        )
         retry = PurgeRetry.objects.create(
             submission=submission,
             next_retry_at=timezone.now() + timedelta(hours=1),

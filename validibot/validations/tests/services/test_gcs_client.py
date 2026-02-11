@@ -32,6 +32,7 @@ def test_parse_gcs_uri_invalid():
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
 def test_upload_envelope(mock_storage_client):
     """Test envelope upload to GCS."""
+
     # Create a simple test model
     class TestModel(BaseModel):
         test_field: str

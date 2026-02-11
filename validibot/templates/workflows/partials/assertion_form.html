@@ -1,14 +1,11 @@
 {% load i18n crispy_forms_tags %}
 
 <div class="modal-header">
-  <h5 class="modal-title">
-    {{ modal_title }}
-  </h5>
+  <h5 class="modal-title">{{ modal_title }}</h5>
   <button type="button"
           class="btn-close"
           data-bs-dismiss="modal"
-          aria-label="Close">
-  </button>
+          aria-label="Close"></button>
 </div>
 <div class="modal-body">
   <form method="post"
@@ -19,18 +16,11 @@
     {% csrf_token %}
     {{ form|crispy }}
     <datalist id="{{ target_slug_datalist_id }}">
-      {% for value, label in catalog_choices %}
-        <option value="{{ value }}" label="{{ label }}">
-        </option>
-      {% endfor %}
+      {% for value, label in catalog_choices %}<option value="{{ value }}" label="{{ label }}"></option>{% endfor %}
     </datalist>
     <div class="d-flex justify-content-end gap-2">
-      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-        {% trans "Cancel" %}
-      </button>
-      <button type="submit" class="btn btn-secondary">
-        {{ submit_label }}
-      </button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+      <button type="submit" class="btn btn-secondary">{{ submit_label }}</button>
     </div>
   </form>
 </div>

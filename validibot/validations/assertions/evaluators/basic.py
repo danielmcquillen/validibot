@@ -262,7 +262,9 @@ class BasicAssertionEvaluator:
     ) -> tuple[bool, str]:
         expected = rhs.get("value")
         actual_value, expected_value = self._normalize_operands(
-            actual, expected, options,
+            actual,
+            expected,
+            options,
         )
         passed = actual_value == expected_value
         if op == AssertionOperator.NE:
@@ -329,7 +331,9 @@ class BasicAssertionEvaluator:
     ) -> tuple[bool, str]:
         values = rhs.get("values") or []
         actual_norm, expected_collection = self._normalize_operands(
-            actual, values, options,
+            actual,
+            values,
+            options,
         )
         passed = actual_norm in expected_collection
         if op == AssertionOperator.NOT_IN:

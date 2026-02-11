@@ -1,4 +1,5 @@
 {% load i18n %}
+
 {#
   Shared alert template for invite notifications.
   Expected context:
@@ -30,87 +31,46 @@
         {% trans "Organization:" %} {{ invite.org.name }}
       {% endif %}
     </div>
-    <div class="text-muted small">
-      {{ notification.created_at|date:"Y-m-d H:i" }}
-    </div>
-    {% if notification.payload.message %}
-      <div class="mt-2 small">{{ notification.payload.message }}</div>
-    {% endif %}
+    <div class="text-muted small">{{ notification.created_at|date:"Y-m-d H:i" }}</div>
+    {% if notification.payload.message %}<div class="mt-2 small">{{ notification.payload.message }}</div>{% endif %}
   </div>
   <div class="d-flex gap-2 align-items-start">
     {% if invite.status == "PENDING" and not notification.dismissed_at %}
       {# Accept button #}
       <form method="post"
-            {% if invite_type == "member" %}
-              action="{% url 'notifications:notification-invite-accept' notification.pk %}"
-              hx-post="{% url 'notifications:notification-invite-accept' notification.pk %}"
-            {% elif invite_type == "guest" %}
-              action="{% url 'notifications:notification-guest-invite-accept' notification.pk %}"
-              hx-post="{% url 'notifications:notification-guest-invite-accept' notification.pk %}"
-            {% elif invite_type == "workflow" %}
-              action="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}"
-              hx-post="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}"
-            {% endif %}
+            {% if invite_type == "member" %} action="{% url 'notifications:notification-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-invite-accept' notification.pk %}" {% elif invite_type == "guest" %} action="{% url 'notifications:notification-guest-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-guest-invite-accept' notification.pk %}" {% elif invite_type == "workflow" %} action="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}" {% endif %}
             hx-target="closest .alert"
             hx-swap="outerHTML">
         {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-success">
-          {% trans "Accept" %}
-        </button>
+        <button type="submit" class="btn btn-sm btn-success">{% trans "Accept" %}</button>
       </form>
       {# Decline button #}
       <form method="post"
-            {% if invite_type == "member" %}
-              action="{% url 'notifications:notification-invite-decline' notification.pk %}"
-              hx-post="{% url 'notifications:notification-invite-decline' notification.pk %}"
-            {% elif invite_type == "guest" %}
-              action="{% url 'notifications:notification-guest-invite-decline' notification.pk %}"
-              hx-post="{% url 'notifications:notification-guest-invite-decline' notification.pk %}"
-            {% elif invite_type == "workflow" %}
-              action="{% url 'notifications:notification-workflow-invite-decline' notification.pk %}"
-              hx-post="{% url 'notifications:notification-workflow-invite-decline' notification.pk %}"
-            {% endif %}
+            {% if invite_type == "member" %} action="{% url 'notifications:notification-invite-decline' notification.pk %}" hx-post="{% url 'notifications:notification-invite-decline' notification.pk %}" {% elif invite_type == "guest" %} action="{% url 'notifications:notification-guest-invite-decline' notification.pk %}" hx-post="{% url 'notifications:notification-guest-invite-decline' notification.pk %}" {% elif invite_type == "workflow" %} action="{% url 'notifications:notification-workflow-invite-decline' notification.pk %}" hx-post="{% url 'notifications:notification-workflow-invite-decline' notification.pk %}" {% endif %}
             hx-target="closest .alert"
             hx-swap="outerHTML">
         {% csrf_token %}
-        <button type="submit" class="btn btn-sm btn-secondary">
-          {% trans "Decline" %}
-        </button>
+        <button type="submit" class="btn btn-sm btn-secondary">{% trans "Decline" %}</button>
       </form>
     {% else %}
-      <span class="badge
-                   {% if invite.status == "ACCEPTED" %}
-                     text-bg-success
-                   {% elif invite.status == "DECLINED" %}
-                     text-bg-secondary
-                   {% elif invite.status == "EXPIRED" %}
-                     text-bg-warning
-                   {% else %}
-                     text-bg-light
-                   {% endif %}">
+      <span class="badge {% if invite.status == "ACCEPTED" %} text-bg-success {% elif invite.status == "DECLINED" %} text-bg-secondary {% elif invite.status == "EXPIRED" %} text-bg-warning {% else %} text-bg-light {% endif %}">
         {{ invite.status }}
       </span>
     {% endif %}
-
     {% if notification and notification.can_dismiss and not notification.dismissed_at %}
       <form method="post"
             hx-post="{% url 'notifications:notification-dismiss' notification.pk %}"
             hx-target="closest .alert"
             hx-swap="outerHTML">
         {% csrf_token %}
-        {% if show_dismissed %}
-          <input type="hidden" name="show_dismissed" value="on" />
-        {% endif %}
+        {% if show_dismissed %}<input type="hidden" name="show_dismissed" value="on" />{% endif %}
         <button type="submit"
                 class="btn-close"
                 aria-label="{% trans 'Dismiss' %}"
-                title="{% trans 'Dismiss notification' %}">
-        </button>
+                title="{% trans 'Dismiss notification' %}"></button>
       </form>
     {% elif notification and notification.dismissed_at %}
-      <span class="text-muted small fst-italic">
-        {% trans "(notification dismissed)" %}
-      </span>
+      <span class="text-muted small fst-italic">{% trans "(notification dismissed)" %}</span>
     {% endif %}
   </div>
 </div>

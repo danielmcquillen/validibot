@@ -39,11 +39,11 @@ class RunContext:
 @dataclass
 class StepResult:
     """Standardized result from any step execution (Validator or Action)."""
-    
+
     passed: bool | None  # None = Async Pending
     issues: list[Any] = field(default_factory=list)  # ValidationIssue list
     stats: dict[str, Any] = field(default_factory=dict)
-    
+
     # Optional: Handler-specific outputs that aren't stats
     outputs: dict[str, Any] = field(default_factory=dict)
 

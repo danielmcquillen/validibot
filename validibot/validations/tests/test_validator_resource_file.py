@@ -366,7 +366,9 @@ class TestEnvelopeBuilderIntegration:
         # Pass a non-existent UUID
         fake_id = str(uuid.uuid4())
 
-        with pytest.raises(ValueError, match="Resource files not found or not authorized"):
+        with pytest.raises(
+            ValueError, match="Resource files not found or not authorized"
+        ):
             _resolve_resource_files(
                 [fake_id],
                 validator_id=str(validator.id),
@@ -437,7 +439,9 @@ class TestEnvelopeBuilderIntegration:
         )
 
         # Try to resolve with validator2 - should fail
-        with pytest.raises(ValueError, match="Resource files not found or not authorized"):
+        with pytest.raises(
+            ValueError, match="Resource files not found or not authorized"
+        ):
             _resolve_resource_files(
                 [str(resource.id)],
                 validator_id=str(validator2.id),
@@ -471,7 +475,9 @@ class TestEnvelopeBuilderIntegration:
         )
 
         # Try to resolve with org2 - should fail
-        with pytest.raises(ValueError, match="Resource files not found or not authorized"):
+        with pytest.raises(
+            ValueError, match="Resource files not found or not authorized"
+        ):
             _resolve_resource_files(
                 [str(resource.id)],
                 validator_id=str(validator.id),

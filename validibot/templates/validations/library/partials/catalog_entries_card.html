@@ -2,30 +2,20 @@
 
 <div class="card app-card catalog-entries-card"
      data-sv-catalog
-     data-sv-catalog-mode="{% if flat_mode %}
-                             flat
-                           {% else %}
-                             tabs
-                           {% endif %}">
+     data-sv-catalog-mode="{% if flat_mode %} flat {% else %} tabs {% endif %}">
   <div class="card-header">
-    <div class="card-title">
-      {% trans "Catalog Entries" %}
-    </div>
+    <div class="card-title">{% trans "Catalog Entries" %}</div>
   </div>
   <div class="card-body">
     {% if not catalog_display or not catalog_display.entries %}
       {# Hide the card entirely when no catalog signals exist #}
-      <p class="text-muted mb-0">
-        {% trans "No catalog entries registered yet." %}
-      </p>
+      <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
     {% elif flat_mode %}
       {% if catalog_display %}
         {% with prefix=catalog_tab_prefix|default:'catalog' %}
           <div class="catalog-filter mb-3 d-flex flex-row align-items-center">
             <div class="me-2">
-              <label for="{{ prefix }}-flat-filter" class="small">
-                {% trans "Filter:" %}
-              </label>
+              <label for="{{ prefix }}-flat-filter" class="small">{% trans "Filter:" %}</label>
             </div>
             <input type="search"
                    class="form-control form-control-sm"
@@ -52,9 +42,7 @@
                       <td>
                         <code class="small">{{ entry.slug }}</code>
                       </td>
-                      <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">
-                        {{ entry.get_run_stage_display }}
-                      </td>
+                      <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">{{ entry.get_run_stage_display }}</td>
                       <td class="text-end">
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary"
@@ -71,23 +59,17 @@
                   {% endfor %}
                   {% if not catalog_display.entries %}
                     <tr data-sv-catalog-entry>
-                      <td colspan="3" class="text-muted small">
-                        {% trans "No catalog entries registered yet." %}
-                      </td>
+                      <td colspan="3" class="text-muted small">{% trans "No catalog entries registered yet." %}</td>
                     </tr>
                   {% endif %}
                 </tbody>
               </table>
             </div>
-            <p class="text-muted small d-none" data-sv-catalog-empty>
-              {% trans "No entries match your filter." %}
-            </p>
+            <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
           </div>
         {% endwith %}
       {% else %}
-        <p class="text-muted mb-0">
-          {% trans "No catalog entries registered yet." %}
-        </p>
+        <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
       {% endif %}
     {% elif catalog_display and catalog_display.uses_tabs %}
       <div class="tabs">
@@ -101,9 +83,7 @@
                   aria-controls="{{ catalog_tab_prefix|default:'catalog' }}-input-panel"
                   aria-selected="true">
             <span class="fw-semibold">{% trans "Inputs" %}</span>
-            <span class="badge text-bg-light ms-2">
-              {{ catalog_display.input_total }}
-            </span>
+            <span class="badge text-bg-light ms-2">{{ catalog_display.input_total }}</span>
           </button>
           <button class="nav-link"
                   id="{{ catalog_tab_prefix|default:'catalog' }}-output-tab"
@@ -114,9 +94,7 @@
                   aria-controls="{{ catalog_tab_prefix|default:'catalog' }}-output-panel"
                   aria-selected="false">
             <span class="fw-semibold">{% trans "Outputs" %}</span>
-            <span class="badge text-bg-light ms-2">
-              {{ catalog_display.output_total }}
-            </span>
+            <span class="badge text-bg-light ms-2">{{ catalog_display.output_total }}</span>
           </button>
         </div>
       </div>
@@ -128,9 +106,7 @@
              data-sv-catalog-panel>
           <div class="catalog-filter mb-3">
             <label for="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
-                   class="form-label small">
-              {% trans "Filter entries" %}
-            </label>
+                   class="form-label small">{% trans "Filter entries" %}</label>
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-input-filter"
@@ -146,13 +122,9 @@
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.input_derivations %}
             {% endif %}
           {% else %}
-            <p class="text-muted mb-0">
-              {% trans "No entries." %}
-            </p>
+            <p class="text-muted mb-0">{% trans "No entries." %}</p>
           {% endif %}
-          <p class="text-muted small d-none" data-sv-catalog-empty>
-            {% trans "No entries match your filter." %}
-          </p>
+          <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
         </div>
         <div class="tab-pane fade p-3"
              id="{{ catalog_tab_prefix|default:'catalog' }}-output-panel"
@@ -161,9 +133,7 @@
              data-sv-catalog-panel>
           <div class="catalog-filter mb-3">
             <label for="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
-                   class="form-label small">
-              {% trans "Filter entries" %}
-            </label>
+                   class="form-label small">{% trans "Filter entries" %}</label>
             <input type="search"
                    class="form-control form-control-sm"
                    id="{{ catalog_tab_prefix|default:'catalog' }}-output-filter"
@@ -179,21 +149,15 @@
               {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.output_derivations %}
             {% endif %}
           {% else %}
-            <p class="text-muted mb-0">
-              {% trans "No entries." %}
-            </p>
+            <p class="text-muted mb-0">{% trans "No entries." %}</p>
           {% endif %}
-          <p class="text-muted small d-none" data-sv-catalog-empty>
-            {% trans "No entries match your filter." %}
-          </p>
+          <p class="text-muted small d-none" data-sv-catalog-empty>{% trans "No entries match your filter." %}</p>
         </div>
       </div>
     {% elif catalog_display and catalog_display.entries %}
       {% include 'validations/library/partials/catalog_entry_list.html' with entries=catalog_display.entries %}
     {% else %}
-      <p class="text-muted mb-0">
-        {% trans "No catalog entries registered yet." %}
-      </p>
+      <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
     {% endif %}
   </div>
 </div>

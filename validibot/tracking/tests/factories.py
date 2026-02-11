@@ -18,6 +18,7 @@ class TrackingEventFactory(DjangoModelFactory):
     @factory.lazy_attribute
     def user(self):
         return UserFactory(orgs=[self.org])
+
     event_type = TrackingEventType.APP_EVENT
     app_event_type = AppEventType.VALIDATION_RUN_CREATED
     extra_data = factory.Dict({})

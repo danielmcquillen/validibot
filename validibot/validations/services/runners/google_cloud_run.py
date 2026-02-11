@@ -201,9 +201,7 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
         job_name = self._image_to_job_name(container_image)
 
         # Build full job path
-        job_path = (
-            f"projects/{self.project_id}/locations/{self.region}/jobs/{job_name}"
-        )
+        job_path = f"projects/{self.project_id}/locations/{self.region}/jobs/{job_name}"
 
         # Build environment overrides using standardized env var names
         env_vars = [

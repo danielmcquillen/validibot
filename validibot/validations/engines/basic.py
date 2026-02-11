@@ -74,7 +74,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
                         message=_(
                             "Basic validators require JSON content. "
                             "Received file type: %(file_type)s"
-                        ) % {"file_type": submission.file_type},
+                        )
+                        % {"file_type": submission.file_type},
                         severity=Severity.ERROR,
                     ),
                 ],
@@ -93,7 +94,8 @@ class BasicValidatorEngine(BaseValidatorEngine):
                         path="",
                         message=_(
                             "Invalid JSON submission: %(error)s",
-                        ) % {"error": exc},
+                        )
+                        % {"error": exc},
                     ),
                 ],
                 stats={"exception": type(exc).__name__},
@@ -126,4 +128,3 @@ class BasicValidatorEngine(BaseValidatorEngine):
                 failures=total_failures,
             ),
         )
-

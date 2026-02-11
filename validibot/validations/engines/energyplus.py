@@ -71,7 +71,7 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
 
     The ValidationRun is updated via callback when async jobs complete.
     """
-    
+
     # PUBLIC METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

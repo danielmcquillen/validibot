@@ -92,9 +92,7 @@ class BaseInvite(TimeStampedModel):
     @property
     def is_expired(self) -> bool:
         """Check if invite has expired without updating status."""
-        return (
-            self.status == InviteStatus.EXPIRED or timezone.now() >= self.expires_at
-        )
+        return self.status == InviteStatus.EXPIRED or timezone.now() >= self.expires_at
 
     @property
     def is_pending(self) -> bool:
@@ -221,7 +219,7 @@ class IdempotencyKey(TimeStampedModel):
     # Processing status - distinguishes in-flight from completed requests
     status = models.CharField(
         max_length=20,
-        choices=IdempotencyKeyStatus.choices,
+        choices=IdempotencyKeyStatus,
         default=IdempotencyKeyStatus.PROCESSING,
     )
 

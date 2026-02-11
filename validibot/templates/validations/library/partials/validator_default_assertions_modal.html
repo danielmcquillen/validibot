@@ -31,9 +31,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-muted mb-0">
-      {% trans "This validator has no default assertions." %}
-    </p>
+    <p class="text-muted mb-0">{% trans "This validator has no default assertions." %}</p>
   {% endif %}
 </div>
 <div class="modal-footer d-flex justify-content-between">
@@ -45,7 +43,5 @@
       {% trans "View Validator Assertions" %}
     </a>
   {% endif %}
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-    {% trans "Close" %}
-  </button>
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Close" %}</button>
 </div>

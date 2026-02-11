@@ -238,7 +238,9 @@ class TestDockerComposeExecutionBackend:
         backend = DockerComposeExecutionBackend()
         assert backend.backend_name == "DockerComposeExecutionBackend"
 
-    @patch("validibot.validations.services.execution.docker_compose.get_validator_runner")
+    @patch(
+        "validibot.validations.services.execution.docker_compose.get_validator_runner"
+    )
     def test_is_available_true(self, mock_get_runner):
         """Test is_available returns True when Docker is available."""
         mock_runner = MagicMock()
@@ -248,7 +250,9 @@ class TestDockerComposeExecutionBackend:
         backend = DockerComposeExecutionBackend()
         assert backend.is_available() is True
 
-    @patch("validibot.validations.services.execution.docker_compose.get_validator_runner")
+    @patch(
+        "validibot.validations.services.execution.docker_compose.get_validator_runner"
+    )
     def test_is_available_false(self, mock_get_runner):
         """Test is_available returns False when Docker is not available."""
         mock_runner = MagicMock()
@@ -291,7 +295,9 @@ class TestDockerComposeExecutionBackend:
 
         assert image == "my-custom-image:custom-tag"
 
-    @patch("validibot.validations.services.execution.docker_compose.get_validator_runner")
+    @patch(
+        "validibot.validations.services.execution.docker_compose.get_validator_runner"
+    )
     @patch("validibot.validations.services.execution.docker_compose.get_data_storage")
     def test_execute_returns_error_when_not_available(
         self, mock_get_storage, mock_get_runner

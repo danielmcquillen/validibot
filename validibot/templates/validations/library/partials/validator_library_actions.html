@@ -1,9 +1,7 @@
 {% load i18n core_tags %}
 
 {% if validator.is_coming_soon %}
-  <button class="btn btn-sm btn-secondary" disabled>
-    {% trans "Coming soon" %}
-  </button>
+  <button class="btn btn-sm btn-secondary" disabled>{% trans "Coming soon" %}</button>
 {% else %}
   <a class="btn btn-sm btn-secondary"
      href="{% org_url 'validations:validator_detail' slug=validator.slug %}{% if validator.is_system %}?tab=system{% else %}?tab=custom{% endif %}">
@@ -13,9 +11,7 @@
 {% if not validator.is_system and can_manage_validators %}
   <a class="btn btn-sm btn-secondary"
      href="{% org_url 'validations:validator_detail' slug=validator.slug %}"
-     aria-label="{% blocktrans trimmed with validator_name=validator.name %}
-                   Edit {{ validator_name }}
-                 {% endblocktrans %}">
+     aria-label="{% blocktrans trimmed with validator_name=validator.name %} Edit {{ validator_name }} {% endblocktrans %}">
     <i class="bi bi-pencil"></i> {% trans "Edit" %}
   </a>
   <a class="btn btn-sm btn-danger"

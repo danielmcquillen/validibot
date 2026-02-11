@@ -690,7 +690,7 @@ def test_public_info_view_hides_schema_when_not_shared(client):
         validation_type=ValidationType.XML_SCHEMA,
         slug="public-xml",
     )
-    xml_schema = """<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>\n  
+    xml_schema = """<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'>\n
     <xs:element name='item' type='xs:string'/>\n</xs:schema>"""
     ruleset = Ruleset.objects.create(
         org=workflow.org,

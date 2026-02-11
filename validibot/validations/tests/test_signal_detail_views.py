@@ -348,9 +348,9 @@ class TestSignalDetailContentTemplate:
         )
 
         template = Template(
-            '{% load i18n %}'
+            "{% load i18n %}"
             '{% include "validations/library/partials/signal_detail_content.html" '
-            'with signal=signal %}'
+            "with signal=signal %}"
         )
         context = Context({"signal": signal})
         rendered = template.render(context)
@@ -377,9 +377,9 @@ class TestSignalDetailContentTemplate:
         )
 
         template = Template(
-            '{% load i18n %}'
+            "{% load i18n %}"
             '{% include "validations/library/partials/signal_detail_content.html" '
-            'with signal=signal %}'
+            "with signal=signal %}"
         )
         context = Context({"signal": signal})
         rendered = template.render(context)
@@ -403,9 +403,9 @@ class TestSignalDetailModalTemplate:
         )
 
         template = Template(
-            '{% load i18n %}'
+            "{% load i18n %}"
             '{% include "validations/library/partials/signal_detail_modal.html" '
-            'with signal=signal entry_id=signal.id %}'
+            "with signal=signal entry_id=signal.id %}"
         )
         context = Context({"signal": signal})
         rendered = template.render(context)
@@ -435,9 +435,9 @@ class TestSignalDetailModalTemplate:
         )
 
         template = Template(
-            '{% load i18n %}'
+            "{% load i18n %}"
             '{% include "validations/library/partials/signal_detail_modal.html" '
-            'with signal=signal entry_id=signal.id %}'
+            "with signal=signal entry_id=signal.id %}"
         )
         context = Context({"signal": signal})
         rendered = template.render(context)

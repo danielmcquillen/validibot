@@ -6,37 +6,21 @@
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th scope="col" class="text-muted small">
-              {% trans "Order" %}
-            </th>
-            <th scope="col" class="text-muted small">
-              {% trans "Assertion" %}
-            </th>
-            <th scope="col" class="text-muted small">
-              {% trans "Type" %}
-            </th>
-            <th scope="col" class="text-muted small">
-              {% trans "Signal" %}
-            </th>
+            <th scope="col" class="text-muted small">{% trans "Order" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Assertion" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Type" %}</th>
+            <th scope="col" class="text-muted small">{% trans "Signal" %}</th>
             {% if can_edit_validator %}
-              <th scope="col" class="text-muted small text-end">
-                {% trans "Actions" %}
-              </th>
+              <th scope="col" class="text-muted small text-end">{% trans "Actions" %}</th>
             {% endif %}
           </tr>
         </thead>
         <tbody>
           {% for assertion in assertions %}
             <tr id="validator-assertion-{{ assertion.id }}">
-              <td class="text-muted small">
-                {{ assertion.order }}
-              </td>
-              <td class="fw-semibold">
-                {{ assertion.message_template }}
-              </td>
-              <td class="text-muted small">
-                {{ assertion.get_assertion_type_display }}
-              </td>
+              <td class="text-muted small">{{ assertion.order }}</td>
+              <td class="fw-semibold">{{ assertion.message_template }}</td>
+              <td class="text-muted small">{{ assertion.get_assertion_type_display }}</td>
               <td class="text-muted small">
                 {% if assertion.target_catalog_entry %}
                   <span class="badge bg-light text-dark border">{{ assertion.target_catalog_entry.slug }}</span>
@@ -60,9 +44,7 @@
                             hx-vals='{"direction": "up"}'
                             hx-target="#validator-default-assertions-card"
                             hx-swap="outerHTML"
-                            {% if forloop.first %}
-                              disabled
-                            {% endif %}>
+                            {% if forloop.first %}disabled{% endif %}>
                       <i class="bi bi-arrow-up"></i>
                     </button>
                     <button class="btn btn-secondary"
@@ -71,9 +53,7 @@
                             hx-vals='{"direction": "down"}'
                             hx-target="#validator-default-assertions-card"
                             hx-swap="outerHTML"
-                            {% if forloop.last %}
-                              disabled
-                            {% endif %}>
+                            {% if forloop.last %}disabled{% endif %}>
                       <i class="bi bi-arrow-down"></i>
                     </button>
                     <button class="btn btn-danger"
@@ -81,9 +61,7 @@
                             hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                             hx-target="#validator-assertion-{{ assertion.id }}"
                             hx-swap="outerHTML"
-                            hx-confirm="{% blocktrans trimmed with name=assertion.message_template %}
-                                          Delete default assertion '{{ name }}'?
-                                        {% endblocktrans %}">
+                            hx-confirm="{% blocktrans trimmed with name=assertion.message_template %} Delete default assertion '{{ name }}'? {% endblocktrans %}">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>

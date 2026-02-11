@@ -5,22 +5,16 @@
 {% block title %}
   {% trans "Signup by Invitation Only" %}
 {% endblock title %}
-
 {% block content %}
   {% site_name as current_site_name %}
   <div class="container-fluid entrance-page p-4">
     <div class="entrance-card-wrapper">
       <div class="card">
         <div class="card-body text-center py-5">
-
           <div class="mb-4">
             <i class="bi bi-envelope-paper text-primary fs-1 lh-1"></i>
           </div>
-          
-          <h3 class="card-body-header mb-3">
-            {% trans "Signup is by Invitation Only" %}
-          </h3>
-
+          <h3 class="card-body-header mb-3">{% trans "Signup is by Invitation Only" %}</h3>
           <p class="text-muted mb-4">
             {% blocktrans trimmed %}
               Validibot is currently available by invitation only.
@@ -28,7 +22,6 @@
               If you've received an invite link, please use that to create your account.
             {% endblocktrans %}
           </p>
-
           <div class="bg-light rounded p-3 mb-4">
             <p class="small text-muted mb-2">
               <i class="bi bi-info-circle me-1"></i>
@@ -42,7 +35,6 @@
               {% endblocktrans %}
             </p>
           </div>
-
           <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
             <a href="{% url 'account_login' %}" class="btn btn-secondary">
               <i class="bi bi-box-arrow-in-right me-1"></i>
@@ -53,7 +45,6 @@
               {% trans "Back to Home" %}
             </a>
           </div>
-
         </div>
       </div>
     </div>

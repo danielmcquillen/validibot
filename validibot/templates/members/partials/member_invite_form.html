@@ -4,7 +4,10 @@
   <h5 class="modal-title">
     <i class="bi-person-plus me-2"></i>{% trans "Invite Member" %}
   </h5>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="{% trans 'Close' %}"></button>
 </div>
 <form method="post"
       action="{% org_url 'members:invite_create' %}"
@@ -16,31 +19,32 @@
   <div class="modal-body">
     {% if messages %}
       {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
+             role="alert">
           {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="{% trans 'Close' %}"></button>
+          <button type="button"
+                  class="btn-close"
+                  data-bs-dismiss="alert"
+                  aria-label="{% trans 'Close' %}"></button>
         </div>
       {% endfor %}
     {% endif %}
-
     <p class="text-muted small mb-3">
       {% blocktrans with name=organization.name %}
         Invite someone to join "{{ name }}" as a member. They'll have access based on the roles you assign.
       {% endblocktrans %}
     </p>
-
     {% if invite_form.non_field_errors %}
       <div class="alert alert-danger" role="alert">
         {% for error in invite_form.non_field_errors %}
-          {{ error }}<br />
+          {{ error }}
+          <br />
         {% endfor %}
       </div>
     {% endif %}
-
     <div class="mb-3">
-      <label class="form-label fw-semibold" for="{{ invite_form.search.id_for_label }}">
-        {% trans "User or email" %}
-      </label>
+      <label class="form-label fw-semibold"
+             for="{{ invite_form.search.id_for_label }}">{% trans "User or email" %}</label>
       <input type="text"
              name="search"
              class="form-control"
@@ -54,13 +58,13 @@
         {% include "members/partials/invite_search_results.html" with matches=None query=None %}
       </div>
     </div>
-
     <div class="mb-3">
       <span class="form-label fw-semibold d-block mb-2">{{ invite_form.fields.roles.label }}</span>
       {% if invite_form.roles.errors %}
         <div class="text-danger small mb-2">
           {% for error in invite_form.roles.errors %}
-            {{ error }}<br />
+            {{ error }}
+            <br />
           {% endfor %}
         </div>
       {% endif %}
@@ -68,9 +72,7 @@
     </div>
   </div>
   <div class="modal-footer">
-    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-      {% trans "Cancel" %}
-    </button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
     <button type="submit" class="btn btn-secondary">
       <i class="bi-send me-1"></i>{% trans "Send Invitation" %}
     </button>

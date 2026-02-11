@@ -9,18 +9,13 @@
     <div class="modal-content" id="validator-create-modal-content">
       <div class="modal-header">
         <div>
-          <h5 class="modal-title" id="validator-create-modal-title">
-            {% trans "Create validator" %}
-          </h5>
-          <p class="text-muted small mb-0">
-            {% trans "Select the type of validator you want to build." %}
-          </p>
+          <h5 class="modal-title" id="validator-create-modal-title">{% trans "Create validator" %}</h5>
+          <p class="text-muted small mb-0">{% trans "Select the type of validator you want to build." %}</p>
         </div>
         <button type="button"
                 class="btn-close"
                 data-bs-dismiss="modal"
-                aria-label="{% trans 'Close' %}">
-        </button>
+                aria-label="{% trans 'Close' %}"></button>
       </div>
       <div class="modal-body p-0">
         {% if validator_create_options %}
@@ -37,35 +32,18 @@
                                id="{{ input_id }}"
                                value="{{ option.value }}"
                                data-create-url="{{ option.url }}"
-                               {% if validator_create_selected and validator_create_selected == option.value %}
-                                 checked
-                               {% elif not validator_create_selected and forloop.first %}
-                                 checked
-                               {% endif %}
+                               {% if validator_create_selected and validator_create_selected == option.value %} checked {% elif not validator_create_selected and forloop.first %} checked {% endif %}
                                autocomplete="off"
                                required />
-                        <label class="validator-card h-100
-                                      {% if validator_create_selected and validator_create_selected == option.value %}
-                                        is-selected
-                                      {% elif not validator_create_selected and forloop.first %}
-                                        is-selected
-                                      {% endif %}"
+                        <label class="validator-card h-100 {% if validator_create_selected and validator_create_selected == option.value %} is-selected {% elif not validator_create_selected and forloop.first %} is-selected {% endif %}"
                                for="{{ input_id }}">
                           <div class="validator-card__icon mb-3">
                             <i class="bi {{ option.icon }}"></i>
                           </div>
-                          <div class="validator-card__title mb-1">
-                            {{ option.name }}
-                          </div>
-                          {% if option.subtitle %}
-                            <div class="validator-card__subtitle text-uppercase">
-                              {{ option.subtitle }}
-                            </div>
-                          {% endif %}
+                          <div class="validator-card__title mb-1">{{ option.name }}</div>
+                          {% if option.subtitle %}<div class="validator-card__subtitle text-uppercase">{{ option.subtitle }}</div>{% endif %}
                           {% if option.description %}
-                            <p class="validator-card__description small mb-0 mt-2">
-                              {{ option.description }}
-                            </p>
+                            <p class="validator-card__description small mb-0 mt-2">{{ option.description }}</p>
                           {% endif %}
                         </label>
                       </div>
@@ -74,22 +52,14 @@
                 </div>
               </div>
               <div class="card-footer bg-body-tertiary d-flex justify-content-end gap-2">
-                <button type="button"
-                        class="btn btn-secondary"
-                        data-bs-dismiss="modal">
-                  {% trans "Cancel" %}
-                </button>
-                <button type="submit" class="btn btn-secondary">
-                  {% trans "Create" %}
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+                <button type="submit" class="btn btn-secondary">{% trans "Create" %}</button>
               </div>
             </div>
           </form>
         {% else %}
           <div class="p-4">
-            <div class="alert alert-info mb-0" role="alert">
-              {% trans "No validator types are available yet." %}
-            </div>
+            <div class="alert alert-info mb-0" role="alert">{% trans "No validator types are available yet." %}</div>
           </div>
         {% endif %}
       </div>

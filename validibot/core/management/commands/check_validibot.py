@@ -656,6 +656,7 @@ class Command(BaseCommand):
 
             result = subprocess.run(
                 ["docker", "info"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -705,6 +706,7 @@ class Command(BaseCommand):
         try:
             result = subprocess.run(
                 ["docker", "images", "--format", "{{.Repository}}"],
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -713,7 +715,9 @@ class Command(BaseCommand):
             if result.returncode == 0:
                 available_images = set(result.stdout.strip().split("\n"))
                 found = [img for img in expected_images if img in available_images]
-                missing = [img for img in expected_images if img not in available_images]
+                missing = [
+                    img for img in expected_images if img not in available_images
+                ]
 
                 if found:
                     self._add_result(
@@ -806,16 +810,12 @@ class Command(BaseCommand):
         # Check SECRET_KEY
         secret_key = getattr(settings, "SECRET_KEY", "")
         if "changeme" in secret_key.lower() or len(secret_key) < 32:
-            issues.append(
-                ("Weak SECRET_KEY", "Generate a strong random SECRET_KEY")
-            )
+            issues.append(("Weak SECRET_KEY", "Generate a strong random SECRET_KEY"))
 
         # Check ALLOWED_HOSTS
         allowed_hosts = getattr(settings, "ALLOWED_HOSTS", [])
         if "*" in allowed_hosts:
-            issues.append(
-                ("ALLOWED_HOSTS contains '*'", "Set specific allowed hosts")
-            )
+            issues.append(("ALLOWED_HOSTS contains '*'", "Set specific allowed hosts"))
         elif not allowed_hosts:
             issues.append(
                 ("ALLOWED_HOSTS is empty", "Add your domain to ALLOWED_HOSTS")
@@ -834,9 +834,7 @@ class Command(BaseCommand):
         # Check SECURE settings for production
         if not settings.DEBUG:
             if not getattr(settings, "SECURE_SSL_REDIRECT", False):
-                issues.append(
-                    ("SECURE_SSL_REDIRECT is False", "Enable HTTPS redirect")
-                )
+                issues.append(("SECURE_SSL_REDIRECT is False", "Enable HTTPS redirect"))
             if not getattr(settings, "SESSION_COOKIE_SECURE", False):
                 issues.append(
                     ("SESSION_COOKIE_SECURE is False", "Enable secure cookies")
@@ -844,9 +842,7 @@ class Command(BaseCommand):
 
         if issues:
             for issue, fix in issues:
-                status = (
-                    CheckStatus.WARNING if settings.DEBUG else CheckStatus.ERROR
-                )
+                status = CheckStatus.WARNING if settings.DEBUG else CheckStatus.ERROR
                 self._add_result(
                     "Security",
                     status,
@@ -889,13 +885,9 @@ class Command(BaseCommand):
 
         if error_count > 0:
             self.stdout.write(
-                self.style.ERROR(
-                    "  Some checks failed. Please fix the errors above."
-                )
+                self.style.ERROR("  Some checks failed. Please fix the errors above.")
             )
-            self.stdout.write(
-                "  You can try: python manage.py check_validibot --fix"
-            )
+            self.stdout.write("  You can try: python manage.py check_validibot --fix")
         elif warn_count > 0:
             self.stdout.write(
                 self.style.WARNING(
@@ -932,9 +924,7 @@ class Command(BaseCommand):
                 "warnings": sum(
                     1 for r in self.results if r.status == CheckStatus.WARNING
                 ),
-                "errors": sum(
-                    1 for r in self.results if r.status == CheckStatus.ERROR
-                ),
+                "errors": sum(1 for r in self.results if r.status == CheckStatus.ERROR),
                 "skipped": sum(
                     1 for r in self.results if r.status == CheckStatus.SKIPPED
                 ),

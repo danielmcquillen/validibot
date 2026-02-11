@@ -47,7 +47,7 @@ class Command(BaseCommand):
         #     "schedule" \
         #     "endpoint" \
         job_pattern = re.compile(
-            r'create_or_update_job\s+\\\s+'
+            r"create_or_update_job\s+\\\s+"
             r'"([^"]+)\$\{JOB_SUFFIX\}"\s+\\\s+'
             r'"([^"]+)"\s+\\\s+'
             r'"([^"]+)"',
@@ -93,9 +93,7 @@ class Command(BaseCommand):
         registry_job_names = {t.job_name for t in registry_tasks}
         for job_name in justfile_jobs:
             if job_name not in registry_job_names:
-                warnings.append(
-                    f"Extra job in justfile not in registry: {job_name}"
-                )
+                warnings.append(f"Extra job in justfile not in registry: {job_name}")
 
         # Report results
         if errors:

@@ -659,7 +659,9 @@ STORAGE_ROOT = env("STORAGE_ROOT", default=str(BASE_DIR / "storage"))
 DATA_STORAGE_BACKEND = env("DATA_STORAGE_BACKEND", default="local")
 
 # For local backend, use private/ subdirectory under STORAGE_ROOT
-DATA_STORAGE_ROOT = env("DATA_STORAGE_ROOT", default=str(Path(STORAGE_ROOT) / "private"))
+DATA_STORAGE_ROOT = env(
+    "DATA_STORAGE_ROOT", default=str(Path(STORAGE_ROOT) / "private")
+)
 
 # For cloud backends, use the same bucket with private/ prefix
 DATA_STORAGE_BUCKET = env("DATA_STORAGE_BUCKET", default=STORAGE_BUCKET)
@@ -753,7 +755,9 @@ CELERY_TIMEZONE = TIME_ZONE
 # Task execution settings
 CELERY_TASK_TRACK_STARTED = True  # Track when tasks start (useful for monitoring)
 CELERY_TASK_TIME_LIMIT = 30 * 60  # Hard time limit: 30 minutes
-CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Soft time limit: 25 minutes (raises SoftTimeLimitExceeded)
+CELERY_TASK_SOFT_TIME_LIMIT = (
+    25 * 60
+)  # Soft time limit: 25 minutes (raises SoftTimeLimitExceeded)
 
 # Worker settings
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # Don't prefetch; process one task at a time
@@ -771,4 +775,3 @@ CELERY_TASK_ACKS_LATE = True
 
 # Reject on worker lost - requeue task if worker dies unexpectedly
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
-

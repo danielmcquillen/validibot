@@ -62,9 +62,7 @@ class ValidationsConfig(AppConfig):
             removed, failed = cleanup_all_managed_containers()
 
             if removed > 0:
-                logger.info(
-                    "Startup cleanup removed %d orphaned container(s)", removed
-                )
+                logger.info("Startup cleanup removed %d orphaned container(s)", removed)
             if failed > 0:
                 logger.warning(
                     "Startup cleanup failed to remove %d container(s)", failed

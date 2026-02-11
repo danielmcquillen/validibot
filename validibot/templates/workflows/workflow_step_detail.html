@@ -5,15 +5,12 @@
 {% block title %}
   {% blocktrans with step=step.name %}Edit Step · {{ step }}{% endblocktrans %}
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="assertion-step-builder"
        class="container-fluid d-flex flex-column flex-grow-1">
-
     <div class="app-content-header-bar row p-0">
       <div class="app-content-header">
         <div class="badge-wrapper h-100">
@@ -26,18 +23,13 @@
           <span class="badge text-bg-primary me-2">{% trans 'Step' %} {{ step.step_number }}</span>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2 title-wrapper">
-          <h1 class="app-page-title mb-0">
-            {{ step.name|default:"( no name )" }}
-          </h1>
+          <h1 class="app-page-title mb-0">{{ step.name|default:"( no name )" }}</h1>
         </div>
       </div>
     </div>
-
     <div class="row assertion-step-builder-layout flex-grow-1 align-items-stretch">
       <div class="col-12 col-lg-6 col-xxl-8 d-flex flex-column">
-
         <div id="assertions-editor-card" class="card app-card">
-
           <div class="card-header">
             <div>
               <span class="fw-semibold">{% trans "Step Assertions" %}</span>
@@ -57,28 +49,16 @@
               </div>
             {% endif %}
           </div>
-
-          <div class="card-body editor-workspace d-flex flex-column flex-grow-1
-                      {% if uses_signal_stages %}
-                        has-validator-flow
-                      {% endif %}">
-
+          <div class="card-body editor-workspace d-flex flex-column flex-grow-1 {% if uses_signal_stages %}has-validator-flow{% endif %}">
             {% if can_manage_assertions and supports_assertions %}
-
               {% if validator_default_assertions_count %}
                 {% include 'workflows/partials/components/default_assertions_card.html' with default_assertions_count=validator_default_assertions_count %}
               {% endif %}
-
               {% if uses_signal_stages %}
-
                 {% include 'workflows/partials/components/assertion_group.html' with stage="input" label=_("Input assertions") assertions=assertion_groups.input empty_label=_("No input assertions yet.") %}
-
                 <div class="validator-process-divider">
-                  <span class="validator-process-chip">
-                    {{ validator.processor_name|default:_("Validator process") }}
-                  </span>
+                  <span class="validator-process-chip">{{ validator.processor_name|default:_("Validator process") }}</span>
                 </div>
-
                 {% include 'workflows/partials/components/assertion_group.html' with stage="output" label=_("Output assertions") assertions=assertion_groups.output empty_label=_("No output assertions yet.") %}
               {% else %}
                 {% if assertions %}
@@ -89,13 +69,9 @@
                   {% include 'workflows/partials/components/empty_assertions.html' %}
                 {% endif %}
               {% endif %}
-
             {% else %}
-              <div class="alert alert-info">
-                {% trans "This validator does not support assertions." %}
-              </div>
+              <div class="alert alert-info">{% trans "This validator does not support assertions." %}</div>
             {% endif %}
-
           </div>
         </div>
       </div>
@@ -107,7 +83,6 @@
       </div>
     </div>
   </div>
-
   <div class="modal fade"
        id="validatorDefaultAssertionsModal"
        tabindex="-1"
@@ -115,13 +90,11 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content" id="default-assertions-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status">
-          </div>
+          <div class="spinner-border" role="status"></div>
         </div>
       </div>
     </div>
   </div>
-
   <div class="modal fade"
        id="workflowAssertionModal"
        tabindex="-1"
@@ -129,13 +102,11 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content" id="workflow-assertion-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status">
-          </div>
+          <div class="spinner-border" role="status"></div>
         </div>
       </div>
     </div>
   </div>
-
   <div class="modal fade"
        id="catalogEntryDetailModal"
        tabindex="-1"
@@ -143,13 +114,11 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content" id="catalog-entry-detail-modal-content">
         <div class="modal-body text-center text-muted py-5">
-          <div class="spinner-border" role="status">
-          </div>
+          <div class="spinner-border" role="status"></div>
         </div>
       </div>
     </div>
   </div>
-
   <script>
     document.body.addEventListener('close-modal', (event) => {
       const targetId = event.detail?.['close-modal'] || 'workflowAssertionModal';
@@ -189,5 +158,4 @@
       setTimeout(() => target.classList.remove('assertion-card-highlight'), 4000);
     });
   </script>
-
 {% endblock app_content %}

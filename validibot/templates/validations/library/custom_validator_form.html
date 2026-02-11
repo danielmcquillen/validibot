@@ -5,14 +5,11 @@
 {% block title %}
   {{ form_title }} · {% trans "Validation Library" %}
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid">
-
     <div class="app-content-header-bar row ">
       <div class="app-content-header col-12 col-lg-6 d-flex align-items-start mb-2 mb-lg-0 p-0">
         <h1 class="app-page-title">
@@ -21,7 +18,6 @@
         </h1>
       </div>
     </div>
-
     <div class="row g-4 mt-1">
       <div class="col-12 col-xl-8">
         <form method="post" class="card shadow-sm" novalidate>
@@ -45,41 +41,27 @@
                 {% trans "Cancel" %}
               </a>
             {% endif %}
-            <button type="submit" class="btn btn-secondary">
-              {% trans "Save validator" %}
-            </button>
+            <button type="submit" class="btn btn-secondary">{% trans "Save validator" %}</button>
           </div>
         </form>
       </div>
       <div class="col-12 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <h2 class="h6 text-uppercase text-muted mb-3">
-              {% trans "Tips" %}
-            </h2>
+            <h2 class="h6 text-uppercase text-muted mb-3">{% trans "Tips" %}</h2>
             <ul class="small text-muted ps-3">
-              <li>
-                {% trans "Use clear, action-oriented names so authors recognize the validator instantly." %}
-              </li>
-              <li>
-                {% trans "Share context in the notes field—other team members see it while building workflows." %}
-              </li>
-              <li>
-                {% trans "Pick the validator type that matches the backing engine or integration." %}
-              </li>
+              <li>{% trans "Use clear, action-oriented names so authors recognize the validator instantly." %}</li>
+              <li>{% trans "Share context in the notes field—other team members see it while building workflows." %}</li>
+              <li>{% trans "Pick the validator type that matches the backing engine or integration." %}</li>
             </ul>
             {% if validator %}
               <hr />
               <dl class="row small mb-0">
-                <dt class="col-5 text-muted">
-                  {% trans "Slug" %}
-                </dt>
+                <dt class="col-5 text-muted">{% trans "Slug" %}</dt>
                 <dd class="col-7 text-break">
                   {{ validator.slug }}
                 </dd>
-                <dt class="col-5 text-muted">
-                  {% trans "Type" %}
-                </dt>
+                <dt class="col-5 text-muted">{% trans "Type" %}</dt>
                 <dd class="col-7">
                   {{ validator.custom_validator.custom_type }}
                 </dd>

@@ -230,7 +230,10 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         stats = self._serialize_envelope(output_envelope)
         if isinstance(stats, dict):
             stats["signals"] = post_result.signals or {}
-        if output_envelope.status == ValidationStatus.SUCCESS and container_error_issues:
+        if (
+            output_envelope.status == ValidationStatus.SUCCESS
+            and container_error_issues
+        ):
             warnings = stats.get("warnings", []) if isinstance(stats, dict) else []
             warnings.append(
                 "Note: the advanced validation indicated it passed, "

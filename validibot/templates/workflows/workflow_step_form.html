@@ -9,14 +9,11 @@
     {% blocktrans with name=workflow.name step_id=step.pk %}Step {{ step_id }} · {{ name }} · Validibot{% endblocktrans %}
   {% endif %}
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div id="workflow-step-form" class="container-fluid">
-
     <div class="app-content-header-bar row">
       <div class="app-content-header col-12 col-lg-8 d-flex flex-column gap-2">
         <div class="d-flex align-items-center gap-2">
@@ -31,49 +28,33 @@
         </div>
       </div>
     </div>
-
     <div class="card shadow-sm app-form-card  h-100">
       <div class="card-body ">
         <div class="d-flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
           <div>
-            <h2 class="h5 mb-1">
-              Workflow Step Validator: {{ subject_details.name }}
-            </h2>
+            <h2 class="h5 mb-1">Workflow Step Validator: {{ subject_details.name }}</h2>
             {% if subject_details.description %}
-              <p class="text-muted mb-0">
-                {{ subject_details.short_description|safe }}
-              </p>
+              <p class="text-muted mb-0">{{ subject_details.short_description|safe }}</p>
             {% endif %}
           </div>
-          <span class="badge text-bg-primary">
-            {{ subject_details.type_label }}
-          </span>
+          <span class="badge text-bg-primary">{{ subject_details.type_label }}</span>
         </div>
-
         {% if form.errors %}
           <div class="alert alert-danger" role="alert">
-            <h2 class="h6 mb-0">
-              {% trans "We found a few issues. Please update the highlighted fields." %}
-            </h2>
+            <h2 class="h6 mb-0">{% trans "We found a few issues. Please update the highlighted fields." %}</h2>
             {% if form.non_field_errors %}
               <ul class="mb-0 mt-2 small">
-                {% for error in form.non_field_errors %}
-                  <li>
-                    {{ error }}
-                  </li>
-                {% endfor %}
+                {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
               </ul>
             {% endif %}
           </div>
         {% endif %}
-
         <form method="post"
               enctype="multipart/form-data"
               class="d-flex flex-column gap-4">
           {% csrf_token %}
           {{ form.media }}
           {% crispy form %}
-
           <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mt-2 pt-3 border-top">
             <div class="d-flex flex-wrap gap-2">
               {% if step %}

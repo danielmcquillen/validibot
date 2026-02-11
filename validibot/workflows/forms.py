@@ -308,9 +308,7 @@ class WorkflowForm(forms.ModelForm):
             attrs={
                 "rows": 2,
                 "class": "form-control",
-                "placeholder": _(
-                    "e.g. Your model passed all validation checks!"
-                ),
+                "placeholder": _("e.g. Your model passed all validation checks!"),
             },
         )
         self.fields["description_md"].widget.attrs.setdefault("class", "form-control")
@@ -549,7 +547,8 @@ class WorkflowLaunchForm(forms.Form):
                     _(
                         "File extension '.%(ext)s' is not allowed. "
                         "Accepted extensions: %(allowed)s"
-                    ) % {"ext": ext, "allowed": ext_list},
+                    )
+                    % {"ext": ext, "allowed": ext_list},
                 )
 
         cleaned["payload"] = payload

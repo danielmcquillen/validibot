@@ -148,7 +148,11 @@ def get_latest_workflow_ids(
     # Fetch all non-archived workflows in a single query
     workflows = list(
         queryset.filter(is_archived=False).only(
-            "id", "org_id", "slug", "version", "created",
+            "id",
+            "org_id",
+            "slug",
+            "version",
+            "created",
         )
     )
 

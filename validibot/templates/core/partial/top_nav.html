@@ -3,76 +3,71 @@
 {# Simplified top nav for Docker Compose deployment - marketing pages moved to separate site #}
 <header id="site-top-nav-wrapper"
         class="navbar navbar-expand-lg bd-navbar sticky-top shadow-sm">
-    <nav id="site-top-nav"
-         class="container-xxl bd-gutter flex-wrap flex-lg-nowrap">
-        <button class="navbar-toggler navbar-toggler-right"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#navbarSupportedContent"
-                aria-controls="navbarSupportedContent"
-                aria-expanded="false"
-                aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <a class="navbar-brand brand-with-mark"
-           href="{% url 'home:home' %}">
-            <img src="{% static 'images/robot_head_bw.png' %}"
-                 alt="{% trans 'Validibot logo' %}"
-                 class="brand-mark" />
-            <span class="brand-name">Validibot</span>
-        </a>
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
-
-            <ul class="navbar-nav me-auto">
-                {% block left_nav_items %}
-                {% endblock left_nav_items %}
+  <nav id="site-top-nav"
+       class="container-xxl bd-gutter flex-wrap flex-lg-nowrap">
+    <button class="navbar-toggler navbar-toggler-right"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent"
+            aria-expanded="false"
+            aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <a class="navbar-brand brand-with-mark" href="{% url 'home:home' %}">
+      <img src="{% static 'images/robot_head_bw.png' %}"
+           alt="{% trans 'Validibot logo' %}"
+           class="brand-mark" />
+      <span class="brand-name">Validibot</span>
+    </a>
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav me-auto">
+        {% block left_nav_items %}
+        {% endblock left_nav_items %}
+      </ul>
+      <ul class="navbar-nav">
+        {% block right_nav_items %}
+          {% if request.user.is_authenticated and ENABLE_APP %}
+            <li class="nav-item app-nav-item">
+              <a class="nav-link {% active_link 'app' %} btn btn-secondary text-dark"
+                 href="{% org_url 'dashboard:my_dashboard' %}">
+                <img class="robot-head-icon"
+                     src="{% static 'images/robot_head_bw.png' %}"
+                     alt="Robot icon" />
+                {% translate "App" %}
+              </a>
+            </li>
+          {% endif %}
+        {% endblock right_nav_items %}
+        {% if request.user.is_authenticated and ACCOUNT_ALLOW_LOGIN %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle"
+               href="#"
+               role="button"
+               data-bs-toggle="dropdown"
+               aria-expanded="false">
+              <i class="bi bi-person-circle"></i> {{ request.user.username }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <a class="nav-link" href="{% org_url 'users:profile' %}">{% translate "My Profile" %}</a>
+              <li class="nav-item">
+                <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
+              </li>
             </ul>
-
-            <ul class="navbar-nav">
-
-                {% block right_nav_items %}
-                    {% if request.user.is_authenticated and ENABLE_APP %}
-                        <li class="nav-item app-nav-item">
-                            <a class="nav-link {% active_link 'app' %} btn btn-secondary text-dark"
-                               href="{% org_url 'dashboard:my_dashboard' %}">
-                                <img class="robot-head-icon"
-                                     src="{% static 'images/robot_head_bw.png' %}"
-                                     alt="Robot icon" />
-                                {% translate "App" %}
-                            </a>
-                        </li>
-                    {% endif %}
-                {% endblock right_nav_items %}
-
-                {% if request.user.is_authenticated and ACCOUNT_ALLOW_LOGIN %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle"
-                           href="#"
-                           role="button"
-                           data-bs-toggle="dropdown"
-                           aria-expanded="false">
-                            <i class="bi bi-person-circle"></i> {{ request.user.username }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <a class="nav-link" href="{% org_url 'users:profile' %}">{% translate "My Profile" %}</a>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
-                            </li>
-                        </ul>
-                    </li>
-                {% else %}
-                    {% if ACCOUNT_ALLOW_REGISTRATION %}
-                        <li class="nav-item">
-                            <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
-                        </li>
-                    {% endif %}
-                    {% if ACCOUNT_ALLOW_LOGIN %}
-                        <li class="nav-item">
-                            <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
-                        </li>
-                    {% endif %}
-                {% endif %}
-            </ul>
-        </div>
-    </nav>
+          </li>
+        {% else %}
+          {% if ACCOUNT_ALLOW_REGISTRATION %}
+            <li class="nav-item">
+              <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
+            </li>
+          {% endif %}
+          {% if ACCOUNT_ALLOW_LOGIN %}
+            <li class="nav-item">
+              <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
+            </li>
+          {% endif %}
+        {% endif %}
+      </ul>
+    </div>
+  </nav>
 </header>

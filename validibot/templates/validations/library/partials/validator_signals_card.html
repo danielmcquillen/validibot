@@ -2,9 +2,7 @@
 
 <div class="card app-card h-100">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="card-title mb-0">
-      {% trans "Signals" %}
-    </div>
+    <div class="card-title mb-0">{% trans "Signals" %}</div>
     <div class="d-flex gap-2">
       {% if catalog_display.inputs or catalog_display.outputs %}
         <a class="btn btn-sm btn-secondary"
@@ -26,21 +24,11 @@
       <table class="table table-sm align-middle table-hover" data-sortable-table>
         <thead>
           <tr>
-            <th class="text-muted small" data-sortable="true">
-              {% trans "Signal name" %}
-            </th>
-            <th class="text-muted small" data-sortable="true">
-              {% trans "Target path" %}
-            </th>
-            <th class="text-muted small" data-sortable="true">
-              {% trans "Type" %}
-            </th>
-            <th class="text-muted small" data-sortable="true">
-              {% trans "Stage" %}
-            </th>
-            <th class="text-muted small text-end">
-              {% trans "Actions" %}
-            </th>
+            <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
+            <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
+            <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
+            <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+            <th class="text-muted small text-end">{% trans "Actions" %}</th>
           </tr>
         </thead>
         <tbody>
@@ -57,12 +45,8 @@
                         style="max-width: 220px"
                         title="{{ entry.target_field }}">{{ entry.target_field }}</code>
                 </td>
-                <td class="text-muted small">
-                  {{ entry.get_data_type_display }}
-                </td>
-                <td class="text-muted small">
-                  {% trans "Input" %}
-                </td>
+                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
+                <td class="text-muted small">{% trans "Input" %}</td>
                 <td class="text-end">
                   <div class="btn-group btn-group-sm"
                        role="group"
@@ -85,9 +69,7 @@
                               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                               hx-target="#validator-signal-{{ entry.id }}"
                               hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}
-                                            Delete signal '{{ name }}'?
-                                          {% endblocktrans %}">
+                              hx-confirm="{% blocktrans trimmed with name=entry.slug %} Delete signal '{{ name }}'? {% endblocktrans %}">
                         <i class="bi bi-trash"></i>
                       </button>
                       {# djlint:on #}
@@ -97,7 +79,6 @@
               </tr>
             {% endfor %}
           {% endif %}
-
           {% if show_output_tab and catalog_display.outputs %}
             {% for entry in catalog_display.outputs %}
               <tr id="validator-signal-{{ entry.id }}">
@@ -111,12 +92,8 @@
                         style="max-width: 220px"
                         title="{{ entry.target_field }}">{{ entry.target_field }}</code>
                 </td>
-                <td class="text-muted small">
-                  {{ entry.get_data_type_display }}
-                </td>
-                <td class="text-muted small">
-                  {% trans "Output" %}
-                </td>
+                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
+                <td class="text-muted small">{% trans "Output" %}</td>
                 <td class="text-end">
                   <div class="btn-group btn-group-sm"
                        role="group"
@@ -149,7 +126,6 @@
               </tr>
             {% endfor %}
           {% endif %}
-
           {% if not catalog_display.inputs and not show_output_tab %}
             <tr>
               <td colspan="5" class="text-muted small ">

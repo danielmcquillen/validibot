@@ -49,7 +49,7 @@ class TestExampleProductWithCEL(TestCase):
         )
         cls.expression = 'price > 0 && rating >= 90 && "mini" in tags'
         cls.error_message = (
-            ' Your prices has to be greater than 0 AND rating greater '
+            " Your prices has to be greater than 0 AND rating greater "
             'than 90 AND "mini" '
             "has to be in the tags!!!"
         )

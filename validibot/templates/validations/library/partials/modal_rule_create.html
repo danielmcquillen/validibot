@@ -1,11 +1,18 @@
 {% load i18n crispy_forms_tags core_tags %}
 
-<div class="modal fade" id="modal-rule-create" tabindex="-1" aria-labelledby="modalRuleCreateLabel" aria-hidden="true">
+<div class="modal fade"
+     id="modal-rule-create"
+     tabindex="-1"
+     aria-labelledby="modalRuleCreateLabel"
+     aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="modalRuleCreateLabel">{% trans "Add default assertion" %}</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% trans 'Close' %}"></button>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="{% trans 'Close' %}"></button>
       </div>
       <form hx-post="{% org_url 'validations:validator_rule_create' pk=validator.id %}"
             hx-target="#modal-rule-create"
@@ -16,12 +23,8 @@
           {{ default_assertion_create_form|crispy }}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            {% trans "Cancel" %}
-          </button>
-          <button type="submit" class="btn btn-secondary">
-            {% trans "Save default assertion" %}
-          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="submit" class="btn btn-secondary">{% trans "Save default assertion" %}</button>
         </div>
       </form>
     </div>

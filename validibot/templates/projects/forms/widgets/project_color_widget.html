@@ -1,15 +1,20 @@
 {% load i18n core_tags %}
+
 <div class="project-color-widget">
   <button type="button"
           class="project-color-preview-btn"
           data-color-input="{{ widget.attrs.id }}"
           data-initial-color="{{ initial_color }}"
           aria-label="{% trans 'Generate a new color' %}"
-          style="background-color: {{ initial_color }}; border-color: {{ border_color }}; color: {{ icon_color }};">
-    <i class="bi bi-arrow-clockwise project-color-preview-icon" aria-hidden="true"></i>
+          style="background-color: {{ initial_color }};
+                 border-color: {{ border_color }};
+                 color: {{ icon_color }}">
+    <i class="bi bi-arrow-clockwise project-color-preview-icon"
+       aria-hidden="true"></i>
     <span class="visually-hidden">{% trans "Generate a new color" %}</span>
   </button>
   <input type="{{ widget.type }}"
-         name="{{ widget.name }}"{% include "django/forms/widgets/attrs.html" %}
+         name="{{ widget.name }}"
+         {% include "django/forms/widgets/attrs.html" %}
          {% if widget.value != None %}value="{{ widget.value }}"{% endif %} />
 </div>

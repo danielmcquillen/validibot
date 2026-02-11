@@ -10,23 +10,17 @@ a top navigation bar, and a messages section below the top nav bar.
 It extends base.html, which has the basic HTML structure, head, and body tags.
 
 {% endcomment %}
-
 {% block top_nav %}
-    {# comment  do not show top nav when viewing app #}
+  {# comment  do not show top nav when viewing app #}
 {% endblock top_nav %}
-
 {% block top_bar %}
-    {% include "app/partial/components/app_top_bar.html" %}
+  {% include "app/partial/components/app_top_bar.html" %}
 {% endblock top_bar %}
-
 {% block left_sidebar %}
-
 {% endblock left_sidebar %}
-
 {% block content %}
-    <div id="app-content">
-        {% block app_content %}
-
-        {% endblock app_content %}
-    </div>
+  <div id="app-content">
+    {% block app_content %}
+    {% endblock app_content %}
+  </div>
 {% endblock content %}

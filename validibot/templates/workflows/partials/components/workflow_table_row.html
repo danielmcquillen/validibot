@@ -2,16 +2,10 @@
 
 <tr id="workflow-item-wrapper-{{ workflow.pk }}">
   <td class="align-middle">
-    <div class="fw-semibold">
-      {{ workflow.name }}
-    </div>
-    <div class="text-muted small">
-      {{ workflow.slug }}
-    </div>
+    <div class="fw-semibold">{{ workflow.name }}</div>
+    <div class="text-muted small">{{ workflow.slug }}</div>
     {% if workflow.is_locked %}
-      <span class="badge text-bg-warning text-dark mt-1">
-        {% trans "Locked" %}
-      </span>
+      <span class="badge text-bg-warning text-dark mt-1">{% trans "Locked" %}</span>
     {% endif %}
   </td>
   <td class="align-middle">
@@ -20,9 +14,7 @@
             style="background-color: {{ workflow.project.color }};
                    color: {{ workflow.project.badge_text_color }};
                    border-color: {{ workflow.project.badge_border_color }}"
-            title="{{ workflow.project.name }}">
-        {{ workflow.project.name }}
-      </span>
+            title="{{ workflow.project.name }}">{{ workflow.project.name }}</span>
     {% endif %}
   </td>
   <td class="align-middle">
@@ -48,9 +40,7 @@
       <span class="text-muted">—</span>
     {% endif %}
   </td>
-  <td class="align-middle text-muted small">
-    {{ workflow.modified|date:"M j, Y" }}
-  </td>
+  <td class="align-middle text-muted small">{{ workflow.modified|date:"M j, Y" }}</td>
   <td class="align-middle text-end">
     {% include "workflows/partials/components/workflow_actions.html" with workflow=workflow show_archived=show_archived current_layout=current_layout %}
   </td>

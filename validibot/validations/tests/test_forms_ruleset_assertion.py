@@ -44,7 +44,7 @@ class RulesetAssertionFormTests(TestCase):
                 "when_expression": "",
             },
         )
-        self.assertFalse(form._validator_allows_custom_targets())  # noqa: SLF001
+        self.assertFalse(form._validator_allows_custom_targets())
         self.assertFalse(form.is_valid())
         self.assertIn("Unknown signal(s) referenced", str(form.errors))
 

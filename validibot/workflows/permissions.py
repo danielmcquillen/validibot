@@ -11,7 +11,7 @@ class WorkflowPermission(permissions.BasePermission):
     """
     Enforce workflow access rules for the API:
 
-    - list/retrieve: any authenticated member of the workflow's org 
+    - list/retrieve: any authenticated member of the workflow's org
         (handled in queryset)
     - create/update/delete: only users with manager roles (owner/admin/author)
     - start action: checked downstream to preserve existing 404 behaviour

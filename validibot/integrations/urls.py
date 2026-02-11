@@ -2,5 +2,4 @@
 
 app_name = "integrations"
 
-urlpatterns = [
-]
+urlpatterns = []

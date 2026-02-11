@@ -60,7 +60,9 @@ class ValidationRunListViewTests(TestCase):
 
         reviewer = UserFactory(orgs=[org])
         grant_role(reviewer, org, RoleCode.VALIDATION_RESULTS_VIEWER)
-        reviewer.memberships.get(org=org).set_roles({RoleCode.VALIDATION_RESULTS_VIEWER})
+        reviewer.memberships.get(org=org).set_roles(
+            {RoleCode.VALIDATION_RESULTS_VIEWER}
+        )
         reviewer.set_current_org(org)
 
         self.client.force_login(reviewer)

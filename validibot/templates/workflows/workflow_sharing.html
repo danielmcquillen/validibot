@@ -5,11 +5,9 @@
 {% block title %}
   {% trans "Sharing" %} · {{ workflow.name }} · {% trans "Workflows" %} · Validibot
 {% endblock title %}
-
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
 {% endblock left_sidebar %}
-
 {% block app_content %}
   <div class="container-fluid d-flex flex-column flex-grow-1">
     <div class="app-content-header-bar row">
@@ -31,12 +29,10 @@
         </div>
       </div>
     </div>
-
     <div class="row flex-grow-1">
       <div class="col-12 col-lg-8">
         {# Visibility Section #}
         {% include "workflows/partials/workflow_visibility_section.html" %}
-
         {# Guest Access Section - only for private workflows #}
         {% if not workflow.is_public %}
           {% include "workflows/partials/workflow_guest_access_section.html" %}
@@ -56,7 +52,6 @@
           </div>
         {% endif %}
       </div>
-
       <div class="col-12 col-lg-4">
         <div class="card app-card">
           <div class="card-header">
@@ -64,11 +59,15 @@
           </div>
           <div class="card-body">
             <dl class="mb-0">
-              <dt><i class="bi-lock me-1"></i> {% trans "Private" %}</dt>
+              <dt>
+                <i class="bi-lock me-1"></i> {% trans "Private" %}
+              </dt>
               <dd class="text-muted small mb-3">
                 {% trans "Only org members and invited guests can launch this workflow." %}
               </dd>
-              <dt><i class="bi-globe me-1"></i> {% trans "Public" %}</dt>
+              <dt>
+                <i class="bi-globe me-1"></i> {% trans "Public" %}
+              </dt>
               <dd class="text-muted small mb-0">
                 {% trans "Any logged-in user can launch this workflow. Usage is billed to your organization." %}
               </dd>
@@ -79,7 +78,6 @@
     </div>
   </div>
 {% endblock app_content %}
-
 {% block modal %}
   {{ block.super }}
   <div class="modal fade"
@@ -87,12 +85,10 @@
        tabindex="-1"
        aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content" id="guest-invite-modal-content">
-      </div>
+      <div class="modal-content" id="guest-invite-modal-content"></div>
     </div>
   </div>
 {% endblock modal %}
-
 {% block inline_javascript %}
   {{ block.super }}
   <script>

@@ -1,0 +1,42 @@
+#breadcrumbs {
+  // margin-bottom: 5px;
+  // background-color: #f1f1f1;
+  // border-bottom: 1px dotted #dbe0e9;
+}
+
+.app-breadcrumbs {
+  border-bottom: 1px dotted #bbb;
+  min-height: 40px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.breadcrumb {
+  font-size: 0.8rem;
+  padding: 0.5rem 0 0.5rem 0.8rem;
+  margin-bottom: 0;
+
+  .breadcrumb-item {
+    font-size: 0.8rem;
+    max-width: 150px; // adjust this value to control the maximum width
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+
+    a {
+      text-decoration: none;
+      color: #888;
+      &:hover {
+        color: #157be2;
+        text-decoration: underline;
+      }
+    }
+  }
+
+  .breadcrumb-item + .breadcrumb-item::before {
+    content: "»";
+    padding-right: 0 0.5rem;
+  }
+}

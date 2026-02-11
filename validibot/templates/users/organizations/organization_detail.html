@@ -1,0 +1,100 @@
+{% extends "app_base.html" %}
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Organization" %} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div class="container-fluid" id="organization-detail">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-building me-2"></i>
+          {% trans "Organization" %}
+        </h1>
+        <div class="app-page-subtitle ms-3">
+          {% trans "View and manage organization settings." %}
+        </div>
+      </div>
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end gap-2 mt-2 mt-lg-0">
+        <a class="btn btn-secondary"
+           href="{% url 'users:organization-update' organization.pk %}">
+          <i class="bi bi-pencil-square me-1"></i>
+          {% trans "Edit" %}
+        </a>
+        {% if is_enterprise and not organization.is_personal %}
+          <a class="btn btn-danger"
+             href="{% url 'users:organization-delete' organization.pk %}">
+            <i class="bi bi-trash me-1"></i>
+            {% trans "Delete" %}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-12 col-xl-8">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <h2 class="h5 mb-4">{% trans "Details" %}</h2>
+            <dl class="row mb-0">
+              <dt class="col-sm-4 text-muted">{% trans "Slug" %}</dt>
+              <dd class="col-sm-8">{{ organization.slug }}</dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Members" %}</dt>
+              <dd class="col-sm-8">
+                {{ member_count }}
+              </dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Workspace type" %}</dt>
+              <dd class="col-sm-8">
+                {% if organization.is_personal %}
+                  {% trans "Personal workspace" %}
+                {% else %}
+                  {% trans "Team workspace" %}
+                {% endif %}
+              </dd>
+
+              <dt class="col-sm-4 text-muted">{% trans "Created" %}</dt>
+              <dd class="col-sm-8">
+                {{ organization.created|date:"M j, Y g:i a" }}
+              </dd>
+            </dl>
+          </div>
+          <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+            <a class="btn btn-secondary"
+               href="{% org_url 'members:member_list' %}">
+              <i class="bi bi-people me-1"></i>
+              {% trans "Manage members" %}
+            </a>
+            <a class="btn btn-secondary"
+               href="{% org_url 'projects:project-list' %}">
+              <i class="bi bi-collection me-1"></i>
+              {% trans "Manage projects" %}
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-xl-4">
+        <div class="alert alert-info h-100 mb-0" role="status">
+          <div class="d-flex flex-column gap-2">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-info-circle-fill"></i>
+              <span class="fw-semibold">
+                {% trans "Need to invite or remove people?" %}
+              </span>
+            </div>
+            <p class="mb-0">
+              {% trans "Use the Manage members page to invite teammates, adjust roles, or remove access. Return here anytime to review organization metadata." %}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}

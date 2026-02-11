@@ -1,0 +1,199 @@
+"""
+Tests for envelope_builder service.
+"""
+
+from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
+from validibot_shared.validations.envelopes import ResourceFileItem
+from validibot_shared.validations.envelopes import ValidatorType
+
+from validibot.validations.services.cloud_run.envelope_builder import (
+    build_energyplus_input_envelope,
+)
+
+
+class MockValidator:
+    """Mock validator for testing."""
+
+    def __init__(self):
+        self.id = "validator-123"
+        self.validation_type = "ENERGYPLUS"
+        self.version = "24.2.0"
+
+
+def _make_weather_resource_file(
+    uri: str = "gs://test-bucket/weather.epw",
+) -> ResourceFileItem:
+    """Create a test weather resource file."""
+    return ResourceFileItem(
+        id="resource-weather-123",
+        type="energyplus_weather",
+        uri=uri,
+    )
+
+
+def test_build_energyplus_input_envelope():
+    """Test that envelope builder creates correct structure."""
+    validator = MockValidator()
+    weather_resource = _make_weather_resource_file()
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        resource_files=[weather_resource],
+        callback_url="https://api.example.com/callbacks/",
+        callback_id="cb-test-123",
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+        timestep_per_hour=4,
+    )
+
+    # Verify it's the right type
+    assert isinstance(envelope, EnergyPlusInputEnvelope)
+
+    # Verify basic fields
+    assert envelope.run_id == "run-123"
+
+    # Verify validator info
+    assert envelope.validator.id == "validator-123"
+    assert envelope.validator.type == ValidatorType.ENERGYPLUS
+    assert envelope.validator.version == "24.2.0"
+
+    # Verify organization info
+    assert envelope.org.id == "org-456"
+    assert envelope.org.name == "Test Organization"
+
+    # Verify workflow info
+    assert envelope.workflow.id == "workflow-789"
+    assert envelope.workflow.step_id == "step-012"
+    assert envelope.workflow.step_name == "EnergyPlus Simulation"
+
+    # Verify input files (only model file now, weather comes via resource_files)
+    assert len(envelope.input_files) == 1
+    model_file = envelope.input_files[0]
+    assert model_file.uri == "gs://test-bucket/model.idf"
+    assert model_file.role == "primary-model"
+
+    # Verify resource files (weather file)
+    assert len(envelope.resource_files) == 1
+    weather_file = envelope.resource_files[0]
+    assert weather_file.id == "resource-weather-123"
+    assert weather_file.type == "energyplus_weather"
+    assert weather_file.uri == "gs://test-bucket/weather.epw"
+
+    # Verify execution context
+    assert str(envelope.context.callback_url) == "https://api.example.com/callbacks/"
+    assert envelope.context.execution_bundle_uri == "gs://test-bucket/runs/run-123/"
+
+    # Verify EnergyPlus-specific inputs
+    assert envelope.inputs.timestep_per_hour == 4  # noqa: PLR2004
+
+
+def test_build_energyplus_input_envelope_defaults():
+    """Test envelope builder with default values."""
+    validator = MockValidator()
+    weather_resource = _make_weather_resource_file()
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        resource_files=[weather_resource],
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=None,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+        # Use default for timestep_per_hour
+    )
+
+    # Verify defaults
+    assert envelope.inputs.timestep_per_hour == 4  # noqa: PLR2004
+
+
+def test_build_energyplus_input_envelope_with_callback_id():
+    """Test envelope builder includes callback_id for idempotency."""
+    validator = MockValidator()
+    weather_resource = _make_weather_resource_file()
+    callback_id = "cb-uuid-12345"
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        resource_files=[weather_resource],
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=callback_id,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+    )
+
+    # Verify callback_id is included in the execution context
+    assert envelope.context.callback_id == callback_id
+
+
+def test_build_energyplus_input_envelope_without_callback_id():
+    """Test envelope builder works without callback_id (backwards compatibility)."""
+    validator = MockValidator()
+    weather_resource = _make_weather_resource_file()
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        resource_files=[weather_resource],
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=None,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+    )
+
+    # Verify callback_id is None when not provided
+    assert envelope.context.callback_id is None
+
+
+def test_build_energyplus_input_envelope_multiple_resource_files():
+    """Test envelope builder with multiple resource files."""
+    validator = MockValidator()
+    weather_resource = _make_weather_resource_file()
+    # Example: additional resource file (e.g., a library or config)
+    additional_resource = ResourceFileItem(
+        id="resource-lib-456",
+        type="energyplus_library",
+        uri="gs://test-bucket/library.dat",
+    )
+
+    envelope = build_energyplus_input_envelope(
+        run_id="run-123",
+        validator=validator,
+        org_id="org-456",
+        org_name="Test Organization",
+        workflow_id="workflow-789",
+        step_id="step-012",
+        step_name="EnergyPlus Simulation",
+        model_file_uri="gs://test-bucket/model.idf",
+        resource_files=[weather_resource, additional_resource],
+        callback_url="https://api.example.com/callbacks/",
+        callback_id=None,
+        execution_bundle_uri="gs://test-bucket/runs/run-123/",
+    )
+
+    # Verify both resource files are included
+    assert len(envelope.resource_files) == 2  # noqa: PLR2004
+    assert envelope.resource_files[0].type == "energyplus_weather"
+    assert envelope.resource_files[1].type == "energyplus_library"

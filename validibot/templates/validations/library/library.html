@@ -1,0 +1,175 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags %}
+
+{% block title %}
+  {% trans "Validator Library" %} · Validibot
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+  <div id="validator-library" class="container-fluid">
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        <h1 class="app-page-title">
+          <i class="bi bi-journal-bookmark me-2"></i>
+          {% trans "Validator Library" %}
+        </h1>
+        <div class="app-page-subtitle ms-3">
+          Reusable validators you can use in workflows.
+        </div>
+      </div>
+      <!-- Actions -->
+      <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0">
+
+        <!-- toggle grid/table -->
+        <div class="btn-group me-3"
+             role="group"
+             aria-label="{% trans 'Toggle layout' %}">
+          <a class="btn
+                    {% if current_layout == 'list' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
+             href="{{ layout_urls.list }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'list' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
+             title="{% trans 'List view' %}">
+            <i class="bi bi-list"></i>
+          </a>
+          <a class="btn
+                    {% if current_layout == 'grid' %}
+                      btn-dark active
+                    {% else %}
+                      btn-light
+                    {% endif %}"
+             href="{{ layout_urls.grid }}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             aria-pressed="{% if current_layout == 'grid' %}
+                             true
+                           {% else %}
+                             false
+                           {% endif %}"
+             title="{% trans 'Grid view' %}">
+            <i class="bi bi-grid-fill"></i>
+          </a>
+        </div>
+
+        {% if can_manage_validators %}
+          <button class="btn btn-secondary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#validatorCreateModal">
+            <i class="bi bi-plus me-2"></i>
+            {% trans "New Validator" %}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-12">
+        <div class="tabs d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+          <div class="nav nav-tabs validator-library-tabs" role="tablist">
+            <a class="nav-link
+                      {% if active_tab == 'custom' %}
+                        active
+                      {% endif %}"
+               id="library-custom-tab"
+               role="tab"
+               aria-controls="library-custom-panel"
+               aria-selected="{% if active_tab == 'custom' %}
+                                true
+                              {% else %}
+                                false
+                              {% endif %}"
+               href="{% org_url 'validations:validation_library' %}?tab=custom">
+              <span class="fw-semibold">{% trans "Custom" %}</span>
+              <span class="badge text-bg-light ms-2">
+                {{ custom_validators|length }}
+              </span>
+            </a>
+            <a class="nav-link
+                      {% if active_tab == 'system' %}
+                        active
+                      {% endif %}"
+               id="library-system-tab"
+               role="tab"
+               aria-controls="library-system-panel"
+               aria-selected="{% if active_tab == 'system' %}
+                                true
+                              {% else %}
+                                false
+                              {% endif %}"
+               href="{% org_url 'validations:validation_library' %}?tab=system">
+              <span class="fw-semibold">{% trans "System" %}</span>
+              <span class="badge text-bg-light ms-2">
+                {{ system_validators|length }}
+              </span>
+            </a>
+          </div>
+        </div>
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="tab-content pt-0">
+              <div class="tab-pane
+                          {% if active_tab == 'custom' %}
+                            show active
+                          {% endif %}"
+                   id="library-custom-panel"
+                   role="tabpanel"
+                   aria-labelledby="library-custom-tab"
+                   aria-hidden="{% if active_tab == 'custom' %}
+                                  false
+                                {% else %}
+                                  true
+                                {% endif %}">
+                <div class="mb-3 text-muted">
+                  Create or edit your custom validators. After creating a custom validator, you can use it in your workfows.
+                </div>
+
+                {% include "validations/library/partials/validator_library_list.html" with validators=custom_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("You have not created any custom validators yet.") empty_cta_url=custom_validators_empty_cta_url empty_cta_label=custom_validators_empty_cta_label empty_cta_modal_target=custom_validators_empty_cta_modal_target %}
+              </div>
+              <div class="tab-pane
+                          {% if active_tab == 'system' %}
+                            show active
+                          {% endif %}"
+                   id="library-system-panel"
+                   role="tabpanel"
+                   aria-labelledby="library-system-tab"
+                   aria-hidden="{% if active_tab == 'system' %}
+                                  false
+                                {% else %}
+                                  true
+                                {% endif %}">
+
+                <div class="mb-3 text-muted">
+                  These are the default validators you can use in your workflows. 
+                  Click 'view' to learn more about how each validator works.
+                  Don't see what you need? <a href="mailto:sales@mcquilleninteractive.com">Let us help</a>.
+                </div>
+                {% include "validations/library/partials/validator_library_list.html" with validators=system_validators layout=current_layout can_manage_validators=can_manage_validators empty_message=_("No system validators are registered.") empty_cta_url=None empty_cta_label=None %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock app_content %}
+
+{% block modal %}
+  {{ block.super }}
+  {% if can_manage_validators %}
+    {% include "validations/library/partials/modal_validator_create.html" %}
+  {% endif %}
+{% endblock modal %}

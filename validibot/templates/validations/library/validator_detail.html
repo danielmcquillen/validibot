@@ -1,0 +1,168 @@
+{% extends "app_base.html" %}
+
+{% load i18n core_tags static %}
+
+{% block title %}
+  {{ validator.name }} · {% trans "Validator Library" %}
+{% endblock title %}
+
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+
+{% block app_content %}
+
+  <div id="validator-detail" class="container-fluid">
+
+    <div class="app-content-header-bar row align-items-center">
+      <div class="app-content-header col-12 col-lg-8 d-flex align-items-start mb-2 mb-lg-0">
+        {% if has_hero %}
+          <div class="app-page-title h3 mb-0 text-body" aria-hidden="true">
+            <i class="bi {{ validator.display_icon }} me-2"></i>
+            {{ validator.name }}
+          </div>
+        {% else %}
+          <h1 class="app-page-title">
+            <i class="bi {{ validator.display_icon }} me-2"></i>
+            {{ validator.name }}
+          </h1>
+        {% endif %}
+      </div>
+      {% if can_edit_validator %}
+        <div class="col-12 col-lg-4 d-flex justify-content-lg-end mt-3 mt-lg-0 gap-2">
+          <a class="btn btn-secondary"
+             href="{% org_url 'validations:custom_validator_update' slug=validator.slug %}">
+            <i class="bi bi-gear me-1"></i>
+            {% trans "Edit Validator Settings" %}
+          </a>
+          <a href="{% org_url 'validations:custom_validator_delete' slug=validator.slug %}"
+             class="btn btn-danger">
+            <i class="bi bi-trash me-1"></i>
+            {% trans "Delete" %}
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if validator.validation_type == 'FMI' and validator.fmu_model %}
+      <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{% trans "FMU Probe Status" %}:</strong>
+          <span class="badge text-bg-secondary">
+            {{ probe_result.status|default:"PENDING" }}
+          </span>
+          {% if probe_result.last_error %}
+            <span class="ms-2 text-danger">{{ probe_result.last_error }}</span>
+          {% endif %}
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-secondary"
+                  hx-post="{% org_url 'validations:fmi_probe_start' pk=validator.pk %}"
+                  hx-trigger="click"
+                  hx-target="#probe-status"
+                  hx-swap="outerHTML">
+            <i class="bi bi-play-circle me-1"></i>
+            {% trans "Run Probe" %}
+          </button>
+          <button class="btn btn-secondary"
+                  hx-get="{% org_url 'validations:fmi_probe_status' pk=validator.pk %}"
+                  hx-trigger="click"
+                  hx-target="#probe-status"
+                  hx-swap="outerHTML">
+            <i class="bi bi-arrow-clockwise me-1"></i>
+            {% trans "Refresh Status" %}
+          </button>
+        </div>
+      </div>
+      <div id="probe-status" class="d-none">
+      </div>
+    {% endif %}
+
+    {# If this is a system validator, we show a description block #}
+    {% if validator.is_system %}
+
+      <div class="validator-hero mb-4">
+        <div class="validator-hero__bg"
+             style="background-image: url('{% static 'validations/images/validator_cards/'|add:validator.card_image_name %}')">
+        </div>
+        <div class="validator-hero-content">
+          <div class="validator-hero-title">
+            {{ validator.name }}
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="card-title mb-0">
+            {% trans "Description" %}
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-12 col-lg-6">
+              {{ validator.description|safe }}
+            </div>
+            <div class="col-12 col-lg-6">
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    {% endif %}
+
+    <div class="row g-4">
+      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+        {% include 'validations/library/partials/validator_signals_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix can_manage_validators=can_manage_validators can_edit_validator=can_edit_validator show_output_tab=show_output_tab active_signals_tab=active_signals_tab %}
+      </div>
+      <div class="col-12 col-lg-6 d-flex flex-column flex-grow-1">
+        <div class="card app-card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-title mb-0">
+              {% trans "Default Assertions" %}
+            </div>
+            {% if can_edit_validator %}
+              <button class="btn btn-sm btn-secondary"
+                      data-bs-toggle="modal"
+                      data-bs-target="#modal-rule-create">
+                <i class="bi bi-plus me-1"></i>{% trans "Add default assertion" %}
+              </button>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% include 'validations/library/partials/validator_default_assertions_card.html' with assertions=validator_default_assertions can_edit_validator=can_edit_validator %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="d-flex flex-wrap gap-2 mt-3 mb-3 container-fluid">
+    <a href="{% org_url 'validations:validation_library' %}{% if return_tab %}?tab={{ return_tab }}{% endif %}"
+       class="btn btn-secondary">
+      <i class="bi bi-arrow-left me-1"></i>
+      {% trans "Back to Validator Library" %}
+    </a>
+  </div>
+  {# Signal detail modals - available for all users #}
+  {% for entry in catalog_display.inputs %}
+    {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+  {% endfor %}
+  {% if show_output_tab %}
+    {% for entry in catalog_display.outputs %}
+      {% include "validations/library/partials/signal_detail_modal.html" with signal=entry entry_id=entry.id %}
+    {% endfor %}
+  {% endif %}
+
+  {% if can_edit_validator %}
+    {% include "validations/library/partials/modal_signal_create.html" with modal_id="modal-signal-create" modal_title=_("Add Signal") modal_form=signal_create_form %}
+    {% include "validations/library/partials/modal_rule_create.html" %}
+    {% for entry_id, payload in signal_edit_forms.items %}
+      {% include "validations/library/partials/modal_signal_edit.html" with entry_id=entry_id form=payload.form modal_title=payload.title %}
+    {% endfor %}
+    {% for rule_id, form in default_assertion_edit_forms.items %}
+      {% include "validations/library/partials/modal_rule_edit.html" with rule_id=rule_id form=form %}
+    {% endfor %}
+  {% endif %}
+{% endblock app_content %}

@@ -1,0 +1,16 @@
+{% load i18n core_tags %}
+
+<p class="text-muted mb-2">
+    {% trans "No assertions have been added yet." %}
+</p>
+{% if can_manage_assertions %}
+    <button class="btn btn-secondary"
+            data-bs-toggle="modal"
+            data-bs-target="#workflowAssertionModal"
+            hx-get="{% org_url 'workflows:workflow_step_assertion_create' workflow.pk step.pk %}"
+            hx-target="#workflow-assertion-modal-content"
+            hx-trigger="click">
+        <i class="bi bi-plus me-1"></i>
+        {% trans "Create the first assertion" %}
+    </button>
+{% endif %}

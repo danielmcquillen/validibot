@@ -1,0 +1,49 @@
+# General
+# ------------------------------------------------------------------------------
+# Set to "yes" when running in Docker containers, "no" when running Django directly
+# on your machine. Docker Compose uses "yes".
+USE_DOCKER=yes
+IPYTHONDIR=/app/.ipython
+
+# Redis
+# ------------------------------------------------------------------------------
+# Redis URL for Celery task queue. In Docker Compose, "redis" is the container hostname.
+REDIS_URL=redis://redis:6379/0
+
+# Celery Flower (optional)
+# ------------------------------------------------------------------------------
+# Credentials for the Celery Flower monitoring UI (http://localhost:5555)
+# Only needed if you want to monitor Celery tasks via the web UI.
+# For local development, simple defaults are fine.
+CELERY_FLOWER_USER=debug
+CELERY_FLOWER_PASSWORD=debug
+
+# Default Superuser
+# ------------------------------------------------------------------------------
+# Created automatically by the `setup_validibot` management command.
+# Change these before running setup for the first time.
+SUPERUSER_USERNAME=admin
+SUPERUSER_PASSWORD=!!!SET SUPERUSER_PASSWORD!!!
+SUPERUSER_EMAIL=admin@example.com
+SUPERUSER_NAME=Admin
+
+# Email (optional)
+# ------------------------------------------------------------------------------
+# If not set, emails are printed to the console (useful for local development).
+# To test actual email delivery, get a token from an email service provider. 
+# Postmark (recommended):
+# POSTMARK_SERVER_TOKEN=your-postmark-server-token
+
+# Feature Toggles
+# ------------------------------------------------------------------------------
+# Show the sign up page (set to false to disable new registrations)
+DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
+# Allow users to log in (can be false while allowing existing users to stay logged in)
+DJANGO_ACCOUNT_ALLOW_LOGIN=true
+
+# Workflow Configuration
+# ------------------------------------------------------------------------------
+# How often (in seconds) the run-detail page polls for status updates via HTMX.
+# Lower = more responsive UI but more server requests.
+# Higher = fewer requests but slower feedback.
+WORKFLOW_RUN_POLL_INTERVAL_SECONDS=3

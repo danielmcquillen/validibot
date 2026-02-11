@@ -1,0 +1,288 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+# ==== Project metadata ====
+
+[project]
+name = "validibot"
+version = "0.1.0"
+description = "A simple data validation service"
+requires-python = ">=3.13"
+license = { text = "AGPL-3.0-only" }
+authors = [
+  { name = "Daniel McQuillen", email = "daniel@mcquilleninteractive.com" },
+  { name = "McQuillen Interactive Pty. Ltd." },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: Django :: 6.0",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+]
+keywords = ["validibot", "validation", "django", "data-validation"]
+
+dependencies = [
+  "argon2-cffi==25.1.0",
+  "authlib==1.6.7",
+  "bleach==6.3.0",
+  "cel-python==0.5.0",
+  "crispy-bootstrap5==2025.6",
+  "cryptography==46.0.5",
+  "defusedxml==0.7.1",
+  "django==6.0.2",
+  "django-allauth[mfa]==65.14.1",
+  "django-anymail[postmark]==14.0",
+  "django-cloud-tasks>=0.0.4",
+  "django-cors-headers==4.9.0",
+  "django-crispy-forms==2.5",
+  "django-environ==0.12.0",
+  "django-filter==25.2",
+  "django-markdownify==0.9.6",
+  "django-model-utils==5.0.0",
+  "django-redis==6.0.0",
+  "django-storages[google]==1.14.6",
+  "djangorestframework==3.16.1",
+  "drf-spectacular[sidecar]==0.29.0",
+  "fmpy==0.3.27",
+  "google-cloud-kms>=3.10.0",
+  "google-cloud-tasks>=2.21.0",
+  "gunicorn==25.0.3",
+  "hiredis==3.3.0",
+  "httpx>=0.28.1",
+  "jsonschema==4.26.0",
+  "lxml==6.0.2",
+  "markdown2==2.5.4",
+  "nh3==0.3.2",
+  "pillow==12.1.0",
+  "psycopg[c]==3.3.2",
+  "pydantic==2.12.5",
+  "python-slugify==8.0.4",
+  "redis>=4.0,<7.0",
+  "sentry-sdk==2.52.0",
+  # Task queue: Celery with Redis broker and periodic scheduling
+  "celery[redis]>=5.6.2",
+  # django-celery-beat: Using Git until Django 6.0 support is released
+  # See: https://github.com/celery/django-celery-beat/issues/977
+  "django-celery-beat",
+  "uvicorn-worker==0.4.0",
+  "uvicorn[standard]==0.40.0",
+  "whitenoise==6.11.0",
+  "google-cloud-run>=0.15.0",
+  "python-json-logger>=4.0.0",
+  "django-recaptcha>=4.1.0",
+  # Docker SDK for Docker Compose deployments (runs validator containers locally)
+  "docker>=7.1.0",
+  # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
+  # Installed from Git via [tool.uv.sources] below.
+  "validibot-shared",
+]
+
+[project.urls]
+Homepage = "https://validibot.com"
+Documentation = "https://validibot.com/resources/docs/"
+Repository = "https://github.com/danielmcquillen/validibot"
+
+# ==== pytest ====
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--ds=config.settings.test --reuse-db --import-mode=importlib -m 'not smoke'"
+python_files = ["tests.py", "test_*.py"]
+testpaths = [
+  "tests",
+  "validibot",
+]
+markers = [
+  "integration: marks tests as integration (may require platform-specific binaries)",
+  "smoke: marks tests as smoke tests (run with -m smoke, skipped by default)",
+]
+
+# ignore test_use_cases
+norecursedirs = [
+  "tests/tests_integration",  # We run these manually
+]
+
+# ==== Coverage ====
+[tool.coverage.run]
+include = ["validibot/**"]
+omit = [
+  "*/migrations/*",
+  "*/tests/*",
+]
+plugins = ["django_coverage_plugin"]
+
+# ==== mypy ====
+[tool.mypy]
+python_version = "3.13"
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+
+[[tool.mypy.overrides]]
+# Django migrations should not produce any errors:
+module = "*.migrations.*"
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+# ==== djLint ====
+[tool.djlint]
+blank_line_after_tag = "load,extends"
+close_void_tags = true
+format_css = true
+format_js = true
+# TODO: remove T002 when fixed https://github.com/djlint/djLint/issues/687
+ignore = "H006,H030,H031,T002"
+include = "H017,H035"
+indent = 2
+max_line_length = 119
+profile = "django"
+
+[tool.djlint.css]
+indent_size = 2
+
+[tool.djlint.js]
+indent_size = 2
+
+[tool.ruff]
+target-version = "py313"
+# Exclude a variety of commonly ignored directories.
+extend-exclude = ["*/migrations/*.py", "staticfiles/*"]
+
+[tool.ruff.lint]
+select = [
+  "F",
+  "E",
+  "W",
+  "C90",
+  "I",
+  "N",
+  "UP",
+  "YTT",
+  # "ANN", # flake8-annotations: we should support this in the future but 100+ errors atm
+  "ASYNC",
+  "S",
+  "BLE",
+  "FBT",
+  "B",
+  "A",
+  "COM",
+  "C4",
+  "DTZ",
+  "T10",
+  "DJ",
+  "EM",
+  "EXE",
+  "FA",
+  'ISC',
+  "ICN",
+  "G",
+  'INP',
+  'PIE',
+  "T20",
+  'PYI',
+  'PT',
+  "Q",
+  "RSE",
+  "RET",
+  "SLF",
+  "SLOT",
+  "SIM",
+  "TID",
+  "TC",
+  "INT",
+  # "ARG", # Unused function argument
+  "PTH",
+  "ERA",
+  "PD",
+  "PGH",
+  "PL",
+  "TRY",
+  "FLY",
+  # "NPY",
+  # "AIR",
+  "PERF",
+  # "FURB",
+  # "LOG",
+  "RUF",
+]
+ignore = [
+  "S101",   # Use of assert detected https://docs.astral.sh/ruff/rules/assert/
+  "RUF012", # Mutable class attributes should be annotated with `typing.ClassVar`
+  "SIM102", # sometimes it's better to nest
+  # of types for comparison.
+  # Deactivated because it can make the code slow:
+  # https://github.com/astral-sh/ruff/issues/7871
+  "TRY003",  # Use of bare except
+  "EM102",
+  "PT009",   # don't comment about tests using assertEqual etc
+  "RET504",  #Unnecessary assignment to `filename` before `return` statement
+  "ERA001",  # We want to put code in comments
+  "C901",    # 'Function is too complex' ... I want to have some functions that have more than 6 args.
+  "PLR0913", # Function has too many arguments (14/10)
+  "BLE001",  #We want blind exceptions
+  "PLR0912", # Too many branches (13/12)
+  "PLR0911", # Too many statements (50/50)
+  "EM101",   # Allow use of 'print' function
+  "W293",    # blank line contains whitespace
+  "W291",    # trailing whitespace
+  "PLR0915", # Too many statements in a class (112/100)
+  "RUF059",  # Allow use of dataclass with mutable default values
+  "PLC0415", # Allow imports in places other than top of file
+  "C416",    # Allow Unnecessary dict comprehension (rewrite using `dict()`)
+  "COM812",  # Allow Trailing comma missing
+  "PERF401", # Allow use of list comprehensions that could be replaced with generator expressions
+  "G004",    # Allow f-strings in logging statements
+  "SLF001",  # Allow private member access across modules
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+# ==== uv source overrides ====
+[tool.uv.sources]
+# validibot-shared: Install from Git
+validibot-shared = { git = "https://github.com/danielmcquillen/validibot-shared" }
+# django-celery-beat: Install from Git with Django 6.0 support until released
+# PR: https://github.com/celery/django-celery-beat/pull/978
+django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev = "bd429063cbb227c00905e7693c38895e44ff8e47" }
+
+[dependency-groups]
+dev = [
+  # Testing
+  "coverage==7.13.3",
+  "django-coverage-plugin==3.2.0",
+  "factory-boy==3.3.3",
+  "pytest==9.0.2",
+  "pytest-django==4.11.1",
+  "pytest-sugar==1.1.1",
+  "selenium==4.40.0",
+  # Linting and formatting
+  "djlint==1.36.4",
+  "pre-commit==4.5.1",
+  "ruff==0.15.0",
+  # Type checking
+  "django-stubs[compatible-mypy]==5.2.9",
+  "djangorestframework-stubs==3.16.7",
+  "mypy==1.19.1",
+  # Debugging and development utilities
+  "django-debug-toolbar==6.2.0",
+  "django-extensions==4.1",
+  "ipdb==0.13.13",
+  "watchfiles==1.1.1",
+  "werkzeug[watchdog]==3.1.5",
+  # Documentation
+  "mkdocs==1.6.1",
+  "mkdocs-material==9.7.1",
+  "mkdocs-print-site-plugin==2.8",
+]

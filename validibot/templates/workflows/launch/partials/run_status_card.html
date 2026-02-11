@@ -1,0 +1,96 @@
+{% load i18n humanize core_tags %}
+
+<div id="workflow-launch-run-status-card"
+     {% if active_run and run_in_progress and run_detail_refresh_url %}
+       hx-get="{{ run_detail_refresh_url }}" hx-trigger="every {{ poll_interval_seconds|default:3 }}s" hx-target="#workflow-run-detail-panel" hx-swap="innerHTML"
+     {% endif %}
+     class="card app-card launch-status-card">
+
+  {# CARD HEADER #}
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div>
+      <span class="fw-semibold">
+        {% if run.status in polling_statuses %}
+          {% trans "Run in progress" %}
+        {% elif run.status == "SUCCEEDED" %}
+          {% trans "Run complete" %}
+        {% elif run.status == "FAILED" %}
+          {% trans "Run failed" %}
+        {% elif run.status == "CANCELED" %}
+          {% trans "Run canceled" %}
+        {% else %}
+          {{ run.get_status_display }}
+        {% endif %}
+      </span>
+    </div>
+    {% if is_polling %}
+      <div class="text-muted small">
+        started {{ run.created|naturaltime }}
+      </div>
+    {% endif %}
+  </div>
+
+  {# CARD BODY #}
+  {% if is_polling %}
+    {% include "workflows/launch/partials/run_status_card_body_polling.html" %}
+  {% else %}
+    {% include "workflows/launch/partials/run_status_card_body_complete.html" %}
+  {% endif %}
+
+  {# CARD FOOTER #}
+  <div class="card-footer text-muted small">
+    {% if is_polling %}
+      {% if cancel_url %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="text-muted small">
+            {% trans "Refreshing automatically…" %}
+          </div>
+          <div>
+            <button class="btn btn-danger"
+                    type="button"
+                    hx-post="{{ cancel_url }}"
+                    hx-target="#workflow-run-detail-panel"
+                    hx-swap="innerHTML"
+                    hx-confirm="{% trans 'Cancel this workflow run?' %}"
+                    hx-disabled-elt="this">
+              {% trans "Cancel workflow" %}
+            </button>
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted small">
+          {% trans "Refreshing automatically…" %}
+        </div>
+      {% endif %}
+    {% elif run.status == "CANCELED" %}
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="text-muted small">
+          {% trans "This run was canceled." %}
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-secondary"
+             href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
+            {% trans "Back to launch" %}
+          </a>
+          <a class="btn btn-secondary"
+             href="{% if previous_runs_url %}{{ previous_runs_url }}{% else %}{% org_url 'workflows:workflow_validation_list' pk=workflow.pk %}{% endif %}">
+            {% trans "View previous runs" %}
+          </a>
+        </div>
+      </div>
+    {% else %}
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+        <a class="btn btn-success"
+           href="{% if launch_url %}{{ launch_url }}{% else %}{% org_url 'workflows:workflow_launch' pk=workflow.pk %}{% endif %}">
+          {% trans "Launch again" %}
+        </a>
+        <a class="btn btn-secondary"
+           href="{% if detail_url %}{{ detail_url }}{% else %}{% org_url 'validations:validation_detail' pk=run.pk %}{% endif %}">
+          <i class="bi-box-arrow-up-right me-1"></i>
+          {% trans "View full run" %}
+        </a>
+      </div>
+    {% endif %}
+  </div>
+
+</div>

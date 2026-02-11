@@ -1,0 +1,52 @@
+title: "[Question] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your question! Please fill out the sections below to help us understand your situation.
+
+        **Before posting**, please check:
+        - [ ] I've searched existing discussions for similar questions
+        - [ ] I've checked the [documentation](https://docs.validibot.com/)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you already tried?
+      placeholder: I'm trying to set up a workflow that...
+
+  - type: input
+    id: version
+    attributes:
+      label: Validibot Version
+      description: Run `docker compose exec web python manage.py version` or check your deployment
+      placeholder: "1.0.0"
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Type
+      options:
+        - Docker Compose
+        - Kubernetes
+        - Cloud Run (GCP)
+        - Local development
+        - Other
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any logs, configuration, or other details that might help

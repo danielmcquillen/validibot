@@ -1,0 +1,5 @@
+{% load i18n core_tags %}
+
+<div class="col" id="workflow-item-wrapper-{{ workflow.pk }}">
+  {% include "workflows/partials/components/workflow_card.html" with workflow=workflow show_archived=show_archived current_layout=current_layout %}
+</div>

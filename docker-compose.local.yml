@@ -1,0 +1,155 @@
+
+volumes:
+  validibot_local_postgres_data:
+  validibot_local_postgres_backups:
+  validibot_local_venv:  # Shared venv for web and worker containers
+  validibot_local_redis_data:
+  validibot_local_storage:  # Shared storage for validation files
+
+networks:
+  validibot:
+    driver: bridge
+
+services:
+  web: &django
+    # Web app serving user-facing traffic (runserver on 8000)
+    # This is the ONLY container that runs migrations
+    build:
+      context: .
+      dockerfile: compose/local/django/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - validibot
+    volumes:
+      - validibot_local_venv:/app/.venv
+      - .:/app
+      # Shared storage volume for validation files (accessible by validator containers)
+      - validibot_local_storage:/app/storage
+      # Docker socket for spawning validator containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - .envs/.local/.django
+      - .envs/.local/.postgres
+    environment:
+      # Configure advanced validator runner for local Docker
+      - VALIDATOR_RUNNER=docker
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
+      # Named volume for advanced validator containers to access storage
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      # Storage root inside the container
+      - DATA_STORAGE_ROOT=/app/storage/private
+      - SITE_URL=http://web:8000
+    ports:
+      - "8000:8000"
+    healthcheck:
+      # Check that Django is responding (migrations complete, server running)
+      # Uses root URL - any response (even redirect to login) means Django is up
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/", "-o", "/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    command: /start
+
+  worker:
+    # Worker processes background tasks from the Redis queue
+    # For Docker Compose: this is a Celery worker that pulls tasks from Redis
+    # For GCP/AWS: this would be a Django HTTP server receiving tasks via Cloud Tasks/SQS
+    <<: *django
+    depends_on:
+      web:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "--loglevel=info", "--concurrency=1"]
+    ports: []
+    healthcheck:
+      # Celery worker health check - verify process is running
+      # Using pgrep instead of celery inspect which can be slow/flaky
+      test: ["CMD-SHELL", "pgrep -f 'celery.*worker' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    environment:
+      - APP_ROLE=worker
+      - VALIDATOR_RUNNER=docker
+      # Advanced validators run with no network by default (most secure)
+      # Uncomment to enable network access if validators need external URLs:
+      # - VALIDATOR_NETWORK=validibot_validibot
+      - VALIDATOR_STORAGE_VOLUME=validibot_validibot_local_storage
+      - VALIDATOR_STORAGE_MOUNT_PATH=/app/storage
+      - DATA_STORAGE_ROOT=/app/storage/private
+      - SITE_URL=http://web:8000
+
+  scheduler:
+    # Celery Beat scheduler triggers periodic tasks on cron schedules
+    # Tasks include: purge expired data, cleanup sessions, etc.
+    # Only run ONE scheduler instance to avoid duplicate executions
+    <<: *django
+    depends_on:
+      web:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+    ports: []
+    environment:
+      - APP_ROLE=scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    # Local Postgres for app data
+    build:
+      context: .
+      dockerfile: compose/production/postgres/Dockerfile
+    networks:
+      - validibot
+    env_file:
+      - .envs/.local/.postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "validibot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_postgres_data:/var/lib/postgresql/data
+      - validibot_local_postgres_backups:/backups
+
+  redis:
+    # Redis for Celery task queue broker
+    image: redis:7-alpine
+    networks:
+      - validibot
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - validibot_local_redis_data:/data
+
+  mailpit:
+    # Local SMTP capture for testing email
+    image: docker.io/axllent/mailpit:latest
+    networks:
+      - validibot
+    ports:
+      - "8025:8025"

@@ -1,0 +1,27 @@
+.workflow-card {
+  &.archived {
+    .card-body, .card-footer {
+      background-color: #f8f9fa;
+      border-color: #dee2e6;
+    }
+  }
+
+  dl {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 0;
+    margin-bottom: 0.3rem;
+    dt {
+      font-size: 0.9rem;
+      font-weight: normal;
+      min-width: 5rem;
+    }
+    dd {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: normal;
+    }
+  }
+}

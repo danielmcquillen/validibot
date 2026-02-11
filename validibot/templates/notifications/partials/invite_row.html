@@ -1,0 +1,59 @@
+{% load i18n %}
+
+{# Determine which invite type this notification refers to #}
+{% if notification.member_invite %}
+  {% with invite=notification.member_invite invite_type="member" %}
+    {% include "notifications/partials/_invite_alert.html" %}
+  {% endwith %}
+{% elif notification.guest_invite %}
+  {% with invite=notification.guest_invite invite_type="guest" %}
+    {% include "notifications/partials/_invite_alert.html" %}
+  {% endwith %}
+{% elif notification.workflow_invite %}
+  {% with invite=notification.workflow_invite invite_type="workflow" %}
+    {% include "notifications/partials/_invite_alert.html" %}
+  {% endwith %}
+{% else %}
+  {# Generic notification without invite #}
+  <div class="alert alert-info border alert-dismissible fade show d-flex justify-content-between align-items-start"
+       role="alert">
+    <div>
+      <div class="fw-semibold mb-1">
+        {% trans "Notification" %}
+      </div>
+      <div class="text-muted small">
+        {% if notification.org %}
+          {% trans "Organization:" %} {{ notification.org.name }}
+        {% endif %}
+      </div>
+      <div class="text-muted small">
+        {{ notification.created_at|date:"Y-m-d H:i" }}
+      </div>
+      {% if notification.payload.message %}
+        <div class="mt-2">{{ notification.payload.message }}</div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2 align-items-start">
+      {% if notification and notification.can_dismiss and not notification.dismissed_at %}
+        <form method="post"
+              hx-post="{% url 'notifications:notification-dismiss' notification.pk %}"
+              hx-target="closest .alert"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          {% if show_dismissed %}
+            <input type="hidden" name="show_dismissed" value="on" />
+          {% endif %}
+          <button type="submit"
+                  class="btn-close"
+                  aria-label="{% trans 'Dismiss' %}"
+                  title="{% trans 'Dismiss notification' %}">
+          </button>
+        </form>
+      {% elif notification and notification.dismissed_at %}
+        <span class="text-muted small fst-italic">
+          {% trans "(notification dismissed)" %}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

@@ -239,6 +239,13 @@ class DockerValidatorRunner(ValidatorRunner):
             "detach": True,  # Still detach to get container object
             "mem_limit": self.memory_limit,
             "nano_cpus": int(float(self.cpu_limit) * 1e9),
+            # Security hardening: drop all Linux capabilities (containers
+            # don't need any for reading/writing files via shared storage)
+            "cap_drop": ["ALL"],
+            # Prevent privilege escalation via setuid/setgid binaries
+            "security_opt": ["no-new-privileges:true"],
+            # Prevent fork bombs from exhausting the host PID space
+            "pids_limit": 512,
         }
 
         if volumes:

@@ -261,7 +261,7 @@ django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev
 [dependency-groups]
 dev = [
   # Testing
-  "coverage==7.13.3",
+  "coverage==7.13.4",
   "django-coverage-plugin==3.2.0",
   "factory-boy==3.3.3",
   "pytest==9.0.2",
@@ -274,7 +274,7 @@ dev = [
   "ruff==0.15.0",
   # Type checking
   "django-stubs[compatible-mypy]==5.2.9",
-  "djangorestframework-stubs==3.16.7",
+  "djangorestframework-stubs==3.16.8",
   "mypy==1.19.1",
   # Debugging and development utilities
   "django-debug-toolbar==6.2.0",

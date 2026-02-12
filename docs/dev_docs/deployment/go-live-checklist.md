@@ -13,7 +13,7 @@ This checklist covers tasks to complete before launching Validibot to production
   The `db-f1-micro` tier (0.6 GB RAM) is suitable for development but not production. Upgrade to `db-g1-small` (1.7 GB RAM) before go-live.
 
   ```bash
-  gcloud sql instances patch validibot-db \
+  gcloud sql instances patch $GCP_APP_NAME-db \
     --tier=db-g1-small
   ```
 
@@ -26,7 +26,7 @@ This checklist covers tasks to complete before launching Validibot to production
   HA provides automatic failover with a standby replica. Doubles cost but provides SLA coverage.
 
   ```bash
-  gcloud sql instances patch validibot-db \
+  gcloud sql instances patch $GCP_APP_NAME-db \
     --availability-type=regional
   ```
 
@@ -37,7 +37,7 @@ This checklist covers tasks to complete before launching Validibot to production
 - [ ] **Remove public IP from Cloud SQL** (if using Cloud SQL Auth Proxy or Private IP)
 
   ```bash
-  gcloud sql instances patch validibot-db \
+  gcloud sql instances patch $GCP_APP_NAME-db \
     --no-assign-ip
   ```
 
@@ -84,7 +84,7 @@ This checklist covers tasks to complete before launching Validibot to production
 - [ ] **Verify automated backups** are configured and tested
 
   ```bash
-  gcloud sql instances describe validibot-db --format="value(settings.backupConfiguration)"
+  gcloud sql instances describe $GCP_APP_NAME-db --format="value(settings.backupConfiguration)"
   ```
 
 - [ ] **Test backup restoration** procedure
@@ -94,7 +94,7 @@ This checklist covers tasks to complete before launching Validibot to production
 - [ ] **Configure backup retention** (default is 7 days, consider longer)
 
   ```bash
-  gcloud sql instances patch validibot-db \
+  gcloud sql instances patch $GCP_APP_NAME-db \
     --retained-backups-count=14
   ```
 
@@ -110,7 +110,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
 
   ```bash
   gcloud beta run domain-mappings create \
-    --service validibot-web \
+    --service $GCP_APP_NAME-web \
     --domain validibot.com \
     --region $GCP_REGION \
     --project $GCP_PROJECT_ID
@@ -137,7 +137,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   This can take 15-60 minutes after DNS propagates.
 
   ```bash
-  gcloud compute ssl-certificates describe validibot-cert --global
+  gcloud compute ssl-certificates describe $GCP_APP_NAME-cert --global
   ```
 
 - [ ] **Lock down direct `*.run.app` access (optional)**
@@ -145,7 +145,7 @@ Choose one of the two approaches below. See the [deployment guide](../google_clo
   Once the domain works, restrict the Cloud Run web service so only the load balancer can reach it:
 
   ```bash
-  gcloud run services update validibot-web \
+  gcloud run services update $GCP_APP_NAME-web \
     --ingress internal-and-cloud-load-balancing \
     --region us-west1
   ```

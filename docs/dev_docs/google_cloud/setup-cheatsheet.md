@@ -13,12 +13,13 @@ source .envs/.production/.google-cloud/.just
 # Or set manually:
 export GCP_PROJECT_ID="your-project-id"
 export GCP_REGION="us-central1"
+export GCP_APP_NAME="validibot"  # Resource name prefix used for all GCP resources
 
 # Get your project number (used for some IAM bindings):
 export GCP_PROJECT_NUMBER=$(gcloud projects describe $GCP_PROJECT_ID --format="value(projectNumber)")
 ```
 
-Commands in this guide use `$GCP_PROJECT_ID`, `$GCP_REGION`, and `$GCP_PROJECT_NUMBER` as placeholders.
+Commands in this guide use `$GCP_PROJECT_ID`, `$GCP_REGION`, `$GCP_PROJECT_NUMBER`, and `$GCP_APP_NAME` as placeholders.
 
 ## Prerequisites
 
@@ -110,7 +111,7 @@ gcloud services enable \
 Cloud Tasks is available for async orchestration and retries (for example, moving web→worker work off-request). Validator Cloud Run Jobs are triggered directly via the Jobs API today, but we still provision the queue so we can adopt Cloud Tasks where it adds reliability.
 
 ```bash
-gcloud tasks queues create validibot-tasks \
+gcloud tasks queues create $GCP_APP_NAME-tasks \
   --location=$GCP_REGION \
   --project=$GCP_PROJECT_ID
 ```
@@ -126,9 +127,9 @@ gcloud tasks queues list --location=$GCP_REGION
 The Cloud Run service account needs permission to add tasks to the queue:
 
 ```bash
-gcloud tasks queues add-iam-policy-binding validibot-tasks \
+gcloud tasks queues add-iam-policy-binding $GCP_APP_NAME-tasks \
   --location=$GCP_REGION \
-  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
+  --member="serviceAccount:$GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudtasks.enqueuer"
 ```
 
@@ -146,7 +147,7 @@ After completing the above:
 Create a PostgreSQL 17 instance (the latest stable version):
 
 ```bash
-gcloud sql instances create validibot-db \
+gcloud sql instances create $GCP_APP_NAME-db \
   --database-version=POSTGRES_17 \
   --edition=ENTERPRISE \
   --tier=db-f1-micro \
@@ -174,7 +175,7 @@ After creation, create the database and user:
 
 ```bash
 # Create database
-gcloud sql databases create validibot --instance=validibot-db
+gcloud sql databases create validibot --instance=$GCP_APP_NAME-db
 
 # Generate a strong password
 DB_PASSWORD=$(openssl rand -base64 32)
@@ -182,7 +183,7 @@ echo "Save this password: $DB_PASSWORD"
 
 # Create user
 gcloud sql users create validibot_user \
-  --instance=validibot-db \
+  --instance=$GCP_APP_NAME-db \
   --password="$DB_PASSWORD"
 
 # Store password in Secret Manager
@@ -200,11 +201,11 @@ echo -n "$NEW_DB_PASSWORD" | gcloud secrets versions add db-password --data-file
 
 # Apply to the database user
 gcloud sql users set-password validibot_user \
-  --instance=validibot-db \
+  --instance=$GCP_APP_NAME-db \
   --password="$(gcloud secrets versions access latest --secret=db-password)"
 
 # Redeploy Cloud Run services to pick up new secret (after deployment)
-# gcloud run services update validibot-web --region=$GCP_REGION
+# gcloud run services update $GCP_APP_NAME-web --region=$GCP_REGION
 ```
 
 ## Create Artifact Registry
@@ -212,7 +213,7 @@ gcloud sql users set-password validibot_user \
 Create a Docker repository for storing container images:
 
 ```bash
-gcloud artifacts repositories create validibot \
+gcloud artifacts repositories create $GCP_APP_NAME \
   --repository-format=docker \
   --location=$GCP_REGION \
   --description="Validibot Docker images"
@@ -227,7 +228,7 @@ gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
 The image URL format is:
 
 ```
-$GCP_REGION-docker.pkg.dev/PROJECT_ID/validibot/IMAGE_NAME:TAG
+$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_APP_NAME/IMAGE_NAME:TAG
 ```
 
 ## Set Up Secrets
@@ -274,8 +275,8 @@ Note: URL-encode special characters in the password (e.g., `/` becomes `%2F`, `=
 Get the connection name:
 
 ```bash
-gcloud sql instances describe validibot-db --format="value(connectionName)"
-# Returns: $GCP_PROJECT_ID:$GCP_REGION:validibot-db
+gcloud sql instances describe $GCP_APP_NAME-db --format="value(connectionName)"
+# Returns: $GCP_PROJECT_ID:$GCP_REGION:$GCP_APP_NAME-db
 ```
 
 Then upload the env file as a secret:
@@ -318,7 +319,7 @@ When you change `.envs/.production/.google-cloud/.django`, add a new version:
 gcloud secrets versions add django-env --data-file=.envs/.production/.google-cloud/.django
 
 # Then redeploy Cloud Run to pick up changes
-gcloud run services update validibot-web --region=$GCP_REGION
+gcloud run services update $GCP_APP_NAME-web --region=$GCP_REGION
 ```
 
 ### List secrets
@@ -343,7 +344,7 @@ service account with only the permissions needed, following the principle of lea
 ### Create the service account
 
 ```bash
-gcloud iam service-accounts create validibot-cloudrun-prod \
+gcloud iam service-accounts create $GCP_APP_NAME-cloudrun-prod \
   --display-name="Validibot Cloud Run SA (Production)" \
   --description="Service account for Validibot production Cloud Run services" \
   --project $GCP_PROJECT_ID
@@ -362,12 +363,12 @@ The service account needs these roles:
 ```bash
 # Cloud SQL access
 gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
-  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
+  --member="serviceAccount:$GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/cloudsql.client"
 
 # Secret Manager access (required for custom service accounts with --set-secrets)
 gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
-  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
+  --member="serviceAccount:$GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
@@ -380,7 +381,7 @@ gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
 Create a separate service account for staging:
 
 ```bash
-gcloud iam service-accounts create validibot-cloudrun-staging \
+gcloud iam service-accounts create $GCP_APP_NAME-cloudrun-staging \
   --display-name="Validibot Cloud Run SA (Staging)" \
   --project $GCP_PROJECT_ID
 
@@ -393,14 +394,14 @@ Create a Cloud Storage bucket with prefix-based access control:
 
 ```bash
 # Production bucket
-gcloud storage buckets create gs://validibot-storage \
+gcloud storage buckets create gs://$GCP_APP_NAME-storage \
   --location=$GCP_REGION \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
   --project $GCP_PROJECT_ID
 
 # Development bucket
-gcloud storage buckets create gs://validibot-storage-dev \
+gcloud storage buckets create gs://$GCP_APP_NAME-storage-dev \
   --location=$GCP_REGION \
   --default-storage-class=STANDARD \
   --uniform-bucket-level-access \
@@ -411,36 +412,36 @@ gcloud storage buckets create gs://validibot-storage-dev \
 
 ```bash
 # Production SA -> Production bucket (full access)
-gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
-  --member="serviceAccount:validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
+gcloud storage buckets add-iam-policy-binding gs://$GCP_APP_NAME-storage \
+  --member="serviceAccount:$GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 
 # Make public/ prefix publicly readable (for avatars, workflow images)
-gcloud storage buckets add-iam-policy-binding gs://validibot-storage \
+gcloud storage buckets add-iam-policy-binding gs://$GCP_APP_NAME-storage \
   --member="allUsers" \
   --role="roles/storage.objectViewer" \
-  --condition='expression=resource.name.startsWith("projects/_/buckets/validibot-storage/objects/public/"),title=public-prefix-only'
+  --condition='expression=resource.name.startsWith("projects/_/buckets/$GCP_APP_NAME-storage/objects/public/"),title=public-prefix-only'
 
 # Staging SA -> Dev bucket (when staging is set up)
-# gcloud storage buckets add-iam-policy-binding gs://validibot-storage-dev \
-#   --member="serviceAccount:validibot-cloudrun-staging@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
+# gcloud storage buckets add-iam-policy-binding gs://$GCP_APP_NAME-storage-dev \
+#   --member="serviceAccount:$GCP_APP_NAME-cloudrun-staging@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
 #   --role="roles/storage.objectAdmin"
 ```
 
 Bucket structure:
 
 ```
-validibot-storage/
+$GCP_APP_NAME-storage/
 ├── public/      # Publicly readable (avatars, workflow images)
 └── private/     # Private (validation submissions, artifacts)
 ```
 
 Bucket naming:
 
-- `validibot-storage` - Production (public/ and private/ prefixes)
-- `validibot-storage-dev` - Development/staging
+- `$GCP_APP_NAME-storage` - Production (public/ and private/ prefixes)
+- `$GCP_APP_NAME-storage-dev` - Development/staging
 
-The `STORAGE_BUCKET` environment variable in `.envs/.production/.google-cloud/.django` should be set to `validibot-storage`.
+The `STORAGE_BUCKET` environment variable in `.envs/.production/.google-cloud/.django` should be set to `$GCP_APP_NAME-storage`.
 
 ## Build and Push Docker Image
 
@@ -448,7 +449,7 @@ Build the production Docker image:
 
 ```bash
 docker build --platform linux/amd64 -f compose/production/django/Dockerfile \
-  -t $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1 .
+  -t $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_APP_NAME/$GCP_APP_NAME-web:v1 .
 ```
 
 Push to Artifact Registry:
@@ -458,7 +459,7 @@ Push to Artifact Registry:
 gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
 
 # Push image
-docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1
+docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_APP_NAME/$GCP_APP_NAME-web:v1
 ```
 
 ## Deploy to Cloud Run
@@ -466,11 +467,11 @@ docker push $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v
 Deploy the web service with the dedicated service account, secrets, and Cloud SQL connection:
 
 ```bash
-gcloud run deploy validibot-web \
-  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:v1 \
+gcloud run deploy $GCP_APP_NAME-web \
+  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_APP_NAME/$GCP_APP_NAME-web:v1 \
   --region $GCP_REGION \
-  --service-account validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-  --add-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:validibot-db \
+  --service-account $GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+  --add-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:$GCP_APP_NAME-db \
   --set-secrets=/secrets/.env=django-env:latest \
   --min-instances 0 \
   --max-instances 4 \
@@ -491,7 +492,7 @@ gcloud run deploy validibot-web \
 After deployment, get the service URL:
 
 ```bash
-gcloud run services describe validibot-web --region=$GCP_REGION --format="value(status.url)"
+gcloud run services describe $GCP_APP_NAME-web --region=$GCP_REGION --format="value(status.url)"
 ```
 
 ## Running Management Commands
@@ -515,8 +516,8 @@ just gcp setup-data
 just gcp run-command "check_validibot --verbose"
 
 # View job logs
-just gcp job-logs validibot-migrate
-just gcp job-logs validibot-setup
+just gcp job-logs $GCP_APP_NAME-migrate
+just gcp job-logs $GCP_APP_NAME-setup
 ```
 
 ### Manual job creation
@@ -524,11 +525,11 @@ just gcp job-logs validibot-setup
 If you need to run a custom management command:
 
 ```bash
-gcloud run jobs create validibot-manage \
-  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/validibot/validibot-web:latest \
+gcloud run jobs create $GCP_APP_NAME-manage \
+  --image $GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$GCP_APP_NAME/$GCP_APP_NAME-web:latest \
   --region $GCP_REGION \
-  --service-account validibot-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-  --set-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:validibot-db \
+  --service-account $GCP_APP_NAME-cloudrun-prod@$GCP_PROJECT_ID.iam.gserviceaccount.com \
+  --set-cloudsql-instances $GCP_PROJECT_ID:$GCP_REGION:$GCP_APP_NAME-db \
   --set-secrets=/secrets/.env=django-env:latest \
   --memory 1Gi \
   --command "/bin/bash" \
@@ -546,13 +547,13 @@ gcloud run jobs create validibot-manage \
 ### Execute the job
 
 ```bash
-gcloud run jobs execute validibot-manage --region $GCP_REGION --wait
+gcloud run jobs execute $GCP_APP_NAME-manage --region $GCP_REGION --wait
 ```
 
 ### Check job logs
 
 ```bash
-gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=validibot-manage" \
+gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name=$GCP_APP_NAME-manage" \
   --project $GCP_PROJECT_ID \
   --limit 50 \
   --format="table(timestamp,textPayload)"
@@ -565,7 +566,7 @@ To temporarily block public access without deleting the service:
 ### Pause (block public traffic)
 
 ```bash
-gcloud run services update validibot-web \
+gcloud run services update $GCP_APP_NAME-web \
   --region $GCP_REGION \
   --ingress internal \
   --project $GCP_PROJECT_ID
@@ -577,7 +578,7 @@ The service can still scale to zero when idle, so you won't incur compute costs.
 ### Resume (allow public traffic)
 
 ```bash
-gcloud run services update validibot-web \
+gcloud run services update $GCP_APP_NAME-web \
   --region $GCP_REGION \
   --ingress all \
   --project $GCP_PROJECT_ID
@@ -598,10 +599,10 @@ Key values you'll need:
 | ---------------------- | ------------------------------------------------------------------ |
 | Project ID             | `my-project-123456`                                                |
 | Region                 | `us-central1`                                                      |
-| Cloud SQL Instance     | `validibot-db`                                                     |
-| Cloud SQL Connection   | `my-project-123456:us-central1:validibot-db`                       |
-| Artifact Registry      | `us-central1-docker.pkg.dev/my-project-123456/validibot/`          |
-| Service Account (prod) | `validibot-cloudrun-prod@my-project-123456.iam.gserviceaccount.com`|
+| Cloud SQL Instance     | `$GCP_APP_NAME-db`                                                     |
+| Cloud SQL Connection   | `my-project-123456:us-central1:$GCP_APP_NAME-db`                       |
+| Artifact Registry      | `us-central1-docker.pkg.dev/my-project-123456/$GCP_APP_NAME/`          |
+| Service Account (prod) | `$GCP_APP_NAME-cloudrun-prod@my-project-123456.iam.gserviceaccount.com`|
 | Secrets                | `django-env`, `db-password`                                        |
-| GCS Bucket (prod)      | `my-validibot-storage` (with public/ and private/ prefixes)        |
-| Cloud Tasks Queue      | `validibot-tasks`                                                  |
+| GCS Bucket (prod)      | `$GCP_APP_NAME-storage` (with public/ and private/ prefixes)        |
+| Cloud Tasks Queue      | `$GCP_APP_NAME-tasks`                                                  |

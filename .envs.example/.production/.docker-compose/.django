@@ -93,6 +93,14 @@ DJANGO_ADMIN_URL=admin/
 # SSL redirect (set to false if your reverse proxy handles SSL)
 DJANGO_SECURE_SSL_REDIRECT=true
 
+# INTERNAL API SECURITY
+# ==============================================================================
+# Shared secret for authenticating requests to internal worker API endpoints.
+# This protects against SSRF attacks from the web container reaching worker
+# endpoints on the same Docker network.
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+WORKER_API_KEY=change-this-to-a-random-secret
+
 # VALIDATOR CONTAINERS
 # ==============================================================================
 # Resource limits for advanced validator containers

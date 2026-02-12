@@ -3393,7 +3393,7 @@ requires-dist = [
     { name = "sentry-sdk", specifier = "==2.52.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.40.0" },
     { name = "uvicorn-worker", specifier = "==0.4.0" },
-    { name = "validibot-shared", git = "https://github.com/danielmcquillen/validibot-shared" },
+    { name = "validibot-shared", specifier = ">=0.2.1" },
     { name = "whitenoise", specifier = "==6.11.0" },
 ]
 
@@ -3424,10 +3424,14 @@ dev = [
 
 [[package]]
 name = "validibot-shared"
-version = "0.2.0"
-source = { git = "https://github.com/danielmcquillen/validibot-shared#582b31fb0ffe34411817d1b0bc9c037e5f5c191d" }
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/b9/c0aa2e195180d60bc39b9222aa3b2db64f6191f4a9a21b69a1e3f0c49034/validibot_shared-0.2.1.tar.gz", hash = "sha256:6d16860285dbcc15a817fc8d6255f225dff28ce89f35a8aa6b6a4cc800e7ca26", size = 21088 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/57/3f30cd94dbff01174d73226918f7ce9976563dccfca207c285e1195a9972/validibot_shared-0.2.1-py3-none-any.whl", hash = "sha256:d98823980ed871c4f9410965a4fa43aad05d3ce4e3739813534275ceeb7e8a44", size = 22185 },
 ]
 
 [[package]]

@@ -59,8 +59,8 @@ For Cloud Run Job tests:
 ```bash
 export GCP_PROJECT_ID=your-project
 export GCS_VALIDATION_BUCKET=your-bucket
-export GCS_ENERGYPLUS_JOB_NAME=validibot-validator-energyplus
-export GCS_FMI_JOB_NAME=validibot-validator-fmi
+export GCS_ENERGYPLUS_JOB_NAME=$GCP_APP_NAME-validator-energyplus
+export GCS_FMI_JOB_NAME=$GCP_APP_NAME-validator-fmi
 export GCP_REGION=us-west1
 ```
 

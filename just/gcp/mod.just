@@ -65,9 +65,14 @@ export PATH := env_var("HOME") + "/google-cloud-sdk/bin:" + env_var("PATH")
 gcp_project := env_var_or_default("GCP_PROJECT_ID", "")
 gcp_region := env_var_or_default("GCP_REGION", "us-central1")
 
+# Application name prefix for all GCP resource names.
+# All resource names follow the pattern: {app_name}-{resource}[-{stage}]
+# Set GCP_APP_NAME in .envs/.production/.google-cloud/.just or your environment.
+app_name := env_var_or_default("GCP_APP_NAME", "validibot")
+
 # Docker image path in Artifact Registry
 # Format: {region}-docker.pkg.dev/{project}/{repository}/{image}
-gcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/validibot/validibot-web"
+gcp_image := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name + "/" + app_name + "-web"
 
 # Cloud Run request timeout (1 hour)
 # Long timeout needed for validator jobs that process large files
@@ -77,7 +82,7 @@ gcp_cloud_run_request_timeout := env_var_or_default("GCP_CLOUD_RUN_TIMEOUT", "36
 gcp_scheduler_timezone := env_var_or_default("GCP_SCHEDULER_TIMEZONE", "UTC")
 
 # Validator container registry path
-validator_repo := gcp_region + "-docker.pkg.dev/" + gcp_project + "/validibot"
+validator_repo := gcp_region + "-docker.pkg.dev/" + gcp_project + "/" + app_name
 
 # Helper to check GCP_PROJECT_ID is set before running commands
 [private]
@@ -102,9 +107,11 @@ git_sha := `git rev-parse --short HEAD`
 # =============================================================================
 #
 # Each stage has its own service account for security isolation:
-#   - validibot-cloudrun-prod@{project}.iam.gserviceaccount.com
-#   - validibot-cloudrun-dev@{project}.iam.gserviceaccount.com
-#   - validibot-cloudrun-staging@{project}.iam.gserviceaccount.com
+#   - {app_name}-cloudrun-prod@{project}.iam.gserviceaccount.com
+#   - {app_name}-cloudrun-dev@{project}.iam.gserviceaccount.com
+#   - {app_name}-cloudrun-staging@{project}.iam.gserviceaccount.com
+#
+# The app_name defaults to "validibot" and can be changed via GCP_APP_NAME.
 #
 # Service accounts have minimal permissions:
 #   - cloudsql.client: Connect to Cloud SQL
@@ -120,9 +127,9 @@ git_sha := `git rev-parse --short HEAD`
 [private]
 _service-account stage:
     @if [ "{{stage}}" = "prod" ]; then \
-        echo "validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"; \
+        echo "{{app_name}}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"; \
     else \
-        echo "validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"; \
+        echo "{{app_name}}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"; \
     fi
 
 # =============================================================================
@@ -175,17 +182,19 @@ deploy stage: _require-gcp-config build push
 
     # Compute environment-specific names
     # Prod keeps 1 instance warm to avoid cold starts; dev/staging scale to zero
+    APP_NAME="{{app_name}}"
+
     if [ "{{stage}}" = "prod" ]; then
-        SERVICE="validibot-web"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SERVICE="${APP_NAME}-web"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
         SECRET="django-env"
         MIN_INSTANCES=1
         MAX_INSTANCES=4
     else
-        SERVICE="validibot-web-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SERVICE="${APP_NAME}-web-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
         MIN_INSTANCES=0
         MAX_INSTANCES=2
@@ -229,16 +238,18 @@ deploy-worker stage: build push
         exit 1
     fi
 
+    APP_NAME="{{app_name}}"
+
     # Compute environment-specific names
     if [ "{{stage}}" = "prod" ]; then
-        SERVICE="validibot-worker"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SERVICE="${APP_NAME}-worker"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
         SECRET="django-env"
     else
-        SERVICE="validibot-worker-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SERVICE="${APP_NAME}-worker-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
     fi
 
@@ -360,11 +371,11 @@ secrets-init stage:
     echo "Created $TARGET_FILE (copy of production)"
     echo ""
     echo "IMPORTANT - Edit the following values for {{stage}}:"
-    echo "  - DATABASE_URL: Update to use validibot-db-{{stage}}"
+    echo "  - DATABASE_URL: Update to use {{app_name}}-db-{{stage}}"
     echo "  - DJANGO_ALLOWED_HOSTS: Add the {{stage}} service URL"
     echo "  - SITE_URL: Set to the {{stage}} web service URL (the *.run.app URL is fine)"
     echo "  - WORKER_URL: Set to the {{stage}} worker service URL (the *.run.app URL)"
-    echo "  - CLOUD_SQL_CONNECTION_NAME: Change to validibot-db-{{stage}}"
+    echo "  - CLOUD_SQL_CONNECTION_NAME: Change to {{app_name}}-db-{{stage}}"
     echo ""
     echo "Next steps:"
     echo "  1. Edit $TARGET_FILE                   # Update stage-specific values"
@@ -380,7 +391,8 @@ secrets-init stage:
 logs stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE" \
         --project {{gcp_project}} \
         --limit 50 \
@@ -391,7 +403,8 @@ logs stage: _require-gcp-config
 logs-follow stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     gcloud logging tail "resource.type=cloud_run_revision AND resource.labels.service_name=$SERVICE" \
         --project {{gcp_project}} \
         --format="table(timestamp,severity,textPayload)"
@@ -402,7 +415,8 @@ logs-follow stage: _require-gcp-config
 pause stage:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     gcloud run services update "$SERVICE" \
         --region {{gcp_region}} \
         --ingress internal \
@@ -414,7 +428,8 @@ pause stage:
 resume stage:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     gcloud run services update "$SERVICE" \
         --region {{gcp_region}} \
         --ingress all \
@@ -426,17 +441,18 @@ resume stage:
 status stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
 
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        WORKER_SERVICE="validibot-worker"
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        WORKER_SERVICE="validibot-worker-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
     echo "Web service:    $WEB_SERVICE"
@@ -469,11 +485,12 @@ status-all:
 open stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     URL=$(gcloud run services describe "$SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
@@ -490,11 +507,12 @@ open stage:
 health-check stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     URL=$(gcloud run services describe "$SERVICE" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
@@ -513,6 +531,7 @@ health-check stage:
 migrate stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     # Validate stage
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
@@ -522,14 +541,14 @@ migrate stage: _require-gcp-config
 
     # Compute environment-specific names
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="validibot-migrate"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        JOB_NAME="${APP_NAME}-migrate"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
         SECRET="django-env"
     else
-        JOB_NAME="validibot-migrate-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        JOB_NAME="${APP_NAME}-migrate-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
     fi
 
@@ -575,6 +594,7 @@ migrate stage: _require-gcp-config
 setup-data stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     # Validate stage
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
@@ -584,14 +604,14 @@ setup-data stage:
 
     # Compute environment-specific names
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="validibot-setup"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        JOB_NAME="${APP_NAME}-setup"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
         SECRET="django-env"
     else
-        JOB_NAME="validibot-setup-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        JOB_NAME="${APP_NAME}-setup-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
     fi
 
@@ -640,6 +660,7 @@ setup-data stage:
 management-cmd stage command:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     # Validate stage
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
@@ -649,14 +670,14 @@ management-cmd stage command:
 
     # Compute environment-specific names
     if [ "{{stage}}" = "prod" ]; then
-        SERVICE="validibot-web"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        SERVICE="${APP_NAME}-web"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
         SECRET="django-env"
     else
-        SERVICE="validibot-web-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
-        DB="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        SERVICE="${APP_NAME}-web-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        DB="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
     fi
 
@@ -718,7 +739,7 @@ management-cmd stage command:
     echo "Command completed on {{stage}}"
 
 # View logs from a Cloud Run job execution
-# Usage: just gcp job-logs validibot-migrate-dev
+# Usage: just gcp job-logs {app_name}-migrate-dev
 job-logs job:
     gcloud logging read "resource.type=cloud_run_job AND resource.labels.job_name={{job}}" \
         --project {{gcp_project}} \
@@ -749,6 +770,7 @@ job-logs job:
 init-stage stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     # Validate stage parameter
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
@@ -763,15 +785,15 @@ init-stage stage:
 
     # Prod uses names without suffix, dev/staging use stage suffix
     if [ "{{stage}}" = "prod" ]; then
-        SA_NAME="validibot-cloudrun-prod"
-        DB_INSTANCE="validibot-db"
+        SA_NAME="${APP_NAME}-cloudrun-prod"
+        DB_INSTANCE="${APP_NAME}-db"
         SECRET_NAME="django-env"
-        QUEUE_NAME="validibot-tasks"
+        QUEUE_NAME="${APP_NAME}-tasks"
     else
-        SA_NAME="validibot-cloudrun-{{stage}}"
-        DB_INSTANCE="validibot-db-{{stage}}"
+        SA_NAME="${APP_NAME}-cloudrun-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
         SECRET_NAME="django-env-{{stage}}"
-        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
     fi
     SA_EMAIL="$SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
 
@@ -912,9 +934,9 @@ init-stage stage:
     # Step 6: Create GCS bucket (single bucket with public/ and private/ prefixes)
     echo "6. Creating GCS bucket"
     if [ "{{stage}}" = "prod" ]; then
-        STORAGE_BUCKET="validibot-storage"
+        STORAGE_BUCKET="${APP_NAME}-storage"
     else
-        STORAGE_BUCKET="validibot-storage-{{stage}}"
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
     fi
 
     if gcloud storage buckets describe "gs://$STORAGE_BUCKET" --project={{gcp_project}} &>/dev/null; then
@@ -949,7 +971,7 @@ init-stage stage:
 
     # Step 7: Grant KMS permissions for credential signing
     echo "7. Granting KMS permissions"
-    KMS_KEYRING="validibot-keys"
+    KMS_KEYRING="${APP_NAME}-keys"
     if [ "{{stage}}" = "prod" ]; then
         KMS_KEY="credential-signing"
     else
@@ -1028,23 +1050,24 @@ init-stage stage:
 list-resources stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     echo "Resources for stage: {{stage}}"
     echo "================================"
     echo ""
 
     if [ "{{stage}}" = "prod" ]; then
-        SERVICE="validibot-web"
-        WORKER="validibot-worker"
-        DB="validibot-db"
+        SERVICE="${APP_NAME}-web"
+        WORKER="${APP_NAME}-worker"
+        DB="${APP_NAME}-db"
         SECRET="django-env"
-        SA="validibot-cloudrun-prod"
+        SA="${APP_NAME}-cloudrun-prod"
     else
-        SERVICE="validibot-web-{{stage}}"
-        WORKER="validibot-worker-{{stage}}"
-        DB="validibot-db-{{stage}}"
+        SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER="${APP_NAME}-worker-{{stage}}"
+        DB="${APP_NAME}-db-{{stage}}"
         SECRET="django-env-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}"
     fi
 
     echo "Cloud Run Services:"
@@ -1071,7 +1094,7 @@ list-resources stage:
 # HTTP endpoint on the worker service using OIDC authentication.
 #
 # Prerequisites:
-#   - Worker service deployed (validibot-worker)
+#   - Worker service deployed ({app_name}-worker)
 #   - Cloud Scheduler API enabled: gcloud services enable cloudscheduler.googleapis.com
 #   - Service account with Cloud Run Invoker role
 #
@@ -1091,6 +1114,7 @@ scheduler-list:
 scheduler-setup stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1099,12 +1123,12 @@ scheduler-setup stage:
 
     # Compute stage-specific values
     if [ "{{stage}}" = "prod" ]; then
-        WORKER_SERVICE="validibot-worker"
-        SCHEDULER_SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        SCHEDULER_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
         JOB_SUFFIX=""
     else
-        WORKER_SERVICE="validibot-worker-{{stage}}"
-        SCHEDULER_SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        SCHEDULER_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
         JOB_SUFFIX="-{{stage}}"
     fi
 
@@ -1170,42 +1194,42 @@ scheduler-setup stage:
 
     # Job 1: Clear expired sessions (daily at 2 AM)
     create_or_update_job \
-        "validibot-clear-sessions${JOB_SUFFIX}" \
+        "${APP_NAME}-clear-sessions${JOB_SUFFIX}" \
         "0 2 * * *" \
         "/api/v1/scheduled/clear-sessions/" \
         "Clear expired Django sessions ({{stage}})"
 
     # Job 2: Cleanup idempotency keys (daily at 3 AM)
     create_or_update_job \
-        "validibot-cleanup-idempotency-keys${JOB_SUFFIX}" \
+        "${APP_NAME}-cleanup-idempotency-keys${JOB_SUFFIX}" \
         "0 3 * * *" \
         "/api/v1/scheduled/cleanup-idempotency-keys/" \
         "Delete expired API idempotency keys - 24h TTL ({{stage}})"
 
     # Job 3: Cleanup callback receipts (weekly Sunday at 4 AM)
     create_or_update_job \
-        "validibot-cleanup-callback-receipts${JOB_SUFFIX}" \
+        "${APP_NAME}-cleanup-callback-receipts${JOB_SUFFIX}" \
         "0 4 * * 0" \
         "/api/v1/scheduled/cleanup-callback-receipts/" \
         "Delete old validator callback receipts - 30 day retention ({{stage}})"
 
     # Job 4: Purge expired submissions (hourly at :00)
     create_or_update_job \
-        "validibot-purge-expired-submissions${JOB_SUFFIX}" \
+        "${APP_NAME}-purge-expired-submissions${JOB_SUFFIX}" \
         "0 * * * *" \
         "/api/v1/scheduled/purge-expired-submissions/" \
         "Purge submission content past retention period ({{stage}})"
 
     # Job 5: Process purge retries (every 5 minutes)
     create_or_update_job \
-        "validibot-process-purge-retries${JOB_SUFFIX}" \
+        "${APP_NAME}-process-purge-retries${JOB_SUFFIX}" \
         "*/5 * * * *" \
         "/api/v1/scheduled/process-purge-retries/" \
         "Retry failed submission purges ({{stage}})"
 
     # Job 6: Cleanup stuck runs (every 10 minutes)
     create_or_update_job \
-        "validibot-cleanup-stuck-runs${JOB_SUFFIX}" \
+        "${APP_NAME}-cleanup-stuck-runs${JOB_SUFFIX}" \
         "*/10 * * * *" \
         "/api/v1/scheduled/cleanup-stuck-runs/" \
         "Mark stuck validation runs as FAILED - 30min timeout ({{stage}})"
@@ -1225,6 +1249,7 @@ scheduler-run job_name:
 scheduler-delete-all stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1242,7 +1267,7 @@ scheduler-delete-all stage:
     echo
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+        for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
             job="${job_base}${JOB_SUFFIX}"
             echo "Deleting $job..."
             gcloud scheduler jobs delete "$job" \
@@ -1259,6 +1284,7 @@ scheduler-delete-all stage:
 scheduler-pause-all stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1272,7 +1298,7 @@ scheduler-pause-all stage:
     fi
 
     echo "Pausing all scheduler jobs for {{stage}}..."
-    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Pausing $job..."
         gcloud scheduler jobs pause "$job" \
@@ -1286,6 +1312,7 @@ scheduler-pause-all stage:
 scheduler-resume-all stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1299,7 +1326,7 @@ scheduler-resume-all stage:
     fi
 
     echo "Resuming all scheduler jobs for {{stage}}..."
-    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
         job="${job_base}${JOB_SUFFIX}"
         echo "Resuming $job..."
         gcloud scheduler jobs resume "$job" \
@@ -1343,14 +1370,14 @@ scheduler-resume job_name:
 validator-build name:
     docker build --platform linux/amd64 \
         -f ../validibot-validators/validators/{{name}}/Dockerfile \
-        -t {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
-        -t {{validator_repo}}/validibot-validator-{{name}}:latest \
+        -t {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}} \
+        -t {{validator_repo}}/{{app_name}}-validator-{{name}}:latest \
         ../validibot-validators
 
 # Push a validator container
 validator-push name:
-    docker push {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}}
-    docker push {{validator_repo}}/validibot-validator-{{name}}:latest
+    docker push {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}}
+    docker push {{validator_repo}}/{{app_name}}-validator-{{name}}:latest
 
 # Build and push in one step
 validator-build-push name: (validator-build name) (validator-push name)
@@ -1360,21 +1387,22 @@ validator-build-push name: (validator-build name) (validator-push name)
 validator-deploy name stage: (validator-build-push name)
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
-        JOB_NAME="validibot-validator-{{name}}"
-        SA="validibot-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_NAME="${APP_NAME}-validator-{{name}}"
+        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
     else
-        JOB_NAME="validibot-validator-{{name}}-{{stage}}"
-        SA="validibot-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        JOB_NAME="${APP_NAME}-validator-{{name}}-{{stage}}"
+        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
     fi
     echo "Deploying $JOB_NAME..."
     gcloud run jobs deploy "$JOB_NAME" \
-        --image {{validator_repo}}/validibot-validator-{{name}}:{{git_sha}} \
+        --image {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}} \
         --region {{gcp_region}} \
         --service-account "$SA" \
         --max-retries 0 \
@@ -1390,7 +1418,7 @@ validator-deploy name stage: (validator-build-push name)
         --region {{gcp_region}} \
         --project {{gcp_project}} \
         --member="serviceAccount:$SA" \
-        --role="projects/{{gcp_project}}/roles/validibot_job_runner"
+        --role="projects/{{gcp_project}}/roles/${APP_NAME//-/_}_job_runner"
     echo "IAM binding added"
 
 # Build and deploy all validator jobs to a stage
@@ -1416,6 +1444,7 @@ validators-deploy-all stage:
 sync-weather env:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     WEATHER_SOURCE="../weather_data"
     ASSETS_PREFIX="validator_assets/weather_data"
@@ -1462,10 +1491,10 @@ sync-weather env:
 
     case "{{env}}" in
         dev)
-            sync_to_bucket "validibot-storage-dev" "dev"
+            sync_to_bucket "${APP_NAME}-storage-dev" "dev"
             ;;
         staging)
-            sync_to_bucket "validibot-storage-staging" "staging"
+            sync_to_bucket "${APP_NAME}-storage-staging" "staging"
             ;;
         prod)
             echo "WARNING: You are about to sync weather files to PRODUCTION"
@@ -1474,16 +1503,16 @@ sync-weather env:
                 echo "Aborted."
                 exit 1
             fi
-            sync_to_bucket "validibot-storage" "prod"
+            sync_to_bucket "${APP_NAME}-storage" "prod"
             ;;
         all)
-            sync_to_bucket "validibot-storage-dev" "dev"
-            sync_to_bucket "validibot-storage-staging" "staging"
+            sync_to_bucket "${APP_NAME}-storage-dev" "dev"
+            sync_to_bucket "${APP_NAME}-storage-staging" "staging"
             echo ""
             echo "WARNING: About to sync to PRODUCTION"
             read -p "Continue with prod sync? (yes/no): " confirm
             if [ "$confirm" == "yes" ]; then
-                sync_to_bucket "validibot-storage" "prod"
+                sync_to_bucket "${APP_NAME}-storage" "prod"
             else
                 echo "Skipped prod sync."
             fi
@@ -1503,18 +1532,19 @@ sync-weather env:
 list-weather env:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     ASSETS_PREFIX="validator_assets/weather_data"
 
     case "{{env}}" in
         dev)
-            BUCKET="validibot-storage-dev"
+            BUCKET="${APP_NAME}-storage-dev"
             ;;
         staging)
-            BUCKET="validibot-storage-staging"
+            BUCKET="${APP_NAME}-storage-staging"
             ;;
         prod)
-            BUCKET="validibot-storage"
+            BUCKET="${APP_NAME}-storage"
             ;;
         *)
             echo "Error: Invalid environment '{{env}}'"
@@ -1549,6 +1579,7 @@ list-weather env:
 maintenance-on stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1568,16 +1599,16 @@ maintenance-on stage:
 
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        WORKER_SERVICE="validibot-worker"
-        DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-tasks"
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        DB_INSTANCE="${APP_NAME}-db"
+        QUEUE_NAME="${APP_NAME}-tasks"
         JOB_SUFFIX=""
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        WORKER_SERVICE="validibot-worker-{{stage}}"
-        DB_INSTANCE="validibot-db-{{stage}}"
-        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
 
@@ -1604,7 +1635,7 @@ maintenance-on stage:
 
     # 3. Pause Cloud Scheduler jobs
     echo "3. Pausing Cloud Scheduler jobs..."
-    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs pause "$job" \
             --project {{gcp_project}} \
@@ -1652,6 +1683,7 @@ maintenance-on stage:
 maintenance-off stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1660,16 +1692,16 @@ maintenance-off stage:
 
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        WORKER_SERVICE="validibot-worker"
-        DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-tasks"
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        DB_INSTANCE="${APP_NAME}-db"
+        QUEUE_NAME="${APP_NAME}-tasks"
         JOB_SUFFIX=""
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        WORKER_SERVICE="validibot-worker-{{stage}}"
-        DB_INSTANCE="validibot-db-{{stage}}"
-        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
         JOB_SUFFIX="-{{stage}}"
     fi
 
@@ -1701,7 +1733,7 @@ maintenance-off stage:
 
     # 3. Resume Cloud Scheduler jobs
     echo "3. Resuming Cloud Scheduler jobs..."
-    for job_base in validibot-clear-sessions validibot-cleanup-idempotency-keys validibot-cleanup-callback-receipts validibot-purge-expired-submissions validibot-process-purge-retries validibot-cleanup-stuck-runs; do
+    for job_base in ${APP_NAME}-clear-sessions ${APP_NAME}-cleanup-idempotency-keys ${APP_NAME}-cleanup-callback-receipts ${APP_NAME}-purge-expired-submissions ${APP_NAME}-process-purge-retries ${APP_NAME}-cleanup-stuck-runs; do
         job="${job_base}${JOB_SUFFIX}"
         gcloud scheduler jobs resume "$job" \
             --project {{gcp_project}} \
@@ -1753,6 +1785,7 @@ maintenance-off stage:
 maintenance-status stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1761,13 +1794,13 @@ maintenance-status stage:
 
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        DB_INSTANCE="validibot-db"
-        QUEUE_NAME="validibot-tasks"
+        WEB_SERVICE="${APP_NAME}-web"
+        DB_INSTANCE="${APP_NAME}-db"
+        QUEUE_NAME="${APP_NAME}-tasks"
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        DB_INSTANCE="validibot-db-{{stage}}"
-        QUEUE_NAME="validibot-validation-queue-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
     fi
 
     echo "Maintenance status for {{stage}}:"
@@ -1848,11 +1881,12 @@ maintenance-status stage:
 # =============================================================================
 
 # Set up the Global Load Balancer
-# Usage: just gcp lb-setup prod validibot.com
-# Usage: just gcp lb-setup prod "validibot.com,www.validibot.com"
+# Usage: just gcp lb-setup prod example.com
+# Usage: just gcp lb-setup prod "example.com,www.example.com"
 lb-setup stage domains:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -1863,7 +1897,7 @@ lb-setup stage domains:
     echo "Setting up Global Load Balancer for: {{stage}}"
     DOMAINS_CSV="$(echo "{{domains}}" | tr -d '[:space:]')"
     if [ -z "$DOMAINS_CSV" ]; then
-        echo "Error: domains must be a comma-separated list, e.g. 'validibot.com' or 'validibot.com,www.validibot.com'"
+        echo "Error: domains must be a comma-separated list, e.g. 'example.com' or 'example.com,www.example.com'"
         exit 1
     fi
     echo "Domains: $DOMAINS_CSV"
@@ -1872,22 +1906,22 @@ lb-setup stage domains:
 
     # Compute resource names
     if [ "{{stage}}" = "prod" ]; then
-        SERVICE="validibot-web"
+        SERVICE="${APP_NAME}-web"
         SUFFIX=""
     else
-        SERVICE="validibot-web-{{stage}}"
+        SERVICE="${APP_NAME}-web-{{stage}}"
         SUFFIX="-{{stage}}"
     fi
 
-    IP_NAME="validibot-ip${SUFFIX}"
-    NEG_NAME="validibot-neg${SUFFIX}"
-    BACKEND_NAME="validibot-backend${SUFFIX}"
-    URL_MAP_NAME="validibot-url-map${SUFFIX}"
-    CERT_NAME="validibot-cert${SUFFIX}"
-    PROXY_NAME="validibot-https-proxy${SUFFIX}"
-    RULE_NAME="validibot-lb-rule${SUFFIX}"
-    HTTP_PROXY_NAME="validibot-http-proxy${SUFFIX}"
-    HTTP_RULE_NAME="validibot-lb-rule-http${SUFFIX}"
+    IP_NAME="${APP_NAME}-ip${SUFFIX}"
+    NEG_NAME="${APP_NAME}-neg${SUFFIX}"
+    BACKEND_NAME="${APP_NAME}-backend${SUFFIX}"
+    URL_MAP_NAME="${APP_NAME}-url-map${SUFFIX}"
+    CERT_NAME="${APP_NAME}-cert${SUFFIX}"
+    PROXY_NAME="${APP_NAME}-https-proxy${SUFFIX}"
+    RULE_NAME="${APP_NAME}-lb-rule${SUFFIX}"
+    HTTP_PROXY_NAME="${APP_NAME}-http-proxy${SUFFIX}"
+    HTTP_RULE_NAME="${APP_NAME}-lb-rule-http${SUFFIX}"
 
     # 0. Verify the Cloud Run service exists
     echo "0. Checking Cloud Run service ($SERVICE)..."
@@ -2085,6 +2119,7 @@ validate-all: validate-gcp
 validate-gcp:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     echo "Validating GCP Infrastructure"
     echo "======================================"
@@ -2098,13 +2133,13 @@ validate-gcp:
     NC='\033[0m'
 
     echo "1. Checking Cloud Run service..."
-    if gcloud run services describe validibot-web \
+    if gcloud run services describe ${APP_NAME}-web \
         --region={{gcp_region}} \
         --project={{gcp_project}} &>/dev/null; then
-        echo -e "${GREEN}OK${NC} Cloud Run service 'validibot-web' exists"
+        echo -e "${GREEN}OK${NC} Cloud Run service '${APP_NAME}-web' exists"
         ((TESTS_PASSED++))
 
-        URL=$(gcloud run services describe validibot-web \
+        URL=$(gcloud run services describe ${APP_NAME}-web \
             --region={{gcp_region}} \
             --project={{gcp_project}} \
             --format="value(status.url)")
@@ -2116,7 +2151,7 @@ validate-gcp:
     echo ""
 
     echo "2. Checking service health..."
-    URL=$(gcloud run services describe validibot-web \
+    URL=$(gcloud run services describe ${APP_NAME}-web \
         --region={{gcp_region}} \
         --project={{gcp_project}} \
         --format="value(status.url)")
@@ -2132,7 +2167,7 @@ validate-gcp:
 
     echo "3. Checking for recent errors in logs..."
     ERROR_COUNT=$(gcloud logging read \
-        "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-web AND severity>=ERROR" \
+        "resource.type=cloud_run_revision AND resource.labels.service_name=${APP_NAME}-web AND severity>=ERROR" \
         --project={{gcp_project}} \
         --limit=10 \
         --format=json | jq '. | length')
@@ -2147,7 +2182,7 @@ validate-gcp:
     echo ""
 
     echo "4. Checking Cloud SQL instance..."
-    if gcloud sql instances describe validibot-db \
+    if gcloud sql instances describe ${APP_NAME}-db \
         --project={{gcp_project}} &>/dev/null; then
         echo -e "${GREEN}OK${NC} Cloud SQL instance exists"
         ((TESTS_PASSED++))
@@ -2236,6 +2271,7 @@ test-e2e *args:
 verify-deployment stage *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -2259,11 +2295,11 @@ verify-deployment stage *args:
     fi
 
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        WORKER_SERVICE="validibot-worker"
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        WORKER_SERVICE="validibot-worker-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
     echo "Target services:"
@@ -2304,6 +2340,7 @@ verify-deployment stage *args:
 verify-deployment-quick stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -2313,11 +2350,11 @@ verify-deployment-quick stage:
     echo "Quick verification for {{stage}}..."
 
     if [ "{{stage}}" = "prod" ]; then
-        WEB_SERVICE="validibot-web"
-        WORKER_SERVICE="validibot-worker"
+        WEB_SERVICE="${APP_NAME}-web"
+        WORKER_SERVICE="${APP_NAME}-worker"
     else
-        WEB_SERVICE="validibot-web-{{stage}}"
-        WORKER_SERVICE="validibot-worker-{{stage}}"
+        WEB_SERVICE="${APP_NAME}-web-{{stage}}"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
 
     WEB_URL=$(gcloud run services describe "$WEB_SERVICE" \
@@ -2368,11 +2405,12 @@ auth:
 console stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
         exit 1
     fi
-    if [ "{{stage}}" = "prod" ]; then SERVICE="validibot-web"; else SERVICE="validibot-web-{{stage}}"; fi
+    if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
     open "https://console.cloud.google.com/run/detail/{{gcp_region}}/$SERVICE/metrics?project={{gcp_project}}"
 
 # Connect local Django shell to a Cloud SQL database via proxy
@@ -2382,6 +2420,7 @@ console stage:
 local-to-gcp-shell stage:
     #!/usr/bin/env bash
     set -euo pipefail
+    APP_NAME="{{app_name}}"
 
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
         echo "Error: stage must be 'dev', 'staging', or 'prod'"
@@ -2399,9 +2438,9 @@ local-to-gcp-shell stage:
     fi
 
     if [ "{{stage}}" = "prod" ]; then
-        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:validibot-db"
+        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db"
     else
-        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:validibot-db-{{stage}}"
+        DB_INSTANCE="{{gcp_project}}:{{gcp_region}}:${APP_NAME}-db-{{stage}}"
     fi
 
     echo "Starting Cloud SQL Proxy for {{stage}}..."

@@ -8,9 +8,12 @@ Validibot supports three deployment stages:
 
 | Stage | Purpose | Resource Naming |
 |-------|---------|-----------------|
-| **dev** | Development testing, feature validation | `validibot-web-dev`, `validibot-db-dev` |
-| **staging** | Pre-production testing, E2E tests | `validibot-web-staging`, `validibot-db-staging` |
-| **prod** | Production environment | `validibot-web`, `validibot-db` |
+| **dev** | Development testing, feature validation | `$GCP_APP_NAME-web-dev`, `$GCP_APP_NAME-db-dev` |
+| **staging** | Pre-production testing, E2E tests | `$GCP_APP_NAME-web-staging`, `$GCP_APP_NAME-db-staging` |
+| **prod** | Production environment | `$GCP_APP_NAME-web`, `$GCP_APP_NAME-db` |
+
+!!! info "Resource naming convention"
+    All GCP resource names are derived from the `GCP_APP_NAME` variable, which is set in `.envs/.production/.google-cloud/.just` and defaults to `validibot`. The naming pattern is `$GCP_APP_NAME-{resource}-{stage}` (with no stage suffix for prod). If you change `GCP_APP_NAME`, all resource names will update accordingly.
 
 Each stage has isolated:
 - Cloud Run services (web + worker)
@@ -56,10 +59,10 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 
 **Current production resources:**
 
-- Service account: `validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
-- Cloud SQL: `validibot-db`
-- Cloud Tasks queue: `validibot-tasks`
-- GCS bucket: `validibot-storage` (with public/ and private/ prefixes)
+- Service account: `$GCP_APP_NAME-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
+- Cloud SQL: `$GCP_APP_NAME-db`
+- Cloud Tasks queue: `$GCP_APP_NAME-tasks`
+- GCS bucket: `$GCP_APP_NAME-storage` (with public/ and private/ prefixes)
 - Secret: `django-env`
 
 To create a new environment from scratch (or verify existing resources):
@@ -75,14 +78,14 @@ just gcp init-stage prod     # For production environment
 
 This command creates (example for dev):
 
-- Service account: `validibot-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
-- Cloud SQL instance: `validibot-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
+- Service account: `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
+- Cloud SQL instance: `$GCP_APP_NAME-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
-- Cloud Tasks queue: `validibot-validation-queue-dev`
-- GCS bucket: `validibot-storage-dev` (with public/ and private/ prefixes)
+- Cloud Tasks queue: `$GCP_APP_NAME-validation-queue-dev`
+- GCS bucket: `$GCP_APP_NAME-storage-dev` (with public/ and private/ prefixes)
 - Secret placeholder: `django-env-dev`
 
-For production, resource names have no suffix (e.g., `validibot-db`, `validibot-storage`).
+For production, resource names have no suffix (e.g., `$GCP_APP_NAME-db`, `$GCP_APP_NAME-storage`).
 
 !!! warning "Save the database password!"
     The command outputs a generated password for the database user. **Copy this password immediately** - you'll need it in the next step. If you lose it, you'll need to reset the database user password manually.
@@ -105,7 +108,7 @@ POSTGRES_PASSWORD=<actual-password-here>
 DATABASE_URL=postgres://validibot_user:<url-encoded-password>@/validibot?host=/cloudsql/$GCP_PROJECT_ID:$GCP_REGION:<db-instance>
 ```
 
-Where `<db-instance>` is `validibot-db-dev`, `validibot-db-staging`, or `validibot-db` (for prod).
+Where `<db-instance>` is `$GCP_APP_NAME-db-dev`, `$GCP_APP_NAME-db-staging`, or `$GCP_APP_NAME-db` (for prod).
 
 ### Step 3: Upload Secrets to Secret Manager
 
@@ -197,7 +200,7 @@ To set up a domain mapping:
 
 ```bash
 gcloud beta run domain-mappings create \
-  --service validibot-web \
+  --service $GCP_APP_NAME-web \
   --domain your-domain.com \
   --region $GCP_REGION \
   --project $GCP_PROJECT_ID
@@ -240,11 +243,11 @@ Useful status commands:
 
 ```bash
 # See the reserved IP (prod)
-gcloud compute addresses describe validibot-ip --global \
+gcloud compute addresses describe $GCP_APP_NAME-ip --global \
   --project $GCP_PROJECT_ID
 
 # See certificate status (prod)
-gcloud compute ssl-certificates describe validibot-cert --global \
+gcloud compute ssl-certificates describe $GCP_APP_NAME-cert --global \
   --project $GCP_PROJECT_ID
 ```
 
@@ -257,7 +260,7 @@ gcloud compute ssl-certificates describe validibot-cert --global \
   You can fetch the current worker URL with:
 
   ```bash
-  gcloud run services describe validibot-worker \
+  gcloud run services describe $GCP_APP_NAME-worker \
     --region $GCP_REGION \
     --project $GCP_PROJECT_ID \
     --format='value(status.url)'
@@ -265,7 +268,7 @@ gcloud compute ssl-certificates describe validibot-cert --global \
 - If using Option B, after you confirm the domain works, you can block direct public access to the `*.run.app` URL and only allow traffic via the load balancer:
 
   ```bash
-  gcloud run services update validibot-web \
+  gcloud run services update $GCP_APP_NAME-web \
     --ingress internal-and-cloud-load-balancing \
     --region $GCP_REGION \
     --project $GCP_PROJECT_ID
@@ -314,11 +317,11 @@ Before deploying, ensure you have completed the [Setup Cheatsheet](setup-cheatsh
 - [x] gcloud CLI installed and authenticated
 - [x] Project configured (`$GCP_PROJECT_ID`)
 - [x] Required APIs enabled
-- [x] Artifact Registry created (`validibot`)
+- [x] Artifact Registry created (`$GCP_APP_NAME`)
 - [x] Docker authentication configured
 
 For production, also ensure:
-- [x] Cloud SQL instance created (`validibot-db`)
+- [x] Cloud SQL instance created (`$GCP_APP_NAME-db`)
 - [x] Database and user created
 - [x] Secret Manager configured (`django-env`)
 
@@ -374,7 +377,7 @@ just gcp logs dev
 just gcp logs-follow dev
 
 # View job logs (migrations, setup)
-just gcp job-logs validibot-migrate-dev
+just gcp job-logs $GCP_APP_NAME-migrate-dev
 ```
 
 ### Check Status
@@ -415,7 +418,7 @@ just gcp scheduler-setup prod
 just gcp scheduler-list
 
 # Run a job manually (for testing)
-just gcp scheduler-run validibot-clear-sessions-dev
+just gcp scheduler-run $GCP_APP_NAME-clear-sessions-dev
 
 # Delete all scheduler jobs for a stage
 just gcp scheduler-delete-all dev
@@ -450,17 +453,17 @@ just gcp push
 
 ```bash
 # Real-time logs for web service
-gcloud run services logs tail validibot-web-dev --region=$GCP_REGION
+gcloud run services logs tail $GCP_APP_NAME-web-dev --region=$GCP_REGION
 
 # Historical logs with filtering
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-web-dev" --limit=100
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$GCP_APP_NAME-web-dev" --limit=100
 ```
 
 ### Connect to Cloud SQL directly
 
 ```bash
 # Using Cloud SQL Auth Proxy
-gcloud sql connect validibot-db-dev --user=validibot_user --database=validibot
+gcloud sql connect $GCP_APP_NAME-db-dev --user=validibot_user --database=validibot
 ```
 
 ### Check secret values
@@ -489,7 +492,7 @@ just gcp init-stage dev
 **Database connection errors:**
 ```bash
 # Verify Cloud SQL instance is running
-gcloud sql instances describe validibot-db-dev --format="value(state)"
+gcloud sql instances describe $GCP_APP_NAME-db-dev --format="value(state)"
 
 # Check connection name in secrets matches instance
 ```

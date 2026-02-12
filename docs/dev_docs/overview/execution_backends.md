@@ -120,23 +120,23 @@ else:
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Docker Host                                            │
-│                                                         │
-│  ┌──────────────────┐    ┌──────────────────────────┐  │
-│  │  Django + Worker │    │  Validator Container     │  │
-│  │                  │    │  (validibot-validator-X) │  │
-│  │  - Web app       │───▶│                          │  │
-│  │  - Celery        │    │  Reads: file:///input    │  │
-│  │                  │◀───│  Writes: file:///output  │  │
-│  └──────────────────┘    └──────────────────────────┘  │
-│           │                         │                   │
-│           ▼                         ▼                   │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │              Shared Storage Volume               │   │
-│  │              /app/storage (Docker volume)        │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  Docker Host                                                     │
+│                                                                  │
+│  ┌──────────────────┐    ┌─────────────────────────────────┐    │
+│  │  Django + Worker │    │  Validator Container            │    │
+│  │                  │    │  ($GCP_APP_NAME-validator-X)    │    │
+│  │  - Web app       │───▶│                                 │    │
+│  │  - Celery        │    │  Reads: file:///input           │    │
+│  │                  │◀───│  Writes: file:///output         │    │
+│  └──────────────────┘    └─────────────────────────────────┘    │
+│           │                         │                            │
+│           ▼                         ▼                            │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              Shared Storage Volume                       │   │
+│  │              /app/storage (Docker volume)                │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### Configuration
@@ -257,9 +257,9 @@ VALIDATOR_IMAGE_REGISTRY=ghcr.io/your-org
 VALIDATOR_IMAGE_TAG=v1.2.0
 ```
 
-Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/validibot-validator-{type}:{tag}`. For example:
-- `ghcr.io/your-org/validibot-validator-energyplus:v1.2.0`
-- `ghcr.io/your-org/validibot-validator-fmi:v1.2.0`
+Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/$GCP_APP_NAME-validator-{type}:{tag}`. For example:
+- `ghcr.io/your-org/$GCP_APP_NAME-validator-energyplus:v1.2.0`
+- `ghcr.io/your-org/$GCP_APP_NAME-validator-fmi:v1.2.0`
 
 **Image availability:**
 
@@ -267,7 +267,7 @@ The Docker backend does not automatically pull images. Ensure validator images a
 
 ```bash
 # Pre-pull images on the host
-docker pull ghcr.io/your-org/validibot-validator-energyplus:v1.2.0
+docker pull ghcr.io/your-org/$GCP_APP_NAME-validator-energyplus:v1.2.0
 ```
 
 Or configure a pull policy by extending the runner options if automatic pulls are needed.
@@ -315,8 +315,8 @@ For detailed GCP architecture including Cloud Run Jobs, IAM configuration, and c
 
 **Web/Worker Split:**
 
-- `validibot-web` — Public UI and API
-- `validibot-worker` — Private, receives callbacks from validator jobs
+- `$GCP_APP_NAME-web` — Public UI and API
+- `$GCP_APP_NAME-worker` — Private, receives callbacks from validator jobs
 
 **Callback Authentication:**
 

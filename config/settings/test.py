@@ -68,6 +68,10 @@ APP_ROLE = "web"
 APP_IS_WORKER = False
 ACCOUNT_ALLOW_LOGIN = True
 
+# Worker API key is not required in tests (no HTTP calls to worker endpoints).
+# Tests that need to verify key behavior use override_settings().
+WORKER_API_KEY = ""
+
 # CEL evaluation timeout - increase for tests since heavy test loads can cause
 # thread pool overhead that exceeds the default 100ms timeout
 CEL_MAX_EVAL_TIMEOUT_MS = 500

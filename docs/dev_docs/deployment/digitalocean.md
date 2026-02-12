@@ -91,7 +91,7 @@ Refer to the [sizing guide above](#sizing-your-droplet) to choose the right Drop
    - **Basic $48/mo** (4 vCPU, 8GB RAM) — regular advanced validator usage (recommended)
 5. Choose a datacenter region close to your users
 6. **Authentication**: Select your SSH key (never use password auth)
-7. **Hostname**: `validibot-prod` or similar
+7. **Hostname**: `your-app-prod` or similar
 8. Click **Create Droplet**
 
 ### Using doctl CLI
@@ -100,7 +100,7 @@ Refer to the [sizing guide above](#sizing-your-droplet) to choose the right Drop
 # Install doctl if needed: https://docs.digitalocean.com/reference/doctl/how-to/install/
 
 # For built-in validators only (2GB)
-doctl compute droplet create validibot-prod \
+doctl compute droplet create your-app-prod \
   --image docker-20-04 \
   --size s-1vcpu-2gb \
   --region nyc1 \
@@ -108,7 +108,7 @@ doctl compute droplet create validibot-prod \
   --wait
 
 # For advanced validators (8GB recommended)
-doctl compute droplet create validibot-prod \
+doctl compute droplet create your-app-prod \
   --image docker-20-04 \
   --size s-4vcpu-8gb \
   --region nyc1 \
@@ -164,7 +164,7 @@ The recommended approach is to use [DigitalOcean Cloud Firewalls](https://docs.d
 **Create a Cloud Firewall:**
 
 1. Go to **Networking → Firewalls → Create Firewall**
-2. Name it `validibot-firewall`
+2. Name it `your-app-firewall`
 3. **Inbound Rules**:
    - SSH (TCP 22) — Your IP only, or all IPv4/IPv6 if needed
    - HTTP (TCP 80) — All IPv4, All IPv6
@@ -403,7 +403,7 @@ Spaces provides S3-compatible object storage for uploaded files:
 
 1. **Create a Space:**
    - Go to **Spaces → Create a Space**
-   - Choose a region and name (e.g., `validibot-storage`)
+   - Choose a region and name (e.g., `your-app-storage`)
    - Enable CDN if desired
 
 2. **Create access keys:**
@@ -415,7 +415,7 @@ Spaces provides S3-compatible object storage for uploaded files:
 
    ```bash
    DATA_STORAGE_BACKEND=s3
-   STORAGE_BUCKET=validibot-storage
+   STORAGE_BUCKET=your-app-storage
    AWS_S3_ENDPOINT_URL=https://nyc3.digitaloceanspaces.com
    AWS_S3_REGION_NAME=nyc3
    AWS_ACCESS_KEY_ID=your-spaces-key
@@ -430,8 +430,8 @@ Advanced validators (EnergyPlus, FMI, etc.) run as separate Docker containers sp
 
    ```bash
    # Pull the validators you need
-   docker pull ghcr.io/validibot/validibot-validator-energyplus:latest
-   docker pull ghcr.io/validibot/validibot-validator-fmi:latest
+   docker pull ghcr.io/your-org/your-app-validator-energyplus:latest
+   docker pull ghcr.io/your-org/your-app-validator-fmi:latest
    ```
 
 2. **For private registries**, configure Docker credentials on the Droplet:

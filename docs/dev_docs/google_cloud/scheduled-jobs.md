@@ -28,14 +28,14 @@ Each stage has its own set of scheduler jobs with stage-specific names:
 
 | Job Name (prod) | Schedule (Sydney) | Endpoint | Purpose |
 |-----------------|-------------------|----------|---------|
-| `validibot-clear-sessions` | Daily at 2:00 AM | `/api/v1/scheduled/clear-sessions/` | Remove expired Django sessions from the database |
-| `validibot-cleanup-idempotency-keys` | Daily at 3:00 AM | `/api/v1/scheduled/cleanup-idempotency-keys/` | Delete expired API idempotency keys (24h TTL) |
-| `validibot-cleanup-callback-receipts` | Weekly Sunday 4:00 AM | `/api/v1/scheduled/cleanup-callback-receipts/` | Delete old validator callback receipts (30 day retention) |
-| `validibot-purge-expired-submissions` | Hourly at :00 | `/api/v1/scheduled/purge-expired-submissions/` | Purge submission content past retention period |
-| `validibot-process-purge-retries` | Every 5 minutes | `/api/v1/scheduled/process-purge-retries/` | Retry failed submission purges |
-| `validibot-cleanup-stuck-runs` | Every 10 minutes | `/api/v1/scheduled/cleanup-stuck-runs/` | Mark validation runs stuck in RUNNING state as FAILED (30min timeout) |
+| `$GCP_APP_NAME-clear-sessions` | Daily at 2:00 AM | `/api/v1/scheduled/clear-sessions/` | Remove expired Django sessions from the database |
+| `$GCP_APP_NAME-cleanup-idempotency-keys` | Daily at 3:00 AM | `/api/v1/scheduled/cleanup-idempotency-keys/` | Delete expired API idempotency keys (24h TTL) |
+| `$GCP_APP_NAME-cleanup-callback-receipts` | Weekly Sunday 4:00 AM | `/api/v1/scheduled/cleanup-callback-receipts/` | Delete old validator callback receipts (30 day retention) |
+| `$GCP_APP_NAME-purge-expired-submissions` | Hourly at :00 | `/api/v1/scheduled/purge-expired-submissions/` | Purge submission content past retention period |
+| `$GCP_APP_NAME-process-purge-retries` | Every 5 minutes | `/api/v1/scheduled/process-purge-retries/` | Retry failed submission purges |
+| `$GCP_APP_NAME-cleanup-stuck-runs` | Every 10 minutes | `/api/v1/scheduled/cleanup-stuck-runs/` | Mark validation runs stuck in RUNNING state as FAILED (30min timeout) |
 
-For dev/staging, job names include the stage suffix (e.g., `validibot-clear-sessions-dev`).
+For dev/staging, job names include the stage suffix (e.g., `$GCP_APP_NAME-clear-sessions-dev`).
 
 ## Setup
 
@@ -72,13 +72,13 @@ This command:
 just gcp scheduler-list
 
 # Run a job manually (for testing)
-just gcp scheduler-run validibot-cleanup-idempotency-keys-dev
+just gcp scheduler-run $GCP_APP_NAME-cleanup-idempotency-keys-dev
 
 # Pause a job
-just gcp scheduler-pause validibot-clear-sessions-dev
+just gcp scheduler-pause $GCP_APP_NAME-clear-sessions-dev
 
 # Resume a paused job
-just gcp scheduler-resume validibot-clear-sessions-dev
+just gcp scheduler-resume $GCP_APP_NAME-clear-sessions-dev
 
 # Delete all scheduler jobs for a stage (use with caution)
 just gcp scheduler-delete-all dev
@@ -139,7 +139,7 @@ To add a new scheduled task:
 4. **Add to the scheduler setup** in `justfile` under `gcp-scheduler-setup`:
    ```bash
    create_or_update_job \
-       "validibot-my-cleanup" \
+       "$GCP_APP_NAME-my-cleanup" \
        "0 5 * * *" \
        "/api/v1/scheduled/my-cleanup/" \
        "Description of the cleanup job"

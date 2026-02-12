@@ -714,6 +714,12 @@ SITE_URL = env("SITE_URL", default="http://localhost:8000")
 WORKER_URL = env("WORKER_URL", default="")
 CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")
 
+# Shared secret for authenticating requests to worker-only API endpoints.
+# Required for Docker Compose deployments (all services share the same key).
+# Leave empty for GCP deployments (Cloud Run IAM handles authentication).
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+WORKER_API_KEY = env("WORKER_API_KEY", default="")
+
 
 # FEATURES
 ENABLE_DERIVED_SIGNALS = env.bool("ENABLE_DERIVED_SIGNALS", False)

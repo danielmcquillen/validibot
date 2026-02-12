@@ -204,8 +204,8 @@ All platforms support three deployment stages:
 
 Example resource names:
 
-- Dev: `validibot-web-dev`, `validibot-db-dev`
-- Prod: `validibot-web`, `validibot-db`
+- Dev: `$GCP_APP_NAME-web-dev`, `$GCP_APP_NAME-db-dev`
+- Prod: `$GCP_APP_NAME-web`, `$GCP_APP_NAME-db`
 
 ## Common Patterns
 

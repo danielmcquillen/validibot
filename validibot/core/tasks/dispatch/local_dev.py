@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
+
 from validibot.core.tasks.dispatch.base import TaskDispatcher
 from validibot.core.tasks.dispatch.base import TaskDispatchRequest
 from validibot.core.tasks.dispatch.base import TaskDispatchResponse
@@ -23,6 +25,9 @@ class LocalDevDispatcher(TaskDispatcher):
     Bypasses task queues and calls the worker service directly.
     Useful for local development where you want to test the full flow
     without setting up Redis/Celery.
+
+    If WORKER_API_KEY is configured, the key is included in the
+    Authorization header for authentication.
 
     Requires the worker container to be running on port 8001.
     """
@@ -43,6 +48,14 @@ class LocalDevDispatcher(TaskDispatcher):
         # We could ping the worker, but for simplicity assume available
         return True
 
+    def _get_headers(self) -> dict[str, str]:
+        """Build request headers, including worker API key if configured."""
+        headers: dict[str, str] = {}
+        worker_key = getattr(settings, "WORKER_API_KEY", "")
+        if worker_key:
+            headers["Authorization"] = f"Worker-Key {worker_key}"
+        return headers
+
     def dispatch(self, request: TaskDispatchRequest) -> TaskDispatchResponse:
         """Call worker directly via HTTP."""
         import httpx
@@ -58,6 +71,7 @@ class LocalDevDispatcher(TaskDispatcher):
             response = httpx.post(
                 self.WORKER_URL,
                 json=payload,
+                headers=self._get_headers(),
                 timeout=self.TIMEOUT_SECONDS,
             )
             response.raise_for_status()

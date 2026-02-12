@@ -7,7 +7,7 @@
 Validibot uses a **single GCS bucket** with prefix-based separation:
 
 ```
-gs://validibot-storage/
+gs://your-storage-bucket/
 ├── public/      # Publicly accessible (avatars, workflow images)
 └── private/     # Private files (validation submissions, artifacts)
 ```

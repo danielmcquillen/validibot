@@ -51,7 +51,7 @@ gcloud logging read "jsonPayload.message:\"run_id=RUN_ID\" OR jsonPayload.run_id
 
 ```bash
 # Errors from the worker service in the last hour
-gcloud logging read "resource.labels.service_name=\"validibot-worker\" severity>=ERROR timestamp>=\"-1h\"" \
+gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" severity>=ERROR timestamp>=\"-1h\"" \
   --limit=20
 ```
 
@@ -59,11 +59,11 @@ gcloud logging read "resource.labels.service_name=\"validibot-worker\" severity>
 
 ```bash
 # EnergyPlus validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"validibot-validator-energyplus\"" \
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-energyplus\"" \
   --limit=50
 
 # FMI validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"validibot-validator-fmi\"" \
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-fmi\"" \
   --limit=50
 ```
 
@@ -128,11 +128,11 @@ This is the expected outcome when the validator finds issues with your file. Che
 **Diagnosis**:
 1. Check Cloud Run Job execution status:
    ```bash
-   gcloud run jobs executions list --job=validibot-validator-energyplus
+   gcloud run jobs executions list --job=$GCP_APP_NAME-validator-energyplus
    ```
 2. Check worker logs for callback attempts:
    ```bash
-   gcloud logging read "resource.labels.service_name=\"validibot-worker\" jsonPayload.message:\"callback\"" --limit=20
+   gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" jsonPayload.message:\"callback\"" --limit=20
    ```
 
 ## Step 4: Django Admin

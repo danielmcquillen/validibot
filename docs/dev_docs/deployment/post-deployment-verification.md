@@ -201,7 +201,7 @@ The service isn't deployed or you don't have permission to describe it:
 
 ```bash
 # Check if service exists
-gcloud run services describe validibot-web-dev --region=us-west1
+gcloud run services describe $GCP_APP_NAME-web-dev --region=us-west1
 ```
 
 ### "Authenticated request was rejected by IAM"
@@ -210,7 +210,7 @@ Your gcloud account doesn't have the Cloud Run Invoker role on the worker servic
 
 ```bash
 # Grant yourself invoker access (if you're an admin)
-gcloud run services add-iam-policy-binding validibot-worker-dev \
+gcloud run services add-iam-policy-binding $GCP_APP_NAME-worker-dev \
   --region=us-west1 \
   --member="user:you@example.com" \
   --role="roles/run.invoker"

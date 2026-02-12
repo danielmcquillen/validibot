@@ -157,7 +157,7 @@ Production uses a single GCS bucket with prefix-based access control:
 ```python
 # config/settings/production.py
 
-STORAGE_BUCKET = env("STORAGE_BUCKET")  # e.g., "validibot-storage"
+STORAGE_BUCKET = env("STORAGE_BUCKET")  # e.g., "myapp-storage"
 
 STORAGES = {
     "default": {

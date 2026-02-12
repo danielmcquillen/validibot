@@ -2,6 +2,13 @@
 
 This document covers how Validibot uses Google Cloud IAM (Identity and Access Management) for secure access to GCP resources.
 
+!!! note "Resource naming convention"
+    All GCP resource names are derived from `GCP_APP_NAME`, which is set in
+    `.envs/.production/.google-cloud/.just` (defaults to `validibot`). The
+    naming pattern is `$GCP_APP_NAME-{resource}[-{stage}]`. For example, with
+    the default app name, the dev service account is `validibot-cloudrun-dev`
+    and the prod storage bucket is `validibot-storage`.
+
 ## Overview
 
 We use a clean separation of service accounts per environment:
@@ -19,17 +26,17 @@ This ensures:
 
 ### Development
 
-| Service Account     | Purpose                            |
-| ------------------- | ---------------------------------- |
-| `validibot-dev-app` | Runtime identity for dev Cloud Run |
+| Service Account              | Purpose                            |
+| ---------------------------- | ---------------------------------- |
+| `$GCP_APP_NAME-cloudrun-dev` | Runtime identity for dev Cloud Run |
 
 Description: "Validibot dev web/worker runtime SA"
 
 ### Production
 
-| Service Account      | Purpose                             |
-| -------------------- | ----------------------------------- |
-| `validibot-prod-app` | Runtime identity for prod Cloud Run |
+| Service Account               | Purpose                             |
+| ----------------------------- | ----------------------------------- |
+| `$GCP_APP_NAME-cloudrun-prod` | Runtime identity for prod Cloud Run |
 
 Description: "Validibot prod web/worker runtime SA"
 
@@ -39,10 +46,10 @@ Description: "Validibot prod web/worker runtime SA"
 
 Each service account needs access only to its environment's bucket:
 
-| Service Account      | Resource                 | Role                 |
-| -------------------- | ------------------------ | -------------------- |
-| `validibot-dev-app`  | `validibot-au-media-dev` | Storage Object Admin |
-| `validibot-prod-app` | `validibot-au-media`     | Storage Object Admin |
+| Service Account              | Resource                     | Role                 |
+| ---------------------------- | ---------------------------- | -------------------- |
+| `$GCP_APP_NAME-cloudrun-dev` | `$GCP_APP_NAME-storage-dev`  | Storage Object Admin |
+| `$GCP_APP_NAME-cloudrun-prod`| `$GCP_APP_NAME-storage`      | Storage Object Admin |
 
 `Storage Object Admin` (`roles/storage.objectAdmin`) grants:
 
@@ -75,7 +82,7 @@ As we add more GCP services, these service accounts will need additional roles:
 1. Go to **IAM & Admin → Service Accounts** in the GCP Console
 2. Click **➕ Create Service Account**
 3. Fill in:
-   - **Service account name**: `validibot-dev-app` (or `validibot-prod-app`)
+   - **Service account name**: `$GCP_APP_NAME-cloudrun-dev` (or `$GCP_APP_NAME-cloudrun-prod`)
    - **Service account ID**: Auto-fills from name
    - **Description**: "Validibot dev web/worker runtime SA"
 4. Click **Create and continue**
@@ -85,13 +92,13 @@ As we add more GCP services, these service accounts will need additional roles:
 The service account email will be:
 
 ```
-validibot-dev-app@<project-id>.iam.gserviceaccount.com
+$GCP_APP_NAME-cloudrun-dev@<project-id>.iam.gserviceaccount.com
 ```
 
 ### Step 2: Grant Bucket Access
 
 1. Go to **Cloud Storage → Buckets**
-2. Click on your bucket (e.g., `validibot-au-media-dev`)
+2. Click on your bucket (e.g., `$GCP_APP_NAME-storage-dev`)
 3. Go to the **Permissions** tab
 4. Click **Grant access**
 5. In "New principals", paste the service account email
@@ -101,10 +108,10 @@ validibot-dev-app@<project-id>.iam.gserviceaccount.com
 ### Step 3: Attach to Cloud Run
 
 1. Go to **Cloud Run → Services**
-2. Click on your service (e.g., `validibot-dev-web`)
+2. Click on your service (e.g., `$GCP_APP_NAME-web-dev`)
 3. Click **Edit & deploy new revision**
 4. Scroll to the **Security** section
-5. Under "Service account", select `validibot-dev-app`
+5. Under "Service account", select `$GCP_APP_NAME-cloudrun-dev`
 6. Click **Deploy**
 
 Repeat for all Cloud Run services in that environment (web and worker).
@@ -190,7 +197,7 @@ Use the Policy Analyzer to check what a service account can access:
 1. Go to **IAM & Admin → Policy Analyzer**
 2. Select "Check access"
 3. Enter the service account email
-4. Specify the resource (e.g., `gs://validibot-au-media-dev`)
+4. Specify the resource (e.g., `gs://$GCP_APP_NAME-storage-dev`)
 5. See what permissions are granted
 
 ## Future: Cloud Tasks Authentication

@@ -80,8 +80,7 @@ dependencies = [
   # Docker SDK for Docker Compose deployments (runs validator containers locally)
   "docker>=7.1.0",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
-  # Installed from Git via [tool.uv.sources] below.
-  "validibot-shared",
+  "validibot-shared>=0.2.1",
 ]
 
 [project.urls]
@@ -255,8 +254,6 @@ force-single-line = true
 
 # ==== uv source overrides ====
 [tool.uv.sources]
-# validibot-shared: Install from Git
-validibot-shared = { git = "https://github.com/danielmcquillen/validibot-shared" }
 # django-celery-beat: Install from Git with Django 6.0 support until released
 # PR: https://github.com/celery/django-celery-beat/pull/978
 django-celery-beat = { git = "https://github.com/celery/django-celery-beat", rev = "bd429063cbb227c00905e7693c38895e44ff8e47" }

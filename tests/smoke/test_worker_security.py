@@ -1,16 +1,18 @@
 """
-Smoke tests for worker service security.
+Smoke tests for worker service security (GCP).
 
 These tests verify that the worker service (which handles validator callbacks
 and scheduled tasks) is properly protected by Cloud Run IAM.
 
-Security Model:
+Security Model (GCP):
     The worker service is deployed with --no-allow-unauthenticated, meaning
     Cloud Run IAM rejects requests that don't have a valid identity token.
-    This is the PRIMARY security control for internal endpoints.
+    This is the PRIMARY security control for internal endpoints on GCP.
 
-    Application-level guards (APP_IS_WORKER check) provide defense in depth
-    but are secondary to the infrastructure-level IAM protection.
+    Application-level guards provide additional defense in depth:
+    - APP_IS_WORKER check returns 404 on non-worker instances
+    - WORKER_API_KEY shared secret (primarily for Docker Compose deployments,
+      but can also be used on GCP as an extra layer)
 """
 
 from __future__ import annotations

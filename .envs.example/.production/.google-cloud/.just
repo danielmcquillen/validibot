@@ -18,6 +18,13 @@ export GCP_PROJECT_ID="your-gcp-project-id"
 # Common options: us-central1, europe-west1, australia-southeast1
 export GCP_REGION="us-central1"
 
+# Application name prefix for all GCP resources
+# All GCP resource names (Cloud Run services, Cloud SQL instances, buckets,
+# service accounts, etc.) are derived from this prefix. For example, with
+# GCP_APP_NAME="myapp", resources will be named myapp-web, myapp-db, etc.
+# Default: "validibot"
+export GCP_APP_NAME="validibot"
+
 # Timezone for Cloud Scheduler cron jobs
 # See: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 export GCP_SCHEDULER_TIMEZONE="UTC"

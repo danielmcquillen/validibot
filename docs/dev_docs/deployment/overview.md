@@ -20,24 +20,27 @@ This page focuses on GCP deployment. See the [Justfile Guide](justfile-guide.md)
 
 Validibot uses three isolated deployment stages:
 
-| Stage       | Purpose                                 | Service Name            |
-| ----------- | --------------------------------------- | ----------------------- |
-| **dev**     | Development testing, feature validation | `validibot-web-dev`     |
-| **staging** | Pre-production testing, E2E tests       | `validibot-web-staging` |
-| **prod**    | Production environment                  | `validibot-web`         |
+| Stage       | Purpose                                 | Service Name               |
+| ----------- | --------------------------------------- | -------------------------- |
+| **dev**     | Development testing, feature validation | `$GCP_APP_NAME-web-dev`     |
+| **staging** | Pre-production testing, E2E tests       | `$GCP_APP_NAME-web-staging` |
+| **prod**    | Production environment                  | `$GCP_APP_NAME-web`         |
 
 Each stage has completely isolated infrastructure:
 
-| Resource             | Dev                                  | Staging                                  | Prod                             |
-| -------------------- | ------------------------------------ | ---------------------------------------- | -------------------------------- |
-| Cloud SQL instance   | `validibot-db-dev`                   | `validibot-db-staging`                   | `validibot-db`                   |
-| Web service          | `validibot-web-dev`                  | `validibot-web-staging`                  | `validibot-web`                  |
-| Worker service       | `validibot-worker-dev`               | `validibot-worker-staging`               | `validibot-worker`               |
-| EnergyPlus validator | `validibot-validator-energyplus-dev` | `validibot-validator-energyplus-staging` | `validibot-validator-energyplus` |
-| FMI validator        | `validibot-validator-fmi-dev`        | `validibot-validator-fmi-staging`        | `validibot-validator-fmi`        |
-| Storage bucket       | `validibot-storage-dev`              | `validibot-storage-staging`              | `validibot-storage`              |
-| Tasks queue          | `validibot-validation-queue-dev`     | `validibot-validation-queue-staging`     | `validibot-tasks`                |
-| Secret               | `django-env-dev`                     | `django-env-staging`                     | `django-env`                     |
+| Resource             | Dev                                     | Staging                                     | Prod                                |
+| -------------------- | --------------------------------------- | ------------------------------------------- | ----------------------------------- |
+| Cloud SQL instance   | `$GCP_APP_NAME-db-dev`                  | `$GCP_APP_NAME-db-staging`                  | `$GCP_APP_NAME-db`                  |
+| Web service          | `$GCP_APP_NAME-web-dev`                 | `$GCP_APP_NAME-web-staging`                 | `$GCP_APP_NAME-web`                 |
+| Worker service       | `$GCP_APP_NAME-worker-dev`              | `$GCP_APP_NAME-worker-staging`              | `$GCP_APP_NAME-worker`              |
+| EnergyPlus validator | `$GCP_APP_NAME-validator-energyplus-dev` | `$GCP_APP_NAME-validator-energyplus-staging` | `$GCP_APP_NAME-validator-energyplus` |
+| FMI validator        | `$GCP_APP_NAME-validator-fmi-dev`       | `$GCP_APP_NAME-validator-fmi-staging`       | `$GCP_APP_NAME-validator-fmi`       |
+| Storage bucket       | `$GCP_APP_NAME-storage-dev`             | `$GCP_APP_NAME-storage-staging`             | `$GCP_APP_NAME-storage`             |
+| Tasks queue          | `$GCP_APP_NAME-validation-queue-dev`    | `$GCP_APP_NAME-validation-queue-staging`    | `$GCP_APP_NAME-tasks`               |
+| Secret               | `django-env-dev`                        | `django-env-staging`                        | `django-env`                        |
+
+!!! note
+    Resource names are derived from the `GCP_APP_NAME` variable (default: `validibot`), which is set in your `.envs/.production/.google-cloud/.just` config file. If you change `GCP_APP_NAME`, all resource names update automatically.
 
 This isolation ensures that dev/staging changes never affect production data.
 

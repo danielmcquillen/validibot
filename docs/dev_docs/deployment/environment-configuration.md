@@ -207,6 +207,46 @@ For a complete list of environment variables and their descriptions, see:
 - `.envs.example/README.md` in the project root - Quick reference table with all variables
 - [Configuration Settings](../overview/settings.md) - Django-specific settings documentation
 
+## Internal API Security (WORKER_API_KEY)
+
+Validibot's worker service exposes internal API endpoints for validation execution, callbacks, and scheduled tasks. These endpoints need protection against unauthorized access.
+
+The `WORKER_API_KEY` setting provides a shared-secret authentication layer:
+
+| Deployment | Primary Auth | WORKER_API_KEY |
+|---|---|---|
+| **Docker Compose** | None (same network) | **Required** - protects against SSRF |
+| **GCP** | Cloud Run IAM (OIDC) | Optional - defense in depth |
+| **Local dev** | None | Optional |
+
+### How It Works
+
+When `WORKER_API_KEY` is set, all requests to worker endpoints must include it in the Authorization header:
+
+```
+Authorization: Worker-Key <key>
+```
+
+When `WORKER_API_KEY` is empty (the default), the check is skipped. This allows GCP deployments to rely solely on Cloud Run IAM.
+
+### Docker Compose Setup
+
+For Docker Compose deployments, add `WORKER_API_KEY` to your `.envs/.production/.docker-compose/.django` file:
+
+```bash
+# Generate a key
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Add to .django env file
+WORKER_API_KEY=your-generated-key-here
+```
+
+Since all Docker Compose services (web, worker, scheduler) share the same env file, the key is automatically available to all services. The Celery worker uses it when making internal API calls.
+
+### Why This Matters
+
+In Docker Compose, all containers share the same Docker bridge network. Without `WORKER_API_KEY`, an SSRF vulnerability in the web container could allow an attacker to call worker endpoints directly, potentially spoofing validation results or triggering data deletion.
+
 ## Security Reminders
 
 !!! danger "Never Commit Secrets"

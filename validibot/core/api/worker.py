@@ -5,30 +5,37 @@ Worker-only endpoints are deployed on the internal worker service and are called
 by infrastructure components (task dispatchers, schedulers, validator containers).
 The authentication mechanism varies by deployment:
 
-- Docker Compose: Worker runs as a separate Celery service
+- Docker Compose: Shared-secret API key (WORKER_API_KEY setting)
 - GCP: Cloud Run IAM authenticates via OIDC tokens
 - AWS: IAM-based authentication (future)
 
-Django REST Framework authentication is disabled for these views since
-authentication is handled at the infrastructure level.
+When WORKER_API_KEY is set, callers must include it in the Authorization header::
+
+    Authorization: Worker-Key <key>
+
+When WORKER_API_KEY is not set (GCP path), the key check is skipped and
+infrastructure-level auth is relied upon instead.
 """
 
 from django.conf import settings
 from django.http import Http404
 from rest_framework.views import APIView
 
+from validibot.core.api.worker_auth import WorkerKeyAuthentication
+
 
 class WorkerOnlyAPIView(APIView):
     """
     Base class for internal worker-only endpoints.
 
-    This adds a defense-in-depth guard that returns 404 when the code is running
-    on a non-worker instance, even if URL routing is misconfigured. Authentication
-    and authorization are enforced at the infrastructure level (e.g., Cloud Run IAM,
-    network isolation), so DRF auth is disabled.
+    Security is layered:
+    1. URL routing: worker endpoints only exist on worker instances (urls_worker.py)
+    2. App guard: returns 404 on non-worker instances (defense in depth)
+    3. API key: WORKER_API_KEY checked via WorkerKeyAuthentication (Docker Compose)
+    4. Infrastructure: Cloud Run IAM / network isolation (GCP)
     """
 
-    authentication_classes = []
+    authentication_classes = [WorkerKeyAuthentication]
     permission_classes = []
 
     def initial(self, request, *args, **kwargs):

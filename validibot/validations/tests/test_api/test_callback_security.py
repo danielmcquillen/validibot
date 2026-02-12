@@ -1,18 +1,14 @@
 """
 Security tests for the validation callback endpoint.
 
-The callback endpoint relies on infrastructure-level security (e.g., Cloud Run IAM,
-network isolation) rather than application-level authentication. These tests verify
-the app-level guards are in place to complement the infrastructure controls.
+Security is layered across multiple levels:
+    1. URL routing: worker endpoints only exist on worker instances
+    2. App guard: returns 404 on non-worker instances (defense in depth)
+    3. API key: WORKER_API_KEY checked via WorkerKeyAuthentication (Docker Compose)
+    4. Infrastructure: Cloud Run IAM / network isolation (GCP)
 
-Security Model (varies by deployment):
-    - GCP: Cloud Run ingress set to "internal", OIDC token verification
-    - Docker Compose: Network isolation via internal network
-    - AWS: IAM-based authentication (future)
-    - App-level: endpoint returns 404 on non-worker instances (defense in depth)
-
-Note: True security testing requires infrastructure verification, which is done
-via deployment checklists and manual audits. These tests verify the app guards.
+These tests verify the app-level guards (layers 1-2). Worker API key tests
+are in core/tests/test_worker_auth.py.
 """
 
 from django.test import TestCase

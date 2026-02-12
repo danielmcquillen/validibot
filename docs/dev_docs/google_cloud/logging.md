@@ -50,10 +50,10 @@ The easiest way to view logs is the Cloud Console:
 just gcp logs
 
 # Or directly with gcloud
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot" --limit=50
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$GCP_APP_NAME" --limit=50
 
 # Logs from worker service
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=validibot-worker" --limit=50
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=$GCP_APP_NAME-worker" --limit=50
 ```
 
 ## Searching Logs
@@ -70,8 +70,8 @@ severity=WARNING
 ### By Service
 
 ```
-resource.labels.service_name="validibot"
-resource.labels.service_name="validibot-worker"
+resource.labels.service_name="$GCP_APP_NAME"
+resource.labels.service_name="$GCP_APP_NAME-worker"
 ```
 
 ### By Module/Logger
@@ -100,7 +100,7 @@ timestamp>="2025-12-01T00:00:00Z" timestamp<="2025-12-02T00:00:00Z"
 Find validation errors in the last hour:
 
 ```
-resource.labels.service_name="validibot-worker"
+resource.labels.service_name="$GCP_APP_NAME-worker"
 severity>=ERROR
 jsonPayload.name:"validations"
 timestamp>="-1h"
@@ -165,7 +165,7 @@ When a validation fails, here's how to investigate:
 
 1. **Find the error in Cloud Logging**:
    ```
-   resource.labels.service_name="validibot-worker"
+   resource.labels.service_name="$GCP_APP_NAME-worker"
    severity>=ERROR
    timestamp>="-1h"
    ```
@@ -180,7 +180,7 @@ When a validation fails, here's how to investigate:
 4. **Check Cloud Run Job logs** (for validator execution):
    ```
    resource.type="cloud_run_job"
-   resource.labels.job_name="validibot-validator-energyplus"
+   resource.labels.job_name="$GCP_APP_NAME-validator-energyplus"
    ```
 
 ## Related

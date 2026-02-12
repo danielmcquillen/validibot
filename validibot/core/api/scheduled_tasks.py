@@ -1,13 +1,11 @@
 """
-API endpoints for scheduled tasks triggered by Cloud Scheduler.
+API endpoints for scheduled tasks triggered by Cloud Scheduler or Celery Beat.
 
 These endpoints wrap Django management commands and are designed to be called
-by Cloud Scheduler jobs. Authentication is handled at the Cloud Run IAM level
-using OIDC tokens.
+by infrastructure schedulers. Authentication varies by deployment:
 
-Usage:
-    Cloud Scheduler calls these endpoints with an OIDC token that Cloud Run
-    verifies automatically. No application-level authentication is required.
+- GCP: Cloud Run IAM verifies OIDC tokens from Cloud Scheduler
+- Docker Compose: WORKER_API_KEY shared secret (see worker_auth.py)
 
 Example Cloud Scheduler setup:
     gcloud scheduler jobs create http cleanup-idempotency-keys \\
@@ -29,6 +27,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from validibot.core.api.worker_auth import WorkerKeyAuthentication
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,12 +36,14 @@ class ScheduledTaskBaseView(APIView):
     """
     Base class for scheduled task endpoints.
 
-    Authentication is handled by Cloud Run IAM (OIDC tokens from Cloud Scheduler).
-    These endpoints are only available on worker instances.
+    Security is layered:
+    1. URL routing: only exists on worker instances (urls_worker.py)
+    2. App guard: check_worker_mode() returns 404 on non-worker instances
+    3. API key: WORKER_API_KEY checked via WorkerKeyAuthentication (Docker Compose)
+    4. Infrastructure: Cloud Run IAM / OIDC tokens (GCP)
     """
 
-    # Cloud Run IAM performs authentication; DRF auth is disabled here.
-    authentication_classes = []
+    authentication_classes = [WorkerKeyAuthentication]
     permission_classes = []
 
     def check_worker_mode(self):

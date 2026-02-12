@@ -9,8 +9,8 @@ Validator containers run advanced validations like EnergyPlus simulations and FM
 
 We deploy one Django image as two Cloud Run services:
 
-- **validibot-web** (`APP_ROLE=web`): Public UI + public API.
-- **validibot-worker** (`APP_ROLE=worker`): Private/IAM-only internal API (callbacks).
+- **$GCP_APP_NAME-web** (`APP_ROLE=web`): Public UI + public API.
+- **$GCP_APP_NAME-worker** (`APP_ROLE=worker`): Private/IAM-only internal API (callbacks).
 
 Validator jobs (EnergyPlus, FMI, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
 
@@ -34,7 +34,7 @@ sequenceDiagram
 
 IAM roles involved:
 - **Web/Worker service account**: Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
-- **Validator job service account**: `roles/run.invoker` on `validibot-worker` for callbacks; storage roles for its GCS paths.
+- **Validator job service account**: `roles/run.invoker` on `$GCP_APP_NAME-worker` for callbacks; storage roles for its GCS paths.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 ### Custom IAM Role
@@ -68,7 +68,7 @@ The launcher generates a unique `callback_id` for each job execution and puts it
    - `--no-allow-unauthenticated`
    - `--set-env-vars APP_ROLE=worker`
    - Set `WORKER_URL` in the stage env file to the worker service URL (see below)
-   - Grant `roles/run.invoker` on `validibot-worker` to each validator job service account
+   - Grant `roles/run.invoker` on `$GCP_APP_NAME-worker` to each validator job service account
 
 4) Validator jobs:
    - Tag with labels: `validator=<name>,version=<git_sha>`
@@ -79,7 +79,7 @@ To populate `WORKER_URL` for a stage, fetch the worker service URL and add it to
 
 ```bash
 # prod example
-gcloud run services describe validibot-worker \
+gcloud run services describe $GCP_APP_NAME-worker \
   --region $GCP_REGION \
   --project $GCP_PROJECT_ID \
   --format='value(status.url)'
@@ -114,8 +114,8 @@ just validators-deploy-all dev
 1. **Builds** the container image with `linux/amd64` platform (required by Cloud Run)
 2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
 3. **Deploys** the Cloud Run Job with:
-   - Stage-appropriate job name (`validibot-validator-energyplus-dev` for dev, `validibot-validator-energyplus` for prod)
-   - Stage-appropriate service account (`validibot-cloudrun-dev@...` for dev)
+   - Stage-appropriate job name (`$GCP_APP_NAME-validator-energyplus-dev` for dev, `$GCP_APP_NAME-validator-energyplus` for prod)
+   - Stage-appropriate service account (`$GCP_APP_NAME-cloudrun-dev@...` for dev)
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
    - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
 4. **Grants IAM permission** - adds custom `validibot_job_runner` role so the web/worker service can trigger the job with env overrides
@@ -129,7 +129,7 @@ just describe-job energyplus dev    # Show job details
 just logs energyplus dev            # View recent logs
 
 # From validibot directory (equivalent)
-gcloud run jobs list --filter "name~validibot-validator" --region $GCP_REGION
+gcloud run jobs list --filter "name~$GCP_APP_NAME-validator" --region $GCP_REGION
 ```
 
 ### Deleting a validator job
@@ -156,10 +156,10 @@ When Django triggers a validator Cloud Run Job execution, it passes:
 
 | Source | Data | Example |
 |--------|------|---------|
-| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://validibot-storage-dev/private/runs/run456/input.json` |
-| Input envelope | `context.callback_url` | `https://validibot-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
-| Input envelope | `context.execution_bundle_uri` | `gs://validibot-storage-dev/private/runs/run456/` |
-| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://validibot-storage-dev/private/runs/run456/model.idf` |
+| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/input.json` |
+| Input envelope | `context.callback_url` | `https://$GCP_APP_NAME-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
+| Input envelope | `context.execution_bundle_uri` | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/` |
+| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/model.idf` |
 
 The validator reads the input envelope, downloads files from the provided GCS URIs, runs the simulation, uploads outputs to the execution bundle URI, and POSTs results to the callback URL.
 
@@ -169,7 +169,7 @@ Stage isolation is enforced by:
 
 1. **Django** creates envelopes with stage-appropriate bucket names and callback URLs
 2. **Service accounts** - each stage's validator job uses a stage-specific SA that only has access to its own buckets
-3. **GCS bucket permissions** - `validibot-cloudrun-dev` can only access `validibot-storage-dev`, not prod buckets
+3. **GCS bucket permissions** - `$GCP_APP_NAME-cloudrun-dev` can only access `$GCP_APP_NAME-storage-dev`, not prod buckets
 
 ### Deploy-time environment variables
 
@@ -276,8 +276,8 @@ just build fmi
 just build-all
 
 # Images are available locally as:
-# validibot-validator-energyplus:latest
-# validibot-validator-fmi:latest
+# $GCP_APP_NAME-validator-energyplus:latest
+# $GCP_APP_NAME-validator-fmi:latest
 ```
 
 ### Docker Compose Configuration

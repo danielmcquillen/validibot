@@ -56,47 +56,47 @@ To disable public IP entirely, you need to enable Private IP first. This require
 1. **VPC with Private Services Access**:
    ```bash
    # Create a VPC (or use default)
-   gcloud compute networks create validibot-vpc --subnet-mode=auto
+   gcloud compute networks create $GCP_APP_NAME-vpc --subnet-mode=auto
 
    # Allocate IP range for private services
-   gcloud compute addresses create google-managed-services-validibot \
+   gcloud compute addresses create google-managed-services-$GCP_APP_NAME \
        --global \
        --purpose=VPC_PEERING \
        --prefix-length=16 \
-       --network=validibot-vpc
+       --network=$GCP_APP_NAME-vpc
 
    # Create private connection
    gcloud services vpc-peerings connect \
        --service=servicenetworking.googleapis.com \
-       --ranges=google-managed-services-validibot \
-       --network=validibot-vpc
+       --ranges=google-managed-services-$GCP_APP_NAME \
+       --network=$GCP_APP_NAME-vpc
    ```
 
 2. **Enable Private IP on Cloud SQL**:
    ```bash
-   gcloud sql instances patch validibot-db \
-       --network=projects/PROJECT/global/networks/validibot-vpc \
+   gcloud sql instances patch $GCP_APP_NAME-db \
+       --network=projects/PROJECT/global/networks/$GCP_APP_NAME-vpc \
        --project=PROJECT_ID
    ```
 
 3. **Create Serverless VPC Access Connector**:
    ```bash
-   gcloud compute networks vpc-access connectors create validibot-connector \
+   gcloud compute networks vpc-access connectors create $GCP_APP_NAME-connector \
        --region=us-west1 \
-       --network=validibot-vpc \
+       --network=$GCP_APP_NAME-vpc \
        --range=10.8.0.0/28
    ```
 
 4. **Configure Cloud Run to use VPC**:
    ```bash
-   gcloud run services update validibot-web \
-       --vpc-connector=validibot-connector \
+   gcloud run services update $GCP_APP_NAME-web \
+       --vpc-connector=$GCP_APP_NAME-connector \
        --vpc-egress=private-ranges-only
    ```
 
 5. **Disable Public IP**:
    ```bash
-   gcloud sql instances patch validibot-db --no-assign-ip
+   gcloud sql instances patch $GCP_APP_NAME-db --no-assign-ip
    ```
 
 **Cost impact**: VPC Access Connector adds ~$7-10/month per connector.
@@ -106,14 +106,14 @@ To disable public IP entirely, you need to enable Private IP first. This require
 Check if an instance has public IP:
 
 ```bash
-gcloud sql instances describe validibot-db-dev \
+gcloud sql instances describe $GCP_APP_NAME-db-dev \
     --format="value(ipAddresses)"
 ```
 
 Check authorized networks (should be empty for IAM-only auth):
 
 ```bash
-gcloud sql instances describe validibot-db-dev \
+gcloud sql instances describe $GCP_APP_NAME-db-dev \
     --format="value(settings.ipConfiguration.authorizedNetworks)"
 ```
 
@@ -150,6 +150,14 @@ Secrets are stored in Google Cloud Secret Manager with:
 - Version history for audit
 
 See [Secrets Management](deployment.md#secrets-management) in the deployment guide.
+
+## Worker Service Authentication
+
+The worker service exposes internal API endpoints (validation execution, callbacks, scheduled tasks). On GCP, these are protected by Cloud Run IAM -- the service is deployed with `--no-allow-unauthenticated`, so Cloud Run rejects any request without a valid OIDC identity token.
+
+Validibot also supports an application-level `WORKER_API_KEY` shared secret as defense in depth. On GCP this is optional (Cloud Run IAM is the primary control), but it's required for Docker Compose deployments where there's no infrastructure-level auth.
+
+See [Internal API Security](../deployment/environment-configuration.md#internal-api-security-worker_api_key) for configuration details.
 
 ## Related
 

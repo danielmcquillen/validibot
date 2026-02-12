@@ -46,7 +46,7 @@ DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@/${POSTGRES_DB}?ho
 # Single bucket with prefix-based separation:
 #   public/  - Public files (avatars, images) - configure IAM for allUsers read
 #   private/ - Private files (submissions, validation data)
-STORAGE_BUCKET=your-validibot-storage-bucket
+STORAGE_BUCKET=your-app-name-storage
 
 # DEFAULT USERS
 # ==============================================================================
@@ -71,18 +71,20 @@ WORKER_URL=https://your-worker-service.region.run.app
 
 # GCP
 # ==============================================================================
+# Resource names follow the pattern: {GCP_APP_NAME}-{resource}[-{stage}]
+# where GCP_APP_NAME is set in .envs/.production/.google-cloud/.just
 GCP_PROJECT_ID=your-gcp-project-id
 GCP_REGION=us-west1
 
 # Cloud Tasks
-GCS_TASK_QUEUE_NAME=validibot-tasks
-CLOUD_TASKS_SERVICE_ACCOUNT=your-service-account@your-project.iam.gserviceaccount.com
+GCS_TASK_QUEUE_NAME=your-app-name-tasks
+CLOUD_TASKS_SERVICE_ACCOUNT=your-app-name-cloudrun-prod@your-project.iam.gserviceaccount.com
 
 # Validation infrastructure (Cloud Run Jobs)
-GCS_VALIDATION_BUCKET=your-validibot-storage-bucket
+GCS_VALIDATION_BUCKET=your-app-name-storage
 GCS_WEATHER_DATA_DIR=weather_data
-GCS_ENERGYPLUS_JOB_NAME=validibot-validator-energyplus
-GCS_FMI_JOB_NAME=validibot-validator-fmi
+GCS_ENERGYPLUS_JOB_NAME=your-app-name-validator-energyplus
+GCS_FMI_JOB_NAME=your-app-name-validator-fmi
 
 # FEATURE TOGGLES
 # ==============================================================================
@@ -100,8 +102,8 @@ ENABLE_AI_VALIDATIONS=false
 #   prod:    credential-signing
 #   staging: credential-signing-staging
 #   dev:     credential-signing-dev
-GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/validibot-keys/cryptoKeys/credential-signing"
-GCP_KMS_JWKS_KEYS="projects/your-project/locations/region/keyRings/validibot-keys/cryptoKeys/credential-signing"
+GCP_KMS_SIGNING_KEY="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
+GCP_KMS_JWKS_KEYS="projects/your-project/locations/region/keyRings/your-app-name-keys/cryptoKeys/credential-signing"
 SV_JWKS_ALG="ES256"
 
 # GITHUB (optional)

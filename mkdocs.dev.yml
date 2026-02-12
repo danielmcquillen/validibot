@@ -80,6 +80,7 @@ nav:
       - Service Architecture: overview/service_architecture.md
       - Advanced Validator Interface: overview/validator_architecture.md
       - Execution Backends: overview/execution_backends.md
+      - Submission Data Lifecycle: overview/submission_data_lifecycle.md
       - Submission Modes: overview/request_modes.md
       - System Administration: overview/system_admin.md
       - Dashboard: dashboard.md

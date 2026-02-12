@@ -56,7 +56,7 @@ class WorkerKeyAuthentication(BaseAuthentication):
             # No key configured - skip authentication (GCP/test path).
             return None
 
-        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        auth_header = request.headers.get("authorization", "")
         if not auth_header:
             logger.warning(
                 "Worker endpoint called without Authorization header "

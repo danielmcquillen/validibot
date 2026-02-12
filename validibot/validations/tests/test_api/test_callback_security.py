@@ -85,11 +85,12 @@ class TestCallbackEndpointSecurity(TestCase):
 
     @override_settings(APP_IS_WORKER=True, ROOT_URLCONF="config.urls_worker")
     def test_callback_validates_payload_on_worker(self):
-        """Callback should validate payload structure even without auth."""
+        """Callback should return 400 for invalid payloads."""
         response = self.client.post(
             self.endpoint,
             data={"invalid": "payload"},
             format="json",
         )
-        # Pydantic validation should catch this
-        self.assertEqual(response.status_code, 500)
+        # Pydantic validation should catch this and return 400 Bad Request
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid callback payload", response.json().get("error", ""))

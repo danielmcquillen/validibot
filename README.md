@@ -155,8 +155,12 @@ See the [Reverse Proxy Guide](https://dev.validibot.com/deployment/reverse-proxy
 
 Key security features:
 
-- **Resource limits**: CPU, memory, and timeout limits on all validator containers
 - **Network isolation**: Validator containers run with `network_mode='none'`
+- **Dropped capabilities**: All Linux capabilities are dropped (`cap_drop=ALL`)
+- **No privilege escalation**: `no-new-privileges` prevents setuid/setgid abuse
+- **Read-only filesystem**: Root filesystem is read-only with writable tmpfs on `/tmp`
+- **Non-root execution**: Validator containers run as UID 1000, not root
+- **Resource limits**: CPU, memory, PID, and timeout limits on all validator containers
 - **Automatic cleanup**: Orphaned containers are cleaned up via the Ryuk pattern
 - **Non-root processes**: Web and worker containers run as non-root users
 

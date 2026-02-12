@@ -323,6 +323,50 @@ class ContainerLabelsTests(TestCase):
             self.assertIn(LABEL_STARTED_AT, labels)
             self.assertIn(LABEL_TIMEOUT_SECONDS, labels)
 
+    def test_run_applies_security_hardening(self):
+        """Test that run() applies security hardening options to containers."""
+        mock_docker, mock_client = create_mock_docker()
+
+        mock_container = MagicMock()
+        mock_container.short_id = "test123"
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_container.logs.return_value = b""
+        mock_client.containers.run.return_value = mock_container
+
+        with patch.dict(sys.modules, {"docker": mock_docker}):
+            from validibot.validations.services.runners.docker import (
+                DockerValidatorRunner,
+            )
+
+            runner = DockerValidatorRunner()
+            runner._client = mock_client
+
+            runner.run(
+                container_image="test-image:latest",
+                input_uri="file:///input.json",
+                output_uri="file:///output.json",
+            )
+
+            call_kwargs = mock_client.containers.run.call_args[1]
+
+            # All Linux capabilities should be dropped
+            self.assertEqual(call_kwargs["cap_drop"], ["ALL"])
+            # Privilege escalation should be blocked
+            self.assertEqual(
+                call_kwargs["security_opt"],
+                ["no-new-privileges:true"],
+            )
+            # PID limit should be set to prevent fork bombs
+            self.assertEqual(call_kwargs["pids_limit"], 512)
+            # Root filesystem should be read-only
+            self.assertTrue(call_kwargs["read_only"])
+            # Writable tmpfs should be mounted for validator scratch space
+            self.assertIn("/tmp", call_kwargs["tmpfs"])  # noqa: S108
+            # Container should run as non-root user
+            self.assertEqual(call_kwargs["user"], "1000:1000")
+            # Network should be isolated
+            self.assertEqual(call_kwargs["network_mode"], "none")
+
     def test_run_passes_run_id_as_environment_variable(self):
         """Test that run() passes VALIDIBOT_RUN_ID to the container."""
         mock_docker, mock_client = create_mock_docker()

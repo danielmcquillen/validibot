@@ -24,6 +24,7 @@ from datetime import datetime
 
 from django.db import DatabaseError
 from django.db import transaction
+from pydantic import ValidationError
 from rest_framework import status
 from rest_framework.response import Response
 from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
@@ -212,6 +213,12 @@ class ValidationCallbackService:
                 receipt=None,
             )
 
+        except ValidationError as exc:
+            logger.warning("Invalid callback payload: %s", exc)
+            return Response(
+                {"error": f"Invalid callback payload: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exc:
             logger.exception("Unexpected error processing callback")
             return Response(

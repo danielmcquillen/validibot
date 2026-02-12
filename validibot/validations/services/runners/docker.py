@@ -35,8 +35,13 @@ This enables three cleanup strategies:
 SECURITY NOTES
 --------------
 - Containers run with no network access by default (network_mode='none')
+- All Linux capabilities are dropped (cap_drop=['ALL'])
+- Privilege escalation is blocked (no-new-privileges)
+- PID limit prevents fork bombs (pids_limit=512)
+- Read-only root filesystem with writable tmpfs on /tmp
+- Containers run as non-root user (UID 1000)
+- Memory and CPU limits are enforced
 - Network access can be enabled by setting VALIDATOR_NETWORK if needed
-- Memory and CPU limits can be set via VALIDATOR_RUNNER_OPTIONS
 - Input/output uses shared volume, no network required for normal operation
 """
 
@@ -246,6 +251,13 @@ class DockerValidatorRunner(ValidatorRunner):
             "security_opt": ["no-new-privileges:true"],
             # Prevent fork bombs from exhausting the host PID space
             "pids_limit": 512,
+            # Read-only root filesystem: validators only need to write to /tmp
+            # (EnergyPlus uses /tmp/energyplus_run/, FMI uses /tmp/fmi_run/)
+            "read_only": True,
+            # Provide writable tmpfs for validator scratch space
+            "tmpfs": {"/tmp": "size=2g,mode=1777"},  # noqa: S108
+            # Run as non-root user (validators don't need root privileges)
+            "user": "1000:1000",
         }
 
         if volumes:

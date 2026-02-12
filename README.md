@@ -1,7 +1,7 @@
 <div align="center">
 
 <picture>
-  <img src="https://validibot.com/static/marketing/images/robot_scene_schema_validation.png" alt="Validibot - Data Validation Robot" width="420" >
+  <img src="https://github.com/danielmcquillen/validibot/robot.png" alt="Validibot - Data Validation Robot" width="250" >
 </picture>
 
 # Validibot

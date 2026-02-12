@@ -525,7 +525,8 @@ def _delete_run_files(run) -> None:
     Delete all files associated with a validation run.
 
     Uses the storage abstraction to remove all files under the run's directory
-    (runs/{run_id}/). This works for both local filesystem and cloud storage.
+    (runs/{org_id}/{run_id}/). This works for both local filesystem and cloud
+    storage.
 
     This function is called during submission content purge to remove
     all associated files from storage.
@@ -539,8 +540,9 @@ def _delete_run_files(run) -> None:
     """
     from validibot.core.storage import get_data_storage
 
+    org_id = str(run.org_id)
     run_id = str(run.id)
-    run_path = f"runs/{run_id}/"
+    run_path = f"runs/{org_id}/{run_id}/"
 
     try:
         storage = get_data_storage()

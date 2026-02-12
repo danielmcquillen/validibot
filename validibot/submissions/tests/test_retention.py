@@ -106,6 +106,19 @@ class TestSubmissionPurgeContent:
         # Should have been called for the related run
         mock_delete.assert_called_once_with(run)
 
+    @patch("validibot.core.storage.get_data_storage")
+    def test_delete_run_files_uses_org_prefixed_path(self, mock_get_storage):
+        """Run file deletion should use runs/{org_id}/{run_id}/ path."""
+        submission = SubmissionFactory(content='{"test": "data"}')
+        run = ValidationRunFactory(submission=submission)
+        mock_storage = mock_get_storage.return_value
+        mock_storage.delete_prefix.return_value = 0
+
+        submission.purge_content()
+
+        expected_path = f"runs/{run.org_id}/{run.id}/"
+        mock_storage.delete_prefix.assert_called_once_with(expected_path)
+
 
 @pytest.mark.django_db
 class TestPurgeRetryModel:

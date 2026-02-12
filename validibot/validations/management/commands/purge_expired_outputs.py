@@ -205,7 +205,8 @@ class Command(BaseCommand):
         # Delete run files from data storage
         try:
             storage = get_data_storage()
-            run_path = f"runs/{run_id}/"
+            org_id = str(run.org_id)
+            run_path = f"runs/{org_id}/{run_id}/"
             files_deleted = storage.delete_prefix(run_path)
             if files_deleted > 0:
                 logger.info(

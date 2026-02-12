@@ -11,9 +11,11 @@ Every advanced validation run creates an **execution bundle** — a directory in
 ```
 runs/{org_id}/{run_id}/
 ├── input.json           # Input envelope (validator config, file URIs, callback info)
-├── model.epjson         # Copy of the submission content
+├── <submission file>    # Copy of the submission content (see below)
 └── output.json          # Written by the container after execution
 ```
+
+The submission file name and format depend on the validator type. For example, an EnergyPlus run might contain `model.epjson` or `model.idf`, while an FMI run references the FMU model via URI in the envelope rather than copying it into the bundle. Each validator's launcher determines what gets written here.
 
 The bundle path uses the org ID prefix for multi-tenant isolation. Both Docker Compose (`file://`) and GCP (`gs://`) backends follow this same structure.
 

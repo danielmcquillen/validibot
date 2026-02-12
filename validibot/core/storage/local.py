@@ -188,6 +188,20 @@ class LocalDataStorage(DataStorage):
         logger.info("Deleted directory %s (%d files)", full_path, count)
         return count
 
+    def ensure_writable(self, path: str) -> None:
+        """
+        Make a directory writable by non-root container users.
+
+        Validator containers run as UID 1000 but the worker creates
+        directories as root. This sets the directory permissions to 777
+        so the container can write output files (e.g., output.json).
+        """
+        import stat
+
+        full_path = self._resolve_path(path)
+        if full_path.is_dir():
+            full_path.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
     def get_uri(self, path: str) -> str:
         """Get file:// URI for a path."""
         full_path = self._resolve_path(path)

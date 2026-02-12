@@ -247,7 +247,12 @@ def launch_validation(
             run.id,
         )
 
-        # 8. Get container image and run
+        # 8. Make run directory writable by non-root container user.
+        # The worker creates directories as root, but validator containers
+        # run as UID 1000 and need to write output.json to this directory.
+        storage.ensure_writable(base_path)
+
+        # 9. Get container image and run
         container_image = get_container_image(validator)
 
         logger.info(
@@ -263,7 +268,7 @@ def launch_validation(
             output_uri=output_envelope_uri,
         )
 
-        # 9. Process the result
+        # 10. Process the result
         return _process_execution_result(
             result=result,
             run=run,

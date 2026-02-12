@@ -201,6 +201,19 @@ class DataStorage(ABC):
             FileNotFoundError: If path doesn't exist
         """
 
+    def ensure_writable(self, path: str) -> None:  # noqa: B027
+        """
+        Ensure a directory is writable by non-root container users.
+
+        For local storage, this sets directory permissions so that validator
+        containers running as non-root (UID 1000) can write output files.
+        For cloud storage backends (GCS, S3), this is a no-op since
+        permissions are managed via IAM, not filesystem ACLs.
+
+        Args:
+            path: Relative directory path within storage
+        """
+
     def write_envelope(self, path: str, envelope: BaseModel) -> str:
         """
         Write a Pydantic envelope model to storage as JSON.

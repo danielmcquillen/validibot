@@ -20,36 +20,25 @@ Example Cloud Scheduler setup:
 import logging
 from io import StringIO
 
-from django.conf import settings
 from django.core.management import call_command
-from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
-from validibot.core.api.worker_auth import WorkerKeyAuthentication
+from validibot.core.api.worker import WorkerOnlyAPIView
 
 logger = logging.getLogger(__name__)
 
 
-class ScheduledTaskBaseView(APIView):
+class ScheduledTaskBaseView(WorkerOnlyAPIView):
     """
     Base class for scheduled task endpoints.
 
-    Security is layered:
+    Inherits security layers from WorkerOnlyAPIView:
     1. URL routing: only exists on worker instances (urls_worker.py)
-    2. App guard: check_worker_mode() returns 404 on non-worker instances
+    2. App guard: initial() returns 404 on non-worker instances
     3. API key: WORKER_API_KEY checked via WorkerKeyAuthentication (Docker Compose)
     4. Infrastructure: Cloud Run IAM / OIDC tokens (GCP)
     """
-
-    authentication_classes = [WorkerKeyAuthentication]
-    permission_classes = []
-
-    def check_worker_mode(self):
-        """Ensure we're running on a worker instance."""
-        if not getattr(settings, "APP_IS_WORKER", False):
-            raise Http404
 
 
 class CleanupIdempotencyKeysView(ScheduledTaskBaseView):
@@ -111,7 +100,13 @@ class CleanupCallbackReceiptsView(ScheduledTaskBaseView):
         self.check_worker_mode()
 
         # Allow overriding retention days via request body
-        days = request.data.get("days", 30)
+        try:
+            days = int(request.data.get("days", 30))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "days must be an integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         logger.info("Starting scheduled cleanup of callback receipts (days=%d)", days)
 
@@ -202,8 +197,14 @@ class PurgeExpiredSubmissionsView(ScheduledTaskBaseView):
         self.check_worker_mode()
 
         # Allow overriding batch parameters via request body
-        batch_size = request.data.get("batch_size", 100)
-        max_batches = request.data.get("max_batches", 10)
+        try:
+            batch_size = int(request.data.get("batch_size", 100))
+            max_batches = int(request.data.get("max_batches", 10))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "batch_size and max_batches must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         logger.info(
             "Starting scheduled purge of expired submissions "
@@ -264,7 +265,13 @@ class ProcessPurgeRetriesView(ScheduledTaskBaseView):
         self.check_worker_mode()
 
         # Allow overriding batch size via request body
-        batch_size = request.data.get("batch_size", 50)
+        try:
+            batch_size = int(request.data.get("batch_size", 50))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "batch_size must be an integer"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         logger.info(
             "Starting scheduled processing of purge retries (batch_size=%d)",
@@ -327,8 +334,14 @@ class CleanupStuckRunsView(ScheduledTaskBaseView):
         self.check_worker_mode()
 
         # Allow overriding parameters via request body
-        timeout_minutes = request.data.get("timeout_minutes", 30)
-        batch_size = request.data.get("batch_size", 100)
+        try:
+            timeout_minutes = int(request.data.get("timeout_minutes", 30))
+            batch_size = int(request.data.get("batch_size", 100))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "timeout_minutes and batch_size must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         logger.info(
             "Starting scheduled cleanup of stuck runs "

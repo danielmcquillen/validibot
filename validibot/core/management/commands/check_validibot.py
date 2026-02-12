@@ -837,6 +837,17 @@ class Command(BaseCommand):
                 )
             )
 
+        # Check admin URL
+        admin_url = getattr(settings, "ADMIN_URL", "admin/")
+        if admin_url == "admin/" and not settings.DEBUG:
+            issues.append(
+                (
+                    "DJANGO_ADMIN_URL is the default 'admin/'",
+                    "Set DJANGO_ADMIN_URL to a random path: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(16))"',
+                )
+            )
+
         # Check SECURE settings for production
         if not settings.DEBUG:
             if not getattr(settings, "SECURE_SSL_REDIRECT", False):

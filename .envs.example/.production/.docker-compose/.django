@@ -87,7 +87,9 @@ SITE_URL=https://validibot.example.com
 
 # ADMIN
 # ==============================================================================
-# Change for security through obscurity
+# IMPORTANT: Change this to a random URL to prevent automated attacks on /admin/.
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(16))"
+# Example result: DJANGO_ADMIN_URL=k8Xm2pQ1wZ9nR4tB/
 DJANGO_ADMIN_URL=admin/
 
 # SSL redirect (set to false if your reverse proxy handles SSL)

@@ -254,8 +254,10 @@ In Docker Compose, all containers share the same Docker bridge network. Without 
 
 1. **Generate proper secrets for production** - Use the commands in `.envs.example/README.md` to generate `DJANGO_SECRET_KEY` and passwords.
 
-2. **Use different secrets per environment** - Dev, staging, and production should have completely different credentials.
+2. **Randomize the admin URL** - Change `DJANGO_ADMIN_URL` from the default `admin/` to a random path. This prevents automated scanners from finding your admin login page. Generate one with: `python -c "import secrets; print(secrets.token_urlsafe(16))"`.
 
-3. **Rotate secrets periodically** - Especially after team member departures or security incidents.
+3. **Use different secrets per environment** - Dev, staging, and production should have completely different credentials.
 
-4. **Use Secret Manager in cloud deployments** - GCP Secret Manager (or AWS Secrets Manager) provides audit logging and access controls that local files can't.
+4. **Rotate secrets periodically** - Especially after team member departures or security incidents.
+
+5. **Use Secret Manager in cloud deployments** - GCP Secret Manager (or AWS Secrets Manager) provides audit logging and access controls that local files can't.

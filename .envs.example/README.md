@@ -138,7 +138,7 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 | `DJANGO_SECRET_KEY` | Secret key for cryptographic signing | - | Production only |
 | `DJANGO_DEBUG` | Enable debug mode | `True` (local) | No |
 | `DJANGO_ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `*` (local) | Production only |
-| `DJANGO_ADMIN_URL` | Admin URL path | `admin/` | No |
+| `DJANGO_ADMIN_URL` | Admin URL path (randomize for production!) | `admin/` | No |
 | `DEPLOYMENT_TARGET` | Deployment platform (`docker_compose`, `gcp`, `aws`) | - | Production only |
 
 #### Infrastructure
@@ -216,6 +216,20 @@ If no email provider is configured, emails are printed to the console.
 
 ```bash
 python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+```
+
+### Admin URL Path
+
+Randomize the admin URL to prevent automated attacks on `/admin/`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(16))"
+```
+
+Then set it in your env file (remember to add the trailing slash):
+
+```
+DJANGO_ADMIN_URL=k8Xm2pQ1wZ9nR4tB/
 ```
 
 ### Secure Password

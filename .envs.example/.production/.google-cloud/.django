@@ -12,6 +12,8 @@ DJANGO_SETTINGS_MODULE=config.settings.production
 DEPLOYMENT_TARGET=gcp
 DJANGO_DEBUG=False
 DJANGO_SECRET_KEY=your-secret-key-here-change-this
+# IMPORTANT: Change to a random URL to prevent automated attacks on /admin/.
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(16))"
 DJANGO_ADMIN_URL=admin/
 # Specific Cloud Run hostnames plus custom domain
 # Security: Do NOT use wildcards like .run.app - that allows any Cloud Run service

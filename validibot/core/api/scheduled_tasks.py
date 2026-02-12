@@ -53,7 +53,6 @@ class CleanupIdempotencyKeysView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         logger.info("Starting scheduled cleanup of idempotency keys")
 
@@ -97,7 +96,6 @@ class CleanupCallbackReceiptsView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         # Allow overriding retention days via request body
         try:
@@ -150,7 +148,6 @@ class ClearSessionsView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         logger.info("Starting scheduled session cleanup")
 
@@ -194,7 +191,6 @@ class PurgeExpiredSubmissionsView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         # Allow overriding batch parameters via request body
         try:
@@ -262,7 +258,6 @@ class ProcessPurgeRetriesView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         # Allow overriding batch size via request body
         try:
@@ -331,7 +326,6 @@ class CleanupStuckRunsView(ScheduledTaskBaseView):
     """
 
     def post(self, request):
-        self.check_worker_mode()
 
         # Allow overriding parameters via request body
         try:

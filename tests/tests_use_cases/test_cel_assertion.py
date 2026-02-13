@@ -103,7 +103,6 @@ class TestCelAssertion:
         result = service.execute_workflow_steps(
             validation_run_id=validation_run.id,
             user_id=user.id,
-            metadata=None,
         )
 
         validation_run.refresh_from_db()

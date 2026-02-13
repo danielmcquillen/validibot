@@ -279,7 +279,7 @@ sequenceDiagram
     Client->>API: POST /orgs/{org}/workflows/{id}/runs/
     API->>Facade: launch(request, workflow, submission)
     Facade->>Facade: ValidationRun.objects.create(...)
-    Facade->>Orch: execute_workflow_steps(run_id, user_id, metadata)
+    Facade->>Orch: execute_workflow_steps(run_id, user_id)
     API-->>Client: 201 Created or 202 Accepted (if still running)
 
     Orch->>Orch: mark run RUNNING\nlog start event
@@ -305,37 +305,12 @@ After all workflow steps complete we capture both the detailed findings and a du
 
 #### 4.1 Summary Generation
 
-Each `ValidationIssue` emitted by an engine becomes a `ValidationFinding` row tied to the current `ValidationStepRun` and `ValidationRun`. Once all steps finish we aggregate those rows into two lightweight tables:
+Each `ValidationIssue` emitted by an engine becomes a `ValidationFinding` row tied to the current `ValidationStepRun` and `ValidationRun`. Once all steps finish, `build_run_summary_record()` aggregates those rows into two lightweight tables:
 
-```python
-summary_record, _ = ValidationRunSummary.objects.update_or_create(
-    run=validation_run,
-    defaults={
-        "status": validation_run.status,
-        "completed_at": validation_run.ended_at,
-        "total_findings": total_findings,
-        "error_count": severity_totals.get(Severity.ERROR, 0),
-        "warning_count": severity_totals.get(Severity.WARNING, 0),
-        "info_count": severity_totals.get(Severity.INFO, 0),
-        "assertion_failure_count": total_assertion_failures,
-        "assertion_total_count": total_assertions_evaluated,
-    },
-)
+- **`ValidationRunSummary`** -- run-level severity counts, assertion totals, and status.
+- **`ValidationStepRunSummary`** -- per-step severity counts and status.
 
-ValidationStepRunSummary.objects.bulk_create(
-    ValidationStepRunSummary(
-        summary=summary_record,
-        step_run=step_run,
-        step_name=step_run.workflow_step.name,
-        step_order=step_run.step_order,
-        status=step_run.status,
-        error_count=severity_counts.get(Severity.ERROR, 0),
-        warning_count=severity_counts.get(Severity.WARNING, 0),
-        info_count=severity_counts.get(Severity.INFO, 0),
-    )
-    for step_run, severity_counts in per_step_metrics
-)
-```
+The summary builder queries `ValidationFinding` and `ValidationStepRun` rows directly from the database rather than relying on in-memory metrics. This makes it safe to call in resume scenarios (async callbacks, retries) where earlier steps' findings are already persisted but not in the current process's memory.
 
 These summary tables keep severity totals, assertion hit rates, and per-step health available even after old `ValidationFinding` rows are purged for retention.
 

@@ -99,7 +99,7 @@ class ValidationRunService:
         launch(request, org, workflow, submission, ...)
             Creates a ValidationRun and dispatches execution. Called by views/API.
 
-        execute_workflow_steps(validation_run_id, user_id, metadata)
+        execute_workflow_steps(validation_run_id, user_id)
             Processes workflow steps sequentially. Called by task queue.
 
         cancel_run(run, actor)
@@ -327,7 +327,6 @@ class ValidationRunService:
         self,
         validation_run_id: UUID | str,
         user_id: int | None,
-        metadata: dict | None = None,
         resume_from_step: int | None = None,
     ) -> ValidationRunTaskResult:
         """Process workflow steps for a ValidationRun.
@@ -338,7 +337,6 @@ class ValidationRunService:
         return self._orchestrator.execute_workflow_steps(
             validation_run_id=validation_run_id,
             user_id=user_id,
-            metadata=metadata,
             resume_from_step=resume_from_step,
         )
 

@@ -34,6 +34,9 @@ from validibot.validations.models import ValidationStepRunSummary
 
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
+    from validibot.validations.services.step_processor.result import (
+        StepProcessingResult,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -76,20 +79,18 @@ def rebuild_run_summary_record(
 def build_run_summary_record(
     *,
     validation_run: ValidationRun,
-    step_metrics: list[dict[str, Any]],
+    step_metrics: list[StepProcessingResult],
 ) -> ValidationRunSummary:
     """
     Build run and step summary records from database findings.
 
     This method queries persisted findings from the database rather than
-    relying solely on in-memory step_metrics. This ensures accurate summaries
-    in resume scenarios where earlier steps' findings are already persisted
-    but not in the current step_metrics list.
+    relying on the in-memory step results. This ensures accurate summaries
+    in resume scenarios where earlier steps' findings are already persisted.
 
     Assertion totals are computed from persisted step_run.output data. The
-    step_metrics argument is accepted for call-site compatibility, but the
-    summary is rebuilt from persisted state so it can be called safely after
-    async callbacks and retries.
+    step_metrics argument is accepted for call-site compatibility but the
+    summary is rebuilt entirely from persisted state.
     """
     # Query run-level severity counts from persisted findings
     # This ensures we include findings from ALL steps, not just current pass

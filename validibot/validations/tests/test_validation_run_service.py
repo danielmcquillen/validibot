@@ -20,6 +20,7 @@ from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationRunSummary
 from validibot.validations.services.step_orchestrator import StepOrchestrator
+from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
@@ -99,7 +100,6 @@ def test_execute_fails_gracefully_when_engine_missing():
     service.execute_workflow_steps(
         validation_run_id=validation_run.id,
         user_id=user.id,
-        metadata=None,
     )
 
     validation_run.refresh_from_db()
@@ -210,14 +210,14 @@ def test_execute_persists_findings_and_summary(monkeypatch):
         step_run.status = StepStatus.FAILED
         step_run.save()
 
-        return {
-            "step_run": step_run,
-            "severity_counts": Counter({Severity.ERROR: 1}),
-            "total_findings": 1,
-            "assertion_failures": 1,
-            "assertion_total": 1,
-            "passed": False,
-        }
+        return StepProcessingResult(
+            passed=False,
+            step_run=step_run,
+            severity_counts=Counter({Severity.ERROR: 1}),
+            total_findings=1,
+            assertion_failures=1,
+            assertion_total=1,
+        )
 
     monkeypatch.setattr(
         StepOrchestrator,
@@ -229,7 +229,6 @@ def test_execute_persists_findings_and_summary(monkeypatch):
     result = service.execute_workflow_steps(
         validation_run_id=validation_run.id,
         user_id=user.id,
-        metadata=None,
     )
 
     validation_run.refresh_from_db()

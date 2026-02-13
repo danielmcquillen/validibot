@@ -24,7 +24,7 @@ StepOrchestrator
 ├── execute_workflow_step()         — dispatch single step to handler
 ├── _start_step_run()               — idempotent step creation
 ├── _finalize_step_run()            — persist status, duration, output
-├── _record_step_result()           — normalize issues, persist findings
+├── _record_step_result()           — persist findings (action steps only)
 ├── _execute_validator_step()       — call step processor
 ├── _extract_downstream_signals()   — collect cross-step signals
 └── _resolve_run_actor()            — resolve the initiating user
@@ -86,8 +86,8 @@ The worker-side execution engine. Handles:
   action steps to the handler registry.
 - **Step lifecycle**: Creates step runs (idempotent via `get_or_create`),
   finalises them with status, duration, and diagnostics.
-- **Result recording**: Normalises issues, persists findings, extracts
-  signals for downstream assertions.
+- **Result recording**: Persists findings, extracts signals for downstream
+  assertions.
 - **Run finalisation**: Sets terminal status, builds summary, logs tracking
   events, triggers submission purge.
 

@@ -10,6 +10,7 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.services.step_orchestrator import StepOrchestrator
+from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -26,14 +27,14 @@ def test_execute_logs_started_and_success(monkeypatch):
         # Mark step as passed (processor normally does this)
         step_run.status = StepStatus.PASSED
         step_run.save()
-        return {
-            "step_run": step_run,
-            "severity_counts": Counter(),
-            "total_findings": 0,
-            "assertion_failures": 0,
-            "assertion_total": 0,
-            "passed": True,
-        }
+        return StepProcessingResult(
+            passed=True,
+            step_run=step_run,
+            severity_counts=Counter(),
+            total_findings=0,
+            assertion_failures=0,
+            assertion_total=0,
+        )
 
     monkeypatch.setattr(
         StepOrchestrator,
@@ -70,14 +71,14 @@ def test_execute_logs_failure(monkeypatch):
         # Mark step as failed (processor normally does this)
         step_run.status = StepStatus.FAILED
         step_run.save()
-        return {
-            "step_run": step_run,
-            "severity_counts": Counter({Severity.ERROR: 1}),
-            "total_findings": 1,
-            "assertion_failures": 0,
-            "assertion_total": 0,
-            "passed": False,
-        }
+        return StepProcessingResult(
+            passed=False,
+            step_run=step_run,
+            severity_counts=Counter({Severity.ERROR: 1}),
+            total_findings=1,
+            assertion_failures=0,
+            assertion_total=0,
+        )
 
     monkeypatch.setattr(
         StepOrchestrator,

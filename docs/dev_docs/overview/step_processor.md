@@ -102,10 +102,10 @@ post_result = engine.post_execute_validate(output_envelope)  # Processes results
 ### Why Processors?
 
 Before the processor pattern, validation step logic was scattered across:
-- `ValidationRunService._record_step_result()` - for sync execution
+- `StepOrchestrator._record_step_result()` - for sync execution
 - `ValidationCallbackService._process_callback()` - for async callbacks
 
-This led to code duplication, inconsistent behavior, and difficult maintenance. The processor pattern consolidates this logic into a single, testable abstraction.
+This led to code duplication, inconsistent behavior, and difficult maintenance. The processor pattern consolidates validator step logic into a single, testable abstraction. `_record_step_result()` now only handles action steps (Slack, certificates, etc.).
 
 ### Processor Class Hierarchy
 

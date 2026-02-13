@@ -13,15 +13,17 @@ Responsibilities:
   or when an async validator returns pending.
 - Step lifecycle: Creating step runs (idempotent via get_or_create), finalizing
   them with status, duration, and diagnostics.
-- Step dispatch: Routing to ValidatorStepHandler or action handler based on step type.
-- Result recording: Normalizing issues, persisting findings, extracting signals,
-  and building metrics for the summary builder.
+- Step dispatch: Routing to processor (validators) or handler (actions) based
+  on step type.
+- Result recording: Persisting findings, extracting cross-step signals, and
+  building metrics for the summary builder.
 - Run state transitions: PENDING → RUNNING → SUCCEEDED/FAILED/CANCELED.
 - Cross-step signals: Collecting output signals from prior steps for downstream
   assertions.
 
 This was extracted from ValidationRunService to follow single-responsibility:
-the facade handles lifecycle (launch/cancel), this module handles execution.
+the ValidationRunService class handles lifecycle (launch/cancel), this module
+handles execution.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ from validibot.validations.models import ValidationStepRun
 from validibot.validations.services.findings_persistence import normalize_issue
 from validibot.validations.services.findings_persistence import persist_findings
 from validibot.validations.services.models import ValidationRunTaskResult
+from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.summary_builder import build_run_summary_record
 from validibot.validations.services.summary_builder import extract_assertion_total
 
@@ -90,7 +93,6 @@ class StepOrchestrator:
         self,
         validation_run_id: UUID | str,
         user_id: int | None,
-        metadata: dict | None = None,
         resume_from_step: int | None = None,
     ) -> ValidationRunTaskResult:
         """
@@ -115,7 +117,6 @@ class StepOrchestrator:
         Args:
             validation_run_id: ID of the ValidationRun to execute (UUID).
             user_id: ID of the user who initiated the run (for tracking).
-            metadata: Optional metadata passed through to step handlers.
             resume_from_step: Step order to resume from (None for initial).
 
         Returns:
@@ -145,7 +146,6 @@ class StepOrchestrator:
         actor = self._resolve_run_actor(validation_run, user_id)
 
         # Idempotency check and state transition based on entry point
-        # See ADR-001 for detailed explanation
         if resume_from_step is None:
             # Initial execution: atomically transition PENDING → RUNNING
             # This prevents race conditions when task queues deliver duplicates
@@ -206,7 +206,7 @@ class StepOrchestrator:
         pending_async = False
         failing_step_id = None
         cancelled = False
-        step_metrics: list[dict[str, Any]] = []
+        step_metrics: list[StepProcessingResult] = []
 
         try:
             workflow_steps = workflow.steps.all().order_by("order")
@@ -240,11 +240,16 @@ class StepOrchestrator:
                     # Use processors for validator steps - they handle both
                     # execution AND persistence (findings, signals, stats)
                     try:
-                        metrics = self._execute_validator_step(
+                        result: StepProcessingResult = self._execute_validator_step(
                             validation_run=validation_run,
                             step_run=step_run,
                         )
                     except Exception as exc:
+                        # _finalize_step_run persists the failure to the DB
+                        # (which build_run_summary_record reads). The append
+                        # keeps step_metrics consistent with DB state — no
+                        # current code reads the values, but the list should
+                        # reflect all attempted steps for correctness.
                         self._finalize_step_run(
                             step_run=step_run,
                             status=StepStatus.FAILED,
@@ -252,27 +257,29 @@ class StepOrchestrator:
                             error=str(exc),
                         )
                         step_metrics.append(
-                            {
-                                "step_run": step_run,
-                                "severity_counts": Counter(),
-                                "total_findings": 0,
-                                "assertion_failures": 0,
-                                "assertion_total": 0,
-                            },
+                            StepProcessingResult(
+                                passed=False,
+                                step_run=step_run,
+                                severity_counts=Counter(),
+                                total_findings=0,
+                                assertion_failures=0,
+                                assertion_total=0,
+                            ),
                         )
                         raise
-                    step_metrics.append(metrics)
-                    # Determine pass/fail/pending from processor result
-                    if metrics.get("passed") is False:
+                    step_metrics.append(result)
+                    if result.passed is False:
                         overall_failed = True
                         failing_step_id = wf_step.id
                         break
-                    if metrics.get("passed") is None:
+                    if result.passed is None:
                         # Async validator in progress
                         pending_async = True
                         break
                 else:
-                    # Use existing handler flow for action steps
+                    # Action steps use StepHandler protocol — dispatch
+                    # returns a ValidationResult that _record_step_result
+                    # converts to StepProcessingResult with persistence.
                     try:
                         validation_result: ValidationResult = (
                             self.execute_workflow_step(
@@ -281,6 +288,8 @@ class StepOrchestrator:
                             )
                         )
                     except Exception as exc:
+                        # Same pattern as the validator exception handler
+                        # above: persist failure, keep step_metrics in sync.
                         self._finalize_step_run(
                             step_run=step_run,
                             status=StepStatus.FAILED,
@@ -288,26 +297,27 @@ class StepOrchestrator:
                             error=str(exc),
                         )
                         step_metrics.append(
-                            {
-                                "step_run": step_run,
-                                "severity_counts": Counter(),
-                                "total_findings": 0,
-                                "assertion_failures": 0,
-                                "assertion_total": 0,
-                            },
+                            StepProcessingResult(
+                                passed=False,
+                                step_run=step_run,
+                                severity_counts=Counter(),
+                                total_findings=0,
+                                assertion_failures=0,
+                                assertion_total=0,
+                            ),
                         )
                         raise
-                    metrics = self._record_step_result(
+                    result: StepProcessingResult = self._record_step_result(
                         validation_run=validation_run,
                         step_run=step_run,
                         validation_result=validation_result,
                     )
-                    step_metrics.append(metrics)
-                    if validation_result.passed is False:
+                    step_metrics.append(result)
+                    if result.passed is False:
                         overall_failed = True
                         failing_step_id = wf_step.id
                         break
-                    if validation_result.passed is None:
+                    if result.passed is None:
                         pending_async = True
                         break
 
@@ -462,12 +472,18 @@ class StepOrchestrator:
         returns the existing one. If the existing step run is already terminal
         (PASSED, FAILED, SKIPPED), the caller should skip re-execution.
 
+        A RUNNING step is treated as a crashed prior attempt: its findings
+        are cleared and it is re-executed. This is safe because async
+        validators (which leave steps RUNNING legitimately) are resumed via
+        ``resume_from_step`` which skips the already-running step. If this
+        method encounters a RUNNING step, it's because the worker crashed
+        before finalizing it — not because a container is still executing.
+
         Returns:
             Tuple of (step_run, should_execute):
             - step_run: The ValidationStepRun instance
-            - should_execute: True if the step should be executed, False if
-              it should be skipped (already terminal or already RUNNING from
-              a prior attempt)
+            - should_execute: True if the step should be executed (new or
+              RUNNING). False if already terminal (PASSED, FAILED, SKIPPED).
 
         See Also:
             ADR-001: Idempotent Step Execution on Retry
@@ -484,7 +500,19 @@ class StepOrchestrator:
             )
 
             if not created:
-                # Step run already exists - check if we should execute
+                # Re-read with a row lock so the terminal-status check
+                # and the finding cleanup below are atomic. This is
+                # defense-in-depth: the primary guard against duplicate
+                # resume tasks is CallbackReceipt idempotency in the
+                # callback service. The lock here prevents a narrow
+                # race if two workers somehow both reach this point
+                # for the same step, but it does NOT fully prevent
+                # duplicate execution — the lock is released at the
+                # end of this block, before the step actually runs.
+                step_run = ValidationStepRun.objects.select_for_update().get(
+                    id=step_run.id
+                )
+
                 if step_run.status in {
                     StepStatus.PASSED,
                     StepStatus.FAILED,
@@ -498,12 +526,16 @@ class StepOrchestrator:
                     )
                     return step_run, False
 
-                # Step is RUNNING - this is a retry. Clear any prior
-                # findings to avoid duplicates, then re-execute.
+                # Step is RUNNING - this is a retry (see docstring).
+                # Reset timing and clear partial findings before
+                # re-executing.
                 logger.info(
-                    "Step run %s is RUNNING (retry scenario), clearing findings",
+                    "Step run %s is RUNNING (retry scenario), "
+                    "clearing findings and resetting timer",
                     step_run.id,
                 )
+                step_run.started_at = timezone.now()
+                step_run.save(update_fields=["started_at"])
                 ValidationFinding.objects.filter(
                     validation_step_run=step_run,
                 ).delete()
@@ -632,9 +664,9 @@ class StepOrchestrator:
         # 4. Execute Handler
         step_result = handler.execute(context)
 
-        # 5. Map Result (Backwards Compatibility)
-        # We return a ValidationResult because callers
-        # (execute_workflow_steps) expect it.
+        # 5. Map StepResult → ValidationResult
+        # _record_step_result() expects a ValidationResult so it can
+        # persist findings and convert to StepProcessingResult.
         validation_result = ValidationResult(
             passed=step_result.passed,
             issues=[normalize_issue(i) for i in step_result.issues],
@@ -659,20 +691,28 @@ class StepOrchestrator:
         validation_run: ValidationRun,
         step_run: ValidationStepRun,
         validation_result: ValidationResult,
-    ) -> dict[str, Any]:
+    ) -> StepProcessingResult:
         """
-        Persist step results and update run state.
+        Persist action step results and build a StepProcessingResult.
+
+        Used only for action steps (Slack, certificates, etc.). Validator
+        steps go through _execute_validator_step() where the processor
+        handles persistence directly.
 
         After a handler returns, this method:
-        1. Normalizes issues and persists them as ValidationFinding rows.
+        1. Persists issues as ValidationFinding rows.
         2. Extracts any "signals" from stats and stores them in run.summary
            for downstream assertions to access.
         3. For sync results (passed=True/False): finalizes the step_run.
         4. For async results (passed=None): keeps step_run as RUNNING.
 
-        Returns a metrics dict used for building the run summary.
+        Precondition: issues in validation_result must already be
+        normalized (via normalize_issue). This is guaranteed when the
+        caller is execute_workflow_step(), which normalizes issues as
+        part of the StepResult → ValidationResult mapping. If a new
+        caller is added, it must normalize issues before calling here.
         """
-        issues = [normalize_issue(issue) for issue in (validation_result.issues or [])]
+        issues = list(validation_result.issues or [])
         severity_counts, assertion_failures = persist_findings(
             validation_run=validation_run,
             step_run=step_run,
@@ -710,20 +750,21 @@ class StepOrchestrator:
                 stats=stats,
                 error=None,
             )
-        return {
-            "step_run": finalized_step,
-            "severity_counts": severity_counts,
-            "total_findings": sum(severity_counts.values()),
-            "assertion_failures": assertion_failures,
-            "assertion_total": extract_assertion_total(stats),
-        }
+        return StepProcessingResult(
+            passed=validation_result.passed,
+            step_run=finalized_step,
+            severity_counts=severity_counts,
+            total_findings=sum(severity_counts.values()),
+            assertion_failures=assertion_failures,
+            assertion_total=extract_assertion_total(stats),
+        )
 
     def _execute_validator_step(
         self,
         *,
         validation_run: ValidationRun,
         step_run: ValidationStepRun,
-    ) -> dict[str, Any]:
+    ) -> StepProcessingResult:
         """
         Execute a validator step using the processor abstraction.
 
@@ -736,23 +777,13 @@ class StepOrchestrator:
             step_run: The ValidationStepRun to execute.
 
         Returns:
-            A metrics dict compatible with step_metrics list.
+            The processor's result with pass/fail status, severity counts,
+            and assertion stats.
         """
         from validibot.validations.services.step_processor import get_step_processor
 
         processor = get_step_processor(validation_run, step_run)
-        result = processor.execute()
-
-        # Convert StepProcessingResult to the metrics dict format expected
-        # by the run summary builder
-        return {
-            "step_run": result.step_run,
-            "severity_counts": result.severity_counts,
-            "total_findings": result.total_findings,
-            "assertion_failures": result.assertion_failures,
-            "assertion_total": result.assertion_total,
-            "passed": result.passed,
-        }
+        return processor.execute()
 
     # ---------- Helpers ----------
 

@@ -5,6 +5,7 @@ This document describes the internal architecture of the `ValidationRunService`,
 ## Overview
 
 The **Workflow Engine** is responsible for:
+
 1. Iterating through `WorkflowStep`s defined in a `Workflow`
 2. Executing each step against a `Submission`
 3. Recording the results (`ValidationFinding`, status updates)
@@ -45,13 +46,13 @@ Validator steps are executed through the **ValidationStepProcessor** abstraction
 ### How Validator Steps Execute
 
 ```python
-# Inside ValidationRunService.execute_workflow_steps()
+# Inside StepOrchestrator.execute_workflow_steps()
 for step in workflow_steps:
     step_run = self._start_step_run(validation_run, step)
 
     if step.validator:
         # Use processors for validator steps
-        metrics = self._execute_validator_step(
+        result: StepProcessingResult = self._execute_validator_step(
             validation_run=validation_run,
             step_run=step_run,
         )
@@ -60,23 +61,14 @@ for step in workflow_steps:
         validation_result = self.execute_workflow_step(step=step, ...)
 ```
 
-The `_execute_validator_step()` method delegates to the appropriate processor:
+The `_execute_validator_step()` method delegates to the appropriate processor and returns a typed `StepProcessingResult`:
 
 ```python
-def _execute_validator_step(self, validation_run, step_run):
+def _execute_validator_step(self, validation_run, step_run) -> StepProcessingResult:
     from validibot.validations.services.step_processor import get_step_processor
 
     processor = get_step_processor(validation_run, step_run)
-    result = processor.execute()
-
-    return {
-        "step_run": result.step_run,
-        "severity_counts": result.severity_counts,
-        "total_findings": result.total_findings,
-        "assertion_failures": result.assertion_failures,
-        "assertion_total": result.assertion_total,
-        "passed": result.passed,
-    }
+    return processor.execute()
 ```
 
 ### Processor Types

@@ -110,7 +110,6 @@ class ExecuteValidationRunView(WorkerOnlyAPIView):
             result = service.execute_workflow_steps(
                 validation_run_id=validation_run_id,
                 user_id=user_id,
-                metadata=None,
                 resume_from_step=resume_from_step,
             )
 

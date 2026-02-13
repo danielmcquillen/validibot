@@ -50,7 +50,6 @@ class TestDispatcher(TaskDispatcher):
             service.execute_workflow_steps(
                 validation_run_id=str(request.validation_run_id),
                 user_id=request.user_id,
-                metadata=None,
                 resume_from_step=request.resume_from_step,
             )
             return TaskDispatchResponse(task_id=None, is_sync=True)

@@ -1,11 +1,11 @@
 <div align="center">
 
-> [!IMPORTANT]
-> **I'm still actively developing this project and is not yet fully operational.** Features, APIs, and documentation are still incomplete. But it's operational so have a go and let me know what you think!
-
 <picture>
   <img src="https://github.com/danielmcquillen/validibot/blob/main/robot.png" alt="Validibot - Data Validation Robot" width="250" >
 </picture>
+
+> [!IMPORTANT]
+> **I'm still actively developing this project and is not yet fully operational.** Features, APIs, and documentation are still incomplete. But it's operational so have a go and let me know what you think!
 
 # Validibot
 

@@ -22,7 +22,7 @@
 </div>
 
 > [!IMPORTANT]
-> I'm still actively developing this project and is not yet fully operational. Features, APIs, and documentation are still incomplete. But it's operational so have a go and let me know what you think!
+> I'm still actively developing this project. Features, APIs, and documentation are still incomplete. But it's operational so have a go and let me know what you think!
 
 ## Related Projects
 

@@ -71,7 +71,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Audit dependencies
-        run: uv run pip-audit
+        run: uvx pip-audit
 
       - name: Check DB Migrations
         run: uv run python manage.py makemigrations --check

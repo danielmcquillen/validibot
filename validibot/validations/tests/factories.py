@@ -75,6 +75,7 @@ class RulesetFactory(DjangoModelFactory):
 class ValidatorFactory(DjangoModelFactory):
     class Meta:
         model = Validator
+        skip_postgeneration_save = True
 
     slug = factory.Sequence(lambda n: f"test-validator-{n}")
     description = factory.Faker("text", max_nb_chars=200)

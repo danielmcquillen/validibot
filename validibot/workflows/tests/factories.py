@@ -15,6 +15,7 @@ from validibot.workflows.models import WorkflowStep
 class WorkflowFactory(DjangoModelFactory):
     class Meta:
         model = Workflow
+        skip_postgeneration_save = True
 
     class Params:
         with_owner = False  # opt-in helper for tests that need owner permissions

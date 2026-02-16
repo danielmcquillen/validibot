@@ -103,6 +103,11 @@ markers = [
   "integration: marks tests as integration (may require platform-specific binaries)",
   "smoke: marks tests as smoke tests (run with -m smoke, skipped by default)",
 ]
+filterwarnings = [
+  "error",
+  # WhiteNoise warns when staticfiles/ doesn't exist (harmless in tests)
+  "ignore:No directory at.*staticfiles:UserWarning",
+]
 
 # These test directories are excluded from normal pytest runs.
 # Integration tests: just test-integration

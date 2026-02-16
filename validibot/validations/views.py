@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 import logging
 import re
@@ -74,9 +75,19 @@ class ValidationRunFilter(django_filters.FilterSet):
     status = django_filters.ChoiceFilter(choices=ValidationRunStatus.choices)
     workflow = django_filters.NumberFilter()
     submission = django_filters.NumberFilter()
-    after = django_filters.DateFilter(field_name="created", lookup_expr="gte")
-    before = django_filters.DateFilter(field_name="created", lookup_expr="lte")
+    after = django_filters.DateFilter(field_name="created", method="filter_after")
+    before = django_filters.DateFilter(field_name="created", method="filter_before")
     on = django_filters.DateFilter(field_name="created", lookup_expr="date")
+
+    def filter_after(self, queryset, name, value):
+        """Filter runs created on or after the given date (timezone-aware)."""
+        aware_dt = dt.datetime.combine(value, dt.time.min, tzinfo=dt.UTC)
+        return queryset.filter(created__gte=aware_dt)
+
+    def filter_before(self, queryset, name, value):
+        """Filter runs created on or before the given date (timezone-aware)."""
+        aware_dt = dt.datetime.combine(value, dt.time.max, tzinfo=dt.UTC)
+        return queryset.filter(created__lte=aware_dt)
 
     class Meta:
         model = ValidationRun

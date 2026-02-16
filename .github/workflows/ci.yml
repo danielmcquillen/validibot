@@ -81,3 +81,11 @@ jobs:
 
       - name: Test with pytest
         run: uv run pytest
+
+      - name: Django deployment checks
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.production
+          DJANGO_SECRET_KEY: fake-key-for-ci-only
+          DJANGO_ALLOWED_HOSTS: localhost
+          DEPLOYMENT_TARGET: docker_compose
+        run: uv run python manage.py check --deploy

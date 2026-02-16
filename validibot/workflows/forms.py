@@ -219,7 +219,7 @@ class WorkflowForm(forms.ModelForm):
         label=_("Allowed file types"),
         help_text=_(
             "Choose the submission file types this workflow accepts. "
-            "Note that each validator in the workflow will further "
+            "Note that each validator in the workflow may further "
             "constrain the allowed types.",
         ),
         choices=SubmissionFileType.choices,
@@ -253,8 +253,9 @@ class WorkflowForm(forms.ModelForm):
                 "Launchers can only upload/run content using these formats."
             ),
             "data_retention": _(
-                "Controls how long submission content is kept after validation. "
-                "The submission record is always preserved for audit purposes."
+                "Controls how long the user's submission data is kept after "
+                "validation. The submission record is always preserved for "
+                "audit purposes."
             ),
         }
 

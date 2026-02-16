@@ -145,9 +145,38 @@ test-integration *args:
     docker compose -f {{local_compose}} run --rm \
         -e DJANGO_SETTINGS_MODULE=config.settings.test \
         web \
-        uv run --extra dev pytest tests/tests_integration/ {{args}} -v --log-cli-level=INFO
+        uv run --extra dev pytest {{ if args == "" { "tests/tests_integration/" } else { args } }} -v --log-cli-level=INFO
     @echo "Stopping integration dependencies..."
     docker compose -f {{local_compose}} stop postgres mailpit
+
+# Run E2E stress tests against a running Docker Compose environment
+# Requires: `just up` running. Test data (user, org, workflow, API token) is
+# auto-provisioned via the setup_fullstack_test_data management command.
+# See: docs/dev_docs/how-to/run-e2e-tests.md
+#
+# Usage: just test-e2e
+test-e2e *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Auto-provision test data if env vars aren't already set
+    if [ -z "${FULLSTACK_API_TOKEN:-}" ]; then
+        echo "Provisioning test data via management command..."
+        env_output=$(docker compose -f {{local_compose}} exec -T web \
+            bash -c '{{_db_url}} python manage.py setup_fullstack_test_data --export-env' 2>/dev/null)
+        if [ -z "$env_output" ]; then
+            echo ""
+            echo "Error: Could not provision test data."
+            echo "Make sure 'just up' is running and the app has been set up."
+            echo ""
+            exit 1
+        fi
+        eval "$(echo "$env_output")"
+        export FULLSTACK_API_TOKEN FULLSTACK_ORG_SLUG FULLSTACK_WORKFLOW_ID
+    fi
+
+    echo "Running E2E stress tests against: ${FULLSTACK_API_URL:-http://localhost:8000/api/v1}"
+    uv run --extra dev pytest tests/tests_e2e/ {{args}} -v --log-cli-level=INFO
 
 # =============================================================================
 # Documentation

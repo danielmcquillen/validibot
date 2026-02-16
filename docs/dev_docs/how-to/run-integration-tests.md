@@ -171,8 +171,23 @@ Ensure all required environment variables are set. Run `env | grep -E "(GCP|GCS|
 - Check the API token has permission for that organization
 - Ensure the workflow is not archived
 
+## Multi-Run and Stress Tests
+
+For testing the validation engine under load, Validibot includes two
+additional test suites:
+
+- **In-process multi-run tests** (`tests/tests_use_cases/test_multi_run_validation.py`):
+  Submit many runs in series. Runs as part of normal `pytest`. Verifies no
+  ID collisions or data corruption under rapid sequential load.
+- **E2E stress tests** (`tests/tests_e2e/`):
+  Submit concurrent HTTP requests against a live environment via
+  `just test-e2e`. Tests true concurrency with real Celery workers.
+
+See [Running Stress and Multi-Run Tests](./run-e2e-tests.md) for details.
+
 ## Related
 
+- [Running Stress Tests](./run-e2e-tests.md) - Multi-run and E2E stress tests
 - [Debug a Run](./debug-a-run.md) - Troubleshooting failed validations
 - [Cloud Logging](../google_cloud/logging.md) - Viewing logs
 - [Deployment Guide](../google_cloud/deployment.md) - Staging setup

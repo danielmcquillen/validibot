@@ -22,6 +22,11 @@ repos:
       - id: check-docstring-first
       - id: detect-private-key
 
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.93.3
+    hooks:
+      - id: trufflehog
+
   - repo: https://github.com/adamchainz/django-upgrade
     rev: '1.25.0'
     hooks:

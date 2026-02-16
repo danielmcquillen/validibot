@@ -283,6 +283,13 @@ tags
 # Redis dump file
 dump.rdb
 
+# Security — never commit secrets or key material
+*.pem
+*.key
+*.p12
+credentials.json
+service-account.json
+
 ### Project template
 mailpit
 validibot/media/

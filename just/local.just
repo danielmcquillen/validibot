@@ -33,6 +33,28 @@ local_compose := "docker-compose.local.yml"
 # This brings up PostgreSQL, Redis, Django, and any other services defined
 # in docker-compose.local.yml
 up:
+    #!/usr/bin/env bash
+    # Check for port conflicts before starting
+    conflicts=()
+    for port in 8000 8025; do
+        pid=$(lsof -ti :$port 2>/dev/null)
+        if [ -n "$pid" ]; then
+            process=$(ps -p $pid -o comm= 2>/dev/null)
+            conflicts+=("  Port $port is in use by '$process' (PID $pid)")
+        fi
+    done
+    if [ ${#conflicts[@]} -gt 0 ]; then
+        echo ""
+        echo "⚠️  Port conflict detected:"
+        for c in "${conflicts[@]}"; do
+            echo "$c"
+        done
+        echo ""
+        echo "This is often caused by a leftover process from a previous session."
+        echo "To fix: kill the process(es) above, then re-run 'just up'."
+        echo ""
+        exit 1
+    fi
     docker compose -f {{local_compose}} up -d
 
 # Stop all local Docker containers

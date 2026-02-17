@@ -64,7 +64,7 @@ dependencies = [
   "psycopg[c]==3.3.2",
   "pydantic==2.12.5",
   "python-slugify==8.0.4",
-  "sentry-sdk==2.52.0",
+  "sentry-sdk==2.53.0",
   # Task queue: Celery with Redis broker and periodic scheduling.
   # celery[redis] pulls in kombu's redis extra, which caps the redis version.
   # As of kombu 5.6.2 the cap is redis<6.5; kombu main has bumped to <7.1
@@ -74,7 +74,7 @@ dependencies = [
   # See: https://github.com/celery/django-celery-beat/issues/977
   "django-celery-beat",
   "uvicorn-worker==0.4.0",
-  "uvicorn[standard]==0.40.0",
+  "uvicorn[standard]==0.41.0",
   "whitenoise==6.11.0",
   "google-cloud-run>=0.15.0",
   "python-json-logger>=4.0.0",

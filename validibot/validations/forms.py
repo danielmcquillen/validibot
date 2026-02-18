@@ -29,7 +29,10 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidatorRuleType
+from validibot.validations.constants import get_resource_type_config
+from validibot.validations.constants import get_resource_types_for_validator
 from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.models import ValidatorResourceFile
 
 
 class CelHelpLabelMixin:
@@ -1318,3 +1321,102 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         cleaned["label"] = ""
         self.cleaned_data["label"] = ""
         return cleaned
+
+
+class ValidatorResourceFileForm(forms.ModelForm):
+    """
+    Form for creating and editing validator resource files.
+
+    On create, validates the uploaded file against the ResourceTypeConfig
+    for the selected resource type (extension, size, magic bytes, header).
+    On edit, only metadata fields are shown (file is not replaceable).
+    """
+
+    class Meta:
+        model = ValidatorResourceFile
+        fields = ("name", "resource_type", "file", "description", "is_default")
+
+    def __init__(self, *args, **kwargs):
+        self.validator = kwargs.pop("validator", None)
+        self.is_edit = kwargs.pop("is_edit", False)
+        super().__init__(*args, **kwargs)
+
+        if self.is_edit:
+            # File is not replaceable -- upload new, delete old
+            del self.fields["file"]
+            del self.fields["resource_type"]
+
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+
+        if not self.is_edit:
+            # Filter resource type choices to those supported by this validator
+            if self.validator:
+                allowed = get_resource_types_for_validator(
+                    self.validator.validation_type,
+                )
+                self.fields["resource_type"].choices = [
+                    (value, label)
+                    for value, label in self.fields["resource_type"].choices
+                    if value in allowed
+                ]
+                if len(allowed) == 1:
+                    self.fields["resource_type"].initial = allowed[0]
+
+    def clean_file(self):
+        """
+        Validate the uploaded file against the ResourceTypeConfig.
+
+        Validation chain:
+        1. Extension check against allowed_extensions
+        2. Size check against max_size_bytes
+        3. Suspicious magic byte detection (reuses core/filesafety.py)
+        4. Header content validation
+        """
+        from validibot.core.filesafety import detect_suspicious_magic
+
+        uploaded = self.cleaned_data.get("file")
+        if not uploaded:
+            return uploaded
+
+        resource_type = self.cleaned_data.get("resource_type") or self.data.get(
+            "resource_type",
+        )
+        config = get_resource_type_config(resource_type)
+        if not config:
+            return uploaded
+
+        # 1. Extension check
+        filename = uploaded.name
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if ext not in config.allowed_extensions:
+            allowed = ", ".join(f".{e}" for e in sorted(config.allowed_extensions))
+            raise ValidationError(
+                _("File type '.%(ext)s' is not allowed. Accepted: %(allowed)s.")
+                % {"ext": ext, "allowed": allowed},
+            )
+
+        # 2. Size check
+        if uploaded.size > config.max_size_bytes:
+            max_mb = config.max_size_bytes / (1024 * 1024)
+            raise ValidationError(
+                _("File is too large (max %(max)s MB).") % {"max": int(max_mb)},
+            )
+
+        # 3. Suspicious magic bytes
+        uploaded.seek(0)
+        head = uploaded.read(4096)
+        uploaded.seek(0)
+        if detect_suspicious_magic(head):
+            raise ValidationError(
+                _("This file appears to be a binary archive or executable."),
+            )
+
+        # 4. Header content validation
+        if config.header_validator and not config.header_validator(head):
+            raise ValidationError(
+                _("File content does not match expected format for %(type)s.")
+                % {"type": config.description},
+            )
+
+        return uploaded

@@ -203,7 +203,7 @@ class TestValidatorDetailSignalModals:
         return user, org
 
     def test_validator_detail_includes_signal_detail_modals(self, client):
-        """Test that validator detail page includes modals for each signal."""
+        """Test that signals tab includes modals for each signal."""
         self._setup_user(client, RoleCode.ADMIN)
         validator = ValidatorFactory(
             name="Modal Test Validator",
@@ -224,7 +224,7 @@ class TestValidatorDetailSignalModals:
 
         response = client.get(
             reverse(
-                "validations:validator_detail",
+                "validations:validator_signals_tab",
                 kwargs={"slug": validator.slug},
             ),
         )
@@ -257,7 +257,7 @@ class TestValidatorDetailSignalModals:
 
         response = client.get(
             reverse(
-                "validations:validator_detail",
+                "validations:validator_signals_tab",
                 kwargs={"slug": validator.slug},
             ),
         )
@@ -289,7 +289,7 @@ class TestValidatorDetailSignalModals:
 
         response = client.get(
             reverse(
-                "validations:validator_detail",
+                "validations:validator_signals_tab",
                 kwargs={"slug": validator.slug},
             ),
         )
@@ -317,7 +317,7 @@ class TestValidatorDetailSignalModals:
 
         response = client.get(
             reverse(
-                "validations:validator_detail",
+                "validations:validator_signals_tab",
                 kwargs={"slug": validator.slug},
             ),
         )

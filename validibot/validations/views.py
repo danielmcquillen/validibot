@@ -51,6 +51,7 @@ from validibot.validations.forms import CustomValidatorCreateForm
 from validibot.validations.forms import CustomValidatorUpdateForm
 from validibot.validations.forms import FMIValidatorCreateForm
 from validibot.validations.forms import ValidatorCatalogEntryForm
+from validibot.validations.forms import ValidatorResourceFileForm
 from validibot.validations.forms import ValidatorRuleForm
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationFinding
@@ -58,6 +59,7 @@ from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.serializers import ValidationRunSerializer
 from validibot.validations.services.fmi import FMIIntrospectionError
@@ -485,6 +487,23 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
             org,
         )
 
+    def can_manage_resource_files(self) -> bool:
+        """
+        Check if current user can create/edit/delete resource files.
+
+        Resource files consume storage and are shared org resources, so CUD
+        operations are restricted to ADMIN/OWNER (ADMIN_MANAGE_ORG permission).
+        """
+        org = self.get_active_org() or getattr(
+            self.get_active_membership(), "org", None
+        )
+        if not org:
+            return False
+        return self.request.user.has_perm(
+            PermissionCode.ADMIN_MANAGE_ORG.value,
+            org,
+        )
+
     def require_manage_permission(self):
         if not self.can_manage_validators():
             messages.error(
@@ -756,84 +775,13 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         validator = context["validator"]
-        display = validator.catalog_display
-        default_ruleset = validator.default_ruleset
-        default_assertions = (
-            default_ruleset.assertions.all()
-            .select_related("target_catalog_entry")
-            .order_by("order", "pk")
-            if default_ruleset
-            else RulesetAssertion.objects.none()
-        )
-        signal_choices = [
-            (entry.id, f"{entry.slug}")
-            for entry in validator.catalog_entries.order_by("slug").all()
-        ]
-
-        signal_create_form = ValidatorCatalogEntryForm(
-            initial={"run_stage": CatalogRunStage.INPUT},
-            validator=validator,
-        )
-        if not validator.has_processor:
-            signal_create_form.fields["run_stage"].widget = forms.HiddenInput()
-        context["signal_create_form"] = signal_create_form
-        context["signal_edit_forms"] = {
-            entry.id: {
-                "form": ValidatorCatalogEntryForm(
-                    instance=entry,
-                    validator=validator,
-                ),
-                "title": _(
-                    "Edit Input Signal"
-                    if entry.run_stage == CatalogRunStage.INPUT
-                    else "Edit Output Signal"
-                ),
-            }
-            for entry in validator.catalog_entries.all()
-        }
-        context["default_assertion_create_form"] = ValidatorRuleForm(
-            signal_choices=signal_choices,
-        )
-        context["default_assertion_edit_forms"] = {
-            rule.id: ValidatorRuleForm(
-                initial={
-                    "name": rule.name,
-                    "description": rule.description,
-                    "rule_type": rule.rule_type,
-                    "cel_expression": rule.expression,
-                    "order": rule.order,
-                    "signals": [
-                        link.catalog_entry_id for link in rule.rule_entries.all()
-                    ],
-                },
-                signal_choices=signal_choices,
-            )
-            for rule in default_assertions
-        }
-        show_output_tab = bool(validator.has_processor)
-        requested_signals_tab = (
-            self.request.GET.get("signals_tab") or "inputs"
-        ).lower()
-        allowed_signals_tabs = {"inputs"}
-        if show_output_tab:
-            allowed_signals_tabs.add("outputs")
-        active_signals_tab = (
-            requested_signals_tab
-            if requested_signals_tab in allowed_signals_tabs
-            else "inputs"
-        )
         context.update(
             {
+                "active_tab": "description",
                 "can_manage_validators": self.can_manage_validators(),
                 "can_edit_validator": self.can_manage_validators()
                 and not validator.is_system,
                 "return_tab": self._resolve_return_tab(validator),
-                "catalog_display": display,
-                "catalog_entries": display.entries,
-                "catalog_tab_prefix": "validator-detail",
-                "validator_default_assertions": default_assertions,
-                "show_output_tab": show_output_tab,
-                "active_signals_tab": active_signals_tab,
                 "probe_result": getattr(validator.fmu_model, "probe_result", None)
                 if getattr(validator, "fmu_model", None)
                 else None,
@@ -865,6 +813,112 @@ class ValidatorDetailView(ValidatorLibraryMixin, DetailView):
                 "url": "",
             },
         )
+        return breadcrumbs
+
+
+class ValidatorSignalsTabView(ValidatorLibraryMixin, DetailView):
+    """Signals tab on the validator detail page."""
+
+    model = Validator
+    context_object_name = "validator"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    template_name = "validations/library/validator_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org("workflows:workflow_list", request=request),
+            )
+        self.object = self.get_object()
+        if self.object.is_system and not self.object.is_published:
+            messages.warning(request, _("This validator is not yet available."))
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.get_validator_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = context["validator"]
+        display = validator.catalog_display
+        can_edit = self.can_manage_validators() and not validator.is_system
+
+        signal_create_form = ValidatorCatalogEntryForm(
+            initial={"run_stage": CatalogRunStage.INPUT},
+            validator=validator,
+        )
+        if not validator.has_processor:
+            signal_create_form.fields["run_stage"].widget = forms.HiddenInput()
+
+        show_output_tab = bool(validator.has_processor)
+        requested_signals_tab = (
+            self.request.GET.get("signals_tab") or "inputs"
+        ).lower()
+        allowed_signals_tabs = {"inputs"}
+        if show_output_tab:
+            allowed_signals_tabs.add("outputs")
+        active_signals_tab = (
+            requested_signals_tab
+            if requested_signals_tab in allowed_signals_tabs
+            else "inputs"
+        )
+
+        context.update(
+            {
+                "active_tab": "signals",
+                "can_manage_validators": self.can_manage_validators(),
+                "can_edit_validator": can_edit,
+                "return_tab": self._resolve_return_tab(validator),
+                "catalog_display": display,
+                "catalog_entries": display.entries,
+                "catalog_tab_prefix": "validator-detail",
+                "show_output_tab": show_output_tab,
+                "active_signals_tab": active_signals_tab,
+                "signal_create_form": signal_create_form,
+                "signal_edit_forms": {
+                    entry.id: {
+                        "form": ValidatorCatalogEntryForm(
+                            instance=entry,
+                            validator=validator,
+                        ),
+                        "title": _(
+                            "Edit Input Signal"
+                            if entry.run_stage == CatalogRunStage.INPUT
+                            else "Edit Output Signal"
+                        ),
+                    }
+                    for entry in validator.catalog_entries.all()
+                },
+                "probe_result": (
+                    getattr(validator.fmu_model, "probe_result", None)
+                    if getattr(validator, "fmu_model", None)
+                    else None
+                ),
+            },
+        )
+        return context
+
+    def _resolve_return_tab(self, validator):
+        remembered = self.request.session.get(VALIDATION_LIBRARY_TAB_SESSION_KEY)
+        if remembered in {"system", "custom"}:
+            return remembered
+        requested = (self.request.GET.get("tab") or "").lower()
+        if requested in {"system", "custom"}:
+            return requested
+        return "system" if validator.is_system else "custom"
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        validator = getattr(self, "object", None) or self.get_object()
+        label = validator.name or validator.slug
+        breadcrumbs.append({"name": label, "url": ""})
         return breadcrumbs
 
 
@@ -912,6 +966,114 @@ class ValidatorDefaultAssertionsView(ValidatorLibraryMixin, DetailView):
             },
         )
         return context
+
+
+class ValidatorAssertionsTabView(ValidatorLibraryMixin, DetailView):
+    """
+    Default Assertions tab on the validator detail page.
+
+    Full-page tab view showing assertions with inline CRUD controls.
+    """
+
+    model = Validator
+    context_object_name = "validator"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    template_name = "validations/library/validator_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org("workflows:workflow_list", request=request),
+            )
+        self.object = self.get_object()
+        if self.object.is_system and not self.object.is_published:
+            messages.warning(request, _("This validator is not yet available."))
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.get_validator_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = context["validator"]
+        default_ruleset = validator.default_ruleset
+        default_assertions = (
+            default_ruleset.assertions.all()
+            .select_related("target_catalog_entry")
+            .order_by("order", "pk")
+            if default_ruleset
+            else RulesetAssertion.objects.none()
+        )
+        signal_choices = [
+            (entry.id, f"{entry.slug}")
+            for entry in validator.catalog_entries.order_by("slug").all()
+        ]
+        can_edit = self.can_manage_validators() and not validator.is_system
+
+        context.update(
+            {
+                "active_tab": "assertions",
+                "can_manage_validators": self.can_manage_validators(),
+                "can_edit_validator": can_edit,
+                "validator_default_assertions": default_assertions,
+                "return_tab": self._resolve_return_tab(validator),
+            },
+        )
+
+        if can_edit:
+            context["default_assertion_create_form"] = ValidatorRuleForm(
+                signal_choices=signal_choices,
+            )
+            context["default_assertion_edit_forms"] = {
+                rule.id: ValidatorRuleForm(
+                    initial={
+                        "name": rule.name,
+                        "description": rule.description,
+                        "rule_type": rule.rule_type,
+                        "cel_expression": rule.expression,
+                        "order": rule.order,
+                        "signals": [
+                            link.catalog_entry_id for link in rule.rule_entries.all()
+                        ],
+                    },
+                    signal_choices=signal_choices,
+                )
+                for rule in default_assertions
+            }
+        return context
+
+    def _resolve_return_tab(self, validator):
+        remembered = self.request.session.get(VALIDATION_LIBRARY_TAB_SESSION_KEY)
+        if remembered in {"system", "custom"}:
+            return remembered
+        requested = (self.request.GET.get("tab") or "").lower()
+        if requested in {"system", "custom"}:
+            return requested
+        return "system" if validator.is_system else "custom"
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        validator = self.object
+        label = validator.name or validator.slug
+        breadcrumbs.append(
+            {
+                "name": label,
+                "url": reverse_with_org(
+                    "validations:validator_detail",
+                    request=self.request,
+                    kwargs={"slug": validator.slug},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Default Assertions"), "url": ""})
+        return breadcrumbs
 
 
 class CustomValidatorManageMixin(ValidatorLibraryMixin):
@@ -2062,6 +2224,308 @@ class ValidatorSignalsListView(ValidatorLibraryMixin, DetailView):
             },
         )
         return breadcrumbs
+
+
+# ---------------------------------------------------------------------------
+# Resource file tab + CRUD views
+# ---------------------------------------------------------------------------
+
+
+class ValidatorResourceFilesTabView(ValidatorLibraryMixin, DetailView):
+    """
+    Resource Files tab on the validator detail page.
+
+    Visible to all users with VALIDATOR_VIEW (including Authors, read-only).
+    CUD buttons are only rendered when can_manage_resource_files is True.
+    """
+
+    model = Validator
+    context_object_name = "validator"
+    slug_field = "slug"
+    slug_url_kwarg = "slug"
+    template_name = "validations/library/validator_detail.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.require_library_access():
+            return redirect(
+                reverse_with_org("workflows:workflow_list", request=request),
+            )
+        self.object = self.get_object()
+        if self.object.is_system and not self.object.is_published:
+            messages.warning(request, _("This validator is not yet available."))
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return self.get_validator_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = context["validator"]
+        org = self.get_active_org()
+
+        # Resource files visible to this org (org-specific + system-wide)
+        resource_files = (
+            ValidatorResourceFile.objects.filter(
+                validator=validator,
+            )
+            .filter(
+                models.Q(org=org) | models.Q(org__isnull=True),
+            )
+            .select_related("org", "uploaded_by")
+            .order_by("-is_default", "name")
+        )
+
+        can_manage = self.can_manage_resource_files()
+        resource_file_form = (
+            ValidatorResourceFileForm(validator=validator) if can_manage else None
+        )
+
+        # Preload edit forms for each editable resource file
+        resource_file_edit_forms = {}
+        if can_manage:
+            for rf in resource_files:
+                if rf.org_id is not None:  # system-wide files not editable via UI
+                    resource_file_edit_forms[rf.id] = ValidatorResourceFileForm(
+                        instance=rf,
+                        validator=validator,
+                        is_edit=True,
+                    )
+
+        context.update(
+            {
+                "active_tab": "resource_files",
+                "can_manage_validators": self.can_manage_validators(),
+                "can_edit_validator": (
+                    self.can_manage_validators() and not validator.is_system
+                ),
+                "can_manage_resource_files": can_manage,
+                "resource_files": resource_files,
+                "resource_file_form": resource_file_form,
+                "resource_file_edit_forms": resource_file_edit_forms,
+                "return_tab": self._resolve_return_tab(validator),
+            },
+        )
+        return context
+
+    def _resolve_return_tab(self, validator):
+        remembered = self.request.session.get(VALIDATION_LIBRARY_TAB_SESSION_KEY)
+        if remembered in {"system", "custom"}:
+            return remembered
+        requested = (self.request.GET.get("tab") or "").lower()
+        if requested in {"system", "custom"}:
+            return requested
+        return "system" if validator.is_system else "custom"
+
+    def get_breadcrumbs(self):
+        breadcrumbs = super().get_breadcrumbs()
+        validator = self.object
+        label = validator.name or validator.slug
+        breadcrumbs.append(
+            {
+                "name": label,
+                "url": reverse_with_org(
+                    "validations:validator_detail",
+                    request=self.request,
+                    kwargs={"slug": validator.slug},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("Resource Files"), "url": ""})
+        return breadcrumbs
+
+
+class ResourceFileMixin(ValidatorLibraryMixin):
+    """Common helpers for resource file CUD operations."""
+
+    validator: Validator
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.can_manage_resource_files():
+            messages.error(
+                request,
+                _("You do not have permission to manage resource files."),
+            )
+            return redirect(
+                reverse_with_org(
+                    "validations:validation_library",
+                    request=request,
+                ),
+            )
+        self.validator = get_object_or_404(
+            Validator,
+            pk=self.kwargs.get("pk"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def _hx_redirect_to_resource_files(self):
+        url = reverse_with_org(
+            "validations:validator_resource_files",
+            request=self.request,
+            kwargs={"slug": self.validator.slug},
+        )
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = url
+        return response
+
+    def _redirect_to_resource_files(self):
+        return redirect(
+            reverse_with_org(
+                "validations:validator_resource_files",
+                request=self.request,
+                kwargs={"slug": self.validator.slug},
+            ),
+        )
+
+
+class ResourceFileCreateView(ResourceFileMixin, FormView):
+    """Create a new resource file via HTMX modal with file upload."""
+
+    form_class = ValidatorResourceFileForm
+
+    def get(self, request, *args, **kwargs):
+        form = self.form_class(validator=self.validator)
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_resource_file_create.html",
+                {
+                    "validator": self.validator,
+                    "modal_form": form,
+                },
+            )
+        return self._redirect_to_resource_files()
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(
+            request.POST,
+            request.FILES,
+            validator=self.validator,
+        )
+        if form.is_valid():
+            resource_file = form.save(commit=False)
+            resource_file.validator = self.validator
+            resource_file.org = self.get_active_org()
+            resource_file.uploaded_by = request.user
+            resource_file.filename = request.FILES["file"].name
+            resource_file.save()
+            messages.success(request, _("Resource file uploaded."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect_to_resource_files()
+            return self._redirect_to_resource_files()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_resource_file_create.html",
+                {
+                    "validator": self.validator,
+                    "modal_form": form,
+                },
+                status=200,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect_to_resource_files()
+
+
+class ResourceFileUpdateView(ResourceFileMixin, FormView):
+    """Edit resource file metadata (name, description, is_default)."""
+
+    form_class = ValidatorResourceFileForm
+
+    def post(self, request, *args, **kwargs):
+        resource_file = get_object_or_404(
+            ValidatorResourceFile,
+            pk=self.kwargs.get("rf_pk"),
+            validator=self.validator,
+            org=self.get_active_org(),  # prevent editing system-wide files
+        )
+        form = self.form_class(
+            request.POST,
+            instance=resource_file,
+            validator=self.validator,
+            is_edit=True,
+        )
+        if form.is_valid():
+            form.save()
+            messages.success(request, _("Resource file updated."))
+            if request.headers.get("HX-Request"):
+                return self._hx_redirect_to_resource_files()
+            return self._redirect_to_resource_files()
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "validations/library/partials/modal_resource_file_edit.html",
+                {
+                    "validator": self.validator,
+                    "resource_file": resource_file,
+                    "form": form,
+                },
+                status=200,
+            )
+        messages.error(request, _("Please correct the errors below."))
+        return self._redirect_to_resource_files()
+
+
+class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
+    """
+    Delete a resource file with active-workflow blocker checks.
+
+    Deletion is blocked if any active workflow step references this file
+    via resource_file_ids in its JSONField config.
+    """
+
+    def post(self, request, *args, **kwargs):
+        resource_file = get_object_or_404(
+            ValidatorResourceFile,
+            pk=self.kwargs.get("rf_pk"),
+            validator=self.validator,
+            org=self.get_active_org(),  # prevent deleting system-wide files
+        )
+        blockers = self._get_delete_blockers(resource_file)
+        if blockers:
+            blocker_names = ", ".join(blockers)
+            message = _(
+                "Cannot delete '%(name)s' because it is used by active "
+                "workflow(s): %(workflows)s. Remove it from these workflows first."
+            ) % {"name": resource_file.name, "workflows": blocker_names}
+            if request.headers.get("HX-Request"):
+                response = HttpResponse("", status=400)
+                response["HX-Trigger"] = json.dumps(
+                    {"toast": {"level": "danger", "message": str(message)}},
+                )
+                response["HX-Reswap"] = "none"
+                return response
+            messages.error(request, message)
+            return self._redirect_to_resource_files()
+
+        name = resource_file.name
+        resource_file.delete()
+        messages.success(
+            request,
+            _("Deleted resource file '%(name)s'.") % {"name": name},
+        )
+        if request.headers.get("HX-Request"):
+            return self._hx_redirect_to_resource_files()
+        return self._redirect_to_resource_files()
+
+    def _get_delete_blockers(self, resource_file):
+        """
+        Return list of active workflow names that reference this resource file.
+
+        Uses PostgreSQL's JSONField containment lookup to find steps whose
+        config.resource_file_ids contains this file's UUID.
+        """
+        steps = WorkflowStep.objects.filter(
+            workflow__is_active=True,
+            config__resource_file_ids__contains=[str(resource_file.id)],
+        ).select_related("workflow")
+
+        return list({step.workflow.name for step in steps})
 
 
 class CatalogEntryDetailView(LoginRequiredMixin, View):

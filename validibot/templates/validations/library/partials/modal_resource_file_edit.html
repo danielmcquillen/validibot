@@ -1,0 +1,44 @@
+{% comment %}
+Bootstrap modal for editing resource file metadata (name, description, is_default).
+File itself is not replaceable -- upload a new one and delete the old.
+Uses outerHTML swap. On success: HX-Redirect back to resource files tab.
+
+Expected context:
+  - validator: Validator instance (for the POST URL)
+  - resource_file_id: UUID of the resource file being edited
+  - form: ValidatorResourceFileForm instance (is_edit=True)
+{% endcomment %}
+{% load i18n crispy_forms_tags core_tags %}
+
+<div class="modal fade"
+     id="modal-resource-file-edit-{{ resource_file_id }}"
+     tabindex="-1"
+     aria-labelledby="modal-resource-file-edit-{{ resource_file_id }}-label"
+     aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content"
+         id="modal-resource-file-edit-{{ resource_file_id }}-content">
+      <div class="modal-header">
+        <h5 class="modal-title"
+            id="modal-resource-file-edit-{{ resource_file_id }}-label">{% trans "Edit Resource File" %}</h5>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <form hx-post="{% org_url 'validations:resource_file_update' pk=validator.pk rf_pk=resource_file_id %}"
+            hx-swap="outerHTML"
+            novalidate>
+        <div class="modal-body overflow-auto">
+          {% csrf_token %}
+          {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+          {{ form|crispy }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

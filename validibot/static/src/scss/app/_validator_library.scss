@@ -78,7 +78,7 @@
 
 .validator-hero {
   position: relative;
-  min-height: 240px;
+  min-height: 140px;
   color: #fff;
   overflow: hidden;
   border-radius: 0.5rem;
@@ -133,6 +133,26 @@
     text-transform: uppercase;
   }
 
+  // Page-level tab content area (seamless join with nav-tabs above)
+  .validator-detail-tab-content {
+    flex-grow: 1;
+    min-height: 60vh;
+    background: #fff;
+    padding: 1.25rem;
+    border: 1px solid var(--bs-border-color);
+    border-top: 0; // seamless join with active tab
+    border-bottom-left-radius: 0.375rem;
+    border-bottom-right-radius: 0.375rem;
+  }
+
+  // Toolbar row for tabs with action buttons (e.g. "Add assertion")
+  .validator-detail-tab-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+
+  // Nested tab panels (e.g. signals inputs/outputs sub-tabs)
   .tabs {
     margin-left: 1rem;
     border-bottom: 0px;

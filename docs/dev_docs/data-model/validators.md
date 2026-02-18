@@ -12,6 +12,11 @@ validation types:
 - **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
 - **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI (displayed as “Custom Basic Validator”).
 
+**Terminology note:** `ValidationType` (the enum) describes the *kind of validation* being performed
+(BASIC, JSON_SCHEMA, ENERGYPLUS, etc.), not the validator itself. Multiple `Validator` rows can share
+the same `ValidationType` -- for example, several custom validators all use `CUSTOM_VALIDATOR`. Think
+of it as "validation engine type" rather than "validator type."
+
 Validators are stored in the `validators` table. Each row records the following:
 
 - `slug`, `name`, `description`, `validation_type`, `version`
@@ -66,6 +71,47 @@ them; system validators remain read-only.
 
 Catalog changes are versioned on the validator. Editing a custom validator updates the catalog for all
 rulesets referencing it, so catalog slugs stay globally unique per validator.
+
+## Resource files
+
+Advanced validators may require auxiliary files to run (e.g., EnergyPlus needs EPW weather files,
+FMI validators need shared libraries). These are stored as `ValidatorResourceFile` rows linked to
+a validator via FK.
+
+Each resource file has:
+
+- **Scoping**: `org=NULL` for system-wide resources visible to all orgs, or `org=<org>` for
+  org-specific files. System-wide files are only manageable by superusers.
+- **Type**: `resource_type` from the `ResourceFileType` enum (currently `ENERGYPLUS_WEATHER`).
+- **Validation**: Each type maps to a `ResourceTypeConfig` in `validations/constants.py` that
+  defines allowed extensions, max file size, and optional header validation. Adding a new resource
+  type requires only adding a config entry -- no form or view changes needed.
+
+Resource files are referenced by step configs via UUID strings in a JSONField
+(`resource_file_ids: list[str]` in the Pydantic step config). This is a deliberate design choice
+rather than FKs or M2M, keeping `step.config` as the single source of truth and avoiding
+dual-write complexity. See the
+[ADR](../../../../validibot-project/docs/adr/2026-02-18-validator-resource-file-rbac.md)
+for the full rationale.
+
+**RBAC**: Authors can view and select resource files, but only ADMIN/OWNER can create, edit, or
+delete them (uses `ADMIN_MANAGE_ORG` permission). Deletion is blocked if the file is referenced
+by any active workflow step.
+
+## Validator detail page (UI)
+
+The validator detail page uses link-based tabs (separate URLs, server-rendered) rather than
+JavaScript tabs. The tab layout is:
+
+| Tab | URL pattern | View | Default |
+|-----|-------------|------|---------|
+| **Description** | `library/custom/<slug>/` | `ValidatorDetailView` | Yes |
+| **Signals** | `library/custom/<slug>/signals-tab/` | `ValidatorSignalsTabView` | |
+| **Default Assertions** | `library/custom/<slug>/assertions/` | `ValidatorAssertionsTabView` | |
+| **Resource Files** | `library/custom/<slug>/resource-files/` | `ValidatorResourceFilesTabView` | |
+
+All tabs share the same base template (`validator_detail.html`) and render their content
+conditionally via `active_tab`. Each tab includes only its own modals to reduce page weight.
 
 ## Provider resolution
 

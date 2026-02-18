@@ -51,9 +51,39 @@ urlpatterns = [
         name="validator_signals_list",
     ),
     path(
+        "library/custom/<slug:slug>/signals-tab/",
+        views.ValidatorSignalsTabView.as_view(),
+        name="validator_signals_tab",
+    ),
+    path(
         "library/custom/<slug:slug>/assertions/",
+        views.ValidatorAssertionsTabView.as_view(),
+        name="validator_assertions_tab",
+    ),
+    path(
+        "library/custom/<slug:slug>/assertions/modal/",
         views.ValidatorDefaultAssertionsView.as_view(),
         name="validator_default_assertions",
+    ),
+    path(
+        "library/custom/<slug:slug>/resource-files/",
+        views.ValidatorResourceFilesTabView.as_view(),
+        name="validator_resource_files",
+    ),
+    path(
+        "library/custom/<int:pk>/resource-files/new/",
+        views.ResourceFileCreateView.as_view(),
+        name="resource_file_create",
+    ),
+    path(
+        "library/custom/<int:pk>/resource-files/<uuid:rf_pk>/edit/",
+        views.ResourceFileUpdateView.as_view(),
+        name="resource_file_update",
+    ),
+    path(
+        "library/custom/<int:pk>/resource-files/<uuid:rf_pk>/delete/",
+        views.ResourceFileDeleteView.as_view(),
+        name="resource_file_delete",
     ),
     path(
         "library/custom/<int:pk>/signals/new/",

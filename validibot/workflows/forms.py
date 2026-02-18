@@ -996,6 +996,11 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             for key, value in self.initial.items():
                 if key in self.fields and value not in (None, ""):
                     self.fields[key].initial = value
+        else:
+            # Pre-select the first default resource file for new steps
+            default_rf = self._get_default_resource_file(org, validator)
+            if default_rf:
+                self.initial["weather_file"] = str(default_rf.id)
 
     def _populate_weather_file_choices(self, org, validator):
         """Populate weather file dropdown from ValidatorResourceFile."""
@@ -1029,6 +1034,31 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 choices.append((str(rf.id), label))
 
         self.fields["weather_file"].choices = choices
+
+    def _get_default_resource_file(self, org, validator):
+        """Return the first default resource file for pre-selection on new steps."""
+        from django.db.models import Q
+
+        from validibot.validations.constants import ResourceFileType
+        from validibot.validations.models import ValidatorResourceFile
+
+        if not validator:
+            return None
+
+        query = Q(org__isnull=True)
+        if org:
+            query |= Q(org=org)
+
+        return (
+            ValidatorResourceFile.objects.filter(
+                query,
+                validator=validator,
+                resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+                is_default=True,
+            )
+            .order_by("name")
+            .first()
+        )
 
 
 class AiAssistStepConfigForm(BaseStepConfigForm):

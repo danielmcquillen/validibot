@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 from django.conf import settings as django_settings
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
@@ -318,6 +326,59 @@ class ResourceFileType(TextChoices):
     """
 
     ENERGYPLUS_WEATHER = "energyplus_weather", _("EnergyPlus Weather File (EPW)")
+
+
+# ---------------------------------------------------------------------------
+# Resource file type configuration registry
+# ---------------------------------------------------------------------------
+
+
+def _validate_epw_header(raw: bytes) -> bool:
+    """EPW weather files must start with 'LOCATION,'."""
+    return raw[:9] == b"LOCATION,"
+
+
+@dataclass(frozen=True)
+class ResourceTypeConfig:
+    """
+    Declarative configuration for a resource file type.
+
+    Each ResourceFileType maps to one of these configs. Adding a new resource
+    type (e.g., FMI libraries) requires only adding a new entry here -- no
+    form or view changes needed.
+    """
+
+    allowed_extensions: frozenset[str]
+    max_size_bytes: int
+    header_validator: Callable[[bytes], bool] | None = None
+    description: str = ""
+
+
+_RESOURCE_TYPE_CONFIGS: dict[str, ResourceTypeConfig] = {
+    ResourceFileType.ENERGYPLUS_WEATHER: ResourceTypeConfig(
+        allowed_extensions=frozenset({"epw"}),
+        max_size_bytes=15 * 1024 * 1024,  # 15 MB
+        header_validator=_validate_epw_header,
+        description="EnergyPlus Weather File (EPW)",
+    ),
+}
+
+
+def get_resource_type_config(resource_type: str) -> ResourceTypeConfig | None:
+    """Look up the validation config for a resource file type."""
+    return _RESOURCE_TYPE_CONFIGS.get(resource_type)
+
+
+# Maps each ValidationType to the resource file types it supports.
+# Validators not listed here do not support resource files.
+VALIDATION_TYPE_RESOURCE_TYPES: dict[str, list[str]] = {
+    ValidationType.ENERGYPLUS: [ResourceFileType.ENERGYPLUS_WEATHER],
+}
+
+
+def get_resource_types_for_validator(validation_type: str) -> list[str]:
+    """Return the resource file types supported by a validation type."""
+    return VALIDATION_TYPE_RESOURCE_TYPES.get(validation_type, [])
 
 
 # CEL evaluation limits (adjust as needed)

@@ -17,7 +17,7 @@ from validibot.validations.constants import ValidationType
 ENERGYPLUS_SEED = {
     "validator": {
         "slug": "energyplus-idf-validator",
-        "name": "EnergyPlus Validation",
+        "name": "EnergyPlus Validator",
         "description": "Validate EnergyPlus IDF models and run simulations.",
         "validation_type": ValidationType.ENERGYPLUS,
         "version": "1.0",

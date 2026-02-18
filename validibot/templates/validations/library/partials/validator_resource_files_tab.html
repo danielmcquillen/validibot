@@ -1,0 +1,91 @@
+{% comment %}
+Resource Files tab content for the validator detail page.
+Rendered inside the seamless tab content area (no card wrapper needed).
+
+Expected context:
+  - validator: Validator instance
+  - resource_files: QuerySet of ValidatorResourceFile (org + system-wide)
+  - can_manage_resource_files: bool (True for ADMIN/OWNER)
+  - csrf_token: CSRF token (for HTMX delete buttons)
+{% endcomment %}
+{% load i18n core_tags %}
+
+{% if can_manage_resource_files %}
+  <div class="validator-detail-tab-toolbar">
+    <button class="btn btn-sm btn-secondary"
+            data-bs-toggle="modal"
+            data-bs-target="#modal-resource-file-create">
+      <i class="bi bi-plus me-1"></i>{% trans "Add file" %}
+    </button>
+  </div>
+{% endif %}
+{% if resource_files %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle table-hover">
+      <thead>
+        <tr>
+          <th class="text-muted small">{% trans "Name" %}</th>
+          <th class="text-muted small">{% trans "Type" %}</th>
+          <th class="text-muted small">{% trans "Scope" %}</th>
+          <th class="text-muted small text-center">{% trans "Default" %}</th>
+          {% if can_manage_resource_files %}
+            <th class="text-muted small text-end">{% trans "Actions" %}</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for rf in resource_files %}
+          <tr id="resource-file-{{ rf.id }}">
+            <td>
+              <span class="d-inline-block text-truncate"
+                    style="max-width: 250px"
+                    title="{{ rf.name }}">{{ rf.name }}</span>
+              {% if rf.description %}
+                <br />
+                <small class="text-muted">{{ rf.description|truncatewords:12 }}</small>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ rf.get_resource_type_display }}</td>
+            <td class="text-muted small">
+              {% if rf.is_system %}
+                <span class="badge bg-light text-dark border">{% trans "System" %}</span>
+              {% else %}
+                <span class="badge bg-light text-dark border">{% trans "Org" %}</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if rf.is_default %}<i class="bi bi-check-lg text-success"></i>{% endif %}
+            </td>
+            {% if can_manage_resource_files %}
+              <td class="text-end">
+                {% if not rf.is_system %}
+                  <div class="btn-group btn-group-sm"
+                       role="group"
+                       aria-label="{% trans 'Resource file actions' %}">
+                    <button class="btn btn-secondary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-resource-file-edit-{{ rf.id }}">
+                      <i class="bi bi-pencil-square"></i>
+                    </button>
+                    {# djlint:off H037 #}
+                    <button class="btn btn-danger"
+                            hx-post="{% org_url 'validations:resource_file_delete' pk=validator.pk rf_pk=rf.id %}"
+                            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                            hx-confirm="{% blocktrans trimmed with name=rf.name %}Delete resource file '{{ name }}'?{% endblocktrans %}">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                    {# djlint:on #}
+                  </div>
+                {% endif %}
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="my-5 w-100 text-center">
+    <p class="text-muted small">{% trans "No resource files for this validator." %}</p>
+  </div>
+{% endif %}

@@ -52,7 +52,7 @@ Permissions are exposed as Django-style codenames (see `users.constants.Permissi
 
 Enforcement pattern: call `user.has_perm(PermissionCode.<code>.value, obj_with_org)` and let the backend map roles to permissions and handle object scoping (including “own” semantics).
 
-For clarity: `_edit` permissions include create and edit flows; `analytics_*` cover dashboards and approvals; `validator_*` govern access to the Validator Library and custom validator CRUD.
+For clarity: `_edit` permissions include create and edit flows; `analytics_*` cover dashboards and approvals; `validator_*` govern access to the Validator Library and custom validator CRUD. Resource file management (upload, edit, delete) uses `admin_manage_org` rather than `validator_edit`, since resource files consume storage and are shared org resources.
 
 Only Owners, Admins, Authors, and Results Viewers can open validation results. Executors without those roles only see the runs they launched. Workflow Viewers without additional roles see a compact menu limited to Workflows and Validation Runs.
 

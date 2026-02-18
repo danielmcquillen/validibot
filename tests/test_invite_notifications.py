@@ -6,6 +6,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from validibot.core.constants import InviteStatus
+from validibot.core.features import CommercialFeature
+from validibot.core.features import register_feature
+from validibot.core.features import reset_features
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
 from validibot.tracking.constants import TrackingEventType
@@ -13,6 +16,14 @@ from validibot.tracking.models import TrackingEvent
 from validibot.users.constants import RoleCode
 from validibot.users.models import MemberInvite
 from validibot.users.tests.factories import UserFactory
+
+
+@pytest.fixture(autouse=True)
+def _enable_team_management():
+    """Enable the team management feature for invite notification tests."""
+    register_feature(CommercialFeature.TEAM_MANAGEMENT)
+    yield
+    reset_features()
 
 
 @pytest.mark.django_db

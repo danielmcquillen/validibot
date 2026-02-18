@@ -3,6 +3,9 @@ from http import HTTPStatus
 import pytest
 from django.urls import reverse
 
+from validibot.core.features import CommercialFeature
+from validibot.core.features import register_feature
+from validibot.core.features import reset_features
 from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
 from validibot.users.tests.factories import OrganizationFactory
@@ -10,6 +13,14 @@ from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _enable_team_management():
+    """Enable the team management feature for all member view tests."""
+    register_feature(CommercialFeature.TEAM_MANAGEMENT)
+    yield
+    reset_features()
 
 
 @pytest.fixture
@@ -251,3 +262,24 @@ def test_guest_invite_selected_requires_workflows(admin_client):
     # Returns the form with error - 200 status
     assert response.status_code == HTTPStatus.OK
     assert b"Please select at least one workflow" in response.content
+
+
+# Feature gating tests
+
+
+@pytest.mark.django_db
+def test_member_list_returns_404_without_feature(client):
+    """Member views return 404 when team management feature is not enabled."""
+    reset_features()
+
+    org = OrganizationFactory()
+    admin = UserFactory(orgs=[org])
+    grant_role(admin, org, RoleCode.ADMIN)
+    admin.set_current_org(org)
+    client.force_login(admin)
+    session = client.session
+    session["active_org_id"] = org.pk
+    session.save()
+
+    response = client.get(reverse("members:member_list"))
+    assert response.status_code == HTTPStatus.NOT_FOUND

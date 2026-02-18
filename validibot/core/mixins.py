@@ -1,5 +1,25 @@
 import copy
 
+from django.http import Http404
+
+from validibot.core.features import is_feature_enabled
+
+
+class FeatureRequiredMixin:
+    """
+    Deny access (404) when a commercial feature is not enabled.
+
+    Set ``required_feature`` on the view to a ``CommercialFeature`` value.
+    This acts as defense-in-depth alongside URL-level gating.
+    """
+
+    required_feature: str = ""
+
+    def dispatch(self, request, *args, **kwargs):
+        if self.required_feature and not is_feature_enabled(self.required_feature):
+            raise Http404
+        return super().dispatch(request, *args, **kwargs)
+
 
 class BreadcrumbMixin:
     """

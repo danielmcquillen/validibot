@@ -3,12 +3,23 @@ from http import HTTPStatus
 import pytest
 from django.urls import reverse
 
+from validibot.core.features import CommercialFeature
+from validibot.core.features import register_feature
+from validibot.core.features import reset_features
 from validibot.users.constants import RoleCode
 from validibot.users.models import Membership
 from validibot.users.models import Organization
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
+
+
+@pytest.fixture(autouse=True)
+def _enable_team_management():
+    """Enable the team management feature for organization management tests."""
+    register_feature(CommercialFeature.TEAM_MANAGEMENT)
+    yield
+    reset_features()
 
 
 @pytest.fixture

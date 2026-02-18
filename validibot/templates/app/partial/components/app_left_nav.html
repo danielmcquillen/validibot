@@ -169,14 +169,16 @@
                 <span>{% trans "Projects" %}</span>
               </a>
             </li>
-            <li class="nav-item" role="none">
-              <a href="{% org_url 'members:member_list' %}"
-                 class="nav-link text-white {% active_link_views 'members:member_list' 'members:member_edit' 'members:member_delete' %}"
-                 role="menuitem">
-                <i class="bi bi-people"></i>
-                <span>{% trans "Members" %}</span>
-              </a>
-            </li>
+            {% if feature_team_management %}
+              <li class="nav-item" role="none">
+                <a href="{% org_url 'members:member_list' %}"
+                   class="nav-link text-white {% active_link_views 'members:member_list' 'members:member_edit' 'members:member_delete' %}"
+                   role="menuitem">
+                  <i class="bi bi-people"></i>
+                  <span>{% trans "Members" %}</span>
+                </a>
+              </li>
+            {% endif %}
             {% if feature_guest_management %}
               <li class="nav-item" role="none">
                 <a href="{% org_url 'members:guest_list' %}"

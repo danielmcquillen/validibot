@@ -15,7 +15,9 @@ from django.views import View
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 
+from validibot.core.features import CommercialFeature
 from validibot.core.mixins import BreadcrumbMixin
+from validibot.core.mixins import FeatureRequiredMixin
 from validibot.core.utils import reverse_with_org
 from validibot.events.constants import AppEventType
 from validibot.notifications.models import Notification
@@ -31,9 +33,14 @@ from validibot.users.models import Membership
 from validibot.users.models import User
 
 
-class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
+class MemberListView(
+    FeatureRequiredMixin,
+    OrganizationAdminRequiredMixin,
+    TemplateView,
+):
     """Display all members for the active organization and provide an add form."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     template_name = "members/member_list.html"
     organization_context_attr = "organization"
 
@@ -89,9 +96,14 @@ class MemberListView(OrganizationAdminRequiredMixin, TemplateView):
         return reverse_with_org("members:member_list", request=self.request)
 
 
-class InviteFormView(OrganizationAdminRequiredMixin, TemplateView):
+class InviteFormView(
+    FeatureRequiredMixin,
+    OrganizationAdminRequiredMixin,
+    TemplateView,
+):
     """Return the member invite form for the modal."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
     template_name = "members/partials/member_invite_form.html"
 
@@ -109,9 +121,14 @@ class InviteFormView(OrganizationAdminRequiredMixin, TemplateView):
         return context
 
 
-class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
+class InviteSearchView(
+    FeatureRequiredMixin,
+    OrganizationAdminRequiredMixin,
+    TemplateView,
+):
     """Return type-ahead search results for inviters."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
     template_name = "members/partials/invite_search_results.html"
 
@@ -139,9 +156,10 @@ class InviteSearchView(OrganizationAdminRequiredMixin, TemplateView):
         return context
 
 
-class InviteCreateView(OrganizationAdminRequiredMixin, View):
+class InviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Handle invite creation via type-ahead selection or raw email."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
@@ -205,9 +223,10 @@ class InviteCreateView(OrganizationAdminRequiredMixin, View):
         )
 
 
-class InviteCancelView(OrganizationAdminRequiredMixin, View):
+class InviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Allow an inviter to cancel a pending invite."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
@@ -225,11 +244,17 @@ class InviteCancelView(OrganizationAdminRequiredMixin, View):
         )
 
 
-class MemberUpdateView(OrganizationAdminRequiredMixin, BreadcrumbMixin, FormView):
+class MemberUpdateView(
+    FeatureRequiredMixin,
+    OrganizationAdminRequiredMixin,
+    BreadcrumbMixin,
+    FormView,
+):
     """
     Allow administrators to toggle role assignments for a member.
     """
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     template_name = "members/member_form.html"
     form_class = OrganizationMemberRolesForm
     organization_context_attr = "organization"
@@ -278,9 +303,10 @@ class MemberUpdateView(OrganizationAdminRequiredMixin, BreadcrumbMixin, FormView
         return reverse_with_org("members:member_list", request=self.request)
 
 
-class MemberDeleteView(OrganizationAdminRequiredMixin, View):
+class MemberDeleteView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Handle member removal while protecting required admin/owner roles."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
@@ -444,7 +470,12 @@ class MemberDeleteConfirmView(MemberDeleteView, TemplateView):
 # =============================================================================
 
 
-class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView):
+class GuestListView(
+    FeatureRequiredMixin,
+    OrganizationAdminRequiredMixin,
+    BreadcrumbMixin,
+    TemplateView,
+):
     """
     Display all guests (users with workflow access but no membership) for the org.
 
@@ -453,6 +484,7 @@ class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateVie
     access. See ADR section 9 for future author permission implementation.
     """
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     template_name = "members/guest_list.html"
     organization_context_attr = "organization"
 
@@ -527,9 +559,10 @@ class GuestListView(OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateVie
         return breadcrumbs
 
 
-class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
+class GuestInviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Create a new org-level guest invite."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def get(self, request, *args, **kwargs):
@@ -685,9 +718,10 @@ class GuestInviteCreateView(OrganizationAdminRequiredMixin, View):
         )
 
 
-class GuestInviteCancelView(OrganizationAdminRequiredMixin, View):
+class GuestInviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Cancel a pending org-level guest invite."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
@@ -711,9 +745,10 @@ class GuestInviteCancelView(OrganizationAdminRequiredMixin, View):
         )
 
 
-class GuestRevokeAllView(OrganizationAdminRequiredMixin, View):
+class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Revoke all workflow access for a guest user."""
 
+    required_feature = CommercialFeature.TEAM_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):

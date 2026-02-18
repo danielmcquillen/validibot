@@ -62,10 +62,12 @@
             </dl>
           </div>
           <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
-            <a class="btn btn-secondary" href="{% org_url 'members:member_list' %}">
-              <i class="bi bi-people me-1"></i>
-              {% trans "Manage members" %}
-            </a>
+            {% if feature_team_management %}
+              <a class="btn btn-secondary" href="{% org_url 'members:member_list' %}">
+                <i class="bi bi-people me-1"></i>
+                {% trans "Manage members" %}
+              </a>
+            {% endif %}
             <a class="btn btn-secondary"
                href="{% org_url 'projects:project-list' %}">
               <i class="bi bi-collection me-1"></i>
@@ -74,19 +76,21 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4">
-        <div class="alert alert-info h-100 mb-0" role="status">
-          <div class="d-flex flex-column gap-2">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-info-circle-fill"></i>
-              <span class="fw-semibold">{% trans "Need to invite or remove people?" %}</span>
+      {% if feature_team_management %}
+        <div class="col-12 col-xl-4">
+          <div class="alert alert-info h-100 mb-0" role="status">
+            <div class="d-flex flex-column gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-info-circle-fill"></i>
+                <span class="fw-semibold">{% trans "Need to invite or remove people?" %}</span>
+              </div>
+              <p class="mb-0">
+                {% trans "Use the Manage members page to invite teammates, adjust roles, or remove access. Return here anytime to review organization metadata." %}
+              </p>
             </div>
-            <p class="mb-0">
-              {% trans "Use the Manage members page to invite teammates, adjust roles, or remove access. Return here anytime to review organization metadata." %}
-            </p>
           </div>
         </div>
-      </div>
+      {% endif %}
     </div>
   </div>
 {% endblock app_content %}

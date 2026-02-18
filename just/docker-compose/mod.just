@@ -329,7 +329,11 @@ update:
     just docker-compose backup-db
     echo ""
     echo "2. Pulling latest code..."
-    git pull
+    if ! git diff --quiet HEAD 2>/dev/null; then
+        echo "Error: Working directory has uncommitted changes. Commit or stash them first."
+        exit 1
+    fi
+    git pull --ff-only
     echo ""
     echo "3. Building new images..."
     docker compose -f {{compose_file}} -p {{compose_project}} build

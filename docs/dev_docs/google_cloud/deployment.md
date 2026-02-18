@@ -138,7 +138,7 @@ just gcp setup-data <stage>
 
 ```bash
 # Deploy EnergyPlus and FMI validators
-just validators-deploy-all <stage>
+just gcp validators-deploy-all <stage>
 ```
 
 ### Step 7: Set Up Scheduled Jobs
@@ -428,11 +428,11 @@ just gcp scheduler-delete-all dev
 
 ```bash
 # Deploy a validator job for a stage
-just validator-deploy energyplus dev
-just validator-deploy energyplus prod
+just gcp validator-deploy energyplus dev
+just gcp validator-deploy energyplus prod
 
 # List validator jobs
-just gcp jobs-list
+gcloud run jobs list --filter="name~$GCP_APP_NAME-validator" --region=$GCP_REGION --project=$GCP_PROJECT_ID
 ```
 
 ## Build and Push Docker Image

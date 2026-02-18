@@ -128,26 +128,36 @@ manage +command:
 test *args:
     uv run pytest {{args}} --log-cli-level=INFO
 
-# Run integration tests end-to-end (starts/stops local Postgres + mailpit)
-# This spins up isolated containers for testing, separate from dev containers.
+# Run integration tests end-to-end (starts/stops isolated Postgres + mailpit)
+# Uses a separate Docker Compose project name to avoid affecting dev containers.
 # Prereqs: Docker Compose available; BUILD_DJANGO_IMAGE=1 to force image rebuild
 test-integration *args:
-    @echo "Starting integration dependencies (postgres, mailpit)..."
-    @echo "Ensuring web image (with Chromium & chromedriver) exists..."
-    @if [ "${BUILD_DJANGO_IMAGE:-0}" -eq 1 ] || ! docker image inspect validibot-web:latest >/dev/null 2>&1; then \
-        docker compose -f {{local_compose}} build web; \
-    else \
-        echo "Reusing existing validibot-web image (set BUILD_DJANGO_IMAGE=1 to force rebuild)"; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PROJECT="validibot-test"
+    COMPOSE="docker compose -f {{local_compose}} -p $PROJECT"
+
+    cleanup() {
+        echo "Cleaning up test containers..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup EXIT
+
+    echo "Starting integration dependencies (postgres, mailpit)..."
+    echo "Ensuring web image (with Chromium & chromedriver) exists..."
+    IMAGE_NAME="${PROJECT}-web"
+    if [ "${BUILD_DJANGO_IMAGE:-0}" -eq 1 ] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+        $COMPOSE build web
+    else
+        echo "Reusing existing $IMAGE_NAME image (set BUILD_DJANGO_IMAGE=1 to force rebuild)"
     fi
-    docker compose -f {{local_compose}} down -v
-    docker compose -f {{local_compose}} up -d postgres mailpit
-    @echo "Running integration tests..."
-    docker compose -f {{local_compose}} run --rm \
+
+    $COMPOSE up -d postgres mailpit
+    echo "Running integration tests..."
+    $COMPOSE run --rm \
         -e DJANGO_SETTINGS_MODULE=config.settings.test \
         web \
         uv run --extra dev pytest {{ if args == "" { "tests/tests_integration/" } else { args } }} -v --log-cli-level=INFO
-    @echo "Stopping integration dependencies..."
-    docker compose -f {{local_compose}} stop postgres mailpit
 
 # Run E2E stress tests against a running Docker Compose environment
 # Requires: `just up` running. Test data (user, org, workflow, API token) is

@@ -46,7 +46,7 @@ The standard `roles/run.invoker` role only includes `run.jobs.run`, but triggeri
 # Permissions: run.jobs.run, run.jobs.runWithOverrides
 ```
 
-This role is automatically granted by the `just validator-deploy` command.
+This role is automatically granted by the `just gcp validator-deploy` command.
 
 Why env + GCS pointer: Cloud Run Jobs only accept per-run overrides via env/command; we keep large envelopes in GCS and pass a small `VALIDIBOT_INPUT_URI` env so the request stays small and the job can fetch full inputs at runtime.
 
@@ -93,7 +93,7 @@ Validator containers can be deployed using either justfile. Both are equivalent 
 
 | Location | Command | Notes |
 |----------|---------|-------|
-| `validibot/` | `just validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
+| `validibot/` | `just gcp validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
 | `validibot_validators/` | `just deploy energyplus dev` | Native repo, shorter command |
 
 ### Quick deploy
@@ -105,8 +105,8 @@ just deploy fmi prod            # Deploy FMI to prod
 just deploy-all dev             # Deploy all validators to dev
 
 # From validibot directory
-just validator-deploy energyplus dev
-just validators-deploy-all dev
+just gcp validator-deploy energyplus dev
+just gcp validators-deploy-all dev
 ```
 
 ### What the deploy command does

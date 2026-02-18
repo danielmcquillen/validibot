@@ -429,17 +429,28 @@ pause stage:
     echo "$SERVICE paused. Public access blocked."
 
 # Resume the service (restore public access)
+# Uses internal-and-cloud-load-balancing if a load balancer is configured,
+# otherwise falls back to --ingress all.
 # Usage: just gcp resume dev | just gcp resume prod
 resume stage:
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
     if [ "{{stage}}" = "prod" ]; then SERVICE="${APP_NAME}-web"; else SERVICE="${APP_NAME}-web-{{stage}}"; fi
+
+    # Check if a load balancer NEG exists for this stage (indicates LB is set up)
+    if [ "{{stage}}" = "prod" ]; then NEG_NAME="${APP_NAME}-neg"; else NEG_NAME="${APP_NAME}-neg-{{stage}}"; fi
+    if gcloud compute network-endpoint-groups describe "$NEG_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null 2>&1; then
+        INGRESS="internal-and-cloud-load-balancing"
+    else
+        INGRESS="all"
+    fi
+
     gcloud run services update "$SERVICE" \
         --region {{gcp_region}} \
-        --ingress all \
+        --ingress "$INGRESS" \
         --project {{gcp_project}}
-    echo "$SERVICE resumed. Public access restored."
+    echo "$SERVICE resumed (ingress: $INGRESS)"
 
 # Show current service status and URL
 # Usage: just gcp status dev | just gcp status prod
@@ -559,12 +570,24 @@ migrate stage: _require-gcp-config
 
     echo "Running migrate on {{stage}}..."
 
+    # Use the image currently deployed on the web service (not :latest)
+    if [ "{{stage}}" = "prod" ]; then WEB_SERVICE="${APP_NAME}-web"; else WEB_SERVICE="${APP_NAME}-web-{{stage}}"; fi
+    DEPLOYED_IMAGE=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(spec.template.spec.containers[0].image)" 2>/dev/null) || {
+        echo "Error: Could not determine deployed image. Is the web service deployed?"
+        echo "Falling back to :latest"
+        DEPLOYED_IMAGE="{{gcp_image}}:latest"
+    }
+    echo "Using image: $DEPLOYED_IMAGE"
+
     # Delete existing job if present
     gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
 
     # Create and run job
     gcloud run jobs create "$JOB_NAME" \
-        --image {{gcp_image}}:latest \
+        --image "$DEPLOYED_IMAGE" \
         --region {{gcp_region}} \
         --service-account "$SA" \
         --set-cloudsql-instances "$DB" \
@@ -622,12 +645,24 @@ setup-data stage:
 
     echo "Running setup_validibot on {{stage}}..."
 
+    # Use the image currently deployed on the web service (not :latest)
+    if [ "{{stage}}" = "prod" ]; then WEB_SERVICE="${APP_NAME}-web"; else WEB_SERVICE="${APP_NAME}-web-{{stage}}"; fi
+    DEPLOYED_IMAGE=$(gcloud run services describe "$WEB_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --format="value(spec.template.spec.containers[0].image)" 2>/dev/null) || {
+        echo "Error: Could not determine deployed image. Is the web service deployed?"
+        echo "Falling back to :latest"
+        DEPLOYED_IMAGE="{{gcp_image}}:latest"
+    }
+    echo "Using image: $DEPLOYED_IMAGE"
+
     # Delete existing job if present
     gcloud run jobs delete "$JOB_NAME" --region {{gcp_region}} --project {{gcp_project}} --quiet 2>/dev/null || true
 
     # Create and run job
     gcloud run jobs create "$JOB_NAME" \
-        --image {{gcp_image}}:latest \
+        --image "$DEPLOYED_IMAGE" \
         --region {{gcp_region}} \
         --service-account "$SA" \
         --set-cloudsql-instances "$DB" \
@@ -1039,16 +1074,16 @@ init-stage stage:
     fi
 
     echo "Next steps:"
-    echo "  1. Edit env file:       Edit $ENV_PATH with:"
+    echo "  1. Configure env file:  Edit $ENV_PATH with:"
+    echo "                          - STORAGE_BUCKET=$STORAGE_BUCKET"
     echo "                          - POSTGRES_PASSWORD and DATABASE_URL (use password shown above)"
-    echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
     echo "                          - DJANGO_SECRET_KEY (generate a new one)"
+    echo "                          - DJANGO_ALLOWED_HOSTS (add Cloud Run URL after first deploy)"
     echo "  2. Upload secrets:      just gcp secrets {{stage}}"
-    echo "  3. Deploy services:     just gcp deploy-all {{stage}}"
-    echo "  4. Run migrations:      just gcp migrate {{stage}}"
-    echo "  5. Seed data:           just gcp setup-data {{stage}}"
-    echo "  6. Set up scheduler:    just gcp scheduler-setup {{stage}}"
-    echo "  7. Deploy validators:   just gcp validators-deploy-all {{stage}}"
+    echo "  3. Deploy web service:  just gcp deploy {{stage}}  (runs migrations automatically)"
+    echo "  4. Seed data:           just gcp setup-data {{stage}}"
+    echo "  5. Set up scheduler:    just gcp scheduler-setup {{stage}}  (optional)"
+    echo "  6. Deploy validators:   just gcp validators-deploy-all {{stage}}  (optional)"
     echo ""
 
 # List all resources for a stage (useful for verification)
@@ -1389,7 +1424,7 @@ validator-build-push name: (validator-build name) (validator-push name)
 
 # Deploy a Cloud Run Job for a validator to a specific stage
 # Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmi prod
-validator-deploy name stage: (validator-build-push name)
+validator-deploy name stage: _require-gcp-config (validator-build-push name)
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1747,13 +1782,20 @@ maintenance-off stage:
     done
 
     # 4. Restore public traffic to web service
+    # Use internal-and-cloud-load-balancing if LB is set up, otherwise fall back to all
     echo "4. Restoring public traffic to $WEB_SERVICE..."
+    if [ "{{stage}}" = "prod" ]; then NEG_NAME="${APP_NAME}-neg"; else NEG_NAME="${APP_NAME}-neg-{{stage}}"; fi
+    if gcloud compute network-endpoint-groups describe "$NEG_NAME" --region={{gcp_region}} --project={{gcp_project}} &>/dev/null 2>&1; then
+        INGRESS="internal-and-cloud-load-balancing"
+    else
+        INGRESS="all"
+    fi
     gcloud run services update "$WEB_SERVICE" \
         --region {{gcp_region}} \
-        --ingress all \
+        --ingress "$INGRESS" \
         --project {{gcp_project}} \
         --quiet
-    echo "   Web service accepting public traffic"
+    echo "   Web service accepting traffic (ingress: $INGRESS)"
 
     # 5. Worker stays internal-only (that's correct)
     echo "5. Worker service remains internal-only (correct configuration)"
@@ -2240,16 +2282,19 @@ test-on-gcp *args:
 
     if [ ! -f "$ENV_FILE" ]; then
         echo "Error: $ENV_FILE not found"
-        echo "Create it first - see .envs/.test-on-gcp/.django.example"
+        echo ""
+        echo "Create it by copying your GCP env file:"
+        echo "  mkdir -p .envs/.test-on-gcp"
+        echo "  cp .envs/.production/.google-cloud/.django $ENV_FILE"
+        echo ""
+        echo "Then set DJANGO_SETTINGS_MODULE=config.settings.test in the copy."
         exit 1
     fi
 
     echo "Loading environment from $ENV_FILE"
-
-    while IFS='=' read -r key value; do
-        [[ -z "$key" || "$key" =~ ^# ]] && continue
-        export "$key=$value"
-    done < "$ENV_FILE"
+    set -a
+    source "$ENV_FILE"
+    set +a
 
     echo "Running tests against GCP..."
     echo ""

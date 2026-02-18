@@ -90,9 +90,7 @@ Each resource file has:
 Resource files are referenced by step configs via UUID strings in a JSONField
 (`resource_file_ids: list[str]` in the Pydantic step config). This is a deliberate design choice
 rather than FKs or M2M, keeping `step.config` as the single source of truth and avoiding
-dual-write complexity. See the
-[ADR](../../../../validibot-project/docs/adr/2026-02-18-validator-resource-file-rbac.md)
-for the full rationale.
+dual-write complexity. See the Validator Resource File RBAC ADR in `validibot-project` for the full rationale.
 
 **RBAC**: Authors can view and select resource files, but only ADMIN/OWNER can create, edit, or
 delete them (uses `ADMIN_MANAGE_ORG` permission). Deletion is blocked if the file is referenced

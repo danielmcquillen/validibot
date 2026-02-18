@@ -583,7 +583,7 @@ Optional add-ons:
 
 ## Next Steps
 
-- Set up [email delivery](../how-to/configure-email.md) for notifications
+- Set up email delivery for notifications (e.g. Mailgun, SES, or SMTP relay)
 - Configure [Sentry](https://sentry.io) for error tracking
 - Review the [post-deployment checklist](post-deployment-verification.md)
 - Set up [external monitoring](https://uptimerobot.com) for uptime alerts

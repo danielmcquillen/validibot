@@ -33,6 +33,7 @@ from rest_framework import filters
 from rest_framework import permissions
 from rest_framework import viewsets
 
+from validibot.core.filesafety import sanitize_filename
 from validibot.core.mixins import BreadcrumbMixin
 from validibot.core.utils import reverse_with_org
 from validibot.core.utils import truthy
@@ -2412,7 +2413,9 @@ class ResourceFileCreateView(ResourceFileMixin, FormView):
             resource_file.validator = self.validator
             resource_file.org = self.get_active_org()
             resource_file.uploaded_by = request.user
-            resource_file.filename = request.FILES["file"].name
+            resource_file.filename = sanitize_filename(
+                request.FILES["file"].name,
+            )
             resource_file.save()
             messages.success(request, _("Resource file uploaded."))
             if request.headers.get("HX-Request"):

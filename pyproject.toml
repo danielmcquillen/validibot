@@ -107,6 +107,8 @@ filterwarnings = [
   "error",
   # WhiteNoise warns when staticfiles/ doesn't exist (harmless in tests)
   "ignore:No directory at.*staticfiles:UserWarning",
+  # psycopg3 may leave sockets unclosed between tests (Python 3.13 strict mode)
+  "ignore::ResourceWarning",
 ]
 
 # These test directories are excluded from normal pytest runs.

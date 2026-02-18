@@ -108,9 +108,6 @@ nav:
       - Scheduled Jobs: google_cloud/scheduled-jobs.md
       - IAM & Service Accounts: google_cloud/iam.md
       - Security: google_cloud/security.md
-  - Marketing:
-      - Homepage Waitlist: marketing/homepage.md
-      - Feature Pages: marketing/features.md
   - Data Model:
       - Overview: data-model/index.md
       - Projects: data-model/projects.md

@@ -36,9 +36,9 @@ The `ValidationRun` docstring summarizes this denormalization. Copying
 the project to both `Submission` and `ValidationRun` is what lets us:
 
 1. **Allow overrides:** `WorkflowViewSet.start_validation` accepts a
-   `project_slug` query parameter. Without storing the resolved project on
-   the submission/run we would lose the caller's intent as soon as someone
-   reassigns the workflow.
+   `project` query parameter (project ID). Without storing the resolved
+   project on the submission/run we would lose the caller's intent as soon
+   as someone reassigns the workflow.
 2. **Keep history accurate:** Workflows are frequently moved between projects.
    If history rows only referenced `workflow.project` our historical dashboards
    would show a different project after every reassignment.
@@ -55,10 +55,11 @@ The request pipeline resolves the project before we touch serializers:
 1. The workflow or launch UI determines the base project (usually
    `workflow.project`). Leaving it blank is allowed for orgs that have not
    adopted projects yet.
-2. Callers may supply an override (query string or form input). We ensure
-   the override belongs to the same org.
-3. `_process_structured_payload` attaches the resolved project to the
-   `Submission` and mirrors it into the new `ValidationRun`.
+2. Callers may supply an override (query string or form input). The
+   `resolve_project()` helper in `views_helpers.py` ensures the override
+   belongs to the same org.
+3. The resolved project is attached to both the `Submission` and the new
+   `ValidationRun`.
 
 This mirrors our working agreement to "keep workflow, validation, and
 submission objects aligned on org/project/user" (platform overview section).
@@ -89,9 +90,9 @@ When workflows move between projects the data flow is:
   cross-table joins.
 - When writing migrations or cleanup jobs, detach project references by setting
   them to `NULL` rather than trying to infer a new project.
-- If integrations in `../sv_modal` or `../validibot_shared` need project context,
-  fetch it from the submission/run instance passed into the engine rather than
-  re-querying the workflow.
+- If integrations in `validibot-shared` need project context, fetch it from
+  the submission/run instance passed into the engine rather than re-querying
+  the workflow.
 
 Keeping the project FK on all three tables is therefore not duplication but a
 tenant-safety requirement that protects overrides, historical truth, storage

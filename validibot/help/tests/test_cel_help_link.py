@@ -47,7 +47,7 @@ def test_cel_help_link_present_in_default_assertion_modal(client):
         created_by=user,
     )
     url = reverse(
-        "validations:validator_detail",
+        "validations:validator_assertions_tab",
         kwargs={"slug": custom_validator.validator.slug},
     )
     response = client.get(url)

@@ -1,4 +1,27 @@
-# validibot/filesafety.py
+"""
+File safety utilities for upload validation and filename sanitization.
+
+This module provides the core defence-in-depth layer for all file uploads
+(submissions, resource files, etc.). It is intentionally dependency-free
+so it can be imported from forms, models, and ingest pipelines without
+pulling in Django ORM or storage backends.
+
+Typical usage::
+
+    from validibot.core.filesafety import (
+        build_safe_filename,
+        detect_suspicious_magic,
+        sha256_hexdigest,
+    )
+
+    safe_name = build_safe_filename(
+        user_filename, content_type="application/json",
+    )
+    if detect_suspicious_magic(first_4k_bytes):
+        raise ValidationError("Binary file detected")
+    checksum = sha256_hexdigest(file_bytes)
+"""
+
 import hashlib
 import re
 import unicodedata
@@ -20,6 +43,10 @@ SUSPICIOUS_MAGIC_PREFIXES = (
     b"%PDF",  # pdf
     b"\x7fELF",  # elf
     b"MZ",  # windows pe
+    b"\xfe\xed\xfa",  # mach-o (32-bit, both endians share first 3 bytes)
+    b"\xcf\xfa\xed\xfe",  # mach-o 64-bit little-endian
+    b"\xca\xfe\xba\xbe",  # mach-o universal / java class
+    b"#!",  # shell scripts (shebang)
 )
 
 # allow common filename chars; collapse whitespace; drop control chars
@@ -29,10 +56,44 @@ _FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._\-()+=,@ ]+")
 _ASCII_MIN_PRINTABLE = 32
 _ASCII_MAX_EXCLUSIVE = 127
 
+# Minimum number of bytes needed for meaningful magic-byte detection.
+# The shortest prefix in SUSPICIOUS_MAGIC_PREFIXES is 2 bytes (b"#!", b"MZ").
+_MIN_MAGIC_BYTES = 2
+
 
 def sanitize_filename(candidate: str, *, fallback: str = "document") -> str:
     """
-    Ensure basename only, normalize unicode, strip dangerous chars, trim length.
+    Return a safe, filesystem-friendly version of a user-supplied filename.
+
+    Applies the following transformations in order:
+
+    1. Extract basename (strip directory components to prevent path traversal)
+    2. Normalize Unicode to NFKC form (collapse look-alike characters)
+    3. Strip ASCII control characters (< 0x20 and 0x7F), except tab
+    4. Replace characters outside the safe set with underscores
+    5. Collapse whitespace runs to a single space
+    6. Remove leading dots (prevent hidden files / dotfile exploits)
+    7. Remove trailing dots (invalid on Windows)
+    8. Truncate to 100 characters (leave headroom for extension changes)
+
+    If the result is empty after sanitization, returns ``fallback``.
+
+    Args:
+        candidate: The raw filename from the upload
+            (e.g. ``request.FILES["file"].name``).
+        fallback: Name to use when the candidate sanitizes to empty.
+
+    Returns:
+        A sanitized filename safe for filesystem storage.
+
+    Examples::
+
+        >>> sanitize_filename("../../etc/passwd")
+        'passwd'
+        >>> sanitize_filename(".hidden")
+        'hidden'
+        >>> sanitize_filename("")  # empty -> fallback
+        'document'
     """
     candidate = candidate or fallback
     # basename & normalize unicode
@@ -66,6 +127,29 @@ def force_extension(
     content_type: str,
     default_ext: str | None = None,
 ) -> str:
+    """
+    Replace the file extension to match the declared content type.
+
+    Looks up the expected extension in ``SAFE_EXT_FOR_TYPE``. If the
+    current extension doesn't match (case-insensitive), it is replaced.
+    This prevents double-extension attacks like ``malware.exe.json``.
+
+    Args:
+        name: Filename (already sanitized).
+        content_type: MIME type declared by the upload.
+        default_ext: Extension to use when content_type is not in the map.
+            Defaults to ``".txt"``.
+
+    Returns:
+        Filename with the correct extension.
+
+    Examples::
+
+        >>> force_extension("data.txt", content_type="application/json")
+        'data.json'
+        >>> force_extension("data.json", content_type="application/json")
+        'data.json'
+    """
     want_ext = SAFE_EXT_FOR_TYPE.get(content_type, default_ext or ".txt")
     path = Path(name)
     ext = path.suffix
@@ -81,18 +165,78 @@ def build_safe_filename(
     content_type: str,
     fallback: str = "document",
 ) -> str:
+    """
+    Sanitize a user-supplied filename and enforce the correct extension.
+
+    This is the main entry point for making uploaded filenames safe for
+    storage. It chains ``sanitize_filename`` (path traversal, control chars,
+    length) with ``force_extension`` (extension mismatch).
+
+    Args:
+        original: Raw filename from the upload.
+        content_type: MIME type declared by the upload.
+        fallback: Name to use when original sanitizes to empty.
+
+    Returns:
+        A safe filename with the correct extension.
+
+    Examples::
+
+        >>> build_safe_filename("../../evil.exe", content_type="application/json")
+        'evil.json'
+    """
     name = sanitize_filename(original, fallback=fallback)
     return force_extension(name, content_type=content_type)
 
 
 def detect_suspicious_magic(raw: bytes) -> bool:
+    """
+    Return True if the first bytes of ``raw`` match a known binary format.
+
+    Checks the file header against ``SUSPICIOUS_MAGIC_PREFIXES`` to catch
+    executables, archives, and other binary formats that should not be
+    uploaded as text or resource files. This is a fast, shallow check -- not
+    a substitute for antivirus scanning, but effective at catching obvious
+    misuse.
+
+    Detected formats:
+        - ZIP archives (also DOCX/XLSX/JAR)
+        - PDF documents
+        - ELF binaries (Linux)
+        - Windows PE executables
+        - Mach-O binaries (macOS)
+        - Shell scripts (shebang ``#!``)
+
+    Args:
+        raw: The first N bytes of the file (at least 4 bytes recommended).
+
+    Returns:
+        True if a suspicious magic prefix was detected.
+    """
+    if len(raw) < _MIN_MAGIC_BYTES:
+        return False
     head = raw[:4]
-    return any(
-        head.startswith(prefix[: len(head)]) for prefix in SUSPICIOUS_MAGIC_PREFIXES
-    )
+    return any(head.startswith(prefix) for prefix in SUSPICIOUS_MAGIC_PREFIXES)
 
 
 def sha256_hexdigest(data: bytes) -> str:
+    """
+    Return the SHA-256 hex digest of ``data``.
+
+    Used to compute checksums for uploaded files (submissions, resource
+    files) for integrity verification and deduplication.
+
+    Args:
+        data: Raw bytes to hash.
+
+    Returns:
+        Lowercase hex string (64 characters).
+
+    Examples::
+
+        >>> sha256_hexdigest(b"hello")
+        '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
+    """
     h = hashlib.sha256()
     h.update(data)
     return h.hexdigest()

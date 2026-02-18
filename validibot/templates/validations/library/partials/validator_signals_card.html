@@ -1,158 +1,154 @@
 {% load i18n core_tags %}
 
-<div class="card app-card h-100">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="card-title mb-0">{% trans "Signals" %}</div>
-    <div class="d-flex gap-2">
-      {% if catalog_display.inputs or catalog_display.outputs %}
-        <a class="btn btn-sm btn-secondary"
-           href="{% org_url 'validations:validator_signals_list' slug=validator.slug %}">
-          <i class="bi bi-list-ul me-1"></i>{% trans "View all" %}
-        </a>
-      {% endif %}
-      {% if can_edit_validator %}
-        <button class="btn btn-sm btn-secondary"
-                data-bs-toggle="modal"
-                data-bs-target="#modal-signal-create">
-          <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
-        </button>
-      {% endif %}
-    </div>
+<div class="validator-detail-tab-toolbar">
+  <div class="d-flex gap-2">
+    {% if catalog_display.inputs or catalog_display.outputs %}
+      <a class="btn btn-sm btn-secondary"
+         href="{% org_url 'validations:validator_signals_list' slug=validator.slug %}">
+        <i class="bi bi-list-ul me-1"></i>{% trans "View all" %}
+      </a>
+    {% endif %}
+    {% if can_edit_validator %}
+      <button class="btn btn-sm btn-secondary"
+              data-bs-toggle="modal"
+              data-bs-target="#modal-signal-create">
+        <i class="bi bi-plus me-1"></i>{% trans "Add signal" %}
+      </button>
+    {% endif %}
   </div>
-  <div class="card-body">
-    <div class="table-responsive">
-      <table class="table table-sm align-middle table-hover" data-sortable-table>
-        <thead>
-          <tr>
-            <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
-            <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
-            <th class="text-muted small text-end">{% trans "Actions" %}</th>
+</div>
+<div class="table-responsive">
+  <table class="table table-sm align-middle table-hover" data-sortable-table>
+    <thead>
+      <tr>
+        <th class="text-muted small" data-sortable="true">{% trans "Signal name" %}</th>
+        <th class="text-muted small" data-sortable="true">{% trans "Target path" %}</th>
+        <th class="text-muted small" data-sortable="true">{% trans "Type" %}</th>
+        <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+        <th class="text-muted small text-end">{% trans "Actions" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if catalog_display.inputs %}
+        {% for entry in catalog_display.inputs %}
+          <tr id="validator-signal-{{ entry.id }}">
+            <td>
+              <span class="d-inline-block text-truncate"
+                    style="max-width: 180px"
+                    title="{{ entry.slug }}">{{ entry.slug }}</span>
+            </td>
+            <td>
+              <code class="d-inline-block text-truncate"
+                    style="max-width: 220px"
+                    title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+            </td>
+            <td class="text-muted small">{{ entry.get_data_type_display }}</td>
+            <td class="text-muted small">{% trans "Input" %}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm"
+                   role="group"
+                   aria-label="{% trans 'Signal actions' %}">
+                <button class="btn btn-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                        title="{% trans 'View details' %}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+                {% if can_edit_validator %}
+                  <button class="btn btn-secondary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#modal-signal-edit-{{ entry.id }}">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  {# djlint:off H037 #}
+                  <button class="btn btn-danger"
+                          hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-target="#validator-signal-{{ entry.id }}"
+                          hx-swap="outerHTML"
+                          hx-confirm="{% blocktrans trimmed with name=entry.slug %} Delete signal '{{ name }}'? {% endblocktrans %}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                  {# djlint:on #}
+                {% endif %}
+              </div>
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% if catalog_display.inputs %}
-            {% for entry in catalog_display.inputs %}
-              <tr id="validator-signal-{{ entry.id }}">
-                <td>
-                  <span class="d-inline-block text-truncate"
-                        style="max-width: 180px"
-                        title="{{ entry.slug }}">{{ entry.slug }}</span>
-                </td>
-                <td>
-                  <code class="d-inline-block text-truncate"
-                        style="max-width: 220px"
-                        title="{{ entry.target_field }}">{{ entry.target_field }}</code>
-                </td>
-                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-                <td class="text-muted small">{% trans "Input" %}</td>
-                <td class="text-end">
-                  <div class="btn-group btn-group-sm"
-                       role="group"
-                       aria-label="{% trans 'Signal actions' %}">
-                    <button class="btn btn-secondary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modal-signal-detail-{{ entry.id }}"
-                            title="{% trans 'View details' %}">
-                      <i class="bi bi-info-circle"></i>
-                    </button>
-                    {% if can_edit_validator %}
-                      <button class="btn btn-secondary"
-                              data-bs-toggle="modal"
-                              data-bs-target="#modal-signal-edit-{{ entry.id }}">
-                        <i class="bi bi-pencil-square"></i>
-                      </button>
-                      {# djlint:off H037 #}
-                      <button class="btn btn-danger"
-                              hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
-                              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                              hx-target="#validator-signal-{{ entry.id }}"
-                              hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %} Delete signal '{{ name }}'? {% endblocktrans %}">
-                        <i class="bi bi-trash"></i>
-                      </button>
-                      {# djlint:on #}
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          {% endif %}
-          {% if show_output_tab and catalog_display.outputs %}
-            {% for entry in catalog_display.outputs %}
-              <tr id="validator-signal-{{ entry.id }}">
-                <td>
-                  <span class="d-inline-block text-truncate"
-                        style="max-width: 180px"
-                        title="{{ entry.slug }}">{{ entry.slug }}</span>
-                </td>
-                <td>
-                  <code class="d-inline-block text-truncate"
-                        style="max-width: 220px"
-                        title="{{ entry.target_field }}">{{ entry.target_field }}</code>
-                </td>
-                <td class="text-muted small">{{ entry.get_data_type_display }}</td>
-                <td class="text-muted small">{% trans "Output" %}</td>
-                <td class="text-end">
-                  <div class="btn-group btn-group-sm"
-                       role="group"
-                       aria-label="{% trans 'Signal actions' %}">
-                    <button class="btn btn-secondary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#modal-signal-detail-{{ entry.id }}"
-                            title="{% trans 'View details' %}">
-                      <i class="bi bi-info-circle"></i>
-                    </button>
-                    {% if can_edit_validator %}
-                      <button class="btn btn-secondary"
-                              data-bs-toggle="modal"
-                              data-bs-target="#modal-signal-edit-{{ entry.id }}">
-                        <i class="bi bi-pencil-square"></i>
-                      </button>
-                      {# djlint:off H037 #}
-                      <button class="btn btn-danger"
-                              hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
-                              hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                              hx-target="#validator-signal-{{ entry.id }}"
-                              hx-swap="outerHTML"
-                              hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
-                        <i class="bi bi-trash"></i>
-                      </button>
-                      {# djlint:on #}
-                    {% endif %}
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          {% endif %}
-          {% if not catalog_display.inputs and not show_output_tab %}
-            <tr>
-              <td colspan="5" class="text-muted small ">
-                <div class="my-5 w-100 text-center">
-                  {% if validator.is_system %}
-                    {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
-                  {% else %}
-                    {% trans "No signals have been added yet." %}
-                  {% endif %}
-                </div>
-              </td>
-            </tr>
-          {% elif not catalog_display.inputs and show_output_tab and not catalog_display.outputs %}
-            <tr>
-              <td colspan="5" class="text-muted small my-5">
-                <div class="my-5 w-100 text-center">
-                  {% if validator.is_system %}
-                    {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
-                  {% else %}
-                    {% trans "No signals have been added yet." %}
-                  {% endif %}
-                </div>
-              </td>
-            </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+        {% endfor %}
+      {% endif %}
+      {% if show_output_tab and catalog_display.outputs %}
+        {% for entry in catalog_display.outputs %}
+          <tr id="validator-signal-{{ entry.id }}">
+            <td>
+              <span class="d-inline-block text-truncate"
+                    style="max-width: 180px"
+                    title="{{ entry.slug }}">{{ entry.slug }}</span>
+            </td>
+            <td>
+              <code class="d-inline-block text-truncate"
+                    style="max-width: 220px"
+                    title="{{ entry.target_field }}">{{ entry.target_field }}</code>
+            </td>
+            <td class="text-muted small">{{ entry.get_data_type_display }}</td>
+            <td class="text-muted small">{% trans "Output" %}</td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm"
+                   role="group"
+                   aria-label="{% trans 'Signal actions' %}">
+                <button class="btn btn-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modal-signal-detail-{{ entry.id }}"
+                        title="{% trans 'View details' %}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+                {% if can_edit_validator %}
+                  <button class="btn btn-secondary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#modal-signal-edit-{{ entry.id }}">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  {# djlint:off H037 #}
+                  <button class="btn btn-danger"
+                          hx-delete="{% org_url 'validations:validator_signal_delete' pk=entry.validator_id entry_pk=entry.id %}"
+                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                          hx-target="#validator-signal-{{ entry.id }}"
+                          hx-swap="outerHTML"
+                          hx-confirm="{% blocktrans trimmed with name=entry.slug %}Delete signal '{{ name }}'?{% endblocktrans %}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                  {# djlint:on #}
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      {% endif %}
+      {% if not catalog_display.inputs and not show_output_tab %}
+        <tr>
+          <td colspan="5" class="text-muted small ">
+            <div class="my-5 w-100 text-center">
+              {% if validator.is_system %}
+                {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+              {% else %}
+                {% trans "No signals have been added yet." %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% elif not catalog_display.inputs and show_output_tab and not catalog_display.outputs %}
+        <tr>
+          <td colspan="5" class="text-muted small my-5">
+            <div class="my-5 w-100 text-center">
+              {% if validator.is_system %}
+                {% trans "Signals are defined after an FMU is uploaded into this validator within a validation workflow." %}
+              {% else %}
+                {% trans "No signals have been added yet." %}
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
 </div>

@@ -32,7 +32,7 @@ class TestValidationLibraryViews:
     def test_library_page_lists_validators(self, client):
         user, org = self._setup_user(client, RoleCode.OWNER)
         Validator.objects.create(
-            name="EnergyPlus Validation",
+            name="EnergyPlus Validator",
             slug="energyplus-validation",
             validation_type="ENERGYPLUS",
             description="System validator",
@@ -49,7 +49,7 @@ class TestValidationLibraryViews:
         response = client.get(reverse("validations:validation_library"))
         assert response.status_code == HTTPStatus.OK
         content = response.content.decode()
-        assert "EnergyPlus Validation" in content
+        assert "EnergyPlus Validator" in content
         assert "Modelica Validator" in content
         options = response.context["validator_create_options"]
         option_values = {opt["value"] for opt in options}

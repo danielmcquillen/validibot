@@ -116,7 +116,7 @@ class EnergyPlusValidationEngine(BaseValidatorEngine):
                 ValidationIssue(
                     path="",
                     message=_(
-                        "EnergyPlus validation requires workflow context. "
+                        "EnergyPlus validator requires workflow context. "
                         "Ensure the engine is called via the workflow handler.",
                     ),
                     severity=Severity.ERROR,

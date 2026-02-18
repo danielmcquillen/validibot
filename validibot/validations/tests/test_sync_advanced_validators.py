@@ -54,7 +54,7 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        self.assertEqual(validator.name, "EnergyPlus Validation")
+        self.assertEqual(validator.name, "EnergyPlus Validator")
         self.assertEqual(validator.validation_type, ValidationType.ENERGYPLUS)
         self.assertTrue(validator.is_system)
         self.assertTrue(validator.has_processor)
@@ -161,7 +161,7 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
 
         # Verify name was updated
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        self.assertEqual(validator.name, "EnergyPlus Validation")
+        self.assertEqual(validator.name, "EnergyPlus Validator")
 
     def test_command_reports_creation_counts(self):
         """Test that command reports how many validators/entries were created."""

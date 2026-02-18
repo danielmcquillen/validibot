@@ -42,9 +42,13 @@ from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.constants import XMLSchemaType
+from validibot.validations.constants import get_resource_types_for_validator
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 
+# Default submission file types each validation type accepts (e.g. JSON, XML, TEXT).
+# Used by default_supported_file_types_for_validation() to populate the allowed
+# file type list when creating a new workflow step.
 VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionFileType.JSON,
@@ -76,6 +80,10 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
 }
 
 
+# Default data formats each validation type can parse (e.g. JSON, XML, IDF).
+# Data formats are higher-level than file types -- they describe the content
+# structure, while file types describe the container
+# (see VALIDATION_TYPE_FILE_TYPE_DEFAULTS).
 VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
     ValidationType.BASIC: [
         SubmissionDataFormat.JSON,
@@ -960,6 +968,11 @@ class Validator(TimeStampedModel):
     def is_draft(self) -> bool:
         """Return True if validator is in draft state (hidden)."""
         return self.release_state == ValidatorReleaseState.DRAFT
+
+    @property
+    def supports_resource_files(self) -> bool:
+        """Return True if this validator's engine type accepts resource files."""
+        return bool(get_resource_types_for_validator(self.validation_type))
 
     def __str__(self):
         prefix = f"{self.validation_type}"
@@ -2206,9 +2219,18 @@ class ValidatorResourceFile(TimeStampedModel):
     is_default = models.BooleanField(
         default=False,
         help_text=_(
-            "Show this resource in dropdowns by default. "
+            "Mark this resource as a default when displaying to workflow authors. "
             "System defaults are shown to all orgs; org defaults only to that org."
         ),
+    )
+
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_resource_files",
+        help_text=_("User who uploaded this resource file."),
     )
 
     description = models.TextField(
@@ -2229,6 +2251,27 @@ class ValidatorResourceFile(TimeStampedModel):
             models.Index(fields=["validator", "resource_type"]),
             models.Index(fields=["org", "resource_type"]),
         ]
+
+    def clean(self):
+        from validibot.validations.constants import get_resource_type_config
+
+        super().clean()
+        config = get_resource_type_config(self.resource_type)
+        if config and self.filename:
+            ext = (
+                self.filename.rsplit(".", 1)[-1].lower() if "." in self.filename else ""
+            )
+            if ext not in config.allowed_extensions:
+                allowed = ", ".join(sorted(config.allowed_extensions))
+                raise ValidationError(
+                    {
+                        "filename": _(
+                            "File extension '.%(ext)s' is not allowed for "
+                            "%(type)s. Allowed: %(allowed)s."
+                        )
+                        % {"ext": ext, "type": config.description, "allowed": allowed},
+                    },
+                )
 
     def __str__(self):
         scope = "system" if self.org is None else f"org:{self.org_id}"

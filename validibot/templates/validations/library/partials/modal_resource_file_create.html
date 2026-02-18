@@ -1,0 +1,46 @@
+{% comment %}
+Bootstrap modal for uploading a new resource file via HTMX.
+Uses hx-encoding="multipart/form-data" for file upload.
+On validation error: re-renders form inside modal (innerHTML swap, 200).
+On success: HX-Redirect back to resource files tab.
+
+Expected context:
+  - validator: Validator instance (for the POST URL)
+  - modal_form: ValidatorResourceFileForm instance
+{% endcomment %}
+{% load i18n crispy_forms_tags core_tags %}
+
+<div class="modal fade"
+     id="modal-resource-file-create"
+     tabindex="-1"
+     aria-labelledby="modal-resource-file-create-label"
+     aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content" id="modal-resource-file-create-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-resource-file-create-label">{% trans "Add Resource File" %}</h5>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <form hx-post="{% org_url 'validations:resource_file_create' pk=validator.id %}"
+            hx-target="#modal-resource-file-create-content"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data"
+            novalidate>
+        <div class="modal-body overflow-auto">
+          {% csrf_token %}
+          {% if modal_form.non_field_errors %}
+            <div class="alert alert-danger">{{ modal_form.non_field_errors }}</div>
+          {% endif %}
+          {{ modal_form|crispy }}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+          <button type="submit" class="btn btn-secondary">{% trans "Upload" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

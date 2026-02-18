@@ -565,8 +565,6 @@ ENABLE_APP = env.bool("ENABLE_APP", True)
 # controlled at the URLConf (web vs worker) rather than here.
 ENABLE_API = env.bool("ENABLE_API", True)
 
-ENABLE_AI_VALIDATIONS = env.bool("ENABLE_AI_VALIDATIONS", False)
-
 # django-recaptcha (Google reCAPTCHA)
 # https://github.com/django-recaptcha/django-recaptcha
 # Get keys from: https://www.google.com/recaptcha/admin

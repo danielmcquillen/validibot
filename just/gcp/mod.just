@@ -17,18 +17,20 @@
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
 #   - Docker configured for Artifact Registry: just gcp auth
-#   - Project and region configured below
+#   - GCP config sourced: source .envs/.production/.google-cloud/.just
 #
 # Quick start (new environment):
+#   source .envs/.production/.google-cloud/.just
 #   just gcp init-stage dev           # Create infrastructure
 #   just gcp secrets-init dev         # Create env file template
-#   # Edit .envs/.dev/.django
+#   # Edit .envs/.dev/.google-cloud/.django
 #   just gcp secrets dev              # Upload secrets
 #   just gcp deploy-all dev           # Deploy services
 #   just gcp migrate dev              # Run migrations
 #   just gcp setup-data dev           # Seed initial data
 #
 # Daily operations:
+#   source .envs/.production/.google-cloud/.just
 #   just gcp deploy prod              # Deploy web service to prod
 #   just gcp logs prod                # View logs
 #   just gcp status prod              # Check service status
@@ -37,6 +39,9 @@
 
 # Use bash for shell commands (more predictable than sh)
 set shell := ["bash", "-cu"]
+
+# Run recipes from the project root (not this submodule directory)
+set working-directory := '../..'
 
 # Ensure gcloud SDK is in PATH (needed for docker-credential-gcloud)
 # This handles the case where gcloud is installed but not in PATH
@@ -288,12 +293,12 @@ deploy-all stage: (deploy stage) (deploy-worker stage)
 # Usage: just gcp secrets dev | just gcp secrets prod
 #
 # Files:
-#   - .envs/.dev/.django -> django-env-dev
-#   - .envs/.staging/.django -> django-env-staging
-#   - .envs/.production/.django -> django-env
+#   - .envs/.dev/.google-cloud/.django -> django-env-dev
+#   - .envs/.staging/.google-cloud/.django -> django-env-staging
+#   - .envs/.production/.google-cloud/.django -> django-env
 #
 # After uploading, redeploy services to pick up new secrets.
-secrets stage:
+secrets stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -306,10 +311,10 @@ secrets stage:
     # Compute secret name and source file
     if [ "{{stage}}" = "prod" ]; then
         SECRET_NAME="django-env"
-        ENV_FILE=".envs/.production/.django"
+        ENV_FILE=".envs/.production/.google-cloud/.django"
     else
         SECRET_NAME="django-env-{{stage}}"
-        ENV_FILE=".envs/.{{stage}}/.django"
+        ENV_FILE=".envs/.{{stage}}/.google-cloud/.django"
     fi
 
     # Check if env file exists
@@ -317,9 +322,9 @@ secrets stage:
         echo "Error: $ENV_FILE not found"
         echo ""
         echo "Create the environment file first. For dev, copy from production:"
-        echo "  mkdir -p .envs/.dev"
-        echo "  cp .envs/.production/.django .envs/.dev/.django"
-        echo "  # Then edit .envs/.dev/.django with dev-specific values"
+        echo "  mkdir -p .envs/.dev/.google-cloud"
+        echo "  cp .envs/.production/.google-cloud/.django .envs/.dev/.google-cloud/.django"
+        echo "  # Then edit with dev-specific values"
         exit 1
     fi
 
@@ -352,9 +357,9 @@ secrets-init stage:
         echo "Error: stage must be 'dev' or 'staging'"
         exit 1
     fi
-    TARGET_DIR=".envs/.{{stage}}"
+    TARGET_DIR=".envs/.{{stage}}/.google-cloud"
     TARGET_FILE="$TARGET_DIR/.django"
-    PROD_FILE=".envs/.production/.django"
+    PROD_FILE=".envs/.production/.google-cloud/.django"
     if [ ! -f "$PROD_FILE" ]; then
         echo "Error: Production file not found at $PROD_FILE"
         exit 1
@@ -755,7 +760,7 @@ job-logs job:
 # Full setup workflow:
 #   1. just gcp init-stage dev          # Create infrastructure
 #   2. just gcp secrets-init dev        # Create env file template
-#   3. Edit .envs/.dev/.django          # Configure dev-specific values
+#   3. Edit .envs/.dev/.google-cloud/.django  # Configure dev-specific values
 #   4. just gcp secrets dev             # Upload secrets
 #   5. just gcp deploy-all dev          # Deploy services
 #   6. just gcp migrate dev             # Run migrations
@@ -1028,9 +1033,9 @@ init-stage stage:
     echo "  Secret: $SECRET_NAME"
     echo ""
     if [ "{{stage}}" = "prod" ]; then
-        ENV_PATH=".envs/.production/.django"
+        ENV_PATH=".envs/.production/.google-cloud/.django"
     else
-        ENV_PATH=".envs/.{{stage}}/.django"
+        ENV_PATH=".envs/.{{stage}}/.google-cloud/.django"
     fi
 
     echo "Next steps:"
@@ -2327,6 +2332,17 @@ verify-deployment stage *args:
     echo "  Worker URL: $WORKER_URL"
     echo ""
     echo "Running smoke tests..."
+    echo ""
+
+    # Pass superuser credentials for authenticated tests (if available).
+    # These are set in the .django env file. If not in the environment,
+    # authenticated tests are skipped automatically.
+    if [ -n "${SUPERUSER_USERNAME:-}" ] && [ -n "${SUPERUSER_PASSWORD:-}" ]; then
+        echo "  Superuser credentials found - authenticated tests will run"
+    else
+        echo "  No superuser credentials - authenticated tests will be skipped"
+        echo "  To enable: export SUPERUSER_USERNAME=... SUPERUSER_PASSWORD=..."
+    fi
     echo ""
 
     SMOKE_TEST_STAGE={{stage}} uv run pytest tests/smoke/ {{args}} -v

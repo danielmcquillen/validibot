@@ -13,7 +13,6 @@ def site_feature_settings(request):
 
     try:
         return {
-            "ENABLE_AI_VALIDATIONS": settings.ENABLE_AI_VALIDATIONS,
             "ACCOUNT_ALLOW_LOGIN": settings.ACCOUNT_ALLOW_LOGIN,
             "ACCOUNT_ALLOW_REGISTRATION": settings.ACCOUNT_ALLOW_REGISTRATION,
             "ENABLE_APP": settings.ENABLE_APP,

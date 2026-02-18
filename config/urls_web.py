@@ -14,12 +14,14 @@ from django.urls import include
 from django.urls import path
 
 from validibot.core import views as core_views
+from validibot.core.health import deep_health_check
 from validibot.core.health import health_check
 from validibot.workflows import views as workflow_views
 
 urlpatterns = [
     # Health check endpoint for container orchestration (Docker, Kubernetes)
     path("health/", health_check, name="health-check"),
+    path("health/deep/", deep_health_check, name="deep-health-check"),
     path("", include("validibot.home.urls", namespace="home")),
     path(
         "workflows/",

@@ -149,6 +149,24 @@ def http_session() -> requests.Session:
 
 
 @pytest.fixture(scope="session")
+def smoke_credentials() -> dict:
+    """
+    Superuser credentials for authenticated smoke tests.
+
+    Reads SUPERUSER_USERNAME and SUPERUSER_PASSWORD from environment.
+    Tests using this fixture are skipped if credentials are not set.
+    """
+    username = os.environ.get("SUPERUSER_USERNAME", "")
+    password = os.environ.get("SUPERUSER_PASSWORD", "")
+    if not username or not password:
+        pytest.skip(
+            "SUPERUSER_USERNAME and SUPERUSER_PASSWORD must be set "
+            "for authenticated smoke tests.",
+        )
+    return {"username": username, "password": password}
+
+
+@pytest.fixture(scope="session")
 def authenticated_http_session(gcp_config: dict) -> requests.Session:
     """
     Create a requests session with GCP identity token authentication.

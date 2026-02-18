@@ -381,11 +381,37 @@ class Ruleset(TimeStampedModel):
 
 class RulesetAssertion(TimeStampedModel):
     """
-    Normalized assertion definition tied to a ruleset.
+    A single rule that the assertion engine evaluates against validation data.
 
-    Assertions fall into two buckets:
-    - BASIC assertions use a structured operator + payload.
-    - CEL_EXPRESSION assertions store raw CEL plus optional guards.
+    Each assertion belongs to a ``Ruleset``, which in turn is attached either
+    to a ``Validator`` (as its ``default_ruleset`` - always evaluated) or to
+    an individual ``WorkflowStep`` (evaluated only when that step runs).
+    At evaluation time the engine merges both sources, with default assertions
+    ordered first, and evaluates them in a single pass via
+    ``evaluate_assertions_for_stage()``.
+
+    Assertion types:
+
+    - **BASIC** - structured: an ``operator`` (e.g. le, between, matches)
+      paired with ``rhs`` (operand payload) and ``options`` (tolerance,
+      inclusive bounds, case folding, etc.).
+    - **CEL_EXPRESSION** - free-form: the CEL source lives in ``rhs["expr"]``
+      and is evaluated directly by the CEL evaluator.
+
+    Targeting:
+
+    Every assertion targets either a ``ValidatorCatalogEntry`` (a known,
+    typed signal published by the validator) *or* a free-form
+    ``target_field`` path - never both, enforced by the
+    ``ck_ruleset_assertion_target_oneof`` check constraint.  The target
+    also determines the ``resolved_run_stage`` (input vs output) that
+    controls when the assertion fires.
+
+    Messaging:
+
+    ``message_template`` is rendered when the assertion *fails*;
+    ``success_message`` when it *passes*.  Both support template variables
+    from the evaluation context.
     """
 
     ruleset = models.ForeignKey(

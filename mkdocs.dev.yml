@@ -119,7 +119,7 @@ nav:
       - Submissions: data-model/submissions.md
       - Runs: data-model/runs.md
       - Steps: data-model/steps.md
-      - Findings: data-model/findings.md
+      - Results: data-model/results.md
       - Users & Roles: data-model/users_roles.md
       - Deletions: data-model/deletions.md
   - Deployment:

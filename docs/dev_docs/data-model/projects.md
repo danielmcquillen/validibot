@@ -32,25 +32,21 @@ The project foreign key appears in all three layers intentionally:
 | `Submission`    | Captures the project that was resolved at launch time. Submissions may override the workflow default through query params or UI selection, so the resolved value is not always equal to `workflow.project`. |
 | `ValidationRun` | Copies the submission’s project for immutable history. Runs often outlive the submission content and need to be filterable without joins.                                                                   |
 
-The `ValidationRun` docstring summarizes this denormalization
-(`validibot/validations/models.py:1105-1112`). Copying the project to
-both `Submission` and `ValidationRun` is what lets us:
+The `ValidationRun` docstring summarizes this denormalization. Copying
+the project to both `Submission` and `ValidationRun` is what lets us:
 
 1. **Allow overrides:** `WorkflowViewSet.start_validation` accepts a
-   `project_slug` query parameter (see
-   `docs/dev_docs/overview/request_modes.md:124-129`). Without storing the
-   resolved project on the submission/run we would lose the caller’s intent as
-   soon as someone reassigns the workflow.
-2. **Keep history accurate:** Workflows are frequently moved between projects
-   (`docs/dev_docs/organization_management.md:41-53`). If history rows only
-   referenced `workflow.project` our historical dashboards would show a
-   different project after every reassignment.
+   `project_slug` query parameter. Without storing the resolved project on
+   the submission/run we would lose the caller's intent as soon as someone
+   reassigns the workflow.
+2. **Keep history accurate:** Workflows are frequently moved between projects.
+   If history rows only referenced `workflow.project` our historical dashboards
+   would show a different project after every reassignment.
 3. **Simplify access control:** Many queries scope by `org_id` and `project_id`
    simultaneously. Indexes on those fields in `Submission` and `ValidationRun`
    keep dashboards snappy and enforce tenant boundaries without extra joins.
-4. **Partition storage:** Upload paths incorporate `submission.project.slug`
-   (`validibot/submissions/models.py:32-55`). The FK is part of how we
-   spread files across buckets/prefixes.
+4. **Partition storage:** Upload paths incorporate `submission.project.slug`.
+   The FK is part of how we spread files across buckets/prefixes.
 
 ## Project Resolution Flow
 
@@ -90,8 +86,7 @@ When workflows move between projects the data flow is:
   drift during refactors.
 - Prefer querying submission/run tables directly for reporting. They have
   indexes on `(org, project, workflow, created)` specifically to avoid
-  cross-table joins (`validibot/submissions/models.py:64-80` and
-  `validibot/validations/models.py:1115-1119`).
+  cross-table joins.
 - When writing migrations or cleanup jobs, detach project references by setting
   them to `NULL` rather than trying to infer a new project.
 - If integrations in `../sv_modal` or `../validibot_shared` need project context,

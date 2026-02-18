@@ -8,14 +8,14 @@ It records:
 - Which validator/ruleset was applied.
 - For action-based steps (integrations or certifications), which `Action` definition
   supplied the behaviour and the JSON configuration used for that run.
-- Status (`pending`, `running`, `passed`, `failed`, `skipped`).
+- Status (`PENDING`, `RUNNING`, `PASSED`, `FAILED`, `SKIPPED`).
 - Timestamps and duration.
 - Machine-readable output and error messages.
 - Links to any **findings** produced during the step.
 
 ## Step Definitions (WorkflowStep)
 
-`WorkflowStep` rows (`validibot/workflows/models.py:490-575`) describe the
+`WorkflowStep` rows (`validibot/workflows/models.py`) describe the
 authored workflow. Key relationships:
 
 - Each step belongs to a workflow and has an `order` field that determines the
@@ -35,7 +35,7 @@ authored workflow. Key relationships:
 
 ## Rulesets, Validators, and Actions
 
-- **Validators** (`validibot/validations/models.py:562-760`) encapsulate a
+- **Validators** (`validibot/validations/models.py`) encapsulate a
   validation engine plus its catalog. They may declare a `default_ruleset` that
   ships with baseline assertions.
 - **Rulesets** capture the assertions that workflow authors want to execute for a

@@ -1,54 +1,35 @@
-# Deletions in Validibot
+# Deletions
 
-## Deleting Projects
+## Deleting projects
 
-Users can delete a project, upon which the project is set to inactive and a deletion date is set.
-Default projects created for each organization are protected and cannot be deleted.
+Projects use a two-phase soft-delete model. When a user deletes a project:
 
-Then Validibot has a periodic task or management command that deletes all
-projects older than a time period N.
+1. **Immediate soft-delete** -- the project is marked `is_active=False` and `deleted_at` is set to the current timestamp. All related records (workflows, validation runs, submissions, tracking events, outbound events) are **detached** by setting their project FK to `NULL`. The project row stays in the database.
 
-When a project is first deleted and made "inactive" all workflow and workflow steps
-stop accepting new runs, but existing execution history remains readable. The management
-command `purge_projects` hard-deletes soft-deleted projects older than N days.
+2. **Deferred purge** -- the `purge_projects` management command hard-deletes soft-deleted projects older than N days. This is intended to run as a periodic task.
 
-When a project is soft-deleted, the workflow and workflow steps linked to it are archived
-along with it, but any related Validation and ValidationStep results are not deleted—they are
-detached by setting the project foreign key to `NULL`.
+Default projects (one per organization) are protected and cannot be deleted.
 
-We treat Project / Workflow / WorkflowStep as definitions, and Validation / ValidationStep as immutable execution history. When a project (or workflow) is deleted, we keep all Validations and ValidationSteps for auditability, traceability, and support—just detach them from the deleted definitions.
+### Why detach instead of cascade?
 
-### Why Projects Track `deleted_at`
+We treat projects and workflows as *definitions*, and validation runs as *execution history*. When a project is deleted, we want to keep all validation runs, submissions, and workflows for auditability, traceability, and support. Detaching them (setting the project FK to `NULL`) lets us purge the project row later without losing the historical records.
 
-Projects are the only definition model with both `is_active` **and** `deleted_at`
-(`validibot/projects/models.py:92-186`) because organizations reshuffle
-project boundaries frequently. We need to:
+This means a `ValidationRun` or `Workflow` can exist with `project=None`, indicating its original project was deleted.
 
-- Hide inactive projects immediately (`is_active=False`) so workflows stop
-  accepting new runs under that namespace.
-- Keep the row around until the `purge_projects` command removes it, ensuring
-  auditability for submissions/runs that still reference the project slug in
-  storage paths.
+### Why projects have both `is_active` and `deleted_at`
 
-Workflows and workflow steps, by contrast, are already versioned objects. They
-use an `is_active` flag (`validibot/workflows/models.py:92-205`) plus
-`is_locked` to prevent edits but are never physically deleted; version history
-is part of the product. Validators follow the same pattern. If we ever need to
-retire a workflow entirely we mark it inactive (so it cannot execute) and rely
-on the parent project deletion flow to eventually detach or purge it. This keeps
-the soft-delete complexity limited to the project boundary where cross-tenant
-references live.
+Projects are the only model that tracks both fields because organisations reshuffle project boundaries frequently. We need to:
 
-## Why do we keep execution history?
+- Hide inactive projects immediately (`is_active=False`) so workflows stop accepting new runs under that namespace.
+- Keep the row around until `purge_projects` removes it, so that submissions and runs that still reference the project slug in storage paths remain valid.
 
-- Audit & compliance: we want to prove "what rules ran on which inputs" even if teams reorganise or delete a project.
-- Support: Past failures/successes help debug user issues.
-- Analytics: Long-term stats (pass rates, drift) depend on historical runs.
+Workflows and workflow steps, by contrast, are versioned objects. They use `is_active` (to prevent execution) and `is_locked` (to prevent edits) but are never physically deleted -- version history is part of the product. If a workflow needs to be retired entirely, it's marked inactive. If its parent project is deleted, the workflow is detached and continues to exist independently.
 
-## Retention policy (make it explicit)
+## Retention policy
 
-Each org has a configurable policy:
+Each workflow has configurable retention settings:
 
-- Default: keep runs forever (cheap if artifacts are in object storage).
-- Optional: auto-expire after N days (e.g., 365/730) unless placed on legal hold.
-- Artifacts vs. metadata: you might expire large blobs first, keep lightweight metadata longer.
+- **`data_retention`** -- how long to keep user-submitted files after validation completes. Default is `DO_NOT_STORE` (files are deleted immediately after completion; the submission record is preserved for audit).
+- **`output_retention`** -- how long to keep validation outputs (results, artifacts, findings). Default is 30 days.
+
+These are set per-workflow, not per-organisation.

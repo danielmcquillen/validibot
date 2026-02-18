@@ -51,7 +51,7 @@ The entities that make up Validibot:
 - **[Submissions](data-model/submissions.md)** — Content being validated
 - **[Runs](data-model/runs.md)** — Validation execution tracking
 - **[Steps](data-model/steps.md)** — Individual validation operations
-- **[Findings](data-model/findings.md)** — Validation results and issues
+- **[Results](data-model/results.md)** — Findings, artifacts, and summaries
 - **[Users & Roles](data-model/users_roles.md)** — Organization membership
 - **[Deletions](data-model/deletions.md)** — How deletions are managed
 

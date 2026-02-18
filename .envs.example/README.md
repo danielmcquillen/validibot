@@ -26,6 +26,7 @@ docker compose up
 ```
 
 **What runs where:**
+
 - Django: Docker container (port 8000)
 - Postgres: Docker container (port 5432)
 - Redis: Docker container (port 6379)
@@ -65,6 +66,7 @@ just gcp deploy prod
 ```
 
 **Two types of config files:**
+
 - `.django` - Django runtime settings, uploaded to Secret Manager
 - `.just` - Just command runner settings (project ID, region), sourced locally
 
@@ -118,13 +120,13 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 
 ### PostgreSQL Variables (`.postgres`)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `POSTGRES_HOST` | Database hostname | `postgres` (Docker service name) |
-| `POSTGRES_PORT` | Database port | `5432` |
-| `POSTGRES_DB` | Database name | `validibot` |
-| `POSTGRES_USER` | Database user | - |
-| `POSTGRES_PASSWORD` | Database password | - |
+| Variable            | Description       | Default                          |
+| ------------------- | ----------------- | -------------------------------- |
+| `POSTGRES_HOST`     | Database hostname | `postgres` (Docker service name) |
+| `POSTGRES_PORT`     | Database port     | `5432`                           |
+| `POSTGRES_DB`       | Database name     | `validibot`                      |
+| `POSTGRES_USER`     | Database user     | -                                |
+| `POSTGRES_PASSWORD` | Database password | -                                |
 
 **Note:** `DATABASE_URL` is automatically constructed by the entrypoint script from these variables.
 
@@ -132,74 +134,73 @@ cp .envs.example/.production/.aws/.django .envs/.production/.aws/.django
 
 #### Core Settings
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `DJANGO_SETTINGS_MODULE` | Settings module path | `config.settings.local` | Yes |
-| `DJANGO_SECRET_KEY` | Secret key for cryptographic signing | - | Production only |
-| `DJANGO_DEBUG` | Enable debug mode | `True` (local) | No |
-| `DJANGO_ALLOWED_HOSTS` | Comma-separated list of allowed hosts | `*` (local) | Production only |
-| `DJANGO_ADMIN_URL` | Admin URL path (randomize for production!) | `admin/` | No |
-| `DEPLOYMENT_TARGET` | Deployment platform (`docker_compose`, `gcp`, `aws`) | - | Production only |
+| Variable                 | Description                                          | Default                 | Required        |
+| ------------------------ | ---------------------------------------------------- | ----------------------- | --------------- |
+| `DJANGO_SETTINGS_MODULE` | Settings module path                                 | `config.settings.local` | Yes             |
+| `DJANGO_SECRET_KEY`      | Secret key for cryptographic signing                 | -                       | Production only |
+| `DJANGO_DEBUG`           | Enable debug mode                                    | `True` (local)          | No              |
+| `DJANGO_ALLOWED_HOSTS`   | Comma-separated list of allowed hosts                | `*` (local)             | Production only |
+| `DJANGO_ADMIN_URL`       | Admin URL path (randomize for production!)           | `admin/`                | No              |
+| `DEPLOYMENT_TARGET`      | Deployment platform (`docker_compose`, `gcp`, `aws`) | -                       | Production only |
 
 #### Infrastructure
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `USE_DOCKER` | Running in Docker container | `yes` |
-| `REDIS_URL` | Redis connection URL | `redis://redis:6379/0` |
+| Variable     | Description                 | Default                |
+| ------------ | --------------------------- | ---------------------- |
+| `USE_DOCKER` | Running in Docker container | `yes`                  |
+| `REDIS_URL`  | Redis connection URL        | `redis://redis:6379/0` |
 
 #### Email (Optional)
 
-| Variable | Description |
-|----------|-------------|
+| Variable                | Description        |
+| ----------------------- | ------------------ |
 | `POSTMARK_SERVER_TOKEN` | Postmark API token |
-| `MAILGUN_API_KEY` | Mailgun API key |
-| `SENDGRID_API_KEY` | SendGrid API key |
+| `MAILGUN_API_KEY`       | Mailgun API key    |
+| `SENDGRID_API_KEY`      | SendGrid API key   |
 
 If no email provider is configured, emails are printed to the console.
 
 #### Feature Toggles
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DJANGO_ACCOUNT_ALLOW_REGISTRATION` | Allow new user signups | `true` |
-| `DJANGO_ACCOUNT_ALLOW_LOGIN` | Allow user login | `true` |
-| `ENABLE_AI_VALIDATIONS` | Enable AI-powered validators | `false` |
+| Variable                            | Description            | Default |
+| ----------------------------------- | ---------------------- | ------- |
+| `DJANGO_ACCOUNT_ALLOW_REGISTRATION` | Allow new user signups | `true`  |
+| `DJANGO_ACCOUNT_ALLOW_LOGIN`        | Allow user login       | `true`  |
 
 #### Superuser (Initial Setup)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SUPERUSER_USERNAME` | Admin username | `admin` |
-| `SUPERUSER_PASSWORD` | Admin password | - |
-| `SUPERUSER_EMAIL` | Admin email | `admin@example.com` |
-| `SUPERUSER_NAME` | Admin display name | `Admin` |
+| Variable             | Description        | Default             |
+| -------------------- | ------------------ | ------------------- |
+| `SUPERUSER_USERNAME` | Admin username     | `admin`             |
+| `SUPERUSER_PASSWORD` | Admin password     | -                   |
+| `SUPERUSER_EMAIL`    | Admin email        | `admin@example.com` |
+| `SUPERUSER_NAME`     | Admin display name | `Admin`             |
 
 #### Celery (Optional)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CELERY_FLOWER_USER` | Flower UI username | `debug` |
+| Variable                 | Description        | Default |
+| ------------------------ | ------------------ | ------- |
+| `CELERY_FLOWER_USER`     | Flower UI username | `debug` |
 | `CELERY_FLOWER_PASSWORD` | Flower UI password | `debug` |
 
 #### Production Security
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DJANGO_SECURE_SSL_REDIRECT` | Redirect HTTP to HTTPS | `true` |
-| `SENTRY_DSN` | Sentry error tracking DSN | - |
-| `WEB_CONCURRENCY` | Gunicorn worker count | `4` |
+| Variable                     | Description               | Default |
+| ---------------------------- | ------------------------- | ------- |
+| `DJANGO_SECURE_SSL_REDIRECT` | Redirect HTTP to HTTPS    | `true`  |
+| `SENTRY_DSN`                 | Sentry error tracking DSN | -       |
+| `WEB_CONCURRENCY`            | Gunicorn worker count     | `4`     |
 
 #### GCP-Specific (Google Cloud)
 
-| Variable | Description |
-|----------|-------------|
-| `GCP_PROJECT_ID` | Google Cloud project ID |
-| `GCP_REGION` | Google Cloud region |
-| `CLOUD_SQL_CONNECTION_NAME` | Cloud SQL instance connection name |
-| `STORAGE_BUCKET` | GCS bucket for file storage |
-| `GCS_TASK_QUEUE_NAME` | Cloud Tasks queue name |
-| `CLOUD_TASKS_SERVICE_ACCOUNT` | Service account for Cloud Tasks |
+| Variable                      | Description                        |
+| ----------------------------- | ---------------------------------- |
+| `GCP_PROJECT_ID`              | Google Cloud project ID            |
+| `GCP_REGION`                  | Google Cloud region                |
+| `CLOUD_SQL_CONNECTION_NAME`   | Cloud SQL instance connection name |
+| `STORAGE_BUCKET`              | GCS bucket for file storage        |
+| `GCS_TASK_QUEUE_NAME`         | Cloud Tasks queue name             |
+| `CLOUD_TASKS_SERVICE_ACCOUNT` | Service account for Cloud Tasks    |
 
 ## Important Notes
 

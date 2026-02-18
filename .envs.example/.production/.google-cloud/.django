@@ -94,9 +94,6 @@ GCS_FMI_JOB_NAME=your-app-name-validator-fmi
 DJANGO_ACCOUNT_ALLOW_REGISTRATION=true
 DJANGO_ACCOUNT_ALLOW_LOGIN=true
 
-# AI-powered validations (requires additional setup)
-ENABLE_AI_VALIDATIONS=false
-
 # GOOGLE CLOUD KMS (for JWKS / credential signing)
 # ==============================================================================
 # The signing key for validation credentials (JWT badges).

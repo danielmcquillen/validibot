@@ -91,5 +91,6 @@ Dive deeper into each entity:
 - **[Runs](runs.md)** — Execution tracking and status
 - **[Steps](steps.md)** — Step configuration and ordering
 - **[Results](results.md)** — Findings, artifacts, and summaries
+- **[Signals](signals.md)** — Input, output, and derived signals across steps
 - **[Users & Roles](users_roles.md)** — Membership and permissions
 - **[Deletions](deletions.md)** — Soft deletes and cascade behavior

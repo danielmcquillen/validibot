@@ -1,9 +1,9 @@
 # Validators
 
-Validators define the concrete execution engine that a workflow step will call. They bundle the technical
-contract (validation type + provider version), the catalog of signals/derivations the engine exposes,
-and optional organization-specific extensions (custom validators). The platform now ships with five stock
-validation types:
+Validators define the concrete execution engine that a workflow step will call. One workflow step uses
+one validator. Validators bundle the technical contract (validation type + provider version), the catalog
+of signals/derivations the engine exposes, and optional organization-specific extensions (custom validators).
+The platform now ships with five stock validation types:
 
 - **BASIC** — no provider backing; authors add assertions manually via the UI. These steps still produce
   rulesets so findings remain auditable, but there is no catalog beyond whatever the assertion references.
@@ -12,7 +12,7 @@ validation types:
 - **AI_ASSIST** — template-driven AI validations (policy check, critic, etc.).
 - **CUSTOM_VALIDATOR** — organization-defined validators registered via the custom validator UI (displayed as “Custom Basic Validator”).
 
-**Terminology note:** `ValidationType` (the enum) describes the *kind of validation* being performed
+**Terminology note:** `ValidationType` (the enum) describes the _kind of validation_ being performed
 (BASIC, JSON_SCHEMA, ENERGYPLUS, etc.), not the validator itself. Multiple `Validator` rows can share
 the same `ValidationType` -- for example, several custom validators all use `CUSTOM_VALIDATOR`. Think
 of it as "validation engine type" rather than "validator type."
@@ -31,14 +31,14 @@ provider class to load, which helper functions are legal, and how to interpret r
 Validators own the canonical catalog describing what the validation engine can read or emit. Catalog
 rows live in `validator_catalog_entries` and carry:
 
-| Field | Meaning |
-| --- | --- |
-| `entry_type` | `signal` or `derivation`. |
-| `run_stage` | Whether the entry is available during the **input** phase (before the engine runs) or the **output** phase (after the engine completes). |
-| `slug` | Stable identifier referenced by rulesets and assertions. |
-| `data_type` | Scalar/list metadata (number, datetime, bool, series). |
-| `binding_config` | Provider-specific hints (e.g., EnergyPlus meter path). |
-| `metadata` | Free-form JSON used by the UI and provider tooling. |
+| Field            | Meaning                                                                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `entry_type`     | `signal` or `derivation`.                                                                                                                |
+| `run_stage`      | Whether the entry is available during the **input** phase (before the engine runs) or the **output** phase (after the engine completes). |
+| `slug`           | Stable identifier referenced by rulesets and assertions.                                                                                 |
+| `data_type`      | Scalar/list metadata (number, datetime, bool, series).                                                                                   |
+| `binding_config` | Provider-specific hints (e.g., EnergyPlus meter path).                                                                                   |
+| `metadata`       | Free-form JSON used by the UI and provider tooling.                                                                                      |
 
 Inputs represent values already available before the engine runs (project metadata, uploaded files,
 environment). Outputs represent telemetry the engine emits during execution. Derivations describe
@@ -101,12 +101,12 @@ by any active workflow step.
 The validator detail page uses link-based tabs (separate URLs, server-rendered) rather than
 JavaScript tabs. The tab layout is:
 
-| Tab | URL pattern | View | Default |
-|-----|-------------|------|---------|
-| **Description** | `library/custom/<slug>/` | `ValidatorDetailView` | Yes |
-| **Signals** | `library/custom/<slug>/signals-tab/` | `ValidatorSignalsTabView` | |
-| **Default Assertions** | `library/custom/<slug>/assertions/` | `ValidatorAssertionsTabView` | |
-| **Resource Files** | `library/custom/<slug>/resource-files/` | `ValidatorResourceFilesTabView` | |
+| Tab                    | URL pattern                             | View                            | Default |
+| ---------------------- | --------------------------------------- | ------------------------------- | ------- |
+| **Description**        | `library/custom/<slug>/`                | `ValidatorDetailView`           | Yes     |
+| **Signals**            | `library/custom/<slug>/signals-tab/`    | `ValidatorSignalsTabView`       |         |
+| **Default Assertions** | `library/custom/<slug>/assertions/`     | `ValidatorAssertionsTabView`    |         |
+| **Resource Files**     | `library/custom/<slug>/resource-files/` | `ValidatorResourceFilesTabView` |         |
 
 All tabs share the same base template (`validator_detail.html`) and render their content
 conditionally via `active_tab`. Each tab includes only its own modals to reduce page weight.

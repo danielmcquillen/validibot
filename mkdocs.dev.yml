@@ -115,6 +115,7 @@ nav:
       - Overview: data-model/index.md
       - Projects: data-model/projects.md
       - Validators: data-model/validators.md
+      - Signals: data-model/signals.md
       - Assertions: data-model/assertions.md
       - Submissions: data-model/submissions.md
       - Runs: data-model/runs.md

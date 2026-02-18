@@ -55,6 +55,10 @@ if DEPLOYMENT_TARGET not in VALID_DEPLOYMENT_TARGETS:
         f"DEPLOYMENT_TARGET must be one of {VALID_DEPLOYMENT_TARGETS}, "
         f"got: {DEPLOYMENT_TARGET}"
     )
+# NOTE: AWS is accepted as a deployment target for forward-compatibility but
+# is not yet implemented.  Storage (S3), task dispatch, and execution backends
+# are all stubs that raise NotImplementedError.  See core/storage/s3.py,
+# core/tasks/dispatch/registry.py, and validations/services/execution/registry.py.
 
 # GENERAL
 # ------------------------------------------------------------------------------

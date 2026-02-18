@@ -25,6 +25,7 @@ Understand how the system is built:
 - **[Settings Reference](overview/settings.md)** — Environment variables and feature flags
 - **[Dashboard](dashboard.md)** — Architecture and extension points for the dashboard module
 - **[Related Libraries](related_libraries.md)** — How `validibot_shared` connects to this project
+- **[Commercial Extensions](overview/commercial_extensions.md)** — How Pro and Enterprise packages plug in
 
 ---
 

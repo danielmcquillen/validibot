@@ -82,6 +82,7 @@ nav:
       - Execution Backends: overview/execution_backends.md
       - Submission Data Lifecycle: overview/submission_data_lifecycle.md
       - Submission Modes: overview/request_modes.md
+      - Commercial Extensions: overview/commercial_extensions.md
       - System Administration: overview/system_admin.md
       - Dashboard: dashboard.md
   - How-to:
@@ -90,7 +91,6 @@ nav:
       - Add a Form: how-to/add-a-form.md
       - Configure Storage: how-to/configure-storage.md
       - Configure Scheduled Tasks: how-to/configure-scheduled-tasks.md
-      - License Enforcement: how-to/license-enforcement.md
       - Run Integration Tests: how-to/run-integration-tests.md
       - Run Stress Tests: how-to/run-e2e-tests.md
       - Debug a Run: how-to/debug-a-run.md

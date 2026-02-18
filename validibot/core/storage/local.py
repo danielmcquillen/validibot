@@ -7,18 +7,18 @@ This backend stores files on the local filesystem, suitable for:
 - Testing
 
 Files are stored under a configurable root directory (DATA_STORAGE_ROOT).
-Download URLs are served through Django's file download endpoint.
+Download URLs use Django's built-in ``TimestampSigner`` to generate
+time-limited signed tokens, validated by the ``data_download`` view.
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
-import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.signing import TimestampSigner
 from django.urls import reverse
 
 from validibot.core.storage.base import DataStorage
@@ -207,6 +207,10 @@ class LocalDataStorage(DataStorage):
         full_path = self._resolve_path(path)
         return f"file://{full_path}"
 
+    # Separator between path and max_age inside the signed payload.
+    # Must not appear in storage paths (paths use '/' separators).
+    _SIGNED_SEP = "|"
+
     def get_download_url(
         self,
         path: str,
@@ -217,12 +221,13 @@ class LocalDataStorage(DataStorage):
         """
         Get a signed URL for downloading a file.
 
-        For local storage, we generate a signed token that the download
-        endpoint validates. This provides similar security to cloud signed URLs.
+        For local storage, generates a time-limited signed token using
+        Django's ``TimestampSigner``. Both the path and expiry window are
+        included in the signed payload so neither can be tampered with.
 
         Args:
             path: Relative path within storage
-            expires_in: URL expiry time in seconds (default: 1 hour)
+            expires_in: URL expiry time in seconds (default: 1 hour).
             filename: Optional filename for Content-Disposition header
 
         Returns:
@@ -234,69 +239,72 @@ class LocalDataStorage(DataStorage):
             msg = f"File does not exist: {path}"
             raise FileNotFoundError(msg)
 
-        # Generate signed token
-        expires_at = int(time.time()) + expires_in
-        token = self._generate_token(path, expires_at)
+        token = self.sign_download(path, expires_in)
+        base_url = reverse("core:data_download")
 
-        # Build URL to download endpoint
-        # Note: This URL pattern will be defined in core/urls.py
-        try:
-            base_url = reverse("core:data_download")
-        except Exception:
-            # Fallback if URL is not configured yet
-            base_url = "/api/v1/data/download/"
-
-        url = f"{base_url}?path={path}&expires={expires_at}&token={token}"
+        params: dict[str, str] = {"token": token}
         if filename:
-            url += f"&filename={filename}"
+            params["filename"] = filename
 
-        # Prepend site URL if available
+        url = f"{base_url}?{urlencode(params)}"
+
         site_url = getattr(settings, "SITE_URL", "").rstrip("/")
         if site_url:
             url = f"{site_url}{url}"
 
         return url
 
-    def _generate_token(self, path: str, expires_at: int) -> str:
+    @classmethod
+    def sign_download(cls, path: str, max_age: int) -> str:
         """
-        Generate a signed token for URL authentication.
+        Sign a storage path together with its expiry window.
 
-        Uses HMAC-SHA256 with SECRET_KEY to sign the path and expiry.
+        The signed payload is ``path|max_age`` so the view can enforce
+        the original expiry without trusting client-supplied values.
         """
-        message = f"{path}:{expires_at}"
-        signature = hmac.new(
-            settings.SECRET_KEY.encode(),
-            message.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-        return signature
+        signer = TimestampSigner()
+        return signer.sign(f"{path}{cls._SIGNED_SEP}{max_age}")
 
-    @staticmethod
-    def verify_token(path: str, expires_at: int, token: str) -> bool:
+    @classmethod
+    def unsign_download(cls, token: str) -> str:
         """
-        Verify a signed download token.
+        Verify a signed download token and return the original path.
+
+        The ``max_age`` is extracted from the signed payload itself,
+        so it cannot be extended by the client.
 
         Args:
-            path: The file path that was signed
-            expires_at: Unix timestamp when token expires
-            token: The token to verify
+            token: The signed token from :meth:`sign_download`.
 
         Returns:
-            True if token is valid and not expired, False otherwise
+            The original storage path.
+
+        Raises:
+            ``SignatureExpired`` if the token has expired.
+            ``BadSignature`` if the token is invalid or malformed.
         """
-        # Check expiry
-        if time.time() > expires_at:
-            return False
+        signer = TimestampSigner()
 
-        # Verify signature
-        message = f"{path}:{expires_at}"
-        expected = hmac.new(
-            settings.SECRET_KEY.encode(),
-            message.encode(),
-            hashlib.sha256,
-        ).hexdigest()
+        # First unsign without max_age to extract the payload.
+        payload = signer.unsign(token)
+        if cls._SIGNED_SEP not in payload:
+            from django.core.signing import BadSignature
 
-        return hmac.compare_digest(token, expected)
+            msg = "Malformed download token"
+            raise BadSignature(msg)
+
+        path, max_age_str = payload.rsplit(cls._SIGNED_SEP, 1)
+        try:
+            max_age = int(max_age_str)
+        except (TypeError, ValueError):
+            from django.core.signing import BadSignature
+
+            msg = "Invalid max_age in download token"
+            raise BadSignature(msg) from None
+
+        # Now verify with the signed max_age.
+        signer.unsign(token, max_age=max_age)
+        return path
 
     def get_absolute_path(self, path: str) -> Path:
         """

@@ -1,3 +1,6 @@
+# TODO: This module is oversized (~2500 lines). Consider splitting into
+# submodules: api/, ui/library.py, ui/validators.py, ui/rules.py, ui/runs.py.
+
 import datetime as dt
 import json
 import logging
@@ -2522,6 +2525,11 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
 
         Uses PostgreSQL's JSONField containment lookup to find steps whose
         config.resource_file_ids contains this file's UUID.
+
+        Note: This performs a sequential scan because the JSONField has no GIN
+        index. Acceptable at current scale (user-initiated delete action only).
+        If WorkflowStep row count grows significantly, add a GIN index on
+        ``config`` via migration.
         """
         steps = WorkflowStep.objects.filter(
             workflow__is_active=True,

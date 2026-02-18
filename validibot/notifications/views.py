@@ -61,14 +61,9 @@ class NotificationListView(LoginRequiredMixin, ListView):
             "workflow_invite__workflow",
             "workflow_invite__workflow__org",
         ).order_by("-created_at")
-        # Lazy expire invites on read
-        for notification in qs:
-            if notification.member_invite:
-                notification.member_invite.mark_expired_if_needed()
-            if notification.guest_invite:
-                notification.guest_invite.mark_expired_if_needed()
-            if notification.workflow_invite:
-                notification.workflow_invite.mark_expired_if_needed()
+        # Invite expiry is checked via the read-only is_expired / is_pending
+        # properties in templates. Status is persisted when the user takes
+        # action (accept/cancel), not on page load.
         return qs
 
     def _query_string(self) -> str:

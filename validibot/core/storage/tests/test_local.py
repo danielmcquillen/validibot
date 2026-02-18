@@ -206,7 +206,7 @@ class TestLocalDataStorage:
 
 
 class TestLocalStorageSignedUrls:
-    """Tests for signed URL generation and verification."""
+    """Tests for signed URL generation and verification via Django TimestampSigner."""
 
     def test_generate_download_url(self, temp_storage, settings):
         """Test generating a signed download URL."""
@@ -217,9 +217,10 @@ class TestLocalStorageSignedUrls:
 
         url = temp_storage.get_download_url("report.pdf", expires_in=3600)
 
-        assert "path=report.pdf" in url
-        assert "expires=" in url
         assert "token=" in url
+        assert url.startswith("https://example.com")
+        # max_age should NOT appear as a separate query param (it's signed)
+        assert "max_age=" not in url
 
     def test_download_url_nonexistent_raises(self, temp_storage, settings):
         """Test that get_download_url raises for nonexistent files."""
@@ -228,36 +229,62 @@ class TestLocalStorageSignedUrls:
         with pytest.raises(FileNotFoundError):
             temp_storage.get_download_url("nonexistent.pdf")
 
-    def test_verify_valid_token(self, temp_storage, settings):
-        """Test verifying a valid token."""
-        import time
+    def test_download_url_includes_filename(self, temp_storage, settings):
+        """Test that filename parameter is included in the URL."""
+        settings.SECRET_KEY = "test-secret-key"  # noqa: S105
+
+        temp_storage.write("report.pdf", b"PDF content")
+
+        url = temp_storage.get_download_url(
+            "report.pdf",
+            filename="my-report.pdf",
+        )
+
+        assert "filename=my-report.pdf" in url
+
+    def test_sign_and_unsign_roundtrip(self, settings):
+        """Test that sign_download and unsign_download are symmetric."""
+        settings.SECRET_KEY = "test-secret-key"  # noqa: S105
+
+        token = LocalDataStorage.sign_download("runs/run-123/output.json", 3600)
+        path = LocalDataStorage.unsign_download(token)
+
+        assert path == "runs/run-123/output.json"
+
+    def test_unsign_expired_token_raises(self, settings):
+        """Test that expired tokens raise SignatureExpired."""
+        from django.core.signing import SignatureExpired
 
         settings.SECRET_KEY = "test-secret-key"  # noqa: S105
-        expires_at = int(time.time()) + 3600
-        token = temp_storage._generate_token("test.txt", expires_at)
 
-        assert LocalDataStorage.verify_token("test.txt", expires_at, token)
+        # Sign with max_age=0 so it's expired immediately
+        token = LocalDataStorage.sign_download("test.txt", 0)
 
-    def test_verify_expired_token(self, temp_storage, settings):
-        """Test that expired tokens are rejected."""
-        import time
+        with pytest.raises(SignatureExpired):
+            LocalDataStorage.unsign_download(token)
 
-        settings.SECRET_KEY = "test-secret-key"  # noqa: S105
-        expires_at = int(time.time()) - 1  # Already expired
-        token = temp_storage._generate_token("test.txt", expires_at)
-
-        assert not LocalDataStorage.verify_token("test.txt", expires_at, token)
-
-    def test_verify_tampered_token(self, temp_storage, settings):
-        """Test that tampered tokens are rejected."""
-        import time
+    def test_unsign_tampered_token_raises(self, settings):
+        """Test that tampered tokens raise BadSignature."""
+        from django.core.signing import BadSignature
 
         settings.SECRET_KEY = "test-secret-key"  # noqa: S105
-        expires_at = int(time.time()) + 3600
-        token = temp_storage._generate_token("test.txt", expires_at)
 
-        # Try with different path
-        assert not LocalDataStorage.verify_token("other.txt", expires_at, token)
+        with pytest.raises(BadSignature):
+            LocalDataStorage.unsign_download("tampered:bad-token")
 
-        # Try with modified token
-        assert not LocalDataStorage.verify_token("test.txt", expires_at, "bad-token")
+    def test_max_age_cannot_be_extended(self, settings):
+        """Test that the client cannot extend the expiry by tampering."""
+        from django.core.signing import BadSignature
+
+        settings.SECRET_KEY = "test-secret-key"  # noqa: S105
+
+        # Sign with a short max_age
+        token = LocalDataStorage.sign_download("test.txt", 60)
+        # Unsign succeeds with the embedded max_age
+        assert LocalDataStorage.unsign_download(token) == "test.txt"
+
+        # Tampering with the token payload should fail
+        parts = token.rsplit(":", 1)
+        tampered = parts[0].replace("|60", "|999999") + ":" + parts[1]
+        with pytest.raises(BadSignature):
+            LocalDataStorage.unsign_download(tampered)

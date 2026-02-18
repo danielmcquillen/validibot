@@ -23,7 +23,9 @@ from django.views.generic import TemplateView
 from django.views.generic import UpdateView
 from rest_framework.authtoken.models import Token
 
+from validibot.core.features import CommercialFeature
 from validibot.core.mixins import BreadcrumbMixin
+from validibot.core.mixins import FeatureRequiredMixin
 from validibot.core.utils import reverse_with_org
 from validibot.users.constants import PermissionCode
 from validibot.users.constants import RoleCode
@@ -249,7 +251,10 @@ def _admin_memberships_for(user: User) -> list[Membership]:
     return admin_memberships
 
 
-class OrganizationListView(BreadcrumbMixin, LoginRequiredMixin, TemplateView):
+class OrganizationListView(
+    FeatureRequiredMixin, BreadcrumbMixin, LoginRequiredMixin, TemplateView
+):
+    required_feature = CommercialFeature.MULTI_ORG
     template_name = "users/organizations/organization_list.html"
     breadcrumbs = [{"name": _("Organizations"), "url": ""}]
 
@@ -283,11 +288,13 @@ class OrganizationListView(BreadcrumbMixin, LoginRequiredMixin, TemplateView):
 
 
 class OrganizationCreateView(
+    FeatureRequiredMixin,
     BreadcrumbMixin,
     LoginRequiredMixin,
     SuccessMessageMixin,
     CreateView,
 ):
+    required_feature = CommercialFeature.MULTI_ORG
     model = Organization
     form_class = OrganizationForm
     template_name = "users/organizations/organization_form.html"
@@ -332,10 +339,12 @@ class OrganizationCreateView(
 
 
 class OrganizationUpdateView(
+    FeatureRequiredMixin,
     OrganizationAdminRequiredMixin,
     SuccessMessageMixin,
     UpdateView,
 ):
+    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     model = Organization
     form_class = OrganizationForm
@@ -376,10 +385,12 @@ class OrganizationUpdateView(
 
 
 class OrganizationDeleteView(
+    FeatureRequiredMixin,
     OrganizationAdminRequiredMixin,
     SuccessMessageMixin,
     DeleteView,
 ):
+    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     model = Organization
     template_name = "users/organizations/organization_confirm_delete.html"
@@ -465,8 +476,9 @@ class OrganizationDeleteView(
 
 
 class OrganizationDetailView(
-    OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView
+    FeatureRequiredMixin, OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView
 ):
+    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     template_name = "users/organizations/organization_detail.html"
 
@@ -498,7 +510,10 @@ class OrganizationDetailView(
         return context
 
 
-class OrganizationMemberRolesUpdateView(OrganizationAdminRequiredMixin, FormView):
+class OrganizationMemberRolesUpdateView(
+    FeatureRequiredMixin, OrganizationAdminRequiredMixin, FormView
+):
+    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     form_class = OrganizationMemberRolesForm
     template_name = "users/organizations/organization_member_form.html"
@@ -576,7 +591,10 @@ class OrganizationMemberRolesUpdateView(OrganizationAdminRequiredMixin, FormView
         )
 
 
-class OrganizationMemberDeleteView(OrganizationAdminRequiredMixin, View):
+class OrganizationMemberDeleteView(
+    FeatureRequiredMixin, OrganizationAdminRequiredMixin, View
+):
+    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):

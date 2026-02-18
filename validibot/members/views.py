@@ -52,11 +52,10 @@ class MemberListView(
             .prefetch_related("membership_roles__role")
             .order_by("user__name", "user__username")
         )
-        pending_invites = list(
-            MemberInvite.objects.filter(org=self.organization).order_by("-created")
-        )
-        for invite in pending_invites:
-            invite.mark_expired_if_needed()
+        all_invites = MemberInvite.objects.filter(
+            org=self.organization,
+        ).order_by("-created")
+        pending_invites = [inv for inv in all_invites if inv.is_pending]
         context.update(
             {
                 "organization": self.organization,
@@ -535,20 +534,12 @@ class GuestListView(
             .order_by("-created")
         )
 
-        # Mark expired invites
-        for invite in pending_invites:
-            invite.mark_expired_if_needed()
-
         context.update(
             {
                 "organization": self.organization,
                 "guests": list(guests.values()),
                 "guest_count": len(guests),
-                "pending_invites": [
-                    inv
-                    for inv in pending_invites
-                    if inv.status == GuestInvite.Status.PENDING
-                ],
+                "pending_invites": [inv for inv in pending_invites if inv.is_pending],
             },
         )
         return context

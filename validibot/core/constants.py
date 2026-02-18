@@ -18,7 +18,7 @@ class DeploymentTarget(StrEnum):
             Used automatically when running pytest.
 
         LOCAL_DOCKER_COMPOSE: Local development using Docker Compose.
-            HTTP calls to worker container, local Docker for validators.
+            Celery via Redis for task dispatch, local Docker for validators.
 
         DOCKER_COMPOSE: Production Docker Compose with Celery/Redis.
             Redis-backed task queue, local Docker for validators.

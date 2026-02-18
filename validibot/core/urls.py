@@ -10,4 +10,9 @@ urlpatterns = [
         views.submit_support_message,
         name="support_message_create",
     ),
+    path(
+        "download/",
+        views.data_download,
+        name="data_download",
+    ),
 ]

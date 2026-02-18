@@ -60,6 +60,7 @@ class CommercialFeature(TextChoices):
 
     # Enterprise features (requires validibot-enterprise)
     MULTI_ORG = "multi_org", _("Multiple Organizations")
+    GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     LDAP_INTEGRATION = "ldap_integration", _("LDAP Integration")
     SAML_SSO = "saml_sso", _("SAML Single Sign-On")
 

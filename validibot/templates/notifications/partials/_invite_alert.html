@@ -35,7 +35,7 @@
     {% if notification.payload.message %}<div class="mt-2 small">{{ notification.payload.message }}</div>{% endif %}
   </div>
   <div class="d-flex gap-2 align-items-start">
-    {% if invite.status == "PENDING" and not notification.dismissed_at %}
+    {% if invite.is_pending and not notification.dismissed_at %}
       {# Accept button #}
       <form method="post"
             {% if invite_type == "member" %} action="{% url 'notifications:notification-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-invite-accept' notification.pk %}" {% elif invite_type == "guest" %} action="{% url 'notifications:notification-guest-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-guest-invite-accept' notification.pk %}" {% elif invite_type == "workflow" %} action="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}" hx-post="{% url 'notifications:notification-workflow-invite-accept' notification.pk %}" {% endif %}
@@ -53,8 +53,12 @@
         <button type="submit" class="btn btn-sm btn-secondary">{% trans "Decline" %}</button>
       </form>
     {% else %}
-      <span class="badge {% if invite.status == "ACCEPTED" %} text-bg-success {% elif invite.status == "DECLINED" %} text-bg-secondary {% elif invite.status == "EXPIRED" %} text-bg-warning {% else %} text-bg-light {% endif %}">
-        {{ invite.status }}
+      <span class="badge {% if invite.status == "ACCEPTED" %} text-bg-success {% elif invite.status == "DECLINED" %} text-bg-secondary {% elif invite.is_expired %} text-bg-warning {% else %} text-bg-light {% endif %}">
+        {% if invite.is_expired %}
+          EXPIRED
+        {% else %}
+          {{ invite.status }}
+        {% endif %}
       </span>
     {% endif %}
     {% if notification and notification.can_dismiss and not notification.dismissed_at %}

@@ -15,9 +15,10 @@ from validibot.users.tests.factories import grant_role
 
 
 @pytest.fixture(autouse=True)
-def _enable_team_management():
-    """Enable the team management feature for organization management tests."""
+def _enable_features():
+    """Enable commercial features required for organization management tests."""
     register_feature(CommercialFeature.TEAM_MANAGEMENT)
+    register_feature(CommercialFeature.MULTI_ORG)
     yield
     reset_features()
 

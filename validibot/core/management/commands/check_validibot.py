@@ -90,7 +90,6 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--verbose",
-            "-v",
             action="store_true",
             help="Show detailed output for each check",
         )

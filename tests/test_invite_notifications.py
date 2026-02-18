@@ -224,3 +224,43 @@ def test_can_dismiss_rules_for_invitee_and_inviter():
     assert (
         invitee_notification.can_dismiss is True
     )  # once resolved, invitee can dismiss
+
+
+@pytest.mark.django_db
+def test_can_dismiss_expired_but_status_pending():
+    """Invitee can dismiss when invite is time-expired but DB status is still PENDING.
+
+    With the no-persist-on-read model, expired invites are not written back to
+    the DB on GET.  The ``can_dismiss`` property must use ``is_pending`` (which
+    checks both status and expiry) rather than raw status comparison.
+    """
+    inviter = UserFactory()
+    invitee = UserFactory()
+    org = inviter.orgs.first()
+    inviter.memberships.get(org=org).set_roles({RoleCode.ADMIN})
+
+    # Create an invite that is already expired (expires_at in the past)
+    invite = MemberInvite.create_with_expiry(
+        org=org,
+        inviter=inviter,
+        invitee_user=invitee,
+        invitee_email=invitee.email,
+        roles=[RoleCode.WORKFLOW_VIEWER],
+        expires_at=timezone.now() - timedelta(hours=1),
+    )
+
+    # DB status is still PENDING, but is_expired=True, is_pending=False
+    assert invite.status == InviteStatus.PENDING
+    assert invite.is_expired is True
+    assert invite.is_pending is False
+
+    notification = Notification.objects.create(
+        user=invitee,
+        org=org,
+        type=Notification.Type.MEMBER_INVITE,
+        member_invite=invite,
+        payload={},
+    )
+
+    # Invitee should be able to dismiss - the invite is no longer actionable
+    assert notification.can_dismiss is True

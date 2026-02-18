@@ -732,12 +732,13 @@ class TestWorkflowInviteAcceptView:
             follow=True,
         )
 
-        # Should redirect to home
+        # Should redirect to home with error message
         assert response.status_code == HTTPStatus.OK
 
-        # Invite should be marked expired
+        # The invite is expired (checked via is_expired property) but
+        # status is not persisted on GET — that happens on accept/cancel.
         invite.refresh_from_db()
-        assert invite.status == WorkflowInvite.Status.EXPIRED
+        assert invite.is_expired
 
     def test_already_accepted_invite_shows_error(self, client):
         """Test that already accepted invites show error."""

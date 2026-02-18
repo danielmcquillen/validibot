@@ -1,3 +1,6 @@
+# TODO: This module is oversized (~3400 lines). Consider splitting into
+# submodules: api/, ui/launch.py, ui/public.py, ui/management.py, ui/sharing.py.
+
 import json
 import logging
 import time
@@ -2811,10 +2814,7 @@ class WorkflowInviteAcceptView(View):
             token=token,
         )
 
-        # Check if invite is valid
-        invite.mark_expired_if_needed()
-
-        if invite.status != WorkflowInvite.Status.PENDING:
+        if not invite.is_pending:
             messages.error(
                 request,
                 _("This invite is no longer valid (status: %(status)s).")

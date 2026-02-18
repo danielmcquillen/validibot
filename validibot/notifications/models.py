@@ -5,7 +5,6 @@ from uuid import uuid4
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from validibot.core.constants import InviteStatus
 from validibot.users.models import MemberInvite
 from validibot.users.models import Organization
 from validibot.users.models import User
@@ -101,19 +100,19 @@ class Notification(models.Model):
         if self.member_invite:
             if self.user != self.member_invite.invitee_user:
                 return True
-            return self.member_invite.status != InviteStatus.PENDING
+            return not self.member_invite.is_pending
 
         # Check guest invite (GuestInvite)
         if self.guest_invite:
             if self.user != self.guest_invite.invitee_user:
                 return True
-            return self.guest_invite.status != InviteStatus.PENDING
+            return not self.guest_invite.is_pending
 
         # Check workflow invite (WorkflowInvite)
         if self.workflow_invite:
             if self.user != self.workflow_invite.invitee_user:
                 return True
-            return self.workflow_invite.status != InviteStatus.PENDING
+            return not self.workflow_invite.is_pending
 
         # No linked invite - allow dismissal
         return True

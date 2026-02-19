@@ -59,7 +59,10 @@ class NavigationVisibilityTests(TestCase):
         self.assertIn("group-label", html)
 
     def test_zero_role_nav_shows_no_app_links(self):
-        """Users with no roles should see only Help link, not app-specific links."""
+        """
+        Users with no roles should see only User Guide link,
+        not app-specific links.
+        """
         membership = MembershipFactory()
         membership.set_roles(set())
         _login_with_membership(self.client, membership)
@@ -75,8 +78,8 @@ class NavigationVisibilityTests(TestCase):
         # The "Design" and "Analytics" group labels should not appear
         self.assertNotIn('group-label mt-4">\n            Design', html)
         self.assertNotIn('group-label mt-4">\n            Analytics', html)
-        # Help link is always shown in Support section (that's expected)
-        self.assertIn("Help", html)
+        # User Guide link is always shown in Support section (that's expected)
+        self.assertIn("User Guide", html)
 
     def test_superuser_nav_shows_full_access(self):
         """Superusers should see full navigation regardless of membership roles.

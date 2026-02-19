@@ -72,10 +72,14 @@ WORKDIR ${APP_HOME}
 # This avoids a separate `chown -R` layer that would duplicate all file data.
 # The docker group is for Docker socket access when running validator
 # containers locally (entrypoint.sh adjusts the GID to match the host).
+# We also make django own /app (WORKDIR creates it as root) and pre-create
+# the staticfiles directory so collectstatic can write to it at startup.
 RUN addgroup --system django \
   && adduser --system --ingroup django django \
   && (getent group docker || groupadd docker) \
-  && usermod -aG docker django
+  && usermod -aG docker django \
+  && chown django:django ${APP_HOME} \
+  && mkdir -p ${APP_HOME}/staticfiles && chown django:django ${APP_HOME}/staticfiles
 
 # Runtime-only system packages — no compilers, no headers.
 #   libpq5:            PostgreSQL client library (psycopg runtime dependency)

@@ -483,7 +483,7 @@ class GuestListView(
     access. See ADR section 9 for future author permission implementation.
     """
 
-    required_feature = CommercialFeature.TEAM_MANAGEMENT
+    required_feature = CommercialFeature.GUEST_MANAGEMENT
     template_name = "members/guest_list.html"
     organization_context_attr = "organization"
 
@@ -553,7 +553,7 @@ class GuestListView(
 class GuestInviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Create a new org-level guest invite."""
 
-    required_feature = CommercialFeature.TEAM_MANAGEMENT
+    required_feature = CommercialFeature.GUEST_MANAGEMENT
     organization_context_attr = "organization"
 
     def get(self, request, *args, **kwargs):
@@ -712,7 +712,7 @@ class GuestInviteCreateView(FeatureRequiredMixin, OrganizationAdminRequiredMixin
 class GuestInviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Cancel a pending org-level guest invite."""
 
-    required_feature = CommercialFeature.TEAM_MANAGEMENT
+    required_feature = CommercialFeature.GUEST_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):
@@ -739,7 +739,7 @@ class GuestInviteCancelView(FeatureRequiredMixin, OrganizationAdminRequiredMixin
 class GuestRevokeAllView(FeatureRequiredMixin, OrganizationAdminRequiredMixin, View):
     """Revoke all workflow access for a guest user."""
 
-    required_feature = CommercialFeature.TEAM_MANAGEMENT
+    required_feature = CommercialFeature.GUEST_MANAGEMENT
     organization_context_attr = "organization"
 
     def post(self, request, *args, **kwargs):

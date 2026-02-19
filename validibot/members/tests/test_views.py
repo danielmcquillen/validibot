@@ -16,9 +16,10 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
-def _enable_team_management():
-    """Enable the team management feature for all member view tests."""
+def _enable_member_features():
+    """Enable commercial features required for member and guest view tests."""
     register_feature(CommercialFeature.TEAM_MANAGEMENT)
+    register_feature(CommercialFeature.GUEST_MANAGEMENT)
     yield
     reset_features()
 

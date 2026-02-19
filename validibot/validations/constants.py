@@ -389,3 +389,6 @@ def get_resource_types_for_validator(validation_type: str) -> list[str]:
 CEL_MAX_EVAL_TIMEOUT_MS = getattr(django_settings, "CEL_MAX_EVAL_TIMEOUT_MS", 100)
 CEL_MAX_EXPRESSION_CHARS = 2000
 CEL_MAX_CONTEXT_SYMBOLS = 200
+
+# Regex evaluation timeout (milliseconds). Prevents ReDoS from pathological patterns.
+REGEX_EVAL_TIMEOUT_MS = getattr(django_settings, "REGEX_EVAL_TIMEOUT_MS", 1000)

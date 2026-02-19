@@ -1,0 +1,470 @@
+ecosystem,scope,package,version,directness,license_declared,license_expression,license_classifiers,selected_license,marker_or_platform,optional,source_reference,homepage,notes
+npm,dev,@esbuild/aix-ppc64,0.25.9,transitive,MIT,,,,os=aix; cpu=ppc64,yes,https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.25.9.tgz,,
+npm,dev,@esbuild/android-arm,0.25.9,transitive,MIT,,,,os=android; cpu=arm,yes,https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.25.9.tgz,,
+npm,dev,@esbuild/android-arm64,0.25.9,transitive,MIT,,,,os=android; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/android-x64,0.25.9,transitive,MIT,,,,os=android; cpu=x64,yes,https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.25.9.tgz,,
+npm,dev,@esbuild/darwin-arm64,0.25.9,transitive,MIT,,,,os=darwin; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/darwin-x64,0.25.9,transitive,MIT,,,,os=darwin; cpu=x64,yes,https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.25.9.tgz,,
+npm,dev,@esbuild/freebsd-arm64,0.25.9,transitive,MIT,,,,os=freebsd; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/freebsd-x64,0.25.9,transitive,MIT,,,,os=freebsd; cpu=x64,yes,https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.25.9.tgz,,
+npm,dev,@esbuild/linux-arm,0.25.9,transitive,MIT,,,,os=linux; cpu=arm,yes,https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.25.9.tgz,,
+npm,dev,@esbuild/linux-arm64,0.25.9,transitive,MIT,,,,os=linux; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/linux-ia32,0.25.9,transitive,MIT,,,,os=linux; cpu=ia32,yes,https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.25.9.tgz,,
+npm,dev,@esbuild/linux-loong64,0.25.9,transitive,MIT,,,,os=linux; cpu=loong64,yes,https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.25.9.tgz,,
+npm,dev,@esbuild/linux-mips64el,0.25.9,transitive,MIT,,,,os=linux; cpu=mips64el,yes,https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.25.9.tgz,,
+npm,dev,@esbuild/linux-ppc64,0.25.9,transitive,MIT,,,,os=linux; cpu=ppc64,yes,https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.25.9.tgz,,
+npm,dev,@esbuild/linux-riscv64,0.25.9,transitive,MIT,,,,os=linux; cpu=riscv64,yes,https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.25.9.tgz,,
+npm,dev,@esbuild/linux-s390x,0.25.9,transitive,MIT,,,,os=linux; cpu=s390x,yes,https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.25.9.tgz,,
+npm,dev,@esbuild/linux-x64,0.25.9,transitive,MIT,,,,os=linux; cpu=x64,yes,https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.25.9.tgz,,
+npm,dev,@esbuild/netbsd-arm64,0.25.9,transitive,MIT,,,,os=netbsd; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/netbsd-x64,0.25.9,transitive,MIT,,,,os=netbsd; cpu=x64,yes,https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.25.9.tgz,,
+npm,dev,@esbuild/openbsd-arm64,0.25.9,transitive,MIT,,,,os=openbsd; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/openbsd-x64,0.25.9,transitive,MIT,,,,os=openbsd; cpu=x64,yes,https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.25.9.tgz,,
+npm,dev,@esbuild/openharmony-arm64,0.25.9,transitive,MIT,,,,os=openharmony; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/sunos-x64,0.25.9,transitive,MIT,,,,os=sunos; cpu=x64,yes,https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.25.9.tgz,,
+npm,dev,@esbuild/win32-arm64,0.25.9,transitive,MIT,,,,os=win32; cpu=arm64,yes,https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.25.9.tgz,,
+npm,dev,@esbuild/win32-ia32,0.25.9,transitive,MIT,,,,os=win32; cpu=ia32,yes,https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.25.9.tgz,,
+npm,dev,@esbuild/win32-x64,0.25.9,transitive,MIT,,,,os=win32; cpu=x64,yes,https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.9.tgz,,
+npm,dev,@parcel/watcher,2.5.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/@parcel/watcher/-/watcher-2.5.1.tgz,,
+npm,dev,@parcel/watcher-android-arm64,2.5.1,transitive,MIT,,,,os=android; cpu=arm64,yes,https://registry.npmjs.org/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.5.1.tgz,,
+npm,dev,@parcel/watcher-darwin-arm64,2.5.1,transitive,MIT,,,,os=darwin; cpu=arm64,yes,https://registry.npmjs.org/@parcel/watcher-darwin-arm64/-/watcher-darwin-arm64-2.5.1.tgz,,
+npm,dev,@parcel/watcher-darwin-x64,2.5.1,transitive,MIT,,,,os=darwin; cpu=x64,yes,https://registry.npmjs.org/@parcel/watcher-darwin-x64/-/watcher-darwin-x64-2.5.1.tgz,,
+npm,dev,@parcel/watcher-freebsd-x64,2.5.1,transitive,MIT,,,,os=freebsd; cpu=x64,yes,https://registry.npmjs.org/@parcel/watcher-freebsd-x64/-/watcher-freebsd-x64-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-arm-glibc,2.5.1,transitive,MIT,,,,os=linux; cpu=arm,yes,https://registry.npmjs.org/@parcel/watcher-linux-arm-glibc/-/watcher-linux-arm-glibc-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-arm-musl,2.5.1,transitive,MIT,,,,os=linux; cpu=arm,yes,https://registry.npmjs.org/@parcel/watcher-linux-arm-musl/-/watcher-linux-arm-musl-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-arm64-glibc,2.5.1,transitive,MIT,,,,os=linux; cpu=arm64,yes,https://registry.npmjs.org/@parcel/watcher-linux-arm64-glibc/-/watcher-linux-arm64-glibc-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-arm64-musl,2.5.1,transitive,MIT,,,,os=linux; cpu=arm64,yes,https://registry.npmjs.org/@parcel/watcher-linux-arm64-musl/-/watcher-linux-arm64-musl-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-x64-glibc,2.5.1,transitive,MIT,,,,os=linux; cpu=x64,yes,https://registry.npmjs.org/@parcel/watcher-linux-x64-glibc/-/watcher-linux-x64-glibc-2.5.1.tgz,,
+npm,dev,@parcel/watcher-linux-x64-musl,2.5.1,transitive,MIT,,,,os=linux; cpu=x64,yes,https://registry.npmjs.org/@parcel/watcher-linux-x64-musl/-/watcher-linux-x64-musl-2.5.1.tgz,,
+npm,dev,@parcel/watcher-win32-arm64,2.5.1,transitive,MIT,,,,os=win32; cpu=arm64,yes,https://registry.npmjs.org/@parcel/watcher-win32-arm64/-/watcher-win32-arm64-2.5.1.tgz,,
+npm,dev,@parcel/watcher-win32-ia32,2.5.1,transitive,MIT,,,,os=win32; cpu=ia32,yes,https://registry.npmjs.org/@parcel/watcher-win32-ia32/-/watcher-win32-ia32-2.5.1.tgz,,
+npm,dev,@parcel/watcher-win32-x64,2.5.1,transitive,MIT,,,,os=win32; cpu=x64,yes,https://registry.npmjs.org/@parcel/watcher-win32-x64/-/watcher-win32-x64-2.5.1.tgz,,
+npm,dev,@types/bootstrap,5.2.10,direct,MIT,,,,,,https://registry.npmjs.org/@types/bootstrap/-/bootstrap-5.2.10.tgz,,
+npm,dev,braces,3.0.3,transitive,MIT,,,,,yes,https://registry.npmjs.org/braces/-/braces-3.0.3.tgz,,
+npm,dev,chokidar,4.0.3,transitive,MIT,,,,,,https://registry.npmjs.org/chokidar/-/chokidar-4.0.3.tgz,,
+npm,dev,detect-libc,1.0.3,transitive,Apache-2.0,,,,,yes,https://registry.npmjs.org/detect-libc/-/detect-libc-1.0.3.tgz,,
+npm,dev,esbuild,0.25.9,direct,MIT,,,,,,https://registry.npmjs.org/esbuild/-/esbuild-0.25.9.tgz,,
+npm,dev,fill-range,7.1.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/fill-range/-/fill-range-7.1.1.tgz,,
+npm,dev,immutable,5.1.3,transitive,MIT,,,,,,https://registry.npmjs.org/immutable/-/immutable-5.1.3.tgz,,
+npm,dev,is-extglob,2.1.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/is-extglob/-/is-extglob-2.1.1.tgz,,
+npm,dev,is-glob,4.0.3,transitive,MIT,,,,,yes,https://registry.npmjs.org/is-glob/-/is-glob-4.0.3.tgz,,
+npm,dev,is-number,7.0.0,transitive,MIT,,,,,yes,https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz,,
+npm,dev,micromatch,4.0.8,transitive,MIT,,,,,yes,https://registry.npmjs.org/micromatch/-/micromatch-4.0.8.tgz,,
+npm,dev,node-addon-api,7.1.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/node-addon-api/-/node-addon-api-7.1.1.tgz,,
+npm,dev,picomatch,2.3.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz,,
+npm,dev,readdirp,4.1.2,transitive,MIT,,,,,,https://registry.npmjs.org/readdirp/-/readdirp-4.1.2.tgz,,
+npm,dev,sass,1.90.0,direct,MIT,,,,,,https://registry.npmjs.org/sass/-/sass-1.90.0.tgz,,
+npm,dev,source-map-js,1.2.1,transitive,BSD-3-Clause,,,,,,https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz,,
+npm,dev,to-regex-range,5.0.1,transitive,MIT,,,,,yes,https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz,,
+npm,dev,typescript,5.6.3,direct,Apache-2.0,,,,,,https://registry.npmjs.org/typescript/-/typescript-5.6.3.tgz,,
+python,dev,asttokens,3.0.1,transitive,Apache 2.0,,,,,,,https://github.com/gristlabs/asttokens,
+python,dev,async-generator,1.10,transitive,MIT -or- Apache License 2.0,,License :: OSI Approved :: MIT License; License :: OSI Approved :: Apache Software License,,,,,https://github.com/python-trio/async_generator,
+python,dev,babel,2.17.0,transitive,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://babel.pocoo.org/,
+python,dev,backrefs,6.1,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/facelessuser/backrefs,
+python,dev,cfgv,3.5.0,transitive,MIT,,,,,,,https://github.com/asottile/cfgv,
+python,dev,coverage,7.13.4,direct,Apache-2.0,,,,,,,https://github.com/coveragepy/coveragepy,
+python,dev,cssbeautifier,1.15.4,transitive,MIT,,,,,,,https://beautifier.io,
+python,dev,decorator,5.2.1,transitive,BSD-2-Clause,,License :: OSI Approved :: BSD License,,,,,,
+python,dev,distlib,0.4.0,transitive,PSF-2.0,,License :: OSI Approved :: Python Software Foundation License,,,,,https://github.com/pypa/distlib,
+python,dev,django-coverage-plugin,3.2.0,direct,,Apache-2.0,,,,,,https://github.com/nedbat/django_coverage_plugin,
+python,dev,django-debug-toolbar,6.2.0,direct,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://django-debug-toolbar.readthedocs.io/en/latest/changes.html,
+python,dev,django-extensions,4.1,direct,,MIT,,,,,,https://github.com/django-extensions/django-extensions/blob/main/CHANGELOG.md,
+python,dev,django-stubs,5.2.9,direct,,MIT,,,,,,https://github.com/typeddjango/django-stubs,
+python,dev,django-stubs-ext,5.2.9,transitive,,MIT,,,,,,https://github.com/typeddjango/django-stubs,
+python,dev,djangorestframework-stubs,3.16.8,direct,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/typeddjango/djangorestframework-stubs,
+python,dev,djlint,1.36.4,direct,GPL-3.0-or-later,,License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+),,,,,https://djlint.com,
+python,dev,editorconfig,0.17.1,transitive,PSF-2.0,,License :: OSI Approved :: Python Software Foundation License,,,,,https://editorconfig.org/,
+python,dev,executing,2.2.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/alexmojaki/executing,
+python,dev,factory-boy,3.3.3,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/FactoryBoy/factory_boy,
+python,dev,faker,38.2.0,transitive,MIT License,,License :: OSI Approved :: MIT License,,,,,https://github.com/joke2k/faker,
+python,dev,filelock,3.20.3,transitive,,Unlicense,License :: OSI Approved :: The Unlicense (Unlicense),,,,,https://py-filelock.readthedocs.io,
+python,dev,ghp-import,2.1.0,transitive,Apache Software License,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/c-w/ghp-import,
+python,dev,identify,2.6.15,transitive,MIT,,,,,,,https://github.com/pre-commit/identify,
+python,dev,importlib-metadata,8.7.1,transitive,,Apache-2.0,,,,,,https://github.com/python/importlib_metadata,
+python,dev,iniconfig,2.3.0,transitive,,MIT,,,,,,https://github.com/pytest-dev/iniconfig,
+python,dev,ipdb,0.13.13,direct,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/gotcha/ipdb,
+python,dev,ipython,9.7.0,transitive,,BSD-3-Clause,,,,,,https://ipython.org,
+python,dev,ipython-pygments-lexers,1.1.1,transitive,,,License :: OSI Approved :: BSD License,,,,,https://github.com/ipython/ipython-pygments-lexers,
+python,dev,jedi,0.19.2,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/davidhalter/jedi,
+python,dev,jsbeautifier,1.15.4,transitive,MIT,,,,,,,https://beautifier.io,
+python,dev,json5,0.12.1,transitive,"Files: Everything except for the benchmarks/*.json files.
+
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      ""License"" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      ""Licensor"" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      ""Legal Entity"" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      ""control"" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      ""You"" (or ""Your"") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      ""Source"" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      ""Object"" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      ""Work"" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      ""Derivative Works"" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      ""Contribution"" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, ""submitted""
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as ""Not a Contribution.""
+
+      ""Contributor"" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a ""NOTICE"" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an ""AS IS"" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets ""{}""
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same ""printed page"" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright {yyyy} {name of copyright owner}
+
+   Licensed under the Apache License, Version 2.0 (the ""License"");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an ""AS IS"" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+---
+
+File: benchmarks/64KB-min.json
+
+MIT License
+
+Copyright (c) Microsoft Corporation.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE
+
+---
+
+File: benchmarks/bitly-usa-gov.json
+
+The MIT License (MIT)
+
+Copyright (c) 2017 Wes McKinney
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+File: benchmarks/twitter.json
+
+The MIT License (MIT)
+
+Copyright (c) 2014 Milo Yip
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.",,License :: OSI Approved :: Apache Software License,,,,,https://github.com/dpranke/pyjson5,
+python,dev,librt,0.6.3,transitive,MIT,,License :: OSI Approved :: MIT License,,"platform_python_implementation != ""PyPy""",,,https://github.com/mypyc/librt,
+python,dev,matplotlib-inline,0.2.1,transitive,,,,,,,,https://github.com/ipython/matplotlib-inline,
+python,dev,mergedeep,1.3.4,transitive,UNKNOWN,,License :: OSI Approved :: MIT License,,,,,https://github.com/clarketm/mergedeep,
+python,dev,mkdocs,1.6.1,direct,,BSD-2-Clause,License :: OSI Approved :: BSD License,,,,,https://www.mkdocs.org/,
+python,dev,mkdocs-get-deps,0.2.0,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/mkdocs/get-deps,
+python,dev,mkdocs-material,9.7.1,direct,,MIT,License :: OSI Approved :: MIT License,,,,,https://squidfunk.github.io/mkdocs-material/,
+python,dev,mkdocs-material-extensions,1.3.1,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/facelessuser/mkdocs-material-extensions,
+python,dev,mkdocs-print-site-plugin,2.8,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/timvink/mkdocs-print-site-plugin,
+python,dev,mypy,1.19.1,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://www.mypy-lang.org/,
+python,dev,mypy-extensions,1.1.0,transitive,,MIT,,,,,,https://github.com/python/mypy_extensions,
+python,dev,nodeenv,1.9.1,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/ekalinin/nodeenv,
+python,dev,outcome,1.3.0.post0,transitive,MIT OR Apache-2.0,,License :: OSI Approved :: MIT License; License :: OSI Approved :: Apache Software License,,,,,https://github.com/python-trio/outcome,
+python,dev,paginate,0.5.7,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/Signum/paginate,
+python,dev,parso,0.8.5,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/davidhalter/parso,
+python,dev,pathspec,0.12.1,transitive,,,License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0),,,,,https://python-path-specification.readthedocs.io/en/latest/index.html,
+python,dev,pexpect,4.9.0,transitive,ISC license,,License :: OSI Approved :: ISC License (ISCL),,"sys_platform != ""emscripten"" and sys_platform != ""win32""",,,https://pexpect.readthedocs.io/,
+python,dev,pluggy,1.6.0,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,,
+python,dev,pre-commit,4.5.1,direct,MIT,,,,,,,https://github.com/pre-commit/pre-commit,
+python,dev,ptyprocess,0.7.0,transitive,UNKNOWN,,License :: OSI Approved :: ISC License (ISCL),,"sys_platform != ""emscripten"" and sys_platform != ""win32""",,,https://github.com/pexpect/ptyprocess,
+python,dev,pure-eval,0.2.3,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,http://github.com/alexmojaki/pure_eval,
+python,dev,pygments,2.19.2,transitive,BSD-2-Clause,,License :: OSI Approved :: BSD License,,,,,https://pygments.org,
+python,dev,pymdown-extensions,10.17.2,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/facelessuser/pymdown-extensions,
+python,dev,pysocks,1.7.1,transitive,BSD,,,,,,,https://github.com/Anorov/PySocks,
+python,dev,pytest,9.0.2,direct,,MIT,,,,,,https://docs.pytest.org/en/stable/changelog.html,
+python,dev,pytest-django,4.12.0,direct,"pytest-django is released under the BSD (3-clause) license
+----------------------------------------------------------
+Copyright (c) 2015-2018, pytest-django authors (see AUTHORS file)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+ * The names of its contributors may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ""AS IS"" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+This version of pytest-django is a fork of pytest_django created by Ben Firshman.
+---------------------------------------------------------------------------------
+Copyright (c) 2009, Ben Firshman
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+ * The names of its contributors may not be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ""AS IS"" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",,License :: OSI Approved :: BSD License,,,,,https://pytest-django.readthedocs.io/,
+python,dev,pytest-sugar,1.1.1,direct,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/Teemu/pytest-sugar,
+python,dev,pyyaml-env-tag,1.1,transitive,,MIT,,,,,,https://github.com/waylan/pyyaml-env-tag,
+python,dev,regex,2025.11.3,transitive,,Apache-2.0 AND CNRI-Python,,,,,,https://github.com/mrabarnett/mrab-regex,
+python,dev,ruff,0.15.1,direct,,,License :: OSI Approved :: MIT License,,,,,https://docs.astral.sh/ruff,
+python,dev,selenium,4.40.0,direct,Apache-2.0,,,,,,,https://www.selenium.dev,
+python,dev,sniffio,1.3.1,transitive,MIT OR Apache-2.0,,License :: OSI Approved :: MIT License; License :: OSI Approved :: Apache Software License,,,,,https://github.com/python-trio/sniffio,
+python,dev,sortedcontainers,2.4.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,http://www.grantjenks.com/docs/sortedcontainers/,
+python,dev,stack-data,0.6.3,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,http://github.com/alexmojaki/stack_data,
+python,dev,termcolor,3.2.0,transitive,,MIT,,,,,,https://github.com/termcolor/termcolor/releases,
+python,dev,tqdm,4.67.1,transitive,MPL-2.0 AND MIT,,License :: OSI Approved :: MIT License; License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0),,,,,https://tqdm.github.io,
+python,dev,trio,0.32.0,transitive,,MIT OR Apache-2.0,,,,,,https://github.com/python-trio/trio,
+python,dev,trio-typing,0.10.0,transitive,MIT -or- Apache License 2.0,,License :: OSI Approved :: MIT License; License :: OSI Approved :: Apache Software License,,,,,https://github.com/python-trio/trio-typing,
+python,dev,trio-websocket,0.12.2,transitive,,,License :: OSI Approved :: MIT License,,,,,https://github.com/python-trio/trio-websocket,
+python,dev,types-certifi,2021.10.8.3,transitive,Apache-2.0 license,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/python/typeshed,
+python,dev,types-pyyaml,6.0.12.20250915,transitive,,Apache-2.0,,,,,,https://github.com/python/typeshed,
+python,dev,types-urllib3,1.26.25.14,transitive,Apache-2.0 license,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/python/typeshed,
+python,dev,virtualenv,20.36.1,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://virtualenv.pypa.io,
+python,dev,watchdog,6.0.0,transitive,Apache-2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/gorakhargosh/watchdog,
+python,dev,websocket-client,1.9.0,transitive,Apache-2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/websocket-client/websocket-client.git,
+python,dev,werkzeug,3.1.5,direct,,BSD-3-Clause,,,,,,https://werkzeug.palletsprojects.com/page/changes/,
+python,dev,wsproto,1.3.2,transitive,,MIT,,,,,,https://github.com/python-hyper/wsproto/,
+python,dev,zipp,3.23.0,transitive,,MIT,,,,,,https://github.com/jaraco/zipp,

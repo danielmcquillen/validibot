@@ -52,10 +52,11 @@ def features_context(request):
     available in templates.
 
     Provides feature_<name> boolean flags:
-    - feature_multi_org: Multi-organization support (Enterprise)
-    - feature_guest_management: Guest user management (Enterprise)
+    - feature_team_management: Team/member management (Pro)
+    - feature_guest_management: Guest user management (Pro)
     - feature_billing: Billing/Stripe integration (Pro)
-    - feature_advanced_validators: Advanced validator management (Pro)
+    - feature_advanced_analytics: Advanced analytics (Pro)
+    - feature_multi_org: Multi-organization support (Enterprise)
     - etc.
     """
     return get_feature_context()

@@ -1,0 +1,254 @@
+ecosystem,scope,package,version,directness,license_declared,license_expression,license_classifiers,selected_license,marker_or_platform,optional,source_reference,homepage,notes
+npm,runtime,@kurkle/color,0.3.4,transitive,MIT,,,,,,https://registry.npmjs.org/@kurkle/color/-/color-0.3.4.tgz,,
+npm,runtime,@popperjs/core,2.11.8,transitive,MIT,,,,,,https://registry.npmjs.org/@popperjs/core/-/core-2.11.8.tgz,,
+npm,runtime,bootstrap,5.3.7,direct,MIT,,,,,,https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.7.tgz,,
+npm,runtime,bootstrap-icons,1.13.1,direct,MIT,,,,,,https://registry.npmjs.org/bootstrap-icons/-/bootstrap-icons-1.13.1.tgz,,
+npm,runtime,chart.js,4.4.6,direct,MIT,,,,,,https://registry.npmjs.org/chart.js/-/chart.js-4.4.6.tgz,,
+npm,runtime,htmx.org,2.0.6,direct,0BSD,,,,,,https://registry.npmjs.org/htmx.org/-/htmx.org-2.0.6.tgz,,
+python,runtime,amqp,5.3.1,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,http://github.com/celery/py-amqp,
+python,runtime,annotated-types,0.7.0,transitive,,,License :: OSI Approved :: MIT License,,,,,https://github.com/annotated-types/annotated-types,
+python,runtime,anyio,4.12.0,transitive,,MIT,,,,,,https://anyio.readthedocs.io/en/latest/,
+python,runtime,argon2-cffi,25.1.0,direct,,MIT,,,,,,https://argon2-cffi.readthedocs.io/,
+python,runtime,argon2-cffi-bindings,25.1.0,transitive,,MIT,,,,,,https://tidelift.com/?utm_source=lifter&utm_medium=referral&utm_campaign=hynek,
+python,runtime,asgiref,3.11.0,transitive,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://github.com/django/asgiref/,
+python,runtime,attrs,25.4.0,transitive,,MIT,,,,,,https://www.attrs.org/,
+python,runtime,authlib,1.6.8,direct,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://docs.authlib.org/,
+python,runtime,billiard,4.2.4,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/celery/billiard,
+python,runtime,bleach,6.3.0,direct,Apache Software License,,,,,,,https://github.com/mozilla/bleach,
+python,runtime,cel-python,0.5.0,direct,,,,,,,,,
+python,runtime,celery,5.6.2,direct,BSD-3-Clause,,,,,,,https://docs.celeryq.dev/,
+python,runtime,certifi,2026.1.4,transitive,MPL-2.0,,License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0),,,,,https://github.com/certifi/python-certifi,
+python,runtime,cffi,2.0.0,transitive,,MIT,,,,,,https://cffi.readthedocs.io/,
+python,runtime,charset-normalizer,3.4.4,transitive,MIT,,,,,,,https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md,
+python,runtime,click,8.3.1,transitive,,BSD-3-Clause,,,,,,https://click.palletsprojects.com/page/changes/,
+python,runtime,click-didyoumean,0.3.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/click-contrib/click-didyoumean,
+python,runtime,click-plugins,1.1.1.2,transitive,New BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/click-contrib/click-plugins,
+python,runtime,click-repl,0.3.0,transitive,MIT,,,,,,,https://github.com/untitaker/click-repl,
+python,runtime,cmake,4.2.1,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License; License :: OSI Approved :: BSD License,,,,,https://cmake.org,
+python,runtime,colorama,0.4.6,transitive,,,License :: OSI Approved :: BSD License,,"sys_platform == ""win32""",,,https://github.com/tartley/colorama,
+python,runtime,crispy-bootstrap5,2025.6,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/django-crispy-forms/crispy-bootstrap5/actions,
+python,runtime,cron-descriptor,1.4.5,transitive,,,License :: OSI Approved :: MIT License,,,,,https://github.com/Salamek/cron-descriptor,
+python,runtime,cryptography,46.0.5,direct,,Apache-2.0 OR BSD-3-Clause,,BSD-3-Clause,,,,https://github.com/pyca/cryptography,
+python,runtime,defusedxml,0.7.1,direct,PSFL,,License :: OSI Approved :: Python Software Foundation License,,,,,https://github.com/tiran/defusedxml,
+python,runtime,django,6.0.2,direct,,BSD-3-Clause,,,,,,https://www.djangoproject.com/,
+python,runtime,django-allauth,65.14.3,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://allauth.org,
+python,runtime,django-anymail,14.0,direct,"BSD 3-Clause License
+
+Copyright (c) 2016-2024, Anymail Contributors
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice,
+       this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+
+    3. Neither the name of the copyright holder nor the names of its contributors
+       may be used to endorse or promote products derived from this software
+       without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ""AS IS"" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",,License :: OSI Approved :: BSD License,,,,,https://github.com/anymail/django-anymail,
+python,runtime,django-celery-beat,2.8.1,direct,BSD,,License :: OSI Approved :: BSD License,,,,git+https://github.com/celery/django-celery-beat@bd429063cbb227c00905e7693c38895e44ff8e47,https://github.com/celery/django-celery-beat,
+python,runtime,django-cloud-tasks,0.0.4,direct,MIT,,License :: OSI Approved :: BSD License,,,,,https://github.com/GeorgeLubaretsi/django-cloud-tasks,
+python,runtime,django-cors-headers,4.9.0,direct,,MIT,,,,,,https://github.com/adamchainz/django-cors-headers/blob/main/CHANGELOG.rst,
+python,runtime,django-crispy-forms,2.5,direct,,MIT,,,,,,https://github.com/django-crispy-forms/django-crispy-forms,
+python,runtime,django-environ,0.12.1,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://django-environ.readthedocs.org,
+python,runtime,django-filter,25.2,direct,,,License :: OSI Approved :: BSD License,,,,,https://github.com/carltongibson/django-filter/issues,
+python,runtime,django-markdownify,0.9.6,direct,MIT,,,,,,,https://github.com/erwinmatijsen/django-markdownify,
+python,runtime,django-model-utils,5.0.0,direct,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/jazzband/django-model-utils,
+python,runtime,django-recaptcha,4.1.0,direct,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/django-recaptcha/django-recaptcha,
+python,runtime,django-redis,6.0.0,direct,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://github.com/jazzband/django-redis,
+python,runtime,django-storages,1.14.6,direct,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://github.com/jschneier/django-storages,
+python,runtime,django-timezone-field,7.2.1,transitive,BSD-2-Clause,,License :: OSI Approved :: BSD License,,,,,https://github.com/mfogel/django-timezone-field/,
+python,runtime,djangorestframework,3.16.1,direct,BSD,,License :: OSI Approved :: BSD License,,,,,https://www.django-rest-framework.org/,
+python,runtime,docker,7.1.0,direct,,Apache-2.0,License :: OSI Approved :: Apache Software License,,,,,https://docker-py.readthedocs.io/en/stable/change-log.html,
+python,runtime,drf-spectacular,0.29.0,direct,,BSD-3-Clause,,,,,,https://github.com/tfranzel/drf-spectacular,
+python,runtime,drf-spectacular-sidecar,2026.1.1,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/tfranzel/drf-spectacular-sidecar,
+python,runtime,fastjsonschema,2.21.2,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/horejsek/python-fastjsonschema,
+python,runtime,fido2,2.1.1,transitive,"Copyright (c) 2018 Yubico AB
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+
+   * Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+   * Redistributions in binary form must reproduce the above
+     copyright notice, this list of conditions and the following
+     disclaimer in the documentation and/or other materials provided
+     with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ ""AS IS"" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",,License :: OSI Approved :: BSD License; License :: OSI Approved :: Apache Software License; License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0),BSD-2-Clause,,,,https://github.com/Yubico/python-fido2,
+python,runtime,fmpy,0.3.27,direct,,,,,,,,,
+python,runtime,google-api-core,2.29.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://googleapis.dev/python/google-api-core/latest/,
+python,runtime,google-api-python-client,2.188.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-api-python-client/,
+python,runtime,google-auth,2.48.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-auth-library-python,
+python,runtime,google-auth-httplib2,0.3.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/GoogleCloudPlatform/google-auth-library-python-httplib2,
+python,runtime,google-cloud-core,2.5.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/python-cloud-core,
+python,runtime,google-cloud-kms,3.10.0,direct,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-kms,
+python,runtime,google-cloud-run,0.15.0,direct,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-run,
+python,runtime,google-cloud-storage,3.8.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/python-storage,
+python,runtime,google-cloud-tasks,2.21.0,direct,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-cloud-python/tree/main/packages/google-cloud-tasks,
+python,runtime,google-crc32c,1.8.0,transitive,,,,,,,,https://github.com/googleapis/python-crc32c,
+python,runtime,google-re2,1.1.20251105,transitive,,,License :: OSI Approved :: BSD License,,,,,https://github.com/google/re2,
+python,runtime,google-resumable-media,2.8.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-resumable-media-python,
+python,runtime,googleapis-common-protos,1.72.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-cloud-python/tree/main/packages/googleapis-common-protos,
+python,runtime,grpc-google-iam-v1,0.14.3,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/googleapis/google-cloud-python,
+python,runtime,grpcio,1.76.0,transitive,Apache License 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://grpc.io,
+python,runtime,grpcio-status,1.76.0,transitive,Apache License 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://grpc.io,
+python,runtime,gunicorn,25.1.0,direct,,MIT,,,,,,https://gunicorn.org,
+python,runtime,h11,0.16.0,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/python-hyper/h11,
+python,runtime,hiredis,3.3.0,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/redis/hiredis-py,
+python,runtime,httpcore,1.0.9,transitive,,BSD-3-Clause,License :: OSI Approved :: BSD License,,,,,https://www.encode.io/httpcore,
+python,runtime,httplib2,0.31.2,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/httplib2/httplib2,
+python,runtime,httptools,0.7.1,transitive,,MIT,,,,,,https://github.com/MagicStack/httptools,
+python,runtime,httpx,0.28.1,direct,BSD-3-Clause,,License :: OSI Approved :: BSD License,,,,,https://github.com/encode/httpx/blob/master/CHANGELOG.md,
+python,runtime,idna,3.11,transitive,,BSD-3-Clause,,,,,,https://github.com/kjd/idna/blob/master/HISTORY.rst,
+python,runtime,inflection,0.5.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/jpvanhal/inflection,
+python,runtime,jinja2,3.1.6,transitive,,,License :: OSI Approved :: BSD License,,,,,https://jinja.palletsprojects.com/changes/,
+python,runtime,jmespath,1.1.0,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/jmespath/jmespath.py,
+python,runtime,jsonschema,4.26.0,direct,,MIT,,,,,,https://github.com/python-jsonschema/jsonschema,
+python,runtime,jsonschema-specifications,2025.9.1,transitive,,MIT,,,,,,https://jsonschema-specifications.readthedocs.io/,
+python,runtime,jupyter-core,5.9.1,transitive,,BSD-3-Clause,,,,,,https://jupyter.org,
+python,runtime,kombu,5.6.2,transitive,BSD-3-Clause,,,,,,,https://kombu.readthedocs.io,
+python,runtime,lark,1.3.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/lark-parser/lark,
+python,runtime,lxml,6.0.2,direct,BSD-3-Clause,,,,,,,https://lxml.de/,
+python,runtime,markdown,3.10,transitive,,BSD-3-Clause,,,,,,https://Python-Markdown.github.io/,
+python,runtime,markdown2,2.5.4,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/trentm/python-markdown2,
+python,runtime,markupsafe,3.0.3,transitive,,BSD-3-Clause,,,,,,https://palletsprojects.com/donate,
+python,runtime,msgpack,1.1.2,transitive,,Apache-2.0,,,,,,https://msgpack.org/,
+python,runtime,nbformat,5.10.4,transitive,"BSD 3-Clause License
+
+- Copyright (c) 2001-2015, IPython Development Team
+- Copyright (c) 2015-, Jupyter Development Team
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ""AS IS""
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",,License :: OSI Approved :: BSD License,,,,,https://jupyter.org,
+python,runtime,nh3,0.3.3,direct,MIT,,,,,,,https://github.com/messense/nh3,
+python,runtime,numpy,2.4.2,transitive,,BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0,,,,,,https://numpy.org,
+python,runtime,packaging,25.0,transitive,,,License :: OSI Approved :: Apache Software License; License :: OSI Approved :: BSD License,BSD-2-Clause,,,,https://packaging.pypa.io/,
+python,runtime,pendulum,3.2.0,transitive,MIT License,,License :: OSI Approved :: MIT License,,,,,https://pendulum.eustace.io/docs,
+python,runtime,pillow,12.1.1,direct,,MIT-CMU,,,,,,https://github.com/python-pillow/Pillow/releases,
+python,runtime,platformdirs,4.5.0,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/tox-dev/platformdirs/releases,
+python,runtime,prompt-toolkit,3.0.52,transitive,,,License :: OSI Approved :: BSD License,,,,,https://github.com/prompt-toolkit/python-prompt-toolkit,
+python,runtime,proto-plus,1.27.0,transitive,Apache 2.0,,License :: OSI Approved :: Apache Software License,,,,,https://googleapis.dev/python/proto-plus/latest/,
+python,runtime,protobuf,6.33.5,transitive,3-Clause BSD License,,,,,,,https://developers.google.com/protocol-buffers/,
+python,runtime,psycopg,3.3.2,direct,,LGPL-3.0-only,,,,,,https://psycopg.org/,
+python,runtime,psycopg-c,3.3.2,transitive,,LGPL-3.0-only,,,"implementation_name != ""pypy""",,,https://psycopg.org/,
+python,runtime,pyasn1,0.6.2,transitive,BSD-2-Clause,,,,,,,https://github.com/pyasn1/pyasn1,
+python,runtime,pyasn1-modules,0.4.2,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/pyasn1/pyasn1-modules,
+python,runtime,pycparser,2.23,transitive,BSD-3-Clause,,License :: OSI Approved :: BSD License,,"implementation_name != ""PyPy""",,,https://github.com/eliben/pycparser,
+python,runtime,pydantic,2.12.5,direct,,MIT,,,,,,https://github.com/pydantic/pydantic,
+python,runtime,pydantic-core,2.41.5,transitive,,MIT,,,,,,https://github.com/pydantic/pydantic-core,
+python,runtime,pyparsing,3.3.2,transitive,,MIT,,,,,,https://pyparsing-docs.readthedocs.io/en/latest/,
+python,runtime,python-crontab,3.3.0,transitive,LGPLv3,,,,,,,https://gitlab.com/doctormo/python-crontab/,
+python,runtime,python-dateutil,2.9.0.post0,transitive,Dual License,,License :: OSI Approved :: BSD License; License :: OSI Approved :: Apache Software License,BSD-3-Clause,,,,https://github.com/dateutil/dateutil,
+python,runtime,python-dotenv,1.2.1,transitive,,BSD-3-Clause,,,,,,https://github.com/theskumar/python-dotenv,
+python,runtime,python-json-logger,4.0.0,direct,BSD-2-Clause License,,License :: OSI Approved :: BSD License,,,,,https://nhairs.github.io/python-json-logger,
+python,runtime,python-slugify,8.0.4,direct,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/un33k/python-slugify,
+python,runtime,pywin32,311,transitive,,,,,"sys_platform == ""win32""",,,,Metadata unavailable in local environment (likely platform-conditional dependency).
+python,runtime,pyyaml,6.0.3,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://pyyaml.org/,
+python,runtime,qrcode,8.2,transitive,BSD,,License :: OSI Approved :: BSD License; License :: Other/Proprietary License,,,,,https://github.com/lincolnloop/python-qrcode,
+python,runtime,redis,6.4.0,transitive,,MIT,License :: OSI Approved :: MIT License,,,,,https://github.com/redis/redis-py/releases,
+python,runtime,referencing,0.37.0,transitive,,MIT,,,,,,https://referencing.readthedocs.io/,
+python,runtime,requests,2.32.5,transitive,Apache-2.0,,License :: OSI Approved :: Apache Software License,,,,,https://requests.readthedocs.io,
+python,runtime,rpds-py,0.30.0,transitive,,MIT,,,,,,https://rpds.readthedocs.io/,
+python,runtime,rsa,4.9.1,transitive,Apache-2.0,,License :: OSI Approved :: Apache Software License,,,,,https://stuvel.eu/rsa,
+python,runtime,sentry-sdk,2.52.0,direct,MIT,,License :: OSI Approved :: BSD License,,,,,https://github.com/getsentry/sentry-python,
+python,runtime,six,1.17.0,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/benjaminp/six,
+python,runtime,sqlparse,0.5.4,transitive,,,License :: OSI Approved :: BSD License,,,,,https://github.com/andialbrecht/sqlparse,
+python,runtime,text-unidecode,1.3,transitive,Artistic License,,License :: OSI Approved :: Artistic License; License :: OSI Approved :: GNU General Public License (GPL); License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+),Artistic License,,,,https://github.com/kmike/text-unidecode/,
+python,runtime,tinycss2,1.4.0,transitive,,,License :: OSI Approved :: BSD License,,,,,https://github.com/Kozea/tinycss2/releases,
+python,runtime,traitlets,5.14.3,transitive,"BSD 3-Clause License
+
+- Copyright (c) 2001-, IPython Development Team
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ""AS IS""
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",,License :: OSI Approved :: BSD License,,,,,https://github.com/ipython/traitlets,
+python,runtime,typing-extensions,4.15.0,transitive,,PSF-2.0,,,,,,https://github.com/python/typing_extensions/issues,
+python,runtime,typing-inspection,0.4.2,transitive,,MIT,,,,,,https://github.com/pydantic/typing-inspection,
+python,runtime,tzdata,2025.2,transitive,Apache-2.0,,License :: OSI Approved :: Apache Software License,,,,,https://github.com/python/tzdata,
+python,runtime,tzlocal,5.3.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/regebro/tzlocal,
+python,runtime,uritemplate,4.2.0,transitive,BSD 3-Clause OR Apache-2.0,,,BSD-3-Clause,,,,https://uritemplate.readthedocs.org,
+python,runtime,urllib3,2.6.3,transitive,,MIT,,,,,,https://github.com/urllib3/urllib3/blob/main/CHANGES.rst,
+python,runtime,uvicorn,0.40.0,direct,,BSD-3-Clause,,,,,,https://uvicorn.dev/release-notes,
+python,runtime,uvicorn-worker,0.4.0,direct,,BSD-3-Clause,License :: OSI Approved :: MIT License,,,,,https://github.com/Kludex/uvicorn-worker/releases,
+python,runtime,uvloop,0.22.1,transitive,MIT License,,License :: OSI Approved :: Apache Software License; License :: OSI Approved :: MIT License,,"platform_python_implementation != ""PyPy"" and sys_platform != ""cygwin"" and sys_platform != ""win32""",,,https://github.com/MagicStack/uvloop,
+python,runtime,vine,5.1.0,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/celery/vine,
+python,runtime,watchfiles,1.1.1,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/samuelcolvin/watchfiles,
+python,runtime,wcwidth,0.2.14,transitive,MIT,,License :: OSI Approved :: MIT License,,,,,https://github.com/jquast/wcwidth,
+python,runtime,webencodings,0.5.1,transitive,BSD,,License :: OSI Approved :: BSD License,,,,,https://github.com/SimonSapin/python-webencodings,
+python,runtime,websockets,16.0,transitive,,BSD-3-Clause,,,,,,https://github.com/python-websockets/websockets,
+python,runtime,whitenoise,6.11.0,direct,,MIT,,,,,,https://whitenoise.readthedocs.io/en/stable/changelog.html,

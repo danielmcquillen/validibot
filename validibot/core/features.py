@@ -54,13 +54,13 @@ class CommercialFeature(TextChoices):
 
     # Pro features (requires validibot-pro, also available in Enterprise)
     TEAM_MANAGEMENT = "team_management", _("Team Management")
+    GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     BILLING = "billing", _("Billing")
     ADVANCED_ANALYTICS = "advanced_analytics", _("Advanced Analytics")
     SIGNED_BADGES = "signed_badges", _("Signed Badges")
 
     # Enterprise features (requires validibot-enterprise)
     MULTI_ORG = "multi_org", _("Multiple Organizations")
-    GUEST_MANAGEMENT = "guest_management", _("Guest Management")
     LDAP_INTEGRATION = "ldap_integration", _("LDAP Integration")
     SAML_SSO = "saml_sso", _("SAML Single Sign-On")
 

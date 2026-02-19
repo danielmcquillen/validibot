@@ -121,6 +121,7 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
                 body=json.dumps(payload).encode(),
                 oidc_token=tasks_v2.OidcToken(
                     service_account_email=service_account,
+                    audience=worker_url,
                 ),
             ),
         )
@@ -183,16 +184,11 @@ class GoogleCloudTasksDispatcher(TaskDispatcher):
         This should be the service account that has roles/run.invoker
         permission on the worker Cloud Run service.
         """
-        # Explicit setting takes precedence
         service_account = getattr(settings, "CLOUD_TASKS_SERVICE_ACCOUNT", "")
-        if service_account:
-            return service_account
-
-        # Fall back to the default compute service account
-        project_id = getattr(settings, "GCP_PROJECT_ID", "")
-        if project_id:
-            return f"{project_id}@appspot.gserviceaccount.com"
-
-        raise ValueError(
-            "CLOUD_TASKS_SERVICE_ACCOUNT or GCP_PROJECT_ID must be set",
-        )
+        if not service_account:
+            raise ValueError(
+                "CLOUD_TASKS_SERVICE_ACCOUNT must be set for Cloud Tasks dispatch. "
+                "Set it to the Cloud Run service account email "
+                "(e.g. validibot-cloudrun-prod@PROJECT.iam.gserviceaccount.com).",
+            )
+        return service_account

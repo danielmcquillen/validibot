@@ -339,12 +339,10 @@ class OrganizationCreateView(
 
 
 class OrganizationUpdateView(
-    FeatureRequiredMixin,
     OrganizationAdminRequiredMixin,
     SuccessMessageMixin,
     UpdateView,
 ):
-    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     model = Organization
     form_class = OrganizationForm
@@ -476,9 +474,8 @@ class OrganizationDeleteView(
 
 
 class OrganizationDetailView(
-    FeatureRequiredMixin, OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView
+    OrganizationAdminRequiredMixin, BreadcrumbMixin, TemplateView
 ):
-    required_feature = CommercialFeature.MULTI_ORG
     organization_context_attr = "organization"
     template_name = "users/organizations/organization_detail.html"
 

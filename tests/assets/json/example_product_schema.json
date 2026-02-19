@@ -7,7 +7,7 @@
   "properties": {
     "sku": { "type": "string", "pattern": "^[A-Z0-9]{8}$" },
     "name": { "type": "string", "minLength": 1, "maxLength": 40 },
-    "price": { "type": "number", "minimum": 0 },
+    "price": { "type": "number", "minimum": 0, "maximum": 20 },
     "rating": { "type": "integer", "minimum": 0, "maximum": 100 },
     "tags": {
       "type": "array",

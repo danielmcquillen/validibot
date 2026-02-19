@@ -278,6 +278,23 @@ _deploy-worker stage:
         --timeout {{gcp_cloud_run_request_timeout}} \
         --project {{gcp_project}}
 
+    # Ensure Cloud Tasks queue is active so tasks are dispatched to the worker
+    if [ "{{stage}}" = "prod" ]; then
+        QUEUE_NAME="${APP_NAME}-tasks"
+    else
+        QUEUE_NAME="${APP_NAME}-validation-queue-{{stage}}"
+    fi
+    QUEUE_STATE=$(gcloud tasks queues describe "$QUEUE_NAME" \
+        --location={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "NOT_FOUND")
+    if [ "$QUEUE_STATE" = "PAUSED" ]; then
+        echo "Resuming Cloud Tasks queue '$QUEUE_NAME'..."
+        gcloud tasks queues resume "$QUEUE_NAME" \
+            --location={{gcp_region}} \
+            --project={{gcp_project}}
+    fi
+
     echo ""
     echo "Worker service deployed to {{stage}} (ingress: internal)"
 

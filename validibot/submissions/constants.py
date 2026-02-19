@@ -145,6 +145,8 @@ class SubmissionDataFormat(models.TextChoices):
     ENERGYPLUS_IDF = "energyplus_idf", _("EnergyPlus IDF")
     ENERGYPLUS_EPJSON = "energyplus_epjson", _("EnergyPlus epJSON")
     FMU = "fmu", _("FMU")
+    THERM_THMX = "therm_thmx", _("THERM THMX")
+    THERM_THMZ = "therm_thmz", _("THERM THMZ (Archive)")
     UNKNOWN = "unknown", _("Unknown")
 
 
@@ -160,6 +162,8 @@ DATA_FORMAT_FILE_TYPE_MAP: dict[str, list[str]] = {
         SubmissionFileType.TEXT,
     ],
     SubmissionDataFormat.FMU: [SubmissionFileType.BINARY],
+    SubmissionDataFormat.THERM_THMX: [SubmissionFileType.XML],
+    SubmissionDataFormat.THERM_THMZ: [SubmissionFileType.BINARY],
     SubmissionDataFormat.UNKNOWN: [SubmissionFileType.UNKNOWN],
 }
 

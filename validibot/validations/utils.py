@@ -153,6 +153,26 @@ def create_default_validators():
             "order": 5,
             "release_state": ValidatorReleaseState.COMING_SOON,
         },
+        {
+            "name": _("THERM Validator"),
+            "slug": "therm-validator",
+            "short_description": _(
+                "Validate THERM thermal analysis files (THMX/THMZ) "
+                "for geometry, materials, and boundary conditions.",
+            ),
+            "description": _(
+                """
+                <p>Validate LBNL THERM files before submission to NFRC or
+                other certification bodies. Checks geometry closure, material
+                property ranges, boundary condition completeness, and
+                reference integrity. Extracts signals for downstream
+                compliance assertions (e.g. NFRC 100 winter conditions).</p>
+                """
+            ),
+            "validation_type": ValidationType.THERM,
+            "version": "1.0",
+            "order": 6,
+        },
     ]
 
     created = 0

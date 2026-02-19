@@ -1,8 +1,8 @@
 """
-Seed data for advanced validators.
+Seed data for system validators with catalog entries.
 
-This module contains the canonical definitions for advanced validators
-(EnergyPlus, FMI, etc.) and their catalog entries.
+This module contains the canonical definitions for validators
+(EnergyPlus, FMI, THERM, etc.) and their catalog entries.
 
 These are synced to the database via:
     python manage.py sync_advanced_validators
@@ -10,15 +10,18 @@ These are synced to the database via:
 
 from validibot.validations.seeds.energyplus import ENERGYPLUS_SEED
 from validibot.validations.seeds.fmi import FMI_SEED
+from validibot.validations.seeds.therm import THERM_SEED
 
 # All system validator seeds
 SYSTEM_VALIDATOR_SEEDS = [
     ENERGYPLUS_SEED,
     FMI_SEED,
+    THERM_SEED,
 ]
 
 __all__ = [
     "ENERGYPLUS_SEED",
     "FMI_SEED",
     "SYSTEM_VALIDATOR_SEEDS",
+    "THERM_SEED",
 ]

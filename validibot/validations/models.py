@@ -77,6 +77,10 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
         SubmissionFileType.JSON,
         SubmissionFileType.TEXT,
     ],
+    ValidationType.THERM: [
+        SubmissionFileType.XML,
+        SubmissionFileType.BINARY,
+    ],
 }
 
 
@@ -106,6 +110,10 @@ VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
         SubmissionDataFormat.JSON,
         SubmissionDataFormat.TEXT,
     ],
+    ValidationType.THERM: [
+        SubmissionDataFormat.THERM_THMX,
+        SubmissionDataFormat.THERM_THMZ,
+    ],
 }
 
 
@@ -120,6 +128,7 @@ VALIDATION_TYPE_ALLOWED_EXTENSIONS: dict[str, list[str]] = {
     ValidationType.FMI: ["fmu", "json"],
     ValidationType.CUSTOM_VALIDATOR: ["json", "yaml", "yml"],
     ValidationType.AI_ASSIST: ["json", "txt"],
+    ValidationType.THERM: ["thmx", "thmz"],
 }
 
 

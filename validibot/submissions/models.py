@@ -579,6 +579,10 @@ def detect_file_type(
         return SubmissionFileType.YAML
     if name.endswith(".idf") or "energyplus" in name:
         return SubmissionFileType.TEXT
+    if name.endswith(".thmx"):
+        return SubmissionFileType.XML
+    if name.endswith(".thmz"):
+        return SubmissionFileType.BINARY
     if text:
         s = text.lstrip()
         if s.startswith(("{", "[")):

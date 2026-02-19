@@ -142,6 +142,7 @@ class RulesetType(TextChoices):
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
     FMI = "FMI", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
+    THERM = "THERM", _("THERM")
 
 
 class ValidationType(TextChoices):
@@ -156,6 +157,7 @@ class ValidationType(TextChoices):
     - JSON_SCHEMA: Schema-only (no assertion support)
     - XML_SCHEMA: Schema-only (no assertion support)
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
+    - THERM: Supports CEL assertions against output signals
     """
 
     BASIC = "BASIC", _("Basic Assertions")
@@ -165,6 +167,7 @@ class ValidationType(TextChoices):
     FMI = "FMI", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
+    THERM = "THERM", _("THERM Thermal Analysis")
 
 
 class ValidatorReleaseState(TextChoices):

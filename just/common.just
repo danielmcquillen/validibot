@@ -33,7 +33,9 @@ git_sha := `git rev-parse --short HEAD`
 #
 # =============================================================================
 
-# Helper to validate stage parameter
+# Helper to validate stage parameter (legacy - kept for modules that can't
+# use [arg('stage', pattern='dev|staging|prod')] directly).
+# Prefer [arg] attribute on recipe parameters when possible (just v1.45+).
 # Usage: just _validate-stage dev
 [private]
 [no-cd]

@@ -59,7 +59,8 @@ The `gcp-init-stage` command works for all stages (dev, staging, prod). The comm
 
 **Current production resources:**
 
-- Service account: `$GCP_APP_NAME-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
+- Service account (web/worker): `$GCP_APP_NAME-cloudrun-prod@PROJECT.iam.gserviceaccount.com`
+- Service account (validators): `$GCP_APP_NAME-validator-prod@PROJECT.iam.gserviceaccount.com`
 - Cloud SQL: `$GCP_APP_NAME-db`
 - Cloud Tasks queue: `$GCP_APP_NAME-tasks`
 - GCS bucket: `$GCP_APP_NAME-storage` (with public/ and private/ prefixes)
@@ -78,7 +79,8 @@ just gcp init-stage prod     # For production environment
 
 This command creates (example for dev):
 
-- Service account: `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
+- Service account (web/worker): `$GCP_APP_NAME-cloudrun-dev@PROJECT.iam.gserviceaccount.com`
+- Service account (validators): `$GCP_APP_NAME-validator-dev@PROJECT.iam.gserviceaccount.com` (least-privilege: storage + worker callback only)
 - Cloud SQL instance: `$GCP_APP_NAME-db-dev` (db-f1-micro tier for dev, db-g1-small for staging; prod currently defaults to db-f1-micro—bump before real traffic)
 - Database `validibot` and user `validibot_user` with generated password
 - Cloud Tasks queue: `$GCP_APP_NAME-validation-queue-dev`

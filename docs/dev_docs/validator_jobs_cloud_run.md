@@ -33,8 +33,8 @@ sequenceDiagram
 ```
 
 IAM roles involved:
-- **Web/Worker service account**: Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
-- **Validator job service account**: `roles/run.invoker` on `$GCP_APP_NAME-worker` for callbacks; storage roles for its GCS paths.
+- **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
+- **Validator job service account** (`$GCP_APP_NAME-validator-{stage}`): Dedicated least-privilege SA used by validator Cloud Run Jobs. Has `roles/storage.objectAdmin` on the stage bucket (read inputs, write outputs) and `roles/run.invoker` on `$GCP_APP_NAME-worker` (for callbacks). Does **not** have access to secrets, Cloud SQL, Cloud Tasks, or KMS.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
 
 ### Custom IAM Role
@@ -115,10 +115,12 @@ just gcp validators-deploy-all dev
 2. **Pushes** to Artifact Registry at `$GCP_REGION-docker.pkg.dev/project-xxx/validibot/`
 3. **Deploys** the Cloud Run Job with:
    - Stage-appropriate job name (`$GCP_APP_NAME-validator-energyplus-dev` for dev, `$GCP_APP_NAME-validator-energyplus` for prod)
-   - Stage-appropriate service account (`$GCP_APP_NAME-cloudrun-dev@...` for dev)
+   - Dedicated validator service account (`$GCP_APP_NAME-validator-dev@...` for dev)
    - Memory (4Gi), CPU (2), timeout (1 hour), no retries
    - Labels for tracking (`validator=energyplus,stage=dev,version=abc123`)
-4. **Grants IAM permission** - adds custom `validibot_job_runner` role so the web/worker service can trigger the job with env overrides
+4. **Grants IAM permissions**:
+   - Adds custom `validibot_job_runner` role to the main SA so the web/worker service can trigger the job with env overrides
+   - Grants `roles/run.invoker` on the worker service to the validator SA so the job can POST callbacks
 
 ### Viewing logs and job status
 

@@ -11,110 +11,80 @@ This document covers how Validibot uses Google Cloud IAM (Identity and Access Ma
 
 ## Overview
 
-We use a clean separation of service accounts per environment:
+We use two types of service accounts per environment:
 
-- **Dev service account** - Used by dev/staging Cloud Run services
-- **Prod service account** - Used by production Cloud Run services
+- **Web/Worker SA** (`$GCP_APP_NAME-cloudrun-{stage}`) - Used by Cloud Run web and worker services. Has broad access to run the Django application.
+- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs (EnergyPlus, FMI). Least-privilege: only storage access and worker callback permission.
 
 This ensures:
 
 - Environment isolation (dev can't access prod data)
-- Principle of least privilege (only permissions needed for that environment)
+- Least privilege (validators can't read secrets or access the database)
 - No hardcoded credentials in code
 
 ## Service Accounts
 
-### Development
+### Web/Worker Service Account
 
-| Service Account              | Purpose                            |
-| ---------------------------- | ---------------------------------- |
-| `$GCP_APP_NAME-cloudrun-dev` | Runtime identity for dev Cloud Run |
+| Stage | Service Account |
+| ----- | --------------- |
+| dev | `$GCP_APP_NAME-cloudrun-dev` |
+| staging | `$GCP_APP_NAME-cloudrun-staging` |
+| prod | `$GCP_APP_NAME-cloudrun-prod` |
 
-Description: "Validibot dev web/worker runtime SA"
+**Roles granted:**
 
-### Production
+| Role | Scope | Purpose |
+| ---- | ----- | ------- |
+| `roles/cloudsql.client` | Project | Connect to Cloud SQL |
+| `roles/secretmanager.secretAccessor` | Project | Read secrets |
+| `roles/run.invoker` | Project | Invoke Cloud Run services/jobs |
+| `roles/cloudtasks.enqueuer` | Project | Create tasks in queues |
+| `roles/cloudtasks.viewer` | Project | View queue status |
+| `roles/storage.objectAdmin` | Stage bucket | Read/write storage objects |
+| `roles/cloudkms.viewer` | KMS key | View signing key metadata |
+| `roles/cloudkms.signerVerifier` | KMS key | Sign validation credentials |
+| `roles/iam.serviceAccountTokenCreator` | Self | Create OIDC tokens for Cloud Tasks |
+| `roles/iam.serviceAccountUser` | Self | Act as the service account |
+| Custom `validibot_job_runner` | Validator jobs | Trigger jobs with env overrides |
 
-| Service Account               | Purpose                             |
-| ----------------------------- | ----------------------------------- |
-| `$GCP_APP_NAME-cloudrun-prod` | Runtime identity for prod Cloud Run |
+### Validator Service Account
 
-Description: "Validibot prod web/worker runtime SA"
+| Stage | Service Account |
+| ----- | --------------- |
+| dev | `$GCP_APP_NAME-validator-dev` |
+| staging | `$GCP_APP_NAME-validator-staging` |
+| prod | `$GCP_APP_NAME-validator-prod` |
 
-## Role Assignments
+**Roles granted:**
 
-### Storage Permissions
+| Role | Scope | Purpose |
+| ---- | ----- | ------- |
+| `roles/storage.objectAdmin` | Stage bucket | Read inputs, write outputs |
+| `roles/run.invoker` | Worker service | POST callbacks with results |
 
-Each service account needs access only to its environment's bucket:
+The validator SA deliberately does **not** have:
 
-| Service Account              | Resource                     | Role                 |
-| ---------------------------- | ---------------------------- | -------------------- |
-| `$GCP_APP_NAME-cloudrun-dev` | `$GCP_APP_NAME-storage-dev`  | Storage Object Admin |
-| `$GCP_APP_NAME-cloudrun-prod`| `$GCP_APP_NAME-storage`      | Storage Object Admin |
+- `secretmanager.secretAccessor` (no access to Django secrets, Stripe keys, etc.)
+- `cloudsql.client` (no database access)
+- `cloudtasks.enqueuer` (no task queue access)
+- KMS roles (no credential signing)
 
-`Storage Object Admin` (`roles/storage.objectAdmin`) grants:
+This limits the blast radius if a validator container is compromised by a malicious user-provided model (IDF, FMU, etc.).
 
-- List objects in the bucket
-- Read objects
-- Create/upload new objects
-- Delete objects
-- Update object metadata
+## Setup
 
-It does NOT grant:
+All service accounts and IAM bindings are created automatically by `just gcp init-stage`:
 
-- Bucket-level administration (creating/deleting buckets)
-- IAM policy changes on the bucket
-- Access to other buckets
-
-### Future Permissions
-
-As we add more GCP services, these service accounts will need additional roles:
-
-| Service        | Role Needed                    | Purpose                |
-| -------------- | ------------------------------ | ---------------------- |
-| Cloud SQL      | Cloud SQL Client               | Connect to database    |
-| Cloud Tasks    | Cloud Tasks Enqueuer           | Create tasks in queues |
-| Secret Manager | Secret Manager Secret Accessor | Read secrets           |
-
-## Creating Service Accounts
-
-### Step 1: Create the Service Account
-
-1. Go to **IAM & Admin → Service Accounts** in the GCP Console
-2. Click **➕ Create Service Account**
-3. Fill in:
-   - **Service account name**: `$GCP_APP_NAME-cloudrun-dev` (or `$GCP_APP_NAME-cloudrun-prod`)
-   - **Service account ID**: Auto-fills from name
-   - **Description**: "Validibot dev web/worker runtime SA"
-4. Click **Create and continue**
-5. Skip the "Grant this service account access to project" step (we'll set bucket-level permissions)
-6. Click **Done**
-
-The service account email will be:
-
-```
-$GCP_APP_NAME-cloudrun-dev@<project-id>.iam.gserviceaccount.com
+```bash
+just gcp init-stage dev      # Creates both SAs + all bindings
+just gcp init-stage prod     # Same for production
 ```
 
-### Step 2: Grant Bucket Access
+The `just gcp validator-deploy` command additionally grants:
 
-1. Go to **Cloud Storage → Buckets**
-2. Click on your bucket (e.g., `$GCP_APP_NAME-storage-dev`)
-3. Go to the **Permissions** tab
-4. Click **Grant access**
-5. In "New principals", paste the service account email
-6. For "Role", select **Cloud Storage → Storage Object Admin**
-7. Click **Save**
-
-### Step 3: Attach to Cloud Run
-
-1. Go to **Cloud Run → Services**
-2. Click on your service (e.g., `$GCP_APP_NAME-web-dev`)
-3. Click **Edit & deploy new revision**
-4. Scroll to the **Security** section
-5. Under "Service account", select `$GCP_APP_NAME-cloudrun-dev`
-6. Click **Deploy**
-
-Repeat for all Cloud Run services in that environment (web and worker).
+- `validibot_job_runner` on the job to the main SA (so web/worker can trigger it)
+- `roles/run.invoker` on the worker service to the validator SA (so the job can POST callbacks)
 
 ## Application Default Credentials (ADC)
 
@@ -126,11 +96,10 @@ Our Django application uses [Application Default Credentials](https://cloud.goog
 
 ### How ADC Works
 
-| Environment | Credential Source                       |
-| ----------- | --------------------------------------- |
-| Local dev   | `gcloud auth application-default login` |
-| Cloud Run   | Attached service account (metadata)     |
-| Cloud Build | Cloud Build service account             |
+| Environment | Credential Source |
+| ----------- | ----------------- |
+| Local dev | `gcloud auth application-default login` |
+| Cloud Run | Attached service account (metadata) |
 
 ### Local Development Setup
 
@@ -149,29 +118,17 @@ The `django-storages` library and other Google Cloud libraries automatically det
 
 ### Do
 
-- ✅ Use separate service accounts per environment
-- ✅ Grant permissions at the resource level (bucket, not project)
-- ✅ Use the most specific role possible (Object Admin, not Storage Admin)
-- ✅ Rely on ADC instead of key files when possible
+- Use separate service accounts per environment
+- Use dedicated least-privilege SAs for untrusted workloads (validators)
+- Grant permissions at the resource level (bucket, service) when possible
+- Rely on ADC instead of key files
 
 ### Don't
 
-- ❌ Use the same service account for dev and prod
-- ❌ Grant project-wide roles when resource-level roles work
-- ❌ Create and download JSON key files unless absolutely necessary
-- ❌ Store credentials in code or version control
-
-### If You Must Use a Key File
-
-Sometimes you need a JSON key file (e.g., for CI/CD that doesn't support Workload Identity). If so:
-
-1. Keep the key file out of version control (add to `.gitignore`)
-2. Store it securely (encrypted, limited access)
-3. Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to it
-4. Rotate the key regularly
-5. Delete the key when no longer needed
-
-For Cloud Run, **never use key files** - always use the attached service account.
+- Use the same service account for dev and prod
+- Grant broad roles to components that don't need them
+- Create and download JSON key files unless absolutely necessary
+- Store credentials in code or version control
 
 ## Troubleshooting
 
@@ -186,31 +143,22 @@ ADC isn't configured. Solutions:
 
 The service account doesn't have the required role. Check:
 
-1. The service account is attached to the Cloud Run service
+1. The service account is attached to the Cloud Run service/job
 2. The service account has the correct role on the specific resource
 3. The role is on the right resource (e.g., the correct bucket)
 
 ### Verifying Service Account Permissions
 
-Use the Policy Analyzer to check what a service account can access:
+```bash
+# List roles for the web/worker SA
+gcloud projects get-iam-policy $GCP_PROJECT_ID \
+    --flatten="bindings[].members" \
+    --filter="bindings.members:$GCP_APP_NAME-cloudrun-prod" \
+    --format="table(bindings.role)"
 
-1. Go to **IAM & Admin → Policy Analyzer**
-2. Select "Check access"
-3. Enter the service account email
-4. Specify the resource (e.g., `gs://$GCP_APP_NAME-storage-dev`)
-5. See what permissions are granted
-
-## Future: Cloud Tasks Authentication
-
-When we add Cloud Tasks, we'll create a separate service account for task invocation:
-
-| Service Account       | Purpose                                  |
-| --------------------- | ---------------------------------------- |
-| `cloud-tasks-invoker` | OIDC identity for Cloud Tasks HTTP calls |
-
-This service account will have:
-
-- `roles/run.invoker` on the worker Cloud Run service
-- No other permissions
-
-Cloud Tasks will use this to call our worker endpoints with a cryptographically signed OIDC token that our Django middleware verifies.
+# List roles for the validator SA
+gcloud projects get-iam-policy $GCP_PROJECT_ID \
+    --flatten="bindings[].members" \
+    --filter="bindings.members:$GCP_APP_NAME-validator-prod" \
+    --format="table(bindings.role)"
+```

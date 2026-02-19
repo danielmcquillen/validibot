@@ -14,6 +14,15 @@ such as Docker images.
 
 ## Runtime Dependencies
 
+### cel-python
+
+- **Version:** 0.5.0
+- **License:** Apache-2.0
+- **Type:** Direct runtime dependency
+- **Notes:** Upstream package metadata omits standard license fields. License
+  confirmed as Apache-2.0 from source repository and LICENSE file in the
+  installed distribution.
+
 ### certifi
 
 - **Version:** 2026.1.4
@@ -32,6 +41,16 @@ such as Docker images.
 - **Chosen license:** BSD-3-Clause
 - **Notes:** cryptography is dual-licensed. We elect to use it under
   BSD-3-Clause.
+
+### fmpy
+
+- **Version:** 0.3.27
+- **License:** BSD-2-Clause
+- **Type:** Direct runtime dependency
+- **Notes:** Upstream package metadata omits standard license fields. License
+  confirmed as BSD-2-Clause from source repository and LICENSE.txt file in the
+  installed distribution. fmpy also bundles FMI headers (BSD-3-Clause variant)
+  and SUNDIALS solver code (BSD-3-Clause).
 
 ### fido2
 

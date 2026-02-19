@@ -175,7 +175,27 @@ push:
 #   - max-instances: prod=4, dev/staging=2
 #   - memory: 1Gi (sufficient for Django + gunicorn)
 #   - allow-unauthenticated: public web access
-deploy stage: _require-gcp-config build push
+deploy stage: _require-gcp-config build push (_deploy-web stage)
+
+# Deploy worker service to a specific stage
+# The worker handles background tasks triggered by Cloud Tasks.
+#
+# Key differences from web service:
+#   - no-allow-unauthenticated: Only Cloud Tasks/Scheduler can invoke
+#   - Always scales to zero (no warm instances needed)
+#   - Same image as web, different APP_ROLE env var
+#
+# Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
+deploy-worker stage: build push (_deploy-worker stage)
+
+# Deploy both web and worker to a stage (single build+push)
+# Usage: just gcp deploy-all dev | just gcp deploy-all prod
+deploy-all stage: _require-gcp-config build push (_deploy-web stage) (_deploy-worker stage)
+    @echo ""
+    @echo "All services deployed to {{stage}}"
+
+# Internal: deploy web service (assumes image already built and pushed)
+_deploy-web stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -224,16 +244,8 @@ deploy stage: _require-gcp-config build push
     echo ""
     echo "Web service deployed to {{stage}} (min-instances=$MIN_INSTANCES)"
 
-# Deploy worker service to a specific stage
-# The worker handles background tasks triggered by Cloud Tasks.
-#
-# Key differences from web service:
-#   - no-allow-unauthenticated: Only Cloud Tasks/Scheduler can invoke
-#   - Always scales to zero (no warm instances needed)
-#   - Same image as web, different APP_ROLE env var
-#
-# Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
-deploy-worker stage: build push
+# Internal: deploy worker service (assumes image already built and pushed)
+_deploy-worker stage:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -268,6 +280,7 @@ deploy-worker stage: build push
         --set-secrets=/secrets/.env="$SECRET":latest \
         --set-env-vars APP_ROLE=worker,VALIDIBOT_STAGE={{stage}} \
         --no-allow-unauthenticated \
+        --ingress internal \
         --min-instances 0 \
         --max-instances 2 \
         --memory 1Gi \
@@ -275,13 +288,7 @@ deploy-worker stage: build push
         --project {{gcp_project}}
 
     echo ""
-    echo "Worker service deployed to {{stage}}"
-
-# Deploy both web and worker to a stage
-# Usage: just gcp deploy-all dev | just gcp deploy-all prod
-deploy-all stage: (deploy stage) (deploy-worker stage)
-    @echo ""
-    @echo "All services deployed to {{stage}}"
+    echo "Worker service deployed to {{stage}} (ingress: internal)"
 
 # =============================================================================
 # Secrets Management
@@ -900,6 +907,27 @@ init-stage stage:
     done
     echo ""
 
+    # Step 2c: Create dedicated validator service account (least-privilege for Cloud Run Jobs)
+    # Validators only need GCS access and run.invoker on the worker for callbacks.
+    # They do NOT get secrets, Cloud SQL, Cloud Tasks, or KMS access.
+    if [ "{{stage}}" = "prod" ]; then
+        VALIDATOR_SA_NAME="${APP_NAME}-validator-prod"
+    else
+        VALIDATOR_SA_NAME="${APP_NAME}-validator-{{stage}}"
+    fi
+    VALIDATOR_SA_EMAIL="$VALIDATOR_SA_NAME@{{gcp_project}}.iam.gserviceaccount.com"
+
+    echo "2c. Creating validator service account: $VALIDATOR_SA_NAME"
+    if gcloud iam service-accounts describe "$VALIDATOR_SA_EMAIL" --project={{gcp_project}} &>/dev/null; then
+        echo "   Validator service account already exists"
+    else
+        gcloud iam service-accounts create "$VALIDATOR_SA_NAME" \
+            --display-name="Validibot {{stage}} Validator Jobs" \
+            --project={{gcp_project}}
+        echo "   Created"
+    fi
+    echo ""
+
     # Step 3: Create Cloud SQL instance (db-f1-micro for dev, small for staging)
     echo "3. Creating Cloud SQL instance: $DB_INSTANCE"
     if gcloud sql instances describe "$DB_INSTANCE" --project={{gcp_project}} &>/dev/null; then
@@ -1007,6 +1035,14 @@ init-stage stage:
         --project={{gcp_project}} \
         --quiet >/dev/null 2>&1 || echo "   (public prefix IAM already configured)"
     echo "   Public prefix configured (public/ is publicly readable, private/ is protected)"
+
+    # Grant validator SA storage access on the bucket (read inputs, write outputs)
+    gcloud storage buckets add-iam-policy-binding "gs://$STORAGE_BUCKET" \
+        --member="serviceAccount:$VALIDATOR_SA_EMAIL" \
+        --role="roles/storage.objectAdmin" \
+        --project={{gcp_project}} \
+        --quiet >/dev/null
+    echo "   Granted objectAdmin on $STORAGE_BUCKET to validator SA"
     echo ""
 
     # Step 7: Grant KMS permissions for credential signing
@@ -1215,6 +1251,7 @@ scheduler-setup stage:
                 --uri "${WORKER_URL}${endpoint}" \
                 --http-method POST \
                 --oidc-service-account-email "$SCHEDULER_SA" \
+                --oidc-token-audience "$WORKER_URL" \
                 --description "$description"
         else
             echo "   Creating new job..."
@@ -1226,6 +1263,7 @@ scheduler-setup stage:
                 --uri "${WORKER_URL}${endpoint}" \
                 --http-method POST \
                 --oidc-service-account-email "$SCHEDULER_SA" \
+                --oidc-token-audience "$WORKER_URL" \
                 --description "$description"
         fi
         echo "   Done"
@@ -1435,16 +1473,22 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
         JOB_NAME="${APP_NAME}-validator-{{name}}"
-        SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker"
     else
         JOB_NAME="${APP_NAME}-validator-{{name}}-{{stage}}"
-        SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
     fi
+
+    # Deploy the job with the dedicated validator SA (least-privilege)
     echo "Deploying $JOB_NAME..."
     gcloud run jobs deploy "$JOB_NAME" \
         --image {{validator_repo}}/{{app_name}}-validator-{{name}}:{{git_sha}} \
         --region {{gcp_region}} \
-        --service-account "$SA" \
+        --service-account "$VALIDATOR_SA" \
         --max-retries 0 \
         --task-timeout 3600 \
         --set-env-vars VALIDATOR_VERSION={{git_sha}},VALIDIBOT_STAGE={{stage}} \
@@ -1452,14 +1496,28 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
         --project {{gcp_project}}
     echo "$JOB_NAME deployed"
 
-    # Grant the service account permission to run this job with overrides
-    echo "Granting job runner permission to $SA on $JOB_NAME..."
+    # Grant the main SA (web/worker) permission to trigger this job with overrides
+    echo "Granting job runner permission to main SA on $JOB_NAME..."
     gcloud run jobs add-iam-policy-binding "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
-        --member="serviceAccount:$SA" \
+        --member="serviceAccount:$MAIN_SA" \
         --role="projects/{{gcp_project}}/roles/${APP_NAME//-/_}_job_runner"
-    echo "IAM binding added"
+    echo "   Main SA can trigger $JOB_NAME"
+
+    # Grant the validator SA permission to call the worker service (for callbacks)
+    echo "Granting run.invoker on $WORKER_SERVICE to validator SA..."
+    if gcloud run services add-iam-policy-binding "$WORKER_SERVICE" \
+        --region {{gcp_region}} \
+        --project {{gcp_project}} \
+        --member="serviceAccount:$VALIDATOR_SA" \
+        --role="roles/run.invoker" \
+        --quiet >/dev/null 2>&1; then
+        echo "   Validator SA can invoke $WORKER_SERVICE"
+    else
+        echo "   WARNING: Worker service $WORKER_SERVICE not found yet."
+        echo "   Deploy the worker first (just gcp deploy-worker {{stage}}), then re-run validator-deploy."
+    fi
 
 # Build and deploy all validator jobs to a stage
 # Usage: just gcp validators-deploy-all dev | just gcp validators-deploy-all prod

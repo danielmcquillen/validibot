@@ -604,21 +604,20 @@ migrate stage: _require-gcp-config
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py migrate --noinput" \
         --project {{gcp_project}}
 
-    # Execute and capture the execution name
+    # Execute and wait for completion
     EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
+        --wait \
         --format="value(metadata.name)")
 
     echo "Execution: $EXECUTION"
-    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
     echo ""
 
-    # Stream logs until job completes
-    gcloud beta run jobs executions logs "$EXECUTION" \
+    # Show logs from the completed execution
+    gcloud beta run jobs executions logs read "$EXECUTION" \
         --region {{gcp_region}} \
-        --project {{gcp_project}} \
-        --follow
+        --project {{gcp_project}}
 
     echo ""
     echo "migrate completed on {{stage}}"
@@ -679,21 +678,20 @@ setup-data stage:
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py setup_validibot --noinput" \
         --project {{gcp_project}}
 
-    # Execute and capture the execution name
+    # Execute and wait for completion
     EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
+        --wait \
         --format="value(metadata.name)")
 
     echo "Execution: $EXECUTION"
-    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
     echo ""
 
-    # Stream logs until job completes
-    gcloud beta run jobs executions logs "$EXECUTION" \
+    # Show logs from the completed execution
+    gcloud beta run jobs executions logs read "$EXECUTION" \
         --region {{gcp_region}} \
-        --project {{gcp_project}} \
-        --follow
+        --project {{gcp_project}}
 
     echo ""
     echo "setup_validibot completed on {{stage}}"
@@ -762,21 +760,20 @@ management-cmd stage command:
         --args "-c,set -a && source /secrets/.env && set +a && python manage.py {{command}}" \
         --project {{gcp_project}}
 
-    # Execute and capture the execution name
+    # Execute and wait for completion
     EXECUTION=$(gcloud run jobs execute "$JOB_NAME" \
         --region {{gcp_region}} \
         --project {{gcp_project}} \
+        --wait \
         --format="value(metadata.name)")
 
     echo "Execution: $EXECUTION"
-    echo "Streaming logs (Ctrl+C to stop watching, job will continue)..."
     echo ""
 
-    # Stream logs until job completes
-    gcloud beta run jobs executions logs "$EXECUTION" \
+    # Show logs from the completed execution
+    gcloud beta run jobs executions logs read "$EXECUTION" \
         --region {{gcp_region}} \
-        --project {{gcp_project}} \
-        --follow
+        --project {{gcp_project}}
 
     # Clean up job after completion
     echo ""
@@ -2510,6 +2507,139 @@ verify-deployment-quick stage:
 
     echo ""
     echo "Quick verification passed for {{stage}}"
+
+# =============================================================================
+# Security Audit
+# =============================================================================
+
+# Check for common GCP security misconfigurations
+# Run before releases or periodically to catch drift.
+#
+# Checks:
+#   1. User-managed SA keys (should be zero)
+#   2. SA role sprawl (lists roles per SA for review)
+#   3. Worker ingress posture (should be internal)
+#   4. Public bucket access (should only be on public/ prefix)
+#
+# Usage: just gcp security-audit prod
+security-audit stage: _require-gcp-config
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    PASS=0
+    WARN=0
+
+    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
+        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        exit 1
+    fi
+
+    echo "============================================="
+    echo "Security audit for: {{stage}}"
+    echo "============================================="
+    echo ""
+
+    # Determine stage-specific resource names
+    if [ "{{stage}}" = "prod" ]; then
+        MAIN_SA="${APP_NAME}-cloudrun-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-prod@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker"
+        STORAGE_BUCKET="${APP_NAME}-storage"
+    else
+        MAIN_SA="${APP_NAME}-cloudrun-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        VALIDATOR_SA="${APP_NAME}-validator-{{stage}}@{{gcp_project}}.iam.gserviceaccount.com"
+        WORKER_SERVICE="${APP_NAME}-worker-{{stage}}"
+        STORAGE_BUCKET="${APP_NAME}-storage-{{stage}}"
+    fi
+
+    # 1. Check for user-managed SA keys (should be zero)
+    echo "1. Checking for user-managed SA keys..."
+    for sa in "$MAIN_SA" "$VALIDATOR_SA"; do
+        sa_short="${sa%%@*}"
+        KEYS=$(gcloud iam service-accounts keys list \
+            --iam-account="$sa" \
+            --managed-by=user \
+            --project={{gcp_project}} \
+            --format="value(name)" 2>/dev/null || echo "")
+        if [ -z "$KEYS" ]; then
+            echo "   PASS: $sa_short has no user-managed keys"
+            ((PASS++))
+        else
+            KEY_COUNT=$(echo "$KEYS" | wc -l | tr -d ' ')
+            echo "   WARN: $sa_short has $KEY_COUNT user-managed key(s) - consider deleting"
+            ((WARN++))
+        fi
+    done
+    echo ""
+
+    # 2. Check SA role assignments
+    echo "2. Checking SA role assignments..."
+    for sa in "$MAIN_SA" "$VALIDATOR_SA"; do
+        sa_short="${sa%%@*}"
+        echo "   $sa_short:"
+        ROLES=$(gcloud projects get-iam-policy {{gcp_project}} \
+            --flatten="bindings[].members" \
+            --filter="bindings.members:$sa" \
+            --format="value(bindings.role)" 2>/dev/null || echo "(none)")
+        if [ -z "$ROLES" ]; then
+            echo "     (no project-level roles)"
+        else
+            echo "$ROLES" | while read -r role; do
+                echo "     - $role"
+            done
+        fi
+    done
+    echo ""
+
+    # 3. Check worker ingress posture
+    echo "3. Checking worker ingress..."
+    WORKER_INGRESS=$(gcloud run services describe "$WORKER_SERVICE" \
+        --region={{gcp_region}} \
+        --project={{gcp_project}} \
+        --format="value(spec.template.metadata.annotations.'run.googleapis.com/ingress')" 2>/dev/null || echo "unknown")
+    if [ "$WORKER_INGRESS" = "internal" ]; then
+        echo "   PASS: Worker ingress is 'internal'"
+        ((PASS++))
+    elif [ "$WORKER_INGRESS" = "unknown" ]; then
+        echo "   SKIP: Worker service not found (not yet deployed?)"
+    else
+        echo "   WARN: Worker ingress is '$WORKER_INGRESS' (expected 'internal')"
+        ((WARN++))
+    fi
+    echo ""
+
+    # 4. Check bucket public access
+    echo "4. Checking bucket public access..."
+    UNCONDITIONAL_PUBLIC=$(gcloud storage buckets get-iam-policy "gs://$STORAGE_BUCKET" \
+        --project={{gcp_project}} \
+        --format=json 2>/dev/null \
+        | python3 -c "
+import json, sys
+policy = json.load(sys.stdin)
+for b in policy.get('bindings', []):
+    if 'allUsers' in b.get('members', []) or 'allAuthenticatedUsers' in b.get('members', []):
+        if not b.get('condition'):
+            print(f\"UNCONDITIONAL: {b['role']}\")
+" 2>/dev/null || echo "")
+    if [ -z "$UNCONDITIONAL_PUBLIC" ]; then
+        echo "   PASS: No unconditional public access on $STORAGE_BUCKET"
+        ((PASS++))
+    else
+        echo "   WARN: Unconditional public access found on $STORAGE_BUCKET:"
+        echo "$UNCONDITIONAL_PUBLIC" | while read -r line; do
+            echo "     $line"
+        done
+        ((WARN++))
+    fi
+    echo ""
+
+    # Summary
+    echo "============================================="
+    echo "Results: $PASS passed, $WARN warnings"
+    echo "============================================="
+    if [ "$WARN" -gt 0 ]; then
+        exit 1
+    fi
 
 # =============================================================================
 # Helpers

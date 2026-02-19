@@ -326,11 +326,28 @@ class Command(BaseCommand):
 
         Task definitions are stored in validibot.core.tasks.registry - the
         single source of truth for all scheduled tasks across backends.
+
+        On GCP, periodic tasks are managed by Cloud Scheduler (via
+        ``just gcp scheduler-setup``), so Celery Beat sync is skipped.
         """
         logger.debug("Setting up Celery Beat periodic task schedules...")
         self.stdout.write("  Setting up background job schedules...")
         self.stdout.write("  These tasks run automatically to keep Validibot healthy.")
         self.stdout.write("")
+
+        # On GCP, Cloud Scheduler handles periodic tasks instead of Celery Beat.
+        # The schedules are created by `just gcp scheduler-setup`, not here.
+        deployment_target = getattr(settings, "DEPLOYMENT_TARGET", None)
+        if deployment_target == "gcp":
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "  Skipped: GCP uses Cloud Scheduler for periodic tasks."
+                )
+            )
+            self.stdout.write(
+                "  Run `just gcp scheduler-setup <stage>` to configure schedules."
+            )
+            return
 
         try:
             # Check if django_celery_beat is available

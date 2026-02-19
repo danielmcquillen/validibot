@@ -37,10 +37,11 @@ git_sha := `git rev-parse --short HEAD`
 # Usage: just _validate-stage dev
 [private]
 [no-cd]
+[no-exit-message]
 _validate-stage stage:
     #!/usr/bin/env bash
     if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
-        echo "Error: stage must be 'dev', 'staging', or 'prod'"
+        echo "Error: stage must be 'dev', 'staging', or 'prod' (got '{{stage}}')"
         exit 1
     fi
 

@@ -7,6 +7,7 @@ methods for each operator type (equality, comparison, membership, string ops, et
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 
 from validibot.validations.assertions.evaluators.registry import register_evaluator
+from validibot.validations.constants import REGEX_EVAL_TIMEOUT_MS
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.engines.base import ValidationIssue
@@ -376,10 +378,24 @@ class BasicAssertionEvaluator:
             return False, _("Value is not textual.")
         flags = re.IGNORECASE if options.get("case_insensitive") else 0
         try:
-            passed = re.search(pattern, actual_text, flags=flags) is not None
+            passed = self._run_regex_with_timeout(pattern, actual_text, flags)
+        except concurrent.futures.TimeoutError:
+            return False, _("Regex evaluation timed out (possible ReDoS pattern).")
         except re.error as exc:
             return False, _("Invalid regex: %(error)s") % {"error": exc}
         return passed, _("Regex comparison failed.")
+
+    @staticmethod
+    def _run_regex_with_timeout(
+        pattern: str,
+        text: str,
+        flags: int,
+    ) -> bool:
+        """Run re.search with a timeout to prevent ReDoS attacks."""
+        timeout_secs = REGEX_EVAL_TIMEOUT_MS / 1000.0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(re.search, pattern, text, flags)
+            return future.result(timeout=timeout_secs) is not None
 
     def _evaluate_length(
         self,

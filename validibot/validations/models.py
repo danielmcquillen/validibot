@@ -972,9 +972,28 @@ class Validator(TimeStampedModel):
         ),
     )
 
+    # Validator types that have a dedicated card image in
+    # static/validations/images/validator_cards/{TYPE}_card_img_small.png
+    _CARD_IMAGE_TYPES = frozenset(
+        {
+            ValidationType.BASIC,
+            ValidationType.JSON_SCHEMA,
+            ValidationType.XML_SCHEMA,
+            ValidationType.ENERGYPLUS,
+            ValidationType.FMI,
+            ValidationType.AI_ASSIST,
+        }
+    )
+
     @property
     def card_image_name(self) -> str:
-        if self.validation_type:
+        """Return the card image filename, falling back to default if missing.
+
+        Only built-in validator types have dedicated card images. Custom
+        validators (like THERM) use the default image to avoid crashing
+        with a missing staticfiles manifest entry.
+        """
+        if self.validation_type in self._CARD_IMAGE_TYPES:
             return f"{self.validation_type}_card_img_small.png"
         return "default_card_img_small.png"
 

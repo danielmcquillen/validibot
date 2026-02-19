@@ -98,7 +98,7 @@ def site_name(context) -> str | None:
         if site.name:
             return site.name
     else:
-        logger.exception("site is not defined.")
+        logger.warning("site is not defined.")
     return site_name
 
 

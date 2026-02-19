@@ -1679,11 +1679,6 @@ maintenance-on stage:
     set -euo pipefail
     APP_NAME="{{app_name}}"
 
-    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
-        echo "Error: stage must be 'dev', 'staging', or 'prod'"
-        exit 1
-    fi
-
     # Safety check for prod
     if [ "{{stage}}" = "prod" ]; then
         echo "WARNING: You are about to put PRODUCTION into maintenance mode!"
@@ -1783,11 +1778,6 @@ maintenance-off stage:
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
-
-    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
-        echo "Error: stage must be 'dev', 'staging', or 'prod'"
-        exit 1
-    fi
 
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then
@@ -1893,11 +1883,6 @@ maintenance-status stage:
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
-
-    if [[ ! "{{stage}}" =~ ^(dev|staging|prod)$ ]]; then
-        echo "Error: stage must be 'dev', 'staging', or 'prod'"
-        exit 1
-    fi
 
     # Compute stage-specific names
     if [ "{{stage}}" = "prod" ]; then

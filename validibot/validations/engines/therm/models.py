@@ -1,4 +1,10 @@
-"""Dataclasses for the parsed THERM model intermediate representation."""
+"""
+Dataclasses for the parsed THERM model intermediate representation.
+
+TODO: Field names and types should be determined from actual THERM
+XML files and LBNL documentation. These are generic placeholders
+representing the expected categories of data in a THERM model.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +19,7 @@ class ThermPolygon:
 
     id: str
     material_id: str
-    vertices: list[tuple[float, float]]  # (x, y) in mm
+    vertices: list[tuple[float, float]]  # (x, y) coordinate pairs
     name: str | None = None
 
 
@@ -23,29 +29,23 @@ class ThermMaterial:
 
     id: str
     name: str
-    material_type: str  # "solid", "frame cavity", etc.
-    conductivity: float | None  # W/m-K
-    emissivity_inside: float | None = None  # 0-1
-    emissivity_outside: float | None = None  # 0-1
+    # TODO: add fields based on actual THERM XML schema
 
 
 @dataclass
 class ThermBoundaryCondition:
-    """A boundary condition assignment."""
+    """A boundary condition definition."""
 
     id: str
     name: str
-    bc_type: str  # "interior", "exterior", "adiabatic", etc.
-    temperature: float | None = None  # degrees C
-    film_coefficient: float | None = None  # W/m2-K
-    radiation_model: str | None = None
+    # TODO: add fields based on actual THERM XML schema
 
 
 @dataclass
 class ThermUFactorTag:
     """A U-factor calculation tag."""
 
-    name: str  # "Frame", "Edge", "Center", "Divider", etc.
+    name: str
     tag_type: str
 
 
@@ -53,8 +53,7 @@ class ThermUFactorTag:
 class ThermMeshParameters:
     """Mesh configuration."""
 
-    mesh_level: int | None = None  # Typically 0-12
-    error_limit: float | None = None
+    # TODO: add fields based on actual THERM XML schema
 
 
 @dataclass
@@ -63,7 +62,7 @@ class ThermModel:
     Complete parsed representation of a THERM file.
 
     This is the intermediate representation that all domain checks
-    and signal extraction operate on. It is format-agnostic - the
+    and signal extraction operate on. It is format-agnostic — the
     parser produces the same ThermModel whether the input was .thmx
     or .thmz.
     """

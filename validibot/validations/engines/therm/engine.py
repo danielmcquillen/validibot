@@ -1,9 +1,8 @@
 """
 THERM validator engine.
 
-Parses THMX/THMZ files, runs domain checks (geometry, materials,
-boundary conditions), and extracts signals for downstream assertion
-evaluation. Does NOT run THERM simulations.
+Parses THMX/THMZ files, runs domain checks, and extracts signals
+for downstream assertion evaluation. Does NOT run THERM simulations.
 """
 
 from __future__ import annotations
@@ -18,12 +17,9 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.engines.registry import register_engine
 from validibot.validations.engines.simple_base import SimpleValidatorEngine
-from validibot.validations.engines.therm.boundaries import check_reference_integrity
-from validibot.validations.engines.therm.geometry import check_gaps
-from validibot.validations.engines.therm.geometry import check_overlaps
-from validibot.validations.engines.therm.geometry import check_polygon_closure
-from validibot.validations.engines.therm.geometry import check_polygon_validity
-from validibot.validations.engines.therm.materials import check_material_properties
+from validibot.validations.engines.therm.boundaries import run_boundary_checks
+from validibot.validations.engines.therm.geometry import run_geometry_checks
+from validibot.validations.engines.therm.materials import run_material_checks
 from validibot.validations.engines.therm.parser import parse_therm_file
 from validibot.validations.engines.therm.signals import extract_signals
 
@@ -40,11 +36,10 @@ class ThermValidatorEngine(SimpleValidatorEngine):
     THERM thermal analysis file validator.
 
     Validates THMX and THMZ files by parsing their XML structure,
-    checking geometry integrity, material property ranges, and
-    boundary condition references. Extracts structured signals
-    for use in downstream assertion evaluation.
+    running domain checks, and extracting structured signals for
+    use in downstream assertion evaluation.
 
-    This is a parser and checker only - it does not run THERM
+    This is a parser and checker only — it does not run THERM
     simulations or compute U-factors.
     """
 
@@ -68,17 +63,10 @@ class ThermValidatorEngine(SimpleValidatorEngine):
         return None
 
     def parse_content(self, submission: Submission) -> ThermModel:
-        """
-        Parse the THMX/THMZ submission into a ThermModel.
-
-        For THMX files, reads the XML content directly.
-        For THMZ files, reads the binary file and extracts the archive.
-        """
+        """Parse the THMX/THMZ submission into a ThermModel."""
         if submission.file_type == SubmissionFileType.BINARY:
-            # THMZ: read raw bytes from the file field
             content = self._read_binary_content(submission)
         else:
-            # THMX: read as text
             content = submission.get_content()
             if not content:
                 msg = "Empty submission content."
@@ -93,25 +81,15 @@ class ThermValidatorEngine(SimpleValidatorEngine):
     ) -> list[ValidationIssue]:
         """Run all THERM domain checks."""
         issues: list[ValidationIssue] = []
-
-        # Geometry checks
-        issues.extend(check_polygon_closure(parsed.polygons))
-        issues.extend(check_polygon_validity(parsed.polygons))
-        issues.extend(check_overlaps(parsed.polygons))
-        issues.extend(check_gaps(parsed.polygons))
-
-        # Material property checks
-        issues.extend(check_material_properties(parsed.materials))
-
-        # Reference integrity checks
+        issues.extend(run_geometry_checks(parsed.polygons))
+        issues.extend(run_material_checks(parsed.materials))
         issues.extend(
-            check_reference_integrity(
+            run_boundary_checks(
                 parsed.polygons,
                 parsed.materials,
                 parsed.boundary_conditions,
             ),
         )
-
         return issues
 
     def extract_signals(self, parsed: ThermModel) -> dict[str, Any]:

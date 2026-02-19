@@ -30,6 +30,16 @@ tests/
 *.md
 README*
 LICENSE*
+# Exclude local data and caches
+storage/
+data/
+.parcel-cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+# Exclude SCSS/TS source files (compiled output is already in static/)
+validibot/static/src/
 # Exclude build artifacts
 dist/
 build/

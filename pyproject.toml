@@ -85,6 +85,9 @@ dependencies = [
   "validibot-shared>=0.2.1",
 ]
 
+[project.optional-dependencies]
+geometry = ["shapely>=2.0"]
+
 [project.urls]
 Homepage = "https://validibot.com"
 Documentation = "https://validibot.com/resources/docs/"

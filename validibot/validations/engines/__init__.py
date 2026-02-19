@@ -4,4 +4,5 @@
 from . import ai  # noqa: F401
 from . import basic  # noqa: F401
 from . import json  # noqa: F401
+from . import therm  # noqa: F401
 from . import xml  # noqa: F401

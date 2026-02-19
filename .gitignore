@@ -314,6 +314,9 @@ _envs/*
 # Storage bucket when running locally
 /storage
 
+# Local data files (weather seeds, etc.)
+/data
+
 # Temporary files
 temp.json
 temp*.json

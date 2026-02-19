@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<THERM-XML xmlns="http://windows.lbl.gov">
+  <ThermVersion>Version 8.0.20.0</ThermVersion>
+  <FileVersion>1</FileVersion>
+  <Title>Sample Window Frame</Title>
+  <CreatedBy>Validibot Test Suite</CreatedBy>
+  <CrossSectionType>Sill</CrossSectionType>
+  <Units>SI</Units>
+  <MeshControl MeshLevel="6" ErrorCheckFlag="1" ErrorLimit="10.0" MaxIterations="5" CMAflag="0" />
+
+  <Materials>
+    <Material Name="Aluminum" Type="0" Conductivity="160.0" Tir="0" EmissivityFront="0.2" EmissivityBack="0.2" RGBColor="0xC0C0C0" />
+    <Material Name="PVC" Type="0" Conductivity="0.16" Tir="0" EmissivityFront="0.9" EmissivityBack="0.9" RGBColor="0xFFFFFF" />
+    <Material Name="Glass" Type="0" Conductivity="1.0" Tir="0" EmissivityFront="0.84" EmissivityBack="0.84" RGBColor="0x80C0FF" />
+  </Materials>
+
+  <BoundaryConditions>
+    <BoundaryCondition Name="Interior Surface" Type="0" H="8.14" HeatFlux="0" Temperature="21.11" RGBColor="0xFF0000" Tr="21.11" Hr="0" Ei="1" Viewfactor="1" RadiationModel="AutoEnclosure" ConvectionFlag="1" FluxFlag="0" RadiationFlag="1" ConstantTemperatureFlag="0" EmisModifier="1.0" />
+    <BoundaryCondition Name="Exterior Surface" Type="0" H="26.0" HeatFlux="0" Temperature="-17.78" RGBColor="0x0000FF" Tr="-17.78" Hr="0" Ei="1" Viewfactor="1" RadiationModel="AutoEnclosure" ConvectionFlag="1" FluxFlag="0" RadiationFlag="1" ConstantTemperatureFlag="0" EmisModifier="1.0" />
+    <BoundaryCondition Name="Adiabatic" Type="0" H="0" HeatFlux="0" Temperature="0" RGBColor="0x000000" Tr="0" Hr="0" Ei="1" Viewfactor="0" RadiationModel="AutoEnclosure" ConvectionFlag="0" FluxFlag="0" RadiationFlag="0" ConstantTemperatureFlag="0" EmisModifier="1.0" />
+  </BoundaryConditions>
+
+  <Polygons>
+    <Polygon ID="1" Material="Aluminum" NSides="4" Type="1" units="mm">
+      <Point index="0" x="0.0" y="0.0" />
+      <Point index="1" x="50.0" y="0.0" />
+      <Point index="2" x="50.0" y="100.0" />
+      <Point index="3" x="0.0" y="100.0" />
+      <Point index="4" x="0.0" y="0.0" />
+    </Polygon>
+    <Polygon ID="2" Material="PVC" NSides="4" Type="1" units="mm">
+      <Point index="0" x="50.0" y="0.0" />
+      <Point index="1" x="80.0" y="0.0" />
+      <Point index="2" x="80.0" y="100.0" />
+      <Point index="3" x="50.0" y="100.0" />
+      <Point index="4" x="50.0" y="0.0" />
+    </Polygon>
+    <Polygon ID="3" Material="Glass" NSides="4" Type="1" units="mm">
+      <Point index="0" x="80.0" y="0.0" />
+      <Point index="1" x="86.0" y="0.0" />
+      <Point index="2" x="86.0" y="100.0" />
+      <Point index="3" x="80.0" y="100.0" />
+      <Point index="4" x="80.0" y="0.0" />
+    </Polygon>
+  </Polygons>
+
+  <Boundaries>
+    <BCPolygon ID="1" BC="Interior Surface" units="mm" PolygonID="1" EnclosureID="0" UFactorTag="Frame" Emissivity="0.9" MaterialSide="Glass" IlluminatedSurface="FALSE">
+      <Point index="0" x="0.0" y="0.0" />
+      <Point index="1" x="0.0" y="100.0" />
+    </BCPolygon>
+    <BCPolygon ID="2" BC="Exterior Surface" units="mm" PolygonID="3" EnclosureID="0" UFactorTag="Edge" Emissivity="0.84" MaterialSide="Glass" IlluminatedSurface="FALSE">
+      <Point index="0" x="86.0" y="0.0" />
+      <Point index="1" x="86.0" y="100.0" />
+    </BCPolygon>
+  </Boundaries>
+
+  <CMABestWorstOptions>
+    <Option Name="Best" />
+    <Option Name="Worst" />
+  </CMABestWorstOptions>
+
+  <GlazingSystemData>
+    <GlazingSystem Name="Double Clear" />
+  </GlazingSystemData>
+
+</THERM-XML>

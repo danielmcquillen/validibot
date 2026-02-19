@@ -2610,17 +2610,16 @@ security-audit stage: _require-gcp-config
 
     # 4. Check bucket public access
     echo "4. Checking bucket public access..."
+    # Find bindings where allUsers or allAuthenticatedUsers have access without conditions
     UNCONDITIONAL_PUBLIC=$(gcloud storage buckets get-iam-policy "gs://$STORAGE_BUCKET" \
         --project={{gcp_project}} \
         --format=json 2>/dev/null \
-        | python3 -c "
-import json, sys
-policy = json.load(sys.stdin)
-for b in policy.get('bindings', []):
-    if 'allUsers' in b.get('members', []) or 'allAuthenticatedUsers' in b.get('members', []):
-        if not b.get('condition'):
-            print(f\"UNCONDITIONAL: {b['role']}\")
-" 2>/dev/null || echo "")
+        | jq -r '
+            .bindings[]?
+            | select((.members // []) | any(. == "allUsers" or . == "allAuthenticatedUsers"))
+            | select(.condition == null)
+            | "UNCONDITIONAL: \(.role)"
+        ' 2>/dev/null || echo "")
     if [ -z "$UNCONDITIONAL_PUBLIC" ]; then
         echo "   PASS: No unconditional public access on $STORAGE_BUCKET"
         ((PASS++))

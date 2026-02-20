@@ -282,11 +282,11 @@ dev = [
   "pytest==9.0.2",
   "pytest-django==4.12.0",
   "pytest-sugar==1.1.1",
-  "selenium==4.40.0",
+  "selenium==4.41.0",
   # Linting and formatting
   "djlint==1.36.4",
   "pre-commit==4.5.1",
-  "ruff==0.15.1",
+  "ruff==0.15.2",
   # Type checking
   "django-stubs[compatible-mypy]==5.2.9",
   "djangorestframework-stubs==3.16.8",
@@ -296,7 +296,7 @@ dev = [
   "django-extensions==4.1",
   "ipdb==0.13.13",
   "watchfiles==1.1.1",
-  "werkzeug[watchdog]==3.1.5",
+  "werkzeug[watchdog]==3.1.6",
   # Documentation
   "zensical>=0.0.23",
 ]

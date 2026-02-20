@@ -76,6 +76,8 @@ nav:
       - Authentication: api/authentication.md
       - Sending Data to the API: api/sending-data.md
       - Webhooks & Notifications: api/webhooks.md
+  - Validibot Pro:
+      - Editions & Features: editions.md
   - Reference:
       - Glossary: glossary.md
       - Troubleshooting: troubleshooting.md

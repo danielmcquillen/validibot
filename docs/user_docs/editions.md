@@ -80,11 +80,64 @@ Pro is for teams who want to integrate Validibot into their CI/CD pipelines and 
 
 **Purchase:** [validibot.com/pricing](https://validibot.com/pricing)
 
-After purchase, you'll receive credentials to install the Pro package:
+### Setting up Validibot Pro
+
+After purchasing, you'll receive credentials (email and API key) on your [License Dashboard](https://validibot.com/dashboard/). Follow these steps to install and activate Pro features.
+
+#### Step 1: Configure pip credentials
+
+Choose one of the following methods to authenticate with the private package server.
+
+=== "pip config (recommended)"
+
+    Run this once to save your credentials globally:
+
+    ```bash
+    pip config set global.extra-index-url https://YOUR_EMAIL:YOUR_API_KEY@validibot.com/simple/
+    ```
+
+=== "Environment variables"
+
+    Set these in your shell profile or CI environment:
+
+    ```bash
+    export VALIDIBOT_USER="your-email@example.com"
+    export VALIDIBOT_PASS="your-api-key"
+    ```
+
+    Then reference them in your `requirements.txt`:
+
+    ```
+    --extra-index-url https://${VALIDIBOT_USER}:${VALIDIBOT_PASS}@validibot.com/simple/
+    validibot-pro>=1.0.0
+    ```
+
+!!! tip
+    Your credentials are available on your [License Dashboard](https://validibot.com/dashboard/) with copy-to-clipboard buttons.
+
+#### Step 2: Install the package
 
 ```bash
-pip install validibot-pro --index-url https://@packages.validibot.com/simple/
+pip install validibot-pro
 ```
+
+#### Step 3: Add to INSTALLED_APPS
+
+In your Django settings file (typically `config/settings/base.py`), add `validibot_pro` to `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    # ... existing apps ...
+    "validibot_pro",
+]
+```
+
+#### Step 4: Restart Validibot
+
+Restart your Validibot instance. Pro features will be available immediately — no license keys or activation steps required. Installing the package is the license.
+
+!!! note
+    You can verify Pro is active by checking the edition badge in the Validibot footer or by running `validibot --version`.
 
 ## Frequently Asked Questions
 

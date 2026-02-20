@@ -142,8 +142,8 @@ Once a request flows into `_process_structured_payload` (either from the JSON en
 
 ## Related Documentation
 
-- User-facing walkthrough: `docs/user_docs/api/sending-data.md`.
-- Payload-shape primer: `docs/user_docs/api/data-shapes.md`.
+- User-facing walkthrough: https://docs.validibot.com/api/sending-data/
+- Payload-shape primer: https://docs.validibot.com/api/data-shapes/
 - API how-to for customers: `docs/dev_docs/how-to/use-workflow.md`.
 
 Keep this page synchronized with `validibot/workflows/request_utils.py` and `WorkflowViewSet`. Any time we add a new mode, change detection logic, or tweak serializer inputs, update this doc (and link to the relevant ADR if one exists).

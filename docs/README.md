@@ -2,21 +2,19 @@
 
 Validibot maintains two complementary documentation sets so that each audience gets the right level of detail:
 
-## 1. User Documentation (`docs/user_docs`)
+## 1. User Documentation
 
 - **Audience**: Customers and evaluators using Validibot day-to-day
 - **Published to**: https://docs.validibot.com
 - **Content**: Feature walkthroughs, tutorials, API reference, FAQs
+- **Location**: Lives in the `validibot-marketing` repo (`docs/user_docs/`)
 
-### Local Preview
+User docs are managed alongside the marketing site because they're customer-facing content. To preview or publish, use the `validibot-marketing` justfile:
 
 ```bash
-# Install dependencies
-uv sync --extra dev
-
-# Preview with hot reload
-uv run mkdocs serve -f mkdocs.user.yml
-# Opens at http://localhost:9001
+# In validibot-marketing repo
+just docs-serve-user   # Preview at http://localhost:9001
+just deploy-with-docs  # Build and deploy
 ```
 
 ## 2. Developer Documentation (`docs/dev_docs`)
@@ -38,10 +36,11 @@ Documentation is published via the `validibot-marketing` Django app. The MkDocs 
 
 ### How It Works
 
-1. MkDocs builds documentation here → `docs_build/user/` and `docs_build/dev/`
-2. `just docs-sync` (in validibot-marketing) copies builds into Django app
-3. Docker build includes docs in the container image
-4. Subdomain middleware serves them at `docs.validibot.com` and `dev.validibot.com`
+1. User docs are built in the `validibot-marketing` repo
+2. Dev docs are built in this repo → `docs_build/dev/`
+3. `just docs-sync` (in validibot-marketing) copies both builds into the Django app
+4. Docker build includes docs in the container image
+5. Subdomain middleware serves them at `docs.validibot.com` and `dev.validibot.com`
 
 ### Publishing Docs
 
@@ -65,18 +64,15 @@ See `validibot-marketing/docs/docs-publishing.md` for full details.
 
 ## MkDocs Configuration
 
-Both MkDocs configurations share the same theme but point to different `docs_dir` folders:
-
 | Config | Docs Dir | Build Output | Dev Port |
 |--------|----------|--------------|----------|
-| `mkdocs.user.yml` | `docs/user_docs/` | `docs_build/user/` | 9001 |
-| `mkdocs.dev.yml` | `docs/dev_docs/` | `docs_build/dev/` | 9000 |
+| `mkdocs.user.yml` (marketing repo) | `docs/user_docs/` | `docs_build/user/` | 9001 |
+| `mkdocs.dev.yml` (this repo) | `docs/dev_docs/` | `docs_build/dev/` | 9000 |
 
 The root `mkdocs.yml` inherits from `mkdocs.dev.yml` as a convenience.
 
 ```bash
-# Build static sites (for manual inspection)
-uv run mkdocs build -f mkdocs.user.yml --clean
+# Build dev docs static site (for manual inspection)
 uv run mkdocs build -f mkdocs.dev.yml --clean
 ```
 

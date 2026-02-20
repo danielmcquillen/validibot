@@ -196,8 +196,3 @@ test-e2e *args:
 # For contributors and maintainers
 docs-dev:
     uv run mkdocs serve -f mkdocs.dev.yml -a localhost:9000
-
-# Serve user documentation locally (port 9001)
-# For end users
-docs-user:
-    uv run mkdocs serve -f mkdocs.user.yml -a localhost:9001

@@ -1,6 +1,6 @@
 # Help Center
 
-Quick answers while you work. This help center covers the Community edition of Validibot. For detailed guides, see the full [User Documentation](../user_docs/index.md).
+Quick answers while you work. This help center covers the Community edition of Validibot. For detailed guides, see the full [User Documentation](https://docs.validibot.com/).
 
 ---
 
@@ -45,4 +45,4 @@ Core ideas and terminology.
 
 ## Need More?
 
-For deeper documentation, see the [User Guide](../user_docs/index.md). If you have Pro features enabled, additional help pages will appear in the relevant sections.
+For deeper documentation, see the [User Guide](https://docs.validibot.com/). If you have Pro features enabled, additional help pages will appear in the relevant sections.

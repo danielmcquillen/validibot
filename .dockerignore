@@ -21,6 +21,7 @@ node_modules
 venv
 .git
 .envs/
+.env
 # Exclude validator containers - they build separately
 validators/
 # Exclude generated documentation
@@ -44,3 +45,8 @@ validibot/static/src/
 dist/
 build/
 *.egg-info/
+# Claude / AI config
+CLAUDE.md
+AGENTS.md
+.claude/
+.vscode/

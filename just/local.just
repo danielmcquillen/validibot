@@ -195,4 +195,4 @@ test-e2e *args:
 # Serve developer documentation locally (port 9000)
 # For contributors and maintainers
 docs-dev:
-    uv run mkdocs serve -f mkdocs.dev.yml -a localhost:9000
+    uv run zensical serve -f mkdocs.dev.yml -a localhost:9000

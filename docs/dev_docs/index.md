@@ -77,13 +77,6 @@ Deploy Validibot to production:
 
 ---
 
-## Marketing
-
-- **[Homepage Waitlist](marketing/homepage.md)** — Beta waitlist card
-- **[Feature Pages](marketing/features.md)** — Messaging guide for marketing content
-
----
-
 ## Testing
 
 Run the test suite with `uv run --extra dev pytest`. Integration tests require Docker.

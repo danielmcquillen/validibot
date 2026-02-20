@@ -298,7 +298,5 @@ dev = [
   "watchfiles==1.1.1",
   "werkzeug[watchdog]==3.1.5",
   # Documentation
-  "mkdocs==1.6.1",
-  "mkdocs-material==9.7.2",
-  "mkdocs-print-site-plugin==2.8",
+  "zensical>=0.0.23",
 ]

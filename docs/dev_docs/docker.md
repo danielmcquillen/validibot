@@ -104,7 +104,7 @@ Production-style "web" serves user traffic via Gunicorn on port 8000. The "worke
 
 ## VS Code: pytest "Run" button
 
-VS Code's test runner needs environment variables. This repo includes a minimal env file at `.vscode/.env` that points tests at the Docker Postgres (`DATABASE_URL=postgres://validibot:validibot@localhost:5432/validibot`).
+VS Code's test runner needs environment variables. This repo includes a minimal env file at `.vscode/.env` that points tests at the Docker Postgres (using a `DATABASE_URL` with the local credentials from `docker-compose.local.yml`).
 
 If the **Testing** panel hangs, double-check:
 

@@ -12,7 +12,7 @@ sv_modal
 
 tmp/
 
-# MkDocs generated documentation
+# Documentation build output
 docs_build/
 
 *.py[cod]
@@ -86,7 +86,7 @@ ENV/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
+# Documentation site output
 /site
 
 # mypy

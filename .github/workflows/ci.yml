@@ -50,10 +50,16 @@ jobs:
 
     env:
       REDIS_URL: 'redis://localhost:6379/0'
-      # postgres://user:password@host:port/database
-      DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/postgres'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGDATABASE: postgres
 
     steps:
+      - name: Set DATABASE_URL
+        run: echo "DATABASE_URL=postgres://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}" >> "$GITHUB_ENV"
+
       - name: Checkout Code Repository
         uses: actions/checkout@v6
 

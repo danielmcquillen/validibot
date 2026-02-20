@@ -26,13 +26,13 @@ just deploy-with-docs  # Build and deploy
 ### Local Preview
 
 ```bash
-uv run mkdocs serve -f mkdocs.dev.yml
+uv run zensical serve -f mkdocs.dev.yml
 # Opens at http://localhost:9000
 ```
 
 ## Publishing
 
-Documentation is published via the `validibot-marketing` Django app. The MkDocs builds are bundled into the Docker image and served by a subdomain middleware.
+Documentation is published via the `validibot-marketing` Django app. The Zensical builds are bundled into the Docker image and served by a subdomain middleware.
 
 ### How It Works
 
@@ -51,7 +51,7 @@ From the `validibot-marketing` repo:
 just deploy-with-docs
 
 # Or step by step:
-just docs-sync    # Build MkDocs and copy to Django app
+just docs-sync    # Build docs and copy to Django app
 just deploy       # Build and deploy Docker image
 ```
 
@@ -60,9 +60,11 @@ See `validibot-marketing/docs/docs-publishing.md` for full details.
 ## 3. Help Pages (`docs/help_pages`)
 
 - These files are for quick-reference help pages shown directly in the app
-- Built to FlatPage objects using a management command (not published via MkDocs)
+- Built to FlatPage objects using a management command (not published via Zensical)
 
-## MkDocs Configuration
+## Configuration
+
+Zensical reads the existing `mkdocs.yml` config files natively.
 
 | Config | Docs Dir | Build Output | Dev Port |
 |--------|----------|--------------|----------|
@@ -73,7 +75,7 @@ The root `mkdocs.yml` inherits from `mkdocs.dev.yml` as a convenience.
 
 ```bash
 # Build dev docs static site (for manual inspection)
-uv run mkdocs build -f mkdocs.dev.yml --clean
+uv run zensical build -f mkdocs.dev.yml --clean
 ```
 
 > **Tip**: The `docs_build/` directory is gitignored. Clean it out between builds if you switch audiences.

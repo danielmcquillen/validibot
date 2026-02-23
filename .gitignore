@@ -320,3 +320,6 @@ _envs/*
 # Temporary files
 temp.json
 temp*.json
+
+# Cloud layer temp copy (created by `just gcp build`, cleaned up automatically)
+_validibot-cloud/

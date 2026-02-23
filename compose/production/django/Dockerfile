@@ -52,6 +52,19 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 RUN uv sync --no-dev --no-sources --no-install-project \
     && rm -rf /tmp/uv-cache
 
+# -- Cloud layer (optional) ---------------------------------------------------
+# When BUILD_CLOUD=1, install the proprietary validibot-cloud package into the
+# venv.  For community builds the glob matches nothing and the conditional
+# skips, so this block is a complete no-op.
+ARG BUILD_CLOUD=0
+COPY _validibot-clou[d]/ /tmp/_validibot-cloud/
+RUN if [ "$BUILD_CLOUD" = "1" ] && [ -f /tmp/_validibot-cloud/pyproject.toml ]; then \
+        uv pip install --no-deps /tmp/_validibot-cloud/ \
+        && uv pip install stripe "google-cloud-tasks>=2.20.0" "google-cloud-run>=0.13.0" "google-cloud-storage>=2.14.0" \
+        && rm -rf /tmp/_validibot-cloud; \
+    fi
+# ------------------------------------------------------------------------------
+
 
 # =============================================================================
 # Stage 2: Runtime

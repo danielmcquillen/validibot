@@ -165,18 +165,52 @@ _service-account stage:
 # Build & Push
 # =============================================================================
 
-# Build Docker image for Cloud Run (linux/amd64 platform)
-# Tags with both git SHA (for traceability) and 'latest' (for convenience)
-#
-# Why linux/amd64?
-#   Cloud Run runs on Linux x86_64, so we must build for that platform
-#   even when building on Apple Silicon (arm64) Macs.
+# Build Docker image for Cloud Run (linux/amd64 for Cloud Run on x86_64).
+# Set GCP_BUILD_VALIDIBOT_CLOUD=1 to include the commercial cloud layer;
+# community users can ignore this.
 build: _require-gcp-config
-    @echo "Building image: {{gcp_image}}:{{git_sha}}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "Building image: {{gcp_image}}:{{git_sha}}"
+
+    BUILD_CLOUD_ARG=""
+
+    if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
+        # Copy cloud layer into build context (Docker can't access parent dirs)
+        CLOUD_SRC="../validibot-cloud"
+        CLOUD_DST="_validibot-cloud"
+
+        if [ ! -d "$CLOUD_SRC" ]; then
+            echo "Error: $CLOUD_SRC not found."
+            echo "GCP_BUILD_VALIDIBOT_CLOUD=1 requires the validibot-cloud repo as a sibling directory."
+            exit 1
+        fi
+
+        # Clean up on exit (success or failure)
+        cleanup() { rm -rf "$CLOUD_DST"; }
+        trap cleanup EXIT
+
+        echo "Copying cloud layer into build context..."
+        rsync -a --exclude='.git' --exclude='.venv' --exclude='__pycache__' \
+            --exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.ruff_cache' \
+            --exclude='.mypy_cache' --exclude='node_modules' \
+            "$CLOUD_SRC/" "$CLOUD_DST/"
+
+        BUILD_CLOUD_ARG="--build-arg BUILD_CLOUD=1"
+    fi
+
     docker build --platform linux/amd64 \
+        $BUILD_CLOUD_ARG \
         -f compose/production/django/Dockerfile \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .
+
+    if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
+        echo "Build complete. Cloud layer included."
+    else
+        echo "Build complete (community only)."
+    fi
 
 # Push Docker image to Google Artifact Registry
 # Requires: gcloud auth configure-docker (run 'just gcp auth' first)

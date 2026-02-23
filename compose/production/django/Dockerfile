@@ -49,18 +49,23 @@ COPY pyproject.toml uv.lock ${APP_HOME}/
 #   --no-sources: Skip [tool.uv.sources] overrides (local dev paths)
 #   --no-install-project: Don't install validibot itself (it's a Django
 #     project run from the working directory, not a package)
-RUN uv sync --no-dev --no-sources --no-install-project \
+# When BUILD_CLOUD=1, include the [cloud] optional extra.
+ARG BUILD_CLOUD=0
+RUN if [ "$BUILD_CLOUD" = "1" ]; then \
+        EXTRAS="--extra cloud"; \
+    else \
+        EXTRAS=""; \
+    fi \
+    && uv sync --no-dev --no-sources --no-install-project $EXTRAS \
     && rm -rf /tmp/uv-cache
 
 # -- Cloud layer (optional) ---------------------------------------------------
 # When BUILD_CLOUD=1, install the proprietary validibot-cloud package into the
 # venv.  For community builds the glob matches nothing and the conditional
 # skips, so this block is a complete no-op.
-ARG BUILD_CLOUD=0
 COPY _validibot-clou[d]/ /tmp/_validibot-cloud/
 RUN if [ "$BUILD_CLOUD" = "1" ] && [ -f /tmp/_validibot-cloud/pyproject.toml ]; then \
         uv pip install --no-deps /tmp/_validibot-cloud/ \
-        && uv pip install stripe "google-cloud-tasks>=2.20.0" "google-cloud-run>=0.13.0" "google-cloud-storage>=2.14.0" \
         && rm -rf /tmp/_validibot-cloud; \
     fi
 # ------------------------------------------------------------------------------

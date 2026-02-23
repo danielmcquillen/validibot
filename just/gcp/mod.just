@@ -96,11 +96,35 @@ _require-gcp-config:
     if [ -z "${GCP_PROJECT_ID:-}" ]; then
         echo "Error: GCP_PROJECT_ID is not set."
         echo ""
-        echo "Please source your GCP config first:"
-        echo "  source .envs/.production/.google-cloud/.just"
+        echo "GCP deployment is not yet automated in CI. For now, deploy"
+        echo "manually by sourcing your GCP config first:"
         echo ""
-        echo "Or set the variable manually:"
-        echo "  export GCP_PROJECT_ID=\"your-project-id\""
+        echo "  source .envs/.production/.google-cloud/.just"
+        exit 1
+    fi
+
+# Helper to block deploys when a stage is in maintenance mode.
+# Checks the Cloud SQL instance status — if it's stopped, maintenance is on.
+[private]
+_require-not-maintenance stage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP_NAME="{{app_name}}"
+    if [ "{{stage}}" = "prod" ]; then
+        DB_INSTANCE="${APP_NAME}-db"
+    else
+        DB_INSTANCE="${APP_NAME}-db-{{stage}}"
+    fi
+    DB_STATUS=$(gcloud sql instances describe "$DB_INSTANCE" \
+        --project {{gcp_project}} \
+        --format="value(state)" 2>/dev/null || echo "unknown")
+    if [ "$DB_STATUS" != "RUNNABLE" ]; then
+        echo "Error: {{stage}} is in maintenance mode (database is $DB_STATUS)."
+        echo ""
+        echo "Deploying while maintenance is on would leave services unable to"
+        echo "reach the database. Bring the stage online first:"
+        echo ""
+        echo "  just gcp maintenance-off {{stage}}"
         exit 1
     fi
 
@@ -176,7 +200,7 @@ push:
 #   - memory: 1Gi (sufficient for Django + gunicorn)
 #   - allow-unauthenticated: public web access
 [arg('stage', pattern='dev|staging|prod')]
-deploy stage: _require-gcp-config build push (_deploy-web stage)
+deploy stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-web stage)
 
 # Deploy worker service to a specific stage
 # The worker handles background tasks triggered by Cloud Tasks.
@@ -188,12 +212,12 @@ deploy stage: _require-gcp-config build push (_deploy-web stage)
 #
 # Usage: just gcp deploy-worker dev | just gcp deploy-worker prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-worker stage: build push (_deploy-worker stage)
+deploy-worker stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-worker stage)
 
 # Deploy both web and worker to a stage (single build+push)
 # Usage: just gcp deploy-all dev | just gcp deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-deploy-all stage: _require-gcp-config build push (_deploy-web stage) (_deploy-worker stage)
+deploy-all stage: _require-gcp-config (_require-not-maintenance stage) build push (_deploy-web stage) (_deploy-worker stage)
     @echo ""
     @echo "All services deployed to {{stage}}"
 

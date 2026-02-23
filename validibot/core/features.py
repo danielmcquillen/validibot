@@ -7,18 +7,6 @@ This module provides a simple registry pattern for commercial packages
 Commercial packages register features at import time, and the core application
 checks feature availability to gate UI elements and API endpoints.
 
-Usage in commercial packages::
-
-    # In validibot_pro/__init__.py
-    from validibot.core.features import register_feature, CommercialFeature
-
-    register_feature(CommercialFeature.TEAM_MANAGEMENT)
-
-    # In validibot_enterprise/__init__.py
-    from validibot.core.features import register_feature, CommercialFeature
-
-    register_feature(CommercialFeature.MULTI_ORG)
-
 Usage in templates::
 
     {% if feature_multi_org %}

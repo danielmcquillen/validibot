@@ -19,13 +19,37 @@ logger = logging.getLogger(__name__)
 # Session key for storing workflow invite token during signup flow
 WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
 
+# Session key for storing cloud trial invite token during signup flow.
+# Set by the cloud onboarding AcceptTrialInviteView, consumed after signup
+# to activate the trial on the user's personal organization.
+TRIAL_INVITE_SESSION_KEY = "trial_invite_token"
+
+
+def _is_cloud_self_register() -> bool:
+    """
+    Check if the cloud layer is installed and self-registration is enabled.
+
+    Returns True only when validibot-cloud is installed AND its CloudSettings
+    has signup_mode set to SELF_REGISTER. Returns False if the cloud package
+    is not installed (community/self-hosted mode) or if signup mode is
+    INVITE_ONLY.
+    """
+    try:
+        from validibot_cloud.onboarding.models import CloudSettings
+    except ImportError:
+        return False
+
+    cloud_settings = CloudSettings.get_cloud_settings()
+    return cloud_settings.signup_mode == "self_register"
+
 
 class AccountAdapter(DefaultAccountAdapter):
     """
     Custom account adapter for Validibot signup flow.
 
-    Handles workflow invite-based signups where users get access to specific
-    workflows without needing a full organization membership.
+    Handles two types of invite-based signups:
+    1. Workflow invites: users get access to specific workflows
+    2. Trial invites: users from the cloud onboarding flow get a trial org
     """
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
@@ -34,28 +58,48 @@ class AccountAdapter(DefaultAccountAdapter):
 
         Signup is allowed if:
         1. ACCOUNT_ALLOW_REGISTRATION is True (open registration), OR
-        2. The user has a workflow invite token in their session (invite-only access)
+        2. The user has a workflow invite token in their session, OR
+        3. The user has a trial invite token in their session (cloud), OR
+        4. Cloud is installed with self-registration enabled
 
         This enables invite-only signup: set ACCOUNT_ALLOW_REGISTRATION=False to
-        block public signup, but users with workflow invite links can still register.
+        block public signup, but users with invite links can still register.
         """
         # Always allow signup if user has a workflow invite token
         if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
             return True
+
+        # Always allow signup if user has a trial invite token (cloud)
+        if request.session.get(TRIAL_INVITE_SESSION_KEY):
+            return True
+
+        # Allow signup if cloud layer has self-registration enabled
+        if _is_cloud_self_register():
+            return True
+
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
     def get_signup_redirect_url(self, request: HttpRequest) -> str:
         """
         Redirect to appropriate destination after signup.
 
-        Handles workflow invite flow: if the user signed up via a workflow
-        invite link, accept the invite and redirect to the workflow.
+        Handles two invite flows:
+        1. Workflow invite: accept invite, redirect to workflow launch page
+        2. Trial invite: activate trial on user's org, redirect to dashboard
+
         Otherwise, redirect to the default login redirect URL.
         """
         # Check for workflow invite token first
         invite_token = request.session.get(WORKFLOW_INVITE_SESSION_KEY)
         if invite_token:
             redirect_url = self._handle_workflow_invite_signup(request, invite_token)
+            if redirect_url:
+                return redirect_url
+
+        # Check for trial invite token (cloud onboarding)
+        trial_token = request.session.get(TRIAL_INVITE_SESSION_KEY)
+        if trial_token:
+            redirect_url = self._handle_trial_invite_signup(request, trial_token)
             if redirect_url:
                 return redirect_url
 
@@ -134,6 +178,55 @@ class AccountAdapter(DefaultAccountAdapter):
             messages.error(request, str(e))
             return None
 
+    def _handle_trial_invite_signup(
+        self,
+        request: HttpRequest,
+        trial_token: str,
+    ) -> str | None:
+        """
+        Handle trial invite activation after signup.
+
+        Delegates to the cloud onboarding service to activate the trial
+        on the user's personal organization. Returns the redirect URL
+        on success, or None to fall back to default redirect.
+        """
+        from django.contrib import messages
+        from django.utils.translation import gettext_lazy as _
+
+        # Clear the session key regardless of outcome
+        del request.session[TRIAL_INVITE_SESSION_KEY]
+
+        try:
+            from validibot_cloud.onboarding.services import activate_trial_for_user
+        except ImportError:
+            logger.exception(
+                "Trial invite token in session but validibot-cloud not installed",
+            )
+            return None
+
+        try:
+            activate_trial_for_user(request.user, trial_token)
+        except Exception:
+            logger.exception(
+                "Failed to activate trial for user %s with token %s",
+                request.user,
+                trial_token,
+            )
+            messages.warning(
+                request,
+                _(
+                    "Your account was created but we couldn't activate your trial. "
+                    "Please contact support."
+                ),
+            )
+            return None
+        else:
+            messages.success(
+                request,
+                _("Welcome! Your free trial is now active."),
+            )
+            return settings.LOGIN_REDIRECT_URL
+
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(
@@ -144,12 +237,21 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         """
         Determine if social signup is allowed for this request.
 
-        Same logic as AccountAdapter: allow if open registration OR if user
-        has a workflow invite token in session.
+        Same logic as AccountAdapter: allow if open registration, has an
+        invite token in session, or cloud self-registration is enabled.
         """
         # Always allow signup if user has a workflow invite token
         if request.session.get(WORKFLOW_INVITE_SESSION_KEY):
             return True
+
+        # Always allow signup if user has a trial invite token (cloud)
+        if request.session.get(TRIAL_INVITE_SESSION_KEY):
+            return True
+
+        # Allow signup if cloud layer has self-registration enabled
+        if _is_cloud_self_register():
+            return True
+
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
 
     def populate_user(

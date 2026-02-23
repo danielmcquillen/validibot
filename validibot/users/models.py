@@ -173,6 +173,26 @@ class Organization(TimeStampedModel):
         ),
     )
 
+    # Trial fields — populated by the cloud onboarding layer when a user
+    # accepts a trial invite. Community (self-hosted) users never see these
+    # populated. Both are nullable so community orgs are unaffected.
+    trial_ends_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "When this organization's trial expires. "
+            "NULL means no trial (community/self-hosted or paid subscription)."
+        ),
+    )
+    trial_duration_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "The trial duration in days, snapshotted "
+            "when the trial was activated. NULL for non-trial orgs."
+        ),
+    )
+
     # Set this to True to bypass reserved slug validation (for superuser/admin use)
     _allow_reserved_slug: bool = False
 

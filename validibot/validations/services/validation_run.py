@@ -177,6 +177,14 @@ class ValidationRunService:
             err_msg = "User does not have permission to execute this workflow"
             raise PermissionError(err_msg)
 
+        # Check organization-level policies (trial expiry, quotas, etc.)
+        # In community edition no policies are registered, so this is a no-op.
+        from validibot.core.policies import check_org_policies
+
+        allowed, reason = check_org_policies(org, "launch_validation_run")
+        if not allowed:
+            raise PermissionError(reason)
+
         run_user = None
         if getattr(submission, "user_id", None):
             run_user = submission.user

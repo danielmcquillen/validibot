@@ -294,6 +294,7 @@ _deploy-web stage:
         --memory 1Gi \
         --timeout {{gcp_cloud_run_request_timeout}} \
         --allow-unauthenticated \
+        --ingress all \
         --project {{gcp_project}}
 
     echo ""

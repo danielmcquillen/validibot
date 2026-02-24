@@ -10,7 +10,7 @@ Validators are organized by complexity:
 - **Single-file validators** (basic.py, json_schema.py, xml_schema.py):
   Simple, self-contained validators that are unlikely to need multiple modules.
 
-- **Package validators** (therm/, energyplus/, fmu/, ai/):
+- **Package validators** (therm/, energyplus/, fmu/, ai/, custom/):
   Complex validators with parsers, models, domain checks, or external
   integrations. Each package has a ``validator.py`` entry point.
 
@@ -25,6 +25,7 @@ implementation for SimpleValidator, or ``energyplus/`` for AdvancedValidator.
 # Import all validators so they register with the registry on module load.
 from validibot.validations.validators import ai  # noqa: F401
 from validibot.validations.validators import basic  # noqa: F401
+from validibot.validations.validators import custom  # noqa: F401
 from validibot.validations.validators import energyplus  # noqa: F401
 from validibot.validations.validators import fmu  # noqa: F401
 from validibot.validations.validators import json_schema  # noqa: F401

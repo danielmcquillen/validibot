@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from validibot.validations.constants import ValidationType
+from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.services.step_processor.advanced import (
     AdvancedValidationProcessor,
 )
@@ -41,12 +41,6 @@ def get_step_processor(
     """
     validator = step_run.workflow_step.validator
 
-    # Advanced validators run in containers
-    advanced_types = {
-        ValidationType.ENERGYPLUS,
-        ValidationType.FMU,
-    }
-
-    if validator.validation_type in advanced_types:
+    if validator.validation_type in ADVANCED_VALIDATION_TYPES:
         return AdvancedValidationProcessor(validation_run, step_run)
     return SimpleValidationProcessor(validation_run, step_run)

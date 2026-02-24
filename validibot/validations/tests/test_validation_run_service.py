@@ -72,6 +72,8 @@ def test_execute_fails_gracefully_when_validator_missing():
     the run failing with "One or more validation steps failed" and the
     specific error recorded in the ValidationFinding.
     """
+    from unittest.mock import patch
+
     org = OrganizationFactory()
     user = UserFactory()
     workflow = WorkflowFactory(org=org, user=user, is_active=True)
@@ -96,18 +98,25 @@ def test_execute_fails_gracefully_when_validator_missing():
         status=ValidationRunStatus.PENDING,
     )
 
-    service = ValidationRunService()
-    service.execute_workflow_steps(
-        validation_run_id=validation_run.id,
-        user_id=user.id,
-    )
+    # Simulate missing validator by making the registry raise KeyError
+    with patch(
+        "validibot.validations.validators.base.registry.get",
+        side_effect=KeyError("CUSTOM_VALIDATOR"),
+    ):
+        service = ValidationRunService()
+        service.execute_workflow_steps(
+            validation_run_id=validation_run.id,
+            user_id=user.id,
+        )
 
     validation_run.refresh_from_db()
     assert validation_run.status == ValidationRunStatus.FAILED
     # Step failure is now graceful - results in "steps failed" message
     assert "failed" in validation_run.error.lower()
     # The specific validator error is recorded in the findings
-    finding = ValidationFinding.objects.filter(validation_run=validation_run).first()
+    finding = ValidationFinding.objects.filter(
+        validation_run=validation_run,
+    ).first()
     assert finding is not None
     assert "failed to load" in finding.message.lower()
 

@@ -658,7 +658,7 @@ def _fmu_upload_path(instance: FMUModel, filename: str) -> str:
 
 class FMUModel(TimeStampedModel):
     """
-    Stored FMU artifact plus parsed metadata used by FMI validators.
+    Stored FMU artifact plus parsed metadata used by FMU validators.
 
     The FMU never executes inside Django; we store it for Modal runners to
     download and for offline inspection/probe runs. Each FMU also records a
@@ -666,11 +666,11 @@ class FMUModel(TimeStampedModel):
     copy keyed by checksum.
     """
 
-    class FMIKind(models.TextChoices):
+    class FMUKind(models.TextChoices):
         MODEL_EXCHANGE = "ModelExchange", _("Model Exchange")
         CO_SIMULATION = "CoSimulation", _("Co-Simulation")
 
-    class FMIVersion(models.TextChoices):
+    class FMUVersion(models.TextChoices):
         V2_0 = "2.0", _("FMI 2.0")
         V3_0 = "3.0", _("FMI 3.0")
 
@@ -706,25 +706,25 @@ class FMUModel(TimeStampedModel):
             "(e.g., gs://bucket/fmus/<checksum>.fmu for GCS)."
         ),
     )
-    fmi_version = models.CharField(
+    fmu_version = models.CharField(
         max_length=8,
-        choices=FMIVersion.choices,
-        default=FMIVersion.V2_0,
+        choices=FMUVersion.choices,
+        default=FMUVersion.V2_0,
     )
     kind = models.CharField(
         max_length=32,
-        choices=FMIKind.choices,
-        default=FMIKind.CO_SIMULATION,
+        choices=FMUKind.choices,
+        default=FMUKind.CO_SIMULATION,
     )
     is_approved = models.BooleanField(default=False)
     size_bytes = models.BigIntegerField(default=0)
     introspection_metadata = models.JSONField(default=dict, blank=True)
 
     def __str__(self) -> str:  # pragma: no cover - display helper
-        return f"{self.name} ({self.fmi_version}, {self.kind})"
+        return f"{self.name} ({self.fmu_version}, {self.kind})"
 
 
-class FMIVariable(TimeStampedModel):
+class FMUVariable(TimeStampedModel):
     """
     Parsed variable metadata from modelDescription.xml attached to an FMUModel.
 
@@ -746,7 +746,7 @@ class FMIVariable(TimeStampedModel):
     catalog_entry = models.ForeignKey(
         "validations.ValidatorCatalogEntry",
         on_delete=models.SET_NULL,
-        related_name="fmi_variables",
+        related_name="fmu_variables",
         null=True,
         blank=True,
     )
@@ -913,7 +913,7 @@ class Validator(TimeStampedModel):
         blank=True,
         related_name="validators",
         help_text=_(
-            "FMU artifact backing this validator (only used for FMI validators).",
+            "FMU artifact backing this validator (only used for FMU validators).",
         ),
     )
 
@@ -1122,7 +1122,7 @@ class Validator(TimeStampedModel):
                     raise ValidationError(
                         {
                             "fmu_model": _(
-                                "Assign an FMU asset before saving an FMI validator.",
+                                "Assign an FMU asset before saving an FMU validator.",
                             ),
                         },
                     )
@@ -1130,7 +1130,7 @@ class Validator(TimeStampedModel):
             raise ValidationError(
                 {
                     "fmu_model": _(
-                        "FMU assets can only be attached to FMI validators.",
+                        "FMU assets can only be attached to FMU validators.",
                     ),
                 },
             )

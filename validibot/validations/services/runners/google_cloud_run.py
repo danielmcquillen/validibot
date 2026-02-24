@@ -55,7 +55,7 @@ class GoogleCloudRunValidatorRunner(ValidatorRunner):
 
     The runner maps container images to pre-deployed Cloud Run Jobs:
         validibot/validator-energyplus -> validibot-validator-energyplus job
-        validibot/validator-fmi -> validibot-validator-fmi job
+        validibot/validator-fmu -> validibot-validator-fmu job
 
     Jobs must be pre-deployed to Cloud Run with the correct container image.
     The runner triggers executions of existing jobs rather than creating new ones.

@@ -17,7 +17,7 @@ Re-enable the workflow from the same panel when you are ready to accept submissi
 1. Open a workflow (either create a new workflow or open an existing one) and click **Add step**.
 2. A modal displays every available option across four tabs:
    - **Validators** (BASIC, JSON Schema, and XML Schema)
-   - **Advanced validators** (AI Assist, EnergyPlus, and FMI)
+   - **Advanced validators** (AI Assist, EnergyPlus, and FMU)
    - **Integrations** (action definitions such as Slack notifications)
    - **Certifications** (action definitions that issue certificates or badges)
    Each card shows the item name, category, icon, and description.
@@ -46,9 +46,9 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 - Choose post-simulation checks (EUI range, peak load) and define optional EUI minimum/maximum values.
 - Add notes to capture any context for the run.
 
-### FMI (preview)
-- Attach an FMI validator and upload an FMU. The upload is stored in canonical storage (S3 in production) **and** copied into a Modal Volume cache keyed by the FMU checksum, so Modal runs never need a presigned URL.
-- Workflow submissions for FMI steps remain JSON/text; the FMU itself is uploaded once at validator creation. This keeps launch-time payloads simple while the validator uses the stored FMU for simulation.
+### FMU (preview)
+- Attach an FMU validator and upload an FMU. The upload is stored in canonical storage (S3 in production) **and** copied into a Modal Volume cache keyed by the FMU checksum, so Modal runs never need a presigned URL.
+- Workflow submissions for FMU steps remain JSON/text; the FMU itself is uploaded once at validator creation. This keeps launch-time payloads simple while the validator uses the stored FMU for simulation.
 - Catalog inputs/outputs are generated from the FMU metadata. A **probe** is a short, safety-first run that opens the FMU, validates `modelDescription.xml`, checks for suspicious files, and seeds the catalog before assertions can be added.
 - Execution now runs on Modal using the cached FMU: inputs flow to the FMU run, outputs are captured, and CEL assertions evaluate them just like other validators.
 

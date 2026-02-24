@@ -9,19 +9,19 @@ These are synced to the database via:
 """
 
 from validibot.validations.seeds.energyplus import ENERGYPLUS_SEED
-from validibot.validations.seeds.fmi import FMI_SEED
+from validibot.validations.seeds.fmu import FMU_SEED
 from validibot.validations.seeds.therm import THERM_SEED
 
 # All system validator seeds
 SYSTEM_VALIDATOR_SEEDS = [
     ENERGYPLUS_SEED,
-    FMI_SEED,
+    FMU_SEED,
     THERM_SEED,
 ]
 
 __all__ = [
     "ENERGYPLUS_SEED",
-    "FMI_SEED",
+    "FMU_SEED",
     "SYSTEM_VALIDATOR_SEEDS",
     "THERM_SEED",
 ]

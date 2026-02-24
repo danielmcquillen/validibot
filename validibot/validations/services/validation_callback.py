@@ -28,7 +28,7 @@ from pydantic import ValidationError
 from rest_framework import status
 from rest_framework.response import Response
 from validibot_shared.energyplus.envelopes import EnergyPlusOutputEnvelope
-from validibot_shared.fmi.envelopes import FMIOutputEnvelope
+from validibot_shared.fmu.envelopes import FMUOutputEnvelope
 from validibot_shared.validations.envelopes import ValidationCallback
 from validibot_shared.validations.envelopes import ValidationStatus
 
@@ -282,7 +282,7 @@ class ValidationCallbackService:
         if validator.validation_type == ValidationType.ENERGYPLUS:
             envelope_class = EnergyPlusOutputEnvelope
         elif validator.validation_type == ValidationType.FMU:
-            envelope_class = FMIOutputEnvelope
+            envelope_class = FMUOutputEnvelope
         else:
             logger.error(
                 "Unsupported validator type: %s",

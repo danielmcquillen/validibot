@@ -6,24 +6,24 @@ When a validation run fails or produces unexpected results, follow this guide to
 
 Each validation run has a status and optionally an error category:
 
-| Status | Meaning |
-|--------|---------|
-| `PENDING` | Run created but not yet started |
-| `RUNNING` | Validation is in progress |
-| `SUCCEEDED` | Validation completed successfully |
-| `FAILED` | Validation found issues or encountered an error |
-| `CANCELED` | Run was manually canceled |
-| `TIMED_OUT` | Run exceeded the time limit |
+| Status      | Meaning                                         |
+| ----------- | ----------------------------------------------- |
+| `PENDING`   | Run created but not yet started                 |
+| `RUNNING`   | Validation is in progress                       |
+| `SUCCEEDED` | Validation completed successfully               |
+| `FAILED`    | Validation found issues or encountered an error |
+| `CANCELED`  | Run was manually canceled                       |
+| `TIMED_OUT` | Run exceeded the time limit                     |
 
 When a run fails, the `error_category` field indicates why:
 
-| Error Category | Meaning | Common Causes |
-|----------------|---------|---------------|
+| Error Category      | Meaning                              | Common Causes                                                   |
+| ------------------- | ------------------------------------ | --------------------------------------------------------------- |
 | `VALIDATION_FAILED` | Validator found issues with the file | Invalid file format, schema violations, missing required fields |
-| `TIMEOUT` | Exceeded time limit | Large/complex file, slow validator |
-| `OOM` | Out of memory | File too large for container memory |
-| `RUNTIME_ERROR` | Validator crashed | Bug in validator, corrupt input file |
-| `SYSTEM_ERROR` | Infrastructure issue | GCS unavailable, Cloud Run scaling issues |
+| `TIMEOUT`           | Exceeded time limit                  | Large/complex file, slow validator                              |
+| `OOM`               | Out of memory                        | File too large for container memory                             |
+| `RUNTIME_ERROR`     | Validator crashed                    | Bug in validator, corrupt input file                            |
+| `SYSTEM_ERROR`      | Infrastructure issue                 | GCS unavailable, Cloud Run scaling issues                       |
 
 ## Step 1: Check the Run Details in UI
 
@@ -55,15 +55,15 @@ gcloud logging read "resource.labels.service_name=\"$GCP_APP_NAME-worker\" sever
   --limit=20
 ```
 
-### Check Cloud Run Job logs (for EnergyPlus/FMI validators)
+### Check Cloud Run Job logs (for EnergyPlus/FMU validators)
 
 ```bash
 # EnergyPlus validator job logs
 gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-energyplus\"" \
   --limit=50
 
-# FMI validator job logs
-gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-fmi\"" \
+# FMU validator job logs
+gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"$GCP_APP_NAME-validator-fmu\"" \
   --limit=50
 ```
 
@@ -74,10 +74,12 @@ gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"
 **Symptoms**: Run status is `TIMED_OUT` or `error_category` is `TIMEOUT`
 
 **Causes**:
+
 - File is too large or complex
 - Validator is processing too slowly
 
 **Solutions**:
+
 1. Try with a smaller/simpler test file
 2. Check if the file has unusual complexity (deep nesting, many objects)
 3. Contact support if files within normal size range are timing out
@@ -87,10 +89,12 @@ gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"
 **Symptoms**: `error_category` is `OOM`, Cloud Run Job terminated
 
 **Causes**:
+
 - File requires more memory than container limit
 - Memory leak in validator
 
 **Solutions**:
+
 1. Check file size - very large files may exceed memory limits
 2. Try a smaller file to confirm the validator works
 3. Contact support to request higher memory limits
@@ -100,11 +104,13 @@ gcloud logging read "resource.type=\"cloud_run_job\" resource.labels.job_name=\"
 **Symptoms**: `error_category` is `RUNTIME_ERROR`, unexpected exception
 
 **Causes**:
+
 - Corrupt or malformed input file
 - Edge case in validator code
 - Missing dependencies
 
 **Solutions**:
+
 1. Validate the input file is not corrupt
 2. Try the same file type with a known-good example
 3. Check Cloud Logging for stack traces
@@ -121,11 +127,13 @@ This is the expected outcome when the validator finds issues with your file. Che
 **Symptoms**: Run stuck in `RUNNING` status indefinitely
 
 **Causes**:
+
 - Cloud Run Job failed to send callback
 - Network/IAM issues between job and worker
 - Callback endpoint rejected the request
 
 **Diagnosis**:
+
 1. Check Cloud Run Job execution status:
    ```bash
    gcloud run jobs executions list --job=$GCP_APP_NAME-validator-energyplus

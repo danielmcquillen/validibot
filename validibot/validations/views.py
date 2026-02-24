@@ -53,7 +53,7 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
 from validibot.validations.forms import CustomValidatorCreateForm
 from validibot.validations.forms import CustomValidatorUpdateForm
-from validibot.validations.forms import FMIValidatorCreateForm
+from validibot.validations.forms import FMUValidatorCreateForm
 from validibot.validations.forms import ValidatorCatalogEntryForm
 from validibot.validations.forms import ValidatorResourceFileForm
 from validibot.validations.forms import ValidatorRuleForm
@@ -66,9 +66,9 @@ from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.serializers import ValidationRunSerializer
-from validibot.validations.services.fmi import FMIIntrospectionError
-from validibot.validations.services.fmi import create_fmi_validator
-from validibot.validations.services.fmi import run_fmu_probe
+from validibot.validations.services.fmu import FMUIntrospectionError
+from validibot.validations.services.fmu import create_fmu_validator
+from validibot.validations.services.fmu import run_fmu_probe
 from validibot.validations.utils import create_custom_validator
 from validibot.validations.utils import update_custom_validator
 from validibot.workflows.models import Workflow
@@ -620,8 +620,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 "current_layout": layout,
                 "layout_urls": self._build_layout_urls(),
                 "can_manage_validators": self.can_manage_validators(),
-                "fmi_validator_create_url": reverse_with_org(
-                    "validations:fmi_validator_create",
+                "fmu_validator_create_url": reverse_with_org(
+                    "validations:fmu_validator_create",
                     request=self.request,
                 ),
                 "validator_create_options": create_options,
@@ -715,8 +715,8 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 ),
             },
             {
-                "value": "fmi",
-                "name": str(_("FMI Validator")),
+                "value": "fmu",
+                "name": str(_("FMU Validator")),
                 "subtitle": str(_("Simulation-based")),
                 "description": str(
                     _(
@@ -726,7 +726,7 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 ),
                 "icon": "bi-cpu",
                 "url": reverse_with_org(
-                    "validations:fmi_validator_create",
+                    "validations:fmu_validator_create",
                     request=self.request,
                 ),
             },
@@ -1101,9 +1101,9 @@ class CustomValidatorManageMixin(ValidatorLibraryMixin):
         )
 
 
-class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
-    template_name = "validations/library/fmi_validator_form.html"
-    form_class = FMIValidatorCreateForm
+class FMUValidatorCreateView(CustomValidatorManageMixin, FormView):
+    template_name = "validations/library/fmu_validator_form.html"
+    form_class = FMUValidatorCreateForm
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -1112,7 +1112,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["form_title"] = _("Create FMI Validator")
+        context["form_title"] = _("Create FMU Validator")
         context["can_manage_validators"] = self.can_manage_validators()
         context["validator"] = None
         return context
@@ -1121,7 +1121,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
         breadcrumbs = super().get_breadcrumbs()
         breadcrumbs.append(
             {
-                "name": _("Create FMI validator"),
+                "name": _("Create FMU validator"),
                 "url": "",
             },
         )
@@ -1130,7 +1130,7 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
     def form_valid(self, form):
         org = self.get_active_org()
         try:
-            validator = create_fmi_validator(
+            validator = create_fmu_validator(
                 org=org,
                 project=form.cleaned_data.get("project"),
                 name=form.cleaned_data["name"],
@@ -1138,17 +1138,17 @@ class FMIValidatorCreateView(CustomValidatorManageMixin, FormView):
                 description=form.cleaned_data.get("description") or "",
                 upload=form.cleaned_data["fmu_file"],
             )
-        except FMIIntrospectionError as exc:
+        except FMUIntrospectionError as exc:
             form.add_error("fmu_file", str(exc))
             return self.form_invalid(form)
         messages.success(
             self.request,
-            _("Created FMI validator “%(name)s”.") % {"name": validator.name},
+            _("Created FMU validator “%(name)s”.") % {"name": validator.name},
         )
         return redirect(self.get_success_url(validator))
 
 
-class FMIProbeStartView(CustomValidatorManageMixin, View):
+class FMUProbeStartView(CustomValidatorManageMixin, View):
     """HTMX endpoint to kick off an FMU probe inline."""
 
     def post(self, request, *args, **kwargs):
@@ -1176,7 +1176,7 @@ class FMIProbeStartView(CustomValidatorManageMixin, View):
         return JsonResponse(payload)
 
 
-class FMIProbeStatusView(CustomValidatorManageMixin, View):
+class FMUProbeStatusView(CustomValidatorManageMixin, View):
     """Return the latest probe status for polling."""
 
     def get(self, request, *args, **kwargs):

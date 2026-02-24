@@ -128,8 +128,8 @@ class CustomValidatorCreateForm(forms.Form):
         )
 
 
-class FMIValidatorCreateForm(forms.Form):
-    """Upload form used to create an FMI validator backed by an FMU asset."""
+class FMUValidatorCreateForm(forms.Form):
+    """Upload form used to create an FMU validator backed by an FMU asset."""
 
     name = forms.CharField(
         label=_("Name"),

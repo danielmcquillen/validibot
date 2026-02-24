@@ -666,7 +666,7 @@ else:
 
 # VALIDATOR RUNNER
 # ------------------------------------------------------------------------------
-# Configuration for running container-based validators (EnergyPlus, FMI, etc.).
+# Configuration for running container-based validators (EnergyPlus, FMU, etc.).
 #
 # Available runners:
 #   - "docker": Local Docker socket (default, for Docker Compose deployments)
@@ -695,7 +695,7 @@ GCP_REGION = env("GCP_REGION", default="us-west1")
 GCS_VALIDATION_BUCKET = env("GCS_VALIDATION_BUCKET", default="")
 GCS_TASK_QUEUE_NAME = env("GCS_TASK_QUEUE_NAME", default="")
 GCS_ENERGYPLUS_JOB_NAME = env("GCS_ENERGYPLUS_JOB_NAME", default="")
-GCS_FMI_JOB_NAME = env("GCS_FMI_JOB_NAME", default="")
+GCS_FMU_JOB_NAME = env("GCS_FMU_JOB_NAME", default="")
 SITE_URL = env("SITE_URL", default="http://localhost:8000")
 WORKER_URL = env("WORKER_URL", default="")
 CLOUD_TASKS_SERVICE_ACCOUNT = env("CLOUD_TASKS_SERVICE_ACCOUNT", default="")

@@ -65,7 +65,7 @@ class ExecutionRequest:
 
     @property
     def validator_type(self) -> str:
-        """Validator type (e.g., 'energyplus', 'fmi')."""
+        """Validator type (e.g., 'energyplus', 'fmu')."""
         return self.validator.validation_type.lower()
 
 
@@ -185,7 +185,7 @@ class ExecutionBackend(ABC):
         Get the container image for a validator type.
 
         Args:
-            validator_type: Type of validator (e.g., 'energyplus', 'fmi').
+            validator_type: Type of validator (e.g., 'energyplus', 'fmu').
 
         Returns:
             Full container image name with tag.

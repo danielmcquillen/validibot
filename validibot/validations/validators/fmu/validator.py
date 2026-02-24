@@ -14,7 +14,7 @@ This works across different deployment targets:
 ## Output Envelope Structure
 
 The FMU validator container produces an ``FMUOutputEnvelope`` (from
-validibot_shared.fmi.envelopes) containing:
+validibot_shared.fmu.envelopes) containing:
 
 - outputs.output_values: Dict keyed by catalog slug with simulation outputs
   - Each key is a catalog entry slug (e.g., "indoor_temp_c")

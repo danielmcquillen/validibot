@@ -11,19 +11,19 @@ urlpatterns = [
         name="validation_library",
     ),
     path(
-        "library/fmi/new/",
-        views.FMIValidatorCreateView.as_view(),
-        name="fmi_validator_create",
+        "library/fmu/new/",
+        views.FMUValidatorCreateView.as_view(),
+        name="fmu_validator_create",
     ),
     path(
-        "library/fmi/<int:pk>/probe/",
-        views.FMIProbeStartView.as_view(),
-        name="fmi_probe_start",
+        "library/fmu/<int:pk>/probe/",
+        views.FMUProbeStartView.as_view(),
+        name="fmu_probe_start",
     ),
     path(
-        "library/fmi/<int:pk>/probe/status/",
-        views.FMIProbeStatusView.as_view(),
-        name="fmi_probe_status",
+        "library/fmu/<int:pk>/probe/status/",
+        views.FMUProbeStatusView.as_view(),
+        name="fmu_probe_status",
     ),
     path(
         "library/custom/new/",

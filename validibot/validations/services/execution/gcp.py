@@ -104,7 +104,7 @@ class GCPExecutionBackend(ExecutionBackend):
         # Check for explicit job name mapping
         job_names = {
             "energyplus": getattr(settings, "GCS_ENERGYPLUS_JOB_NAME", None),
-            "fmi": getattr(settings, "GCS_FMI_JOB_NAME", None),
+            "fmu": getattr(settings, "GCS_FMU_JOB_NAME", None),
         }
 
         if job_names.get(vtype):
@@ -141,8 +141,8 @@ class GCPExecutionBackend(ExecutionBackend):
         try:
             if validator_type == "ENERGYPLUS":
                 return self._execute_energyplus(request)
-            if validator_type == "FMI":
-                return self._execute_fmi(request)
+            if validator_type == "FMU":
+                return self._execute_fmu(request)
             return ExecutionResponse(
                 execution_id="",
                 is_complete=True,
@@ -198,14 +198,14 @@ class GCPExecutionBackend(ExecutionBackend):
             execution_bundle_uri=stats.get("execution_bundle_uri"),
         )
 
-    def _execute_fmi(self, request: ExecutionRequest) -> ExecutionResponse:
+    def _execute_fmu(self, request: ExecutionRequest) -> ExecutionResponse:
         """
         Execute FMU validation via Cloud Run.
 
         Delegates to the existing launcher function.
         """
         from validibot.validations.services.cloud_run.launcher import (
-            launch_fmi_validation,
+            launch_fmu_validation,
         )
 
         # Get ruleset if available
@@ -218,7 +218,7 @@ class GCPExecutionBackend(ExecutionBackend):
             ruleset = Ruleset.objects.filter(id=ruleset_id).first()
 
         # Launch via existing code
-        result = launch_fmi_validation(
+        result = launch_fmu_validation(
             run=request.run,
             validator=request.validator,
             submission=request.submission,

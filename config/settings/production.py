@@ -303,9 +303,9 @@ if DEPLOYMENT_TARGET == "gcp":
         "GCS_ENERGYPLUS_JOB_NAME",
         default="validibot-validator-energyplus",
     )
-    GCS_FMI_JOB_NAME = env(
-        "GCS_FMI_JOB_NAME",
-        default="validibot-validator-fmi",
+    GCS_FMU_JOB_NAME = env(
+        "GCS_FMU_JOB_NAME",
+        default="validibot-validator-fmu",
     )
 
 elif DEPLOYMENT_TARGET == "aws":

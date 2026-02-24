@@ -280,9 +280,9 @@ class TestDockerComposeExecutionBackend:
         settings.VALIDATOR_IMAGES = {}
 
         backend = DockerComposeExecutionBackend()
-        image = backend.get_container_image("fmi")
+        image = backend.get_container_image("fmu")
 
-        assert image == "gcr.io/my-project/validibot-validator-fmi:v1.0.0"
+        assert image == "gcr.io/my-project/validibot-validator-fmu:v1.0.0"
 
     def test_get_container_image_explicit_mapping(self, settings):
         """Test explicit image mapping overrides default."""

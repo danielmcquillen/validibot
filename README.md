@@ -32,7 +32,7 @@ Validibot is composed of several repositories that work together:
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
 | **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines                      | MIT      |
-| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus, FMI) that run as isolated Docker containers                           | MIT      |
+| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus, FMU) that run as isolated Docker containers                           | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 ---
@@ -66,7 +66,7 @@ These validators run directly in a Django "worker" process -- no extra infrastru
 These validators run as isolated Docker containers for complex domain-specific validation:
 
 - **EnergyPlus**: Validate IDF and epJSON building energy models
-- **FMU (FMI)**: Validate Functional Mock-up Units via OpenModelica simulation
+- **FMU**: Validate Functional Mock-up Units via OpenModelica simulation
 - **Custom**: Bring your own validator containers
 
 Validibot defines a simple container interface for advanced validators: read an input envelope, perform validation, write an output envelope. This makes it straightforward to package any validation logic as a container. See the [Container Interface Guide](https://dev.validibot.com/overview/validator_architecture/) for the full specification.

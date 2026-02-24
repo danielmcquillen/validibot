@@ -19,7 +19,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
-from validibot_shared.fmi.envelopes import FMIInputEnvelope
+from validibot_shared.fmu.envelopes import FMUInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
@@ -30,7 +30,7 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import run_validator_job
-from validibot.validations.services.fmi_bindings import resolve_input_value
+from validibot.validations.services.fmu_bindings import resolve_input_value
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
 
@@ -279,7 +279,7 @@ def launch_energyplus_validation(
         return ValidationResult(passed=False, issues=issues, stats={})
 
 
-def launch_fmi_validation(
+def launch_fmu_validation(
     *,
     run: ValidationRun,
     validator: Validator,
@@ -380,7 +380,7 @@ def launch_fmi_validation(
         callback_id = f"step-run-{current_step_run.id}"
 
         # Build envelope
-        envelope = FMIInputEnvelope(
+        envelope = FMUInputEnvelope(
             run_id=run_id,
             validator={
                 "id": str(validator.id),
@@ -425,9 +425,9 @@ def launch_fmi_validation(
             upload_envelope_local(envelope, Path(input_envelope_uri))
 
         # Trigger Cloud Run Job directly via Jobs API
-        job_name = settings.GCS_FMI_JOB_NAME
+        job_name = settings.GCS_FMU_JOB_NAME
         if not job_name:
-            msg = "GCS_FMI_JOB_NAME is not configured."
+            msg = "GCS_FMU_JOB_NAME is not configured."
             raise ValueError(msg)  # noqa: TRY301
 
         execution_name = run_validator_job(

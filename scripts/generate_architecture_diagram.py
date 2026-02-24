@@ -65,7 +65,7 @@ def create_environment(name: str, suffix: str, *, is_prod: bool = False) -> Run:
             },
         ):
             eplus = Run(f"energyplus{display_suffix}")
-            fmi = Run(f"fmi{display_suffix}")
+            fmu = Run(f"fmu{display_suffix}")
 
         # Row 4: Data layer
         db = SQL(f"validibot-db{display_suffix}\nPostgreSQL 17")
@@ -91,7 +91,7 @@ def create_environment(name: str, suffix: str, *, is_prod: bool = False) -> Run:
         web >> Edge(color=BLUE_PRIMARY) >> db
         worker >> Edge(color=BLUE_PRIMARY) >> db
         eplus >> Edge(color=BLUE_PRIMARY) >> db
-        fmi >> Edge(color=BLUE_PRIMARY) >> db
+        fmu >> Edge(color=BLUE_PRIMARY) >> db
 
         # Task queue flow (gray)
         web >> Edge(color=GRAY_DARK) >> tasks
@@ -104,7 +104,7 @@ def create_environment(name: str, suffix: str, *, is_prod: bool = False) -> Run:
         worker >> Edge(color=GREEN_SUCCESS) >> files
         web >> Edge(color=GREEN_SUCCESS) >> media
         eplus >> Edge(color=GREEN_SUCCESS) >> files
-        fmi >> Edge(color=GREEN_SUCCESS) >> files
+        fmu >> Edge(color=GREEN_SUCCESS) >> files
 
         return web
 

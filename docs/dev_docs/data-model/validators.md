@@ -75,7 +75,7 @@ rulesets referencing it, so catalog slugs stay globally unique per validator.
 ## Resource files
 
 Advanced validators may require auxiliary files to run (e.g., EnergyPlus needs EPW weather files,
-FMI validators need shared libraries). These are stored as `ValidatorResourceFile` rows linked to
+FMU validators need shared libraries). These are stored as `ValidatorResourceFile` rows linked to
 a validator via FK.
 
 Each resource file has:
@@ -132,7 +132,7 @@ the database. Version upgrades happen entirely inside code by registering new pr
 
 ## Advanced validator seed data
 
-Advanced validators (EnergyPlus, FMI, etc.) are packaged as Docker containers and have predefined
+Advanced validators (EnergyPlus, FMU, etc.) are packaged as Docker containers and have predefined
 input/output signals. These signals are defined as **seed data** in `validibot/validations/seeds/`
 and synced to the database at startup.
 

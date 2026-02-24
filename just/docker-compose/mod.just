@@ -501,7 +501,7 @@ validator-build name:
 # Build all validator images
 validators-build-all:
     just docker-compose validator-build energyplus
-    just docker-compose validator-build fmi
+    just docker-compose validator-build fmu
 
 # =============================================================================
 # Quick Reference

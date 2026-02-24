@@ -139,7 +139,7 @@ mismatches at save time rather than at runtime.
 | ENERGYPLUS | `EnergyPlusStepConfig` | `resource_file_ids`, `idf_checks`, `run_simulation`, `timestep_per_hour` |
 | AI_ASSIST | `AiAssistStepConfig` | `template`, `mode`, `cost_cap_cents`, `selectors`, `policy_rules` |
 | BASIC | `BasicStepConfig` | (empty) |
-| FMI | `FmiStepConfig` | (empty) |
+| FMU | `FmuStepConfig` | (empty) |
 | CUSTOM_VALIDATOR | `CustomValidatorStepConfig` | (empty) |
 | SLACK_MESSAGE | `SlackActionStepConfig` | `message` |
 | SIGNED_CERTIFICATE | `CertificateActionStepConfig` | `certificate_template` |

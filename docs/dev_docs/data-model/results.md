@@ -95,7 +95,7 @@ An `Artifact` is a file produced during a validation run. Common examples includ
 
 Artifact files are stored at `artifacts/org-{org_id}/runs/{run_id}/{uuid}/{filename}`.
 
-Not all validators produce artifacts. Built-in validators (JSON Schema, XML Schema, CEL) typically produce only findings. Advanced validators running in containers (EnergyPlus, FMI) produce artifacts alongside their findings.
+Not all validators produce artifacts. Built-in validators (JSON Schema, XML Schema, CEL) typically produce only findings. Advanced validators running in containers (EnergyPlus, FMU) produce artifacts alongside their findings.
 
 ---
 

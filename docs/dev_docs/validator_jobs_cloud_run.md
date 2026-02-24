@@ -12,7 +12,7 @@ We deploy one Django image as two Cloud Run services:
 - **$GCP_APP_NAME-web** (`APP_ROLE=web`): Public UI + public API.
 - **$GCP_APP_NAME-worker** (`APP_ROLE=worker`): Private/IAM-only internal API (callbacks).
 
-Validator jobs (EnergyPlus, FMI, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
+Validator jobs (EnergyPlus, FMU, etc.) run as Cloud Run Jobs and call back to the worker service using Google-signed ID tokens (audience = callback URL). No shared secrets.
 
 In environments with a custom public domain (production), `SITE_URL` points at the public domain (for example `https://validibot.com`) while `WORKER_URL` points at the worker service `*.run.app` URL. Callbacks and scheduled tasks should always target `WORKER_URL`, never `SITE_URL`.
 
@@ -33,6 +33,7 @@ sequenceDiagram
 ```
 
 IAM roles involved:
+
 - **Web/Worker service account** (`$GCP_APP_NAME-cloudrun-{stage}`): Custom `validibot_job_runner` role on the validator job so Django can call the Jobs API with overrides (for `VALIDIBOT_INPUT_URI` env var). This role includes `run.jobs.run` and `run.jobs.runWithOverrides` permissions.
 - **Validator job service account** (`$GCP_APP_NAME-validator-{stage}`): Dedicated least-privilege SA used by validator Cloud Run Jobs. Has `roles/storage.objectAdmin` on the stage bucket (read inputs, write outputs) and `roles/run.invoker` on `$GCP_APP_NAME-worker` (for callbacks). Does **not** have access to secrets, Cloud SQL, Cloud Tasks, or KMS.
 - **Worker**: private, only allows authenticated calls; rejects callbacks on web.
@@ -60,17 +61,17 @@ The launcher generates a unique `callback_id` for each job execution and puts it
 
 ## Deployment steps
 
-1) Build/push Django image (same for web/worker)
-2) Deploy web:
+1. Build/push Django image (same for web/worker)
+2. Deploy web:
    - `--allow-unauthenticated`
    - `--set-env-vars APP_ROLE=web`
-3) Deploy worker:
+3. Deploy worker:
    - `--no-allow-unauthenticated`
    - `--set-env-vars APP_ROLE=worker`
    - Set `WORKER_URL` in the stage env file to the worker service URL (see below)
    - Grant `roles/run.invoker` on `$GCP_APP_NAME-worker` to each validator job service account
 
-4) Validator jobs:
+4. Validator jobs:
    - Tag with labels: `validator=<name>,version=<git_sha>`
    - Env: `VALIDATOR_VERSION=<git_sha>`
    - Callback client mints an ID token via metadata server; Django callback view 404s on non-worker.
@@ -91,17 +92,17 @@ Then update your env file (`.envs/.production/.google-cloud/.django`), run `just
 
 Validator containers can be deployed using either justfile. Both are equivalent and kept in sync:
 
-| Location | Command | Notes |
-|----------|---------|-------|
-| `validibot/` | `just gcp validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
-| `validibot_validators/` | `just deploy energyplus dev` | Native repo, shorter command |
+| Location                | Command                                    | Notes                                       |
+| ----------------------- | ------------------------------------------ | ------------------------------------------- |
+| `validibot/`            | `just gcp validator-deploy energyplus dev` | Uses symlink to `validibot_validators_dev/` |
+| `validibot_validators/` | `just deploy energyplus dev`               | Native repo, shorter command                |
 
 ### Quick deploy
 
 ```bash
 # From validibot_validators directory
 just deploy energyplus dev      # Deploy EnergyPlus to dev
-just deploy fmi prod            # Deploy FMI to prod
+just deploy fmu prod            # Deploy FMU to prod
 just deploy-all dev             # Deploy all validators to dev
 
 # From validibot directory
@@ -148,7 +149,7 @@ Validator containers are **stage-agnostic**: the same container image is deploye
 
 Nothing stage-specific. The container includes:
 
-- EnergyPlus binary (or FMU runtime for FMI)
+- EnergyPlus binary (or FMU runtime)
 - Python dependencies
 - Validator code
 
@@ -156,12 +157,12 @@ Nothing stage-specific. The container includes:
 
 When Django triggers a validator Cloud Run Job execution, it passes:
 
-| Source | Data | Example |
-|--------|------|---------|
-| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/input.json` |
-| Input envelope | `context.callback_url` | `https://$GCP_APP_NAME-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
-| Input envelope | `context.execution_bundle_uri` | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/` |
-| Input envelope | Input file URIs (IDF, EPW, etc.) | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/model.idf` |
+| Source                        | Data                             | Example                                                                     |
+| ----------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
+| `VALIDIBOT_INPUT_URI` env var | GCS path to input envelope       | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/input.json`             |
+| Input envelope                | `context.callback_url`           | `https://$GCP_APP_NAME-worker-dev-xxx.run.app/api/v1/validation-callbacks/` |
+| Input envelope                | `context.execution_bundle_uri`   | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/`                       |
+| Input envelope                | Input file URIs (IDF, EPW, etc.) | `gs://$GCP_APP_NAME-storage-dev/private/runs/run456/model.idf`              |
 
 The validator reads the input envelope, downloads files from the provided GCS URIs, runs the simulation, uploads outputs to the execution bundle URI, and POSTs results to the callback URL.
 
@@ -230,6 +231,7 @@ sequenceDiagram
 ```
 
 Key differences from GCP mode:
+
 - **Synchronous execution**: Worker blocks until container exits
 - **Local filesystem**: Uses `file://` URIs instead of `gs://`
 - **No callbacks**: Results are read directly from storage after container exits
@@ -263,23 +265,23 @@ DATA_STORAGE_ROOT = "/app/storage/private"
 
 All runners pass these standardized environment variables to containers:
 
-| Variable | Description |
-|----------|-------------|
-| `VALIDIBOT_INPUT_URI` | URI to input envelope (`file://` or `gs://`) |
+| Variable               | Description                                    |
+| ---------------------- | ---------------------------------------------- |
+| `VALIDIBOT_INPUT_URI`  | URI to input envelope (`file://` or `gs://`)   |
 | `VALIDIBOT_OUTPUT_URI` | URI for output envelope (`file://` or `gs://`) |
-| `VALIDIBOT_RUN_ID` | Validation run ID (for logging and labeling) |
+| `VALIDIBOT_RUN_ID`     | Validation run ID (for logging and labeling)   |
 
 ### Building Containers for Docker Compose
 
 ```bash
 # From validibot_validators directory
 just build energyplus
-just build fmi
+just build fmu
 just build-all
 
 # Images are available locally as:
 # $GCP_APP_NAME-validator-energyplus:latest
-# $GCP_APP_NAME-validator-fmi:latest
+# $GCP_APP_NAME-validator-fmu:latest
 ```
 
 ### Docker Compose Configuration
@@ -289,7 +291,7 @@ For local development with Docker Compose:
 ```yaml
 # docker-compose.local.yml
 volumes:
-  validibot_local_storage:  # Shared storage for validation files
+  validibot_local_storage: # Shared storage for validation files
 
 services:
   django:
@@ -323,7 +325,7 @@ Enable advanced validators by listing container images in settings:
 
 ```bash
 # Environment variable
-ADVANCED_VALIDATOR_IMAGES=ghcr.io/validibot/energyplus:24.2.0,ghcr.io/validibot/fmi:0.9.0
+ADVANCED_VALIDATOR_IMAGES=ghcr.io/validibot/energyplus:24.2.0,ghcr.io/validibot/fmu:0.9.0
 ```
 
 Then sync validators from container metadata:
@@ -348,13 +350,13 @@ The command reads metadata from Docker labels (`org.validibot.validator.metadata
 
 The Docker runner labels all spawned containers for robust cleanup:
 
-| Label | Purpose |
-|-------|---------|
-| `org.validibot.managed` | Identifies Validibot containers |
-| `org.validibot.run_id` | Validation run ID |
-| `org.validibot.validator` | Validator slug |
-| `org.validibot.started_at` | ISO timestamp |
-| `org.validibot.timeout_seconds` | Configured timeout |
+| Label                           | Purpose                         |
+| ------------------------------- | ------------------------------- |
+| `org.validibot.managed`         | Identifies Validibot containers |
+| `org.validibot.run_id`          | Validation run ID               |
+| `org.validibot.validator`       | Validator slug                  |
+| `org.validibot.started_at`      | ISO timestamp                   |
+| `org.validibot.timeout_seconds` | Configured timeout              |
 
 Cleanup strategies:
 

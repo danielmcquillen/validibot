@@ -7,14 +7,14 @@ from validibot.users.constants import RoleCode
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
-from validibot.validations.services.fmi import create_fmi_validator
+from validibot.validations.services.fmu import create_fmu_validator
 from validibot.validations.tests.test_fmu_validator import _fake_fmu  # reuse helper
 from validibot.validations.tests.test_fmu_validator import (
     _prime_modal_cache_fake,
 )  # reuse helper
 
 
-class FMIProbeViewTests(TestCase):
+class FMUProbeViewTests(TestCase):
     """Exercise the HTMX probe start/status endpoints."""
 
     def setUp(self):
@@ -24,7 +24,7 @@ class FMIProbeViewTests(TestCase):
         self.client.force_login(self.user)
         self.user.set_current_org(self.org)
         _prime_modal_cache_fake()
-        self.validator = create_fmi_validator(
+        self.validator = create_fmu_validator(
             org=self.org,
             project=None,
             name="Probe Validator",
@@ -32,7 +32,7 @@ class FMIProbeViewTests(TestCase):
         )
 
     def test_probe_start_returns_queue_status(self):
-        url = reverse("validations:fmi_probe_start", args=[self.validator.pk])
+        url = reverse("validations:fmu_probe_start", args=[self.validator.pk])
         response = self.client.post(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -40,7 +40,7 @@ class FMIProbeViewTests(TestCase):
         self.assertIn(data["status"], {"RUNNING", "SUCCEEDED", "FAILED"})
 
     def test_probe_status_returns_data(self):
-        url = reverse("validations:fmi_probe_status", args=[self.validator.pk])
+        url = reverse("validations:fmu_probe_status", args=[self.validator.pk])
         response = self.client.get(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
         data = response.json()

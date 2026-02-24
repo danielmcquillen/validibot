@@ -113,7 +113,7 @@ If the **Testing** panel hangs, double-check:
 
 ## Advanced validators
 
-The worker container spawns advanced validator containers (EnergyPlus, FMI, etc.) via the Docker socket. This requires:
+The worker container spawns advanced validator containers (EnergyPlus, FMU, etc.) via the Docker socket. This requires:
 
 1. **Docker socket mounted** — Already configured in the compose files
 2. **Correct volume names** — The compose files assume `COMPOSE_PROJECT_NAME=validibot`

@@ -19,7 +19,7 @@ Validibot is available under a dual license:
 
 Everything functional. The Community edition includes:
 
-- All validators (Basic, JSON Schema, XML Schema, AI, EnergyPlus, FMI)
+- All validators (Basic, JSON Schema, XML Schema, AI, EnergyPlus, FMU)
 - Full API access
 - CLI tool (validibot-cli)
 - Workflows and submissions

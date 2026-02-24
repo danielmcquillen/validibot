@@ -8,10 +8,10 @@ validator metadata itself.
 
 from validibot.validations.constants import ValidationType
 
-FMI_SEED = {
+FMU_SEED = {
     "validator": {
-        "slug": "fmi-fmu-validator",
-        "name": "FMI/FMU Validation",
+        "slug": "fmu-validator",
+        "name": "FMU Validation",
         "description": "Validate and simulate Functional Mock-up Units (FMUs).",
         "validation_type": ValidationType.FMU,
         "version": "1.0",

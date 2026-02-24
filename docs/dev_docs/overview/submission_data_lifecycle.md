@@ -1,6 +1,6 @@
 # Submission Data in Advanced Validators
 
-When an advanced validator (EnergyPlus, FMI) runs, the submission content needs to travel from the database into a container that can't access Django. This document explains how that works, how the data gets cleaned up afterwards, and the tradeoffs behind the current approach.
+When an advanced validator (EnergyPlus, FMU) runs, the submission content needs to travel from the database into a container that can't access Django. This document explains how that works, how the data gets cleaned up afterwards, and the tradeoffs behind the current approach.
 
 For container interface details, see [Advanced Validator Interface](validator_architecture.md). For backend infrastructure, see [Execution Backends](execution_backends.md). For retention policies, see [Submissions (Data Model)](../data-model/submissions.md).
 
@@ -15,7 +15,7 @@ runs/{org_id}/{run_id}/
 └── output.json          # Written by the container after execution
 ```
 
-The submission file name and format depend on the validator type. For example, an EnergyPlus run might contain `model.epjson` or `model.idf`, while an FMI run references the FMU model via URI in the envelope rather than copying it into the bundle. Each validator's launcher determines what gets written here.
+The submission file name and format depend on the validator type. For example, an EnergyPlus run might contain `model.epjson` or `model.idf`, while an FMU run references the FMU model via URI in the envelope rather than copying it into the bundle. Each validator's launcher determines what gets written here.
 
 The bundle path uses the org ID prefix for multi-tenant isolation. Both Docker Compose (`file://`) and GCP (`gs://`) backends follow this same structure.
 

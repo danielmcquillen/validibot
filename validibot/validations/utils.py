@@ -104,7 +104,7 @@ def create_default_validators():
         },
         {
             "name": _("FMU Validator"),
-            "slug": "fmi-validator",
+            "slug": "fmu-validator",
             "short_description": _(
                 "Run FMUs and assert against inputs and outputs.",
             ),

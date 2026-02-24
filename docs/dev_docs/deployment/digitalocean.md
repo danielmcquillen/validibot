@@ -13,36 +13,36 @@ We'll deploy:
 
 ## Sizing Your Droplet
 
-Choosing the right Droplet size depends on whether you'll run advanced validators (EnergyPlus, FMI) or only use built-in validators (JSON Schema, XML Schema, Basic).
+Choosing the right Droplet size depends on whether you'll run advanced validators (EnergyPlus, FMU) or only use built-in validators (JSON Schema, XML Schema, Basic).
 
 ### Memory Requirements
 
 The base Validibot stack requires approximately:
 
-| Component | Idle Memory | Peak Memory |
-|-----------|-------------|-------------|
-| Django (Gunicorn, 2 workers) | ~150-200MB | ~400MB |
-| Celery Worker | ~150MB | ~300MB |
-| Celery Beat | ~80MB | ~100MB |
-| PostgreSQL | ~100MB | ~300MB |
-| Redis | ~50MB | ~100MB |
-| Caddy | ~20MB | ~50MB |
-| OS + Docker overhead | ~300MB | ~400MB |
-| **Total (base stack)** | **~850MB** | **~1.65GB** |
+| Component                    | Idle Memory | Peak Memory |
+| ---------------------------- | ----------- | ----------- |
+| Django (Gunicorn, 2 workers) | ~150-200MB  | ~400MB      |
+| Celery Worker                | ~150MB      | ~300MB      |
+| Celery Beat                  | ~80MB       | ~100MB      |
+| PostgreSQL                   | ~100MB      | ~300MB      |
+| Redis                        | ~50MB       | ~100MB      |
+| Caddy                        | ~20MB       | ~50MB       |
+| OS + Docker overhead         | ~300MB      | ~400MB      |
+| **Total (base stack)**       | **~850MB**  | **~1.65GB** |
 
 Advanced validators like EnergyPlus can consume **2-4GB RAM** per simulation depending on model complexity. Running them on an undersized Droplet will OOM-kill other services.
 
 ### Recommended Droplet Sizes
 
-| Use Case | Droplet | Monthly Cost | Notes |
-|----------|---------|--------------|-------|
-| Built-in validators only | 2GB / 1 vCPU | $12 | JSON, XML, Basic validators |
-| Occasional advanced validators | 4GB / 2 vCPU | $24 | Add swap; may queue during heavy use |
-| Regular advanced validator usage | 8GB / 4 vCPU | $48 | Recommended for production |
-| High-volume production | 16GB / 8 vCPU | $96 | Multiple concurrent validations |
+| Use Case                         | Droplet       | Monthly Cost | Notes                                |
+| -------------------------------- | ------------- | ------------ | ------------------------------------ |
+| Built-in validators only         | 2GB / 1 vCPU  | $12          | JSON, XML, Basic validators          |
+| Occasional advanced validators   | 4GB / 2 vCPU  | $24          | Add swap; may queue during heavy use |
+| Regular advanced validator usage | 8GB / 4 vCPU  | $48          | Recommended for production           |
+| High-volume production           | 16GB / 8 vCPU | $96          | Multiple concurrent validations      |
 
 !!! warning "Don't undersize for advanced validators"
-    If you plan to run EnergyPlus or FMI validations, start with at least a 4GB Droplet. A 2GB Droplet running the base stack leaves only ~350MB headroom—not enough for even a small EnergyPlus simulation.
+If you plan to run EnergyPlus or FMU validations, start with at least a 4GB Droplet. A 2GB Droplet running the base stack leaves only ~350MB headroom—not enough for even a small EnergyPlus simulation.
 
 ### Alternative: Split Architecture
 
@@ -424,14 +424,14 @@ Spaces provides S3-compatible object storage for uploaded files:
 
 ### Using advanced validators
 
-Advanced validators (EnergyPlus, FMI, etc.) run as separate Docker containers spawned by the worker. To use them:
+Advanced validators (EnergyPlus, FMU, etc.) run as separate Docker containers spawned by the worker. To use them:
 
 1. **Pre-pull validator images:**
 
    ```bash
    # Pull the validators you need
    docker pull ghcr.io/your-org/your-app-validator-energyplus:latest
-   docker pull ghcr.io/your-org/your-app-validator-fmi:latest
+   docker pull ghcr.io/your-org/your-app-validator-fmu:latest
    ```
 
 2. **For private registries**, configure Docker credentials on the Droplet:
@@ -564,22 +564,22 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 ## Cost Summary
 
-| Configuration | Components | Monthly Cost |
-|---------------|------------|--------------|
-| **Minimal (built-in validators)** | 2GB Droplet | $12 |
-| **Small (occasional advanced)** | 4GB Droplet + swap | $24 |
-| **Recommended (regular advanced)** | 8GB Droplet | $48 |
-| **Split architecture** | 2GB Droplet + Managed PostgreSQL | $27 |
-| **Production** | 8GB Droplet + Managed PostgreSQL + Spaces | $68+ |
+| Configuration                      | Components                                | Monthly Cost |
+| ---------------------------------- | ----------------------------------------- | ------------ |
+| **Minimal (built-in validators)**  | 2GB Droplet                               | $12          |
+| **Small (occasional advanced)**    | 4GB Droplet + swap                        | $24          |
+| **Recommended (regular advanced)** | 8GB Droplet                               | $48          |
+| **Split architecture**             | 2GB Droplet + Managed PostgreSQL          | $27          |
+| **Production**                     | 8GB Droplet + Managed PostgreSQL + Spaces | $68+         |
 
 Optional add-ons:
 
-| Component | Monthly Cost |
-|-----------|--------------|
-| Managed PostgreSQL (Basic) | $15 |
-| Managed PostgreSQL (with standby) | $30 |
-| Spaces (250GB + CDN) | $5 |
-| Load Balancer | $12 |
+| Component                         | Monthly Cost |
+| --------------------------------- | ------------ |
+| Managed PostgreSQL (Basic)        | $15          |
+| Managed PostgreSQL (with standby) | $30          |
+| Spaces (250GB + CDN)              | $5           |
+| Load Balancer                     | $12          |
 
 ## Next Steps
 

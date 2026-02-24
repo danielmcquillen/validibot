@@ -1,7 +1,7 @@
 Validibot uses Common Expression Language (CEL) for advanced assertions. CEL is a simple, safe expression syntax for writing small, fast, readable conditions and rules over your data.
 
 You can use CEL to perform simple assertion logic on your incoming data,
-or data produced by your validator (e.g. after FMI Validator runs a submission through a simulation and produces output).
+or data produced by your validator (e.g. after FMU Validator runs a submission through a simulation and produces output).
 Whenever you add an assertion to your workflow step, you can base it on a CEL expression.
 
 When the user submits data, each assertion runs. If the assertion has a CEL, and the CEL evaluates to false, the error message you provided in the
@@ -22,7 +22,7 @@ Therefore, the names available for a CEL expression are determined by the signal
 Yes, it's true, you can use the Validibot JSON Schema validator or XML Schema validator for your workflow steps. In this case you don't
 define individual rules, you just create one big schema and attach it to your validator. Schemas are great for structure: making sure fields exist, have the right type, follow enums, match patterns, etc. They’re the first line of defense for data integrity.
 
-CEL expressions, on the other hand, handle the behavioural and cross-field rules for data that schemas either can’t express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMI Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They’re complementary, not competing.
+CEL expressions, on the other hand, handle the behavioural and cross-field rules for data that schemas either can’t express cleanly or make horribly verbose — things like numeric relationships between fields, tolerances, conditional requirements, or checks on simulation outputs from an FMU Validator. In Validibot, schemas define "what the data looks like"; CEL assertions define "what must be true about this data for it to be acceptable." They’re complementary, not competing.
 
 You could create a workflow that has both a JSON schema validation and then some assertions that use detailed CEL expressions.
 

@@ -494,13 +494,13 @@ class EnergyPlusValidatorE2ETest(TestCase):
         logger.info("TEST PASSED: test_energyplus_error_messages_extracted")
 
 
-class FMIValidatorE2ETest(TestCase):
+class FMUValidatorE2ETest(TestCase):
     """
-    End-to-end FMI validator via Cloud Run Job.
+    End-to-end FMU validator via Cloud Run Job.
 
     This test uploads a Feedthrough FMU (standard FMI test model that passes
-    inputs to outputs), triggers the FMI validator Cloud Run Job, waits for
-    the output, and asserts the envelope shape matches the FMI contract.
+    inputs to outputs), triggers the FMU validator Cloud Run Job, waits for
+    the output, and asserts the envelope shape matches the FMU contract.
 
     The Feedthrough FMU is a simple FMI 2.0 Co-Simulation model commonly used
     for FMI compliance testing. It has input variables that are passed through
@@ -509,10 +509,10 @@ class FMIValidatorE2ETest(TestCase):
     Prerequisites:
     - GCP_PROJECT_ID environment variable set
     - GCS_VALIDATION_BUCKET environment variable set
-    - GCS_FMI_JOB_NAME environment variable set
+    - GCS_FMU_JOB_NAME environment variable set
     - GCP_REGION environment variable set
     - Valid GCP credentials
-    - FMI Cloud Run Job deployed and ready
+    - FMU Cloud Run Job deployed and ready
     """
 
     @classmethod
@@ -524,27 +524,27 @@ class FMIValidatorE2ETest(TestCase):
     def _check_prerequisites(cls) -> None:
         """Verify GCP settings needed for the test are present."""
         logger.info("=" * 60)
-        logger.info("FMI E2E TEST: Checking prerequisites")
+        logger.info("FMU E2E TEST: Checking prerequisites")
         logger.info("=" * 60)
 
         required_settings = [
             "GCP_PROJECT_ID",
             "GCS_VALIDATION_BUCKET",
-            "GCS_FMI_JOB_NAME",
+            "GCS_FMU_JOB_NAME",
             "GCP_REGION",
         ]
         missing = [s for s in required_settings if not getattr(settings, s, None)]
         if missing:
-            logger.warning("FMI E2E skipped: missing settings %s", missing)
+            logger.warning("FMU E2E skipped: missing settings %s", missing)
             raise cls.skipTest(
                 cls,
-                f"FMI E2E skipped: missing settings {missing}",
+                f"FMU E2E skipped: missing settings {missing}",
             )
 
         # Log the settings we're using
         logger.info("GCP_PROJECT_ID: %s", settings.GCP_PROJECT_ID)
         logger.info("GCS_VALIDATION_BUCKET: %s", settings.GCS_VALIDATION_BUCKET)
-        logger.info("GCS_FMI_JOB_NAME: %s", settings.GCS_FMI_JOB_NAME)
+        logger.info("GCS_FMU_JOB_NAME: %s", settings.GCS_FMU_JOB_NAME)
         logger.info("GCP_REGION: %s", settings.GCP_REGION)
 
         try:
@@ -553,10 +553,10 @@ class FMIValidatorE2ETest(TestCase):
             credentials, project = default()
             logger.info("GCP credentials: OK (project=%s)", project)
         except Exception as exc:
-            logger.warning("FMI E2E skipped: GCP credentials not configured: %s", exc)
+            logger.warning("FMU E2E skipped: GCP credentials not configured: %s", exc)
             raise cls.skipTest(
                 cls,
-                f"FMI E2E skipped: GCP credentials not configured: {exc}",
+                f"FMU E2E skipped: GCP credentials not configured: {exc}",
             ) from None
 
         # Verify the Feedthrough.fmu test asset exists
@@ -566,17 +566,17 @@ class FMIValidatorE2ETest(TestCase):
             Path(settings.BASE_DIR) / "tests" / "assets" / "fmu" / "Feedthrough.fmu"
         )
         if not fmu_path.exists():
-            logger.warning("FMI E2E skipped: test FMU not found at %s", fmu_path)
+            logger.warning("FMU E2E skipped: test FMU not found at %s", fmu_path)
             raise cls.skipTest(
                 cls,
-                f"FMI E2E skipped: test FMU not found at {fmu_path}",
+                f"FMU E2E skipped: test FMU not found at {fmu_path}",
             )
         logger.info("Test FMU found: %s (%d bytes)", fmu_path, fmu_path.stat().st_size)
         logger.info("Prerequisites check: PASSED")
 
     def setUp(self) -> None:
         super().setUp()
-        self.test_run_id = f"test-fmi-{uuid.uuid4()}"
+        self.test_run_id = f"test-fmu-{uuid.uuid4()}"
         self.test_org_id = "test-org"
         logger.info("-" * 60)
         logger.info("Test run_id: %s", self.test_run_id)
@@ -708,33 +708,33 @@ class FMIValidatorE2ETest(TestCase):
         logger.info("%s:", label)
         logger.info(json.dumps(envelope, indent=2, default=str))
 
-    def test_fmi_envelope_shape(self) -> None:
+    def test_fmu_envelope_shape(self) -> None:
         """
-        FMI validator result envelope should match FMI schema.
+        FMU validator result envelope should match FMU schema.
 
         This test:
         1. Uploads the Feedthrough.fmu test model to GCS
-        2. Creates an FMI input envelope with simulation config
-        3. Triggers the FMI Cloud Run Job
+        2. Creates an FMU input envelope with simulation config
+        3. Triggers the FMU Cloud Run Job
         4. Polls for the output envelope
-        5. Validates the output structure matches FMIOutputEnvelope
+        5. Validates the output structure matches FMUOutputEnvelope
         """
         logger.info("=" * 60)
-        logger.info("TEST: test_fmi_envelope_shape")
+        logger.info("TEST: test_fmu_envelope_shape")
         logger.info("=" * 60)
 
         # Upload the test FMU
         logger.info("Step 1: Uploading test FMU to GCS")
         fmu_uri = self._upload_fmu_to_gcs()
 
-        # Build FMI input envelope matching FMIInputEnvelope schema
+        # Build FMU input envelope matching FMUInputEnvelope schema
         logger.info("Step 2: Building input envelope")
         envelope = {
             "schema_version": "validibot.input.v1",
             "run_id": self.test_run_id,
             "validator": {
-                "id": "test-fmi-validator",
-                "type": "FMI",
+                "id": "test-fmu-validator",
+                "type": "FMU",
                 "version": "1.0.0",
             },
             "org": {
@@ -744,7 +744,7 @@ class FMIValidatorE2ETest(TestCase):
             "workflow": {
                 "id": "test-workflow",
                 "step_id": "test-step",
-                "step_name": "Test FMI Step",
+                "step_name": "Test FMU Step",
             },
             "input_files": [
                 {
@@ -781,16 +781,16 @@ class FMIValidatorE2ETest(TestCase):
         )
         logger.info("Input URI: %s", input_uri)
 
-        # Trigger the FMI Cloud Run Job
-        logger.info("Step 4: Triggering FMI Cloud Run Job")
+        # Trigger the FMU Cloud Run Job
+        logger.info("Step 4: Triggering FMU Cloud Run Job")
         logger.info("  Project: %s", settings.GCP_PROJECT_ID)
         logger.info("  Region: %s", settings.GCP_REGION)
-        logger.info("  Job name: %s", settings.GCS_FMI_JOB_NAME)
+        logger.info("  Job name: %s", settings.GCS_FMU_JOB_NAME)
 
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_FMI_JOB_NAME,
+            job_name=settings.GCS_FMU_JOB_NAME,
             input_uri=input_uri,
         )
         logger.info("Execution started: %s", execution_name)
@@ -802,7 +802,7 @@ class FMIValidatorE2ETest(TestCase):
         if output is None:
             logger.error("FAILED: Output envelope not found within timeout")
             self.skipTest(
-                "FMI output not found within timeout; skipping E2E assertion.",
+                "FMU output not found within timeout; skipping E2E assertion.",
             )
 
         self._log_envelope("OUTPUT ENVELOPE", output)
@@ -826,7 +826,7 @@ class FMIValidatorE2ETest(TestCase):
         logger.info("  validator.type: %s", validator_type)
         self.assertEqual(
             validator_type,
-            "fmi",
+            "fmu",
             f"validator.type mismatch: {validator_type}",
         )
 
@@ -859,7 +859,7 @@ class FMIValidatorE2ETest(TestCase):
 
         # If successful, validate FMI-specific outputs
         if status == "success":
-            logger.info("  Validating FMI-specific outputs (status=success)")
+            logger.info("  Validating FMU-specific outputs (status=success)")
             outputs = output.get("outputs")
             self.assertIsNotNone(outputs, "outputs should be present on success")
 
@@ -892,7 +892,7 @@ class FMIValidatorE2ETest(TestCase):
             self.assertIn("output_values", outputs)
             self.assertIsInstance(output_values, dict)
 
-            logger.info("TEST PASSED: test_fmi_envelope_shape")
+            logger.info("TEST PASSED: test_fmu_envelope_shape")
         else:
             logger.warning(
                 "Job did not succeed (status=%s), skipping output validation",
@@ -902,15 +902,15 @@ class FMIValidatorE2ETest(TestCase):
             if "outputs" in output:
                 logger.info("  outputs (partial): %s", output.get("outputs"))
 
-    def test_fmi_with_input_values(self) -> None:
+    def test_fmu_with_input_values(self) -> None:
         """
-        Test FMI simulation with explicit input values.
+        Test FMU simulation with explicit input values.
 
         The Feedthrough FMU passes inputs to outputs, so this tests that
         input values are properly passed through the envelope and processed.
         """
         logger.info("=" * 60)
-        logger.info("TEST: test_fmi_with_input_values")
+        logger.info("TEST: test_fmu_with_input_values")
         logger.info("=" * 60)
 
         # Upload FMU
@@ -918,7 +918,7 @@ class FMIValidatorE2ETest(TestCase):
         fmu_uri = self._upload_fmu_to_gcs()
 
         # Use a different run_id to avoid conflicts
-        run_id = f"test-fmi-inputs-{uuid.uuid4()}"
+        run_id = f"test-fmu-inputs-{uuid.uuid4()}"
         logger.info("Using separate run_id for this test: %s", run_id)
 
         logger.info("Step 2: Building input envelope with explicit input values")
@@ -926,8 +926,8 @@ class FMIValidatorE2ETest(TestCase):
             "schema_version": "validibot.input.v1",
             "run_id": run_id,
             "validator": {
-                "id": "test-fmi-validator",
-                "type": "FMI",
+                "id": "test-fmu-validator",
+                "type": "FMU",
                 "version": "1.0.0",
             },
             "org": {
@@ -937,7 +937,7 @@ class FMIValidatorE2ETest(TestCase):
             "workflow": {
                 "id": "test-workflow",
                 "step_id": "test-step",
-                "step_name": "Test FMI Step with Inputs",
+                "step_name": "Test FMU Step with Inputs",
             },
             "input_files": [
                 {
@@ -979,11 +979,11 @@ class FMIValidatorE2ETest(TestCase):
         )
         logger.info("Input URI: %s", input_uri)
 
-        logger.info("Step 4: Triggering FMI Cloud Run Job")
+        logger.info("Step 4: Triggering FMU Cloud Run Job")
         execution_name = run_validator_job(
             project_id=settings.GCP_PROJECT_ID,
             region=settings.GCP_REGION,
-            job_name=settings.GCS_FMI_JOB_NAME,
+            job_name=settings.GCS_FMU_JOB_NAME,
             input_uri=input_uri,
         )
         logger.info("Execution started: %s", execution_name)
@@ -1008,7 +1008,7 @@ class FMIValidatorE2ETest(TestCase):
 
         if output is None:
             logger.error("FAILED: Output envelope not found within timeout")
-            self.skipTest("FMI with inputs output not found within timeout.")
+            self.skipTest("FMU with inputs output not found within timeout.")
 
         self._log_envelope("OUTPUT ENVELOPE", output)
 
@@ -1037,21 +1037,21 @@ class FMIValidatorE2ETest(TestCase):
             output_values = outputs.get("output_values", {})
             logger.info("  output_values: %s", output_values)
 
-            logger.info("TEST PASSED: test_fmi_with_input_values")
+            logger.info("TEST PASSED: test_fmu_with_input_values")
         else:
             logger.warning("Job did not succeed (status=%s)", status)
             if "outputs" in output:
                 logger.info("  outputs: %s", output.get("outputs"))
 
-    def test_fmi_gcs_connectivity(self) -> None:
+    def test_fmu_gcs_connectivity(self) -> None:
         """
-        Test that we can connect to GCS and the FMI job exists.
+        Test that we can connect to GCS and the FMU job exists.
 
         This is a basic smoke test to verify GCP configuration works
         before running the full simulation tests.
         """
         logger.info("=" * 60)
-        logger.info("TEST: test_fmi_gcs_connectivity")
+        logger.info("TEST: test_fmu_gcs_connectivity")
         logger.info("=" * 60)
 
         from google.cloud import storage
@@ -1071,11 +1071,11 @@ class FMIValidatorE2ETest(TestCase):
             f"Bucket {settings.GCS_VALIDATION_BUCKET} not accessible",
         )
 
-        # Test that FMI job exists by checking its name is configured
-        logger.info("Step 2: Checking FMI job configuration")
-        job_name = settings.GCS_FMI_JOB_NAME
-        logger.info("  GCS_FMI_JOB_NAME: %s", job_name)
-        self.assertTrue(job_name, "GCS_FMI_JOB_NAME should be configured")
+        # Test that FMU job exists by checking its name is configured
+        logger.info("Step 2: Checking FMU job configuration")
+        job_name = settings.GCS_FMU_JOB_NAME
+        logger.info("  GCS_FMU_JOB_NAME: %s", job_name)
+        self.assertTrue(job_name, "GCS_FMU_JOB_NAME should be configured")
 
         # Test that we can upload the FMU
         logger.info("Step 3: Testing FMU upload")
@@ -1083,4 +1083,4 @@ class FMIValidatorE2ETest(TestCase):
         logger.info("  Uploaded to: %s", fmu_uri)
         self.assertTrue(fmu_uri.startswith("gs://"), "FMU should upload to GCS")
 
-        logger.info("TEST PASSED: test_fmi_gcs_connectivity")
+        logger.info("TEST PASSED: test_fmu_gcs_connectivity")

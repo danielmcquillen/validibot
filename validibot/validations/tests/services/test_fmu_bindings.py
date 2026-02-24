@@ -2,7 +2,7 @@
 Tests for FMU binding resolution helpers.
 """
 
-from validibot.validations.services.fmi_bindings import resolve_input_value
+from validibot.validations.services.fmu_bindings import resolve_input_value
 
 
 def test_resolve_input_value_dotted_path():

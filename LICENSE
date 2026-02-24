@@ -77,7 +77,7 @@ multi-tenant SaaS for external customers), you need a separate OEM/Embedded
 license. Contact licensing@mcquilleninteractive.com for details.
 
 **Note**: The Community edition includes ALL validators (including advanced validators
-like EnergyPlus and FMI) and can be used with the CLI anywhere, including CI/CD
+like EnergyPlus and FMU) and can be used with the CLI anywhere, including CI/CD
 pipelines. Commercial tiers are primarily about removing AGPL obligations and
 accessing team/organization features.
 

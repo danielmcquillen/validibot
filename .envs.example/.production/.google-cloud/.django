@@ -86,7 +86,7 @@ CLOUD_TASKS_SERVICE_ACCOUNT=your-app-name-cloudrun-prod@your-project.iam.gservic
 GCS_VALIDATION_BUCKET=your-app-name-storage
 GCS_WEATHER_DATA_DIR=weather_data
 GCS_ENERGYPLUS_JOB_NAME=your-app-name-validator-energyplus
-GCS_FMI_JOB_NAME=your-app-name-validator-fmi
+GCS_FMU_JOB_NAME=your-app-name-validator-fmu
 
 # FEATURE TOGGLES
 # ==============================================================================

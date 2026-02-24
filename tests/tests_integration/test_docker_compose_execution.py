@@ -2,7 +2,7 @@
 Docker Compose execution backend integration tests.
 
 These tests verify the complete execution flow for Docker Compose deployments
-using Docker containers for advanced validators (EnergyPlus, FMI).
+using Docker containers for advanced validators (EnergyPlus, FMU).
 
 ## Test Categories
 
@@ -10,7 +10,7 @@ using Docker containers for advanced validators (EnergyPlus, FMI).
    - Run in-process, no Docker required
    - Test via normal workflow execution
 
-2. **Advanced validators (EnergyPlus, FMI)**
+2. **Advanced validators (EnergyPlus, FMU)**
    - Run in Docker containers via DockerComposeExecutionBackend
    - Requires Docker daemon and validator images
 
@@ -20,7 +20,7 @@ For Docker-based tests:
 - Docker daemon running
 - Validator images available locally:
   - `validibot-validator-energyplus:latest`
-  - `validibot-validator-fmi:latest`
+  - `validibot-validator-fmu:latest`
 
 ## Running These Tests
 
@@ -111,23 +111,23 @@ skip_if_no_energyplus_image = pytest.mark.skipif(
 )
 
 
-def fmi_image_available() -> bool:
-    """Check if the FMI validator image is available."""
+def fmu_image_available() -> bool:
+    """Check if the FMU validator image is available."""
     if not docker_available():
         return False
     try:
         import docker
 
         client = docker.from_env()
-        images = client.images.list(name="validibot-validator-fmi")
+        images = client.images.list(name="validibot-validator-fmu")
         return len(images) > 0
     except Exception:
         return False
 
 
-skip_if_no_fmi_image = pytest.mark.skipif(
-    not fmi_image_available(),
-    reason="FMI validator image not available",
+skip_if_no_fmu_image = pytest.mark.skipif(
+    not fmu_image_available(),
+    reason="FMU validator image not available",
 )
 
 
@@ -440,7 +440,7 @@ class TestDockerEnergyPlusExecution:
 
 
 # =============================================================================
-# FMI Docker-Based Validator Tests
+# FMU Docker-Based Validator Tests
 # =============================================================================
 
 
@@ -454,15 +454,15 @@ def load_fmu_asset() -> bytes:
 
 @pytest.mark.django_db(transaction=True)
 @skip_if_no_docker
-@skip_if_no_fmi_image
-class TestDockerFMIExecution:
+@skip_if_no_fmu_image
+class TestDockerFMUExecution:
     """
-    Tests for FMI (Functional Mock-up Interface) validation via Docker containers.
+    Tests for FMU (Functional Mock-up Unit) validation via Docker containers.
 
     These tests verify the DockerComposeExecutionBackend correctly:
-    1. Creates an FMI validator with an attached FMU file
+    1. Creates an FMU validator with an attached FMU file
     2. Uploads input envelope with FMU URI to local storage
-    3. Runs the FMI Docker container
+    3. Runs the FMU Docker container
     4. Reads the output envelope
     5. Returns simulation results to the workflow
     """
@@ -482,14 +482,14 @@ class TestDockerFMIExecution:
         clear_backend_cache()
 
     @pytest.fixture
-    def fmi_workflow(self, api_client, setup_local_storage):
-        """Create a workflow with an FMI validator using the Feedthrough FMU."""
+    def fmu_workflow(self, api_client, setup_local_storage):
+        """Create a workflow with an FMU validator using the Feedthrough FMU."""
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         from validibot.submissions.constants import SubmissionFileType
         from validibot.validations.constants import RulesetType
         from validibot.validations.models import Ruleset
-        from validibot.validations.services.fmi import create_fmi_validator
+        from validibot.validations.services.fmu import create_fmu_validator
 
         org = OrganizationFactory()
         user = UserFactory(orgs=[org])
@@ -509,9 +509,9 @@ class TestDockerFMIExecution:
 
         project = ProjectFactory(org=org)
 
-        # Create the FMI validator using the service function
+        # Create the FMU validator using the service function
         # This handles FMU introspection and catalog seeding
-        validator = create_fmi_validator(
+        validator = create_fmu_validator(
             org=org,
             project=project,
             name="Feedthrough FMU Validator",
@@ -519,16 +519,16 @@ class TestDockerFMIExecution:
         )
 
         logger.info(
-            "Created FMI validator: id=%s, fmu_model=%s",
+            "Created FMU validator: id=%s, fmu_model=%s",
             validator.id,
             validator.fmu_model,
         )
 
-        # Create a ruleset for FMI
+        # Create a ruleset for FMU
         ruleset = Ruleset.objects.create(
             org=org,
             user=user,
-            name="FMI Test Rules",
+            name="FMU Test Rules",
             ruleset_type=RulesetType.FMU,
             version="1",
             rules_text="{}",
@@ -542,7 +542,7 @@ class TestDockerFMIExecution:
             allowed_file_types=[SubmissionFileType.BINARY],
         )
 
-        # Create step with FMI validator
+        # Create step with FMU validator
         WorkflowStepFactory(
             workflow=workflow,
             validator=validator,
@@ -568,22 +568,22 @@ class TestDockerFMIExecution:
         VALIDATOR_RUNNER="docker",
         DATA_STORAGE_BACKEND="local",
     )
-    def test_fmi_execution_via_docker(self, fmi_workflow):
+    def test_fmu_execution_via_docker(self, fmu_workflow):
         """
-        Test FMI validation executes via Docker container.
+        Test FMU validation executes via Docker container.
 
         This is an integration test that:
-        1. Submits a binary file (FMI input parameters) via the API
+        1. Submits a binary file (FMU input parameters) via the API
         2. Waits for the Docker container to run the FMU simulation
         3. Verifies the validation completes with results
         """
         from io import BytesIO
 
-        client = fmi_workflow["client"]
-        workflow = fmi_workflow["workflow"]
-        org = fmi_workflow["org"]
+        client = fmu_workflow["client"]
+        workflow = fmu_workflow["workflow"]
+        org = fmu_workflow["org"]
 
-        # FMI submissions contain input parameter values as JSON
+        # FMU submissions contain input parameter values as JSON
         # Submit as binary content (since workflow accepts BINARY files)
         submission_data = {
             "input_parameters": {
@@ -595,7 +595,7 @@ class TestDockerFMIExecution:
 
         url = start_workflow_url(workflow)
 
-        logger.info("Starting FMI validation via Docker")
+        logger.info("Starting FMU validation via Docker")
         logger.info("URL: %s", url)
 
         # Submit as multipart form data with a file
@@ -619,7 +619,7 @@ class TestDockerFMIExecution:
 
         logger.info("Polling for completion: %s", poll_url)
 
-        # Poll with timeout for FMI (container startup + simulation)
+        # Poll with timeout for FMU (container startup + simulation)
         data, status = poll_until_complete(
             client,
             poll_url,
@@ -702,8 +702,8 @@ class TestDockerComposeBackendDirect:
             VALIDATOR_IMAGE_TAG="v1.0",
             VALIDATOR_IMAGE_REGISTRY="gcr.io/my-project",
         ):
-            image = backend.get_container_image("fmi")
-            assert image == "gcr.io/my-project/validibot-validator-fmi:v1.0"
+            image = backend.get_container_image("fmu")
+            assert image == "gcr.io/my-project/validibot-validator-fmu:v1.0"
 
     @skip_if_no_energyplus_image
     def test_get_container_image_for_energyplus(self):

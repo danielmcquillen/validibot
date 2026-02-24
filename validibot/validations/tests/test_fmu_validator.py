@@ -3,6 +3,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import pytest
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
@@ -11,8 +13,12 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.submissions.tests.factories import SubmissionFactory
 from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import RulesetType
+from validibot.validations.constants import ValidationType
+from validibot.validations.models import FMUModel
 from validibot.validations.models import Ruleset
-from validibot.validations.services.fmi import create_fmi_validator
+from validibot.validations.models import Validator
+from validibot.validations.services.fmu import create_fmu_validator
+from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.validators.fmu.validator import FMUValidator
 from validibot.workflows.tests.factories import WorkflowFactory
 
@@ -60,7 +66,7 @@ class FMUValidatorTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         upload = _fake_fmu()
-        validator = create_fmi_validator(
+        validator = create_fmu_validator(
             org=org,
             project=workflow.project,
             name="Test FMU",
@@ -69,7 +75,7 @@ class FMUValidatorTests(TestCase):
         ruleset = Ruleset.objects.create(
             org=org,
             user=None,
-            name="FMI Rules",
+            name="FMU Rules",
             ruleset_type=RulesetType.FMU,
             version="1",
             rules_text="{}",
@@ -105,7 +111,7 @@ class FMUValidatorTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         upload = _fake_fmu()
-        validator = create_fmi_validator(
+        validator = create_fmu_validator(
             org=org,
             project=workflow.project,
             name="Test FMU",
@@ -114,7 +120,7 @@ class FMUValidatorTests(TestCase):
         ruleset = Ruleset.objects.create(
             org=org,
             user=None,
-            name="FMI Rules",
+            name="FMU Rules",
             ruleset_type=RulesetType.FMU,
             version="1",
             rules_text="{}",
@@ -158,7 +164,7 @@ class FMUValidatorTests(TestCase):
             allowed_file_types=[SubmissionFileType.BINARY],
         )
         _prime_modal_cache_fake()
-        validator = create_fmi_validator(
+        validator = create_fmu_validator(
             org=org, project=None, name="has-fmu", upload=_fake_fmu()
         )
         validator.fmu_model = None
@@ -167,7 +173,7 @@ class FMUValidatorTests(TestCase):
         ruleset = Ruleset.objects.create(
             org=org,
             user=None,
-            name="FMI Rules",
+            name="FMU Rules",
             ruleset_type=RulesetType.FMU,
             version="1",
             rules_text="{}",
@@ -189,3 +195,58 @@ class FMUValidatorTests(TestCase):
             run_context=None,
         )
         self.assertFalse(result.passed)
+
+
+class FMUValidatorModelTests(TestCase):
+    """
+    Validate FMU attachment requirements for FMU validators.
+
+    FMU validators owned by an org must carry an FMU; system FMU validators can
+    exist as placeholders until an FMU is assigned.
+    """
+
+    def setUp(self) -> None:
+        self.org = OrganizationFactory()
+
+    def test_system_fmu_validator_can_exist_without_fmu(self) -> None:
+        """System FMU validators remain valid without an FMU attachment."""
+
+        validator = ValidatorFactory(validation_type=ValidationType.FMU, is_system=True)
+        validator.full_clean()
+
+    def test_org_fmu_validator_requires_fmu_asset(self) -> None:
+        """
+        Non-system FMU validators must reference an FMUModel before validation.
+        """
+
+        # Build without saving so we can assert full_clean fails as expected.
+        validator = ValidatorFactory.build(
+            validation_type=ValidationType.FMU,
+            org=self.org,
+            is_system=False,
+        )
+        with pytest.raises(ValidationError):
+            validator.full_clean()
+
+    def test_org_fmu_validator_accepts_fmu_asset(self) -> None:
+        """Org FMU validators validate successfully when an FMUModel is attached."""
+
+        fmu_file = SimpleUploadedFile(
+            "demo.fmu",
+            b"dummy-fmu",
+            content_type="application/octet-stream",
+        )
+        fmu = FMUModel.objects.create(
+            org=self.org,
+            name="Demo FMU",
+            file=fmu_file,
+        )
+        validator = Validator(
+            name="Org FMU",
+            slug="org-fmu",
+            validation_type=ValidationType.FMU,
+            org=self.org,
+            is_system=False,
+            fmu_model=fmu,
+        )
+        validator.full_clean()

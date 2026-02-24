@@ -119,7 +119,7 @@ class EnergyPlusStepConfig(BaseStepConfig):
     """EnergyPlus simulation timesteps per hour (default: 4)."""
 
 
-class FmiStepConfig(BaseStepConfig):
+class FmuStepConfig(BaseStepConfig):
     """Config for FMU validator steps.
 
     FMU validation has no per-step configuration -- all settings are
@@ -196,7 +196,7 @@ STEP_CONFIG_MODELS: dict[str, type[BaseStepConfig]] = {
     "JSON_SCHEMA": JsonSchemaStepConfig,
     "XML_SCHEMA": XmlSchemaStepConfig,
     "ENERGYPLUS": EnergyPlusStepConfig,
-    "FMI": FmiStepConfig,
+    "FMU": FmuStepConfig,
     "BASIC": BasicStepConfig,
     "AI_ASSIST": AiAssistStepConfig,
     "CUSTOM_VALIDATOR": CustomValidatorStepConfig,

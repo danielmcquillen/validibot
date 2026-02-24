@@ -70,7 +70,7 @@
   <text x="130" y="535" class="label-small" text-anchor="middle">Building energy models</text>
 
   <rect x="240" y="460" width="180" height="100" class="box box-container" />
-  <text x="330" y="495" class="label label-bold" text-anchor="middle">FMU/FMI</text>
+  <text x="330" y="495" class="label label-bold" text-anchor="middle">FMU</text>
   <text x="330" y="515" class="label-small" text-anchor="middle">Functional Mock-up Units</text>
   <text x="330" y="535" class="label-small" text-anchor="middle">Simulation validation</text>
 

@@ -50,7 +50,7 @@ before the validator even runs. An input assertion like
 ### Output signals
 
 Output signals represent values the validator *produces* during execution. For
-advanced validators (EnergyPlus, FMI), these are extracted from the container's
+advanced validators (EnergyPlus, FMU), these are extracted from the container's
 output envelope. For built-in validators, the validator can populate them directly.
 
 EnergyPlus output signals include metrics like:

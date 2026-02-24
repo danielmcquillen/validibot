@@ -318,10 +318,10 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 )
 
                 return EnergyPlusOutputEnvelope.model_validate(output_dict)
-            if validator_type == "FMI":
-                from validibot_shared.fmi.envelopes import FMIOutputEnvelope
+            if validator_type == "FMU":
+                from validibot_shared.fmu.envelopes import FMUOutputEnvelope
 
-                return FMIOutputEnvelope.model_validate(output_dict)
+                return FMUOutputEnvelope.model_validate(output_dict)
             # Generic envelope
             from validibot_shared.validations.envelopes import ValidationOutputEnvelope
 

@@ -37,7 +37,7 @@ The engines that check your data:
 - **XML Schema** — XSD validation
 - **Basic** — Custom CEL rules
 - **AI** — Natural language rules
-- **Advanced** — Simulation-based (EnergyPlus, FMI)
+- **Advanced** — Simulation-based (EnergyPlus, FMU)
 
 ### Assertions
 Rules evaluated during validation. Each validator has default assertions that always run. You can add step-level assertions for workflow-specific rules.

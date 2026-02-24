@@ -14,7 +14,7 @@ This document covers how Validibot uses Google Cloud IAM (Identity and Access Ma
 We use two types of service accounts per environment:
 
 - **Web/Worker SA** (`$GCP_APP_NAME-cloudrun-{stage}`) - Used by Cloud Run web and worker services. Has broad access to run the Django application.
-- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs (EnergyPlus, FMI). Least-privilege: only storage access and worker callback permission.
+- **Validator SA** (`$GCP_APP_NAME-validator-{stage}`) - Used by validator Cloud Run Jobs (EnergyPlus, FMU). Least-privilege: only storage access and worker callback permission.
 
 This ensures:
 

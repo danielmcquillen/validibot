@@ -1495,14 +1495,14 @@ scheduler-resume job_name:
 #
 # Current validators:
 #   - energyplus: EnergyPlus simulation validator
-#   - fmi: Functional Mockup Interface validator
+#   - fmu: Functional Mock-up Unit validator
 #
 # Validators live in the separate validibot-validators repository at
 # ../validibot-validators. Run these commands from that directory.
 #
 # =============================================================================
 
-# Build a specific validator container (energyplus, fmi, etc.)
+# Build a specific validator container (energyplus, fmu, etc.)
 # Usage: just gcp validator-build energyplus
 # NOTE: Run from ../validibot-validators directory
 validator-build name:
@@ -1521,7 +1521,7 @@ validator-push name:
 validator-build-push name: (validator-build name) (validator-push name)
 
 # Deploy a Cloud Run Job for a validator to a specific stage
-# Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmi prod
+# Usage: just gcp validator-deploy energyplus dev | just gcp validator-deploy fmu prod
 [arg('stage', pattern='dev|staging|prod')]
 validator-deploy name stage: _require-gcp-config (validator-build-push name)
     #!/usr/bin/env bash
@@ -1585,7 +1585,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
 [arg('stage', pattern='dev|staging|prod')]
 validators-deploy-all stage:
     just gcp validator-deploy energyplus {{stage}}
-    just gcp validator-deploy fmi {{stage}}
+    just gcp validator-deploy fmu {{stage}}
 
 # =============================================================================
 # Validator Assets Management

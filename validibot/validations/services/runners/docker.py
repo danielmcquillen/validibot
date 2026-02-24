@@ -252,7 +252,7 @@ class DockerValidatorRunner(ValidatorRunner):
             # Prevent fork bombs from exhausting the host PID space
             "pids_limit": 512,
             # Read-only root filesystem: validators only need to write to /tmp
-            # (EnergyPlus uses /tmp/energyplus_run/, FMU uses /tmp/fmi_run/)
+            # (EnergyPlus uses /tmp/energyplus_run/, FMU uses /tmp/fmu_run/)
             "read_only": True,
             # Provide writable tmpfs for validator scratch space
             "tmpfs": {"/tmp": "size=2g,mode=1777"},  # noqa: S108

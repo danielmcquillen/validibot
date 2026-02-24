@@ -2,7 +2,7 @@
 Envelope builder for creating typed validation input envelopes.
 
 This module provides functions to build domain-specific input envelopes
-(EnergyPlusInputEnvelope, FMIInputEnvelope, etc.) from Django model instances.
+(EnergyPlusInputEnvelope, FMUInputEnvelope, etc.) from Django model instances.
 
 Design: Simple factory functions, not classes. Each validator type gets its own
 builder function. This keeps the code straightforward and easy to test.
@@ -12,9 +12,9 @@ from typing import Protocol
 
 from validibot_shared.energyplus.envelopes import EnergyPlusInputEnvelope
 from validibot_shared.energyplus.envelopes import EnergyPlusInputs
-from validibot_shared.fmi.envelopes import FMIInputEnvelope
-from validibot_shared.fmi.envelopes import FMIInputs
-from validibot_shared.fmi.envelopes import FMISimulationConfig
+from validibot_shared.fmu.envelopes import FMUInputEnvelope
+from validibot_shared.fmu.envelopes import FMUInputs
+from validibot_shared.fmu.envelopes import FMUSimulationConfig
 from validibot_shared.validations.envelopes import ExecutionContext
 from validibot_shared.validations.envelopes import InputFileItem
 from validibot_shared.validations.envelopes import OrganizationInfo
@@ -248,7 +248,7 @@ def build_input_envelope(
             If provided, these override values from step.config.
 
     Returns:
-        Typed envelope (EnergyPlusInputEnvelope, FMIInputEnvelope, etc.)
+        Typed envelope (EnergyPlusInputEnvelope, FMUInputEnvelope, etc.)
 
     Raises:
         ValueError: If validator type is not supported or no active step run
@@ -337,9 +337,9 @@ def build_input_envelope(
         # based on catalog binding paths.
         # Here we only carry the values; the launcher is responsible
         # for resolution.
-        fmi_inputs = FMIInputs(
+        fmu_inputs = FMUInputs(
             input_values={},
-            simulation=FMISimulationConfig(),
+            simulation=FMUSimulationConfig(),
             output_variables=[],
         )
 
@@ -357,7 +357,7 @@ def build_input_envelope(
             execution_bundle_uri=execution_bundle_uri,
             skip_callback=skip_callback,
         )
-        return FMIInputEnvelope(
+        return FMUInputEnvelope(
             run_id=str(run.id),
             validator=ValidatorInfo(
                 id=str(validator.id),
@@ -371,7 +371,7 @@ def build_input_envelope(
                 step_name=step.name,
             ),
             input_files=input_files,
-            inputs=fmi_inputs,
+            inputs=fmu_inputs,
             context=context,
         )
 

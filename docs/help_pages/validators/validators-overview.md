@@ -18,7 +18,7 @@ Advanced validators (available with Pro):
 | Validator | What it does | File types |
 |-----------|--------------|------------|
 | **EnergyPlus** | Runs building energy simulations | IDF, epJSON |
-| **FMI** | Runs FMU simulations | FMU packages |
+| **FMU** | Runs FMU simulations | FMU packages |
 
 ---
 

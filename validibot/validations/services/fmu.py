@@ -12,8 +12,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from slugify import slugify
-from validibot_shared.fmi import FMIProbeResult as FMIProbeResultSchema
-from validibot_shared.fmi import FMIVariableMeta
+from validibot_shared.fmu import FMUProbeResult as FMUProbeResultSchema
+from validibot_shared.fmu import FMUVariableMeta
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
@@ -22,9 +22,9 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import ValidationType
-from validibot.validations.models import FMIVariable
 from validibot.validations.models import FMUModel
 from validibot.validations.models import FMUProbeResult
+from validibot.validations.models import FMUVariable
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
 
@@ -45,7 +45,7 @@ DISALLOWED_EXTENSIONS = {
 }
 
 
-class FMIIntrospectionError(ValueError):
+class FMUIntrospectionError(ValueError):
     """Raised when an FMU cannot be parsed or introspected."""
 
 
@@ -53,19 +53,19 @@ class FMUStorageError(ValueError):
     """Raised when FMU files cannot be stored or accessed."""
 
 
-def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
-    """Load ScalarVariable entries from modelDescription.xml into FMIVariable shells."""
+def _parse_variables(xml_text: str) -> tuple[str, str, list[FMUVariable]]:
+    """Load ScalarVariable entries from modelDescription.xml into FMUVariable shells."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        raise FMIIntrospectionError("Unable to parse modelDescription.xml.") from exc
+        raise FMUIntrospectionError("Unable to parse modelDescription.xml.") from exc
 
     fmi_version = root.attrib.get("fmiVersion", "2.0")
     model_name = root.attrib.get("modelName", "fmu")
     ns_prefix = root.tag.split("}")[0].strip("{") if "}" in root.tag else ""
     tag_name = f"{{{ns_prefix}}}ScalarVariable" if ns_prefix else "ScalarVariable"
 
-    variables: list[FMIVariable] = []
+    variables: list[FMUVariable] = []
     for node in root.iter(tag_name):
         attrs = node.attrib
         name = attrs.get("name") or ""
@@ -76,7 +76,7 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
             "Real",
         )
         variables.append(
-            FMIVariable(
+            FMUVariable(
                 name=name,
                 causality=attrs.get("causality", "unknown"),
                 variability=attrs.get("variability", ""),
@@ -90,7 +90,7 @@ def _parse_variables(xml_text: str) -> tuple[str, str, list[FMIVariable]]:
 
 def _validate_fmu_bytes(
     payload: bytes, filename: str
-) -> tuple[str, str, list[FMIVariable], str]:
+) -> tuple[str, str, list[FMUVariable], str]:
     """
     Perform structural, safety, and metadata validation on an FMU payload.
 
@@ -101,7 +101,7 @@ def _validate_fmu_bytes(
 
     display_name = filename or "fmu"
     if len(payload) > MAX_FMU_SIZE_BYTES:
-        raise FMIIntrospectionError(
+        raise FMUIntrospectionError(
             _("FMU %(name)s exceeds the maximum size of %(limit)s bytes.")
             % {"name": display_name, "limit": MAX_FMU_SIZE_BYTES},
         )
@@ -109,7 +109,7 @@ def _validate_fmu_bytes(
         with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
             names = archive.namelist()
             if "modelDescription.xml" not in names:
-                raise FMIIntrospectionError(
+                raise FMUIntrospectionError(
                     _("FMU %(name)s is missing modelDescription.xml.")
                     % {"name": display_name},
                 )
@@ -117,23 +117,23 @@ def _validate_fmu_bytes(
                 member = name.lower()
                 suffix = Path(member).suffix
                 if member.startswith(("../", "/")):
-                    raise FMIIntrospectionError(
+                    raise FMUIntrospectionError(
                         _("FMU %(name)s contains unsafe path entries.")
                         % {"name": display_name},
                     )
                 if suffix in DISALLOWED_EXTENSIONS:
-                    raise FMIIntrospectionError(
+                    raise FMUIntrospectionError(
                         _("FMU %(name)s contains disallowed file %(file)s.")
                         % {"name": display_name, "file": name},
                     )
             with archive.open("modelDescription.xml") as handle:
                 xml_text = handle.read().decode("utf-8")
     except zipfile.BadZipFile as exc:
-        raise FMIIntrospectionError(
+        raise FMUIntrospectionError(
             _("FMU %(name)s is not a valid zip archive.") % {"name": display_name}
         ) from exc
     except UnicodeDecodeError as exc:
-        raise FMIIntrospectionError(
+        raise FMUIntrospectionError(
             _("modelDescription.xml in %(name)s is not UTF-8 text.")
             % {"name": display_name}
         ) from exc
@@ -198,7 +198,7 @@ def _upload_fmu_to_cloud_storage(checksum: str, payload: bytes) -> str:
     return f"gs://{bucket_name}/{object_path}"
 
 
-def create_fmi_validator(
+def create_fmu_validator(
     *,
     org: Organization,
     project,
@@ -210,7 +210,7 @@ def create_fmi_validator(
     storage_backend=None,
 ) -> Validator:
     """
-    Create an FMU validator, parse the FMU, and seed catalog entries.
+    Create an FMU validator, parse the uploaded FMU, and seed catalog entries.
 
     When ``approve_immediately`` is False the FMU will remain unapproved until a
     probe run is completed. ``storage_backend`` can be supplied to stream the
@@ -247,7 +247,7 @@ def create_fmi_validator(
             fmu.file.save(upload.name, stored_file, save=False)
         except Exception as exc:  # pragma: no cover - storage failures are surfaced
             raise FMUStorageError(str(exc)) from exc
-        fmu.fmi_version = fmi_version
+        fmu.fmu_version = fmi_version
         fmu.introspection_metadata = {
             "model_name": model_name,
             "variable_count": len(variables),
@@ -283,13 +283,13 @@ def create_fmi_validator(
 def _persist_variables(
     fmu_model: FMUModel,
     validator: Validator,
-    variables: Iterable[FMIVariable],
+    variables: Iterable[FMUVariable],
 ) -> None:
-    prepared: list[FMIVariable] = []
+    prepared: list[FMUVariable] = []
     for var in variables:
         var.fmu_model = fmu_model
         prepared.append(var)
-    FMIVariable.objects.bulk_create(prepared)
+    FMUVariable.objects.bulk_create(prepared)
     existing_slugs = set(validator.catalog_entries.values_list("slug", flat=True))
     for var in prepared:
         run_stage = _run_stage_for_causality(var.causality)
@@ -311,10 +311,10 @@ def _persist_variables(
             target_field=var.name,
             input_binding_path="",
             data_type=_data_type_for_variable(var.value_type),
-            metadata={"fmi_value_type": var.value_type, "unit": var.unit},
+            metadata={"fmu_value_type": var.value_type, "unit": var.unit},
             is_required=(run_stage == CatalogRunStage.INPUT),
         )
-        FMIVariable.objects.filter(
+        FMUVariable.objects.filter(
             fmu_model=fmu_model,
             name=var.name,
         ).update(catalog_entry=entry)
@@ -324,7 +324,7 @@ def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
     """
     Read FMU file bytes from local storage or cloud storage.
 
-    Raises FMIIntrospectionError if the file cannot be read.
+    Raises FMUIntrospectionError if the file cannot be read.
     """
     # Try local file first
     if fmu_model.file:
@@ -349,21 +349,21 @@ def _read_fmu_bytes(fmu_model: FMUModel) -> bytes:
         bucket_name, object_path = parts[0], parts[1] if len(parts) > 1 else ""
         if not object_path:
             msg = f"Invalid GCS URI: {fmu_model.gcs_uri}"
-            raise FMIIntrospectionError(msg)
+            raise FMUIntrospectionError(msg)
         client = storage.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(object_path)
         return blob.download_as_bytes()
 
     msg = "FMU file not found in local storage or cloud storage."
-    raise FMIIntrospectionError(msg)
+    raise FMUIntrospectionError(msg)
 
 
 def run_fmu_probe(
     fmu_model: FMUModel,
     *,
     _return_logs: bool = False,
-) -> FMIProbeResultSchema:
+) -> FMUProbeResultSchema:
     """
     Probe an FMU by parsing its modelDescription.xml and update metadata + catalog.
 
@@ -393,14 +393,14 @@ def run_fmu_probe(
             payload=payload,
             filename=fmu_model.name or "model.fmu",
         )
-    except FMIIntrospectionError as exc:
+    except FMUIntrospectionError as exc:
         elapsed = time.monotonic() - start_time
         probe_record.status = FMUProbeStatus.FAILED
         probe_record.last_error = str(exc)
         probe_record.save(update_fields=["status", "last_error", "modified"])
         fmu_model.is_approved = False
         fmu_model.save(update_fields=["is_approved", "modified"])
-        return FMIProbeResultSchema.failure(errors=[str(exc)])
+        return FMUProbeResultSchema.failure(errors=[str(exc)])
     except Exception as exc:
         elapsed = time.monotonic() - start_time
         probe_record.status = FMUProbeStatus.FAILED
@@ -408,13 +408,13 @@ def run_fmu_probe(
         probe_record.save(update_fields=["status", "last_error", "modified"])
         fmu_model.is_approved = False
         fmu_model.save(update_fields=["is_approved", "modified"])
-        return FMIProbeResultSchema.failure(errors=[str(exc)])
+        return FMUProbeResultSchema.failure(errors=[str(exc)])
 
     elapsed = time.monotonic() - start_time
 
-    # Convert FMIVariable (Django model) to FMIVariableMeta (Pydantic schema)
+    # Convert FMUVariable (Django model) to FMUVariableMeta (Pydantic schema)
     variable_metas = [
-        FMIVariableMeta(
+        FMUVariableMeta(
             name=var.name,
             causality=var.causality,
             variability=var.variability or None,
@@ -426,7 +426,7 @@ def run_fmu_probe(
     ]
 
     # Update FMU metadata
-    fmu_model.fmi_version = fmi_version
+    fmu_model.fmu_version = fmi_version
     fmu_model.introspection_metadata = {
         "model_name": model_name,
         "variable_count": len(variables),
@@ -445,13 +445,13 @@ def run_fmu_probe(
     fmu_model.save(
         update_fields=[
             "is_approved",
-            "fmi_version",
+            "fmu_version",
             "introspection_metadata",
             "modified",
         ]
     )
 
-    return FMIProbeResultSchema.success(
+    return FMUProbeResultSchema.success(
         variables=variable_metas,
         execution_seconds=elapsed,
         messages=[f"Parsed {len(variables)} variables from modelDescription.xml"],
@@ -463,7 +463,7 @@ def _refresh_variables_from_probe(
     variables: list,
 ) -> None:
     """
-    Update FMIVariable rows and refresh catalog entries based on probe output.
+    Update FMU variable rows and refresh catalog entries based on probe output.
 
     We rebuild variables from the probe response to make sure the catalog stays
     aligned with the latest FMU metadata.
@@ -472,11 +472,11 @@ def _refresh_variables_from_probe(
     validator = fmu_model.validators.first()
     if validator is None:
         return
-    FMIVariable.objects.filter(fmu_model=fmu_model).delete()
+    FMUVariable.objects.filter(fmu_model=fmu_model).delete()
     entries = ValidatorCatalogEntry.objects.filter(validator=validator)
     entries.delete()
     shaped_vars = [
-        FMIVariable(
+        FMUVariable(
             fmu_model=fmu_model,
             name=var.name,
             causality=var.causality,

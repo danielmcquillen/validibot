@@ -139,7 +139,7 @@ just gcp setup-data <stage>
 ### Step 6: Deploy Validators
 
 ```bash
-# Deploy EnergyPlus and FMI validators
+# Deploy EnergyPlus and FMU validators
 just gcp validators-deploy-all <stage>
 ```
 

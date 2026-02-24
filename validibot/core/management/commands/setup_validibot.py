@@ -509,7 +509,7 @@ class Command(BaseCommand):
         Create the built-in validators that ship with Validibot.
 
         These include JSON Schema, XML Schema, Basic (field validation),
-        and AI validators. Also syncs advanced validators (EnergyPlus, FMI)
+        and AI validators. Also syncs advanced validators (EnergyPlus, FMU)
         with their catalog entries for input/output signals.
         """
         logger.debug("Setting up default validators...")
@@ -524,7 +524,7 @@ class Command(BaseCommand):
             )
         )
 
-        # Sync advanced validators (EnergyPlus, FMI) with their catalog entries.
+        # Sync advanced validators (EnergyPlus, FMU) with their catalog entries.
         # This populates the input/output signals needed for the step editor UI.
         self.stdout.write("  Syncing advanced validators and catalog entries...")
 

@@ -28,10 +28,10 @@ Each backend handles:
 
 The backend is selected via the `VALIDATOR_RUNNER` setting:
 
-| Setting Value | Backend | Execution Model |
-|---------------|---------|-----------------|
-| `"docker"` | `DockerComposeExecutionBackend` | Synchronous |
-| `"google_cloud_run"` | `GCPExecutionBackend` | Asynchronous |
+| Setting Value        | Backend                         | Execution Model |
+| -------------------- | ------------------------------- | --------------- |
+| `"docker"`           | `DockerComposeExecutionBackend` | Synchronous     |
+| `"google_cloud_run"` | `GCPExecutionBackend`           | Asynchronous    |
 
 If `VALIDATOR_RUNNER` is not set, the system auto-detects:
 
@@ -165,6 +165,7 @@ By default, advanced validator containers run with **no network access** (`netwo
 - All I/O happens via the shared storage volume
 
 This works because:
+
 1. Input files are written to the shared volume before the container starts
 2. The container reads inputs and writes outputs to the same volume
 3. The worker reads the output after the container exits
@@ -172,6 +173,7 @@ This works because:
 **When to enable network access:**
 
 Set `VALIDATOR_NETWORK` only if advanced validators need to:
+
 - Download files from external URLs during execution
 - Call external APIs as part of validation logic
 
@@ -182,6 +184,7 @@ environment:
 ```
 
 With network enabled, advanced validator containers can reach:
+
 - Other containers on the same Docker network
 - External internet (if the host has connectivity)
 
@@ -191,10 +194,10 @@ The Docker Compose backend requires specific naming for networks and volumes. By
 
 The shipped compose files assume `COMPOSE_PROJECT_NAME=validibot`, which creates:
 
-| Resource | Full Name |
-|----------|-----------|
-| Network | `validibot_validibot` |
-| Storage Volume | `validibot_validibot_storage` (production) |
+| Resource       | Full Name                                   |
+| -------------- | ------------------------------------------- |
+| Network        | `validibot_validibot`                       |
+| Storage Volume | `validibot_validibot_storage` (production)  |
 | Storage Volume | `validibot_validibot_local_storage` (local) |
 
 These names are configured in the compose files via environment variables:
@@ -258,8 +261,9 @@ VALIDATOR_IMAGE_TAG=v1.2.0
 ```
 
 Images are pulled as `{VALIDATOR_IMAGE_REGISTRY}/$GCP_APP_NAME-validator-{type}:{tag}`. For example:
+
 - `ghcr.io/your-org/$GCP_APP_NAME-validator-energyplus:v1.2.0`
-- `ghcr.io/your-org/$GCP_APP_NAME-validator-fmi:v1.2.0`
+- `ghcr.io/your-org/$GCP_APP_NAME-validator-fmu:v1.2.0`
 
 **Image availability:**
 

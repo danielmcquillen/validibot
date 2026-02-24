@@ -195,13 +195,13 @@ def test_wizard_shows_xml_validator_even_when_incompatible_file_type(client):
     )
 
 
-def test_fmi_validator_enabled_for_json_workflow(client):
+def test_fmu_validator_enabled_for_json_workflow(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
-    fmi_validator = ensure_validator(
+    fmu_validator = ensure_validator(
         ValidationType.FMU,
-        "fmi-validator",
-        "FMI Validator",
+        "fmu-validator",
+        "FMU Validator",
     )
 
     url = reverse("workflows:workflow_step_wizard", args=[workflow.pk])
@@ -209,11 +209,11 @@ def test_fmi_validator_enabled_for_json_workflow(client):
 
     assert response.status_code == HTTPStatus.OK
     html = response.content.decode()
-    value = f'value="validator:{fmi_validator.pk}"'
+    value = f'value="validator:{fmu_validator.pk}"'
     assert value in html
     # FMU supports JSON, so it should NOT be disabled for a JSON workflow.
     assert not re.search(
-        rf'value="validator:{fmi_validator.pk}"\s+disabled',
+        rf'value="validator:{fmu_validator.pk}"\s+disabled',
         html,
     )
 

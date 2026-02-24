@@ -62,7 +62,7 @@ class InputFileItem(BaseModel):
 class ValidatorInfo(BaseModel):
     """Information about the validator being run."""
     id: str                      # Validator UUID
-    type: str                    # Validator type (e.g., "energyplus", "fmi")
+    type: str                    # Validator type (e.g., "energyplus", "fmu")
     version: str                 # Validator version
 
 class ExecutionContext(BaseModel):
@@ -96,14 +96,14 @@ class EnergyPlusInputEnvelope(ValidationInputEnvelope):
 ```
 
 ```python
-# FMI validator
-class FMIInputs(BaseModel):
+# FMU validator
+class FMUInputs(BaseModel):
     start_time: float = 0.0
     stop_time: float = 1.0
     step_size: float | None = None
 
-class FMIInputEnvelope(ValidationInputEnvelope):
-    inputs: FMIInputs
+class FMUInputEnvelope(ValidationInputEnvelope):
+    inputs: FMUInputs
 ```
 
 ### Example Input Envelope
@@ -410,7 +410,7 @@ if validator.type == "myvalidator":
 See the [validibot-validators](https://github.com/danielmcquillen/validibot-validators) repository for complete examples:
 
 - **EnergyPlus validator** — Building energy simulation
-- **FMI validator** — Functional Mock-up Unit simulation
+- **FMU validator** — Functional Mock-up Unit simulation
 
 ## Type Safety
 

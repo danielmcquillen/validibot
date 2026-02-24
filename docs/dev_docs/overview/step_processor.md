@@ -78,7 +78,7 @@ result = engine.validate(submission, ruleset, run_context)
 
 ### Advanced Validators (Container-based)
 
-**Container validators**: EnergyPlus, FMI, user-added custom validators
+**Container validators**: EnergyPlus, FMU, user-added custom validators
 
 These validators:
 - Run inside Docker containers
@@ -114,7 +114,7 @@ ValidationStepProcessor (abstract base)
 ├── SimpleValidationProcessor
 │   └── Handles: Basic, JSON Schema, XML Schema, AI validators
 └── AdvancedValidationProcessor
-    └── Handles: EnergyPlus, FMI, custom container validators
+    └── Handles: EnergyPlus, FMU, custom container validators
 ```
 
 ### Processor Responsibilities

@@ -649,7 +649,7 @@ class Command(BaseCommand):
                 "Docker",
                 CheckStatus.WARNING,
                 "Docker not found in PATH",
-                details="Advanced validators (EnergyPlus, FMI) require Docker",
+                details="Advanced validators (EnergyPlus, FMU) require Docker",
                 fix_hint=(
                     "Install Docker or configure VALIDATOR_RUNNER for cloud execution"
                 ),
@@ -705,7 +705,7 @@ class Command(BaseCommand):
         # Expected validator images
         expected_images = [
             "validibot-validator-energyplus",
-            "validibot-validator-fmi",
+            "validibot-validator-fmu",
         ]
 
         try:
@@ -740,7 +740,7 @@ class Command(BaseCommand):
                         CheckStatus.SKIPPED,
                         f"{len(missing)} validator image(s) not installed",
                         details="\n".join(f"  - {img}" for img in missing),
-                        fix_hint="Build images: just build energyplus fmi",
+                        fix_hint="Build images: just build energyplus fmu",
                     )
 
         except Exception:  # noqa: S110

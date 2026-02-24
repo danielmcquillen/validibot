@@ -25,7 +25,7 @@ ValidationRunService.execute_workflow_steps()
         │       │
         │       └── ValidationStepProcessor
         │               ├── SimpleValidationProcessor (JSON, XML, Basic, AI)
-        │               └── AdvancedValidationProcessor (EnergyPlus, FMI)
+        │               └── AdvancedValidationProcessor (EnergyPlus, FMU)
         │
         └── For action steps:
                 │
@@ -76,7 +76,7 @@ def _execute_validator_step(self, validation_run, step_run) -> StepProcessingRes
 | Processor | Validator Types | Execution Mode |
 |-----------|-----------------|----------------|
 | `SimpleValidationProcessor` | Basic, JSON Schema, XML Schema, AI | Synchronous, inline |
-| `AdvancedValidationProcessor` | EnergyPlus, FMI, custom | Sync (Docker) or Async (Cloud Run) |
+| `AdvancedValidationProcessor` | EnergyPlus, FMU, custom | Sync (Docker) or Async (Cloud Run) |
 
 For detailed documentation on processors, see [Validation Step Processor Architecture](step_processor.md).
 

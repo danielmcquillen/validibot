@@ -6,12 +6,12 @@ This guide covers running integration and end-to-end tests for Validibot.
 
 Validibot has several types of tests:
 
-| Type | Location | What It Tests |
-|------|----------|---------------|
-| Unit tests | `validibot/*/tests/` | Individual functions and classes |
-| Integration tests | `tests/tests_integration/` | Cloud Run Jobs, GCS, database |
-| E2E tests | `tests/tests_integration/test_e2e_workflow.py` | Full API -> callback flow |
-| Use case tests | `tests/tests_use_cases/` | Business scenarios |
+| Type              | Location                                       | What It Tests                    |
+| ----------------- | ---------------------------------------------- | -------------------------------- |
+| Unit tests        | `validibot/*/tests/`                           | Individual functions and classes |
+| Integration tests | `tests/tests_integration/`                     | Cloud Run Jobs, GCS, database    |
+| E2E tests         | `tests/tests_integration/test_e2e_workflow.py` | Full API -> callback flow        |
+| Use case tests    | `tests/tests_use_cases/`                       | Business scenarios               |
 
 ## Quick Reference
 
@@ -60,7 +60,7 @@ For Cloud Run Job tests:
 export GCP_PROJECT_ID=your-project
 export GCS_VALIDATION_BUCKET=your-bucket
 export GCS_ENERGYPLUS_JOB_NAME=$GCP_APP_NAME-validator-energyplus
-export GCS_FMI_JOB_NAME=$GCP_APP_NAME-validator-fmi
+export GCS_FMU_JOB_NAME=$GCP_APP_NAME-validator-fmu
 export GCP_REGION=us-west1
 ```
 
@@ -105,12 +105,12 @@ E2E_TEST_API_URL=https://... E2E_TEST_API_TOKEN=... E2E_TEST_WORKFLOW_ID=... jus
 
 ### E2E Test Configuration
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `E2E_TEST_API_URL` | Yes | API base URL (e.g., `https://staging.validibot.com/api/v1`) |
-| `E2E_TEST_API_TOKEN` | Yes | Valid API token with workflow execution permission |
-| `E2E_TEST_WORKFLOW_ID` | Yes | UUID of workflow with EnergyPlus validator step |
-| `E2E_TEST_WORKFLOW_EXPECTS_SUCCESS` | No | Set to `false` if test file should fail validation (default: `true`) |
+| Variable                            | Required | Description                                                          |
+| ----------------------------------- | -------- | -------------------------------------------------------------------- |
+| `E2E_TEST_API_URL`                  | Yes      | API base URL (e.g., `https://staging.validibot.com/api/v1`)          |
+| `E2E_TEST_API_TOKEN`                | Yes      | Valid API token with workflow execution permission                   |
+| `E2E_TEST_WORKFLOW_ID`              | Yes      | UUID of workflow with EnergyPlus validator step                      |
+| `E2E_TEST_WORKFLOW_EXPECTS_SUCCESS` | No       | Set to `false` if test file should fail validation (default: `true`) |
 
 ### Creating a Test Workflow
 

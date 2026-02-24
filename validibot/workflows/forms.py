@@ -697,7 +697,7 @@ class BaseStepConfigForm(forms.Form):
             self.fields["notes"].initial = step.notes
 
 
-class FMIValidatorStepConfigForm(BaseStepConfigForm):
+class FMUValidatorStepConfigForm(BaseStepConfigForm):
     """Placeholder FMU step configuration. Inputs/outputs
     bind via the validator catalog."""
 
@@ -1165,7 +1165,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
-        ValidationType.FMU: FMIValidatorStepConfigForm,
+        ValidationType.FMU: FMUValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,
     }
     return mapping.get(validation_type, BaseStepConfigForm)

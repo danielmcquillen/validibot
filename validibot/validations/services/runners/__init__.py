@@ -2,7 +2,7 @@
 Validator runner abstraction for executing container-based validators.
 
 This module provides a pluggable runner system for executing advanced validators
-(EnergyPlus, FMI, custom containers) across different deployment targets:
+(EnergyPlus, FMU, custom containers) across different deployment targets:
 
 - DockerValidatorRunner: Local Docker socket (Docker Compose default)
 - GoogleCloudRunValidatorRunner: Google Cloud Run Jobs (GCP hosted)

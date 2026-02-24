@@ -15,7 +15,7 @@ entirely through which `Ruleset` the assertion belongs to.
 
 ## Two-tier evaluation
 
-When the engine evaluates assertions for a step, it merges both tiers into a
+When the validator evaluates assertions for a step, it merges both tiers into a
 single pass:
 
 1. Assertions from the validator's `default_ruleset` run first (ordered by
@@ -44,7 +44,7 @@ Each `RulesetAssertion` row stores:
   - `default("fallback")` — substitute the provided fallback when the value is blank/`None`.
 - `success_message` — optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
 
-Basic assertions reference catalog entries whenever possible so the engine can resolve bindings and
+Basic assertions reference catalog entries whenever possible so the validator can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
 persisted in `target_field`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
 `target_*` columns for consistency. BASIC validators always run in "custom target" mode because there
@@ -58,7 +58,7 @@ the validator detail page, which provides a simplified CEL-only form
 (`ValidatorRuleForm`). Under the hood these are regular `RulesetAssertion` rows
 on the validator's `default_ruleset`.
 
-Default assertions are always evaluated — the engine merges them with any
+Default assertions are always evaluated -- the validator merges them with any
 step-level assertions before running the evaluation loop. This means validator
 authors can encode domain knowledge (e.g., "site EUI must be positive") that
 workflow authors cannot accidentally skip.
@@ -80,7 +80,7 @@ stay synchronized.
 Assertions are evaluated with CEL (Common Expression Language). The preparation service enforces a
 two-tier helper allowlist:
 
-1. **Default helpers** from `BaseValidatorEngine` (`has`, `mean`, `percentile`, `duration`, etc.).
+1. **Default helpers** from `BaseValidator` (`has`, `mean`, `percentile`, `duration`, etc.).
 2. **Provider helpers** returned by `provider.cel_functions()`, scoped to a `(validation_type, version)` range.
 
 During ruleset publish/attach the service parses every CEL expression (derivations, `when` guards, and
@@ -103,7 +103,7 @@ slug, helper not allowed, expression parse error, etc.).
 
 Once a validation run reaches a step with assertions:
 
-1. The engine resolves the provider and loads the validator catalog snapshot stored during preparation.
+1. The validator resolves the provider and loads the validator catalog snapshot stored during preparation.
 2. Providers optionally `instrument()` the uploaded artifact (EnergyPlus outputs, Modelica probes, etc.).
 3. `bind()` constructs helper closures (e.g., `series('p95_W')`) and caches.
 4. Derivations execute in topological order for the **input** stage, then staged assertions run: input-stage assertions gate whether the validator can run, the validator executes, and finally output-stage derivations/assertions consume the emitted telemetry. All assertions continue to honor `when` guards.

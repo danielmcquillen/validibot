@@ -2,7 +2,7 @@
 Seed data for system validators with catalog entries.
 
 This module contains the canonical definitions for validators
-(EnergyPlus, FMI, THERM, etc.) and their catalog entries.
+(EnergyPlus, FMU, THERM, etc.) and their catalog entries.
 
 These are synced to the database via:
     python manage.py sync_advanced_validators

@@ -1,5 +1,5 @@
 """
-Input binding resolution helpers for FMI validators.
+Input binding resolution helpers for FMU validators.
 
 Bindings are defined on ValidatorCatalogEntry.input_binding_path. When absent,
 we default to matching the catalog slug against a top-level submission key.

@@ -18,11 +18,11 @@ A run has three different representations of "where it is" and "what happened," 
 
 ### Internal status
 
-The `status` field on `ValidationRun` is the raw lifecycle value used by the Django engine to orchestrate steps:
+The `status` field on `ValidationRun` is the raw lifecycle value used by the orchestrator to manage steps:
 
 `PENDING` → `RUNNING` → `SUCCEEDED` | `FAILED` | `CANCELED` | `TIMED_OUT`
 
-This captures both lifecycle transitions and terminal outcomes in a single field. It's what the engine writes to the database and what internal code queries against.
+This captures both lifecycle transitions and terminal outcomes in a single field. It's what the orchestrator writes to the database and what internal code queries against.
 
 ### Public state and result
 
@@ -49,7 +49,7 @@ The API and CLI expose a simpler two-field model instead of the raw status. This
 
 ### Why the split?
 
-The raw `status` field mixes two concerns: "is it still running?" and "what was the outcome?" For the engine, that's fine -- it needs all the detail. But API consumers and CLI scripts need to answer those questions separately.
+The raw `status` field mixes two concerns: "is it still running?" and "what was the outcome?" For the orchestrator, that's fine -- it needs all the detail. But API consumers and CLI scripts need to answer those questions separately.
 
 The critical distinction is between `FAIL` and `ERROR`:
 

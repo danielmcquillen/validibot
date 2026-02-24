@@ -11,11 +11,11 @@ class ValidationsConfig(AppConfig):
     name = "validibot.validations"
 
     def ready(self):
-        # Import engines to register them
-        from validibot.validations.engines import energyplus  # noqa: F401
-        from validibot.validations.engines import fmi  # noqa: F401
-        from validibot.validations.engines import json  # noqa: F401
-        from validibot.validations.engines import xml  # noqa: F401
+        # Import validators to register them
+        from validibot.validations.validators import energyplus  # noqa: F401
+        from validibot.validations.validators import fmu  # noqa: F401
+        from validibot.validations.validators import json_schema  # noqa: F401
+        from validibot.validations.validators import xml_schema  # noqa: F401
 
         # Run startup container cleanup in worker processes
         # Skip in web server, management commands, and autoreload subprocesses

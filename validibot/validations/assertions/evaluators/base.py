@@ -11,10 +11,10 @@ from typing import Any
 from typing import Protocol
 
 if TYPE_CHECKING:
-    from validibot.validations.engines.base import BaseValidatorEngine
-    from validibot.validations.engines.base import ValidationIssue
     from validibot.validations.models import RulesetAssertion
     from validibot.validations.models import Validator
+    from validibot.validations.validators.base import BaseValidator
+    from validibot.validations.validators.base import ValidationIssue
 
 
 @dataclass
@@ -22,18 +22,18 @@ class AssertionContext:
     """
     Context available during assertion evaluation.
 
-    Provides access to the validator configuration, the engine instance
+    Provides access to the validator configuration, the validator instance
     (for shared utilities like _maybe_success_issue), and a lazily-built
     CEL context for CEL assertions.
 
     Attributes:
         validator: The Validator model instance with catalog entries.
-        engine: The engine instance for shared utilities.
+        engine: The validator instance for shared utilities.
         cel_context: CEL evaluation context, built lazily on first CEL assertion.
     """
 
     validator: Validator
-    engine: BaseValidatorEngine
+    engine: BaseValidator
     cel_context: dict[str, Any] | None = field(default=None)
 
     def get_cel_context(self, payload: Any) -> dict[str, Any]:
@@ -69,7 +69,7 @@ class AssertionEvaluator(Protocol):
         Args:
             assertion: The RulesetAssertion model instance to evaluate.
             payload: The data to evaluate the assertion against.
-            context: Evaluation context with validator, engine, and CEL context.
+            context: Evaluation context with validator and CEL context.
 
         Returns:
             List of ValidationIssue objects. Empty list means the assertion passed.

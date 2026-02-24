@@ -11,10 +11,10 @@ import pytest
 from validibot.actions.handlers import ValidatorStepHandler
 from validibot.actions.protocols import RunContext
 from validibot.actions.protocols import StepResult
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import ValidationRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base import ValidationResult
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -61,8 +61,8 @@ class TestValidatorStepHandler:
         assert "unsupported" in result.issues[0].message.lower()
         assert result.issues[0].code == "unsupported_file_type"
 
-    def test_returns_error_when_validator_engine_not_found(self):
-        """Handler should fail gracefully when engine class cannot be loaded."""
+    def test_returns_error_when_validator_not_found(self):
+        """Handler should fail gracefully when validator class cannot be loaded."""
         validator = MagicMock()
         validator.validation_type = "nonexistent_type"
         validator.supports_file_type = MagicMock(return_value=True)

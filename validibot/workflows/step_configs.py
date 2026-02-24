@@ -120,9 +120,9 @@ class EnergyPlusStepConfig(BaseStepConfig):
 
 
 class FmiStepConfig(BaseStepConfig):
-    """Config for FMI (FMU) validator steps.
+    """Config for FMU validator steps.
 
-    FMI validation has no per-step configuration — all settings are
+    FMU validation has no per-step configuration -- all settings are
     determined by the container and any attached assertions.
     """
 

@@ -21,7 +21,7 @@ authored workflow. Key relationships:
 - Each step belongs to a workflow and has an `order` field that determines the
   linear execution sequence.
 - A step must reference **either** a `validator` **or** an `action` (enforced via
-  a database check constraint). Validator steps run an engine and produce findings.
+  a database check constraint). Validator steps run a validator and produce findings.
   Action steps trigger side effects such as Slack notifications or issuing a
   certificate; they do not execute assertions.
 - `ruleset` is **optional** and only meaningful for validator steps. When present
@@ -29,14 +29,14 @@ authored workflow. Key relationships:
   or looser assertions. When `ruleset` is blank, the validator’s
   `default_ruleset` (if any) is used.
 - `config` is a JSON column for per-step overrides (severity thresholds, AI
-  templates, etc.) passed straight into the validator engine or action class.
+  templates, etc.) passed straight into the validator or action class.
 - `display_schema` is limited to validator steps; action steps automatically
   disable it.
 
 ## Rulesets, Validators, and Actions
 
 - **Validators** (`validibot/validations/models.py`) encapsulate a
-  validation engine plus its catalog. They may declare a `default_ruleset` that
+  validator class plus its catalog. They may declare a `default_ruleset` that
   ships with baseline assertions.
 - **Rulesets** capture the assertions that workflow authors want to execute for a
   given validator. They are versioned separately so the same validator can power
@@ -52,7 +52,7 @@ During execution the runtime inspects the step:
 
 1. Validator step → load the validator, merge any per-step `config`, resolve the
    attached ruleset (falling back to the validator default), and run the
-   validator engine.
+   validator.
 2. Action step → instantiate the concrete action subclass with the stored data
    and invoke its handler. No ruleset is involved.
 

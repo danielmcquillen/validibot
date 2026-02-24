@@ -1794,7 +1794,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
                 {
                     ValidationType.AI_ASSIST,
                     ValidationType.ENERGYPLUS,
-                    ValidationType.FMI,
+                    ValidationType.FMU,
                 },
             ),
             (
@@ -1867,9 +1867,9 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
     def _ensure_validator_defaults(self, validator: Validator) -> None:
         """
         Backfill expected supported formats/file types for validators created
-        before defaults expanded (notably FMI, which now accepts JSON/TEXT).
+        before defaults expanded (notably FMU, which now accepts JSON/TEXT).
         """
-        if validator.validation_type != ValidationType.FMI:
+        if validator.validation_type != ValidationType.FMU:
             return
         changed = False
         if validator.supported_file_types is None:

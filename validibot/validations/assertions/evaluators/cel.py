@@ -17,7 +17,7 @@ from validibot.validations.constants import CEL_MAX_CONTEXT_SYMBOLS
 from validibot.validations.constants import CEL_MAX_EVAL_TIMEOUT_MS
 from validibot.validations.constants import CEL_MAX_EXPRESSION_CHARS
 from validibot.validations.constants import AssertionType
-from validibot.validations.engines.base import ValidationIssue
+from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
     from validibot.validations.assertions.evaluators.base import AssertionContext
@@ -49,7 +49,7 @@ class CelAssertionEvaluator:
         Args:
             assertion: The CEL assertion to evaluate.
             payload: The data to evaluate against.
-            context: Evaluation context with validator, engine, and CEL context.
+            context: Evaluation context with validator and CEL context.
 
         Returns:
             List of ValidationIssue objects (empty if passed without success message).

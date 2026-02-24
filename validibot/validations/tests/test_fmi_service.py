@@ -30,7 +30,7 @@ def _make_fake_fmu(name: str = "demo") -> SimpleUploadedFile:
 
 
 class FMIServiceTests(TestCase):
-    """Exercises FMU creation and probe flows for FMI validators."""
+    """Exercises FMU creation and probe flows for FMU validators."""
 
     def setUp(self):
         self.org = OrganizationFactory()
@@ -46,7 +46,7 @@ class FMIServiceTests(TestCase):
             upload=upload,
         )
 
-        self.assertEqual(validator.validation_type, ValidationType.FMI)
+        self.assertEqual(validator.validation_type, ValidationType.FMU)
         # Feedthrough FMU declares 4 inputs and 4 outputs in modelDescription.xml.
         self.assertEqual(
             validator.catalog_entries.filter(run_stage=CatalogRunStage.INPUT).count(),

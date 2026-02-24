@@ -2,7 +2,7 @@
 Cloud Run Job client for triggering validator jobs.
 
 This module triggers Cloud Run Jobs directly using the Jobs API client.
-The worker Django service calls this to start heavy validators (EnergyPlus, FMI).
+The worker Django service calls this to start heavy validators (EnergyPlus, FMU).
 
 Architecture:
     Web -> Cloud Run Job (this module) -> Callback to worker

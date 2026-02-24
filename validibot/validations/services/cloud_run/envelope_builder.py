@@ -322,7 +322,7 @@ def build_input_envelope(
             timestep_per_hour=timestep_per_hour,
             skip_callback=skip_callback,
         )
-    if validator.validation_type == ValidationType.FMI:
+    if validator.validation_type == ValidationType.FMU:
         # FMU location: use gcs_uri when present, otherwise local file path
         fmu_model = validator.fmu_model
         if not fmu_model:

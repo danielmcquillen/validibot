@@ -39,7 +39,7 @@ class CallbackCompletionTestCase(TestCase):
     """
     Test callback behavior for runs that finish on an async validator callback.
 
-    This is the common case for EnergyPlus/FMI: earlier steps may be synchronous,
+    This is the common case for EnergyPlus/FMU: earlier steps may be synchronous,
     and the final step is async and finishes via /api/v1/validation-callbacks/.
     """
 

@@ -54,7 +54,7 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 
 ### AI Assist
 - Select the template (**AI Critic** or **Policy Check**).
-- Add JSONPath selectors to control which parts of the document are sent to the AI engine.
+- Add JSONPath selectors to control which parts of the document are sent to the AI validator.
 - Define policy rules using the syntax `<path> <operator> <value> | optional message`. Supported operators: `>=`, `>`, `<=`, `<`, `==`, `!=`, `between`, `in`, `not_in`, `nonempty`.
 - Pick advisory vs blocking mode and set a per-run cost cap.
 

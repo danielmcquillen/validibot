@@ -1,7 +1,7 @@
 """
 Tests for assertion evaluation during container job callback processing.
 
-After an async validator (EnergyPlus, FMI) completes, the callback service
+After an async validator (EnergyPlus, FMU) completes, the callback service
 evaluates output-stage assertions against the envelope outputs. This includes
 generating success messages for passed assertions.
 

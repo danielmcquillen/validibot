@@ -14,15 +14,15 @@ if TYPE_CHECKING:
 @dataclass
 class RunContext:
     """
-    Context passed to step handlers and validator engines during execution.
+    Context passed to step handlers and validators during execution.
 
     This dataclass provides execution context for both workflow step handlers
-    (via StepHandler.execute()) and validator engines (via
-    BaseValidatorEngine.validate()).
+    (via StepHandler.execute()) and validators (via BaseValidator.validate()).
 
-    For step handlers, all fields are required. For validator engines, the context
-    is optional - sync engines (XML, JSON, Basic, AI) typically don't need it,
-    while async engines (EnergyPlus, FMI) require it for job tracking.
+    For step handlers, all fields are required. For validators, the context
+    is optional - simple validators (XML, JSON, Basic, AI) typically don't
+    need it, while advanced validators (EnergyPlus, FMU) require it for
+    job tracking.
 
     Attributes:
         validation_run: The ValidationRun model instance being executed.

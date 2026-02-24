@@ -529,7 +529,7 @@ class TestDockerFMIExecution:
             org=org,
             user=user,
             name="FMI Test Rules",
-            ruleset_type=RulesetType.FMI,
+            ruleset_type=RulesetType.FMU,
             version="1",
             rules_text="{}",
         )

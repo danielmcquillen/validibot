@@ -140,20 +140,20 @@ class RulesetType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    FMI = "FMI", _("FMU Validator")
+    FMU = "FMU", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     THERM = "THERM", _("THERM")
 
 
 class ValidationType(TextChoices):
     """
-    Validator engine types.
+    Validator types.
 
     Assertion support by type:
     - BASIC: Supports BASIC and CEL assertions against JSON payload
     - AI_ASSIST: Supports CEL assertions against JSON payload
     - ENERGYPLUS: Supports CEL assertions against output signals
-    - FMI: Supports CEL assertions against output signals
+    - FMU: Supports CEL assertions against output signals
     - JSON_SCHEMA: Schema-only (no assertion support)
     - XML_SCHEMA: Schema-only (no assertion support)
     - CUSTOM_VALIDATOR: Supports BASIC and CEL assertions
@@ -164,7 +164,7 @@ class ValidationType(TextChoices):
     JSON_SCHEMA = "JSON_SCHEMA", _("JSON Schema")
     XML_SCHEMA = "XML_SCHEMA", _("XML Schema")
     ENERGYPLUS = "ENERGYPLUS", _("EnergyPlus")
-    FMI = "FMI", _("FMU Validator")
+    FMU = "FMU", _("FMU Validator")
     CUSTOM_VALIDATOR = "CUSTOM_VALIDATOR", _("Custom Basic Validator")
     AI_ASSIST = "AI_ASSIST", _("AI Assist")
     THERM = "THERM", _("THERM Thermal Analysis")
@@ -190,7 +190,7 @@ class ValidatorReleaseState(TextChoices):
 # 'advanced' validation types that may require more resources or have special handling
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.ENERGYPLUS,
-    ValidationType.FMI,
+    ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
 }
 
@@ -324,7 +324,7 @@ class ResourceFileType(TextChoices):
     - ENERGYPLUS_WEATHER: EPW weather files for EnergyPlus simulations
 
     Future types might include:
-    - FMI_LIBRARY: Shared libraries for FMI validators
+    - FMU_LIBRARY: Shared libraries for FMU validators
     - CONFIG: Configuration files
     """
 
@@ -347,7 +347,7 @@ class ResourceTypeConfig:
     Declarative configuration for a resource file type.
 
     Each ResourceFileType maps to one of these configs. Adding a new resource
-    type (e.g., FMI libraries) requires only adding a new entry here -- no
+    type (e.g., FMU libraries) requires only adding a new entry here -- no
     form or view changes needed.
     """
 

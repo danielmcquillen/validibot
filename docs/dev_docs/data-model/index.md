@@ -11,7 +11,7 @@ Organization
 ├── Project (namespace for workflows)
 │   └── Workflow (ordered validation steps)
 │       └── WorkflowStep (one validator or action)
-│           └── Validator (the validation engine)
+│           └── Validator (the validation class)
 │               └── Ruleset (optional schema/rules)
 └── Members (users with roles)
 ```
@@ -37,7 +37,7 @@ Submission (the data to validate)
 | **Project**           | Namespace within an org. Groups related workflows for organization and reporting.                            |
 | **Workflow**          | Ordered sequence of validation steps. Can be active, inactive, or archived.                                  |
 | **WorkflowStep**      | One step in a workflow. Points to a validator (or action) with optional configuration.                       |
-| **Validator**         | The validation engine (JSON Schema, XML Schema, EnergyPlus, etc.). Defines signals and supported file types. |
+| **Validator**         | The validation class (JSON Schema, XML Schema, EnergyPlus, etc.). Defines signals and supported file types. |
 | **Ruleset**           | Optional schema or rule file attached to a validator.                                                        |
 | **Submission**        | The content being validated (file upload or inline text).                                                    |
 | **ValidationRun**     | One execution of a submission through a workflow. Tracks status and timing.                                  |

@@ -1,7 +1,7 @@
 """
 Findings persistence — normalizing validation issues and persisting them as findings.
 
-This module handles the conversion of raw validation issues (from engines, handlers,
+This module handles the conversion of raw validation issues (from validators, handlers,
 and processors) into normalized ValidationFinding database records. It provides:
 
 - Issue normalization: Converts dicts, strings, or ValidationIssue objects into a
@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from validibot.validations.constants import Severity
-from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.models import ValidationFinding
+from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun

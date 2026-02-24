@@ -199,7 +199,7 @@ def test_fmi_validator_enabled_for_json_workflow(client):
     workflow = WorkflowFactory()
     _login_for_workflow(client, workflow)
     fmi_validator = ensure_validator(
-        ValidationType.FMI,
+        ValidationType.FMU,
         "fmi-validator",
         "FMI Validator",
     )
@@ -211,7 +211,7 @@ def test_fmi_validator_enabled_for_json_workflow(client):
     html = response.content.decode()
     value = f'value="validator:{fmi_validator.pk}"'
     assert value in html
-    # FMI supports JSON, so it should NOT be disabled for a JSON workflow.
+    # FMU supports JSON, so it should NOT be disabled for a JSON workflow.
     assert not re.search(
         rf'value="validator:{fmi_validator.pk}"\s+disabled',
         html,

@@ -69,16 +69,16 @@ A Validation Run represents one execution of a specific workflow against a speci
 - **Stores Results**: Issues found, statistics, and artifacts produced during validation
 - **Provides Traceability**: Complete audit trail for compliance and debugging
 
-### Validation Steps and Engines
+### Validation Steps and Validators
 
 Each workflow consists of one or more validation steps. Each step:
 
-- **Uses a Validator**: A specific type of validation engine (JSON Schema, XML Schema, custom logic)
+- **Uses a Validator**: A specific type of validator (JSON Schema, XML Schema, custom logic)
 - **Applies Rules**: Optional ruleset that defines the specific validation criteria
 - **Produces Results**: Issues, warnings, and metadata from the validation process
 - **Can Be Reordered**: Steps execute in sequence and can be rearranged as needed
 
-Validibot ships with built-in validation engines for common formats and supports custom validators for specialized use cases.
+Validibot ships with built-in validators for common formats and supports custom validators for specialized use cases.
 
 ### Rulesets
 
@@ -168,7 +168,7 @@ Validation logic is completely separated from business logic, making both easier
 
 ### Extensibility
 
-The validation engine registry allows new types of validators to be added without core platform changes.
+The validator registry allows new types of validators to be added without core platform changes.
 
 ### Scalability
 
@@ -189,7 +189,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 - **Backend**: Django 5.2+ with Django REST Framework
 - **Database**: PostgreSQL with JSON field support
 - **Task Queue**: Celery + Celery Beat (Docker Compose) / Cloud Tasks + Cloud Scheduler (GCP)
-- **Validation Engines**: Pluggable architecture supporting JSON Schema, XML Schema, and custom validators
+- **Validators**: Pluggable architecture supporting JSON Schema, XML Schema, and custom validators
 - **Authentication**: Django's built-in auth with organization-based access control
 - **Storage**: Configurable file storage (local, S3, etc.) for submissions and artifacts
 - **Frontend**: Modern Django templates with Bootstrap 5 and HTMx.
@@ -200,7 +200,7 @@ Organization-based isolation ensures secure, scalable multi-tenant operation.
 - Prefer obvious, readable solutions over clever tricks; when a shortcut is unavoidable, add a brief doc comment pointing back to the relevant section in these developer docs.
 - Keep workflow, validation, and submission objects aligned (org, project, and user) to avoid cross-tenant data leaks.
 - When editing service layers, capture the request/response flow in docs/dev_docs so future you can reload the narrative quickly.
-- Update the developer documentation whenever you introduce a new background job, validation engine, or workflow capability; the docs are treated as the project's shared memory.
+- Update the developer documentation whenever you introduce a new background job, validator, or workflow capability; the docs are treated as the project's shared memory.
 
 ## Next Steps
 

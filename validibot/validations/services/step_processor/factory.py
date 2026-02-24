@@ -44,7 +44,7 @@ def get_step_processor(
     # Advanced validators run in containers
     advanced_types = {
         ValidationType.ENERGYPLUS,
-        ValidationType.FMI,
+        ValidationType.FMU,
     }
 
     if validator.validation_type in advanced_types:

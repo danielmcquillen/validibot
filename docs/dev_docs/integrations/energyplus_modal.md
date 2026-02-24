@@ -14,7 +14,7 @@ to watch for when wiring workflow steps to the Modal-backed EnergyPlus runner.
 - Pydantic response models are defined in
   `sv_modal/projects/sv_energyplus/constants.py`. These are shared between the
   Modal function and any caller that wants typed access to the result payload.
-- The Django engine expects each EnergyPlus ruleset to set
+- The Django validator expects each EnergyPlus ruleset to set
   `metadata["weather_file"]`. At runtime we fall back to the
   `ENERGYPLUS_DEFAULT_WEATHER` environment variable if metadata does not supply
   a value.

@@ -460,7 +460,7 @@ def save_workflow_step(
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
         config = build_energyplus_config(form)
-    elif vtype == ValidationType.FMI:
+    elif vtype == ValidationType.FMU:
         config = {}
     elif vtype == ValidationType.AI_ASSIST:
         config = build_ai_config(form)

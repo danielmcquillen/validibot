@@ -200,7 +200,7 @@ class GCPExecutionBackend(ExecutionBackend):
 
     def _execute_fmi(self, request: ExecutionRequest) -> ExecutionResponse:
         """
-        Execute FMI validation via Cloud Run.
+        Execute FMU validation via Cloud Run.
 
         Delegates to the existing launcher function.
         """

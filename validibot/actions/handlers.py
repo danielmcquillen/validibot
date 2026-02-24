@@ -11,35 +11,35 @@ from validibot.actions.protocols import RunContext
 from validibot.actions.protocols import StepResult
 from validibot.actions.registry import register_action_handler
 from validibot.validations.constants import Severity
-from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.registry import get as get_validator_class
+from validibot.validations.validators.base import ValidationIssue
+from validibot.validations.validators.base.registry import get as get_validator_class
 
 if TYPE_CHECKING:
-    from validibot.validations.engines.base import BaseValidatorEngine
+    from validibot.validations.validators.base import BaseValidator
 
 logger = logging.getLogger(__name__)
 
 
 class ValidatorStepHandler:
     """
-    Adapter that bridges validator engines to the unified StepHandler protocol.
+    Adapter that bridges validators to the unified StepHandler protocol.
 
     This handler is the glue between the workflow engine (which speaks the
-    StepHandler protocol) and the various validator engines (XML, JSON, Basic,
-    EnergyPlus, FMI, AI). It's automatically invoked when a WorkflowStep has
+    StepHandler protocol) and the various validators (XML, JSON, Basic,
+    EnergyPlus, FMU, AI). It's automatically invoked when a WorkflowStep has
     an associated Validator.
 
     Execution flow:
         1. Extracts the Validator from the WorkflowStep
         2. Validates file type compatibility
-        3. Resolves the appropriate engine class from the registry
-        4. Instantiates the engine with step-level config
-        5. Calls engine.validate() with the submission and run_context
+        3. Resolves the appropriate validator class from the registry
+        4. Instantiates the validator with step-level config
+        5. Calls validator.validate() with the submission and run_context
         6. Translates ValidationResult → StepResult
 
-    For async engines (EnergyPlus, FMI), the engine dispatches to a container
-    job and returns a pending result. The workflow engine handles the async
-    completion via callbacks.
+    For advanced validators (EnergyPlus, FMU), the validator dispatches to a
+    container job and returns a pending result. The workflow engine handles the
+    async completion via callbacks.
 
     Example:
         This handler is not called directly. The ValidationRunService
@@ -50,7 +50,7 @@ class ValidatorStepHandler:
             result = handler.execute(run_context)
 
     See Also:
-        - BaseValidatorEngine: The abstract base class for all engines
+        - BaseValidator: The abstract base class for all validators
         - StepHandler: The protocol this class implements
         - ValidationRunService: The dispatcher that invokes this handler
     """
@@ -95,13 +95,13 @@ class ValidatorStepHandler:
                 stats={"file_type": submission.file_type},
             )
 
-        # Resolve Engine
+        # Resolve validator class
         vtype = validator.validation_type
         try:
             validator_cls = get_validator_class(vtype)
         except Exception as exc:
             logger.exception(
-                "Failed to load validator engine: type=%s validator_id=%s step_id=%s",
+                "Failed to load validator: type=%s validator_id=%s step_id=%s",
                 vtype,
                 getattr(validator, "id", None),
                 getattr(step, "id", None),
@@ -111,27 +111,27 @@ class ValidatorStepHandler:
                 issues=[
                     ValidationIssue(
                         path="",
-                        message=f"Failed to load validator engine '{vtype}': {exc}",
+                        message=f"Failed to load validator '{vtype}': {exc}",
                         severity=Severity.ERROR,
-                        code="engine_load_failed",
+                        code="validator_load_failed",
                     )
                 ],
             )
 
-        # Setup Engine
+        # Setup validator instance
         config = getattr(step, "config", {}) or {}
-        validator_engine: BaseValidatorEngine = validator_cls(config=config)
+        validator_instance: BaseValidator = validator_cls(config=config)
 
         # Execute - pass run_context as explicit argument
         try:
-            v_result = validator_engine.validate(
+            v_result = validator_instance.validate(
                 validator=validator,
                 submission=submission,
                 ruleset=getattr(step, "ruleset", None),
                 run_context=run_context,
             )
         except Exception as exc:
-            logger.exception("Validator engine execution failed")
+            logger.exception("Validator execution failed")
             return StepResult(
                 passed=False,
                 issues=[

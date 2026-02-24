@@ -14,12 +14,12 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.basic import BasicValidatorEngine
 from validibot.validations.models import ValidationRun
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.basic import BasicValidator
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
@@ -27,7 +27,7 @@ from validibot.workflows.tests.factories import WorkflowStepFactory
 @pytest.mark.django_db(transaction=True)
 class TestCelAssertion:
     """
-    Exercises CEL assertions in the BASIC validator engine when custom assertion
+    Exercises CEL assertions in the BASIC validator when custom assertion
     targets are allowed. Ensures the validator builds a CEL context from JSON
     payloads, evaluates the assertion successfully, and records a passing
     ValidationRun with no findings.
@@ -67,7 +67,7 @@ class TestCelAssertion:
         payload = Path("tests/assets/json/example_product.json").read_text()
         payload_data = json.loads(payload)
 
-        engine = BasicValidatorEngine()
+        engine = BasicValidator()
         assert validator.allow_custom_assertion_targets is True
         context = engine._build_cel_context(payload_data, validator)
         assert context["price"] == payload_data["price"]

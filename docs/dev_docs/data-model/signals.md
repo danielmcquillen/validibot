@@ -20,7 +20,7 @@ validator. The catalog entry defines:
 |-------|---------|
 | `slug` | Stable name used in assertions and CEL expressions (e.g., `site_eui_kwh_m2`). |
 | `entry_type` | `SIGNAL` (direct value) or `DERIVATION` (computed from other signals). |
-| `run_stage` | `INPUT` (available before the engine runs) or `OUTPUT` (produced by the engine). |
+| `run_stage` | `INPUT` (available before the validator runs) or `OUTPUT` (produced by the validator). |
 | `data_type` | Value type: `NUMBER`, `STRING`, `BOOLEAN`, `TIMESERIES`, or `OBJECT`. |
 | `target_field` | Path used to locate the value in the payload or processor output. |
 | `input_binding_path` | Optional path to the submission field for input signals. |
@@ -44,14 +44,14 @@ For example, EnergyPlus defines these input signals:
 - `max_unmet_hours` - Maximum allowable unmet hours threshold
 
 Input signals let authors write assertions against what the submitter *claims*,
-before the engine even runs. An input assertion like
+before the validator even runs. An input assertion like
 `expected_floor_area_m2 > 0` catches bad metadata early.
 
 ### Output signals
 
 Output signals represent values the validator *produces* during execution. For
 advanced validators (EnergyPlus, FMI), these are extracted from the container's
-output envelope. For built-in validators, the engine can populate them directly.
+output envelope. For built-in validators, the validator can populate them directly.
 
 EnergyPlus output signals include metrics like:
 
@@ -101,7 +101,7 @@ context building and hidden from the authoring UI.
 
 ### Within a single step
 
-1. **CEL context building.** The engine calls `_build_cel_context()`, which
+1. **CEL context building.** The validator calls `_build_cel_context()`, which
    queries the validator's catalog entries and resolves each slug against the
    payload. Input signals are resolved from submission metadata. Output signals
    are resolved from the validator's output envelope.
@@ -110,7 +110,7 @@ context building and hidden from the authoring UI.
    expression `site_eui_kwh_m2 < 100` looks up `site_eui_kwh_m2` in the
    context dictionary built in step 1.
 
-3. **Signal extraction.** The engine returns extracted signals in
+3. **Signal extraction.** The validator returns extracted signals in
    `ValidationResult.signals`. The processor calls `store_signals()` to persist
    them in `validation_run.summary["steps"][step_run_id]["signals"]`.
 
@@ -137,7 +137,7 @@ Signals from earlier steps are available to later steps in the same run:
 2. **Collection.** Before step N+1 runs, `StepOrchestrator._extract_downstream_signals()`
    reads the summary and collects signals from all prior steps.
 
-3. **Context injection.** The collected signals are passed to the engine via
+3. **Context injection.** The collected signals are passed to the validator via
    `RunContext.downstream_signals`, then exposed in the CEL context under a
    `steps` namespace:
 

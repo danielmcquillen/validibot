@@ -210,7 +210,7 @@ def create_fmi_validator(
     storage_backend=None,
 ) -> Validator:
     """
-    Create an FMI validator, parse the FMU, and seed catalog entries.
+    Create an FMU validator, parse the FMU, and seed catalog entries.
 
     When ``approve_immediately`` is False the FMU will remain unapproved until a
     probe run is completed. ``storage_backend`` can be supplied to stream the
@@ -261,7 +261,7 @@ def create_fmi_validator(
             slug=slugify(f"{org.id}-{name}"),
             short_description=short_description,
             description=description,
-            validation_type=ValidationType.FMI,
+            validation_type=ValidationType.FMU,
             has_processor=True,
             fmu_model=fmu,
             supported_file_types=[SubmissionFileType.BINARY],

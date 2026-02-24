@@ -46,7 +46,7 @@ Validators don't write to the database directly. Instead, they emit `ValidationI
 The flow:
 
 ```
-Validator engine
+Validator
   → emits ValidationIssue objects
     → collected in ValidationResult.issues
       → FindingsPersistence.persist_findings()

@@ -1,7 +1,7 @@
 """
 Service layer for processing validator callbacks on the worker service.
 
-Validator containers (EnergyPlus, FMI) POST a minimal callback payload to the
+Validator containers (EnergyPlus, FMU) POST a minimal callback payload to the
 worker-only callback endpoint when they complete. The callback handler:
 
 1. Validates the payload shape (Pydantic model from validibot_shared)
@@ -12,7 +12,7 @@ worker-only callback endpoint when they complete. The callback handler:
 The public API view should be a thin wrapper around this service.
 
 NOTE: Assertion evaluation and finding persistence are handled by the processor,
-not by this service. The processor calls engine.post_execute_validate() which
+not by this service. The processor calls validator.post_execute_validate() which
 handles all assertion types (CEL, etc.) for the output stage.
 """
 
@@ -93,7 +93,7 @@ class ValidationCallbackService:
     - Enqueue resume task (more steps) or finalize run (last step)
 
     Finding persistence and assertion evaluation are NOT done here - the
-    processor handles all of that via engine.post_execute_validate().
+    processor handles all of that via validator.post_execute_validate().
     """
 
     def process(self, *, payload: dict) -> Response:
@@ -281,7 +281,7 @@ class ValidationCallbackService:
         # Determine the envelope class based on validator type
         if validator.validation_type == ValidationType.ENERGYPLUS:
             envelope_class = EnergyPlusOutputEnvelope
-        elif validator.validation_type == ValidationType.FMI:
+        elif validator.validation_type == ValidationType.FMU:
             envelope_class = FMIOutputEnvelope
         else:
             logger.error(

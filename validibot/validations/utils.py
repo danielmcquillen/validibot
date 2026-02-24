@@ -130,7 +130,7 @@ def create_default_validators():
                 </p>
                 """
             ),
-            "validation_type": ValidationType.FMI,
+            "validation_type": ValidationType.FMU,
             "version": "1.0",
             "order": 4,
             "has_processor": True,

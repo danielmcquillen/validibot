@@ -23,8 +23,6 @@ from validibot_shared.fmi.envelopes import FMIInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
-from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
@@ -33,6 +31,8 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope_
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import run_validator_job
 from validibot.validations.services.fmi_bindings import resolve_input_value
+from validibot.validations.validators.base import ValidationIssue
+from validibot.validations.validators.base import ValidationResult
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -288,10 +288,10 @@ def launch_fmi_validation(
     step: WorkflowStep,
 ) -> ValidationResult:
     """
-    Launch an FMI validation via Cloud Run Jobs.
+    Launch an FMU validation via Cloud Run Jobs.
 
     Resolves inputs using catalog binding paths (or slug-name defaults), builds
-    an FMI input envelope, uploads it, triggers the Cloud Run Job, and returns
+    an FMU input envelope, uploads it, triggers the Cloud Run Job, and returns
     a pending ValidationResult.
     """
     try:
@@ -318,7 +318,7 @@ def launch_fmi_validation(
 
         fmu_model = validator.fmu_model
         if not fmu_model:
-            msg = "FMI validator is missing an FMU model."
+            msg = "FMU validator is missing an FMU model."
             raise ValueError(msg)  # noqa: TRY301
 
         # Determine FMU URI (cloud vs local)
@@ -365,7 +365,7 @@ def launch_fmi_validation(
                 slug=slug,
             )
             if value is None and entry.is_required:
-                msg = f"Missing required input '{slug}' for FMI validator."
+                msg = f"Missing required input '{slug}' for FMU validator."
                 raise ValueError(msg)  # noqa: TRY301
             if value is not None:
                 input_values[slug] = value
@@ -463,11 +463,11 @@ def launch_fmi_validation(
         return ValidationResult(passed=None, issues=[], stats=stats)
 
     except Exception as e:
-        logger.exception("Failed to launch FMI Cloud Run Job")
+        logger.exception("Failed to launch FMU Cloud Run Job")
         issues = [
             ValidationIssue(
                 path="",
-                message=f"Failed to launch FMI validation: {e!s}",
+                message=f"Failed to launch FMU validation: {e!s}",
                 severity=Severity.ERROR,
             ),
         ]

@@ -2,7 +2,7 @@
 Utilities to compile and evaluate CEL expressions safely.
 
 Uses cel-python for evaluation, adds simple limits and timeouts, and returns
-structured results so engines can surface clear failures as findings.
+structured results so validators can surface clear failures as findings.
 """
 
 from __future__ import annotations

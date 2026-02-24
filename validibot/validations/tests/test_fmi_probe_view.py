@@ -8,8 +8,8 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.users.tests.factories import grant_role
 from validibot.validations.services.fmi import create_fmi_validator
-from validibot.validations.tests.test_fmi_engine import _fake_fmu  # reuse helper
-from validibot.validations.tests.test_fmi_engine import (
+from validibot.validations.tests.test_fmu_validator import _fake_fmu  # reuse helper
+from validibot.validations.tests.test_fmu_validator import (
     _prime_modal_cache_fake,
 )  # reuse helper
 

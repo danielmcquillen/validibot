@@ -1,7 +1,7 @@
 # Running Stress and Multi-Run Tests
 
 Validibot includes two levels of multi-run testing that verify the validation
-engine handles repeated and concurrent workloads correctly. They catch
+system handles repeated and concurrent workloads correctly. They catch
 database integrity errors, ID collisions, and lost or duplicated runs.
 
 ## In-Process Multi-Run Tests

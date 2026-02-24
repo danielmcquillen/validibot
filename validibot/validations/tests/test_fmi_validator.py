@@ -14,9 +14,9 @@ from validibot.validations.tests.factories import ValidatorFactory
 
 class FMIValidatorModelTests(TestCase):
     """
-    Validate FMU attachment requirements for FMI validators.
+    Validate FMU attachment requirements for FMU validators.
 
-    FMI validators owned by an org must carry an FMU; system FMI validators can
+    FMU validators owned by an org must carry an FMU; system FMU validators can
     exist as placeholders until an FMU is assigned.
     """
 
@@ -24,19 +24,19 @@ class FMIValidatorModelTests(TestCase):
         self.org = OrganizationFactory()
 
     def test_system_fmi_validator_can_exist_without_fmu(self) -> None:
-        """System FMI validators remain valid without an FMU attachment."""
+        """System FMU validators remain valid without an FMU attachment."""
 
-        validator = ValidatorFactory(validation_type=ValidationType.FMI, is_system=True)
+        validator = ValidatorFactory(validation_type=ValidationType.FMU, is_system=True)
         validator.full_clean()
 
     def test_org_fmi_validator_requires_fmu_asset(self) -> None:
         """
-        Non-system FMI validators must reference an FMUModel before validation.
+        Non-system FMU validators must reference an FMUModel before validation.
         """
 
         # Build without saving so we can assert full_clean fails as expected.
         validator = ValidatorFactory.build(
-            validation_type=ValidationType.FMI,
+            validation_type=ValidationType.FMU,
             org=self.org,
             is_system=False,
         )
@@ -44,7 +44,7 @@ class FMIValidatorModelTests(TestCase):
             validator.full_clean()
 
     def test_org_fmi_validator_accepts_fmu_asset(self) -> None:
-        """Org FMI validators validate successfully when an FMUModel is attached."""
+        """Org FMU validators validate successfully when an FMUModel is attached."""
 
         fmu_file = SimpleUploadedFile(
             "demo.fmu",
@@ -59,7 +59,7 @@ class FMIValidatorModelTests(TestCase):
         validator = Validator(
             name="Org FMI",
             slug="org-fmi",
-            validation_type=ValidationType.FMI,
+            validation_type=ValidationType.FMU,
             org=self.org,
             is_system=False,
             fmu_model=fmu,

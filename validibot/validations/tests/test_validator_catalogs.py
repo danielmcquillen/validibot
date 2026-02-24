@@ -7,12 +7,12 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.base import BaseValidatorEngine
 from validibot.validations.forms import ValidatorCatalogEntryForm
 from validibot.validations.tests.factories import CustomValidatorFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base import BaseValidator
 from validibot.workflows.tests.factories import WorkflowStepFactory
 
 
@@ -54,14 +54,14 @@ def test_custom_validator_sets_org_on_validator():
     assert SubmissionFileType.YAML in validator.supported_file_types
 
 
-def test_base_engine_exposes_default_helpers():
-    class DummyEngine(BaseValidatorEngine):
+def test_base_validator_exposes_default_helpers():
+    class DummyValidator(BaseValidator):
         validation_type = ValidationType.JSON_SCHEMA
 
         def validate(self, validator, submission, ruleset):  # pragma: no cover - unused
             raise NotImplementedError
 
-    helpers = DummyEngine().get_cel_helpers()
+    helpers = DummyValidator().get_cel_helpers()
     assert "percentile" in helpers
     assert helpers["percentile"].return_type == "number"
 

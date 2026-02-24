@@ -77,7 +77,7 @@ Everything else is delegated.
 
 ### StepOrchestrator (`step_orchestrator.py`)
 
-The worker-side execution engine. Handles:
+The worker-side execution orchestrator. Handles:
 
 - **State transitions**: PENDING to RUNNING (atomic, idempotent).
 - **Step iteration**: Processes steps sequentially, stopping on failure or
@@ -150,8 +150,8 @@ mismatches at save time rather than at runtime.
 2. Create a Pydantic model in `workflows/step_configs.py` extending
    `BaseStepConfig`.
 3. Register it in the `STEP_CONFIG_MODELS` dict.
-4. Create the engine class implementing `BaseValidatorEngine`.
-5. Register the engine with `@register_engine`.
+4. Create the validator class implementing `BaseValidator`.
+5. Register the validator with `@register_validator`.
 
 ## File Structure
 

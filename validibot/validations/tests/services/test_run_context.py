@@ -10,22 +10,22 @@ import pytest
 
 from validibot.actions.protocols import RunContext
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.basic import BasicValidatorEngine
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.basic import BasicValidator
 
 
 @pytest.mark.django_db
 def test_build_cel_context_exposes_downstream_signals():
     """CEL context should include signals from prior steps under steps.<id>.signals."""
     validator = ValidatorFactory(validation_type=ValidationType.BASIC)
-    engine = BasicValidatorEngine()
+    engine = BasicValidator()
 
     # Create a mock validation_run with a summary containing step signals
     mock_validation_run = SimpleNamespace(
         summary={"steps": {"10": {"signals": {"output_temp": 18.5}}}},
     )
 
-    # Set run_context on the engine (this is normally done during validate())
+    # Set run_context on the validator (this is normally done during validate())
     engine.run_context = RunContext(
         validation_run=mock_validation_run,
         step=None,

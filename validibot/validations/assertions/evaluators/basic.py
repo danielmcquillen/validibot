@@ -20,7 +20,7 @@ from validibot.validations.assertions.evaluators.registry import register_evalua
 from validibot.validations.constants import REGEX_EVAL_TIMEOUT_MS
 from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
-from validibot.validations.engines.base import ValidationIssue
+from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
     from validibot.validations.assertions.evaluators.base import AssertionContext
@@ -59,7 +59,7 @@ class BasicAssertionEvaluator:
         Args:
             assertion: The BASIC assertion to evaluate.
             payload: The data to evaluate against.
-            context: Evaluation context with validator and engine.
+            context: Evaluation context with validator.
 
         Returns:
             List of ValidationIssue objects (empty if passed without success message).

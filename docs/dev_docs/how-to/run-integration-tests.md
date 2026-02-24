@@ -173,7 +173,7 @@ Ensure all required environment variables are set. Run `env | grep -E "(GCP|GCS|
 
 ## Multi-Run and Stress Tests
 
-For testing the validation engine under load, Validibot includes two
+For testing the validation system under load, Validibot includes two
 additional test suites:
 
 - **In-process multi-run tests** (`tests/tests_use_cases/test_multi_run_validation.py`):

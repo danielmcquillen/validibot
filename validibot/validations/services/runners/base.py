@@ -2,7 +2,7 @@
 Abstract base class for validator runners.
 
 Validator runners execute container-based validators (advanced validators like
-EnergyPlus, FMI, custom containers). Each runner implementation targets a
+EnergyPlus, FMU, custom containers). Each runner implementation targets a
 specific execution environment:
 
 - DockerValidatorRunner: Local Docker socket (Docker Compose deployments)

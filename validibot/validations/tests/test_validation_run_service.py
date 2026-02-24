@@ -64,8 +64,8 @@ def test_launch_commits_run_before_enqueue(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_execute_fails_gracefully_when_engine_missing():
-    """When a validator engine can't be loaded, the step fails gracefully.
+def test_execute_fails_gracefully_when_validator_missing():
+    """When a validator can't be loaded, the step fails gracefully.
 
     The refactored ValidatorStepHandler returns a failed StepResult with
     a descriptive error rather than raising an exception. This results in
@@ -106,7 +106,7 @@ def test_execute_fails_gracefully_when_engine_missing():
     assert validation_run.status == ValidationRunStatus.FAILED
     # Step failure is now graceful - results in "steps failed" message
     assert "failed" in validation_run.error.lower()
-    # The specific engine error is recorded in the findings
+    # The specific validator error is recorded in the findings
     finding = ValidationFinding.objects.filter(validation_run=validation_run).first()
     assert finding is not None
     assert "failed to load" in finding.message.lower()

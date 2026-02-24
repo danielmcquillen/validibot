@@ -1,7 +1,7 @@
 """
 Callback API endpoint for container-based validators.
 
-Validator containers (EnergyPlus, FMI) POST completion callbacks to the worker
+Validator containers (EnergyPlus, FMU) POST completion callbacks to the worker
 service when they finish. This API view is intentionally thin and delegates
 processing to ValidationCallbackService.
 

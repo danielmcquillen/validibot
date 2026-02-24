@@ -4,7 +4,7 @@ This document provides a comprehensive guide to how Validibot executes validatio
 
 ## Overview
 
-The **Validation Step Processor** is the core abstraction that orchestrates the execution of individual validation steps within a workflow. It sits between the step orchestrator (which iterates through workflow steps) and the low-level validation logic (engines), providing a clean separation of concerns.
+The **Validation Step Processor** is the core abstraction that orchestrates the execution of individual validation steps within a workflow. It sits between the step orchestrator (which iterates through workflow steps) and the low-level validation logic (validators), providing a clean separation of concerns.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -40,7 +40,7 @@ The **Validation Step Processor** is the core abstraction that orchestrates the 
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    Validator Engines                                 │
+│                       Validators                                    │
 │                  (Validation Logic)                                  │
 │                                                                      │
 │   Responsibilities:                                                  │
@@ -121,7 +121,7 @@ ValidationStepProcessor (abstract base)
 
 | Responsibility | Description |
 |----------------|-------------|
-| Engine dispatch | Call `engine.validate()` and `engine.post_execute_validate()` |
+| Validator dispatch | Call `engine.validate()` and `engine.post_execute_validate()` |
 | Finding persistence | Save `ValidationFinding` records to database |
 | Signal storage | Store extracted metrics for downstream steps |
 | Assertion tracking | Record assertion counts for run summaries |
@@ -131,9 +131,9 @@ ValidationStepProcessor (abstract base)
 ### What Processors Do NOT Do
 
 Processors handle lifecycle, not logic. They do NOT:
-- Evaluate CEL assertions (engine's job)
-- Extract signals from output data (engine's job)
-- Know about validation semantics (engine's job)
+- Evaluate CEL assertions (validator's job)
+- Extract signals from output data (validator's job)
+- Know about validation semantics (validator's job)
 
 ## Detailed Execution Flows
 
@@ -158,7 +158,7 @@ This is the simplest case - a single method call that completes synchronously.
          ▼
 ┌─────────────────┐
 │ JsonSchema      │
-│ Engine          │
+│ Validator       │
 └────────┬────────┘
          │
          │ 3. engine.validate()
@@ -225,7 +225,7 @@ When running with Docker Compose, container execution blocks until complete.
          ▼
 ┌─────────────────┐
 │ EnergyPlus      │
-│ Engine          │
+│ Validator       │
 └────────┬────────┘
          │
          │ 3. engine.validate()
@@ -246,7 +246,7 @@ When running with Docker Compose, container execution blocks until complete.
          ▼
 ┌─────────────────┐      ┌─────────────────┐
 │ _complete_with_ │      │ EnergyPlus      │
-│ envelope()      │─────▶│ Engine          │
+│ envelope()      │─────▶│ Validator       │
 └────────┬────────┘      └────────┬────────┘
          │                        │
          │                        │ 6. engine.post_execute_validate()
@@ -291,7 +291,7 @@ When running on GCP, containers are launched asynchronously and report back via 
          ▼
 ┌─────────────────┐
 │ EnergyPlus      │
-│ Engine          │
+│ Validator       │
 └────────┬────────┘
          │
          │ 3. engine.validate()
@@ -393,17 +393,17 @@ output.metrics.site_eui_kwh_m2 < 100
 | Input | During `engine.validate()` | Submission content, metadata | All validators |
 | Output | During `engine.post_execute_validate()` | Container output, signals, metrics | Advanced validators only |
 
-### Assertion Evaluation Happens in Engines
+### Assertion Evaluation Happens in Validators
 
-A key design decision: **engines evaluate assertions, not processors**.
+A key design decision: **validators evaluate assertions, not processors**.
 
 Why?
-1. Engines know how to extract the assertion payload from their specific data structures
-2. Some engines (Basic, AI) were already evaluating assertions in `validate()`
+1. Validators know how to extract the assertion payload from their specific data structures
+2. Some validators (Basic, AI) were already evaluating assertions in `validate()`
 3. Keeps the processor focused on lifecycle, not logic
 
 ```python
-# Inside JsonSchemaValidatorEngine.validate():
+# Inside JsonSchemaValidator.validate():
 result = self._run_schema_validation(submission)
 assertion_findings = self.evaluate_cel_assertions(
     payload=parsed_json,
@@ -440,8 +440,8 @@ upstream["energyplus_step"].signals.site_eui_kwh_m2 < 100
 
 ### Signal Flow
 
-1. **Extraction**: Engine extracts signals during `post_execute_validate()`
-2. **Return**: Engine returns signals in `ValidationResult.signals`
+1. **Extraction**: Validator extracts signals during `post_execute_validate()`
+2. **Return**: Validator returns signals in `ValidationResult.signals`
 3. **Storage**: Processor calls `store_signals()` to persist in `run.summary`
 4. **Access**: Downstream steps access via `run_context.downstream_signals`
 
@@ -480,7 +480,7 @@ Shared methods used by both subclasses:
 
 | Method | Purpose |
 |--------|---------|
-| `_get_engine()` | Get engine instance from registry |
+| `_get_engine()` | Get validator instance from registry |
 | `_build_run_context()` | Build context with downstream signals |
 | `persist_findings()` | Save ValidationFinding records |
 | `store_signals()` | Store signals in run.summary |
@@ -524,7 +524,7 @@ def complete_from_callback(self, output_envelope) -> StepProcessingResult:
 
 Each processor handles errors gracefully:
 
-1. **Engine not found**: Returns `StepProcessingResult(passed=False)` with error finding
+1. **Validator not found**: Returns `StepProcessingResult(passed=False)` with error finding
 2. **Validation exception**: Catches exception, creates error finding, finalizes step as FAILED
 3. **Missing envelope (sync)**: Creates error finding explaining configuration issue
 
@@ -537,7 +537,7 @@ All error paths ensure:
 
 ### Unit Tests
 
-Tests for processor classes use mocked engines:
+Tests for processor classes use mocked validators:
 
 ```python
 def test_simple_processor_passes_on_valid():
@@ -563,6 +563,6 @@ Full workflow tests verify end-to-end behavior:
 
 ## Related Documentation
 
-- [Workflow Engine Architecture](workflow_engine.md) - Higher-level orchestration
+- [Workflow Orchestration Architecture](workflow_engine.md) - Higher-level orchestration
 - [Validator Architecture](validator_architecture.md) - Execution backends and deployment
 - [How Validibot Works](how_it_works.md) - End-to-end system overview

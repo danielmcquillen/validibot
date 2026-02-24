@@ -1,7 +1,7 @@
 """
 Advanced validation processor for container-based validators.
 
-Handles EnergyPlus and FMI validators that run in Docker containers
+Handles EnergyPlus and FMU validators that run in Docker containers
 and may complete synchronously or asynchronously.
 """
 
@@ -13,18 +13,18 @@ from typing import Any
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
-from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.models import ValidationFinding
 from validibot.validations.services.step_processor.base import ValidationStepProcessor
 from validibot.validations.services.step_processor.result import StepProcessingResult
+from validibot.validations.validators.base import ValidationIssue
+from validibot.validations.validators.base import ValidationResult
 
 logger = logging.getLogger(__name__)
 
 
 class AdvancedValidationProcessor(ValidationStepProcessor):
     """
-    Processor for advanced validators (EnergyPlus, FMI).
+    Processor for advanced validators (EnergyPlus, FMU).
 
     These validators:
     - Run in Docker containers
@@ -35,7 +35,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     **Synchronous (Docker Compose, local dev, test):**
     - Container runs and blocks until complete
-    - `execute()` calls `engine.post_execute_validate()` directly
+    - `execute()` calls `validator.post_execute_validate()` directly
     - Returns complete result immediately
 
     **Asynchronous (GCP Cloud Run, future AWS):**
@@ -45,8 +45,8 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     ## Assertion Stages
 
-    **Input stage:** Evaluated in `engine.validate()` BEFORE container launch.
-    **Output stage:** Evaluated in `engine.post_execute_validate()` AFTER container
+    **Input stage:** Evaluated in `validator.validate()` BEFORE container launch.
+    **Output stage:** Evaluated in `validator.post_execute_validate()` AFTER container
     completes.
 
     ## Status Semantics
@@ -62,28 +62,28 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         """
         Execute the validation step.
 
-        Calls the engine's validate() method to launch the container.
+        Calls the validator's validate() method to launch the container.
         For sync backends, also calls post_execute_validate() to evaluate
         output-stage assertions. For async backends, returns pending.
         """
         try:
-            engine = self._get_engine()
+            validator_instance = self._get_validator()
         except KeyError as e:
             logger.exception(
-                "Failed to load engine for validation step %s",
+                "Failed to load validator for validation step %s",
                 self.step_run.id,
             )
-            return self._handle_engine_not_found(e)
+            return self._handle_validator_not_found(e)
 
         run_context = self._build_run_context()
 
         try:
-            # Call engine.validate() - this:
+            # Call validator.validate() - this:
             # - Evaluates input-stage assertions
             # - Launches the container
             # - For sync backends: blocks and returns with output_envelope
             # - For async backends: returns immediately with passed=None
-            result = engine.validate(
+            result = validator_instance.validate(
                 validator=self.validator,
                 submission=self.validation_run.submission,
                 ruleset=self.ruleset,
@@ -117,7 +117,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         if result.output_envelope is None:
             return self._handle_missing_envelope()
         return self._complete_with_envelope(
-            engine,
+            validator_instance,
             run_context,
             result.output_envelope,
             severity_counts,
@@ -134,14 +134,14 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         IMPORTANT: This APPENDS findings to existing ones (from input-stage
         assertions). It does NOT delete pre-existing findings.
         """
-        engine = self._get_engine()
+        validator_instance = self._get_validator()
         run_context = self._build_run_context()
 
         # Get existing severity counts from input-stage findings
         existing_counts = self._get_existing_finding_counts()
 
         return self._complete_with_envelope(
-            engine,
+            validator_instance,
             run_context,
             output_envelope,
             existing_counts,
@@ -150,7 +150,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
     def _complete_with_envelope(
         self,
-        engine,
+        validator_instance,
         run_context,
         output_envelope: Any,
         existing_severity_counts: Counter,
@@ -162,12 +162,15 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
 
         Called by both sync execution and async callback paths.
         """
-        # Call engine.post_execute_validate() - this:
+        # Call validator.post_execute_validate() - this:
         # 1. Extracts signals from envelope (for assertion evaluation)
         # 2. Evaluates output-stage assertions using those signals
         # 3. Extracts issues from envelope messages
         # 4. Returns ValidationResult with signals field populated
-        post_result = engine.post_execute_validate(output_envelope, run_context)
+        post_result = validator_instance.post_execute_validate(
+            output_envelope,
+            run_context,
+        )
 
         from validibot_shared.validations.envelopes import ValidationStatus
 
@@ -326,10 +329,10 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             assertion_total=0,
         )
 
-    def _handle_engine_not_found(self, error: Exception) -> StepProcessingResult:
-        """Handle missing/unregistered engine gracefully."""
+    def _handle_validator_not_found(self, error: Exception) -> StepProcessingResult:
+        """Handle missing/unregistered validator gracefully."""
         error_msg = (
-            f"Failed to load validator engine for type "
+            f"Failed to load validator for type "
             f"'{self.validator.validation_type}': {error}"
         )
         issues = [
@@ -337,7 +340,7 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
                 path="",
                 message=error_msg,
                 severity=Severity.ERROR,
-                code="engine_not_found",
+                code="validator_not_found",
             ),
         ]
         severity_counts, _ = self.persist_findings(issues)

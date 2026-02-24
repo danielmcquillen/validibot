@@ -43,8 +43,6 @@ from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
 from validibot.validations.constants import ValidationRunErrorCategory
 from validibot.validations.constants import ValidationRunStatus
-from validibot.validations.engines.base import ValidationIssue
-from validibot.validations.engines.base import ValidationResult
 from validibot.validations.models import ValidationFinding
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
@@ -54,6 +52,8 @@ from validibot.validations.services.models import ValidationRunTaskResult
 from validibot.validations.services.step_processor.result import StepProcessingResult
 from validibot.validations.services.summary_builder import build_run_summary_record
 from validibot.validations.services.summary_builder import extract_assertion_total
+from validibot.validations.validators.base import ValidationIssue
+from validibot.validations.validators.base import ValidationResult
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -768,7 +768,7 @@ class StepOrchestrator:
         """
         Execute a validator step using the processor abstraction.
 
-        Processors handle both execution (calling the engine) AND persistence
+        Processors handle both execution (calling the validator) AND persistence
         (findings, signals, assertion stats). This eliminates the separate
         _record_step_result() call for validator steps.
 

@@ -1,6 +1,6 @@
 # Commercial Extensions
 
-Validibot follows an open-core model. The core application is open source under AGPL-3.0 and includes the full validation engine, all built-in validators, workflows, and single-user management. Two optional commercial packages add team and enterprise capabilities:
+Validibot follows an open-core model. The core application is open source under AGPL-3.0 and includes the full validation system, all built-in validators, workflows, and single-user management. Two optional commercial packages add team and enterprise capabilities:
 
 - **validibot-pro** -- team management, billing, advanced analytics, signed badges
 - **validibot-enterprise** -- multi-org support, SSO/SAML, LDAP integration (includes all Pro features)

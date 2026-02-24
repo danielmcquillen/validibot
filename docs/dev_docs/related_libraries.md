@@ -5,7 +5,7 @@ Validibot collaborates with two sibling projects that live alongside this reposi
 ## Project Layout
 
 - `../validibot_shared`: Shared Python package installed into this project as the `validibot-shared` dependency. Source lives in the neighbouring repository, but a vendored version is located inside the virtual environment at `.venv/lib/python3.x/site-packages/validibot_shared`. Any changes should be made in validibot_shared directly and it's version incremented.
-- `../sv_modal`: Django + Modal.com orchestration code that runs remote validation jobs. There is no direct Python path import from this project, so use filesystem-relative imports or API contracts when wiring up engines.
+- `../sv_modal`: Django + Modal.com orchestration code that runs remote validation jobs. There is no direct Python path import from this project, so use filesystem-relative imports or API contracts when wiring up validators.
 
 sv_modal installs validibot_shared via a github reference. Do not change this. When validibot_shared is updated, you must reinstall it i the sv_modal project like:
 
@@ -15,16 +15,16 @@ sv_modal installs validibot_shared via a github reference. Do not change this. W
 
 `validibot_shared` defines payload schemas, enums, and helpers used by both the Django app and Modal workers. When implementing features in `validibot`:
 
-- Inspect the authoritative models (for example, `../validibot_shared/energyplus/models.py`) before changing serializers or engine payloads.
+- Inspect the authoritative models (for example, `../validibot_shared/energyplus/models.py`) before changing serializers or validator payloads.
 - If a contract change is required, update `validibot_shared` first, publish a compatible version, and run `uv lock --upgrade-package validibot-shared && uv sync` in this project.
 - Document any breaking or additive change in both repos—ideally via README updates or release notes—so engineers know which version pairs are compatible.
 
 ## sv_modal
 
-`sv_modal` hosts the Modal.com workflow runners. Engines in `validibot` (such as `EnergyPlusEngine`) communicate with this project via API calls, queues, or job triggers defined there.
+`sv_modal` hosts the Modal.com workflow runners. Validators in `validibot` (such as `EnergyPlusValidator`) communicate with this project via API calls, queues, or job triggers defined there.
 
-- Before editing engine code, review the corresponding handler in `../sv_modal` to confirm expected input/output contracts.
-- When adding new engine features, implement and test the Modal-side worker in `sv_modal` first, then update `validibot` to call the new behavior.
+- Before editing validator code, review the corresponding handler in `../sv_modal` to confirm expected input/output contracts.
+- When adding new validator features, implement and test the Modal-side worker in `sv_modal` first, then update `validibot` to call the new behavior.
 - Capture any cross-repo assumptions in docstrings or comments so future developers know where to look if behavior changes.
 
 ## Working Across Repos

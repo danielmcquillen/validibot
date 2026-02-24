@@ -6,10 +6,10 @@ For the container interface that validators must implement, see [Advanced Valida
 
 ## Overview
 
-The execution layer sits between the validation engine and the infrastructure:
+The execution layer sits between the validator and the infrastructure:
 
 ```
-Validation Engine → ExecutionBackend → Infrastructure
+Validator → ExecutionBackend → Infrastructure
                           ↓
           ┌───────────────┼───────────────┐
           ↓               ↓               ↓
@@ -45,7 +45,7 @@ If `VALIDATOR_RUNNER` is not set, the system auto-detects:
 Used for Docker Compose deployments where validators run as local Docker containers.
 
 ```
-1. Engine calls backend.execute(request)
+1. Validator calls backend.execute(request)
 2. Backend writes input envelope to local storage (file:// URI)
 3. Backend spawns Docker container and waits for completion
 4. Backend reads output envelope from local storage
@@ -64,7 +64,7 @@ Used for Docker Compose deployments where validators run as local Docker contain
 Used for GCP deployments where validators run as Cloud Run Jobs.
 
 ```
-1. Engine calls backend.execute(request)
+1. Validator calls backend.execute(request)
 2. Backend uploads input envelope to GCS (gs:// URI)
 3. Backend triggers Cloud Run Job (non-blocking)
 4. Returns ExecutionResponse with is_complete=False
@@ -90,7 +90,7 @@ validibot/validations/services/execution/
 └── registry.py          # Backend selection and caching
 ```
 
-## Usage in Validation Engines
+## Usage in Validators
 
 ```python
 from validibot.validations.services.execution import get_execution_backend

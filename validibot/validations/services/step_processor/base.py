@@ -1,7 +1,7 @@
 """
 Base class for validation step processors.
 
-Processors handle lifecycle orchestration while engines handle validation
+Processors handle lifecycle orchestration while validators handle validation
 logic and assertion evaluation.
 """
 
@@ -19,9 +19,9 @@ from django.utils import timezone
 from validibot.actions.protocols import RunContext
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
-from validibot.validations.engines.base import AssertionStats
-from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.models import ValidationFinding
+from validibot.validations.validators.base import AssertionStats
+from validibot.validations.validators.base import ValidationIssue
 
 if TYPE_CHECKING:
     from validibot.validations.models import ValidationRun
@@ -38,13 +38,13 @@ class ValidationStepProcessor(ABC):
     Base class for processing a single validation step.
 
     Processors handle LIFECYCLE ONLY:
-    - Call engine methods at the right time
-    - Persist findings from engine results
+    - Call validator methods at the right time
+    - Persist findings from validator results
     - Handle errors and set appropriate status
     - Finalize step with timing
 
     Processors do NOT evaluate assertions or extract signals - that's the
-    engine's job. Processors only persist what the engine returns.
+    validator's job. Processors only persist what the validator returns.
     """
 
     def __init__(
@@ -67,15 +67,17 @@ class ValidationStepProcessor(ABC):
     # Shared methods used by both subclasses
     # ──────────────────────────────────────────────────────────────
 
-    def _get_engine(self):
-        """Get the validator engine instance from the registry."""
-        from validibot.validations.engines.registry import get as get_engine_class
+    def _get_validator(self):
+        """Get the validator instance from the registry."""
+        from validibot.validations.validators.base.registry import (
+            get as get_validator_class,
+        )
 
-        engine_cls = get_engine_class(self.validator.validation_type)
-        return engine_cls()
+        validator_cls = get_validator_class(self.validator.validation_type)
+        return validator_cls()
 
     def _build_run_context(self) -> RunContext:
-        """Build RunContext for engine calls."""
+        """Build RunContext for validator calls."""
         return RunContext(
             validation_run=self.validation_run,
             step=self.workflow_step,
@@ -97,7 +99,7 @@ class ValidationStepProcessor(ABC):
         Persist ValidationFinding records from issues.
 
         Args:
-            issues: List of ValidationIssue objects from engine
+            issues: List of ValidationIssue objects from validator
             append: If True, add to existing findings. If False, replace.
                     Default False for simple validators, True for async callbacks.
 
@@ -189,7 +191,7 @@ class ValidationStepProcessor(ABC):
         """
         Store signals in run.summary for downstream steps.
 
-        Signals are already extracted by the engine (during assertion evaluation)
+        Signals are already extracted by the validator (during assertion evaluation)
         and passed here via ValidationResult.signals. The processor just persists
         them.
 

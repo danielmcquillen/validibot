@@ -1,7 +1,7 @@
 """
 Tests for the sync_advanced_validators management command.
 
-This command syncs advanced validators (EnergyPlus, FMI) and their catalog
+This command syncs advanced validators (EnergyPlus, FMU) and their catalog
 entries from seed data in validibot.validations.seeds to the database.
 """
 

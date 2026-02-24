@@ -40,8 +40,8 @@ ValidationRunService.execute_workflow_steps()
 Validator steps are executed through the **ValidationStepProcessor** abstraction. This provides a clean separation between:
 
 - **Workflow orchestration** (ValidationRunService) - loops, aggregation, status management
-- **Step lifecycle** (Processors) - call engine, persist findings, handle errors
-- **Validation logic** (Engines) - schema checking, AI prompts, assertions
+- **Step lifecycle** (Processors) - call validator, persist findings, handle errors
+- **Validation logic** (Validators) - schema checking, AI prompts, assertions
 
 ### How Validator Steps Execute
 
@@ -137,25 +137,25 @@ processor = get_step_processor(run, step_run)
 processor.complete_from_callback(output_envelope)
 ```
 
-## Extending the Engine
+## Extending the System
 
 ### Adding a New Validator Type
 
-1. **Create the engine** in `validibot/validations/engines/`:
-   - Extend `BaseValidatorEngine`
+1. **Create the validator** in `validibot/validations/validators/`:
+   - Extend `BaseValidator`
    - Implement `validate()` method
    - For container-based validators, implement `post_execute_validate()` too
 
-2. **Register the engine** in `validibot/validations/engines/registry.py`:
+2. **Register the validator** in `validibot/validations/validators/base/registry.py`:
    ```python
-   register(ValidationType.MY_VALIDATOR, MyValidatorEngine)
+   register(ValidationType.MY_VALIDATOR, MyValidator)
    ```
 
 3. **Update processor factory** (if needed) in `step_processor/factory.py`:
    ```python
    advanced_types = {
        ValidationType.ENERGYPLUS,
-       ValidationType.FMI,
+       ValidationType.FMU,
        ValidationType.MY_VALIDATOR,  # Add here if container-based
    }
    ```

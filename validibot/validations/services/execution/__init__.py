@@ -7,10 +7,10 @@ which handles the full lifecycle of validation execution.
 
 ## Architecture
 
-The execution layer sits between the validation engine and the infrastructure:
+The execution layer sits between the validator and the infrastructure:
 
 ```
-Engine (energyplus.py) → ExecutionBackend → Infrastructure
+Validator (energyplus.py) → ExecutionBackend → Infrastructure
                               ↓
               ┌───────────────┼───────────────┐
               ↓               ↓               ↓

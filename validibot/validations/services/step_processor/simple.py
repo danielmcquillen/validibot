@@ -11,9 +11,9 @@ import logging
 
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
-from validibot.validations.engines.base import ValidationIssue
 from validibot.validations.services.step_processor.base import ValidationStepProcessor
 from validibot.validations.services.step_processor.result import StepProcessingResult
+from validibot.validations.validators.base import ValidationIssue
 
 logger = logging.getLogger(__name__)
 
@@ -27,34 +27,34 @@ class SimpleValidationProcessor(ValidationStepProcessor):
     - Complete synchronously
     - Have a single assertion stage (input)
 
-    The engine handles ALL validation logic including input-stage assertions.
-    The processor just calls engine.validate() and persists results.
+    The validator handles ALL validation logic including input-stage assertions.
+    The processor just calls validator.validate() and persists results.
     """
 
     def execute(self) -> StepProcessingResult:
         """
         Execute the validation step.
 
-        Calls the engine's validate() method (which handles validation logic
+        Calls the validator's validate() method (which handles validation logic
         and input-stage assertion evaluation), then persists the results.
         """
         try:
-            engine = self._get_engine()
+            validator_instance = self._get_validator()
         except KeyError as e:
             logger.exception(
-                "Failed to load engine for validation step %s",
+                "Failed to load validator for validation step %s",
                 self.step_run.id,
             )
-            return self._handle_engine_not_found(e)
+            return self._handle_validator_not_found(e)
 
         run_context = self._build_run_context()
 
         try:
-            # Call engine.validate() - this does EVERYTHING:
+            # Call validator.validate() - this does EVERYTHING:
             # - Validation logic (schema checking, AI prompting, etc.)
             # - Input-stage assertion evaluation
             # - Returns combined issues with assertion outcomes
-            result = engine.validate(
+            result = validator_instance.validate(
                 validator=self.validator,
                 submission=self.validation_run.submission,
                 ruleset=self.ruleset,
@@ -67,7 +67,7 @@ class SimpleValidationProcessor(ValidationStepProcessor):
             )
             return self._handle_error(e)
 
-        # Persist findings from engine result
+        # Persist findings from validator result
         severity_counts, assertion_failures = self.persist_findings(result.issues)
 
         # Store assertion counts for run summary (using typed fields)
@@ -116,10 +116,10 @@ class SimpleValidationProcessor(ValidationStepProcessor):
             assertion_total=0,
         )
 
-    def _handle_engine_not_found(self, error: Exception) -> StepProcessingResult:
-        """Handle missing/unregistered engine gracefully."""
+    def _handle_validator_not_found(self, error: Exception) -> StepProcessingResult:
+        """Handle missing/unregistered validator gracefully."""
         error_msg = (
-            f"Failed to load validator engine for type "
+            f"Failed to load validator for type "
             f"'{self.validator.validation_type}': {error}"
         )
         issues = [
@@ -127,7 +127,7 @@ class SimpleValidationProcessor(ValidationStepProcessor):
                 path="",
                 message=error_msg,
                 severity=Severity.ERROR,
-                code="engine_not_found",
+                code="validator_not_found",
             ),
         ]
         severity_counts, _ = self.persist_findings(issues)

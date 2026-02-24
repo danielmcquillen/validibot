@@ -2,13 +2,13 @@
 Validation step processor module.
 
 This module provides the ValidationStepProcessor abstraction for executing
-validation steps. Processors handle lifecycle orchestration while engines
+validation steps. Processors handle lifecycle orchestration while validators
 handle validation logic and assertion evaluation.
 
 Key classes:
 - ValidationStepProcessor: Base class with shared infrastructure
 - SimpleValidationProcessor: For inline validators (JSON, XML, Basic, AI)
-- AdvancedValidationProcessor: For container-based validators (EnergyPlus, FMI)
+- AdvancedValidationProcessor: For container-based validators (EnergyPlus, FMU)
 - StepProcessingResult: Dataclass for processor return values
 """
 

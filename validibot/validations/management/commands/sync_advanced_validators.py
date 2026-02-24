@@ -4,7 +4,7 @@ Management command to sync advanced validators and their catalog entries.
 Usage:
     python manage.py sync_advanced_validators
 
-Advanced validators (EnergyPlus, FMI, etc.) are packaged as Docker containers
+Advanced validators (EnergyPlus, FMU, etc.) are packaged as Docker containers
 and have catalog entries defining their input/output signals. This command
 reads seed data from validibot.validations.seeds and ensures the corresponding
 Validator and ValidatorCatalogEntry rows exist in the database.

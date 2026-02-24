@@ -4,7 +4,7 @@ This document provides a detailed technical walkthrough of how Validibot execute
 
 ## System Overview
 
-Validibot operates as an orchestration layer that coordinates validation engines to process submitted content according to predefined workflows. The system is designed around an asynchronous, event-driven architecture that can handle both quick validations and long-running processes.
+Validibot operates as an orchestration layer that coordinates validators to process submitted content according to predefined workflows. The system is designed around an asynchronous, event-driven architecture that can handle both quick validations and long-running processes.
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -22,7 +22,7 @@ Validibot operates as an orchestration layer that coordinates validation engines
                                                        ▼
                                               ┌─────────────────┐
                                               │   Validation    │
-                                              │    Engines      │
+                                              │   Validators    │
                                               │   (JSON, XML,   │
                                               │    Custom)      │
                                               └─────────────────┘
@@ -40,7 +40,7 @@ Before any validation can occur, workflows must be configured:
    - Configure validation steps in the desired order
    - Assign validators and rulesets to each step
 
-2. **Validator Registration**: The system maintains a registry of available validation engines
+2. **Validator Registration**: The system maintains a registry of available validators
 
    - Built-in validators (JSON Schema, XML Schema)
    - Custom validators specific to the organization
@@ -158,10 +158,10 @@ For validator steps, the processor pattern provides a clean separation of concer
    - **SimpleValidationProcessor**: For inline validators (JSON Schema, XML Schema, Basic, AI)
    - **AdvancedValidationProcessor**: For container-based validators (EnergyPlus, FMI)
 
-2. **Engine Dispatch**: The processor calls the validation engine
+2. **Validator Dispatch**: The processor calls the validator
 
    ```python
-   engine = get_engine(validator.validation_type)
+   engine = get_validator(validator.validation_type)
    result = engine.validate(
        validator=validator,
        submission=submission,
@@ -170,7 +170,7 @@ For validator steps, the processor pattern provides a clean separation of concer
    )
    ```
 
-3. **Result Processing**: The engine returns a `ValidationResult` object
+3. **Result Processing**: The validator returns a `ValidationResult` object
    - `passed`: Boolean (True/False) or None for async
    - `issues`: List of ValidationIssue objects with details
    - `assertion_stats`: Structured counts of evaluated assertions
@@ -187,7 +187,7 @@ For validator steps, the processor pattern provides a clean separation of concer
 
 #### How Findings Are Persisted
 
-Every issue emitted by an engine becomes a `ValidationFinding` row. The model links to
+Every issue emitted by a validator becomes a `ValidationFinding` row. The model links to
 both the `ValidationStepRun` that produced the issue and the parent `ValidationRun`.
 The direct run foreign key is intentionally denormalized so dashboards and APIs can
 aggregate findings by run or organization without an extra join through step runs.
@@ -204,7 +204,7 @@ The `ValidationStepProcessor` abstraction consolidates step lifecycle management
 
 1. **Processor creation** – `get_step_processor()` routes to the appropriate processor class based on validator type.
 
-2. **Engine dispatch** – The processor calls `engine.validate()` (and for advanced validators, `engine.post_execute_validate()`).
+2. **Validator dispatch** -- The processor calls `engine.validate()` (and for advanced validators, `engine.post_execute_validate()`).
 
 3. **Finding persistence** – `persist_findings()` creates `ValidationFinding` records:
    - For sync validators: all findings are persisted at once
@@ -222,22 +222,22 @@ The processor pattern provides clean separation of concerns:
 
 2. **Action steps use handlers instead** – when `workflow_step.action` is set, the service uses the `StepHandler` protocol instead of processors. Handlers like `SlackMessageActionHandler` or `SignedCertificateActionHandler` expose strongly typed fields.
 
-3. **Submission content is materialized once** – the active `Submission` is hydrated from the `ValidationRun` so every engine works with the same snapshot of data.
+3. **Submission content is materialized once** -- the active `Submission` is hydrated from the `ValidationRun` so every validator works with the same snapshot of data.
 
-4. **Assertion evaluation happens in engines** – Engines evaluate CEL assertions during `validate()` (input-stage) and `post_execute_validate()` (output-stage for advanced validators). The engine merges assertions from both the validator's `default_ruleset` (evaluated first) and the step-level ruleset (evaluated second) into a single pass. Processors just persist the results.
+4. **Assertion evaluation happens in validators** -- Validators evaluate CEL assertions during `validate()` (input-stage) and `post_execute_validate()` (output-stage for advanced validators). The validator merges assertions from both the validator's `default_ruleset` (evaluated first) and the step-level ruleset (evaluated second) into a single pass. Processors just persist the results.
 
-5. **Error handling is centralized** – Any exception raised by the engine is caught by the processor, which creates an error finding and finalizes the step as FAILED.
+5. **Error handling is centralized** -- Any exception raised by the validator is caught by the processor, which creates an error finding and finalizes the step as FAILED.
 
-This design keeps the processor focused on lifecycle orchestration: the step definition owns the configuration, the engine owns domain logic and assertion evaluation, and the processor handles persistence and state transitions.
+This design keeps the processor focused on lifecycle orchestration: the step definition owns the configuration, the validator owns domain logic and assertion evaluation, and the processor handles persistence and state transitions.
 
 > **Authoring walkthrough:** see [How to Author Workflow Steps](../how-to/author-workflow-steps.md) for the complete UI flow.
 
-#### 3.4 Engine Implementation
+#### 3.4 Validator Implementation
 
-Each validation engine implements the `BaseValidatorEngine` interface:
+Each validator implements the `BaseValidator` interface:
 
 ```python
-class JsonSchemaEngine(BaseValidatorEngine):
+class JsonSchemaValidator(BaseValidator):
     def validate(self, submission, ruleset=None, config=None):
         # Load JSON Schema from ruleset
         schema = load_schema(ruleset)
@@ -273,8 +273,8 @@ sequenceDiagram
     participant API as WorkflowViewSet.start_validation()
     participant Facade as ValidationRunService (facade)
     participant Orch as StepOrchestrator
-    participant Registry as Engine Registry
-    participant Engine as BaseValidatorEngine
+    participant Registry as Validator Registry
+    participant Val as BaseValidator
 
     Client->>API: POST /orgs/{org}/workflows/{id}/runs/
     API->>Facade: launch(request, workflow, submission)
@@ -288,9 +288,9 @@ sequenceDiagram
     loop For each workflow step
         Orch->>Orch: resolve validator, ruleset, config
         Orch->>Registry: get(validation_type)
-        Registry-->>Orch: engine class
-        Orch->>Engine: validate(submission, ruleset, config)
-        Engine-->>Orch: ValidationResult (passed, issues, stats)
+        Registry-->>Orch: validator class
+        Orch->>Val: validate(submission, ruleset, config)
+        Val-->>Orch: ValidationResult (passed, issues, stats)
         Orch->>Orch: append step summary\nstop loop on first failure
     end
 
@@ -305,7 +305,7 @@ After all workflow steps complete we capture both the detailed findings and a du
 
 #### 4.1 Summary Generation
 
-Each `ValidationIssue` emitted by an engine becomes a `ValidationFinding` row tied to the current `ValidationStepRun` and `ValidationRun`. Once all steps finish, `build_run_summary_record()` aggregates those rows into two lightweight tables:
+Each `ValidationIssue` emitted by a validator becomes a `ValidationFinding` row tied to the current `ValidationStepRun` and `ValidationRun`. Once all steps finish, `build_run_summary_record()` aggregates those rows into two lightweight tables:
 
 - **`ValidationRunSummary`** -- run-level severity counts, assertion totals, and status.
 - **`ValidationStepRunSummary`** -- per-step severity counts and status.
@@ -332,7 +332,7 @@ Any files generated during validation are stored as Artifact records:
 
 - Validation reports in various formats
 - Transformed or processed versions of input data
-- Debug logs from validation engines
+- Debug logs from validators
 - Performance profiling data
 
 ### Phase 5: Result Delivery

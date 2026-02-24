@@ -63,7 +63,7 @@ VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
         SubmissionFileType.TEXT,
         SubmissionFileType.JSON,
     ],
-    ValidationType.FMI: [
+    ValidationType.FMU: [
         SubmissionFileType.BINARY,
         SubmissionFileType.JSON,
         SubmissionFileType.TEXT,
@@ -98,7 +98,7 @@ VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
         SubmissionDataFormat.ENERGYPLUS_IDF,
         SubmissionDataFormat.ENERGYPLUS_EPJSON,
     ],
-    ValidationType.FMI: [
+    ValidationType.FMU: [
         SubmissionDataFormat.FMU,
         SubmissionDataFormat.JSON,
         SubmissionDataFormat.TEXT,
@@ -125,7 +125,7 @@ VALIDATION_TYPE_ALLOWED_EXTENSIONS: dict[str, list[str]] = {
     ValidationType.JSON_SCHEMA: ["json"],
     ValidationType.XML_SCHEMA: ["xml", "xsd", "rng", "dtd"],
     ValidationType.ENERGYPLUS: ["idf", "epjson", "json"],
-    ValidationType.FMI: ["fmu", "json"],
+    ValidationType.FMU: ["fmu", "json"],
     ValidationType.CUSTOM_VALIDATOR: ["json", "yaml", "yml"],
     ValidationType.AI_ASSIST: ["json", "txt"],
     ValidationType.THERM: ["thmx", "thmz"],
@@ -390,12 +390,12 @@ class Ruleset(TimeStampedModel):
 
 class RulesetAssertion(TimeStampedModel):
     """
-    A single rule that the assertion engine evaluates against validation data.
+    A single rule that the assertion evaluator checks against validation data.
 
     Each assertion belongs to a ``Ruleset``, which in turn is attached either
     to a ``Validator`` (as its ``default_ruleset`` - always evaluated) or to
     an individual ``WorkflowStep`` (evaluated only when that step runs).
-    At evaluation time the engine merges both sources, with default assertions
+    At evaluation time the validator merges both sources, with default assertions
     ordered first, and evaluates them in a single pass via
     ``evaluate_assertions_for_stage()``.
 
@@ -980,7 +980,7 @@ class Validator(TimeStampedModel):
             ValidationType.JSON_SCHEMA,
             ValidationType.XML_SCHEMA,
             ValidationType.ENERGYPLUS,
-            ValidationType.FMI,
+            ValidationType.FMU,
             ValidationType.AI_ASSIST,
         }
     )
@@ -1003,7 +1003,7 @@ class Validator(TimeStampedModel):
             ValidationType.JSON_SCHEMA: "bi-filetype-json",
             ValidationType.XML_SCHEMA: "bi-filetype-xml",
             ValidationType.ENERGYPLUS: "bi-lightning-charge-fill",
-            ValidationType.FMI: "bi-cpu",
+            ValidationType.FMU: "bi-cpu",
             ValidationType.AI_ASSIST: "bi-robot",
         }.get(self.validation_type, "bi-journal-bookmark")  # default icon
         return bi_icon_class
@@ -1025,7 +1025,7 @@ class Validator(TimeStampedModel):
 
     @property
     def supports_resource_files(self) -> bool:
-        """Return True if this validator's engine type accepts resource files."""
+        """Return True if this validator type accepts resource files."""
         return bool(get_resource_types_for_validator(self.validation_type))
 
     def __str__(self):
@@ -1116,7 +1116,7 @@ class Validator(TimeStampedModel):
                 normalized_files.append(derived)
         self.supported_file_types = normalized_files
 
-        if self.validation_type == ValidationType.FMI:
+        if self.validation_type == ValidationType.FMU:
             if not self.fmu_model_id:
                 if not self.is_system:
                     raise ValidationError(
@@ -2205,7 +2205,7 @@ class ValidatorResourceFile(TimeStampedModel):
     Resource files are validator-specific files (weather data, libraries, configs)
     that are not submission data but are required for validation. Examples:
     - Weather files (EPW) for EnergyPlus simulations
-    - Libraries for FMI validators
+    - Libraries for FMU validators
     - Configuration files for custom validators
 
     ## Scoping

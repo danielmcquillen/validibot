@@ -698,7 +698,7 @@ class BaseStepConfigForm(forms.Form):
 
 
 class FMIValidatorStepConfigForm(BaseStepConfigForm):
-    """Placeholder FMI step configuration. Inputs/outputs
+    """Placeholder FMU step configuration. Inputs/outputs
     bind via the validator catalog."""
 
     # No implementation yet; using base form.
@@ -1165,7 +1165,7 @@ def get_config_form_class(validation_type: str) -> type[forms.Form]:
         ValidationType.JSON_SCHEMA: JsonSchemaStepConfigForm,
         ValidationType.XML_SCHEMA: XmlSchemaStepConfigForm,
         ValidationType.ENERGYPLUS: EnergyPlusStepConfigForm,
-        ValidationType.FMI: FMIValidatorStepConfigForm,
+        ValidationType.FMU: FMIValidatorStepConfigForm,
         ValidationType.AI_ASSIST: AiAssistStepConfigForm,
     }
     return mapping.get(validation_type, BaseStepConfigForm)

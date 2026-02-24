@@ -91,7 +91,7 @@ class ValidatorFactory(DjangoModelFactory):
             obj.validation_type
             in (
                 ValidationType.ENERGYPLUS,
-                ValidationType.FMI,
+                ValidationType.FMU,
             )
         )
     )

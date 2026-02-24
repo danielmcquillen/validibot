@@ -91,7 +91,7 @@ When workflows move between projects the data flow is:
 - When writing migrations or cleanup jobs, detach project references by setting
   them to `NULL` rather than trying to infer a new project.
 - If integrations in `validibot-shared` need project context, fetch it from
-  the submission/run instance passed into the engine rather than re-querying
+  the submission/run instance passed into the validator rather than re-querying
   the workflow.
 
 Keeping the project FK on all three tables is therefore not duplication but a

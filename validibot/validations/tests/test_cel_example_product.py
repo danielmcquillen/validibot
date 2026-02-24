@@ -11,11 +11,11 @@ from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
-from validibot.validations.engines.basic import BasicValidatorEngine
 from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.basic import BasicValidator
 
 
 class TestExampleProductWithCEL(TestCase):
@@ -74,8 +74,8 @@ class TestExampleProductWithCEL(TestCase):
 
     def _engine_validate(self, payload: dict):
         self._assertion()
-        engine = BasicValidatorEngine()
-        # Basic engine expects JSON string content; we bypass submissions and
+        engine = BasicValidator()
+        # Basic validator expects JSON string content; we bypass submissions and
         # feed payload directly.
         result = engine.evaluate_assertions_for_stage(
             ruleset=self.ruleset,
@@ -112,7 +112,7 @@ class TestExampleProductWithCEL(TestCase):
             operator=AssertionOperator.CEL_EXPR,
             rhs={"expr": "price > 0"},
         )
-        engine = BasicValidatorEngine()
+        engine = BasicValidator()
         # Assertions without target_catalog_entry default to OUTPUT stage
         result = engine.evaluate_assertions_for_stage(
             ruleset=ruleset,

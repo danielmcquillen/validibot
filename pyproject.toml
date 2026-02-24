@@ -87,6 +87,7 @@ dependencies = [
 
 [project.optional-dependencies]
 geometry = ["shapely>=2.0"]
+cloud = ["stripe>=8.0.0"]
 
 [project.urls]
 Homepage = "https://validibot.com"

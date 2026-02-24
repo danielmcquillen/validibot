@@ -2892,6 +2892,19 @@ wheels = [
 ]
 
 [[package]]
+name = "stripe"
+version = "14.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/67/8a38222a57fc2ba359c4dcb66528d94c00d803c7fde8f8d8470ad6bdccbb/stripe-14.3.0.tar.gz", hash = "sha256:4c76137d741bd43e8bb433a596c198ca20f4cdf17a8fe04604faf37c74b01978", size = 1463618 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/4b/0b7d5920f2be5e42d72bdfc44a9fae57b422668bfc8dacdf2f74886f6daa/stripe-14.3.0-py3-none-any.whl", hash = "sha256:3e36b68b256c8970e99b703e195d947e2a2919095758788c7074ac4485ac255e", size = 2106980 },
+]
+
+[[package]]
 name = "termcolor"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3164,6 +3177,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cloud = [
+    { name = "stripe" },
+]
 geometry = [
     { name = "shapely" },
 ]
@@ -3236,6 +3252,7 @@ requires-dist = [
     { name = "python-slugify", specifier = "==8.0.4" },
     { name = "sentry-sdk", specifier = "==2.53.0" },
     { name = "shapely", marker = "extra == 'geometry'", specifier = ">=2.0" },
+    { name = "stripe", marker = "extra == 'cloud'", specifier = ">=8.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.41.0" },
     { name = "uvicorn-worker", specifier = "==0.4.0" },
     { name = "validibot-shared", specifier = ">=0.2.1" },

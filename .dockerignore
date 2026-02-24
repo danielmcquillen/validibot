@@ -50,7 +50,8 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .vscode/
-# Cloud layer must NOT be excluded — needed by Dockerfile for cloud builds.
-# The _validibot-cloud/ directory is copied into the build context by
-# `just gcp build` and removed after the build completes.
+# Commercial layers must NOT be excluded — needed by Dockerfile for cloud builds.
+# These directories are copied into the build context by `just gcp build`
+# and removed after the build completes.
+!_validibot-pro/
 !_validibot-cloud/

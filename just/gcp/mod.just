@@ -166,48 +166,52 @@ _service-account stage:
 # =============================================================================
 
 # Build Docker image for Cloud Run (linux/amd64 for Cloud Run on x86_64).
-# Set GCP_BUILD_VALIDIBOT_CLOUD=1 to include the commercial cloud layer;
-# community users can ignore this.
+# Set GCP_BUILD_VALIDIBOT_CLOUD=1 to include the commercial layers (Pro + Cloud).
+# Community users can ignore this flag.
 build: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
 
     echo "Building image: {{gcp_image}}:{{git_sha}}"
 
-    BUILD_CLOUD_ARG=""
+    DOCKERFILE="compose/production/django/Dockerfile"
 
     if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
-        # Copy cloud layer into build context (Docker can't access parent dirs)
-        CLOUD_SRC="../validibot-cloud"
-        CLOUD_DST="_validibot-cloud"
+        # Copy Pro and Cloud repos into the build context (Docker can't
+        # access parent directories). The cloud Dockerfile COPYs and
+        # installs both packages.
+        RSYNC_EXCLUDES="--exclude='.git' --exclude='.venv' --exclude='__pycache__' \
+            --exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.ruff_cache' \
+            --exclude='.mypy_cache' --exclude='node_modules'"
 
-        if [ ! -d "$CLOUD_SRC" ]; then
-            echo "Error: $CLOUD_SRC not found."
-            echo "GCP_BUILD_VALIDIBOT_CLOUD=1 requires the validibot-cloud repo as a sibling directory."
-            exit 1
-        fi
+        for REPO in validibot-pro validibot-cloud; do
+            SRC="../$REPO"
+            DST="_$REPO"
 
-        # Clean up on exit (success or failure)
-        cleanup() { rm -rf "$CLOUD_DST"; }
+            if [ ! -d "$SRC" ]; then
+                echo "Error: $SRC not found."
+                echo "GCP_BUILD_VALIDIBOT_CLOUD=1 requires the $REPO repo as a sibling directory."
+                exit 1
+            fi
+
+            echo "Copying $REPO into build context..."
+            rsync -a $RSYNC_EXCLUDES "$SRC/" "$DST/"
+        done
+
+        cleanup() { rm -rf _validibot-pro _validibot-cloud; }
         trap cleanup EXIT
 
-        echo "Copying cloud layer into build context..."
-        rsync -a --exclude='.git' --exclude='.venv' --exclude='__pycache__' \
-            --exclude='*.egg-info' --exclude='.pytest_cache' --exclude='.ruff_cache' \
-            --exclude='.mypy_cache' --exclude='node_modules' \
-            "$CLOUD_SRC/" "$CLOUD_DST/"
-
-        BUILD_CLOUD_ARG="--build-arg BUILD_CLOUD=1"
+        # Use the cloud Dockerfile instead of the community one.
+        DOCKERFILE="_validibot-cloud/deploy/Dockerfile"
     fi
 
     docker build --platform linux/amd64 \
-        $BUILD_CLOUD_ARG \
-        -f compose/production/django/Dockerfile \
+        -f "$DOCKERFILE" \
         -t {{gcp_image}}:{{git_sha}} \
         -t {{gcp_image}}:latest .
 
     if [ "${GCP_BUILD_VALIDIBOT_CLOUD:-0}" = "1" ]; then
-        echo "Build complete. Cloud layer included."
+        echo "Build complete. Commercial layers included (Pro + Cloud)."
     else
         echo "Build complete (community only)."
     fi

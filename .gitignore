@@ -321,5 +321,6 @@ _envs/*
 temp.json
 temp*.json
 
-# Cloud layer temp copy (created by `just gcp build`, cleaned up automatically)
+# Commercial layer temp copies (created by `just gcp build`, cleaned up automatically)
+_validibot-pro/
 _validibot-cloud/

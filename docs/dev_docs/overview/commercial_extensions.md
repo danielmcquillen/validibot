@@ -21,10 +21,10 @@ The core app discovers these entry points in its `AppConfig.ready()` method and 
 
 ## Installing a commercial package
 
-Add the package from the private index:
+Add the package from the private index (see your license email for the index URL and credentials):
 
 ```bash
-uv add validibot-pro --index https://pypi.validibot.com/simple/
+uv add validibot-pro --index <private-index-url>
 ```
 
 Then restart the application. The Pro features will be available immediately.

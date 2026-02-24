@@ -44,4 +44,4 @@ Always scope queries to the user's current org to avoid leaking cross-org data.
 
 ## Role details
 
-For full documentation on role codes, the permission hierarchy, the role picker UI, and team management workflows, see the roles and permissions documentation in validibot-cloud.
+For full documentation on role codes, the permission hierarchy, the role picker UI, and team management workflows, see [User Roles](../overview/user_roles.md).

@@ -214,7 +214,7 @@ html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
 
     .nav-version-label {
       color: rgba(100, 220, 160, 0.7);
-      text-transform: uppercase;
+      text-transform: lowercase;
 
       &::before {
         content: "> ";

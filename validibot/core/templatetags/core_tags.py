@@ -1,4 +1,6 @@
 import logging
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 
 from django import template
 from django.conf import settings
@@ -240,3 +242,20 @@ def finding_badge_class(finding) -> str:
         "INFO": "text-bg-secondary",
     }
     return mapping.get(severity_value, "text-bg-secondary")
+
+
+@register.simple_tag
+def app_version() -> str:
+    """Return the validibot package version."""
+    from validibot import __version__
+
+    return __version__
+
+
+@register.simple_tag
+def shared_version() -> str:
+    """Return the installed validibot-shared package version."""
+    try:
+        return pkg_version("validibot-shared")
+    except PackageNotFoundError:
+        return "?"

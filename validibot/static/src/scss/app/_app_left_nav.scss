@@ -198,4 +198,36 @@ html[data-left-nav-prefers-collapsed="true"] #app-left-nav {
       }
     }
   }
+
+  .nav-version-info {
+    margin-top: auto;
+    padding: 0.5rem 0.75rem;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: "Share Tech Mono", ui-monospace, monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.06em;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+
+    .nav-version-label {
+      color: rgba(100, 220, 160, 0.7);
+      text-transform: uppercase;
+
+      &::before {
+        content: "> ";
+      }
+    }
+
+    .nav-version-value {
+      color: rgba(255, 255, 255, 0.45);
+      padding-left: 0.75rem;
+    }
+
+    .nav-version-num {
+      color: rgba(100, 200, 255, 0.65);
+    }
+  }
 }

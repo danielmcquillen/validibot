@@ -168,15 +168,16 @@ self.validation_run.summary = summary
 self.validation_run.save(update_fields=["summary"])
 ```
 
-## Seed data
+## Validator configuration
 
-Advanced validators define their signals as seed data in
-`validibot/validations/seeds/`. The `sync_advanced_validators` management command
-syncs these to the database. Seed data must match the field names in the
-corresponding shared library models (e.g.,
+Advanced validators define their signals in `config.py` modules co-located with
+their validator code (e.g., `validibot/validations/validators/energyplus/config.py`).
+The `sync_validators` management command syncs these to the database.
+Configuration binding fields must match the field names in the corresponding
+shared library models (e.g.,
 `validibot_shared.energyplus.models.EnergyPlusSimulationMetrics`).
 
-See [Validators - Advanced validator seed data](validators.md#advanced-validator-seed-data)
+See [Validators - Validator configuration](validators.md#validator-configuration)
 for more on the sync process.
 
 ## Related documentation

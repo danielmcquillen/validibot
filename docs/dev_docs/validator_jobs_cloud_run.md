@@ -332,16 +332,16 @@ Then sync validators from container metadata:
 
 ```bash
 # Sync from configured images (reads metadata from Docker labels)
-python manage.py sync_advanced_validators
+python manage.py sync_validators
 
 # Preview without creating (dry run)
-python manage.py sync_advanced_validators --dry-run
+python manage.py sync_validators --dry-run
 
 # Sync specific image (ignores ADVANCED_VALIDATOR_IMAGES)
-python manage.py sync_advanced_validators --image ghcr.io/validibot/energyplus:24.2.0
+python manage.py sync_validators --image ghcr.io/validibot/energyplus:24.2.0
 
 # Skip pulling images (if already present locally)
-python manage.py sync_advanced_validators --no-pull
+python manage.py sync_validators --no-pull
 ```
 
 The command reads metadata from Docker labels (`org.validibot.validator.metadata`) and creates/updates Validator records. Validators removed from the settings are soft-deleted (set to DRAFT state).

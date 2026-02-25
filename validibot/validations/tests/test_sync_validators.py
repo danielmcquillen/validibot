@@ -1,8 +1,8 @@
 """
-Tests for the sync_advanced_validators management command.
+Tests for the sync_validators management command.
 
-This command syncs advanced validators (EnergyPlus, FMU) and their catalog
-entries from seed data in validibot.validations.seeds to the database.
+This command syncs system validators (EnergyPlus, FMU, THERM) and their catalog
+entries from config declarations in each validator package to the database.
 """
 
 from io import StringIO
@@ -14,18 +14,18 @@ from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import ValidationType
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
-from validibot.validations.seeds import SYSTEM_VALIDATOR_SEEDS
+from validibot.validations.validators.base.config import discover_configs
 
 
-class SyncAdvancedValidatorsCommandTests(TestCase):
-    """Tests for the sync_advanced_validators management command."""
+class SyncValidatorsCommandTests(TestCase):
+    """Tests for the sync_validators management command."""
 
     def call_command(self, *args, **kwargs):
         """Helper to call the command and capture output."""
         out = StringIO()
         err = StringIO()
         call_command(
-            "sync_advanced_validators",
+            "sync_validators",
             *args,
             stdout=out,
             stderr=err,
@@ -33,19 +33,18 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
         )
         return out.getvalue(), err.getvalue()
 
-    def test_command_creates_validators_from_seeds(self):
-        """Test that command creates validators from seed data."""
+    def test_command_creates_validators_from_configs(self):
+        """Test that command creates validators from discovered configs."""
         out, _ = self.call_command()
 
         # Verify output mentions sync complete
         self.assertIn("Sync complete", out)
 
-        # Verify validators were created
-        for seed in SYSTEM_VALIDATOR_SEEDS:
-            slug = seed["validator"]["slug"]
+        # Verify validators were created for each discovered config
+        for cfg in discover_configs():
             self.assertTrue(
-                Validator.objects.filter(slug=slug).exists(),
-                f"Validator {slug} should exist",
+                Validator.objects.filter(slug=cfg.slug).exists(),
+                f"Validator {cfg.slug} should exist",
             )
 
     def test_command_creates_energyplus_validator(self):
@@ -135,13 +134,12 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
         self.call_command()
 
         # Should only have one of each validator
-        for seed in SYSTEM_VALIDATOR_SEEDS:
-            slug = seed["validator"]["slug"]
-            count = Validator.objects.filter(slug=slug).count()
+        for cfg in discover_configs():
+            count = Validator.objects.filter(slug=cfg.slug).count()
             self.assertEqual(
                 count,
                 1,
-                f"Should have exactly 1 validator with slug {slug}, found {count}",
+                f"Should have exactly 1 validator with slug {cfg.slug}, found {count}",
             )
 
     def test_command_updates_existing_validator(self):
@@ -172,3 +170,51 @@ class SyncAdvancedValidatorsCommandTests(TestCase):
 
         # Should report catalog entries created
         self.assertIn("catalog entries created", out.lower())
+
+
+class DiscoverConfigsTests(TestCase):
+    """Tests for the discover_configs() function."""
+
+    def test_discovers_system_validators(self):
+        """discover_configs() finds configs for all system validators."""
+        configs = discover_configs()
+        slugs = {c.slug for c in configs}
+
+        self.assertIn("energyplus-idf-validator", slugs)
+        self.assertIn("therm-validator", slugs)
+        self.assertIn("fmu-validator", slugs)
+
+    def test_configs_are_sorted(self):
+        """Configs are returned sorted by (order, name)."""
+        configs = discover_configs()
+        orders = [(c.order, c.name) for c in configs]
+
+        self.assertEqual(orders, sorted(orders))
+
+    def test_configs_have_required_fields(self):
+        """Every config has slug, name, and validation_type."""
+        for cfg in discover_configs():
+            self.assertTrue(cfg.slug, f"Config {cfg} should have a slug")
+            self.assertTrue(cfg.name, f"Config {cfg} should have a name")
+            self.assertTrue(
+                cfg.validation_type,
+                f"Config {cfg} should have a validation_type",
+            )
+
+    def test_energyplus_has_catalog_entries(self):
+        """EnergyPlus config has input/output signals and derivations."""
+        configs = discover_configs()
+        ep_config = next(c for c in configs if c.slug == "energyplus-idf-validator")
+
+        self.assertGreater(len(ep_config.catalog_entries), 0)
+
+        entry_types = {e.entry_type for e in ep_config.catalog_entries}
+        self.assertIn("signal", entry_types)
+        self.assertIn("derivation", entry_types)
+
+    def test_fmu_has_no_catalog_entries(self):
+        """FMU config has no static catalog entries (entries are dynamic)."""
+        configs = discover_configs()
+        fmu_config = next(c for c in configs if c.slug == "fmu-validator")
+
+        self.assertEqual(len(fmu_config.catalog_entries), 0)

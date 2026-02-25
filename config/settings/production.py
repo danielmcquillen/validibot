@@ -329,7 +329,7 @@ else:  # docker_compose
     VALIDATOR_IMAGE_TAG = env("VALIDATOR_IMAGE_TAG", default="latest")
     VALIDATOR_IMAGE_REGISTRY = env("VALIDATOR_IMAGE_REGISTRY", default="")
 
-    # Advanced validator images to enable (for sync_advanced_validators command)
+    # Advanced validator images to enable (for sync_validators command)
     ADVANCED_VALIDATOR_IMAGES = env.list("ADVANCED_VALIDATOR_IMAGES", default=[])
 
 # Site URL for callbacks

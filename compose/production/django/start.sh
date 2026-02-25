@@ -23,9 +23,9 @@ if [ "${APP_ROLE:-web}" = "web" ]; then
     echo "First run detected - running initial setup..."
     python manage.py setup_validibot --noinput
   else
-    # Sync advanced validators on every startup to ensure catalog entries are current.
-    # This is fast (idempotent) and ensures EnergyPlus/FMU signals are available.
-    python manage.py sync_advanced_validators
+    # Sync system validators on every startup to ensure catalog entries are current.
+    # This is fast (idempotent) and ensures EnergyPlus/FMU/THERM signals are available.
+    python manage.py sync_validators
   fi
 fi
 

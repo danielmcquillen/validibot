@@ -130,13 +130,13 @@ Providers must implement the following contract:
 The provider gives the validator its domain-specific abilities without storing Python dotted paths in
 the database. Version upgrades happen entirely inside code by registering new providers ranges.
 
-## Advanced validator seed data
+## Validator configuration
 
 Advanced validators (EnergyPlus, FMU, etc.) are packaged as Docker containers and have predefined
-input/output signals. These signals are defined as **seed data** in `validibot/validations/seeds/`
-and synced to the database at startup.
+input/output signals. Each validator defines its configuration in a `config.py` module co-located
+with its validator code (e.g., `validibot/validations/validators/energyplus/config.py`).
 
-The seed data for each advanced validator includes:
+The configuration for each validator includes:
 
 1. **Validator metadata** — slug, name, description, validation type, and configuration.
 2. **Input signals** — parameters available before the validator runs (e.g., `expected_floor_area_m2`
@@ -146,20 +146,23 @@ The seed data for each advanced validator includes:
 4. **Derivations** — computed metrics derived from signals (e.g., `total_unmet_hours` calculated from
    heating and cooling unmet hours).
 
-The seed data binding configurations must match field names in the corresponding shared library models
-(e.g., `validibot_shared.energyplus.models.EnergyPlusSimulationMetrics`), which is what the container
+Configurations use typed Pydantic models (`ValidatorConfig` and `CatalogEntrySpec` from
+`validibot.validations.validators.base`). The binding configurations must match field names in the
+corresponding shared library models (e.g.,
+`validibot_shared.energyplus.models.EnergyPlusSimulationMetrics`), which is what the container
 validator populates after running the simulation.
 
-To sync seed data to the database:
+To sync configurations to the database:
 
 ```bash
-python manage.py sync_advanced_validators
+python manage.py sync_validators
 ```
 
-This command is idempotent and runs automatically at container startup. It creates validators and
-catalog entries if they don't exist, or updates them if the seed data has changed.
+This command discovers all validator configs automatically via convention-based package scanning
+and is idempotent. It runs automatically at container startup, creating validators and catalog
+entries if they don't exist, or updating them if the configuration has changed.
 
-**Versioning (current approach):** The validator `version` field in seed data tracks the overall
+**Versioning (current approach):** The validator `version` field in the config tracks the overall
 validator version. When signals change significantly, bump this version. The sync command updates
 existing validators but uses `get_or_create` for catalog entries (existing entries are preserved).
 For now, if you need to change existing catalog entries, manually update them in the database or
@@ -169,7 +172,7 @@ delete and re-sync. A more sophisticated versioning system is planned for the fu
 ## Validator lifecycle
 
 1. **Registration** — migrations or bootstrap logic call `create_default_validators()` to ensure every
-   built-in validator row exists. Advanced validators are synced via `sync_advanced_validators` which
+   built-in validator row exists. Advanced validators are synced via `sync_validators` which
    populates their catalog entries. Custom validators are created through the Validator Library UI.
 2. **Selection** -- workflow steps reference a validator via FK. When the step runs, the runtime fetches
    the validator, resolves its provider, and loads the catalog/allowlists.

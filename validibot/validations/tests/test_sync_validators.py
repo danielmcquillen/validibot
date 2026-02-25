@@ -15,6 +15,8 @@ from validibot.validations.constants import ValidationType
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
 from validibot.validations.validators.base.config import discover_configs
+from validibot.validations.validators.base.config import get_all_configs
+from validibot.validations.validators.base.config import get_config
 
 
 class SyncValidatorsCommandTests(TestCase):
@@ -218,3 +220,73 @@ class DiscoverConfigsTests(TestCase):
         fmu_config = next(c for c in configs if c.slug == "fmu-validator")
 
         self.assertEqual(len(fmu_config.catalog_entries), 0)
+
+    def test_energyplus_has_file_handling_fields(self):
+        """EnergyPlus config has file type and extension fields populated."""
+        configs = discover_configs()
+        ep_config = next(c for c in configs if c.slug == "energyplus-idf-validator")
+
+        self.assertIn("text", ep_config.supported_file_types)
+        self.assertIn("energyplus_idf", ep_config.supported_data_formats)
+        self.assertIn("idf", ep_config.allowed_extensions)
+        self.assertIn("energyplus_weather", ep_config.resource_types)
+
+    def test_configs_have_display_metadata(self):
+        """All discovered configs have icon and card_image set."""
+        for cfg in discover_configs():
+            self.assertTrue(cfg.icon, f"{cfg.slug} missing icon")
+            self.assertTrue(cfg.card_image, f"{cfg.slug} missing card_image")
+
+
+class ConfigRegistryTests(TestCase):
+    """Tests for the config registry (populated at Django startup)."""
+
+    def test_all_validation_types_registered(self):
+        """Every ValidationType has a config in the registry."""
+        for vtype in ValidationType:
+            cfg = get_config(vtype.value)
+            self.assertIsNotNone(cfg, f"No config registered for {vtype}")
+
+    def test_get_config_returns_correct_type(self):
+        """get_config() returns the matching config for a known type."""
+        cfg = get_config(ValidationType.ENERGYPLUS)
+        self.assertIsNotNone(cfg)
+        self.assertEqual(cfg.slug, "energyplus-idf-validator")
+
+    def test_get_config_nonexistent_returns_none(self):
+        """get_config() returns None for an unregistered type."""
+        self.assertIsNone(get_config("NONEXISTENT"))
+
+    def test_get_all_configs_sorted(self):
+        """get_all_configs() returns configs sorted by (order, name)."""
+        configs = get_all_configs()
+        orders = [(c.order, c.name) for c in configs]
+        self.assertEqual(orders, sorted(orders))
+
+    def test_get_all_configs_includes_builtins_and_discovered(self):
+        """Registry includes both built-in and discovered configs."""
+        configs = get_all_configs()
+        slugs = {c.slug for c in configs}
+
+        # Built-in validators
+        self.assertIn("basic-validator", slugs)
+        self.assertIn("json-schema-validator", slugs)
+
+        # Discovered validators
+        self.assertIn("energyplus-idf-validator", slugs)
+        self.assertIn("therm-validator", slugs)
+
+    def test_energyplus_has_resource_types(self):
+        """EnergyPlus config declares weather resource type."""
+        cfg = get_config(ValidationType.ENERGYPLUS)
+        self.assertIn("energyplus_weather", cfg.resource_types)
+
+    def test_basic_has_json_file_type(self):
+        """Basic config declares JSON as supported file type."""
+        cfg = get_config(ValidationType.BASIC)
+        self.assertIn("json", cfg.supported_file_types)
+
+    def test_registry_count(self):
+        """Registry has exactly 8 configs (one per ValidationType)."""
+        configs = get_all_configs()
+        self.assertEqual(len(configs), len(ValidationType))

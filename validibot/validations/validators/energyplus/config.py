@@ -6,9 +6,12 @@ validibot_shared.energyplus.models.EnergyPlusSimulationMetrics, which is what
 the container validator populates after running the simulation.
 """
 
+from validibot.submissions.constants import SubmissionDataFormat
+from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -23,6 +26,15 @@ config = ValidatorConfig(
     has_processor=True,
     processor_name="EnergyPlus Simulation",
     is_system=True,
+    supported_file_types=[SubmissionFileType.TEXT, SubmissionFileType.JSON],
+    supported_data_formats=[
+        SubmissionDataFormat.ENERGYPLUS_IDF,
+        SubmissionDataFormat.ENERGYPLUS_EPJSON,
+    ],
+    allowed_extensions=["idf", "epjson", "json"],
+    resource_types=[ResourceFileType.ENERGYPLUS_WEATHER],
+    icon="bi-lightning-charge-fill",
+    card_image="ENERGYPLUS_card_img_small.png",
     catalog_entries=[
         # ==================================================================
         # INPUT SIGNALS (from submission metadata)

@@ -36,8 +36,16 @@ class Command(BaseCommand):
 
             with transaction.atomic():
                 # Build validator field dict from the Pydantic model,
-                # excluding catalog_entries (not a model field).
-                validator_data = cfg.model_dump(exclude={"catalog_entries"})
+                # excluding fields that aren't Validator model columns.
+                validator_data = cfg.model_dump(
+                    exclude={
+                        "catalog_entries",
+                        "allowed_extensions",
+                        "resource_types",
+                        "icon",
+                        "card_image",
+                    },
+                )
 
                 validator, created = Validator.objects.get_or_create(
                     slug=cfg.slug,

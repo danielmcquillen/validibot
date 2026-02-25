@@ -9,6 +9,8 @@ Catalog entries define the output signals that workflow authors can
 reference when building assertion rulesets (e.g. NFRC 100 compliance).
 """
 
+from validibot.submissions.constants import SubmissionDataFormat
+from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
@@ -30,6 +32,12 @@ config = ValidatorConfig(
     order=30,
     has_processor=False,
     is_system=True,
+    supported_file_types=[SubmissionFileType.XML, SubmissionFileType.BINARY],
+    supported_data_formats=[
+        SubmissionDataFormat.THERM_THMX,
+        SubmissionDataFormat.THERM_THMZ,
+    ],
+    allowed_extensions=["thmx", "thmz"],
     catalog_entries=[
         # -- Counts --
         CatalogEntrySpec(

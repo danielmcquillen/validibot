@@ -78,6 +78,7 @@ class ValidatorConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    # --- Identity ---
     slug: str
     name: str
     description: str = ""
@@ -87,6 +88,18 @@ class ValidatorConfig(BaseModel):
     has_processor: bool = False
     processor_name: str = ""
     is_system: bool = True
+
+    # --- File handling ---
+    supported_file_types: list[str] = Field(default_factory=list)
+    supported_data_formats: list[str] = Field(default_factory=list)
+    allowed_extensions: list[str] = Field(default_factory=list)
+    resource_types: list[str] = Field(default_factory=list)
+
+    # --- Display ---
+    icon: str = "bi-journal-bookmark"
+    card_image: str = "default_card_img_small.png"
+
+    # --- Catalog ---
     catalog_entries: list[CatalogEntrySpec] = Field(default_factory=list)
 
 
@@ -109,8 +122,8 @@ def discover_configs() -> list[ValidatorConfig]:
     configs: list[ValidatorConfig] = []
 
     for _importer, modname, ispkg in pkgutil.iter_modules(validators_pkg.__path__):
-        if not ispkg:
-            # Skip single-file validators (basic.py, json_schema.py, etc.)
+        if not ispkg or modname == "base":
+            # Skip single-file validators and the base infrastructure package
             continue
 
         config_module_name = f"validibot.validations.validators.{modname}.config"
@@ -129,5 +142,63 @@ def discover_configs() -> list[ValidatorConfig]:
                 config_module_name,
             )
 
+    configs.sort(key=lambda c: (c.order, c.name))
+    return configs
+
+
+# ---------------------------------------------------------------------------
+# Config Registry
+#
+# Populated once at startup by populate_registry(), keyed by validation_type.
+# Consumers use get_config() for single lookups and get_all_configs() for
+# the full list. Functions that read from this registry handle None gracefully
+# (not every validation_type has a config — e.g. dynamically created custom
+# validators).
+# ---------------------------------------------------------------------------
+
+_CONFIG_REGISTRY: dict[str, ValidatorConfig] = {}
+
+
+def populate_registry() -> None:
+    """Discover all configs and populate the global registry.
+
+    Called once from ``ValidationsConfig.ready()``. Pulls configs from:
+
+    1. ``discover_configs()`` — package-based validators with ``config.py``
+    2. ``BUILTIN_CONFIGS`` — single-file built-in validators
+
+    Idempotent: skips if the registry is already populated (handles
+    Django's autoreloader calling ``ready()`` twice).
+    """
+    if _CONFIG_REGISTRY:
+        return
+
+    from validibot.validations.validators.base.builtin_configs import BUILTIN_CONFIGS
+
+    all_configs = list(discover_configs()) + list(BUILTIN_CONFIGS)
+
+    for cfg in all_configs:
+        if cfg.validation_type in _CONFIG_REGISTRY:
+            msg = (
+                f"Duplicate config registration for validation_type "
+                f"'{cfg.validation_type}': {cfg.slug} conflicts with "
+                f"{_CONFIG_REGISTRY[cfg.validation_type].slug}"
+            )
+            raise ValueError(msg)
+        _CONFIG_REGISTRY[cfg.validation_type] = cfg
+
+
+def get_config(validation_type: str) -> ValidatorConfig | None:
+    """Look up the config for a given validation type.
+
+    Returns ``None`` if no config is registered (e.g. a dynamically
+    created custom validator). Callers should apply their own defaults.
+    """
+    return _CONFIG_REGISTRY.get(validation_type)
+
+
+def get_all_configs() -> list[ValidatorConfig]:
+    """Return all registered configs, sorted by ``(order, name)``."""
+    configs = list(_CONFIG_REGISTRY.values())
     configs.sort(key=lambda c: (c.order, c.name))
     return configs

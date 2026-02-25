@@ -3125,7 +3125,7 @@ wheels = [
 
 [[package]]
 name = "validibot"
-version = "0.1.1"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },

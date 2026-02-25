@@ -121,7 +121,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
         ),
         data={
             "assertion_type": "basic",
-            "target_field": "price",
+            "target_data_path": "price",
             "operator": AssertionOperator.LT,
             "comparison_value": "20",
             "severity": "ERROR",
@@ -132,7 +132,7 @@ def test_create_workflow_with_custom_step_and_assertion(client):
     assert assertion_response.status_code == HTTPStatus.NO_CONTENT
     step.refresh_from_db()
     assertion = RulesetAssertion.objects.get(ruleset=step.ruleset)
-    assert assertion.target_field == "price"
+    assert assertion.target_data_path == "price"
     assert assertion.operator == AssertionOperator.LT
     assert assertion.rhs.get("value") == 20.0  # noqa: PLR2004
     assert (
@@ -196,7 +196,7 @@ def test_basic_workflow_api_flow_returns_failure_when_price_high(
         order=10,
         assertion_type=AssertionType.BASIC,
         operator=AssertionOperator.LT,
-        target_field="price",
+        target_data_path="price",
         severity=Severity.ERROR,
         rhs={"value": 20},
         options={},

@@ -133,10 +133,21 @@ def help_page(request, path: str = "index"):
         )
     )
 
+    # Build breadcrumbs: Help > Section > Page
+    section_slug = _section_slug_from_url(full_url)
+    breadcrumbs = [{"name": _("Help"), "url": f"{HELP_URL_PREFIX}index/"}]
+    if section_slug != "index":
+        section_label = _section_label_from_slug(section_slug)
+        breadcrumbs.append({"name": section_label, "url": ""})
+        breadcrumbs.append({"name": page.title, "url": ""})
+    else:
+        breadcrumbs.append({"name": page.title, "url": ""})
+
     context = {
         "page": page,
         "nav_items": nav_items,
         "index_item": index_item,
+        "breadcrumbs": breadcrumbs,
     }
 
     return render(request, "help/page.html", context)

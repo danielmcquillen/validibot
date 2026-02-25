@@ -343,7 +343,7 @@ def launch_fmu_validation(
             execution_bundle_uri = str(base_dir)
             input_envelope_uri = str(base_dir / "input.json")
 
-        # Resolve inputs based on catalog binding paths
+        # Resolve inputs based on catalog data paths
         submission_payload = (
             submission.get_content() if hasattr(submission, "get_content") else ""
         )
@@ -357,11 +357,10 @@ def launch_fmu_validation(
                 submission_payload = {}
         input_values: dict[str, object] = {}
         for entry in validator.catalog_entries.filter(run_stage="INPUT"):
-            binding_path = (entry.input_binding_path or "").strip()
             slug = entry.slug
             value = resolve_input_value(
                 submission_payload,
-                binding_path=binding_path,
+                data_path=(entry.target_data_path or "").strip(),
                 slug=slug,
             )
             if value is None and entry.is_required:

@@ -87,7 +87,7 @@ class AssertionFormController {
   constructor(private form: HTMLFormElement) {
     this.typeField = this.form.querySelector<HTMLSelectElement>('#id_assertion_type');
     this.operatorField = this.form.querySelector<HTMLSelectElement>('#id_operator');
-    this.targetField = this.form.querySelector<HTMLElement>('[name="target_field"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.targetField = this.form.querySelector<HTMLElement>('[name="target_data_path"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.targetCatalogField = this.form.querySelector<HTMLElement>('[name="target_catalog_entry"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.celField = this.form.querySelector<HTMLElement>('[name="cel_expression"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.typeWrapper = this.typeField?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
@@ -213,7 +213,7 @@ class AssertionFormController {
     if (this.focusApplied) {
       return;
     }
-    const targetField = this.form.querySelector<HTMLInputElement>('#id_target_field');
+    const targetField = this.form.querySelector<HTMLInputElement>('#id_target_data_path');
     if (!targetField) {
       return;
     }

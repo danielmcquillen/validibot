@@ -62,7 +62,7 @@ class SuccessMessageTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             operator=AssertionOperator.LT,
-            target_field="price",
+            target_data_path="price",
             rhs={"value": 100},
             options={},
             message_template="",
@@ -92,7 +92,7 @@ class SuccessMessageTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             operator=AssertionOperator.LT,
-            target_field="price",
+            target_data_path="price",
             rhs={"value": 100},
             options={},
             message_template="",
@@ -126,7 +126,7 @@ class SuccessMessageTests(TestCase):
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             operator=AssertionOperator.LT,
-            target_field="price",
+            target_data_path="price",
             rhs={"value": 100},
             options={},
             message_template="",
@@ -173,7 +173,7 @@ class SuccessMessageTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             operator=AssertionOperator.LT,
-            target_field="price",
+            target_data_path="price",
             rhs={"value": 100},
             options={},
             message_template="Price too high",

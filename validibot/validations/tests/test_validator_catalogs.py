@@ -81,7 +81,7 @@ def test_signal_name_must_be_slug_format():
         data={
             "run_stage": CatalogRunStage.INPUT,
             "slug": "My Variable",
-            "target_field": "payload.value",
+            "target_data_path": "payload.value",
             "label": "",
             "data_type": "number",
         },
@@ -104,7 +104,7 @@ def test_signal_name_unique_across_stages():
         data={
             "run_stage": CatalogRunStage.OUTPUT,
             "slug": "boo",
-            "target_field": "output.boo",
+            "target_data_path": "output.boo",
             "label": "",
             "data_type": "number",
         },
@@ -143,7 +143,7 @@ def test_signal_create_modal_returns_errors_in_htmx():
         data={
             "run_stage": CatalogRunStage.INPUT,
             "slug": "",
-            "target_field": "",
+            "target_data_path": "",
             "data_type": "number",
         },
         HTTP_HX_REQUEST="true",

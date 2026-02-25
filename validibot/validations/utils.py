@@ -241,8 +241,8 @@ def create_default_validators():
         # feature existed we also call it explicitly here.
         validator.ensure_default_ruleset()
 
-    # Note: Catalog entries for advanced validators are synced separately via:
-    #   python manage.py sync_advanced_validators
+    # Note: Catalog entries for system validators are synced separately via:
+    #   python manage.py sync_validators
     # This function only creates the validator instances.
 
     return created, updated

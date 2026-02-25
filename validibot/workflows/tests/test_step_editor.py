@@ -785,7 +785,7 @@ def test_step_editor_shows_default_assertions_card(client):
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_field="payload.price > 0",
+        target_data_path="payload.price > 0",
         rhs={"expr": "payload.price > 0"},
         severity=Severity.ERROR,
         order=0,

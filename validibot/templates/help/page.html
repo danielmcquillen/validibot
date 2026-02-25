@@ -1,6 +1,6 @@
 {% extends "app_base.html" %}
 
-{% load markdownify %}
+{% load markdownify static %}
 
 {% block left_sidebar %}
   {% include "app/partial/components/app_left_nav.html" %}
@@ -42,8 +42,15 @@
       </aside>
       <main class="col-md-9 col-lg-10">
         <article class="help-article">
-          <header class="mb-3">
-            <h1 class="h3">{{ page.title }}</h1>
+          <header class="help-header mb-4">
+            <div class="d-flex align-items-end gap-2">
+              <img src="{% static 'images/robot_head_bw.png' %}"
+                   alt=""
+                   class="help-header-icon" />
+              <div class="help-speech-bubble">
+                <h1 class="mb-0">{{ page.title }}</h1>
+              </div>
+            </div>
           </header>
           <div class="help-body">{{ page.content|markdownify }}</div>
         </article>

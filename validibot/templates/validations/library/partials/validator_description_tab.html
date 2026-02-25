@@ -7,25 +7,30 @@ Expected context:
 {% endcomment %}
 {% load i18n %}
 
-{% if validator.description %}
-  <div class="mb-3">{{ validator.description|safe }}</div>
-{% else %}
-  <p class="text-muted">{% trans "No description provided." %}</p>
-{% endif %}
-<hr />
-<dl class="row mb-0">
-  <dt class="col-sm-3 text-muted small">{% trans "Validation Type" %}</dt>
-  <dd class="col-sm-9">
-    {{ validator.get_validation_type_display }}
-  </dd>
-  <dt class="col-sm-3 text-muted small">{% trans "Version" %}</dt>
-  <dd class="col-sm-9">
-    {{ validator.version|default:"-" }}
-  </dd>
-  {% if validator.short_description %}
-    <dt class="col-sm-3 text-muted small">{% trans "Short Description" %}</dt>
-    <dd class="col-sm-9">
-      {{ validator.short_description }}
-    </dd>
-  {% endif %}
-</dl>
+<div class="row">
+  <div class="col-12 col-lg-7">
+    {% if validator.description %}
+      <div class="mb-3">{{ validator.description|safe }}</div>
+    {% else %}
+      <p class="text-muted">{% trans "No description provided." %}</p>
+    {% endif %}
+  </div>
+  <div class="col-12 col-lg-5">
+    <dl class="row mb-0">
+      <dt class="col-sm-4 text-muted small">{% trans "Validation Type" %}</dt>
+      <dd class="col-sm-8">
+        {{ validator.get_validation_type_display }}
+      </dd>
+      <dt class="col-sm-4 text-muted small">{% trans "Version" %}</dt>
+      <dd class="col-sm-8">
+        {{ validator.version|default:"-" }}
+      </dd>
+      {% if validator.short_description %}
+        <dt class="col-sm-4 text-muted small">{% trans "Short Description" %}</dt>
+        <dd class="col-sm-8">
+          {{ validator.short_description }}
+        </dd>
+      {% endif %}
+    </dl>
+  </div>
+</div>

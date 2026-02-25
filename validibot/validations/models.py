@@ -46,99 +46,15 @@ from validibot.validations.constants import get_resource_types_for_validator
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
 
-# Default submission file types each validation type accepts (e.g. JSON, XML, TEXT).
-# Used by default_supported_file_types_for_validation() to populate the allowed
-# file type list when creating a new workflow step.
-VALIDATION_TYPE_FILE_TYPE_DEFAULTS = {
-    ValidationType.BASIC: [
-        SubmissionFileType.JSON,
-    ],
-    ValidationType.JSON_SCHEMA: [
-        SubmissionFileType.JSON,
-    ],
-    ValidationType.XML_SCHEMA: [
-        SubmissionFileType.XML,
-    ],
-    ValidationType.ENERGYPLUS: [
-        SubmissionFileType.TEXT,
-        SubmissionFileType.JSON,
-    ],
-    ValidationType.FMU: [
-        SubmissionFileType.BINARY,
-        SubmissionFileType.JSON,
-        SubmissionFileType.TEXT,
-    ],
-    ValidationType.CUSTOM_VALIDATOR: [
-        SubmissionFileType.JSON,
-        SubmissionFileType.TEXT,
-        SubmissionFileType.YAML,
-    ],
-    ValidationType.AI_ASSIST: [
-        SubmissionFileType.JSON,
-        SubmissionFileType.TEXT,
-    ],
-    ValidationType.THERM: [
-        SubmissionFileType.XML,
-        SubmissionFileType.BINARY,
-    ],
-}
-
-
-# Default data formats each validation type can parse (e.g. JSON, XML, IDF).
-# Data formats are higher-level than file types -- they describe the content
-# structure, while file types describe the container
-# (see VALIDATION_TYPE_FILE_TYPE_DEFAULTS).
-VALIDATION_TYPE_DATA_FORMAT_DEFAULTS = {
-    ValidationType.BASIC: [
-        SubmissionDataFormat.JSON,
-    ],
-    ValidationType.JSON_SCHEMA: [SubmissionDataFormat.JSON],
-    ValidationType.XML_SCHEMA: [SubmissionDataFormat.XML],
-    ValidationType.ENERGYPLUS: [
-        SubmissionDataFormat.ENERGYPLUS_IDF,
-        SubmissionDataFormat.ENERGYPLUS_EPJSON,
-    ],
-    ValidationType.FMU: [
-        SubmissionDataFormat.FMU,
-        SubmissionDataFormat.JSON,
-        SubmissionDataFormat.TEXT,
-    ],
-    ValidationType.CUSTOM_VALIDATOR: [
-        SubmissionDataFormat.JSON,
-    ],
-    ValidationType.AI_ASSIST: [
-        SubmissionDataFormat.JSON,
-        SubmissionDataFormat.TEXT,
-    ],
-    ValidationType.THERM: [
-        SubmissionDataFormat.THERM_THMX,
-        SubmissionDataFormat.THERM_THMZ,
-    ],
-}
-
-
-# Allowed file extensions for file uploads, keyed by validation type.
-# Extensions should be lowercase without leading dot. These are validated
-# when a user uploads a file (not when pasting text directly).
-VALIDATION_TYPE_ALLOWED_EXTENSIONS: dict[str, list[str]] = {
-    ValidationType.BASIC: ["json"],
-    ValidationType.JSON_SCHEMA: ["json"],
-    ValidationType.XML_SCHEMA: ["xml", "xsd", "rng", "dtd"],
-    ValidationType.ENERGYPLUS: ["idf", "epjson", "json"],
-    ValidationType.FMU: ["fmu", "json"],
-    ValidationType.CUSTOM_VALIDATOR: ["json", "yaml", "yml"],
-    ValidationType.AI_ASSIST: ["json", "txt"],
-    ValidationType.THERM: ["thmx", "thmz"],
-}
-
 
 def get_allowed_extensions_for_workflow(workflow) -> set[str]:
-    """
-    Collect allowed file extensions for all validators in a workflow.
+    """Collect allowed file extensions for all validators in a workflow.
 
     Returns a set of lowercase extensions (without leading dots) that are
-    allowed for file uploads to this workflow.
+    allowed for file uploads to this workflow. Reads from the config
+    registry, falling back to empty for unknown validator types.
     """
+    from validibot.validations.validators.base.config import get_config
     from validibot.workflows.models import WorkflowStep
 
     extensions: set[str] = set()
@@ -147,32 +63,43 @@ def get_allowed_extensions_for_workflow(workflow) -> set[str]:
         validator = step.validator
         if not validator:
             continue
-        vtype = validator.validation_type
-        step_extensions = VALIDATION_TYPE_ALLOWED_EXTENSIONS.get(vtype, [])
-        extensions.update(ext.lower() for ext in step_extensions)
+        cfg = get_config(validator.validation_type)
+        if cfg:
+            extensions.update(ext.lower() for ext in cfg.allowed_extensions)
     return extensions
 
 
 def default_supported_file_types_for_validation(
     validation_type: str,
 ) -> list[str]:
+    """Return the default supported file types for a validation type.
+
+    Reads from the config registry. Falls back to deriving from data
+    formats, or ``[JSON]`` if no config is registered.
+    """
+    from validibot.validations.validators.base.config import get_config
+
+    cfg = get_config(validation_type)
+    if cfg and cfg.supported_file_types:
+        return list(cfg.supported_file_types)
+    # Fallback: derive from data formats
     derived_formats = default_supported_data_formats_for_validation(validation_type)
     derived = supported_file_types_for_data_formats(derived_formats)
-    explicit = VALIDATION_TYPE_FILE_TYPE_DEFAULTS.get(validation_type, [])
-    merged: list[str] = []
-    for value in (derived or []) + list(explicit):
-        if value not in merged:
-            merged.append(value)
-    return merged or [SubmissionFileType.JSON]
+    return derived or [SubmissionFileType.JSON]
 
 
 def default_supported_data_formats_for_validation(validation_type: str) -> list[str]:
-    return list(
-        VALIDATION_TYPE_DATA_FORMAT_DEFAULTS.get(
-            validation_type,
-            [SubmissionDataFormat.JSON],
-        ),
-    )
+    """Return the default supported data formats for a validation type.
+
+    Reads from the config registry. Falls back to ``[JSON]`` if no config
+    is registered.
+    """
+    from validibot.validations.validators.base.config import get_config
+
+    cfg = get_config(validation_type)
+    if cfg and cfg.supported_data_formats:
+        return list(cfg.supported_data_formats)
+    return [SubmissionDataFormat.JSON]
 
 
 def supported_file_types_for_data_formats(data_formats: list[str]) -> list[str]:
@@ -411,7 +338,7 @@ class RulesetAssertion(TimeStampedModel):
 
     Every assertion targets either a ``ValidatorCatalogEntry`` (a known,
     typed signal published by the validator) *or* a free-form
-    ``target_field`` path - never both, enforced by the
+    ``target_data_path`` - never both, enforced by the
     ``ck_ruleset_assertion_target_oneof`` check constraint.  The target
     also determines the ``resolved_run_stage`` (input vs output) that
     controls when the assertion fires.
@@ -453,7 +380,7 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Reference to a catalog entry when targeting a known signal."),
     )
 
-    target_field = models.CharField(
+    target_data_path = models.CharField(
         max_length=255,
         blank=True,
         default="",
@@ -518,8 +445,8 @@ class RulesetAssertion(TimeStampedModel):
             models.CheckConstraint(
                 name="ck_ruleset_assertion_target_oneof",
                 condition=(
-                    Q(target_catalog_entry__isnull=False, target_field="")
-                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_field=""))
+                    Q(target_catalog_entry__isnull=False, target_data_path="")
+                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_data_path=""))
                 ),
             ),
         ]
@@ -532,7 +459,7 @@ class RulesetAssertion(TimeStampedModel):
         target = (
             self.target_catalog_entry.slug
             if self.target_catalog_entry_id
-            else self.target_field
+            else self.target_data_path
         )
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
@@ -545,11 +472,11 @@ class RulesetAssertion(TimeStampedModel):
     def clean(self):
         super().clean()
         catalog_set = bool(self.target_catalog_entry_id)
-        field = (self.target_field or "").strip()
+        field = (self.target_data_path or "").strip()
         if catalog_set == bool(field):
             raise ValidationError(
                 {
-                    "target_field": _(
+                    "target_data_path": _(
                         "Provide either a catalog target or a "
                         "custom path (but not both).",
                     ),
@@ -561,7 +488,7 @@ class RulesetAssertion(TimeStampedModel):
         if self.target_catalog_entry_id and self.target_catalog_entry:
             label = self.target_catalog_entry.label or self.target_catalog_entry.slug
             return f"{label} ({self.target_catalog_entry.slug})"
-        return self.target_field
+        return self.target_data_path
 
     @property
     def condition_display(self) -> str:
@@ -972,41 +899,33 @@ class Validator(TimeStampedModel):
         ),
     )
 
-    # Validator types that have a dedicated card image in
-    # static/validations/images/validator_cards/{TYPE}_card_img_small.png
-    _CARD_IMAGE_TYPES = frozenset(
-        {
-            ValidationType.BASIC,
-            ValidationType.JSON_SCHEMA,
-            ValidationType.XML_SCHEMA,
-            ValidationType.ENERGYPLUS,
-            ValidationType.FMU,
-            ValidationType.AI_ASSIST,
-        }
-    )
-
     @property
     def card_image_name(self) -> str:
-        """Return the card image filename, falling back to default if missing.
+        """Return the card image filename for the validator library UI.
 
-        Only built-in validator types have dedicated card images. Custom
-        validators (like THERM) use the default image to avoid crashing
-        with a missing staticfiles manifest entry.
+        Reads from the config registry. Falls back to the default card
+        image for validators without a registered config.
         """
-        if self.validation_type in self._CARD_IMAGE_TYPES:
-            return f"{self.validation_type}_card_img_small.png"
+        from validibot.validations.validators.base.config import get_config
+
+        cfg = get_config(self.validation_type)
+        if cfg:
+            return cfg.card_image
         return "default_card_img_small.png"
 
     @property
     def display_icon(self) -> str:
-        bi_icon_class = {
-            ValidationType.JSON_SCHEMA: "bi-filetype-json",
-            ValidationType.XML_SCHEMA: "bi-filetype-xml",
-            ValidationType.ENERGYPLUS: "bi-lightning-charge-fill",
-            ValidationType.FMU: "bi-cpu",
-            ValidationType.AI_ASSIST: "bi-robot",
-        }.get(self.validation_type, "bi-journal-bookmark")  # default icon
-        return bi_icon_class
+        """Return the Bootstrap Icons CSS class for this validator type.
+
+        Reads from the config registry. Falls back to a generic icon
+        for validators without a registered config.
+        """
+        from validibot.validations.validators.base.config import get_config
+
+        cfg = get_config(self.validation_type)
+        if cfg:
+            return cfg.icon
+        return "bi-journal-bookmark"
 
     @property
     def is_published(self) -> bool:
@@ -1371,23 +1290,12 @@ class ValidatorCatalogEntry(TimeStampedModel):
         help_text=_("Human-friendly label shown in editors."),
     )
 
-    target_field = models.CharField(
+    target_data_path = models.CharField(
         max_length=255,
         help_text=_(
             "Path used to locate this signal in the input or processor output."
         ),
     )
-    input_binding_path = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text=_(
-            "Optional path to the submission field used for this input signal. "
-            "If empty, the system uses the catalog slug as a top-level key. "
-            "Workflow authors cannot override this binding."
-        ),
-    )
-
     data_type = models.CharField(
         max_length=32,
         choices=CatalogValueType.choices,

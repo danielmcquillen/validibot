@@ -32,6 +32,12 @@ from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
+from validibot.validations.validators.base.config import CatalogEntrySpec
+from validibot.validations.validators.base.config import ValidatorConfig
+from validibot.validations.validators.base.config import discover_configs
+from validibot.validations.validators.base.config import get_all_configs
+from validibot.validations.validators.base.config import get_config
+from validibot.validations.validators.base.config import populate_registry
 from validibot.validations.validators.base.registry import get
 from validibot.validations.validators.base.registry import register_validator
 from validibot.validations.validators.base.simple import SimpleValidator
@@ -41,9 +47,15 @@ __all__ = [
     "AssertionEvaluationResult",
     "AssertionStats",
     "BaseValidator",
+    "CatalogEntrySpec",
     "SimpleValidator",
     "ValidationIssue",
     "ValidationResult",
+    "ValidatorConfig",
+    "discover_configs",
     "get",
+    "get_all_configs",
+    "get_config",
+    "populate_registry",
     "register_validator",
 ]

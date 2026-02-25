@@ -190,7 +190,7 @@ class Command(BaseCommand):
                     order=idx * 10,
                     assertion_type=AssertionType.BASIC,
                     operator=operator,
-                    target_field=f"payload.step_{index}.field_{idx}",
+                    target_data_path=f"payload.step_{index}.field_{idx}",
                     severity=Severity.ERROR,
                     rhs=rhs,
                     options=options,
@@ -345,8 +345,8 @@ class Command(BaseCommand):
                         severity=severity_value,
                         code=assertion.operator,
                         message=assertion.message_template
-                        or f"{assertion.target_field} failed validation.",
-                        path=assertion.target_field,
+                        or f"{assertion.target_data_path} failed validation.",
+                        path=assertion.target_data_path,
                         meta={"rhs": assertion.rhs, "options": assertion.options},
                     ),
                 )

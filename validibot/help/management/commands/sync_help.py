@@ -1,11 +1,15 @@
 # help/management/commands/sync_help_flatpages.py
 
+import re
 from pathlib import Path
 
 from django.conf import settings
 from django.contrib.flatpages.models import FlatPage
 from django.contrib.sites.models import Site
 from django.core.management.base import BaseCommand
+
+# Matches a markdown H1 at the start of the file (with optional leading blank lines).
+_H1_RE = re.compile(r"\A\s*^#\s+(.+)$", re.MULTILINE)
 
 
 def _pretty_title_from_stem(stem: str) -> str:
@@ -18,6 +22,23 @@ def _pretty_title_from_stem(stem: str) -> str:
       "validators-overview" -> "Validators Overview"
     """
     return stem.replace("_", " ").replace("-", " ").title()
+
+
+def _extract_title_and_body(content: str, fallback_title: str) -> tuple[str, str]:
+    """
+    Extract the title from a leading ``# Heading`` and return (title, body).
+
+    If the file starts with a markdown H1, we use that as the page title and
+    strip it from the body (the template renders the title separately). If no
+    H1 is found, we fall back to the filename-derived title and keep the
+    content unchanged.
+    """
+    match = _H1_RE.search(content)
+    if match:
+        title = match.group(1).strip()
+        body = content[match.end() :].lstrip("\n")
+        return title, body
+    return fallback_title, content
 
 
 HELP_URL_PREFIX = "/app/help/"
@@ -101,7 +122,13 @@ class Command(BaseCommand):
             else:
                 title = _pretty_title_from_stem(stem_parts[-1])
 
-            content = md_path.read_text(encoding="utf-8")
+            raw_content = md_path.read_text(encoding="utf-8")
+
+            # Use the markdown H1 as the page title if present; otherwise
+            # fall back to the filename-derived title. The H1 is stripped
+            # from the stored content because the template renders it
+            # separately via {{ page.title }}.
+            title, content = _extract_title_and_body(raw_content, title)
 
             if dry_run:
                 self.stdout.write(f"[DRY] {url}  <-  {rel}  (title: {title})")

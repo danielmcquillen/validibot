@@ -165,13 +165,13 @@ class WorkflowStepAssertionsTests(TestCase):
             ruleset=step.ruleset,
             order=10,
             target_catalog_entry=input_entry,
-            target_field="",
+            target_data_path="",
         )
         a_output = RulesetAssertionFactory(
             ruleset=step.ruleset,
             order=20,
             target_catalog_entry=output_entry,
-            target_field="",
+            target_data_path="",
         )
         move_url = reverse(
             "workflows:workflow_step_assertion_move",
@@ -233,7 +233,7 @@ class WorkflowStepAssertionsTests(TestCase):
             url,
             data={
                 "assertion_type": "basic",
-                "target_field": "payload.meta.score",
+                "target_data_path": "payload.meta.score",
                 "operator": AssertionOperator.GE,
                 "comparison_value": "0.8",
                 "severity": "WARNING",
@@ -287,7 +287,7 @@ class WorkflowStepAssertionsTests(TestCase):
             create_url,
             data={
                 "assertion_type": "basic",
-                "target_field": "metrics.custom.value",
+                "target_data_path": "metrics.custom.value",
                 "operator": "ge",
                 "comparison_value": "42",
                 "severity": "ERROR",

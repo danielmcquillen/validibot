@@ -22,18 +22,12 @@
     </dd>
     <dt class="col-sm-4 text-muted">{% trans "Target Path" %}</dt>
     <dd class="col-sm-8">
-      {% if signal.target_field %}
-        <code>{{ signal.target_field }}</code>
+      {% if signal.target_data_path %}
+        <code>{{ signal.target_data_path }}</code>
       {% else %}
         <span class="text-muted">—</span>
       {% endif %}
     </dd>
-    {% if signal.input_binding_path %}
-      <dt class="col-sm-4 text-muted">{% trans "Input Binding Path" %}</dt>
-      <dd class="col-sm-8">
-        <code>{{ signal.input_binding_path }}</code>
-      </dd>
-    {% endif %}
     {% if signal.description %}
       <dt class="col-sm-4 text-muted">{% trans "Description" %}</dt>
       <dd class="col-sm-8">

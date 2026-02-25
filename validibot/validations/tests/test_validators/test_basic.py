@@ -46,7 +46,7 @@ class BasicValidatorComparisonTests(TestCase):
         RulesetAssertionFactory(
             ruleset=self.ruleset,
             operator=AssertionOperator.LT,
-            target_field="price",
+            target_data_path="price",
             rhs={"value": 20},
             options={"coerce_types": True},
             message_template="Price {{ actual }} exceeds {{ value }}",

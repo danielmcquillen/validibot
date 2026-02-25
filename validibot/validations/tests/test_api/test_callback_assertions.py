@@ -157,7 +157,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             ruleset=self.ruleset,
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
-            target_field="",  # Required: clear target_field when using catalog entry
+            target_data_path="",  # Must be empty when using catalog entry
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )
@@ -208,7 +208,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             ruleset=self.ruleset,
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
-            target_field="",  # Required: clear target_field when using catalog entry
+            target_data_path="",  # Must be empty when using catalog entry
             rhs={"expr": "site_eui_kwh_m2 < 50"},
             message_template="Site EUI is too high!",
         )
@@ -311,7 +311,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             ruleset=self.ruleset,
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
-            target_field="",  # Required: clear target_field when using catalog entry
+            target_data_path="",  # Must be empty when using catalog entry
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="",  # No custom message
         )
@@ -361,7 +361,7 @@ class CallbackAssertionEvaluationTests(TestCase):
             ruleset=self.ruleset,
             assertion_type="cel_expr",
             target_catalog_entry=self.output_entry,
-            target_field="",  # Required: clear target_field when using catalog entry
+            target_data_path="",  # Must be empty when using catalog entry
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Custom: Building is energy efficient!",
         )
@@ -411,13 +411,14 @@ class CallbackAssertionEvaluationTests(TestCase):
         """
         # Create assertion WITHOUT target_catalog_entry (mimics form behavior)
         # but referencing an output-stage signal.
-        # Note: DB constraint requires target_field to be non-empty when
+        # Note: DB constraint requires target_data_path to be non-empty when
         # target_catalog_entry is null - the form sets it to the CEL expression.
         assertion = RulesetAssertionFactory(
             ruleset=self.ruleset,
             assertion_type="cel_expr",
             target_catalog_entry=None,  # Form sets this to None for CEL assertions
-            target_field="site_eui_kwh_m2 < 100",  # Form sets this to the expression
+            # For CEL assertions, the expression is stored as the data path.
+            target_data_path="site_eui_kwh_m2 < 100",
             rhs={"expr": "site_eui_kwh_m2 < 100"},
             success_message="Building meets energy efficiency target!",
         )

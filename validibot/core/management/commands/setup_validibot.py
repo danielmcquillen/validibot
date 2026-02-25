@@ -524,23 +524,23 @@ class Command(BaseCommand):
             )
         )
 
-        # Sync advanced validators (EnergyPlus, FMU) with their catalog entries.
+        # Sync system validators (EnergyPlus, FMU, THERM) with their catalog entries.
         # This populates the input/output signals needed for the step editor UI.
-        self.stdout.write("  Syncing advanced validators and catalog entries...")
+        self.stdout.write("  Syncing system validators and catalog entries...")
 
         from io import StringIO
 
         from django.core.management import call_command
 
         out = StringIO()
-        call_command("sync_advanced_validators", stdout=out)
+        call_command("sync_validators", stdout=out)
 
         # Log the output for debugging
         output = out.getvalue()
-        logger.debug("sync_advanced_validators output: %s", output)
+        logger.debug("sync_validators output: %s", output)
 
         self.stdout.write(
-            self.style.SUCCESS("  Advanced validators and catalog entries synced")
+            self.style.SUCCESS("  System validators and catalog entries synced")
         )
 
     # =========================================================================

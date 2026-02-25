@@ -372,16 +372,18 @@ def get_resource_type_config(resource_type: str) -> ResourceTypeConfig | None:
     return _RESOURCE_TYPE_CONFIGS.get(resource_type)
 
 
-# Maps each ValidationType to the resource file types it supports.
-# Validators not listed here do not support resource files.
-VALIDATION_TYPE_RESOURCE_TYPES: dict[str, list[str]] = {
-    ValidationType.ENERGYPLUS: [ResourceFileType.ENERGYPLUS_WEATHER],
-}
-
-
 def get_resource_types_for_validator(validation_type: str) -> list[str]:
-    """Return the resource file types supported by a validation type."""
-    return VALIDATION_TYPE_RESOURCE_TYPES.get(validation_type, [])
+    """Return the resource file types supported by a validation type.
+
+    Reads from the config registry. Returns an empty list if no config
+    is registered or the validator doesn't use resource files.
+    """
+    from validibot.validations.validators.base.config import get_config
+
+    cfg = get_config(validation_type)
+    if cfg:
+        return list(cfg.resource_types)
+    return []
 
 
 # CEL evaluation limits (adjust as needed)

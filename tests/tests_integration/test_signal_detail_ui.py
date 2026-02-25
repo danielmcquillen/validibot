@@ -141,7 +141,7 @@ def validator_with_signals(test_user_with_org):
         run_stage=CatalogRunStage.INPUT,
         data_type=CatalogValueType.NUMBER,
         description="Total floor area in square meters",
-        target_field="inputs.floor_area",
+        target_data_path="inputs.floor_area",
     )
     output_signal = ValidatorCatalogEntryFactory(
         validator=validator,
@@ -150,7 +150,7 @@ def validator_with_signals(test_user_with_org):
         run_stage=CatalogRunStage.OUTPUT,
         data_type=CatalogValueType.NUMBER,
         description="Total energy consumption in kilowatt hours",
-        target_field="outputs.energy",
+        target_data_path="outputs.energy",
     )
     return validator, input_signal, output_signal
 

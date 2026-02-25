@@ -88,8 +88,7 @@ class Command(BaseCommand):
         except Validator.DoesNotExist:
             self.stderr.write(
                 self.style.ERROR(
-                    "EnergyPlus validator not found. "
-                    "Run sync_advanced_validators first."
+                    "EnergyPlus validator not found. Run sync_validators first."
                 )
             )
             return None

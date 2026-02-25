@@ -11,11 +11,16 @@ class ValidationsConfig(AppConfig):
     name = "validibot.validations"
 
     def ready(self):
-        # Import validators to register them
+        # Import validators to register them with the class registry
         from validibot.validations.validators import energyplus  # noqa: F401
         from validibot.validations.validators import fmu  # noqa: F401
         from validibot.validations.validators import json_schema  # noqa: F401
         from validibot.validations.validators import xml_schema  # noqa: F401
+
+        # Populate the config registry (file types, display, catalog metadata)
+        from validibot.validations.validators.base.config import populate_registry
+
+        populate_registry()
 
         # Run startup container cleanup in worker processes
         # Skip in web server, management commands, and autoreload subprocesses

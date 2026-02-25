@@ -136,7 +136,7 @@ class BasicAssertionEvaluator:
         """Get the target path for an assertion."""
         if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
             return assertion.target_catalog_entry.slug
-        return assertion.target_field
+        return assertion.target_data_path
 
     def _resolve_path(self, data: Any, path: str | None) -> tuple[Any, bool]:
         """
@@ -626,7 +626,7 @@ class BasicAssertionEvaluator:
         context: dict[str, Any] = {
             "field": assertion.target_display or path or "",
             "target": assertion.target_display or path or "",
-            "target_field": assertion.target_field,
+            "target_field": assertion.target_data_path,
             "target_slug": getattr(assertion.target_catalog_entry, "slug", "")
             if assertion.target_catalog_entry_id
             else "",
@@ -658,8 +658,8 @@ class BasicAssertionEvaluator:
         alias = ""
         if assertion.target_catalog_entry_id and assertion.target_catalog_entry:
             alias = assertion.target_catalog_entry.slug or ""
-        elif assertion.target_field:
-            alias = assertion.target_field
+        elif assertion.target_data_path:
+            alias = assertion.target_data_path
         alias = alias.strip()
         if not alias:
             return

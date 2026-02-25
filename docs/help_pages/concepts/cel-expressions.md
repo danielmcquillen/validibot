@@ -1,3 +1,5 @@
+# CEL Expressions
+
 Validibot uses Common Expression Language (CEL) for advanced assertions. CEL is a simple, safe expression syntax for writing small, fast, readable conditions and rules over your data.
 
 You can use CEL to perform simple assertion logic on your incoming data,

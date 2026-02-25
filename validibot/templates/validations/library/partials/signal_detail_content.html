@@ -22,8 +22,8 @@
     </dd>
     <dt class="col-sm-4 text-muted">{% trans "Target Path" %}</dt>
     <dd class="col-sm-8">
-      {% if signal.target_field %}
-        <code>{{ signal.target_field }}</code>
+      {% if signal.target_data_path %}
+        <code>{{ signal.target_data_path }}</code>
       {% else %}
         <span class="text-muted">—</span>
       {% endif %}

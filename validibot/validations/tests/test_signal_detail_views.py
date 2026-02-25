@@ -60,7 +60,7 @@ class TestValidatorSignalsListView:
             run_stage=CatalogRunStage.INPUT,
             data_type=CatalogValueType.NUMBER,
             description="Total floor area in square meters",
-            target_field="floor_area",
+            target_data_path="floor_area",
         )
         output_signal = ValidatorCatalogEntryFactory(
             validator=validator,
@@ -69,7 +69,7 @@ class TestValidatorSignalsListView:
             run_stage=CatalogRunStage.OUTPUT,
             data_type=CatalogValueType.TIMESERIES,
             description="Energy consumption timeseries",
-            target_field="results.energy",
+            target_data_path="results.energy",
         )
 
         response = client.get(
@@ -343,7 +343,7 @@ class TestSignalDetailContentTemplate:
             run_stage=CatalogRunStage.INPUT,
             data_type=CatalogValueType.NUMBER,
             description="A description of the test signal",
-            target_field="path.to.field",
+            target_data_path="path.to.field",
             input_binding_path="binding.path",
         )
 
@@ -372,7 +372,7 @@ class TestSignalDetailContentTemplate:
             slug="minimal_signal",
             label="",  # Empty label
             description="",  # Empty description
-            target_field="",  # Empty target
+            target_data_path="",  # Empty target
             input_binding_path="",  # Empty binding path
         )
 

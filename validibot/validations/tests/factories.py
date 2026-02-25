@@ -207,7 +207,7 @@ class RulesetAssertionFactory(DjangoModelFactory):
     order = factory.Sequence(lambda n: n * 10)
     assertion_type = AssertionType.BASIC
     operator = AssertionOperator.LE
-    target_field = "facility_electric_demand_w"
+    target_data_path = "facility_electric_demand_w"
     severity = Severity.ERROR
     rhs = factory.Dict({"value": 100})
     options = factory.Dict({})

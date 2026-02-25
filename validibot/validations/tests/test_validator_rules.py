@@ -69,7 +69,7 @@ def test_default_assertions_modal_lists_rules(client):
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_field="payload.value >= 0",
+        target_data_path="payload.value >= 0",
         rhs={"expr": "payload.value >= 0"},
         severity=Severity.ERROR,
         order=1,
@@ -154,7 +154,7 @@ def test_default_assertion_move_reorders(client):
     RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_field="payload.a == 1",
+        target_data_path="payload.a == 1",
         rhs={"expr": "payload.a == 1"},
         severity=Severity.ERROR,
         order=10,
@@ -164,7 +164,7 @@ def test_default_assertion_move_reorders(client):
     second = RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_field="payload.b == 2",
+        target_data_path="payload.b == 2",
         rhs={"expr": "payload.b == 2"},
         severity=Severity.ERROR,
         order=20,
@@ -215,7 +215,7 @@ def test_author_not_creator_cannot_move(client):
     assertion = RulesetAssertion.objects.create(
         ruleset=default_ruleset,
         assertion_type=AssertionType.CEL_EXPRESSION,
-        target_field="payload.a == 1",
+        target_data_path="payload.a == 1",
         rhs={"expr": "payload.a == 1"},
         severity=Severity.ERROR,
         order=10,

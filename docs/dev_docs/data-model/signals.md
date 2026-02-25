@@ -22,7 +22,7 @@ validator. The catalog entry defines:
 | `entry_type` | `SIGNAL` (direct value) or `DERIVATION` (computed from other signals). |
 | `run_stage` | `INPUT` (available before the validator runs) or `OUTPUT` (produced by the validator). |
 | `data_type` | Value type: `NUMBER`, `STRING`, `BOOLEAN`, `TIMESERIES`, or `OBJECT`. |
-| `target_field` | Path used to locate the value in the payload or processor output. |
+| `target_data_path` | Path used to locate the value in the payload or processor output. |
 | `input_binding_path` | Optional path to the submission field for input signals. |
 | `binding_config` | Provider-specific hints (e.g., EnergyPlus meter name, derivation expression). |
 | `is_required` | Whether the signal must be present. Missing required signals evaluate to `null`. |

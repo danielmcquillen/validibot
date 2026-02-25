@@ -338,7 +338,7 @@ class RulesetAssertion(TimeStampedModel):
 
     Every assertion targets either a ``ValidatorCatalogEntry`` (a known,
     typed signal published by the validator) *or* a free-form
-    ``target_field`` path - never both, enforced by the
+    ``target_data_path`` - never both, enforced by the
     ``ck_ruleset_assertion_target_oneof`` check constraint.  The target
     also determines the ``resolved_run_stage`` (input vs output) that
     controls when the assertion fires.
@@ -380,7 +380,7 @@ class RulesetAssertion(TimeStampedModel):
         help_text=_("Reference to a catalog entry when targeting a known signal."),
     )
 
-    target_field = models.CharField(
+    target_data_path = models.CharField(
         max_length=255,
         blank=True,
         default="",
@@ -445,8 +445,8 @@ class RulesetAssertion(TimeStampedModel):
             models.CheckConstraint(
                 name="ck_ruleset_assertion_target_oneof",
                 condition=(
-                    Q(target_catalog_entry__isnull=False, target_field="")
-                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_field=""))
+                    Q(target_catalog_entry__isnull=False, target_data_path="")
+                    | (Q(target_catalog_entry__isnull=True) & ~Q(target_data_path=""))
                 ),
             ),
         ]
@@ -459,7 +459,7 @@ class RulesetAssertion(TimeStampedModel):
         target = (
             self.target_catalog_entry.slug
             if self.target_catalog_entry_id
-            else self.target_field
+            else self.target_data_path
         )
         return f"{self.ruleset_id}:{self.operator}:{target or '?'}"
 
@@ -472,11 +472,11 @@ class RulesetAssertion(TimeStampedModel):
     def clean(self):
         super().clean()
         catalog_set = bool(self.target_catalog_entry_id)
-        field = (self.target_field or "").strip()
+        field = (self.target_data_path or "").strip()
         if catalog_set == bool(field):
             raise ValidationError(
                 {
-                    "target_field": _(
+                    "target_data_path": _(
                         "Provide either a catalog target or a "
                         "custom path (but not both).",
                     ),
@@ -488,7 +488,7 @@ class RulesetAssertion(TimeStampedModel):
         if self.target_catalog_entry_id and self.target_catalog_entry:
             label = self.target_catalog_entry.label or self.target_catalog_entry.slug
             return f"{label} ({self.target_catalog_entry.slug})"
-        return self.target_field
+        return self.target_data_path
 
     @property
     def condition_display(self) -> str:
@@ -1290,7 +1290,7 @@ class ValidatorCatalogEntry(TimeStampedModel):
         help_text=_("Human-friendly label shown in editors."),
     )
 
-    target_field = models.CharField(
+    target_data_path = models.CharField(
         max_length=255,
         help_text=_(
             "Path used to locate this signal in the input or processor output."

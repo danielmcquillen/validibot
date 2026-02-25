@@ -45,6 +45,7 @@ from validibot.validations.constants import VALIDATION_LIBRARY_LAYOUT_SESSION_KE
 from validibot.validations.constants import VALIDATION_LIBRARY_TAB_SESSION_KEY
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogRunStage
+from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import LibraryLayout
 from validibot.validations.constants import Severity
@@ -1225,7 +1226,7 @@ class CustomValidatorCreateView(CustomValidatorManageMixin, FormView):
             name=form.cleaned_data["name"],
             short_description=form.cleaned_data.get("short_description") or "",
             description=form.cleaned_data.get("description") or "",
-            custom_type=form.cleaned_data["custom_type"],
+            custom_type=CustomValidatorType.SIMPLE,
             notes=form.cleaned_data.get("notes") or "",
             version=form.cleaned_data.get("version") or "",
             allow_custom_assertion_targets=form.cleaned_data.get(
@@ -1807,7 +1808,7 @@ class ValidatorRuleCreateView(ValidatorRuleMixin, FormView):
                 assertion_type=AssertionType.CEL_EXPRESSION,
                 operator="",
                 target_catalog_entry=target_entry,
-                target_field="" if target_entry else cel_expr,
+                target_data_path="" if target_entry else cel_expr,
                 rhs={"expr": cel_expr},
                 severity=Severity.ERROR,
                 order=form.cleaned_data.get("order") or 0,
@@ -1864,7 +1865,7 @@ class ValidatorRuleUpdateView(ValidatorRuleMixin, FormView):
             assertion.cel_cache = cel_expr
             assertion.order = form.cleaned_data.get("order") or 0
             assertion.target_catalog_entry = target_entry
-            assertion.target_field = "" if target_entry else cel_expr
+            assertion.target_data_path = "" if target_entry else cel_expr
             assertion.save()
             messages.success(request, _("Default assertion updated."))
             if request.headers.get("HX-Request"):

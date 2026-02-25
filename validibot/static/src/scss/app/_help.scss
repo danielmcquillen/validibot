@@ -1,3 +1,146 @@
 help-section {
   border: 0;
 }
+
+// Help page header with robot + speech bubble
+.help-header {
+  .help-header-icon {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+  }
+
+  .help-speech-bubble {
+    position: relative;
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    padding: 0.5rem 1.25rem;
+
+    // Speech bubble tail pointing to the robot
+    &::before {
+      content: "";
+      position: absolute;
+      left: -8px;
+      bottom: 10px;
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-right: 8px solid var(--bs-border-color);
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: -6px;
+      bottom: 10px;
+      width: 0;
+      height: 0;
+      border-top: 6px solid transparent;
+      border-bottom: 6px solid transparent;
+      border-right: 8px solid var(--bs-tertiary-bg);
+    }
+
+    h1 {
+      font-family: "Share Tech Mono", ui-monospace, monospace;
+      font-size: 1.25rem;
+      letter-spacing: 0.03em;
+    }
+  }
+}
+
+// Help page content styling
+.help-body {
+  line-height: 1.7;
+
+  // Headings
+  h2 {
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--bs-border-color);
+  }
+
+  h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  h4 {
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+
+  // Tables — Bootstrap-style striped
+  table {
+    width: 100%;
+    margin-bottom: 1.5rem;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+
+    th,
+    td {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--bs-border-color);
+      vertical-align: top;
+    }
+
+    thead th {
+      background-color: var(--bs-tertiary-bg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: var(--bs-tertiary-bg);
+    }
+  }
+
+  // Inline code
+  code {
+    padding: 0.15em 0.4em;
+    font-size: 0.875em;
+    background-color: var(--bs-tertiary-bg);
+    border-radius: 0.25rem;
+  }
+
+  // Fenced code blocks
+  pre {
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    overflow-x: auto;
+
+    code {
+      padding: 0;
+      background-color: transparent;
+      border-radius: 0;
+      font-size: 0.85rem;
+    }
+  }
+
+  // Horizontal rules
+  hr {
+    margin: 2rem 0;
+    border-color: var(--bs-border-color);
+  }
+
+  // Lists
+  ul,
+  ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  li {
+    margin-bottom: 0.25rem;
+  }
+
+  // Tips / last section emphasis
+  > :last-child {
+    margin-bottom: 0;
+  }
+}

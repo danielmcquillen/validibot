@@ -34,7 +34,7 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
         "assertion_type",
         "operator",
         "target_catalog_entry",
-        "target_field",
+        "target_data_path",
         "severity",
         "order",
         "created",
@@ -43,7 +43,7 @@ class RulesetAssertionAdmin(admin.ModelAdmin):
     search_fields = (
         "ruleset__name",
         "target_catalog_entry__slug",
-        "target_field",
+        "target_data_path",
     )
 
 

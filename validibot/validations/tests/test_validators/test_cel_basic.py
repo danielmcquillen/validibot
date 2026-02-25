@@ -218,7 +218,7 @@ class CelBasicValidatorTests(TestCase):
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
             target_catalog_entry=self.output_signal,
-            target_field="",
+            target_data_path="",
             rhs={"expr": "result.total == 5"},
         )
         self._submission({"price": 1})
@@ -238,7 +238,7 @@ class CelBasicValidatorTests(TestCase):
             assertion_type=AssertionType.CEL_EXPRESSION,
             operator=AssertionOperator.CEL_EXPR,
             target_catalog_entry=self.output_status,
-            target_field="",
+            target_data_path="",
             rhs={"expr": 'result.status.startsWith("OK")'},
         )
         engine = BasicValidator()

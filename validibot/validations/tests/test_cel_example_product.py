@@ -67,7 +67,7 @@ class TestExampleProductWithCEL(TestCase):
             # runs in input stage (resolved_run_stage defaults to OUTPUT
             # when target_catalog_entry is None).
             target_catalog_entry=self.price_entry,
-            target_field="",  # Required: must be empty when catalog entry is set
+            target_data_path="",  # Required: must be empty when catalog entry is set
             rhs={"expr": self.expression},
             message_template=self.error_message,
         )

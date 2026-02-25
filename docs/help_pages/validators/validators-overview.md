@@ -30,7 +30,7 @@ Validators use **assertions** to check your data:
 Built into the validator. These always run whenever the validator is used. View them by clicking **View rules** on any step.
 
 ### Step Assertions
-Custom rules you add to a specific workflow step. Use these to tighten validation for a particular workflow. Step assertions use [CEL expressions](../concepts/cel-expressions.md).
+Custom rules you add to a specific workflow step. Use these to tighten validation for a particular workflow. Step assertions use [CEL expressions](/app/help/concepts/cel-expressions/).
 
 ---
 

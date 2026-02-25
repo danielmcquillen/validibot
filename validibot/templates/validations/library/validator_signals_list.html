@@ -59,10 +59,10 @@
                   </td>
                   <td>{{ signal.get_data_type_display }}</td>
                   <td>
-                    {% if signal.target_field %}
+                    {% if signal.target_data_path %}
                       <code class="d-inline-block text-truncate"
                             style="max-width: 250px"
-                            title="{{ signal.target_field }}">{{ signal.target_field }}</code>
+                            title="{{ signal.target_data_path }}">{{ signal.target_data_path }}</code>
                     {% else %}
                       <span class="text-muted">—</span>
                     {% endif %}

@@ -38,7 +38,7 @@ class RulesetAssertionFormTests(TestCase):
             catalog_entries=[entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_field": entry.slug,
+                "target_data_path": entry.slug,
                 "severity": Severity.ERROR,
                 "cel_expression": "price > 0 && rating > 10",
                 "when_expression": "",
@@ -64,7 +64,7 @@ class RulesetAssertionFormTests(TestCase):
             catalog_entries=[entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_field": entry.slug,
+                "target_data_path": entry.slug,
                 "severity": Severity.ERROR,
                 "cel_expression": "price > 0 && rating > 10",
                 "when_expression": "",
@@ -109,7 +109,7 @@ class RulesetAssertionFormTests(TestCase):
             catalog_entries=[input_entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_field": "temperature",
+                "target_data_path": "temperature",
                 "severity": Severity.ERROR,
                 "cel_expression": "temperature > 0",
                 "when_expression": "",
@@ -138,7 +138,7 @@ class RulesetAssertionFormTests(TestCase):
             catalog_entries=[input_entry, output_entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_field": "price",
+                "target_data_path": "price",
                 "severity": Severity.ERROR,
                 "cel_expression": "price > 0",
                 "when_expression": "",
@@ -151,7 +151,7 @@ class RulesetAssertionFormTests(TestCase):
             catalog_entries=[input_entry, output_entry],
             data={
                 "assertion_type": AssertionType.CEL_EXPRESSION.value,
-                "target_field": "output.price",
+                "target_data_path": "output.price",
                 "severity": Severity.ERROR,
                 "cel_expression": "output.price > 0",
                 "when_expression": "",

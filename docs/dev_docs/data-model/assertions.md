@@ -31,7 +31,7 @@ Each `RulesetAssertion` row stores:
 
 - `assertion_type` — coarse mode (`basic` vs. `cel_expr`).
 - `operator` — normalized comparison operator (only meaningful for `basic` assertions).
-- `target_catalog_entry` / `target_field` — FK to a catalog entry or a JSON-style path when the
+- `target_catalog_entry` / `target_data_path` — FK to a catalog entry or a JSON-style path when the
   validator allows free-form bindings.
 - `severity` — maps to the normalized Finding severity (`error`, `warning`, `info`).
 - `when_expression` — optional CEL guard that determines whether the assertion runs.
@@ -46,7 +46,7 @@ Each `RulesetAssertion` row stores:
 
 Basic assertions reference catalog entries whenever possible so the validator can resolve bindings and
 units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
-persisted in `target_field`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
+persisted in `target_data_path`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
 `target_*` columns for consistency. BASIC validators always run in "custom target" mode because there
 is no provider catalog; authors add assertions manually and the system persists exactly what they enter.
 

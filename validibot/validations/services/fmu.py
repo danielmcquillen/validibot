@@ -308,7 +308,7 @@ def _persist_variables(
             run_stage=run_stage,
             slug=slug,
             label=var.name,
-            target_field=var.name,
+            target_data_path=var.name,
             input_binding_path="",
             data_type=_data_type_for_variable(var.value_type),
             metadata={"fmu_value_type": var.value_type, "unit": var.unit},

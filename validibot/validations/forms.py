@@ -14,6 +14,7 @@ from django import forms
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
 from django.utils.safestring import mark_safe
@@ -26,7 +27,6 @@ from validibot.validations.constants import AssertionOperator
 from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
-from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import ValidatorRuleType
 from validibot.validations.constants import get_resource_type_config
@@ -74,10 +74,8 @@ class CustomValidatorCreateForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
         required=False,
     )
-    custom_type = forms.ChoiceField(
-        label=_("Validator Type"),
-        choices=CustomValidatorType.choices,
-    )
+    # custom_type removed from form — hardcoded to SIMPLE for now.
+    # May re-enable with more options later.
     version = forms.CharField(
         label=_("Version"),
         max_length=40,
@@ -113,10 +111,7 @@ class CustomValidatorCreateForm(forms.Form):
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
-            Row(
-                Column("name", css_class="col-12 col-xl-7"),
-                Column("custom_type", css_class="col-12 col-xl-5"),
-            ),
+            Row(Column("name", css_class="col-12")),
             "short_description",
             "description",
             "version",
@@ -298,7 +293,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         label=_("Assertion Type"),
         choices=AssertionType.choices,
     )
-    target_field = forms.CharField(
+    target_data_path = forms.CharField(
         label=_("Target Signal"),
         required=False,
         widget=forms.TextInput(
@@ -495,17 +490,17 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             self.fields["cel_expression"].help_text = cel_help_text
 
-        target_field = self.fields["target_field"]
+        target_path_field = self.fields["target_data_path"]
         if self._validator_allows_custom_targets():
             if self.no_signal_choices:
-                target_field.label = _("Target Path")
-                target_field.help_text = _(
+                target_path_field.label = _("Target Path")
+                target_path_field.help_text = _(
                     "Use dot notation for nested objects and [index] for lists, e.g. "
                     "`payload.results[0].value`"
                 )
             else:
-                target_field.label = _("Target Signal or Path")
-                target_field.help_text = _(
+                target_path_field.label = _("Target Signal or Path")
+                target_path_field.help_text = _(
                     "Use `output.<name>` to "
                     "disambiguate output signals when an input signal shares "
                     "the same name. "
@@ -513,12 +508,12 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                     "`payload.results[0].value`.",
                 )
         else:
-            target_field.label = _("Target Signal")
-            target_field.help_text = _(
+            target_path_field.label = _("Target Signal")
+            target_path_field.help_text = _(
                 "Use `output.<name>` to "
                 "disambiguate output signals when an input shares the same name.",
             )
-        target_attrs = target_field.widget.attrs
+        target_attrs = target_path_field.widget.attrs
         target_attrs.update(
             {
                 "placeholder": _("Search or enter a custom path"),
@@ -541,7 +536,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 Column("cel_expression", css_class="col-12 col-lg-9"),
             ),
             Row(
-                Column("target_field", css_class="col-12"),
+                Column("target_data_path", css_class="col-12"),
             ),
             Row(
                 Column("operator", css_class="col-12"),
@@ -584,9 +579,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         if assertion_type == AssertionType.CEL_EXPRESSION:
             # CEL expressions declare their own targets inside the expression.
             self.cleaned_data["target_catalog_entry"] = None
-            self.cleaned_data["target_field_value"] = ""
+            self.cleaned_data["target_data_path_value"] = ""
         else:
-            self._resolve_target_field()
+            self._resolve_target_data_path()
         if assertion_type == AssertionType.BASIC:
             operator_value = cleaned.get("operator")
             if not operator_value:
@@ -612,7 +607,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             cleaned["cel_cache"] = expression
             # Ensure the target constraint is satisfied for CEL assertions.
             cleaned["target_catalog_entry"] = None
-            cleaned["target_field_value"] = expression or "__cel__"
+            cleaned["target_data_path_value"] = expression or "__cel__"
         return cleaned
 
     def _basic_operator_choices(self):
@@ -668,23 +663,23 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 }
             )
 
-    def _resolve_target_field(self):
+    def _resolve_target_data_path(self):
         catalog_choice = (self.cleaned_data.get("target_catalog_entry") or "").strip()
-        value = (self.cleaned_data.get("target_field") or "").strip()
+        value = (self.cleaned_data.get("target_data_path") or "").strip()
 
         if catalog_choice:
             entry = self.choice_map.get(catalog_choice)
             if not entry:
                 raise ValidationError(
                     {
-                        "target_field": _(
+                        "target_data_path": _(
                             "Unknown signal(s) referenced. Provide a catalog signal "
                             "or enable custom targets."
                         )
                     }
                 )
             self.cleaned_data["target_catalog_entry"] = entry
-            self.cleaned_data["target_field_value"] = ""
+            self.cleaned_data["target_data_path_value"] = ""
             return
 
         if value:
@@ -696,14 +691,14 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
             if explicit_output and value in self.outputs_by_slug:
                 self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
-                self.cleaned_data["target_field_value"] = ""
+                self.cleaned_data["target_data_path_value"] = ""
                 return
 
             if value in self.inputs_by_slug:
                 if value in self.outputs_by_slug and not explicit_output:
                     raise ValidationError(
                         {
-                            "target_field": _(
+                            "target_data_path": _(
                                 "Both an input and output are named '%(name)s'. "
                                 "Use `output.%(name)s` to target the output signal."
                             )
@@ -711,14 +706,14 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         }
                     )
                 self.cleaned_data["target_catalog_entry"] = self.inputs_by_slug[value]
-                self.cleaned_data["target_field_value"] = ""
+                self.cleaned_data["target_data_path_value"] = ""
                 return
 
             if value in self.outputs_by_slug:
                 if value in self.inputs_by_slug and not explicit_output:
                     raise ValidationError(
                         {
-                            "target_field": _(
+                            "target_data_path": _(
                                 "Both an input and output are named '%(name)s'. "
                                 "Use `output.%(name)s` to target the output signal."
                             )
@@ -726,13 +721,13 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                         }
                     )
                 self.cleaned_data["target_catalog_entry"] = self.outputs_by_slug[value]
-                self.cleaned_data["target_field_value"] = ""
+                self.cleaned_data["target_data_path_value"] = ""
                 return
 
             if not self._validator_allows_custom_targets():
                 raise ValidationError(
                     {
-                        "target_field": _(
+                        "target_data_path": _(
                             "Unknown signal(s) referenced. Provide a catalog signal "
                             "or enable custom targets."
                         ),
@@ -741,19 +736,19 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             if not CUSTOM_ASSERTION_TARGET_PATTERN.match(value):
                 raise ValidationError(
                     {
-                        "target_field": _(
+                        "target_data_path": _(
                             "Custom targets must use dot notation with optional "
                             "numeric indexes, e.g. `data.results[0].value`.",
                         ),
                     },
                 )
             self.cleaned_data["target_catalog_entry"] = None
-            self.cleaned_data["target_field_value"] = value
+            self.cleaned_data["target_data_path_value"] = value
             return
 
         raise ValidationError(
             {
-                "target_field": _(
+                "target_data_path": _(
                     "Unknown signal(s) referenced. Provide a catalog "
                     "signal or enable custom targets."
                 )
@@ -985,7 +980,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
 
     def _find_unknown_cel_slugs(self, expression: str) -> set[str]:
         allowed = set(self.catalog_slugs) | {"payload"}
-        target = (self.cleaned_data.get("target_field") or "").strip()
+        target = (self.cleaned_data.get("target_data_path") or "").strip()
         if target:
             allowed.add(target)
         if self._validator_allows_custom_targets():
@@ -1046,7 +1041,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
     def _target_identifier(self) -> str:
         if self.cleaned_data.get("target_catalog_entry"):
             return self.cleaned_data["target_catalog_entry"].slug
-        return self.cleaned_data.get("target_field_value") or ""
+        return self.cleaned_data.get("target_data_path_value") or ""
 
     def _format_literal(self, value: Any) -> str:
         if value is None:
@@ -1069,9 +1064,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
         }
         if assertion.target_catalog_entry_id:
             initial["target_catalog_entry"] = assertion.target_catalog_entry.slug
-            initial["target_field"] = ""
+            initial["target_data_path"] = ""
         else:
-            initial["target_field"] = assertion.target_field
+            initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.BASIC:
             initial["operator"] = assertion.operator
             rhs = assertion.rhs or {}
@@ -1215,7 +1210,7 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
         fields = [
             "run_stage",
             "slug",
-            "target_field",
+            "target_data_path",
             "input_binding_path",
             "label",
             "data_type",
@@ -1257,6 +1252,20 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
                 initial=CatalogEntryType.SIGNAL,
                 widget=forms.HiddenInput(),
             )
+        # Hide input_binding_path for non-advanced validators (only relevant
+        # for EnergyPlus/FMU where submission paths differ from output paths).
+        if not self.validator or not self.validator.has_processor:
+            self.fields["input_binding_path"].widget = forms.HiddenInput()
+            self.fields["input_binding_path"].required = False
+        # Update target_data_path label and help text with link to help page.
+        self.fields["target_data_path"].label = _("Data path")
+        help_url = reverse("help:help_page", kwargs={"path": "validators/data-paths"})
+        self.fields["target_data_path"].help_text = format_html(
+            "Path to locate this signal in the data. Use dot notation for nested "
+            "values (e.g. <code>dimensions.width</code>). "
+            '<a href="{}" target="_blank" rel="noopener">Read more</a>',
+            help_url,
+        )
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
@@ -1265,7 +1274,7 @@ class ValidatorCatalogEntryForm(forms.ModelForm):
             ),
             Row(
                 Column("slug", css_class="col-12 col-md-6"),
-                Column("target_field", css_class="col-12 col-md-6"),
+                Column("target_data_path", css_class="col-12 col-md-6"),
             ),
             Row(
                 Column("data_type", css_class="col-12 col-md-6"),

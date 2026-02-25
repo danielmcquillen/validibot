@@ -24,10 +24,10 @@
             <code class="catalog-entry-slug"
                   data-original-text="{{ entry.slug|escape }}">{{ entry.slug }}</code>
           </dd>
-          {% if entry.target_field %}
+          {% if entry.target_data_path %}
             <dt class="col-sm-4">{% trans "Target Path" %}</dt>
             <dd class="col-sm-8">
-              <code>{{ entry.target_field }}</code>
+              <code>{{ entry.target_data_path }}</code>
             </dd>
           {% endif %}
           {% if entry.description %}

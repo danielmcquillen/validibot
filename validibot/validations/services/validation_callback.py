@@ -358,6 +358,17 @@ class ValidationCallbackService:
         # 3. Stored signals in run.summary["steps"][step_id]["signals"]
         # 4. Finalized step_run with status, timing, output
 
+        # Notify listeners that a step completed (e.g., cloud metering for
+        # credit deduction). Using send_robust so a failing receiver doesn't
+        # break the callback flow.
+        from validibot.validations.signals import validation_step_completed
+
+        validation_step_completed.send_robust(
+            sender=self.__class__,
+            step_run=step_run,
+            validation_run=run,
+        )
+
         # Get finished_at for run-level finalization
         finished_at = _coerce_finished_at(output_envelope.timing.finished_at)
 

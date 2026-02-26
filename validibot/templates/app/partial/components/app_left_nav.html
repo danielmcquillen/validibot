@@ -209,6 +209,19 @@
                 </a>
               </li>
             {% endif %}
+            {% if feature_billing %}
+              {% url 'cloud-billing:dashboard' as billing_url %}
+              {% if billing_url %}
+                <li class="nav-item" role="none">
+                  <a href="{{ billing_url }}"
+                     class="nav-link text-white {% active_link_any 'cloud/billing' %}"
+                     role="menuitem">
+                    <i class="bi bi-credit-card"></i>
+                    <span>{% trans "Billing" %}</span>
+                  </a>
+                </li>
+              {% endif %}
+            {% endif %}
           {% endif %}
           <div class="group-label mt-4">{% trans "Support" %}</div>
           <li class="nav-item" role="none">

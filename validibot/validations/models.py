@@ -29,6 +29,7 @@ from validibot.validations.constants import AssertionType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import FMUProbeStatus
 from validibot.validations.constants import JSONSchemaVersion
@@ -41,6 +42,7 @@ from validibot.validations.constants import ValidationRunSource
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.constants import ValidationType
 from validibot.validations.constants import ValidatorReleaseState
+from validibot.validations.constants import ValidatorWeight
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.constants import get_resource_types_for_validator
 from validibot.workflows.models import Workflow
@@ -904,6 +906,27 @@ class Validator(TimeStampedModel):
         default=_default_validator_file_types,
         help_text=_(
             "Logical file types this validator can process (JSON, XML, text, etc.).",
+        ),
+    )
+
+    # Compute metering fields — used by the cloud billing system to classify
+    # validators and calculate credit consumption. In the community edition
+    # these are informational only.
+    compute_tier = models.CharField(
+        max_length=10,
+        choices=ComputeTier.choices,
+        default=ComputeTier.LOW,
+        help_text=_(
+            "Compute intensity classification. LOW = metered by launch count. "
+            "HIGH = metered by credit consumption."
+        ),
+    )
+    compute_weight = models.PositiveSmallIntegerField(
+        default=ValidatorWeight.NORMAL,
+        choices=ValidatorWeight.choices,
+        help_text=_(
+            "Credit multiplier for HIGH-compute validators. "
+            "Higher weight = more credits consumed per minute of runtime."
         ),
     )
 

@@ -18,7 +18,9 @@ Usage in core enforcement points::
 
     from validibot.core.policies import check_org_policies
 
-    allowed, reason = check_org_policies(org, "launch_validation_run")
+    allowed, reason = check_org_policies(
+        org, "launch_validation_run", workflow_type="BASIC",
+    )
     if not allowed:
         raise PermissionError(reason)
 """
@@ -35,10 +37,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Type alias for policy functions.
-# A policy receives an Organization and an action string, and returns a
-# tuple of (allowed: bool, reason: str). If allowed is False, reason
-# should explain why the action was denied.
-OrgPolicyFn = Callable[["Organization", str], tuple[bool, str]]
+# A policy receives an Organization, an action string, and optional keyword
+# context (e.g., workflow_type="BASIC"). It returns a tuple of
+# (allowed: bool, reason: str). If allowed is False, reason should explain
+# why the action was denied.
+OrgPolicyFn = Callable[..., tuple[bool, str]]
 
 # Internal registry — commercial packages register policy functions here.
 # Multiple policies can be registered; they are checked in registration order.
@@ -53,9 +56,10 @@ def register_org_policy(policy_fn: OrgPolicyFn) -> None:
     Multiple policies can be registered; they are all checked in order.
 
     Args:
-        policy_fn: A callable that takes (org, action) and returns
+        policy_fn: A callable that takes (org, action, **context) and returns
             (allowed, reason). If allowed is False, reason should
-            explain why the action was denied.
+            explain why the action was denied. Policy functions must
+            accept **kwargs for forward compatibility.
     """
     _org_policies.append(policy_fn)
     logger.info(
@@ -65,7 +69,11 @@ def register_org_policy(policy_fn: OrgPolicyFn) -> None:
     )
 
 
-def check_org_policies(org: Organization, action: str) -> tuple[bool, str]:
+def check_org_policies(
+    org: Organization,
+    action: str,
+    **context,
+) -> tuple[bool, str]:
     """
     Run all registered organization policies for the given action.
 
@@ -78,13 +86,17 @@ def check_org_policies(org: Organization, action: str) -> tuple[bool, str]:
     Args:
         org: The organization attempting the action.
         action: A string identifying the action (e.g., "launch_validation_run").
+        **context: Additional keyword context passed through to each policy
+            function. For example, ``workflow_type="BASIC"`` lets cloud
+            metering policies distinguish workflow types without needing
+            thread-local state.
 
     Returns:
         A tuple of (allowed, reason). If allowed is True, reason is empty.
         If allowed is False, reason explains why.
     """
     for policy_fn in _org_policies:
-        allowed, reason = policy_fn(org, action)
+        allowed, reason = policy_fn(org, action, **context)
         if not allowed:
             logger.info(
                 "Org policy denied: org=%s action=%s reason=%s policy=%s.%s",

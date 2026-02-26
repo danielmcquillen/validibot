@@ -179,9 +179,17 @@ class ValidationRunService:
 
         # Check organization-level policies (trial expiry, quotas, etc.)
         # In community edition no policies are registered, so this is a no-op.
+        # When validibot-cloud is installed, metering policies check usage quotas
+        # and credit balances. The workflow_type context kwarg lets cloud
+        # policies distinguish BASIC vs ADVANCED workflows.
         from validibot.core.policies import check_org_policies
 
-        allowed, reason = check_org_policies(org, "launch_validation_run")
+        workflow_type = getattr(workflow, "workflow_type", "BASIC")
+        allowed, reason = check_org_policies(
+            org,
+            "launch_validation_run",
+            workflow_type=workflow_type,
+        )
         if not allowed:
             raise PermissionError(reason)
 

@@ -453,6 +453,23 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
 
         return user.has_perm(PermissionCode.WORKFLOW_EDIT.value, self)
 
+    @property
+    def workflow_type(self) -> str:
+        """
+        Classification for metering: BASIC or ADVANCED.
+
+        A workflow is ADVANCED if any of its validator steps uses a
+        HIGH-compute validator. Used by the cloud billing system to
+        determine whether a run consumes basic launch quota or compute
+        credits.
+        """
+        from validibot.validations.constants import ComputeTier
+
+        has_high_compute = self.steps.filter(
+            validator__compute_tier=ComputeTier.HIGH,
+        ).exists()
+        return "ADVANCED" if has_high_compute else "BASIC"
+
     def allowed_file_type_labels(self) -> list[str]:
         labels: list[str] = []
         for value in self.allowed_file_types or []:

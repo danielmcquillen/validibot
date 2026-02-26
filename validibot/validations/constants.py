@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from django.conf import settings as django_settings
+from django.db import models
 from django.db.models import TextChoices
 from django.utils.translation import gettext_lazy as _
 
@@ -197,6 +198,45 @@ ADVANCED_VALIDATION_TYPES = {
     ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
     ValidationType.AI_ASSIST,
+}
+
+
+class ComputeTier(models.TextChoices):
+    """
+    Compute intensity classification for validators.
+
+    LOW: Lightweight operations (negligible per-run cost, metered by launch count).
+    HIGH: Resource-intensive operations (metered by credit consumption).
+    """
+
+    LOW = "LOW", _("Low compute")
+    HIGH = "HIGH", _("High compute")
+
+
+class ValidatorWeight(models.IntegerChoices):
+    """
+    Credit multiplier for high-compute validators.
+
+    Higher weight = more credits consumed per minute of runtime.
+    """
+
+    NORMAL = 1, _("Normal (1x)")
+    MEDIUM = 2, _("Medium (2x)")
+    HEAVY = 3, _("Heavy (3x)")
+    EXTREME = 5, _("Extreme (5x)")
+
+
+# Default compute tier by validation type. LOW-compute validators are metered
+# by launch count; HIGH-compute validators are metered by credit consumption.
+DEFAULT_COMPUTE_TIERS: dict[str, str] = {
+    ValidationType.BASIC: ComputeTier.LOW,
+    ValidationType.JSON_SCHEMA: ComputeTier.LOW,
+    ValidationType.XML_SCHEMA: ComputeTier.LOW,
+    ValidationType.CUSTOM_VALIDATOR: ComputeTier.LOW,
+    ValidationType.ENERGYPLUS: ComputeTier.HIGH,
+    ValidationType.FMU: ComputeTier.HIGH,
+    ValidationType.THERM: ComputeTier.HIGH,
+    ValidationType.AI_ASSIST: ComputeTier.LOW,
 }
 
 

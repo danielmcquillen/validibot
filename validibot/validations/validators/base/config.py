@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
+from validibot.validations.constants import ComputeTier
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,6 +96,9 @@ class ValidatorConfig(BaseModel):
     supported_data_formats: list[str] = Field(default_factory=list)
     allowed_extensions: list[str] = Field(default_factory=list)
     resource_types: list[str] = Field(default_factory=list)
+
+    # --- Compute ---
+    compute_tier: str = ComputeTier.LOW
 
     # --- Display ---
     icon: str = "bi-journal-bookmark"

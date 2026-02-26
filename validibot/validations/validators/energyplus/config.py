@@ -11,6 +11,7 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
@@ -26,6 +27,7 @@ config = ValidatorConfig(
     has_processor=True,
     processor_name="EnergyPlus Simulation",
     is_system=True,
+    compute_tier=ComputeTier.HIGH,
     supported_file_types=[SubmissionFileType.TEXT, SubmissionFileType.JSON],
     supported_data_formats=[
         SubmissionDataFormat.ENERGYPLUS_IDF,

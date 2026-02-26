@@ -14,6 +14,7 @@ from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import CatalogEntryType
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
+from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
 from validibot.validations.validators.base.config import ValidatorConfig
@@ -32,6 +33,7 @@ config = ValidatorConfig(
     order=30,
     has_processor=False,
     is_system=True,
+    compute_tier=ComputeTier.HIGH,
     supported_file_types=[SubmissionFileType.XML, SubmissionFileType.BINARY],
     supported_data_formats=[
         SubmissionDataFormat.THERM_THMX,

@@ -8,6 +8,7 @@ validator metadata itself.
 
 from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import ValidatorConfig
 
@@ -21,6 +22,7 @@ config = ValidatorConfig(
     has_processor=True,
     processor_name="FMU Simulation",
     is_system=True,
+    compute_tier=ComputeTier.HIGH,
     supported_file_types=[
         SubmissionFileType.BINARY,
         SubmissionFileType.JSON,

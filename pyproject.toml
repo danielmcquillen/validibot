@@ -9,7 +9,7 @@ allow-direct-references = true
 
 [project]
 name = "validibot"
-version = "0.3.1"  # Also update validibot/__init__.py
+version = "0.3.1"
 description = "Open-source data validation platform for energy models, simulations, and structured data"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-only" }

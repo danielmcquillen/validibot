@@ -1,4 +1,6 @@
-__version__ = "0.3.1"
+from importlib.metadata import version
+
+__version__ = version("validibot")
 __version_info__ = tuple(
     int(num) if num.isdigit() else num
     for num in __version__.replace("-", ".", 1).split(".")

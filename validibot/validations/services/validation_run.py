@@ -73,6 +73,17 @@ if TYPE_CHECKING:
     from validibot.workflows.models import Workflow
 
 
+def _send_run_created_signal(validation_run: ValidationRun, workflow_type: str) -> None:
+    """Fire the validation_run_created signal (deferred via on_commit)."""
+    from validibot.validations.signals import validation_run_created
+
+    validation_run_created.send_robust(
+        sender=ValidationRun,
+        validation_run=validation_run,
+        workflow_type=workflow_type,
+    )
+
+
 @dataclass
 class ValidationRunLaunchResults:
     validation_run: ValidationRun
@@ -244,6 +255,15 @@ class ValidationRunService:
                 submission_id=submission.pk,
                 extra_data=created_extra or None,
             )
+
+        # Notify listeners that a run was created (e.g., cloud metering
+        # records basic launches). Deferred via on_commit so the run is
+        # guaranteed to be persisted.
+        _run = validation_run
+        _wtype = workflow_type
+        transaction.on_commit(
+            lambda: _send_run_created_signal(_run, _wtype),
+        )
 
         # Dispatch execution to the appropriate backend:
         # - Test: Synchronous inline execution

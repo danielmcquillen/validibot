@@ -39,7 +39,7 @@ class OrgPolicyRegistryTests(SimpleTestCase):
     def test_allowing_policy_allows_action(self):
         """A policy that returns allowed should let the action through."""
 
-        def allow_policy(org, action):
+        def allow_policy(org, action, **context):
             return (True, "")
 
         register_org_policy(allow_policy)
@@ -53,7 +53,7 @@ class OrgPolicyRegistryTests(SimpleTestCase):
     def test_denying_policy_blocks_action(self):
         """A policy that denies should block the action with a reason."""
 
-        def deny_policy(org, action):
+        def deny_policy(org, action, **context):
             return (False, "Trial expired")
 
         register_org_policy(deny_policy)
@@ -67,13 +67,13 @@ class OrgPolicyRegistryTests(SimpleTestCase):
     def test_first_deny_wins(self):
         """When multiple policies are registered, the first deny wins."""
 
-        def allow_policy(org, action):
+        def allow_policy(org, action, **context):
             return (True, "")
 
-        def deny_policy_1(org, action):
+        def deny_policy_1(org, action, **context):
             return (False, "First denial")
 
-        def deny_policy_2(org, action):
+        def deny_policy_2(org, action, **context):
             return (False, "Second denial")
 
         register_org_policy(allow_policy)
@@ -89,10 +89,10 @@ class OrgPolicyRegistryTests(SimpleTestCase):
     def test_all_allowing_policies_pass(self):
         """When all policies allow, the action should be allowed."""
 
-        def allow_1(org, action):
+        def allow_1(org, action, **context):
             return (True, "")
 
-        def allow_2(org, action):
+        def allow_2(org, action, **context):
             return (True, "")
 
         register_org_policy(allow_1)
@@ -107,7 +107,7 @@ class OrgPolicyRegistryTests(SimpleTestCase):
     def test_reset_clears_all_policies(self):
         """reset_org_policies() should clear all registered policies."""
 
-        def deny_policy(org, action):
+        def deny_policy(org, action, **context):
             return (False, "Denied")
 
         register_org_policy(deny_policy)
@@ -123,9 +123,10 @@ class OrgPolicyRegistryTests(SimpleTestCase):
         """Policies should receive the org and action arguments."""
         received_args = {}
 
-        def spy_policy(org, action):
+        def spy_policy(org, action, **context):
             received_args["org"] = org
             received_args["action"] = action
+            received_args["context"] = context
             return (True, "")
 
         register_org_policy(spy_policy)

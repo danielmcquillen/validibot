@@ -219,7 +219,7 @@ class ValidationRunStartSerializer(serializers.Serializer):
                 except json.JSONDecodeError as e:
                     raise serializers.ValidationError(
                         {
-                            "metadata": f"Invalid JSON: {e}",
+                            "metadata": _("Must be valid JSON."),
                         },
                     ) from e
             else:

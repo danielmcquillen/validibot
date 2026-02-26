@@ -19,12 +19,25 @@ function highlightElement(element: HTMLElement | null, query: string): void {
     return;
   }
   const original = element.dataset.originalText ?? element.textContent ?? '';
+  if (!element.dataset.originalText) {
+    element.dataset.originalText = original;
+  }
   if (!query) {
-    element.innerHTML = original;
+    element.textContent = original;
     return;
   }
   const regex = new RegExp(`(${escapeRegExp(query)})`, 'ig');
-  element.innerHTML = original.replace(regex, '<mark>$1</mark>');
+  const parts = original.split(regex);
+  element.textContent = '';
+  parts.forEach((part) => {
+    if (part.match(regex)) {
+      const mark = document.createElement('mark');
+      mark.textContent = part;
+      element.appendChild(mark);
+    } else {
+      element.appendChild(document.createTextNode(part));
+    }
+  });
 }
 
 function filterEntries(

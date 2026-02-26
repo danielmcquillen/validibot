@@ -99,7 +99,7 @@
       }
 
       if (!trigger.dataset.defaultLabel) {
-        trigger.dataset.defaultLabel = trigger.innerHTML;
+        trigger.dataset.defaultLabel = trigger.textContent;
       }
 
       const timeout = Number.parseInt(trigger.getAttribute('data-copy-timeout') || '1600', 10);
@@ -109,9 +109,9 @@
         return;
       }
 
-      trigger.innerHTML = copiedLabel;
+      trigger.textContent = copiedLabel;
       window.setTimeout(() => {
-        trigger.innerHTML = trigger.dataset.defaultLabel || '';
+        trigger.textContent = trigger.dataset.defaultLabel || '';
       }, Number.isNaN(timeout) ? 1600 : timeout);
     });
   })();

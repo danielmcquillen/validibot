@@ -191,6 +191,36 @@ These don't affect which buckets or URLs are used - that's all driven by the inp
 - **No secrets in containers**: Validators use ADC (Application Default Credentials) from the attached service account
 - **Safe rollbacks**: Rolling back a validator version doesn't affect stage isolation
 
+## Lost Callback Recovery
+
+If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST, Cloud Run retry exhaustion), the run gets stuck in `RUNNING` status. The `cleanup_stuck_runs` management command handles this:
+
+1. The command runs every 10 minutes via Cloud Scheduler
+2. It finds runs stuck in `RUNNING` past the timeout threshold (default: 30 minutes)
+3. For GCP runs, it looks for `execution_name` in `step_run.output` (stored by the launcher at job trigger time)
+4. It queries the Cloud Run Jobs API to check the actual execution status
+5. If the job **succeeded**, it constructs a synthetic callback and processes it through `ValidationCallbackService`, recovering the full validation results
+6. If the job **failed**, it marks the run as `FAILED` with the Cloud Run error
+7. If the job is **still running**, it skips the run (no false timeout)
+
+### Where execution metadata is stored
+
+When the GCP backend triggers a Cloud Run Job, the launcher stores execution metadata in `result.stats`:
+
+```python
+stats = {
+    "job_status": "PENDING",
+    "job_name": "validibot-validator-energyplus",
+    "execution_name": "projects/p/locations/r/jobs/j/executions/e",
+    "input_uri": "gs://bucket/runs/org/run-id/input.json",
+    "execution_bundle_uri": "gs://bucket/runs/org/run-id",
+}
+```
+
+The step orchestrator persists these stats into `step_run.output`, making them available for later reconciliation.
+
+The output envelope URI is derived from `execution_bundle_uri + "/output.json"`.
+
 ## Local vs cloud storage
 
 - Cloud: GCS URIs for envelopes/artifacts.

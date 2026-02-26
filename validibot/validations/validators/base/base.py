@@ -174,7 +174,8 @@ class BaseValidator(ABC):
     subclasses instead of this class directly:
 
     - ``SimpleValidator`` for synchronous, inline validators
-    - ``AdvancedValidator`` for container-based, async validators
+    - ``AdvancedValidator`` for validators requiring dedicated compute
+      (container-based or compute-intensive services)
 
     Attributes:
         config: Arbitrary configuration dict (e.g., schema paths, thresholds, flags)

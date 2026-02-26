@@ -556,7 +556,8 @@ class ValidatorLibraryMixin(LoginRequiredMixin, BreadcrumbMixin):
         """
         org = self.get_active_org()
         queryset = (
-            Validator.objects.select_related("custom_validator", "org")
+            Validator.objects.filter(is_enabled=True)
+            .select_related("custom_validator", "org")
             .prefetch_related(
                 "catalog_entries",
                 "default_ruleset",
@@ -627,7 +628,10 @@ class ValidationLibraryView(ValidatorLibraryMixin, TemplateView):
                 ),
                 "validator_create_options": create_options,
                 "validator_create_selected": default_selection,
-                "system_validators": Validator.objects.filter(is_system=True)
+                "system_validators": Validator.objects.filter(
+                    is_system=True,
+                    is_enabled=True,
+                )
                 .exclude(release_state=ValidatorReleaseState.DRAFT)
                 .order_by("order", "validation_type", "name")
                 .select_related("custom_validator", "org"),

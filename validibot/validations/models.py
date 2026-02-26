@@ -854,6 +854,14 @@ class Validator(TimeStampedModel):
         help_text=_("True when the validator ships with the platform."),
     )
 
+    is_enabled = models.BooleanField(
+        default=True,
+        help_text=_(
+            "Disabled validators are hidden from users and cannot be "
+            "added to workflows. Toggle via the admin panel."
+        ),
+    )
+
     release_state = models.CharField(
         max_length=16,
         choices=ValidatorReleaseState.choices,

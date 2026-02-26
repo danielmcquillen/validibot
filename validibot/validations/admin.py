@@ -58,11 +58,13 @@ class ValidatorAdmin(admin.ModelAdmin):
         "validation_type",
         "version",
         "is_system",
+        "is_enabled",
         "allow_custom_assertion_targets",
         "created",
         "modified",
     )
-    list_filter = ("validation_type", "is_system", "created", "modified")
+    list_filter = ("validation_type", "is_system", "is_enabled", "created", "modified")
+    list_editable = ("is_enabled",)
     search_fields = ("name", "slug", "version", "org__name")
     ordering = ("order",)
 

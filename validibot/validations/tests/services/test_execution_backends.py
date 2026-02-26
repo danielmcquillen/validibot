@@ -321,6 +321,18 @@ class TestDockerComposeExecutionBackend:
         assert response.is_complete is True
         assert "not available" in response.error_message
 
+    def test_check_status_exists(self):
+        """Test that check_status method exists on DockerCompose backend."""
+        backend = DockerComposeExecutionBackend()
+        assert hasattr(backend, "check_status")
+        assert callable(backend.check_status)
+
+    def test_get_execution_status_removed(self):
+        """Test that get_execution_status is NOT on the backend."""
+        from validibot.validations.services.execution.base import ExecutionBackend
+
+        assert not hasattr(ExecutionBackend, "get_execution_status")
+
 
 # ==============================================================================
 # skip_callback Tests

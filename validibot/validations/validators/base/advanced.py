@@ -1,11 +1,15 @@
 """
-Base class for container-based (advanced) validators.
+Base class for advanced validators requiring dedicated compute resources.
 
-Advanced validators dispatch work to **validator jobs** — self-contained Docker
-containers defined in the ``validibot-validators`` repository. The validator
-class in this repo handles envelope building, job dispatch, callback processing,
-and assertion evaluation; the actual domain-specific computation (running an
-EnergyPlus simulation, executing an FMU) happens inside the container job.
+Advanced validators include container-based validators that dispatch work to
+**validator jobs** — self-contained Docker containers defined in the
+``validibot-validators`` repository — as well as compute-intensive validators
+that call external APIs (e.g., AI-assisted validation via LLM providers).
+
+For container-based validators, this class handles envelope building, job
+dispatch, callback processing, and assertion evaluation; the actual
+domain-specific computation (running an EnergyPlus simulation, executing
+an FMU) happens inside the container job.
 
 All advanced validators follow the same lifecycle:
 

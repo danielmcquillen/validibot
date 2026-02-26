@@ -7,8 +7,9 @@ handle validation logic and assertion evaluation.
 
 Key classes:
 - ValidationStepProcessor: Base class with shared infrastructure
-- SimpleValidationProcessor: For inline validators (JSON, XML, Basic, AI)
-- AdvancedValidationProcessor: For container-based validators (EnergyPlus, FMU)
+- SimpleValidationProcessor: For inline validators (JSON, XML, Basic, THERM)
+- AdvancedValidationProcessor: For validators requiring dedicated compute
+  (container-based: EnergyPlus, FMU; compute-intensive: AI)
 - StepProcessingResult: Dataclass for processor return values
 """
 

@@ -5,9 +5,10 @@ This package provides the foundation that all validators build on:
 
 - **BaseValidator**: Abstract base class for all validators.
 - **SimpleValidator**: Template method base for synchronous validators
-  (Basic, JSON Schema, XML Schema, THERM, AI).
-- **AdvancedValidator**: Template method base for container-based validators
-  (EnergyPlus, FMU) that dispatch work to validator jobs.
+  (Basic, JSON Schema, XML Schema, THERM).
+- **AdvancedValidator**: Template method base for validators that require
+  dedicated compute — either container-based (EnergyPlus, FMU) or
+  compute-intensive services (AI via external APIs).
 - **ValidationIssue, ValidationResult, AssertionStats**: Data classes shared
   by all validators.
 - **register_validator, get**: Registry for mapping ValidationType to

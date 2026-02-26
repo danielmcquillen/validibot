@@ -155,8 +155,8 @@ For validator steps, the processor pattern provides a clean separation of concer
 
 1. **Processor Selection**: The factory chooses the appropriate processor
 
-   - **SimpleValidationProcessor**: For inline validators (JSON Schema, XML Schema, Basic, AI)
-   - **AdvancedValidationProcessor**: For container-based validators (EnergyPlus, FMU)
+   - **SimpleValidationProcessor**: For inline validators (JSON Schema, XML Schema, Basic, THERM)
+   - **AdvancedValidationProcessor**: For validators requiring dedicated compute (container-based: EnergyPlus, FMU; compute-intensive: AI)
 
 2. **Validator Dispatch**: The processor calls the validator
 

@@ -128,7 +128,7 @@ class ExecutionBackend(ABC):
 
     Subclasses may override:
     - `is_available()`: Check if backend is ready
-    - `get_execution_status()`: Poll async execution status
+    - `check_status()`: Check execution status (for reconciliation)
     """
 
     @property
@@ -191,17 +191,25 @@ class ExecutionBackend(ABC):
             Full container image name with tag.
         """
 
-    def get_execution_status(self, execution_id: str) -> ExecutionResponse | None:
+    def check_status(self, execution_id: str) -> ExecutionResponse | None:
         """
-        Get the current status of an async execution.
+        Check the current status of an execution.
 
-        Only applicable for async backends. Returns None for sync backends.
+        Used by reconciliation (e.g., cleanup_stuck_runs) to determine if a
+        container is still running, has completed, or has failed. This allows
+        recovery of lost callbacks for async backends.
+
+        The default implementation returns None, meaning the backend does not
+        support status checking. Sync backends (Docker Compose) don't need
+        this because the caller already has the result. Async backends (GCP)
+        should override to query their platform's execution status API.
 
         Args:
             execution_id: Execution identifier from previous execute() call.
+                For GCP, this is the Cloud Run execution name.
 
         Returns:
-            ExecutionResponse with current status, or None if not supported.
+            ExecutionResponse with current status if determinable, None otherwise.
         """
         return None
 

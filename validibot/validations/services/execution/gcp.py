@@ -93,6 +93,57 @@ class GCPExecutionBackend(ExecutionBackend):
         """Check if GCP Cloud Run is configured."""
         return bool(self.project_id)
 
+    def check_status(self, execution_id: str) -> ExecutionResponse | None:
+        """
+        Check the status of a Cloud Run Job execution.
+
+        Used by reconciliation to determine if a Cloud Run Job has completed
+        but its callback was lost. Delegates to the Cloud Run runner's
+        get_execution_status() method.
+
+        Args:
+            execution_id: Full Cloud Run execution name
+                (projects/.../jobs/.../executions/...).
+
+        Returns:
+            ExecutionResponse if the status could be determined, None if the
+            Cloud Run SDK is not available or the API call fails.
+        """
+        try:
+            from validibot.validations.services.runners.base import ExecutionStatus
+            from validibot.validations.services.runners.google_cloud_run import (
+                GoogleCloudRunValidatorRunner,
+            )
+        except ImportError:
+            logger.debug(
+                "google-cloud-run not available, cannot check execution status"
+            )
+            return None
+
+        try:
+            runner = GoogleCloudRunValidatorRunner(
+                project_id=self.project_id,
+                region=self.region,
+            )
+            info = runner.get_execution_status(execution_id)
+        except Exception:
+            logger.warning(
+                "Failed to check Cloud Run execution status for %s",
+                execution_id,
+                exc_info=True,
+            )
+            return None
+
+        return ExecutionResponse(
+            execution_id=info.execution_id,
+            is_complete=info.status
+            in (
+                ExecutionStatus.SUCCEEDED,
+                ExecutionStatus.FAILED,
+            ),
+            error_message=info.error_message,
+        )
+
     def get_container_image(self, validator_type: str) -> str:
         """
         Get the container image for a validator type.

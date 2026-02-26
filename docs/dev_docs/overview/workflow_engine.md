@@ -156,7 +156,7 @@ processor.complete_from_callback(output_envelope)
    advanced_types = {
        ValidationType.ENERGYPLUS,
        ValidationType.FMU,
-       ValidationType.MY_VALIDATOR,  # Add here if container-based
+       ValidationType.MY_VALIDATOR,  # Add here if container-based or compute-intensive
    }
    ```
 

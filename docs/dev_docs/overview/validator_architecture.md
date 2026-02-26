@@ -405,6 +405,57 @@ if validator.type == "myvalidator":
     envelope_class = MyValidatorInputEnvelope
 ```
 
+## Container Lifecycle
+
+A validator container goes through these stages:
+
+### Sync Path (Docker Compose)
+
+```
+1. SPAWN    → DockerValidatorRunner.run() creates container with labels
+              Security: cap_drop=ALL, no-new-privileges, read_only, network_mode=none
+2. EXECUTE  → Container reads input from VALIDIBOT_INPUT_URI, runs validation
+3. WAIT     → Worker blocks on container.wait(timeout=N)
+4. COLLECT  → Worker reads output.json from shared storage volume
+5. CLEANUP  → container.remove(force=True) in finally block
+```
+
+**If the worker crashes mid-execution:** The container becomes an orphan. It is cleaned up by:
+- Periodic sweep (Celery Beat every 10 minutes) — checks container labels for timeout
+- Startup cleanup (AppConfig.ready()) — removes all labeled containers on worker restart
+
+### Async Path (GCP Cloud Run)
+
+```
+1. UPLOAD   → GCPExecutionBackend uploads input envelope + files to GCS
+2. TRIGGER  → Cloud Run Jobs API starts execution (returns immediately)
+3. EXECUTE  → Container runs on Cloud Run (minutes to hours)
+4. CALLBACK → Container POSTs callback to Django worker with result_uri
+5. PROCESS  → ValidationCallbackService downloads output, processes results
+```
+
+**If the callback is lost:** The `cleanup_stuck_runs` command queries the Cloud Run Jobs API:
+- Job succeeded → Recovers results via synthetic callback through `ValidationCallbackService`
+- Job failed → Marks run as `FAILED` with the error message
+- Job still running → Skips (no false timeout)
+- API unavailable → Falls through to simple `TIMED_OUT` marking
+
+### Container Security Hardening
+
+All Docker containers are launched with these security settings:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `cap_drop` | `["ALL"]` | Drop all Linux capabilities |
+| `security_opt` | `["no-new-privileges:true"]` | Prevent privilege escalation |
+| `pids_limit` | `512` | Prevent fork bombs |
+| `read_only` | `True` | Read-only root filesystem |
+| `tmpfs` | `{"/tmp": "size=2g,mode=1777"}` | Writable /tmp only |
+| `user` | `"1000:1000"` | Run as non-root |
+| `network_mode` | `"none"` | No network access (sync mode) |
+| `mem_limit` | `"4g"` (configurable) | Memory ceiling |
+| `nano_cpus` | `2_000_000_000` (configurable) | CPU ceiling |
+
 ## Reference Implementations
 
 See the [validibot-validators](https://github.com/danielmcquillen/validibot-validators) repository for complete examples:

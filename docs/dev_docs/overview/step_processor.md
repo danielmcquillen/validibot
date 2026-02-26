@@ -76,12 +76,13 @@ result = engine.validate(submission, ruleset, run_context)
 # → Returns complete result immediately
 ```
 
-### Advanced Validators (Container-based)
+### Advanced Validators (Dedicated Compute)
 
-**Container validators**: EnergyPlus, FMU, user-added custom validators
+**Container-based validators**: EnergyPlus, FMU, user-added custom validators
+**Compute-intensive validators**: AI (via external API calls)
 
 These validators:
-- Run inside Docker containers
+- Run outside the Django worker process (in Docker containers or via external APIs)
 - May complete synchronously or asynchronously (depending on deployment)
 - Have two assertion stages (input AND output)
 - Can be computationally intensive

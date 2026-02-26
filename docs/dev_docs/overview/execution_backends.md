@@ -79,15 +79,52 @@ Used for GCP deployments where validators run as Cloud Run Jobs.
 - Callback-based — results arrive via authenticated HTTP POST
 - IAM-secured — no shared secrets, Google-signed ID tokens
 
+## Two-Layer Architecture
+
+The execution system uses a two-layer architecture:
+
+```
+ExecutionBackend (high-level orchestration)
+    ├── Storage management (upload/download envelopes)
+    ├── Envelope building (input envelope construction)
+    ├── Status checking (check_status() for reconciliation)
+    └── Delegates to → ValidatorRunner (low-level container execution)
+                            ├── Container spawn/wait/remove
+                            ├── Security hardening (cap_drop, read_only, etc.)
+                            ├── Container labeling (Ryuk pattern)
+                            └── Container cleanup (orphan sweep, startup cleanup)
+```
+
+**Why two layers?**
+
+- **ExecutionBackend** handles orchestration: it knows about storage URIs, envelopes, and the callback protocol. It doesn't know how containers are spawned.
+- **ValidatorRunner** handles container lifecycle: it knows about Docker APIs and Cloud Run Jobs. It doesn't know about envelopes or callbacks.
+
+This separation means new deployment targets only need a new runner (for container execution) and a new backend (for storage integration), without duplicating orchestration logic.
+
+| Layer | Docker Compose | GCP |
+|-------|---------------|-----|
+| Backend | `DockerComposeExecutionBackend` | `GCPExecutionBackend` |
+| Runner | `DockerValidatorRunner` | `GoogleCloudRunValidatorRunner` |
+| Storage | Local filesystem (`file://`) | GCS (`gs://`) |
+| Execution | Sync (blocking) | Async (callback) |
+
 ## Code Location
 
 ```
-validibot/validations/services/execution/
-├── __init__.py          # Exports get_execution_backend()
-├── base.py              # ExecutionBackend ABC, ExecutionRequest, ExecutionResponse
-├── docker_compose.py    # DockerComposeExecutionBackend (Docker)
-├── gcp.py               # GCPExecutionBackend (Cloud Run)
-└── registry.py          # Backend selection and caching
+validibot/validations/services/
+├── execution/                    # Backend layer (high-level)
+│   ├── __init__.py               # Exports get_execution_backend()
+│   ├── base.py                   # ExecutionBackend ABC, ExecutionRequest, ExecutionResponse
+│   ├── docker_compose.py         # DockerComposeExecutionBackend
+│   ├── gcp.py                    # GCPExecutionBackend
+│   └── registry.py               # Backend selection and caching
+├── runners/                      # Runner layer (low-level)
+│   ├── __init__.py               # Exports get_validator_runner()
+│   ├── base.py                   # ValidatorRunner ABC, ExecutionStatus, ExecutionResult
+│   ├── docker.py                 # DockerValidatorRunner (labels, security, cleanup)
+│   └── google_cloud_run.py       # GoogleCloudRunValidatorRunner
+└── validation_callback.py        # Callback processing (for async backends)
 ```
 
 ## Usage in Validators
@@ -333,6 +370,67 @@ For detailed GCP architecture including Cloud Run Jobs, IAM configuration, and c
 - Input/output envelopes stored in GCS
 - URIs use `gs://` scheme
 - Service accounts need appropriate storage permissions
+
+## Status Checking
+
+The `ExecutionBackend` base class provides a `check_status()` method for querying the state of a running or completed execution:
+
+```python
+def check_status(self, execution_id: str) -> ExecutionResponse | None:
+    """Check execution status. Returns None if not supported."""
+    return None
+```
+
+| Backend | Behavior |
+|---------|----------|
+| `DockerComposeExecutionBackend` | Queries Docker daemon for container state. Primarily for debugging (sync execution already returns results). |
+| `GCPExecutionBackend` | Queries Cloud Run Jobs API for execution state. Used by reconciliation to recover lost callbacks. |
+
+This method is **not abstract** — backends that don't need status checking (sync backends) can leave the default `None` return.
+
+## Container Cleanup
+
+Container lifecycle management happens at the **runner layer**, not the backend layer:
+
+### Docker Compose (three strategies)
+
+1. **Immediate cleanup** — `container.remove(force=True)` in the runner's `finally` block after every execution
+2. **Periodic sweep** — `cleanup_orphaned_containers()` runs via Celery Beat every 10 minutes, removes containers past timeout + grace period
+3. **Startup cleanup** — `cleanup_all_managed_containers()` runs in `AppConfig.ready()`, removes all labeled containers from previous worker incarnation
+
+All strategies use Docker container labels (`org.validibot.managed`, `org.validibot.run_id`, etc.) for identification.
+
+### GCP Cloud Run
+
+Cloud Run Jobs are ephemeral — there's nothing to clean up at the container level. Error recovery is handled by the reconciliation system (see below).
+
+## Error Recovery
+
+### Lost Callback Recovery (GCP)
+
+If a Cloud Run Job completes but its callback never reaches Django (network failure, container crash before POST), the `cleanup_stuck_runs` management command attempts reconciliation:
+
+1. Finds runs stuck in `RUNNING` status past the timeout threshold
+2. For GCP runs, checks `step_run.output` for `execution_name` metadata
+3. Queries Cloud Run Jobs API via `GCPExecutionBackend.check_status()`
+4. Based on result:
+   - **Still running**: Skips the run (legitimately in progress)
+   - **Succeeded**: Constructs a synthetic callback and processes through `ValidationCallbackService` (reuses existing idempotency, finding persistence, assertion evaluation)
+   - **Failed**: Marks the run as `FAILED` with the Cloud Run error message
+   - **API error**: Falls through to simple `TIMED_OUT` marking
+
+This reconciliation runs automatically when `cleanup_stuck_runs` is scheduled (typically every 10 minutes via Cloud Scheduler).
+
+### Stuck Run Timeout (All Backends)
+
+For runs where reconciliation is not possible (non-GCP, no execution metadata, API errors), the command marks them as `TIMED_OUT` after the configured threshold (default: 30 minutes).
+
+```bash
+# Manual invocation
+python manage.py cleanup_stuck_runs
+python manage.py cleanup_stuck_runs --timeout-minutes 60
+python manage.py cleanup_stuck_runs --dry-run
+```
 
 ## Adding a New Backend
 

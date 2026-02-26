@@ -1720,6 +1720,7 @@ class WorkflowStepWizardView(WorkflowObjectMixin, View):
         for validator in (
             Validator.objects.filter(
                 models.Q(org__isnull=True) | models.Q(org=workflow.org),
+                is_enabled=True,
             )
             .exclude(
                 release_state=ValidatorReleaseState.DRAFT,

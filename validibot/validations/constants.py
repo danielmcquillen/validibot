@@ -187,11 +187,16 @@ class ValidatorReleaseState(TextChoices):
     PUBLISHED = "PUBLISHED", _("Published")
 
 
-# 'advanced' validation types that may require more resources or have special handling
+# 'advanced' validation types that require dedicated compute resources —
+# either container-based (EnergyPlus, FMU, custom Docker containers) or
+# compute-intensive services (AI via external API calls). These are
+# metered separately from simple validators that run inline in the
+# Django worker process.
 ADVANCED_VALIDATION_TYPES = {
     ValidationType.ENERGYPLUS,
     ValidationType.FMU,
     ValidationType.CUSTOM_VALIDATOR,
+    ValidationType.AI_ASSIST,
 }
 
 

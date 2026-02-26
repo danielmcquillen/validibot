@@ -103,6 +103,39 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             logger.exception("Failed to check Docker availability")
             return False
 
+    def check_status(self, execution_id: str) -> ExecutionResponse | None:
+        """
+        Check the status of a Docker container execution.
+
+        For Docker Compose, execution is synchronous so this is primarily
+        useful for debugging. The runner's get_execution_status() queries
+        the Docker daemon for the container's current state.
+
+        Args:
+            execution_id: Docker container ID (short or full).
+
+        Returns:
+            ExecutionResponse if the container exists, None if not found or
+            if the Docker daemon is unavailable.
+        """
+        from validibot.validations.services.runners.base import ExecutionStatus
+
+        try:
+            info = self.runner.get_execution_status(execution_id)
+        except (ValueError, Exception):
+            # Container not found or Docker not available
+            return None
+
+        return ExecutionResponse(
+            execution_id=info.execution_id,
+            is_complete=info.status
+            in (
+                ExecutionStatus.SUCCEEDED,
+                ExecutionStatus.FAILED,
+            ),
+            error_message=info.error_message,
+        )
+
     def get_container_image(self, validator_type: str) -> str:
         """
         Get the container image for a validator type.

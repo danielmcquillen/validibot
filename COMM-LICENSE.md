@@ -471,7 +471,7 @@ described in Licensor's Privacy Policy at https://validibot.com/privacy.
 
 11.3 **Data Processing Addendum.** A Data Processing Addendum ("DPA") is
 available upon request for Licensees who require one for compliance with
-applicable data protection laws. Contact licensing@validibot.com.
+applicable data protection laws. Contact licensing@mcquilleninteractive.com.
 
 ---
 

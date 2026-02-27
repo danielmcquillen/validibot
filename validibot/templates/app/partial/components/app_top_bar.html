@@ -98,6 +98,7 @@ This component renders the top navigation bar for the app.
                href="{% org_url 'users:organization-list' %}">{% trans "Manage organizations" %}</a>
           </li>
         {% endif %}
+        {% cloud_tos_dropdown_link %}
         {# Sign out - always visible #}
         <li>
           <hr class="dropdown-divider" />

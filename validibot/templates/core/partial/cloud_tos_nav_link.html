@@ -1,0 +1,10 @@
+{% load i18n %}
+
+{% if tos_url %}
+  <li class="nav-item" role="none">
+    <a href="{{ tos_url }}" class="nav-link text-white" role="menuitem">
+      <i class="bi bi-file-earmark-text"></i>
+      <span>{% trans "Terms of Service" %}</span>
+    </a>
+  </li>
+{% endif %}

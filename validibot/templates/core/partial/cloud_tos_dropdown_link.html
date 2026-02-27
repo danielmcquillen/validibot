@@ -1,0 +1,7 @@
+{% load i18n %}
+
+{% if tos_url %}
+  <li>
+    <a class="dropdown-item" href="{{ tos_url }}">{% trans "Terms of Service" %}</a>
+  </li>
+{% endif %}

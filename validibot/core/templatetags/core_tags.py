@@ -259,3 +259,35 @@ def shared_version() -> str:
         return pkg_version("validibot-shared")
     except PackageNotFoundError:
         return "?"
+
+
+def _cloud_tos_url() -> str:
+    """Resolve the cloud TOS URL, or return empty string if cloud not installed."""
+    try:
+        from django.urls import reverse
+
+        return reverse("cloud-accounts:terms")
+    except Exception:
+        return ""
+
+
+@register.inclusion_tag("core/partial/cloud_tos_nav_link.html")
+def cloud_tos_nav_link():
+    """
+    Render a "Terms of Service" link for the left sidebar nav.
+
+    Outputs nothing if the cloud layer is not installed. Used in
+    app_left_nav.html so templates stay clean.
+    """
+    return {"tos_url": _cloud_tos_url()}
+
+
+@register.inclusion_tag("core/partial/cloud_tos_dropdown_link.html")
+def cloud_tos_dropdown_link():
+    """
+    Render a "Terms of Service" link for the user profile dropdown.
+
+    Outputs nothing if the cloud layer is not installed. Used in
+    app_top_bar.html so templates stay clean.
+    """
+    return {"tos_url": _cloud_tos_url()}

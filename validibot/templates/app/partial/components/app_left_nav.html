@@ -49,6 +49,7 @@
               <span>{% trans "User Guide" %}</span>
             </a>
           </li>
+          {% cloud_tos_nav_link %}
         </ul>
         {# Free plan users on personal org see limited navigation (Workflows + Validation Runs) #}
       {% elif show_limited_nav %}
@@ -92,6 +93,7 @@
               <span>{% trans "User Guide" %}</span>
             </a>
           </li>
+          {% cloud_tos_nav_link %}
         </ul>
       {% else %}
         {# Regular member navigation #}
@@ -242,6 +244,7 @@
               <span>{% trans "User Guide" %}</span>
             </a>
           </li>
+          {% cloud_tos_nav_link %}
         </ul>
       {% endif %}
       {# end navigation conditionals #}

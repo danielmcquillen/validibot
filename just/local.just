@@ -157,7 +157,7 @@ test-integration *args:
     $COMPOSE run --rm \
         -e DJANGO_SETTINGS_MODULE=config.settings.test \
         web \
-        uv run --extra dev pytest {{ if args == "" { "tests/tests_integration/" } else { args } }} -v --log-cli-level=INFO
+        uv run --group dev pytest {{ if args == "" { "tests/tests_integration/" } else { args } }} -v --log-cli-level=INFO
 
 # Run E2E stress tests against a running Docker Compose environment
 # Requires: `just up` running. Test data (user, org, workflow, API token) is
@@ -186,7 +186,7 @@ test-e2e *args:
     fi
 
     echo "Running E2E stress tests against: ${FULLSTACK_API_URL:-http://localhost:8000/api/v1}"
-    uv run --extra dev pytest tests/tests_e2e/ {{args}} -v --log-cli-level=INFO
+    uv run --group dev pytest tests/tests_e2e/ {{args}} -v --log-cli-level=INFO
 
 # =============================================================================
 # Documentation

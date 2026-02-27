@@ -261,7 +261,7 @@ git clone https://github.com/danielmcquillen/validibot.git
 cd validibot
 
 # Install dependencies with uv
-uv sync --extra dev
+uv sync --group dev
 
 # Set up environment
 source set-env.sh

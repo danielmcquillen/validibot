@@ -6,14 +6,14 @@ Validibot uses [uv](https://docs.astral.sh/uv/) for Python dependency management
 
 | Task                             | Command                                          |
 | -------------------------------- | ------------------------------------------------ |
-| Install all deps (dev)           | `uv sync --extra dev`                            |
+| Install all deps (dev)           | `uv sync --group dev`                            |
 | Install prod deps only           | `uv sync`                                        |
 | Add a base dependency            | `uv add <package>`                               |
 | Add a dev-only dependency        | `uv add --group dev <package>`                   |
-| Add a production-only dependency | `uv add --optional prod <package>`               |
+| Add an optional extra            | `uv add --optional cloud <package>`              |
 | Upgrade a package                | `uv lock --upgrade-package <package> && uv sync` |
 | Run a command                    | `uv run python manage.py <command>`              |
-| Run tests                        | `uv run --extra dev pytest`                      |
+| Run tests                        | `uv run --group dev pytest`                      |
 
 ## Dependency Categories
 
@@ -33,7 +33,7 @@ uv add "httpx>=0.28.0"
 
 ### Dev-Only Dependencies
 
-Development tools like pytest, mypy, and linters. These go in the `[dependency-groups.dev]` section and are only installed when you use `--extra dev`.
+Development tools like pytest, mypy, and linters. These go in the `[dependency-groups]` section and are only installed when you use `--group dev`.
 
 ```bash
 # Add a dev-only dependency
@@ -43,14 +43,19 @@ uv add --group dev pytest-cov
 uv add --group dev "ruff>=0.14" "mypy>=1.18"
 ```
 
-### Production-Only Dependencies
+### Optional Extras
 
-Packages only needed in production (like Sentry, Gunicorn workers). These use the `[project.optional-dependencies.prod]` section.
+Optional feature dependencies that aren't needed for the base install. These use the `[project.optional-dependencies]` section.
 
 ```bash
-# Add a production-only dependency
-uv add --optional prod sentry-sdk
+# Add an optional extra dependency
+uv add --optional cloud stripe
+
+# Install with an extra
+uv sync --extra cloud
 ```
+
+Currently defined extras: `cloud` (stripe).
 
 ## Installing Dependencies
 
@@ -58,19 +63,19 @@ uv add --optional prod sentry-sdk
 
 ```bash
 # Install base + dev dependencies
-uv sync --extra dev
+uv sync --group dev
 ```
 
 ### For Production
 
 ```bash
-# Install base + production dependencies
-uv sync --extra prod
+# Install base dependencies only (no dev tools)
+uv sync
 ```
 
 ### For Docker Builds
 
-The Dockerfile runs `uv sync --extra dev --frozen` which installs from the locked versions without updating the lock file.
+The Dockerfile runs `uv sync --group dev --frozen` which installs from the locked versions without updating the lock file.
 
 ## Upgrading Dependencies
 
@@ -94,18 +99,11 @@ uv pip list --outdated
 
 ## Working with validibot-shared
 
-The `validibot-shared` package is installed from Git. In `pyproject.toml`:
-
-```toml
-[tool.uv.sources]
-validibot-shared = { git = "https://github.com/danielmcquillen/validibot-shared" }
-```
-
-When `validibot-shared` changes:
+The `validibot-shared` package is published to PyPI and installed as a normal dependency. When `validibot-shared` changes:
 
 1. Make changes in `../validibot-shared`
-2. Commit and push to GitHub
-3. In this project, run: `uv sync` to pull the latest version
+2. Bump the version and publish to PyPI
+3. In this project, run: `uv lock --upgrade-package validibot-shared && uv sync`
 
 ## Common Workflows
 
@@ -114,7 +112,7 @@ When `validibot-shared` changes:
 ```bash
 # Pull latest, sync dependencies
 git pull
-uv sync --extra dev
+uv sync --group dev
 
 # Load environment variables
 source set-env.sh
@@ -136,7 +134,7 @@ uv add requests
 
 ```bash
 # If pyproject.toml or uv.lock changed
-uv sync --extra dev
+uv sync --group dev
 ```
 
 ## Troubleshooting

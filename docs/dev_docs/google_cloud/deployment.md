@@ -333,10 +333,10 @@ Before every deployment, run tests and linting:
 
 ```bash
 # Run the test suite
-uv run --extra dev pytest
+uv run --group dev pytest
 
 # Run linting
-uv run --extra dev ruff check
+uv run --group dev ruff check
 ```
 
 Optionally, run Django's deployment security checks against production settings:

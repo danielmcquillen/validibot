@@ -83,10 +83,11 @@ dependencies = [
   "docker>=7.1.0",
   # validibot-shared: Our shared library for Validibot integrations (e.g., EnergyPlus).
   "validibot-shared>=0.2.1",
+  # Geometry operations (THERM polygon validation, etc.)
+  "shapely>=2.0",
 ]
 
 [project.optional-dependencies]
-geometry = ["shapely>=2.0"]
 cloud = ["stripe>=8.0.0"]
 
 [project.urls]

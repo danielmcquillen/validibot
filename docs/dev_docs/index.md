@@ -79,7 +79,7 @@ Deploy Validibot to production:
 
 ## Testing
 
-Run the test suite with `uv run --extra dev pytest`. Integration tests require Docker.
+Run the test suite with `uv run --group dev pytest`. Integration tests require Docker.
 
 ### Integration Tests
 
@@ -96,7 +96,7 @@ docker compose -f docker-compose.local.yml down -v
 docker compose -f docker-compose.local.yml up -d postgres mailpit
 docker compose -f docker-compose.local.yml run --rm \
   -e DJANGO_SETTINGS_MODULE=config.settings.test \
-  django uv run --extra dev pytest tests/tests_integration/ -v
+  django uv run --group dev pytest tests/tests_integration/ -v
 docker compose -f docker-compose.local.yml stop postgres mailpit
 ```
 

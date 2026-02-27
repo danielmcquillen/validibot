@@ -2423,7 +2423,7 @@ test-e2e *args:
         exit 1; \
     fi
     @echo "Running E2E tests against: ${E2E_TEST_API_URL}"
-    uv run --extra dev pytest tests/tests_integration/test_e2e_workflow.py {{args}} -v --log-cli-level=INFO
+    uv run --group dev pytest tests/tests_integration/test_e2e_workflow.py {{args}} -v --log-cli-level=INFO
 
 # Verify a deployed environment with smoke tests
 # Usage: just gcp verify-deployment dev | just gcp verify-deployment prod

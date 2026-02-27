@@ -17,7 +17,7 @@ Validibot has several types of tests:
 
 ```bash
 # Run all unit tests
-uv run --extra dev pytest validibot/
+uv run --group dev pytest validibot/
 
 # Run integration tests (starts local Postgres)
 just test-integration

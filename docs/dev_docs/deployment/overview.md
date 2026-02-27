@@ -82,7 +82,7 @@ See the [Go-Live Checklist](go-live-checklist.md) for pre-launch tasks.
 
 ## GCP Release Workflow
 
-1. Run the test suite (`uv run --extra dev pytest`) and linting locally.
+1. Run the test suite (`uv run --group dev pytest`) and linting locally.
 2. Push to GitHub; CI should pass before you merge.
 3. Deploy to dev first: `just gcp deploy-all dev`
 4. Run migrations: `just gcp migrate dev`

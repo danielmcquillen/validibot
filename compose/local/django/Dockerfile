@@ -34,9 +34,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files first for better caching
 COPY pyproject.toml uv.lock ${APP_HOME}/
 
-# Install dependencies with dev extras for local work
+# Install dependencies with dev group for local work
 # --no-install-project skips installing validibot itself (it's not a package, just a Django project)
-RUN uv sync --extra dev --frozen --no-install-project
+RUN uv sync --group dev --frozen --no-install-project
 
 # Copy the rest of the project
 COPY . ${APP_HOME}/

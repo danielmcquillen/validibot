@@ -95,6 +95,19 @@ class ValidatorFactory(DjangoModelFactory):
             )
         )
     )
+    supports_assertions = factory.LazyAttribute(
+        lambda obj: (
+            obj.validation_type
+            in (
+                ValidationType.BASIC,
+                ValidationType.ENERGYPLUS,
+                ValidationType.FMU,
+                ValidationType.AI_ASSIST,
+                ValidationType.CUSTOM_VALIDATOR,
+                ValidationType.THERM,
+            )
+        )
+    )
     supported_data_formats = factory.LazyAttribute(
         lambda obj: default_supported_data_formats_for_validation(obj.validation_type),
     )

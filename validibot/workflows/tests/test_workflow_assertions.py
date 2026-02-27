@@ -198,6 +198,44 @@ class WorkflowStepAssertionsTests(TestCase):
         response = self.client.get(url, headers={"hx-request": "true"})
         self.assertEqual(response.status_code, 200)
 
+    def test_basic_validator_supports_assertions(self):
+        """Basic Validator should support step-level assertions."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            supports_assertions=True,
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        if not step.ruleset_id:
+            ruleset = RulesetFactory(org=workflow.org)
+            step.ruleset = ruleset
+            step.save(update_fields=["ruleset"])
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Add assertion", response.content.decode())
+
+    def test_schema_validator_hides_assertions(self):
+        """JSON Schema validator should not show assertion UI."""
+        workflow = WorkflowFactory()
+        _login_as_author(self.client, workflow)
+        validator = ValidatorFactory(
+            validation_type=ValidationType.JSON_SCHEMA,
+            supports_assertions=False,
+        )
+        step = WorkflowStepFactory(workflow=workflow, validator=validator)
+        url = reverse(
+            "workflows:workflow_step_edit",
+            kwargs={"pk": workflow.pk, "step_id": step.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("Add assertion", response.content.decode())
+
     def test_cel_expression_requires_known_signal(self):
         workflow = WorkflowFactory()
         _login_as_author(self.client, workflow)

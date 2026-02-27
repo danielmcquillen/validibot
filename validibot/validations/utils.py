@@ -42,6 +42,7 @@ def create_default_validators():
             "version": "1.0",
             "order": 0,
             "allow_custom_assertion_targets": True,
+            "supports_assertions": True,
         },
         {
             "name": _("JSON Schema Validator"),
@@ -101,6 +102,7 @@ def create_default_validators():
             "version": "1.0",
             "order": 3,
             "has_processor": True,
+            "supports_assertions": True,
         },
         {
             "name": _("FMU Validator"),
@@ -134,6 +136,7 @@ def create_default_validators():
             "version": "1.0",
             "order": 4,
             "has_processor": True,
+            "supports_assertions": True,
         },
         {
             "name": _("AI Assisted Validator"),
@@ -152,6 +155,7 @@ def create_default_validators():
             "version": "1.0",
             "order": 5,
             "release_state": ValidatorReleaseState.COMING_SOON,
+            "supports_assertions": True,
         },
         {
             "name": _("THERM Validator"),
@@ -172,6 +176,7 @@ def create_default_validators():
             "validation_type": ValidationType.THERM,
             "version": "1.0",
             "order": 6,
+            "supports_assertions": True,
         },
     ]
 
@@ -223,6 +228,10 @@ def create_default_validators():
         validator.has_processor = validator_data.get(
             "has_processor",
             validator.has_processor,
+        )
+        validator.supports_assertions = validator_data.get(
+            "supports_assertions",
+            validator.supports_assertions,
         )
         validator.allow_custom_assertion_targets = validator_data.get(
             "allow_custom_assertion_targets",

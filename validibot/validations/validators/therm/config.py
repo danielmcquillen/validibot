@@ -33,6 +33,7 @@ config = ValidatorConfig(
     order=30,
     has_processor=False,
     is_system=True,
+    supports_assertions=True,
     compute_tier=ComputeTier.HIGH,
     supported_file_types=[SubmissionFileType.XML, SubmissionFileType.BINARY],
     supported_data_formats=[

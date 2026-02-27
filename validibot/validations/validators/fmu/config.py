@@ -22,6 +22,7 @@ config = ValidatorConfig(
     has_processor=True,
     processor_name="FMU Simulation",
     is_system=True,
+    supports_assertions=True,
     compute_tier=ComputeTier.HIGH,
     supported_file_types=[
         SubmissionFileType.BINARY,

@@ -129,7 +129,11 @@ class XmlSchemaValidator(BaseValidator):
 
         # Parse XML payload
         try:
-            parser = etree.XMLParser(recover=False)
+            parser = etree.XMLParser(
+                recover=False,
+                resolve_entities=False,
+                no_network=True,
+            )
             doc = etree.fromstring((content or "").encode("utf-8"), parser=parser)
         except Exception as e:
             return ValidationResult(

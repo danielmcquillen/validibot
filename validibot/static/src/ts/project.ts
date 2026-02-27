@@ -250,6 +250,22 @@ window.addEventListener('DOMContentLoaded', () => {
     initRolePickers(document);
 });
 
+/**
+ * Initialise a Bootstrap tooltip, pulling rich HTML content from a sibling
+ * `<template class="cel-tooltip-content">` when present.  This avoids
+ * embedding raw HTML inside a `title` attribute (which breaks when the
+ * included HTML contains double-quote characters).
+ */
+function initTooltipWithTemplate(el: HTMLElement): void {
+    const sibling = el.parentElement?.querySelector<HTMLTemplateElement>(
+        'template.cel-tooltip-content',
+    );
+    if (sibling) {
+        el.setAttribute('title', sibling.innerHTML.trim());
+    }
+    new window.bootstrap.Tooltip(el);
+}
+
 function validibotInitBootstrap() {
     try {
 
@@ -263,7 +279,7 @@ function validibotInitBootstrap() {
             document.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]'),
         );
         tooltipTriggerList.forEach((tooltipTriggerEl) => {
-            new bootstrap.Tooltip(tooltipTriggerEl);
+            initTooltipWithTemplate(tooltipTriggerEl);
         });
     } catch (err) {
         console.log("Error initializing bootstrap: ", err)
@@ -321,7 +337,7 @@ window.htmx.onLoad((content: Node) => {
     initRolePickers(root);
 
     root.querySelectorAll<HTMLElement>('[data-bs-toggle="tooltip"]').forEach((tooltipTriggerEl) => {
-        new window.bootstrap.Tooltip(tooltipTriggerEl);
+        initTooltipWithTemplate(tooltipTriggerEl);
     });
 
     root.querySelectorAll<HTMLElement>('[data-bs-toggle="collapse"]').forEach((trigger) => {

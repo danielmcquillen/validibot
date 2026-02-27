@@ -40,6 +40,7 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
             SubmissionDataFormat.YAML,
         ],
         allowed_extensions=["json", "xml", "txt", "yaml", "yml"],
+        supports_assertions=True,
         icon="bi-journal-bookmark",
         card_image="BASIC_card_img_small.png",
     ),
@@ -57,8 +58,8 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         card_image="JSON_SCHEMA_card_img_small.png",
     ),
     ValidatorConfig(
-        slug="xml-schema-validator",
-        name="XML Schema Validator",
+        slug="xml-validator",
+        name="XML Validator",
         description="Validate XML data against XSD, RelaxNG, or DTD schemas.",
         validation_type=ValidationType.XML_SCHEMA,
         version="1.0",
@@ -79,6 +80,7 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         supported_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
         supported_data_formats=[SubmissionDataFormat.JSON, SubmissionDataFormat.TEXT],
         allowed_extensions=["json", "txt"],
+        supports_assertions=True,
         icon="bi-robot",
         card_image="AI_ASSIST_card_img_small.png",
     ),
@@ -97,5 +99,6 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         ],
         supported_data_formats=[SubmissionDataFormat.JSON],
         allowed_extensions=["json", "yaml", "yml"],
+        supports_assertions=True,
     ),
 ]

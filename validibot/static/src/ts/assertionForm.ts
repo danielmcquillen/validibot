@@ -229,16 +229,22 @@ class AssertionFormController {
 
 const controllers = new WeakMap<HTMLFormElement, AssertionFormController>();
 
+function initForm(form: HTMLFormElement): void {
+  let controller = controllers.get(form);
+  if (!controller) {
+    controller = new AssertionFormController(form);
+    controllers.set(form, controller);
+    controller.init();
+  } else {
+    controller.refresh();
+  }
+}
+
 export function initAssertionForms(root: ParentNode | Document = document): void {
-  const forms = root.querySelectorAll<HTMLFormElement>('form[data-sv-assertion-form]');
-  forms.forEach((form) => {
-    let controller = controllers.get(form);
-    if (!controller) {
-      controller = new AssertionFormController(form);
-      controllers.set(form, controller);
-      controller.init();
-    } else {
-      controller.refresh();
-    }
-  });
+  // Check if root itself is a matching form (happens when HTMX swaps
+  // content and the <form> is the top-level element in the swap).
+  if (root instanceof HTMLFormElement && root.hasAttribute('data-sv-assertion-form')) {
+    initForm(root);
+  }
+  root.querySelectorAll<HTMLFormElement>('form[data-sv-assertion-form]').forEach(initForm);
 }

@@ -17,7 +17,6 @@ from validibot.core.utils import reverse_with_org
 from validibot.projects.models import Project
 from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
-from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import ValidationRunStatus
 from validibot.validations.models import Ruleset
 from validibot.validations.models import ValidationRun
@@ -220,7 +219,7 @@ class WorkflowStepAssertionsMixin(WorkflowObjectMixin):
         validator = getattr(self.step, "validator", None)
         if not validator:
             return False
-        return validator.validation_type in ADVANCED_VALIDATION_TYPES
+        return validator.supports_assertions
 
     def get_ruleset(self) -> Ruleset:
         validator = self.step.validator

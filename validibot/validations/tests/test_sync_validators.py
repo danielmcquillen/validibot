@@ -59,6 +59,7 @@ class SyncValidatorsCommandTests(TestCase):
         self.assertEqual(validator.validation_type, ValidationType.ENERGYPLUS)
         self.assertTrue(validator.is_system)
         self.assertTrue(validator.has_processor)
+        self.assertTrue(validator.supports_assertions)
         self.assertEqual(validator.processor_name, "EnergyPlus Simulation")
 
     def test_command_creates_catalog_entries(self):
@@ -163,6 +164,32 @@ class SyncValidatorsCommandTests(TestCase):
         validator = Validator.objects.get(slug="energyplus-idf-validator")
         self.assertEqual(validator.name, "EnergyPlus Validator")
 
+    def test_command_syncs_supports_assertions(self):
+        """Test that supports_assertions is synced from config to DB."""
+        self.call_command()
+
+        # Validators that support assertions
+        for slug in (
+            "basic-validator",
+            "energyplus-idf-validator",
+            "fmu-validator",
+            "ai-assisted-validator",
+            "therm-validator",
+        ):
+            validator = Validator.objects.get(slug=slug)
+            self.assertTrue(
+                validator.supports_assertions,
+                f"{slug} should support assertions",
+            )
+
+        # Validators that do NOT support assertions (schema-only)
+        for slug in ("json-schema-validator", "xml-validator"):
+            validator = Validator.objects.get(slug=slug)
+            self.assertFalse(
+                validator.supports_assertions,
+                f"{slug} should not support assertions",
+            )
+
     def test_command_reports_creation_counts(self):
         """Test that command reports how many validators/entries were created."""
         out, _ = self.call_command()
@@ -172,6 +199,38 @@ class SyncValidatorsCommandTests(TestCase):
 
         # Should report catalog entries created
         self.assertIn("catalog entries created", out.lower())
+
+
+class CreateDefaultValidatorsTests(TestCase):
+    """Tests for create_default_validators() in utils.py."""
+
+    def test_sets_supports_assertions(self):
+        """create_default_validators sets supports_assertions from config."""
+        from validibot.validations.utils import create_default_validators
+
+        create_default_validators()
+
+        # Validators that support assertions
+        for slug in (
+            "basic-validator",
+            "energyplus-idf-validator",
+            "fmu-validator",
+            "ai-assisted-validator",
+            "therm-validator",
+        ):
+            validator = Validator.objects.get(slug=slug)
+            self.assertTrue(
+                validator.supports_assertions,
+                f"{slug} should support assertions",
+            )
+
+        # Validators that do NOT support assertions
+        for slug in ("json-schema-validator", "xml-validator"):
+            validator = Validator.objects.get(slug=slug)
+            self.assertFalse(
+                validator.supports_assertions,
+                f"{slug} should not support assertions",
+            )
 
 
 class DiscoverConfigsTests(TestCase):
@@ -285,6 +344,30 @@ class ConfigRegistryTests(TestCase):
         """Basic config declares JSON as supported file type."""
         cfg = get_config(ValidationType.BASIC)
         self.assertIn("json", cfg.supported_file_types)
+
+    def test_configs_declare_supports_assertions(self):
+        """Configs correctly declare assertion support."""
+        assertion_slugs = {
+            "basic-validator",
+            "energyplus-idf-validator",
+            "fmu-validator",
+            "ai-assisted-validator",
+            "therm-validator",
+            "custom-validator",
+        }
+        no_assertion_slugs = {"json-schema-validator", "xml-validator"}
+
+        for cfg in get_all_configs():
+            if cfg.slug in assertion_slugs:
+                self.assertTrue(
+                    cfg.supports_assertions,
+                    f"Config {cfg.slug} should declare supports_assertions=True",
+                )
+            elif cfg.slug in no_assertion_slugs:
+                self.assertFalse(
+                    cfg.supports_assertions,
+                    f"Config {cfg.slug} should declare supports_assertions=False",
+                )
 
     def test_registry_count(self):
         """Registry has exactly 8 configs (one per ValidationType)."""

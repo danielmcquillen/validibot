@@ -4,9 +4,10 @@ Management command to sync system validators and their catalog entries.
 Usage:
     python manage.py sync_validators
 
-System validators (EnergyPlus, FMU, THERM, etc.) declare their metadata
-in ``config.py`` files within their validator packages. This command
-discovers those configs and ensures the corresponding ``Validator`` and
+All system validators — both built-in single-file validators (Basic, JSON
+Schema, XML Schema, AI Assist) and package-based validators (EnergyPlus,
+FMU, THERM) — declare their metadata via ``ValidatorConfig``. This command
+discovers all configs and ensures the corresponding ``Validator`` and
 ``ValidatorCatalogEntry`` rows exist in the database.
 
 The catalog entries are required for the step editor UI to show separate
@@ -18,14 +19,14 @@ from django.db import transaction
 
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
-from validibot.validations.validators.base.config import discover_configs
+from validibot.validations.validators.base.config import get_all_configs
 
 
 class Command(BaseCommand):
     help = "Sync system validators and their catalog entries from config declarations."
 
     def handle(self, *args, **options):
-        configs = discover_configs()
+        configs = get_all_configs()
         total_validators_created = 0
         total_validators_updated = 0
         total_entries_created = 0

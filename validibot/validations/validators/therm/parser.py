@@ -63,7 +63,12 @@ def parse_therm_file(
 
     # Parse XML
     try:
-        parser = etree.XMLParser(recover=False, remove_blank_text=True)
+        parser = etree.XMLParser(
+            recover=False,
+            remove_blank_text=True,
+            resolve_entities=False,
+            no_network=True,
+        )
         root = etree.fromstring(xml_bytes, parser=parser)
     except etree.XMLSyntaxError as exc:
         msg = f"Invalid XML in THERM file: {exc}"

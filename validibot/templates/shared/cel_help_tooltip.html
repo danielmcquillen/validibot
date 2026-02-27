@@ -9,8 +9,10 @@
      data-bs-toggle="tooltip"
      data-bs-html="true"
      data-bs-custom-class="cel-tooltip"
-     title="{% include 'help/partials/cel_hint.html' %}"
      aria-label="{% trans 'CEL expression help (opens in new tab)' %}">
     <i class="bi bi-question-circle-fill"></i>
   </a>
+  <template class="cel-tooltip-content">
+    {% include 'help/partials/cel_hint.html' %}
+  </template>
 </span>

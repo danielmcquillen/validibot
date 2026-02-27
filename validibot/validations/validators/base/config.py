@@ -90,6 +90,10 @@ class ValidatorConfig(BaseModel):
     has_processor: bool = False
     processor_name: str = ""
     is_system: bool = True
+    # Whether this validator supports step-level assertions (Basic + CEL).
+    # May evolve into a more granular field (e.g. list of assertion types)
+    # if different validators need different assertion capabilities.
+    supports_assertions: bool = False
 
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)

@@ -19,7 +19,6 @@ from validibot.submissions.models import detect_file_type
 from validibot.users.models import Organization
 from validibot.users.models import User
 from validibot.users.permissions import PermissionCode
-from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import ValidationType
@@ -469,7 +468,7 @@ def save_workflow_step(
 
     if ruleset is not None:
         step.ruleset = ruleset
-    elif vtype in ADVANCED_VALIDATION_TYPES:
+    elif validator and validator.supports_assertions:
         step.ruleset = ensure_advanced_ruleset(workflow, step, validator)
     elif vtype not in (ValidationType.JSON_SCHEMA, ValidationType.XML_SCHEMA):
         step.ruleset = None

@@ -52,7 +52,6 @@ from validibot.submissions.constants import SubmissionDataFormat
 from validibot.submissions.constants import SubmissionFileType
 from validibot.users.mixins import SuperuserRequiredMixin
 from validibot.users.permissions import PermissionCode
-from validibot.validations.constants import ADVANCED_VALIDATION_TYPES
 from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import JSONSchemaVersion
 from validibot.validations.constants import ValidationRunStatus
@@ -2128,22 +2127,16 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
             kwargs={"pk": workflow.pk},
         )
         if hasattr(self, "saved_step") and self.saved_step:
-            # JSON and XML schema validators don't support step assertions,
-            # so skip the step edit screen and return to the workflow detail
-            validation_type = (
-                self.saved_step.validator.validation_type
-                if self.saved_step.validator
-                else None
-            )
-            if validation_type in {
-                ValidationType.JSON_SCHEMA,
-                ValidationType.XML_SCHEMA,
-            }:
+            validator = self.saved_step.validator
+            supports_assertions = validator and validator.supports_assertions
+            # Schema-only validators don't support assertions — skip
+            # the step edit screen and return to the workflow detail.
+            if not supports_assertions:
                 return f"{detail_url}#workflow-steps-col"
 
             anchor = (
                 "#workflow-step-assertions"
-                if validation_type in ADVANCED_VALIDATION_TYPES
+                if supports_assertions
                 else "#workflow-step-details"
             )
             return (
@@ -2214,7 +2207,7 @@ class WorkflowStepFormView(WorkflowObjectMixin, FormView):
                     not self.is_action_step()
                     and step
                     and step.validator
-                    and step.validator.validation_type in ADVANCED_VALIDATION_TYPES,
+                    and step.validator.supports_assertions,
                 ),
             },
         )
@@ -2296,9 +2289,7 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
         assertions = []
         catalog_entries = []
         catalog_display = validator.catalog_display if validator else None
-        allow_assertions = (
-            validator and validator.validation_type in ADVANCED_VALIDATION_TYPES
-        )
+        allow_assertions = validator and validator.supports_assertions
         if allow_assertions:
             ruleset = self.step.ruleset or ensure_advanced_ruleset(
                 workflow,

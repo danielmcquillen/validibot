@@ -835,6 +835,14 @@ class Validator(TimeStampedModel):
             "processor that produces output signals."
         ),
     )
+    supports_assertions = models.BooleanField(
+        default=False,
+        help_text=_(
+            "True when this validator supports step-level assertions "
+            "(Basic and CEL). Schema-only validators (JSON Schema, "
+            "XML Schema) do not support assertions."
+        ),
+    )
     fmu_model = models.ForeignKey(
         "validations.FMUModel",
         on_delete=models.SET_NULL,

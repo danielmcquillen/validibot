@@ -121,7 +121,7 @@ class TestExampleProductWithCEL(TestCase):
             stage="output",
         )
         self.assertEqual(len(result.issues), 1)
-        self.assertIn("identifier 'price'", result.issues[0].message)
+        self.assertIn("undefined name 'price'", result.issues[0].message)
 
     def test_rating_must_be_high_enough(self):
         payload = {**self.payload, "rating": 80}

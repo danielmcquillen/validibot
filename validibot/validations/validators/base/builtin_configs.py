@@ -30,16 +30,12 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         supported_file_types=[
             SubmissionFileType.JSON,
             SubmissionFileType.XML,
-            SubmissionFileType.TEXT,
-            SubmissionFileType.YAML,
         ],
         supported_data_formats=[
             SubmissionDataFormat.JSON,
             SubmissionDataFormat.XML,
-            SubmissionDataFormat.TEXT,
-            SubmissionDataFormat.YAML,
         ],
-        allowed_extensions=["json", "xml", "txt", "yaml", "yml"],
+        allowed_extensions=["json", "xml"],
         supports_assertions=True,
         icon="bi-journal-bookmark",
         card_image="BASIC_card_img_small.png",

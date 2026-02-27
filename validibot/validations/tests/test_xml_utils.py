@@ -215,13 +215,40 @@ class XmlToDictMaliciousInputTests(SimpleTestCase):
         with pytest.raises(XmlParseError):
             xml_to_dict(xml)
 
-    def test_deeply_nested_xml(self):
-        """Deeply nested XML doesn't cause stack overflow -- defusedxml handles it."""
-        depth = 200
+    def test_deeply_nested_xml_within_limit(self):
+        """XML within max_depth parses successfully."""
+        depth = 50
         opening = "".join(f"<n{i}>" for i in range(depth))
         closing = "".join(f"</n{i}>" for i in reversed(range(depth)))
         xml = f"{opening}leaf{closing}"
-        # Should parse without error -- just produces a deeply nested dict
+        result = xml_to_dict(xml, max_depth=depth + 10)
+        self.assertIsInstance(result, dict)
+
+    def test_deeply_nested_xml_exceeding_limit_raises(self):
+        """XML exceeding max_depth raises XmlParseError, not RecursionError."""
+        depth = 50
+        opening = "".join(f"<n{i}>" for i in range(depth))
+        closing = "".join(f"</n{i}>" for i in reversed(range(depth)))
+        xml = f"{opening}leaf{closing}"
+        with pytest.raises(XmlParseError, match="nesting depth exceeds maximum"):
+            xml_to_dict(xml, max_depth=10)
+
+    def test_deeply_nested_xml_at_exact_limit_succeeds(self):
+        """XML at exactly max_depth succeeds (boundary test)."""
+        depth = 20
+        opening = "".join(f"<n{i}>" for i in range(depth))
+        closing = "".join(f"</n{i}>" for i in reversed(range(depth)))
+        xml = f"{opening}leaf{closing}"
+        # depth=20 elements, max_depth=20 should succeed (root is depth 1)
+        result = xml_to_dict(xml, max_depth=depth)
+        self.assertIsInstance(result, dict)
+
+    def test_default_max_depth_handles_normal_documents(self):
+        """Default max_depth (200) is generous enough for real documents."""
+        depth = 100
+        opening = "".join(f"<n{i}>" for i in range(depth))
+        closing = "".join(f"</n{i}>" for i in reversed(range(depth)))
+        xml = f"{opening}leaf{closing}"
         result = xml_to_dict(xml)
         self.assertIsInstance(result, dict)
 

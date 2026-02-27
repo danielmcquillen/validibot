@@ -64,6 +64,24 @@ Here are some examples of CEL expressions below. The example names are highlight
 - Guard tolerance on an output: `abs(` <code><span class="target-signal-name">my_sensor_reading</span></code> ` - 120.0) < 0.05`
 - Limit an input description length: `size(` <code><span class="target-signal-name">my_description</span></code>`) <= 500`
 
+### Working with XML data
+
+When your submission is XML, all element text values arrive in CEL as **strings** — even when they look numeric in the document. This is standard XML behaviour (XML has no native number type). To compare numerically, wrap the value with `double()` or `int()`:
+
+- **Numeric comparison**: `double(`<code><span class="target-signal-name">price</span></code>`) > 0` rather than <code><span class="target-signal-name">price</span></code> `> 0`
+- **Integer check**: `int(`<code><span class="target-signal-name">count</span></code>`) >= 1`
+- **Collection with cast**: <code><span class="target-signal-name">items</span></code>`.all(i, double(i.value) > 0.0)`
+- **String comparisons work directly**: <code><span class="target-signal-name">status</span></code> `== "active"` (no cast needed)
+
+**XML attributes** (like `<Material Conductivity="160.0">`) become `@`-prefixed keys in the data — `@Conductivity`, not `Conductivity`. Use bracket notation to access them:
+
+- **Access an attribute**: <code><span class="target-signal-name">Materials</span>.Material.all(m, double(m["@Conductivity"]) > 0.0)</code>
+- **String attribute**: <code><span class="target-signal-name">Materials</span>.Material.all(m, m["@Name"] != "")</code>
+
+This is because XML distinguishes between child elements (`<Conductivity>160</Conductivity>`) and attributes (`Conductivity="160"`). The `@` prefix preserves that distinction so your expressions are unambiguous.
+
+If an XML element name contains characters that aren't valid identifiers (hyphens, dots, etc.), access it via bracket notation on `payload`: `payload["THERM-XML"].Materials`.
+
 ### Tips
 
 - Expressions run against the submission payload or validator-provided metadata.

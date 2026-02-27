@@ -495,7 +495,9 @@ class RulesetAssertion(TimeStampedModel):
     @property
     def condition_display(self) -> str:
         if self.assertion_type == AssertionType.CEL_EXPRESSION:
-            return (self.rhs or {}).get("expr", "")
+            # CEL expression is already shown via target_display (stored in
+            # target_data_path). Returning it here would duplicate it on the card.
+            return ""
         formatter = self._format_literal
         rhs = self.rhs or {}
         options = self.options or {}

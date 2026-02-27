@@ -87,6 +87,25 @@ def _is_valid_cel_identifier(name: str) -> bool:
     return bool(_CEL_IDENT_RE.match(name))
 
 
+def _collect_all_keys(data: Any) -> set[str]:
+    """Collect every dict key in a nested structure (dicts and lists).
+
+    Used to discover all candidate identifiers in an XML-derived
+    payload tree, so that keys nested under invalid-identifier parents
+    (e.g., ``Materials`` inside ``THERM-XML``) can still be promoted
+    to the CEL context when they appear exactly once.
+    """
+    keys: set[str] = set()
+    if isinstance(data, dict):
+        for k, v in data.items():
+            keys.add(k)
+            keys.update(_collect_all_keys(v))
+    elif isinstance(data, list):
+        for item in data:
+            keys.update(_collect_all_keys(item))
+    return keys
+
+
 @dataclass
 class ValidationIssue:
     """
@@ -389,11 +408,16 @@ class BaseValidator(ABC):
                     # The data remains accessible via payload["THERM-XML"].
                     if _is_valid_cel_identifier(k):
                         context.setdefault(k, v)
-            # support lightweight partial path matches: if an identifier appears
-            # exactly once anywhere in the payload tree, expose it directly.
+            # Support lightweight partial path matches: if a valid CEL
+            # identifier appears as a dict key exactly once anywhere in
+            # the payload tree, expose it as a top-level context variable.
+            # This is essential for XML payloads where the root element
+            # name (e.g. "THERM-XML") is an invalid CEL identifier, so
+            # its children (e.g. "Materials") wouldn't otherwise be
+            # reachable without bracket notation.
             identifiers = set(context.keys())
             if isinstance(payload, (dict, list)):
-                for key in list(payload.keys()) if isinstance(payload, dict) else []:
+                for key in _collect_all_keys(payload):
                     if _is_valid_cel_identifier(key):
                         identifiers.add(key)
                 for ident in identifiers:

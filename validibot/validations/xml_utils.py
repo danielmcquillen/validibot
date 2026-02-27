@@ -60,6 +60,7 @@ def xml_to_dict(
     *,
     strip_namespaces: bool = True,
     max_size_bytes: int = DEFAULT_MAX_SIZE_BYTES,
+    max_depth: int = DEFAULT_MAX_DEPTH,
 ) -> dict[str, Any]:
     """
     Parse XML content and convert it to a nested Python dict.
@@ -75,13 +76,16 @@ def xml_to_dict(
             ``{http://...}element`` → ``element``).
         max_size_bytes: Maximum allowed payload size in bytes.
             Defaults to 10 MB.
+        max_depth: Maximum allowed nesting depth. Prevents
+            ``RecursionError`` from deeply nested documents.
+            Defaults to 200.
 
     Returns:
         A nested dict representing the XML document.
 
     Raises:
-        XmlParseError: If the content is empty, too large, or
-            cannot be parsed as valid XML.
+        XmlParseError: If the content is empty, too large, exceeds
+            the maximum nesting depth, or cannot be parsed as valid XML.
     """
     if not xml_content:
         raise XmlParseError("Empty XML content.")
@@ -108,14 +112,16 @@ def xml_to_dict(
         raise XmlParseError(f"Invalid XML: {exc}") from exc
 
     tag = _strip_ns(root.tag) if strip_namespaces else root.tag
-    result = {tag: _element_to_dict(root, strip_namespaces=strip_namespaces)}
+    result = {
+        tag: _element_to_dict(
+            root,
+            strip_namespaces=strip_namespaces,
+            max_depth=max_depth,
+            current_depth=1,
+        ),
+    }
 
-    element_count = _count_elements(root)
-    logger.debug(
-        "XML-to-dict conversion complete: %d element(s), root tag=%r",
-        element_count,
-        tag,
-    )
+    logger.debug("XML-to-dict conversion complete, root tag=%r", tag)
     return result
 
 
@@ -130,6 +136,8 @@ def _element_to_dict(
     element: Element,
     *,
     strip_namespaces: bool,
+    max_depth: int,
+    current_depth: int,
 ) -> Any:
     """
     Recursively convert an XML element to a dict, string, or list.
@@ -137,7 +145,16 @@ def _element_to_dict(
     Returns a plain string when the element has no attributes and no
     children (leaf text node). Otherwise returns a dict with child
     elements, attributes (prefixed with ``@``), and optional ``#text``.
+
+    Raises ``XmlParseError`` if the nesting depth exceeds *max_depth*,
+    which prevents ``RecursionError`` from maliciously deep documents.
     """
+    if current_depth > max_depth:
+        raise XmlParseError(
+            f"XML nesting depth exceeds maximum ({max_depth}). "
+            f"The document may be maliciously crafted or malformed."
+        )
+
     result: dict[str, Any] = {}
 
     # Attributes (prefixed with @)
@@ -148,7 +165,12 @@ def _element_to_dict(
     # Child elements
     for child in element:
         child_tag = _strip_ns(child.tag) if strip_namespaces else child.tag
-        child_value = _element_to_dict(child, strip_namespaces=strip_namespaces)
+        child_value = _element_to_dict(
+            child,
+            strip_namespaces=strip_namespaces,
+            max_depth=max_depth,
+            current_depth=current_depth + 1,
+        )
 
         if child_tag in result:
             # Convert to list on second occurrence
@@ -175,8 +197,3 @@ def _element_to_dict(
         return ""
 
     return result
-
-
-def _count_elements(element: Element) -> int:
-    """Count total elements in the tree (including root)."""
-    return 1 + sum(_count_elements(child) for child in element)

@@ -69,7 +69,16 @@ def evaluate_cel_expression(
 
     def _evaluate() -> Any:
         program = _compile_expr(normalized)
-        return program.evaluate(context)
+        # Convert Python values → CEL native types (MapType, ListType, etc.)
+        # so that dot-notation field selection works on maps, matching the
+        # standard CEL spec behaviour used by Google's cel-go.  Without
+        # this, plain Python dicts fail with "does not support field
+        # selection" when accessed via dot notation (e.g., Materials.Material).
+        cel_context = {
+            k: celpy.json_to_cel(v) if isinstance(v, (dict, list)) else v
+            for k, v in context.items()
+        }
+        return program.evaluate(cel_context)
 
     eval_timeout = (timeout_ms or CEL_MAX_EVAL_TIMEOUT_MS) / 1000.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

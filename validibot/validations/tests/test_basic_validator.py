@@ -19,6 +19,7 @@ from validibot.validations.tests.factories import RulesetAssertionFactory
 from validibot.validations.tests.factories import RulesetFactory
 from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
 from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.validators.base.base import _collect_all_keys
 from validibot.validations.validators.base.base import _is_valid_cel_identifier
 from validibot.validations.validators.basic import BasicValidator
 
@@ -362,6 +363,33 @@ class CelContextInvalidKeyTests(SimpleTestCase):
             [],
         )
 
+    def test_children_of_invalid_root_key_are_promoted(self):
+        """
+        When the root element has an invalid identifier name (e.g.
+        'THERM-XML'), its valid-identifier children should still be
+        promoted via the deep key collection.  This allows CEL
+        expressions like ``Materials.Material.all(...)`` to work even
+        when the root tag is inaccessible as a top-level variable.
+        """
+        engine = BasicValidator()
+        payload = {
+            "THERM-XML": {
+                "Materials": {"Material": [{"Conductivity": "0.5"}]},
+                "Units": "SI",
+            },
+        }
+        context = engine._build_cel_context(payload, self._make_validator())
+
+        self.assertNotIn("THERM-XML", context)
+        # Valid children promoted via deep key collection
+        self.assertIn("Materials", context)
+        self.assertEqual(
+            context["Materials"],
+            {"Material": [{"Conductivity": "0.5"}]},
+        )
+        self.assertIn("Units", context)
+        self.assertEqual(context["Units"], "SI")
+
     def test_valid_keys_still_promoted(self):
         """
         Valid identifier keys from the payload should be promoted to
@@ -521,3 +549,394 @@ class BasicValidatorHyphenatedXmlEndToEndTests(SimpleTestCase):
         )
 
         self.assertTrue(result.passed)
+
+
+# ---------------------------------------------------------------------------
+# _collect_all_keys helper
+# ---------------------------------------------------------------------------
+
+
+class CollectAllKeysTests(SimpleTestCase):
+    """Unit tests for _collect_all_keys().
+
+    This helper recursively collects every dict key in a nested
+    structure.  It is used by _build_cel_context() to discover
+    candidate identifiers from the entire payload tree, so that
+    valid-identifier keys nested under invalid-identifier parents
+    (e.g. ``Materials`` inside ``THERM-XML``) can still be promoted.
+    """
+
+    def test_flat_dict(self):
+        """Keys from a flat dict are collected."""
+        data = {"a": 1, "b": 2}
+        self.assertEqual(_collect_all_keys(data), {"a", "b"})
+
+    def test_nested_dict(self):
+        """Keys at all nesting levels are collected."""
+        data = {"root": {"child": {"leaf": "val"}}}
+        self.assertEqual(
+            _collect_all_keys(data),
+            {"root", "child", "leaf"},
+        )
+
+    def test_list_of_dicts(self):
+        """Keys inside dicts within lists are collected."""
+        data = [{"a": 1}, {"b": 2}]
+        self.assertEqual(_collect_all_keys(data), {"a", "b"})
+
+    def test_mixed_nested_structure(self):
+        """Keys collected from complex nested dicts and lists."""
+        data = {
+            "THERM-XML": {
+                "Materials": {
+                    "Material": [
+                        {"@Name": "Wood", "Conductivity": "0.5"},
+                    ],
+                },
+            },
+        }
+        expected = {
+            "THERM-XML",
+            "Materials",
+            "Material",
+            "@Name",
+            "Conductivity",
+        }
+        self.assertEqual(_collect_all_keys(data), expected)
+
+    def test_non_dict_non_list_returns_empty(self):
+        """Non-container types return an empty set."""
+        self.assertEqual(_collect_all_keys("string"), set())
+        self.assertEqual(_collect_all_keys(42), set())
+        self.assertEqual(_collect_all_keys(None), set())
+
+    def test_empty_structures(self):
+        """Empty dict and list return empty sets."""
+        self.assertEqual(_collect_all_keys({}), set())
+        self.assertEqual(_collect_all_keys([]), set())
+
+
+# ---------------------------------------------------------------------------
+# CEL error message formatting
+# ---------------------------------------------------------------------------
+
+
+class CelErrorMessageTests(TestCase):
+    """Tests for CelAssertionEvaluator._format_error_message().
+
+    The error message for undefined identifiers should vary based on
+    whether the validator uses custom data paths (Basic-style) or
+    catalog entries (EnergyPlus-style), so the guidance is actionable.
+    """
+
+    def _get_evaluator(self):
+        from validibot.validations.assertions.evaluators.cel import (
+            CelAssertionEvaluator,
+        )
+
+        return CelAssertionEvaluator()
+
+    def test_custom_targets_message(self):
+        """Validators with custom data paths get data-path guidance."""
+        evaluator = self._get_evaluator()
+        validator = MagicMock()
+        validator.allow_custom_assertion_targets = True
+
+        msg = evaluator._format_error_message(
+            "undeclared reference to 'Materials'",
+            validator=validator,
+        )
+        self.assertIn("undefined name 'Materials'", msg)
+        self.assertIn("data path", msg)
+        self.assertNotIn("signal", msg)
+
+    def test_catalog_targets_message(self):
+        """Validators without custom targets get signal guidance."""
+        evaluator = self._get_evaluator()
+        validator = MagicMock()
+        validator.allow_custom_assertion_targets = False
+
+        msg = evaluator._format_error_message(
+            "undeclared reference to 'price'",
+            validator=validator,
+        )
+        self.assertIn("undefined name 'price'", msg)
+        self.assertIn("signal", msg)
+        self.assertNotIn("data path", msg)
+
+    def test_non_identifier_error_passes_through(self):
+        """Errors that aren't about undefined identifiers pass through."""
+        evaluator = self._get_evaluator()
+        raw = "type mismatch: int vs string"
+        msg = evaluator._format_error_message(raw)
+        self.assertEqual(msg, raw)
+
+    def test_dot_at_syntax_error_message(self):
+        """m.@Conductivity compile error gets a helpful message."""
+        evaluator = self._get_evaluator()
+        raw = (
+            "Materials.Material.all(m, double(m.@Conductivity) > 0.0)\n"
+            "                                   ^\n"
+        )
+        msg = evaluator._format_error_message(raw)
+        self.assertIn("bracket notation", msg)
+        self.assertIn("@Conductivity", msg)
+        self.assertNotIn("^", msg)
+
+    def test_field_selection_error_message(self):
+        """Field selection failure on @-keyed dict gets helpful message."""
+        evaluator = self._get_evaluator()
+        raw = (
+            "({'Material': [{'@Name': 'Wood'}]} "
+            "with type: '<class 'dict'>' does not support field selection"
+        )
+        msg = evaluator._format_error_message(raw)
+        self.assertIn("XML attributes", msg)
+        self.assertIn("@Conductivity", msg)
+
+    def test_no_such_member_error_message(self):
+        """Missing member on MapType (e.g. Conductivity instead of @Conductivity)."""
+        evaluator = self._get_evaluator()
+        # cel-python wraps the error with escaped quotes
+        raw = (
+            "('no such member in mapping: \\'Conductivity\\'', "
+            "<class 'KeyError'>, None)"
+        )
+        msg = evaluator._format_error_message(raw)
+        self.assertIn("@Conductivity", msg)
+        self.assertIn("bracket notation", msg)
+
+    def test_no_such_member_unescaped_quotes(self):
+        """Same pattern but with plain quotes (for robustness)."""
+        evaluator = self._get_evaluator()
+        raw = "no such member in mapping: 'Temperature'"
+        msg = evaluator._format_error_message(raw)
+        self.assertIn("@Temperature", msg)
+
+
+# ---------------------------------------------------------------------------
+# THERM XML integration tests with CEL assertions
+# ---------------------------------------------------------------------------
+
+# Sample THERM XML — a minimal .thmx with three materials whose
+# conductivity values are all valid (between 0 and 500).
+_VALID_THERM_XML = (
+    '<?xml version="1.0"?>'
+    '<THERM-XML xmlns="http://windows.lbl.gov">'
+    "  <ThermVersion>Version 8.0.20.0</ThermVersion>"
+    "  <FileVersion>1</FileVersion>"
+    "  <Title>Test Frame</Title>"
+    "  <CreatedBy>Tests</CreatedBy>"
+    "  <CrossSectionType>Sill</CrossSectionType>"
+    "  <Units>SI</Units>"
+    "  <Materials>"
+    '    <Material Name="Aluminum" Type="0" Conductivity="160.0"'
+    '      Tir="0" EmissivityFront="0.2" EmissivityBack="0.2" />'
+    '    <Material Name="PVC" Type="0" Conductivity="0.16"'
+    '      Tir="0" EmissivityFront="0.9" EmissivityBack="0.9" />'
+    '    <Material Name="Glass" Type="0" Conductivity="1.0"'
+    '      Tir="0" EmissivityFront="0.84" EmissivityBack="0.84" />'
+    "  </Materials>"
+    "</THERM-XML>"
+)
+
+# Same structure but one material has Conductivity > 500 (invalid).
+_INVALID_THERM_XML = (
+    '<?xml version="1.0"?>'
+    '<THERM-XML xmlns="http://windows.lbl.gov">'
+    "  <ThermVersion>Version 8.0.20.0</ThermVersion>"
+    "  <FileVersion>1</FileVersion>"
+    "  <Title>Test Frame</Title>"
+    "  <CreatedBy>Tests</CreatedBy>"
+    "  <CrossSectionType>Sill</CrossSectionType>"
+    "  <Units>SI</Units>"
+    "  <Materials>"
+    '    <Material Name="Aluminum" Type="0" Conductivity="160.0"'
+    '      Tir="0" EmissivityFront="0.2" EmissivityBack="0.2" />'
+    '    <Material Name="SuperConductor" Type="0" Conductivity="999.0"'
+    '      Tir="0" EmissivityFront="0.9" EmissivityBack="0.9" />'
+    '    <Material Name="Glass" Type="0" Conductivity="1.0"'
+    '      Tir="0" EmissivityFront="0.84" EmissivityBack="0.84" />'
+    "  </Materials>"
+    "</THERM-XML>"
+)
+
+# Same structure but one material has Conductivity = 0 (also invalid).
+_ZERO_CONDUCTIVITY_XML = (
+    '<?xml version="1.0"?>'
+    '<THERM-XML xmlns="http://windows.lbl.gov">'
+    "  <ThermVersion>Version 8.0.20.0</ThermVersion>"
+    "  <FileVersion>1</FileVersion>"
+    "  <Title>Test Frame</Title>"
+    "  <CreatedBy>Tests</CreatedBy>"
+    "  <CrossSectionType>Sill</CrossSectionType>"
+    "  <Units>SI</Units>"
+    "  <Materials>"
+    '    <Material Name="Vacuum" Type="0" Conductivity="0.0"'
+    '      Tir="0" EmissivityFront="0.5" EmissivityBack="0.5" />'
+    "  </Materials>"
+    "</THERM-XML>"
+)
+
+# The correct CEL expression: bracket notation for @-prefixed XML attrs.
+_CONDUCTIVITY_CEL = (
+    "Materials.Material.all(m, "
+    'double(m["@Conductivity"]) > 0.0 '
+    '&& double(m["@Conductivity"]) <= 500.0)'
+)
+
+
+class ThermXmlCelIntegrationTests(TestCase):
+    """Integration tests: BasicValidator + THERM XML + CEL assertions.
+
+    These tests validate the full pipeline:
+    1. XML is parsed by xml_to_dict (attributes → @-prefixed keys)
+    2. _build_cel_context promotes "Materials" from under "THERM-XML"
+    3. CEL expression using bracket notation accesses @-prefixed attrs
+    4. Assertion pass/fail is reported correctly
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.validator = ValidatorFactory(
+            validation_type=ValidationType.BASIC,
+            is_system=False,
+            allow_custom_assertion_targets=True,
+        )
+
+    def _make_ruleset_with_cel(self, expr):
+        """Create a ruleset with a single CEL assertion."""
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            target_catalog_entry=None,
+            target_data_path="Materials",
+            rhs={"expr": expr},
+        )
+        return ruleset
+
+    def test_valid_therm_xml_passes_conductivity_check(self):
+        """All materials have conductivity in (0, 500] → assertion passes."""
+        submission = SubmissionFactory(
+            content=_VALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(_CONDUCTIVITY_CEL)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 0)
+
+    def test_invalid_conductivity_fails_assertion(self):
+        """One material has conductivity=999 → assertion evaluates to false."""
+        submission = SubmissionFactory(
+            content=_INVALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(_CONDUCTIVITY_CEL)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 1)
+
+    def test_zero_conductivity_fails_assertion(self):
+        """Material with conductivity=0.0 fails the > 0.0 check."""
+        submission = SubmissionFactory(
+            content=_ZERO_CONDUCTIVITY_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(_CONDUCTIVITY_CEL)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.assertion_stats.failures, 1)
+
+    def test_dot_at_syntax_gives_helpful_error(self):
+        """m.@Conductivity (invalid CEL) produces actionable error."""
+        bad_expr = "Materials.Material.all(m, double(m.@Conductivity) > 0.0)"
+        submission = SubmissionFactory(
+            content=_VALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(bad_expr)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        error_msg = result.issues[0].message
+        self.assertIn("bracket notation", error_msg)
+
+    def test_missing_at_prefix_gives_helpful_error(self):
+        """m.Conductivity (no @) fails because the dict key is @Conductivity."""
+        no_at_expr = "Materials.Material.all(m, double(m.Conductivity) > 0.0)"
+        submission = SubmissionFactory(
+            content=_VALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(no_at_expr)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        error_msg = result.issues[0].message
+        self.assertIn("@Conductivity", error_msg)
+
+    def test_name_attribute_accessible_via_bracket(self):
+        """@Name attribute is accessible via bracket notation."""
+        name_expr = 'Materials.Material.all(m, m["@Name"] != "")'
+        submission = SubmissionFactory(
+            content=_VALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(name_expr)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertTrue(result.passed)
+
+    def test_units_element_accessible_as_top_level(self):
+        """Child element 'Units' is promoted to top-level CEL context."""
+        units_expr = 'Units == "SI"'
+        submission = SubmissionFactory(
+            content=_VALID_THERM_XML,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(units_expr)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertTrue(result.passed)
+
+    def test_real_thmx_fixture_passes_conductivity_check(self):
+        """The sample_valid.thmx fixture passes the conductivity check."""
+        import pathlib
+
+        fixture = pathlib.Path(__file__).parent / (
+            "test_validators/fixtures/sample_valid.thmx"
+        )
+        xml_content = fixture.read_text()
+        submission = SubmissionFactory(
+            content=xml_content,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(_CONDUCTIVITY_CEL)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.assertion_stats.failures, 0)

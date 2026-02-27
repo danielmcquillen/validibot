@@ -93,6 +93,19 @@ Validators cannot be deleted while rulesets reference them. Catalog edits (for e
 signal) require updating the validator, which in turn triggers validation for every ruleset so slugs
 stay synchronized.
 
+## CEL spec compliance
+
+Assertions are evaluated with [Common Expression Language (CEL)](https://github.com/google/cel-spec)
+via the `cel-python` library. We follow the Google CEL spec — in particular, **dot-notation field
+selection on maps is supported** because context values are converted to CEL native types
+(`celpy.json_to_cel()`) before evaluation. This matches the behavior of Google's reference
+implementation (`cel-go`).
+
+For XML data, element attributes are stored with an `@` prefix (e.g., `@Conductivity`). Because
+`@` is not valid in CEL identifiers, bracket notation is required: `m["@Conductivity"]` rather
+than `m.@Conductivity`. The CEL evaluator detects common mistakes (dot-notation with `@`, missing
+`@` prefix) and returns actionable error messages guiding users to the correct syntax.
+
 ## CEL helpers and allowlists
 
 Assertions are evaluated with CEL (Common Expression Language). The preparation service enforces a

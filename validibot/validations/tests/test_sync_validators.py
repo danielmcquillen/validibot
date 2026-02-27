@@ -373,3 +373,53 @@ class ConfigRegistryTests(TestCase):
         """Registry has exactly 8 configs (one per ValidationType)."""
         configs = get_all_configs()
         self.assertEqual(len(configs), len(ValidationType))
+
+
+class CreateCustomValidatorTests(TestCase):
+    """Tests that create_custom_validator() sets assertion support correctly."""
+
+    def test_custom_validator_supports_assertions(self):
+        """create_custom_validator() sets supports_assertions=True."""
+        from validibot.users.tests.factories import OrganizationFactory
+        from validibot.users.tests.factories import UserFactory
+        from validibot.validations.constants import CustomValidatorType
+        from validibot.validations.utils import create_custom_validator
+
+        org = OrganizationFactory()
+        user = UserFactory()
+
+        custom = create_custom_validator(
+            org=org,
+            user=user,
+            name="Test Custom Validator",
+            short_description="A test custom validator",
+            description="Test description",
+            custom_type=CustomValidatorType.SIMPLE,
+        )
+        self.assertTrue(
+            custom.validator.supports_assertions,
+            "Custom validators should have supports_assertions=True",
+        )
+
+
+class BasicValidatorConfigRuntimeAlignmentTests(TestCase):
+    """Verify that Basic validator config file types match runtime."""
+
+    def test_config_file_types_match_runtime(self):
+        """Basic validator config should only advertise file types the runtime supports.
+
+        The runtime (BasicValidator._SUPPORTED_FILE_TYPES) is the source
+        of truth. The config should not advertise broader support, which
+        would let workflows accept submissions that later fail at runtime.
+        """
+        from validibot.validations.validators.basic import BasicValidator
+
+        cfg = get_config(ValidationType.BASIC)
+        config_types = set(cfg.supported_file_types)
+        runtime_types = BasicValidator._SUPPORTED_FILE_TYPES
+
+        self.assertEqual(
+            config_types,
+            runtime_types,
+            "Config file types should match runtime _SUPPORTED_FILE_TYPES",
+        )

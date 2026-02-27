@@ -22,6 +22,7 @@ from validibot.validations.validators.base import ValidationIssue
 if TYPE_CHECKING:
     from validibot.validations.assertions.evaluators.base import AssertionContext
     from validibot.validations.models import RulesetAssertion
+    from validibot.validations.models import Validator
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,10 @@ class CelAssertionEvaluator:
 
         if not result.success:
             # Expression evaluation failed
-            msg = self._format_error_message(str(result.error))
+            msg = self._format_error_message(
+                str(result.error),
+                validator=context.validator,
+            )
             return [
                 self._issue_from_assertion(
                     assertion,
@@ -164,9 +168,59 @@ class CelAssertionEvaluator:
             assertion_id=getattr(assertion, "id", None),
         )
 
-    def _format_error_message(self, raw_error: str) -> str:
-        """Format CEL error messages for better user readability."""
-        # Try to extract undefined identifier from error message
+    def _format_error_message(
+        self,
+        raw_error: str,
+        validator: Validator | None = None,
+    ) -> str:
+        """Format CEL error messages for better user readability.
+
+        Handles three error patterns:
+
+        1. **Dot-notation with @** — the user wrote ``m.@Conductivity``
+           which is a CEL syntax error.  Suggest bracket notation instead.
+        2. **Field selection failure** — the user wrote ``m.Conductivity``
+           but the XML-derived dict has ``@Conductivity``.  Suggest ``@``.
+        3. **Undefined identifier** — the expression references a name
+           that isn't in the CEL context.  Guidance varies by validator.
+        """
+        # --- Pattern 1: dot-notation with @ (compile error) ----------------
+        if ".@" in raw_error or ".@" in (
+            raw_error.split("\n", maxsplit=1)[0] if raw_error else ""
+        ):
+            return _(
+                "The '@' character cannot be used with dot notation in CEL. "
+                "Use bracket notation for XML attributes — for example, "
+                'm["@Conductivity"] instead of m.@Conductivity.'
+            )
+
+        # --- Pattern 2: field-selection failure (XML @-attribute) ----------
+        if "does not support field selection" in raw_error:
+            return _(
+                "A field in the expression was not found. "
+                "XML attributes require an '@' prefix — for example, "
+                'use m["@Conductivity"] or double(m["@Conductivity"]) '
+                "instead of m.Conductivity."
+            )
+
+        # --- Pattern 3: missing map member (e.g. m.Conductivity when key
+        # is actually @Conductivity) — with CEL MapType conversion, this
+        # produces "no such member in mapping" instead of the older
+        # "does not support field selection" error.  The quotes in the
+        # error string are often backslash-escaped, so we match flexibly.
+        missing_member = re.search(
+            r"no such member in mapping:\s*\\*['\"]?(?P<name>\w+)\\*['\"]?",
+            raw_error,
+        )
+        if missing_member:
+            name = missing_member.group("name")
+            return _(
+                "Field '%(name)s' was not found. If this is an XML "
+                "attribute, use the '@' prefix with bracket notation: "
+                'm["@%(name)s"] instead of m.%(name)s.'
+            ) % {"name": name}
+
+        # --- Pattern 4: undefined identifier -------------------------------
         missing_ref = re.search(
             r"undeclared reference to ['\"](?P<ident>[^'\"]+)['\"]",
             raw_error,
@@ -179,9 +233,15 @@ class CelAssertionEvaluator:
             identifier = tail.strip().split()[0].strip(" '\"()\\")
 
         if identifier:
+            allows_custom = getattr(validator, "allow_custom_assertion_targets", False)
+            if allows_custom:
+                return _(
+                    "CEL references undefined name '%(identifier)s'. "
+                    "Check that this data path exists in the submission."
+                ) % {"identifier": identifier}
             return _(
-                "CEL references undefined identifier '%(identifier)s'. "
-                "Ensure a matching validator catalog entry exists."
+                "CEL references undefined name '%(identifier)s'. "
+                "Ensure a matching validator signal exists."
             ) % {"identifier": identifier}
 
         return raw_error

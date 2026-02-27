@@ -12,19 +12,26 @@
   {# No breadcrumbs on home page #}
 {% endblock breadcrumbs %}
 {% block content %}
-  <div class="container py-5">
-    <div class="row justify-content-center">
-      <div class="col-md-8 col-lg-6 text-center">
-        <h1 class="display-4 mb-4">{% trans "Welcome to Validibot" %}</h1>
-        <p class="lead text-muted mb-5">
-          {% trans "Data validation engine for building energy models and technical data." %}
-        </p>
-        <div class="d-grid gap-3 d-sm-flex justify-content-sm-center">
-          <a href="{% url 'account_login' %}" class="btn btn-primary btn-lg px-4">{% trans "Sign In" %}</a>
-          {% if ACCOUNT_ALLOW_REGISTRATION %}
-            <a href="{% url 'account_signup' %}"
-               class="btn btn-outline-secondary btn-lg px-4">{% trans "Create Account" %}</a>
-          {% endif %}
+  <div class="home-landing d-flex align-items-center justify-content-center">
+    <div class="container">
+      <div class="row align-items-center justify-content-center">
+        <div class="col-md-5 col-lg-4 text-center mb-4 mb-md-0">
+          <img src="{% static 'images/robot.png' %}"
+               alt="Validibot robot holding a validation document"
+               class="home-robot-img" />
+        </div>
+        <div class="col-md-7 col-lg-5 text-center text-md-start">
+          <h1 class="display-4 fw-bold mb-3">{% trans "Validibot" %}</h1>
+          <p class="lead text-muted mb-4">
+            {% trans "Data validation engine for building energy models and technical data." %}
+          </p>
+          <div class="d-grid gap-3 d-sm-flex justify-content-sm-center justify-content-md-start">
+            <a href="{% url 'account_login' %}" class="btn btn-primary btn-lg px-4">{% trans "Sign In" %}</a>
+            {% if ACCOUNT_ALLOW_REGISTRATION %}
+              <a href="{% url 'account_signup' %}"
+                 class="btn btn-outline-secondary btn-lg px-4">{% trans "Create Account" %}</a>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>

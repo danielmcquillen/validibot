@@ -159,11 +159,9 @@ class XmlSchemaValidator(BaseValidator):
 
         if not ok:
             for err in getattr(schema, "error_log", []) or []:
-                path = (
-                    getattr(err, "path", "")
-                    or f"$ (line {getattr(err, 'line', '?')}, "
-                    "column {getattr(err, 'column', '?')})"
-                )
+                if self._is_cascade_error(err):
+                    continue
+                path = self._extract_error_path(err)
                 issues.append(ValidationIssue(path, str(err.message), Severity.ERROR))
 
         passed = not any(issue.severity == Severity.ERROR for issue in issues)
@@ -214,6 +212,41 @@ class XmlSchemaValidator(BaseValidator):
         if schema_type == XMLSchemaType.DTD.name:
             return etree.DTD(io.StringIO(raw))
         raise ValueError(_("Unsupported XML schema type: ") + schema_type)
+
+    # Error types that just restate a parent failure and add no useful info.
+    _CASCADE_ERROR_TYPES = frozenset(
+        {
+            "RELAXNG_ERR_INTERSEQ",
+            "RELAXNG_ERR_CONTENTVALID",
+            "RELAXNG_ERR_EXTRACONTENT",
+            "RELAXNG_ERR_INTEREXTRA",
+            "SCHEMASV_CVC_COMPLEX_TYPE_2_4",
+            "SCHEMAV_CVC_ELT_1",
+        }
+    )
+
+    @classmethod
+    def _is_cascade_error(cls, err) -> bool:
+        """Return True for errors that cascade from a root cause."""
+        type_name = getattr(err, "type_name", "") or ""
+        return type_name in cls._CASCADE_ERROR_TYPES
+
+    @staticmethod
+    def _extract_error_path(err) -> str:
+        """Build a human-readable path from an lxml error entry."""
+        raw_path = getattr(err, "path", None) or ""
+        line = getattr(err, "line", 0) or 0
+        # lxml sometimes returns the string "None" instead of a real path.
+        if raw_path in ("None", ""):
+            raw_path = ""
+        elif raw_path == "/*":
+            # Root element — show a friendlier label.
+            return f"(document root), line {line}" if line else "(document root)"
+        if raw_path:
+            return f"{raw_path} (line {line})" if line else raw_path
+        if line:
+            return f"line {line}"
+        return ""
 
     def _get_schema_raw(
         self,

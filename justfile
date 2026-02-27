@@ -123,6 +123,11 @@ mod aws 'just/aws'
 #   just docker-compose health-check
 mod docker-compose 'just/docker-compose'
 
+# Cloud version local development (layers validibot-cloud on local stack)
+# Usage: just local-cloud up
+# Usage: just local-cloud up --build
+mod local-cloud 'just/local-cloud'
+
 # =============================================================================
 # Default Command
 # =============================================================================

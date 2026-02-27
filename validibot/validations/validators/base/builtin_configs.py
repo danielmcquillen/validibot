@@ -20,13 +20,26 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
     ValidatorConfig(
         slug="basic-validator",
         name="Basic Validator",
-        description="Simple structural validation of JSON data.",
+        description=(
+            "The simplest validator. Allows workflow author to add signals"
+            " and assertions directly without a validator catalog."
+        ),
         validation_type=ValidationType.BASIC,
         version="1.0",
         order=0,
-        supported_file_types=[SubmissionFileType.JSON],
-        supported_data_formats=[SubmissionDataFormat.JSON],
-        allowed_extensions=["json"],
+        supported_file_types=[
+            SubmissionFileType.JSON,
+            SubmissionFileType.XML,
+            SubmissionFileType.TEXT,
+            SubmissionFileType.YAML,
+        ],
+        supported_data_formats=[
+            SubmissionDataFormat.JSON,
+            SubmissionDataFormat.XML,
+            SubmissionDataFormat.TEXT,
+            SubmissionDataFormat.YAML,
+        ],
+        allowed_extensions=["json", "xml", "txt", "yaml", "yml"],
         icon="bi-journal-bookmark",
         card_image="BASIC_card_img_small.png",
     ),

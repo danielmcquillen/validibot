@@ -100,5 +100,17 @@ def load_dtd_asset():
 
 
 @pytest.fixture
+def load_thmx_asset():
+    """Load a THMX test data file relative to tests/data/therm/."""
+
+    def _loader(rel_path: str) -> str:
+        path = BASE_DIR / "data" / "therm" / rel_path
+        with path.open("r", encoding="utf-8") as f:
+            return f.read()
+
+    return _loader
+
+
+@pytest.fixture
 def api_client() -> APIClient:
     return APIClient()

@@ -681,3 +681,52 @@
   padding-left: 5rem;
   max-width: 300px;
 }
+
+// Home Landing Page
+// ========================================
+.home-landing {
+  min-height: 80vh;
+  position: relative;
+  overflow: hidden;
+
+  // Subtle decorative gradient blob behind the robot
+  &::before {
+    content: "";
+    position: absolute;
+    top: 10%;
+    left: 5%;
+    width: 35%;
+    height: 60%;
+    background: radial-gradient(
+      circle,
+      rgba(settings.$azure, 0.12) 0%,
+      transparent 70%
+    );
+    border-radius: 50%;
+    z-index: 0;
+    pointer-events: none;
+
+    @media (max-width: 768px) {
+      width: 70%;
+      left: 15%;
+      top: 2%;
+      height: 30%;
+    }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.home-robot-img {
+  max-width: 260px;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 12px 32px rgba(settings.$blue, 0.18));
+
+  @media (max-width: 768px) {
+    max-width: 180px;
+  }
+}

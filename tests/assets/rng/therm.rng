@@ -1,0 +1,602 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  THERM XML (.thmx) RelaxNG Schema
+  Validated against THERM 8.x / pyWinCalc sample files.
+  Namespace: http://windows.lbl.gov
+-->
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+    ns="http://windows.lbl.gov"
+    datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+
+    <start>
+        <ref name="THERM-XML" />
+    </start>
+
+    <!--
+    Top-level structure.
+
+    Required : ThermVersion, FileVersion, SaveDate, Title,
+      CreatedBy, Company, Client, CrossSectionType, Notes, Units,
+      Materials, BoundaryConditions, Polygons, Boundaries
+
+    Optional : MeshControl, RadianceModeBC, CMAGlazingSystemSettings,
+      GlazingSystems, Results
+
+    Uses <interleave> because THERM does not guarantee child order.
+  -->
+    <define name="THERM-XML">
+        <element name="THERM-XML">
+            <interleave>
+                <element name="ThermVersion">
+                    <text />
+                </element>
+                <element name="FileVersion">
+                    <text />
+                </element>
+                <element name="SaveDate">
+                    <text />
+                </element>
+                <element name="Title">
+                    <text />
+                </element>
+                <element name="CreatedBy">
+                    <text />
+                </element>
+                <element name="Company">
+                    <text />
+                </element>
+                <element name="Client">
+                    <text />
+                </element>
+                <element name="CrossSectionType">
+                    <text />
+                </element>
+                <element name="Notes">
+                    <text />
+                </element>
+                <element name="Units">
+                    <text />
+                </element>
+                <!-- Optional metadata blocks -->
+                <optional>
+                    <ref name="MeshControl" />
+                </optional>
+                <optional>
+                    <ref name="RadianceModeBC" />
+                </optional>
+                <optional>
+                    <ref name="CMAGlazingSystemSettings" />
+                </optional>
+                <!-- Core data blocks -->
+                <ref name="Materials" />
+                <ref name="BoundaryConditions" />
+                <optional>
+                    <ref name="GlazingSystems" />
+                </optional>
+                <ref name="Polygons" />
+                <ref name="Boundaries" />
+                <ref name="Results" />
+            </interleave>
+        </element>
+    </define>
+
+    <!-- MeshControl: solver mesh settings (optional) -->
+    <define name="MeshControl">
+        <element name="MeshControl">
+            <attribute name="MeshLevel">
+                <text />
+            </attribute>
+            <attribute name="ErrorCheckFlag">
+                <text />
+            </attribute>
+            <attribute name="ErrorLimit">
+                <text />
+            </attribute>
+            <attribute name="MaxIterations">
+                <text />
+            </attribute>
+            <optional>
+                <attribute name="CMAflag">
+                    <text />
+                </attribute>
+            </optional>
+            <empty />
+        </element>
+    </define>
+
+    <!-- RadianceModeBC: radiance-mode boundary condition names (optional) -->
+    <define name="RadianceModeBC">
+        <element name="RadianceModeBC">
+            <element name="RadianceModeInBCName">
+                <text />
+            </element>
+            <element name="RadianceModeInBCTag">
+                <text />
+            </element>
+            <element name="RadianceModeOutBCName">
+                <text />
+            </element>
+            <element name="RadianceModeOutBCTag">
+                <text />
+            </element>
+        </element>
+    </define>
+
+    <!-- CMAGlazingSystemSettings: CMA glazing parameters (optional) -->
+    <define name="CMAGlazingSystemSettings">
+        <element name="CMAGlazingSystemSettings">
+            <element name="InteriorLayerConductivity">
+                <text />
+            </element>
+            <element name="InteriorLayerThickness">
+                <text />
+            </element>
+            <element name="InteriorLayerEmissivity">
+                <text />
+            </element>
+            <element name="ExteriorLayerConductivity">
+                <text />
+            </element>
+            <element name="ExteriorLayerThickness">
+                <text />
+            </element>
+            <element name="ExteriorLayerEmissivity">
+                <text />
+            </element>
+            <element name="InteriorTemperature">
+                <text />
+            </element>
+            <element name="ExteriorTemperature">
+                <text />
+            </element>
+            <oneOrMore>
+                <ref name="BestWorstOptions" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="BestWorstOptions">
+        <element name="BestWorstOptions">
+            <element name="Case">
+                <text />
+            </element>
+            <element name="InsideEffectiveFilmCoefficient">
+                <text />
+            </element>
+            <element name="OutsideEffectiveFilmCoefficient">
+                <text />
+            </element>
+            <element name="GlazingGapConductance">
+                <text />
+            </element>
+            <element name="SpacerConductance">
+                <text />
+            </element>
+        </element>
+    </define>
+
+    <!--
+    Materials block.
+    Contains zero or more Material elements.
+    Materials have Property children for optical data.
+  -->
+    <define name="Materials">
+        <element name="Materials">
+            <zeroOrMore>
+                <ref name="Material" />
+            </zeroOrMore>
+        </element>
+    </define>
+
+    <define name="Material">
+        <element name="Material">
+            <attribute name="Name">
+                <text />
+            </attribute>
+            <attribute name="Index">
+                <text />
+            </attribute>
+            <attribute name="Type">
+                <text />
+            </attribute>
+            <attribute name="Conductivity">
+                <text />
+            </attribute>
+            <optional>
+                <attribute name="Tir">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="Absorptivity">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="EmissivityFront">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="EmissivityBack">
+                    <text />
+                </attribute>
+            </optional>
+            <attribute name="RGBColor">
+                <text />
+            </attribute>
+            <optional>
+                <attribute name="CavityModel">
+                    <text />
+                </attribute>
+            </optional>
+            <!-- Optical properties (zero or more) -->
+            <zeroOrMore>
+                <ref name="Property" />
+            </zeroOrMore>
+        </element>
+    </define>
+
+    <define name="Property">
+        <element name="Property">
+            <attribute name="Side">
+                <text />
+            </attribute>
+            <attribute name="Range">
+                <text />
+            </attribute>
+            <attribute name="Specularity">
+                <text />
+            </attribute>
+            <attribute name="T">
+                <text />
+            </attribute>
+            <attribute name="R">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <!--
+    BoundaryConditions block.
+    Contains zero or more BoundaryCondition elements.
+  -->
+    <define name="BoundaryConditions">
+        <element name="BoundaryConditions">
+            <zeroOrMore>
+                <ref name="BoundaryCondition" />
+            </zeroOrMore>
+        </element>
+    </define>
+
+    <define name="BoundaryCondition">
+        <element name="BoundaryCondition">
+            <attribute name="Name">
+                <text />
+            </attribute>
+            <attribute name="Type">
+                <text />
+            </attribute>
+            <attribute name="H">
+                <text />
+            </attribute>
+            <attribute name="HeatFLux">
+                <text />
+            </attribute>
+            <attribute name="Temperature">
+                <text />
+            </attribute>
+            <attribute name="RGBColor">
+                <text />
+            </attribute>
+            <attribute name="Tr">
+                <text />
+            </attribute>
+            <attribute name="Hr">
+                <text />
+            </attribute>
+            <attribute name="Ei">
+                <text />
+            </attribute>
+            <attribute name="Viewfactor">
+                <text />
+            </attribute>
+            <attribute name="RadiationModel">
+                <text />
+            </attribute>
+            <attribute name="ConvectionFlag">
+                <text />
+            </attribute>
+            <attribute name="FluxFlag">
+                <text />
+            </attribute>
+            <attribute name="RadiationFlag">
+                <text />
+            </attribute>
+            <attribute name="ConstantTemperatureFlag">
+                <text />
+            </attribute>
+            <attribute name="EmisModifier">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <!--
+    GlazingSystems block (optional at top level).
+    When present, must contain at least one GlazingSystem.
+  -->
+    <define name="GlazingSystems">
+        <element name="GlazingSystems">
+            <oneOrMore>
+                <ref name="GlazingSystem" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="GlazingSystem">
+        <element name="GlazingSystem">
+            <attribute name="index">
+                <text />
+            </attribute>
+            <attribute name="nlayers">
+                <text />
+            </attribute>
+            <attribute name="width">
+                <text />
+            </attribute>
+            <attribute name="units">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <!--
+    Polygons block.
+    Contains zero or more Polygon elements.
+    Each Polygon carries geometry attributes and one or more Point children.
+  -->
+    <define name="Polygons">
+        <element name="Polygons">
+            <zeroOrMore>
+                <ref name="Polygon" />
+            </zeroOrMore>
+        </element>
+    </define>
+
+    <define name="Polygon">
+        <element name="Polygon">
+            <attribute name="ID">
+                <text />
+            </attribute>
+            <attribute name="Material">
+                <text />
+            </attribute>
+            <attribute name="NSides">
+                <text />
+            </attribute>
+            <attribute name="Type">
+                <text />
+            </attribute>
+            <attribute name="units">
+                <text />
+            </attribute>
+            <oneOrMore>
+                <ref name="Point" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="Point">
+        <element name="Point">
+            <attribute name="index">
+                <text />
+            </attribute>
+            <attribute name="x">
+                <text />
+            </attribute>
+            <attribute name="y">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <!--
+    Boundaries block.
+    Contains zero or more BCPolygon elements.
+  -->
+    <define name="Boundaries">
+        <element name="Boundaries">
+            <zeroOrMore>
+                <ref name="BCPolygon" />
+            </zeroOrMore>
+        </element>
+    </define>
+
+    <define name="BCPolygon">
+        <element name="BCPolygon">
+            <attribute name="ID">
+                <text />
+            </attribute>
+            <attribute name="BC">
+                <text />
+            </attribute>
+            <attribute name="units">
+                <text />
+            </attribute>
+            <optional>
+                <attribute name="PolygonID">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="EnclosureID">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="UFactorTag">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="Emissivity">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="MaterialName">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="MaterialSide">
+                    <text />
+                </attribute>
+            </optional>
+            <optional>
+                <attribute name="IlluminatedSurface">
+                    <text />
+                </attribute>
+            </optional>
+            <oneOrMore>
+                <ref name="Point" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <!--
+    Results block (optional at top level).
+    Contains one or more Case elements when present.
+    Each Case has metadata children, U-factors results, and FrameCavities.
+  -->
+    <define name="Results">
+        <element name="Results">
+            <oneOrMore>
+                <ref name="Case" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="Case">
+        <element name="Case">
+            <optional>
+                <element name="ModelType">
+                    <text />
+                </element>
+            </optional>
+            <element name="GlazingCase">
+                <text />
+            </element>
+            <element name="SpacerCase">
+                <text />
+            </element>
+            <zeroOrMore>
+                <ref name="UFactors" />
+            </zeroOrMore>
+            <optional>
+                <ref name="FrameCavities" />
+            </optional>
+        </element>
+    </define>
+
+    <define name="UFactors">
+        <element name="U-factors">
+            <element name="Tag">
+                <text />
+            </element>
+            <ref name="DeltaT" />
+            <oneOrMore>
+                <ref name="Projection" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="DeltaT">
+        <element name="DeltaT">
+            <attribute name="units">
+                <text />
+            </attribute>
+            <attribute name="value">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <define name="Projection">
+        <element name="Projection">
+            <element name="Length-type">
+                <text />
+            </element>
+            <ref name="Length" />
+            <optional>
+                <element name="ProjectionAngle">
+                    <text />
+                </element>
+            </optional>
+            <ref name="ProjectionUFactor" />
+        </element>
+    </define>
+
+    <define name="Length">
+        <element name="Length">
+            <attribute name="units">
+                <text />
+            </attribute>
+            <attribute name="value">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <define name="ProjectionUFactor">
+        <element name="U-factor">
+            <optional>
+                <attribute name="units">
+                    <text />
+                </attribute>
+            </optional>
+            <attribute name="value">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+    <!-- FrameCavities block inside Results/Case -->
+    <define name="FrameCavities">
+        <element name="FrameCavities">
+            <oneOrMore>
+                <ref name="FrameCavity" />
+            </oneOrMore>
+        </element>
+    </define>
+
+    <define name="FrameCavity">
+        <element name="FrameCavity">
+            <attribute name="Name">
+                <text />
+            </attribute>
+            <attribute name="Conductivity">
+                <text />
+            </attribute>
+            <attribute name="EquivalentLength">
+                <text />
+            </attribute>
+            <attribute name="EquivalentHeight">
+                <text />
+            </attribute>
+            <attribute name="HeatFlowDirection">
+                <text />
+            </attribute>
+            <empty />
+        </element>
+    </define>
+
+</grammar>

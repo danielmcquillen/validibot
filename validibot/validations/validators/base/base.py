@@ -46,6 +46,7 @@ You won't find any concrete implementations here; those are in other modules.
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC
 from abc import abstractmethod
 from dataclasses import asdict
@@ -71,6 +72,19 @@ if TYPE_CHECKING:
     from validibot.validations.models import Validator
 
 logger = logging.getLogger(__name__)
+
+# CEL requires top-level context variable names to be valid identifiers.
+# Keys that don't match (e.g., hyphenated XML tags like "THERM-XML",
+# @-prefixed XML attribute names, #text mixed-content keys) are skipped
+# when promoting payload keys to the CEL context.  The data is still
+# accessible via bracket notation on the ``payload`` variable
+# (e.g., ``payload["THERM-XML"]``).
+_CEL_IDENT_RE = re.compile(r"^[_a-zA-Z][_a-zA-Z0-9]*$")
+
+
+def _is_valid_cel_identifier(name: str) -> bool:
+    """Check whether *name* is a valid CEL top-level variable name."""
+    return bool(_CEL_IDENT_RE.match(name))
 
 
 @dataclass
@@ -368,13 +382,20 @@ class BaseValidator(ABC):
         if getattr(validator, "allow_custom_assertion_targets", False):
             if isinstance(payload, dict):
                 for k, v in payload.items():
-                    context.setdefault(k, v)
+                    # Skip keys that aren't valid CEL identifiers (e.g.,
+                    # hyphenated XML tags like "THERM-XML", @-prefixed
+                    # attributes, #text).  cel-python raises ValueError when
+                    # invalid names appear as top-level activation variables.
+                    # The data remains accessible via payload["THERM-XML"].
+                    if _is_valid_cel_identifier(k):
+                        context.setdefault(k, v)
             # support lightweight partial path matches: if an identifier appears
             # exactly once anywhere in the payload tree, expose it directly.
             identifiers = set(context.keys())
             if isinstance(payload, (dict, list)):
                 for key in list(payload.keys()) if isinstance(payload, dict) else []:
-                    identifiers.add(key)
+                    if _is_valid_cel_identifier(key):
+                        identifiers.add(key)
                 for ident in identifiers:
                     matches = _collect_matches(payload, ident)
                     if len(matches) == 1 and ident not in context:

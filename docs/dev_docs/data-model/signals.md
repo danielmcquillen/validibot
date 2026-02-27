@@ -11,6 +11,91 @@ validator execution, and assertion evaluation. Without them, assertions would
 need to hard-code paths into raw payloads. With them, a workflow author writes
 `site_eui_kwh_m2 < 100` and the platform resolves the value automatically.
 
+## Signals vs custom data paths
+
+Assertions in Validibot target data in one of two ways, and understanding this
+distinction is fundamental to how the platform works.
+
+### Declared signals (the data contract)
+
+When a validator author defines signals, they are publishing a **data contract**:
+"this validator knows about these specific data points." Signals have names
+(slugs), types, stages (input or output), and metadata. They appear in
+dropdowns, support type-appropriate operators, and enable compile-time
+validation of CEL expressions.
+
+This is the structured, guided path. The validator author has done the work of
+mapping data paths to meaningful names, and workflow authors benefit from that
+investment.
+
+Examples of validators with declared signals:
+
+- **EnergyPlus** declares ~36 signals (floor area, site EUI, unmet hours, etc.)
+- **FMU** auto-discovers signals by introspecting the model's variables
+- **Custom validators** where the author manually adds signals through the UI
+
+### Custom data paths (no contract)
+
+Some validators don't declare signals. The Basic validator, JSON Schema
+validator, and XML Schema validator validate structure but don't pre-declare
+what specific fields exist in the data. When a workflow author uses one of
+these validators and wants to write assertions, they reference data using
+**custom data paths** — dot-notation expressions like
+`building.thermostat.setpoint` or `payload.results[0].value`.
+
+This is the flexible, exploratory path. The workflow author navigates the
+data shape themselves, without the guardrails that declared signals provide.
+
+### How the two modes interact
+
+The `allow_custom_assertion_targets` flag on `Validator` controls whether
+workflow authors can go beyond declared signals:
+
+| Scenario | Signals exist? | Custom paths allowed? | What the author sees |
+|----------|:-:|:-:|------|
+| EnergyPlus | Yes (36+) | No | Signal dropdown only |
+| Custom validator with signals | Yes | Configurable | Dropdown + optional free-form paths |
+| Basic validator | No | Yes (always) | Free-form path entry only |
+| JSON Schema / XML Schema | No | Yes | Free-form path entry only |
+
+When both modes are available, the form shows "Target Signal or Path" and
+attempts to match user input against catalog entries first, falling back to
+treating it as a custom path.
+
+### Where each is defined
+
+Signals are defined at the **validator level** (in the library). They describe
+the data contract that the validator publishes. This happens in three ways:
+
+1. **Config-based** — advanced validators define signals in `config.py` modules
+2. **Introspection** — FMU validators auto-discover signals from model files
+3. **Manual** — custom validator authors add signals through the UI
+
+Custom data paths are used at the **workflow level**. When a workflow author
+creates an assertion on a step that uses a validator without declared signals
+(or a validator that allows custom targets), they enter paths directly.
+
+### Industry context
+
+This pattern maps to well-established concepts in the data quality ecosystem:
+
+- **dbt model contracts**: A contracted model declares every column with types.
+  An uncontracted source has no structural guarantee. Validibot signals are
+  analogous to contracted columns; custom paths are analogous to querying
+  uncontracted sources.
+- **Google CEL's gradual typing**: CEL supports declared variables (type-checked
+  at compile time) and dynamic variables (type `Dyn`, resolved at runtime).
+  Signals map to declared variables; custom paths map to dynamic variables.
+- **DataHub assertions**: FIELD assertions target known columns; SQL/CUSTOM
+  assertions target arbitrary expressions. Same two-mode pattern.
+
+### Future direction
+
+Schema-based validators (XML Schema, JSON Schema) could auto-generate signals
+from the loaded schema, bridging the gap between "validator with declared
+signals" and "schema validates structure but assertions are unguided." See
+[validibot-project#19](https://github.com/danielmcquillen/validibot-project/issues/19).
+
 ## Catalog entries
 
 Every signal is registered as a `ValidatorCatalogEntry` row belonging to a

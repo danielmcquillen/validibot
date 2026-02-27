@@ -83,11 +83,9 @@ class CustomValidatorCreateForm(forms.Form):
         help_text=_("Version label (e.g. '1.0', '2025-01')."),
     )
     allow_custom_assertion_targets = forms.BooleanField(
-        label=_("Allow custom assertion targets"),
+        label=_("Allow custom data paths in assertions"),
         required=False,
-        help_text=_(
-            "Permit authors to reference assertion targets not in the catalog."
-        ),
+        help_text=_("Allow assertions against data paths not declared as signals."),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -206,11 +204,9 @@ class CustomValidatorUpdateForm(forms.Form):
         help_text=_("Version label (e.g. '1.0', '2025-01')."),
     )
     allow_custom_assertion_targets = forms.BooleanField(
-        label=_("Allow custom assertion targets"),
+        label=_("Allow custom data paths in assertions"),
         required=False,
-        help_text=_(
-            "Permit authors to reference assertion targets not in the catalog."
-        ),
+        help_text=_("Allow assertions against data paths not declared as signals."),
     )
     supported_data_formats = forms.ChoiceField(
         label=_("Supported data format"),
@@ -486,7 +482,7 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
                 )
             else:
                 cel_help_text = _(
-                    "Only catalog targets are available for this validator."
+                    "Only declared signals are available for this validator."
                 )
             self.fields["cel_expression"].help_text = cel_help_text
 

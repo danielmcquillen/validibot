@@ -885,7 +885,7 @@ class Validator(TimeStampedModel):
     allow_custom_assertion_targets = models.BooleanField(
         default=False,
         help_text=_(
-            "Allow authors to enter assertion targets not present in the catalog.",
+            "Allow assertions against data paths not declared as signals.",
         ),
     )
 

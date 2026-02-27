@@ -45,6 +45,11 @@ logger = logging.getLogger(__name__)
 # Default maximum XML payload size (10 MB).
 DEFAULT_MAX_SIZE_BYTES = 10_000_000
 
+# Default maximum nesting depth. Prevents RecursionError from maliciously
+# or accidentally deeply-nested XML documents. 200 is generous for any
+# real-world schema (typical building-energy XML is 5-15 levels deep).
+DEFAULT_MAX_DEPTH = 200
+
 
 class XmlParseError(ValueError):
     """Raised when XML content cannot be parsed or converted to a dict."""

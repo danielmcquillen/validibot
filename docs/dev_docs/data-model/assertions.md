@@ -44,11 +44,29 @@ Each `RulesetAssertion` row stores:
   - `default("fallback")` — substitute the provided fallback when the value is blank/`None`.
 - `success_message` — optional message displayed when the assertion **passes**. When set, a SUCCESS severity finding is created for passed assertions. Useful for providing positive feedback to users.
 
-Basic assertions reference catalog entries whenever possible so the validator can resolve bindings and
-units. When a validator opts into custom targets, a JSON-style path (dot notation + `[index]`) is
-persisted in `target_data_path`. CEL assertions store the raw expression in `rhs["expr"]` and reuse the
-`target_*` columns for consistency. BASIC validators always run in "custom target" mode because there
-is no provider catalog; authors add assertions manually and the system persists exactly what they enter.
+### Assertion targeting
+
+Every assertion targets data in one of two ways — never both, enforced by the
+`ck_ruleset_assertion_target_oneof` database constraint:
+
+1. **Declared signal** (`target_catalog_entry` FK) — references a
+   `ValidatorCatalogEntry` by its slug. The validator author has pre-declared
+   this data point with a name, type, and stage. This is the structured path
+   that provides dropdowns, type-appropriate operators, and compile-time
+   validation.
+
+2. **Custom data path** (`target_data_path` string) — a free-form
+   dot-notation path like `building.thermostat.setpoint` or
+   `payload.results[0].value`. Used when the validator doesn't declare signals
+   or when the author needs to reference data beyond the declared contract.
+
+Which mode is available depends on the validator's `allow_custom_assertion_targets`
+flag. See [Signals — Signals vs custom data paths](signals.md#signals-vs-custom-data-paths)
+for the full conceptual explanation.
+
+BASIC validators always use custom data paths because they have no provider
+catalog. CEL assertions store the raw expression in `rhs["expr"]` and reuse
+the `target_*` columns for consistency.
 
 ## Default assertions
 

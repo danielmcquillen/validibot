@@ -300,6 +300,7 @@ def create_custom_validator(
         supported_data_formats=data_formats,
         supported_file_types=file_types,
         allow_custom_assertion_targets=allow_custom_assertion_targets,
+        supports_assertions=True,
         version=version or "",
     )
     custom_validator = CustomValidator.objects.create(

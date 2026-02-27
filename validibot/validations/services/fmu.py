@@ -266,6 +266,7 @@ def create_fmu_validator(
             fmu_model=fmu,
             supported_file_types=[SubmissionFileType.BINARY],
             supported_data_formats=[SubmissionDataFormat.FMU],
+            supports_assertions=True,
         )
 
         _persist_variables(fmu, validator, variables)

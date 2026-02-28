@@ -1,7 +1,16 @@
 <?xml version="1.0"?>
 <!--
-Sample THMX from PyWincalc
+
+This is a 'good' example of a 'good' THMX we can use for testing.
+It comes from the pywincalc library.
+
+Source file THMX from PyWincalc
 https://raw.githubusercontent.com/LBNL-ETA/pyWinCalc/refs/heads/main/examples/products/sample-sill_CMA.thmx
+
+
+Open source license of pywincalc files is here:
+https://github.com/LBNL-ETA/pyWinCalc/?tab=License-1-ov-file
+
 -->
 
 <THERM-XML xmlns="http://windows.lbl.gov">

@@ -2,8 +2,8 @@
 <!--
   THERM XML (.thmx) RelaxNG Schema
   This is an example RelaxNG schema for validating THERM XML files.
-  It's only meant for demonstration and testing purposes and is not exhaustive.
-  Do not use for production validation without further development and testing.
+  It's only meant for demonstration purposes and is not meant to be exhaustive nor completely correct.
+  So don't use for production validation without further development and testing.
   Validated against THERM 8.x / pyWinCalc sample files.
   Namespace: http://windows.lbl.gov
 -->

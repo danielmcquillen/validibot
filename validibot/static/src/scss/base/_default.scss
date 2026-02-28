@@ -32,6 +32,7 @@ h4 {
 // Ensure modal header and footer stay visible by constraining the body height.
 // Bootstrap's modal-dialog-scrollable adds overflow-y: auto to .modal-body,
 // but without a max-height the body can push the footer off-screen.
+// Use a viewport-relative height so modals scale with the screen.
 .modal-dialog-scrollable .modal-body {
-  max-height: 500px;
+  max-height: 80vh;
 }

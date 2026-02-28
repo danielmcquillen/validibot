@@ -940,3 +940,66 @@ class ThermXmlCelIntegrationTests(TestCase):
 
         self.assertTrue(result.passed)
         self.assertEqual(result.assertion_stats.failures, 0)
+
+    def test_bad_conductivity_fixture_fails_with_custom_message(self):
+        """sample_sill_CMA_bad_conductivity.thmx has negative values → fails.
+
+        The fixture contains materials with Conductivity values of -1.0,
+        -0.00695, and -0.01 which violate the > 0.0 check.  The assertion
+        is configured with a custom message_template so the failure message
+        is user-friendly rather than the generic CEL default.
+        """
+        import pathlib
+
+        fixture = (
+            pathlib.Path(__file__).parents[3]
+            / "tests/data/therm/sample_sill_CMA_bad_conductivity.thmx"
+        )
+        xml_content = fixture.read_text()
+        submission = SubmissionFactory(
+            content=xml_content,
+            file_type=SubmissionFileType.XML,
+        )
+
+        failure_msg = (
+            "One or more conductivity values are less than zero or more than 500."
+        )
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
+        RulesetAssertionFactory(
+            ruleset=ruleset,
+            assertion_type=AssertionType.CEL_EXPRESSION,
+            operator=AssertionOperator.CEL_EXPR,
+            target_catalog_entry=None,
+            target_data_path="Materials",
+            rhs={"expr": _CONDUCTIVITY_CEL},
+            message_template=failure_msg,
+        )
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 1)
+        self.assertEqual(result.issues[0].message, failure_msg)
+
+    def test_good_conductivity_fixture_passes(self):
+        """sample_sill_CMA.thmx has all valid conductivity values → passes."""
+        import pathlib
+
+        fixture = (
+            pathlib.Path(__file__).parents[3] / "tests/data/therm/sample_sill_CMA.thmx"
+        )
+        xml_content = fixture.read_text()
+        submission = SubmissionFactory(
+            content=xml_content,
+            file_type=SubmissionFileType.XML,
+        )
+        ruleset = self._make_ruleset_with_cel(_CONDUCTIVITY_CEL)
+
+        engine = BasicValidator()
+        result = engine.validate(self.validator, submission, ruleset)
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.assertion_stats.total, 1)
+        self.assertEqual(result.assertion_stats.failures, 0)

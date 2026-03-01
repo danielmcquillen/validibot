@@ -4,8 +4,6 @@
   This is an example RelaxNG schema for validating THERM XML files.
   It's only meant for demonstration purposes and is not meant to be exhaustive nor completely correct.
   So don't use for production validation without further development and testing.
-  Validated against THERM 8.x / pyWinCalc sample files.
-  Namespace: http://windows.lbl.gov
 -->
 <grammar xmlns="http://relaxng.org/ns/structure/1.0"
     ns="http://windows.lbl.gov"

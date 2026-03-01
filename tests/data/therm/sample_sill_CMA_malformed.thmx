@@ -9,7 +9,7 @@ Malformed version: two deliberate schema violations:
   1. Required <Units> element removed (line was: <Units>SI</Units>)
   2. Required "BC" attribute removed from first <BCPolygon> (ID="9")
 
-Sample THMX from PyWincalc
+Based on sample THMX from LBNL PyWincalc example:
 https://raw.githubusercontent.com/LBNL-ETA/pyWinCalc/refs/heads/main/examples/products/sample-sill_CMA.thmx
 
 Open source license of pywincalc files is here:

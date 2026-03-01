@@ -6,7 +6,7 @@ Invalid THMX example : bad conductivity values
 This example THMX is derived from the default example file in pywincalc.
 I've just made some of the conductivity values negative to test that the validation catches them.
 
-The original file can be found here:
+Based on the THMX found in the LBNL pywincalc repository here:
 https://raw.githubusercontent.com/LBNL-ETA/pyWinCalc/refs/heads/main/examples/products/sample-sill_CMA.thmx
 
 Open source license of pywincalc files is here:

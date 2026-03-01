@@ -45,20 +45,23 @@ Celery tasks are defined in submodules and imported here for autodiscovery:
 Celery's `autodiscover_tasks()` looks for `tasks.py` (or `tasks/__init__.py`)
 in each Django app. By importing the tasks here, they get registered.
 
-## Task Registry
+## Admin Task Registry
 
-The task registry (`registry.py`) is the single source of truth for all
-scheduled task definitions. It provides metadata for both Celery Beat
+The admin task registry (`registry.py`) is the single source of truth for all
+scheduled admin task definitions. It provides metadata for both Celery Beat
 and Cloud Scheduler backends:
 
 ```python
-from validibot.core.tasks.registry import SCHEDULED_TASKS, get_tasks_for_backend
+from validibot.core.tasks.registry import (
+    SCHEDULED_ADMIN_TASKS,
+    get_admin_tasks_for_backend,
+)
 
-# Get all tasks for Celery Beat
-celery_tasks = get_tasks_for_backend("celery")
+# Get all admin tasks for Celery Beat
+celery_tasks = get_admin_tasks_for_backend("celery")
 
-# Get all tasks for GCP Cloud Scheduler
-gcp_tasks = get_tasks_for_backend("gcp")
+# Get all admin tasks for GCP Cloud Scheduler
+gcp_tasks = get_admin_tasks_for_backend("gcp")
 ```
 """
 
@@ -73,12 +76,12 @@ gcp_tasks = get_tasks_for_backend("gcp")
 # =============================================================================
 # PUBLIC API
 # =============================================================================
-from validibot.core.tasks.registry import SCHEDULED_TASKS
+from validibot.core.tasks.registry import SCHEDULED_ADMIN_TASKS
 from validibot.core.tasks.registry import Backend
-from validibot.core.tasks.registry import ScheduledTaskDefinition
-from validibot.core.tasks.registry import get_enabled_tasks
-from validibot.core.tasks.registry import get_task_by_id
-from validibot.core.tasks.registry import get_tasks_for_backend
+from validibot.core.tasks.registry import ScheduledAdminTaskDefinition
+from validibot.core.tasks.registry import get_admin_task_by_id
+from validibot.core.tasks.registry import get_admin_tasks_for_backend
+from validibot.core.tasks.registry import get_enabled_admin_tasks
 from validibot.core.tasks.scheduled_tasks import cleanup_callback_receipts  # noqa: F401
 from validibot.core.tasks.scheduled_tasks import cleanup_idempotency_keys  # noqa: F401
 from validibot.core.tasks.scheduled_tasks import (  # noqa: F401
@@ -97,11 +100,11 @@ from validibot.core.tasks.validation_tasks import (  # noqa: F401
 )
 
 __all__ = [
-    "SCHEDULED_TASKS",
+    "SCHEDULED_ADMIN_TASKS",
     "Backend",
-    "ScheduledTaskDefinition",
+    "ScheduledAdminTaskDefinition",
     "enqueue_validation_run",
-    "get_enabled_tasks",
-    "get_task_by_id",
-    "get_tasks_for_backend",
+    "get_admin_task_by_id",
+    "get_admin_tasks_for_backend",
+    "get_enabled_admin_tasks",
 ]

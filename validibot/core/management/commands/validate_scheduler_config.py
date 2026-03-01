@@ -17,7 +17,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 
 from validibot.core.tasks.registry import Backend
-from validibot.core.tasks.registry import get_tasks_for_backend
+from validibot.core.tasks.registry import get_admin_tasks_for_backend
 
 
 class Command(BaseCommand):
@@ -27,7 +27,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Get GCP tasks from registry
-        registry_tasks = get_tasks_for_backend(Backend.GCP)
+        registry_tasks = get_admin_tasks_for_backend(Backend.GCP)
 
         # Find and read the justfile
         # Path from: validibot/core/management/commands/ -> project root

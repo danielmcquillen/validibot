@@ -377,9 +377,9 @@ class Command(BaseCommand):
 
         # Show task list from registry
         from validibot.core.tasks.registry import Backend
-        from validibot.core.tasks.registry import get_tasks_for_backend
+        from validibot.core.tasks.registry import get_admin_tasks_for_backend
 
-        tasks = get_tasks_for_backend(Backend.CELERY)
+        tasks = get_admin_tasks_for_backend(Backend.CELERY)
         for task in tasks:
             self.stdout.write(f"    • {task.name}: {task.schedule_cron}")
 

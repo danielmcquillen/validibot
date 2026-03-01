@@ -31,9 +31,9 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-from validibot.core.tasks.registry import SCHEDULED_TASKS
+from validibot.core.tasks.registry import SCHEDULED_ADMIN_TASKS
 from validibot.core.tasks.registry import Backend
-from validibot.core.tasks.registry import get_tasks_for_backend
+from validibot.core.tasks.registry import get_admin_tasks_for_backend
 
 logger = logging.getLogger(__name__)
 
@@ -109,19 +109,19 @@ class Command(BaseCommand):
                     "enabled": task.enabled,
                     "backends": [b.value for b in task.backends],
                 }
-                for task in SCHEDULED_TASKS
+                for task in SCHEDULED_ADMIN_TASKS
             ]
             self.stdout.write(json.dumps(tasks_data, indent=2))
             return
 
         # Text output
-        task_count = len(SCHEDULED_TASKS)
+        task_count = len(SCHEDULED_ADMIN_TASKS)
         self.stdout.write(
             self.style.SUCCESS(f"\nRegistered Scheduled Tasks ({task_count} total)\n")
         )
         self.stdout.write("=" * 80)
 
-        for task in SCHEDULED_TASKS:
+        for task in SCHEDULED_ADMIN_TASKS:
             status = "✓" if task.enabled else "✗"
             backends = ", ".join(b.value for b in task.backends)
             self.stdout.write(f"\n{status} {task.name} ({task.id})")
@@ -151,7 +151,7 @@ class Command(BaseCommand):
             )
             return
 
-        tasks = get_tasks_for_backend(Backend.CELERY)
+        tasks = get_admin_tasks_for_backend(Backend.CELERY)
         self.stdout.write(
             self.style.SUCCESS(f"\nSyncing {len(tasks)} tasks to Celery Beat...")
         )
@@ -268,7 +268,7 @@ class Command(BaseCommand):
     def _output_gcp_config(self, options):
         """Output configuration for GCP Cloud Scheduler."""
         output_format = options["format"]
-        tasks = get_tasks_for_backend(Backend.GCP)
+        tasks = get_admin_tasks_for_backend(Backend.GCP)
 
         if output_format == "json":
             config = {

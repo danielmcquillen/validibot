@@ -1,8 +1,8 @@
 """
-Scheduled Task Registry - Single source of truth for periodic tasks.
+Scheduled Admin Task Registry - Single source of truth for periodic admin tasks.
 
-This module provides a centralized registry of all scheduled/periodic tasks
-that need to run in Validibot, regardless of the execution backend:
+This module provides a centralized registry of all scheduled admin/maintenance
+tasks that need to run in Validibot, regardless of the execution backend:
 
     - Celery Beat (Docker Compose deployments)
     - Google Cloud Scheduler (GCP deployments)
@@ -17,15 +17,18 @@ Each task is defined once here with all metadata needed for any backend:
 
 Usage:
 
-    from validibot.core.tasks.registry import SCHEDULED_TASKS, get_tasks_for_backend
+    from validibot.core.tasks.registry import (
+        SCHEDULED_ADMIN_TASKS,
+        get_admin_tasks_for_backend,
+    )
 
     # Get all tasks
-    for task in SCHEDULED_TASKS:
+    for task in SCHEDULED_ADMIN_TASKS:
         print(f"{task.name}: {task.schedule_cron}")
 
     # Get tasks for a specific backend
-    celery_tasks = get_tasks_for_backend("celery")
-    gcp_tasks = get_tasks_for_backend("gcp")
+    celery_tasks = get_admin_tasks_for_backend("celery")
+    gcp_tasks = get_admin_tasks_for_backend("gcp")
 
 The registry is consumed by:
     - setup_validibot command (creates Celery Beat PeriodicTask records)
@@ -55,12 +58,14 @@ class Backend(StrEnum):
 
 
 @dataclass(frozen=True)
-class ScheduledTaskDefinition:
+class ScheduledAdminTaskDefinition:
     """
-    Definition of a scheduled task.
+    Definition of a scheduled admin/maintenance task.
 
-    This dataclass contains all information needed to register the task
-    with any scheduling backend (Celery Beat, Cloud Scheduler, etc.).
+    These are system housekeeping tasks (purging, cleanup, session management)
+    — not user-triggered validation tasks. This dataclass contains all
+    information needed to register the task with any scheduling backend
+    (Celery Beat, Cloud Scheduler, etc.).
     """
 
     # Identity
@@ -97,16 +102,16 @@ class ScheduledTaskDefinition:
 
 
 # =============================================================================
-# SCHEDULED TASK DEFINITIONS
+# SCHEDULED ADMIN TASK DEFINITIONS
 # =============================================================================
-# This is the single source of truth for all scheduled tasks.
+# This is the single source of truth for all scheduled admin tasks.
 # Add new tasks here; they'll automatically be registered with all backends.
 
-SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
+SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
     # -------------------------------------------------------------------------
     # Submission/Output Purge Tasks
     # -------------------------------------------------------------------------
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="purge-expired-submissions",
         name="Purge Expired Submissions",
         celery_task="validibot.purge_expired_submissions",
@@ -114,7 +119,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
         schedule_cron="0 * * * *",  # Hourly at :00
         description="Remove submission content past retention period",
     ),
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="purge-expired-outputs",
         name="Purge Expired Outputs",
         celery_task="validibot.purge_expired_outputs",
@@ -124,7 +129,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
         # Note: GCP endpoint not yet implemented, Celery-only for now
         backends=(Backend.CELERY,),
     ),
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="process-purge-retries",
         name="Process Purge Retries",
         celery_task="validibot.process_purge_retries",
@@ -136,7 +141,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     # -------------------------------------------------------------------------
     # Run Cleanup Tasks
     # -------------------------------------------------------------------------
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="cleanup-stuck-runs",
         name="Cleanup Stuck Runs",
         celery_task="validibot.cleanup_stuck_runs",
@@ -148,7 +153,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     # -------------------------------------------------------------------------
     # API Cleanup Tasks
     # -------------------------------------------------------------------------
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="cleanup-idempotency-keys",
         name="Cleanup Idempotency Keys",
         celery_task="validibot.cleanup_idempotency_keys",
@@ -156,7 +161,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
         schedule_cron="0 3 * * *",  # Daily at 3:00 AM
         description="Remove expired API idempotency keys (24h TTL)",
     ),
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="cleanup-callback-receipts",
         name="Cleanup Callback Receipts",
         celery_task="validibot.cleanup_callback_receipts",
@@ -167,7 +172,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     # -------------------------------------------------------------------------
     # Session Management
     # -------------------------------------------------------------------------
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="clear-sessions",
         name="Clear Sessions",
         celery_task="validibot.clear_sessions",
@@ -178,7 +183,7 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     # -------------------------------------------------------------------------
     # Docker Compose Only Tasks
     # -------------------------------------------------------------------------
-    ScheduledTaskDefinition(
+    ScheduledAdminTaskDefinition(
         id="cleanup-orphaned-containers",
         name="Cleanup Orphaned Containers",
         celery_task="validibot.cleanup_orphaned_containers",
@@ -191,7 +196,9 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
 )
 
 
-def get_tasks_for_backend(backend: Backend | str) -> list[ScheduledTaskDefinition]:
+def get_admin_tasks_for_backend(
+    backend: Backend | str,
+) -> list[ScheduledAdminTaskDefinition]:
     """
     Get all tasks that should run on the specified backend.
 
@@ -204,10 +211,10 @@ def get_tasks_for_backend(backend: Backend | str) -> list[ScheduledTaskDefinitio
     if isinstance(backend, str):
         backend = Backend(backend)
 
-    return [task for task in SCHEDULED_TASKS if task.supports_backend(backend)]
+    return [task for task in SCHEDULED_ADMIN_TASKS if task.supports_backend(backend)]
 
 
-def get_task_by_id(task_id: str) -> ScheduledTaskDefinition | None:
+def get_admin_task_by_id(task_id: str) -> ScheduledAdminTaskDefinition | None:
     """
     Get a task definition by its ID.
 
@@ -217,12 +224,12 @@ def get_task_by_id(task_id: str) -> ScheduledTaskDefinition | None:
     Returns:
         The task definition, or None if not found
     """
-    for task in SCHEDULED_TASKS:
+    for task in SCHEDULED_ADMIN_TASKS:
         if task.id == task_id:
             return task
     return None
 
 
-def get_enabled_tasks() -> list[ScheduledTaskDefinition]:
-    """Get all enabled task definitions."""
-    return [task for task in SCHEDULED_TASKS if task.enabled]
+def get_enabled_admin_tasks() -> list[ScheduledAdminTaskDefinition]:
+    """Get all enabled admin task definitions."""
+    return [task for task in SCHEDULED_ADMIN_TASKS if task.enabled]

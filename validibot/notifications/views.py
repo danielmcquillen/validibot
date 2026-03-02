@@ -109,7 +109,7 @@ def _notify_inviter(invite: MemberInvite, *, action: str):
     )
 
 
-class AcceptInviteView(View):
+class AcceptInviteView(LoginRequiredMixin, View):
     """Allow an invitee to accept a member invite notification."""
 
     def post(self, request, *args, **kwargs):
@@ -173,7 +173,7 @@ class AcceptInviteView(View):
         return HttpResponseRedirect(reverse("notifications:notification-list"))
 
 
-class DeclineInviteView(View):
+class DeclineInviteView(LoginRequiredMixin, View):
     """Allow an invitee to decline a member invite notification."""
 
     def post(self, request, *args, **kwargs):
@@ -243,7 +243,7 @@ def _notify_guest_inviter(invite, *, action: str):
     )
 
 
-class AcceptGuestInviteView(View):
+class AcceptGuestInviteView(LoginRequiredMixin, View):
     """Allow an invitee to accept a guest invite notification."""
 
     def post(self, request, *args, **kwargs):
@@ -316,7 +316,7 @@ class AcceptGuestInviteView(View):
         return HttpResponseRedirect(reverse("notifications:notification-list"))
 
 
-class DeclineGuestInviteView(View):
+class DeclineGuestInviteView(LoginRequiredMixin, View):
     """Allow an invitee to decline a guest invite notification."""
 
     def post(self, request, *args, **kwargs):
@@ -391,7 +391,7 @@ def _notify_workflow_inviter(invite, *, action: str):
     )
 
 
-class AcceptWorkflowInviteView(View):
+class AcceptWorkflowInviteView(LoginRequiredMixin, View):
     """Allow an invitee to accept a per-workflow invite notification."""
 
     def post(self, request, *args, **kwargs):
@@ -469,7 +469,7 @@ class AcceptWorkflowInviteView(View):
         return HttpResponseRedirect(reverse("notifications:notification-list"))
 
 
-class DeclineWorkflowInviteView(View):
+class DeclineWorkflowInviteView(LoginRequiredMixin, View):
     """Allow an invitee to decline a per-workflow invite notification."""
 
     def post(self, request, *args, **kwargs):

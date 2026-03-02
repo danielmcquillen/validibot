@@ -34,7 +34,7 @@
           <div>
             <h2 class="h5 mb-1">Workflow Step Validator: {{ subject_details.name }}</h2>
             {% if subject_details.description %}
-              <p class="text-muted mb-0">{{ subject_details.short_description|safe }}</p>
+              <div class="text-muted mb-0 markdown-content">{{ subject_details.short_description|render_markdown }}</div>
             {% endif %}
           </div>
           <span class="badge text-bg-primary">{{ subject_details.type_label }}</span>

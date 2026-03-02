@@ -5,12 +5,12 @@ Rendered inside the seamless tab content area (no card wrapper needed).
 Expected context:
   - validator: Validator instance
 {% endcomment %}
-{% load i18n %}
+{% load i18n core_tags %}
 
 <div class="row">
   <div class="col-12 col-lg-7">
     {% if validator.description %}
-      <div class="mb-3">{{ validator.description|safe }}</div>
+      <div class="mb-3 markdown-content">{{ validator.description|render_markdown }}</div>
     {% else %}
       <p class="text-muted">{% trans "No description provided." %}</p>
     {% endif %}

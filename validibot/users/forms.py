@@ -414,7 +414,7 @@ class InviteUserForm(forms.Form):
         invitee_user = None
         if user_id:
             try:
-                invitee_user = User.objects.get(pk=user_id)
+                invitee_user = User.objects.get(pk=user_id, is_active=True)
             except User.DoesNotExist as exc:
                 raise forms.ValidationError(_("Selected user does not exist.")) from exc
             cleaned["invitee_user"] = invitee_user

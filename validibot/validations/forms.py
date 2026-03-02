@@ -73,6 +73,7 @@ class CustomValidatorCreateForm(forms.Form):
         label=_("Description"),
         widget=forms.Textarea(attrs={"rows": 3}),
         required=False,
+        help_text=_("Supports Markdown. Plain text also works."),
     )
     # custom_type removed from form — hardcoded to SIMPLE for now.
     # May re-enable with more options later.
@@ -196,6 +197,7 @@ class CustomValidatorUpdateForm(forms.Form):
         label=_("Description"),
         widget=forms.Textarea(attrs={"rows": 3}),
         required=False,
+        help_text=_("Supports Markdown. Plain text also works."),
     )
     version = forms.CharField(
         label=_("Version"),

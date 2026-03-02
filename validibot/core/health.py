@@ -62,7 +62,7 @@ def health_check(request):
     except Exception as e:
         logger.warning("Health check failed: database error: %s", e)
         result["status"] = "unhealthy"
-        result["database"] = f"error: {e}"
+        result["database"] = "error: connection failed"
         return JsonResponse(result, status=HTTPStatus.SERVICE_UNAVAILABLE)
 
     return JsonResponse(result, status=HTTPStatus.OK)
@@ -94,8 +94,9 @@ def deep_health_check(request):
             cursor.execute("SELECT 1")
             cursor.fetchone()
         checks["database"] = {"status": "ok"}
-    except Exception as e:
-        checks["database"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: database error")
+        checks["database"] = {"status": "error", "detail": "connection failed"}
         has_errors = True
 
     # Migrations
@@ -114,8 +115,9 @@ def deep_health_check(request):
             }
         else:
             checks["migrations"] = {"status": "ok"}
-    except Exception as e:
-        checks["migrations"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: migrations error")
+        checks["migrations"] = {"status": "error", "detail": "check failed"}
         has_errors = True
 
     # Cache
@@ -125,11 +127,12 @@ def deep_health_check(request):
         if val == "ok":
             checks["cache"] = {"status": "ok"}
         else:
-            checks["cache"] = {"status": "error", "detail": "Cache set/get mismatch"}
+            checks["cache"] = {"status": "error", "detail": "set/get mismatch"}
             has_errors = True
         cache.delete("_health_check")
-    except Exception as e:
-        checks["cache"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: cache error")
+        checks["cache"] = {"status": "error", "detail": "connection failed"}
         has_errors = True
 
     # Storage
@@ -140,8 +143,9 @@ def deep_health_check(request):
             "status": "ok",
             "backend": type(default_storage).__name__,
         }
-    except Exception as e:
-        checks["storage"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: storage error")
+        checks["storage"] = {"status": "error", "detail": "check failed"}
         has_errors = True
 
     # Site configuration
@@ -153,8 +157,9 @@ def deep_health_check(request):
             "status": "ok",
             "domain": site.domain,
         }
-    except Exception as e:
-        checks["site"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: site error")
+        checks["site"] = {"status": "error", "detail": "check failed"}
         has_errors = True
 
     # Roles
@@ -165,10 +170,11 @@ def deep_health_check(request):
         if role_count > 0:
             checks["roles"] = {"status": "ok", "count": role_count}
         else:
-            checks["roles"] = {"status": "error", "detail": "No roles found"}
+            checks["roles"] = {"status": "error", "detail": "no roles found"}
             has_errors = True
-    except Exception as e:
-        checks["roles"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: roles error")
+        checks["roles"] = {"status": "error", "detail": "check failed"}
         has_errors = True
 
     # Validators
@@ -177,8 +183,9 @@ def deep_health_check(request):
 
         validator_count = Validator.objects.filter(is_active=True).count()
         checks["validators"] = {"status": "ok", "active_count": validator_count}
-    except Exception as e:
-        checks["validators"] = {"status": "error", "detail": str(e)}
+    except Exception:
+        logger.exception("Deep health check: validators error")
+        checks["validators"] = {"status": "error", "detail": "check failed"}
         has_errors = True
 
     # Security basics

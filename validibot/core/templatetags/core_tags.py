@@ -5,8 +5,10 @@ from importlib.metadata import version as pkg_version
 from django import template
 from django.conf import settings
 from django.contrib.sites.shortcuts import get_current_site
+from django.utils.safestring import mark_safe
 
 from validibot.core.utils import pretty_json
+from validibot.core.utils import render_markdown_safe
 from validibot.core.utils import reverse_with_org
 from validibot.validations.constants import Severity
 from validibot.workflows.constants import WORKFLOW_LAUNCH_INPUT_MODE_SESSION_KEY
@@ -85,6 +87,19 @@ def get_item(mapping, key):
 def pretty_json_filter(value):
     """Pretty-print JSON/dicts for safe template display."""
     return pretty_json(value)
+
+
+@register.filter(name="render_markdown")
+def render_markdown_filter(value: str) -> str:
+    """
+    Render a Markdown string to sanitised HTML and mark it safe for templates.
+
+    Sanitisation is performed by bleach (via render_markdown_safe), so the
+    returned value can be used directly in templates without the |safe filter.
+    Supports bold, italic, links, lists, code, tables, and strikethrough.
+    Script tags, event handlers, and other dangerous constructs are stripped.
+    """
+    return mark_safe(render_markdown_safe(value or ""))  # noqa: S308
 
 
 # SIMPLE TAGS

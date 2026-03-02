@@ -55,12 +55,12 @@ class SyncValidatorsCommandTests(TestCase):
 
         validator = Validator.objects.get(slug="energyplus-idf-validator")
 
-        self.assertEqual(validator.name, "EnergyPlus Validator")
+        self.assertEqual(validator.name, "EnergyPlus™ Validator")
         self.assertEqual(validator.validation_type, ValidationType.ENERGYPLUS)
         self.assertTrue(validator.is_system)
         self.assertTrue(validator.has_processor)
         self.assertTrue(validator.supports_assertions)
-        self.assertEqual(validator.processor_name, "EnergyPlus Simulation")
+        self.assertEqual(validator.processor_name, "EnergyPlus™ Simulation")
 
     def test_command_creates_catalog_entries(self):
         """Test that catalog entries are created for validators."""
@@ -162,7 +162,7 @@ class SyncValidatorsCommandTests(TestCase):
 
         # Verify name was updated
         validator = Validator.objects.get(slug="energyplus-idf-validator")
-        self.assertEqual(validator.name, "EnergyPlus Validator")
+        self.assertEqual(validator.name, "EnergyPlus™ Validator")
 
     def test_command_syncs_supports_assertions(self):
         """Test that supports_assertions is synced from config to DB."""

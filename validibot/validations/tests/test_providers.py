@@ -23,7 +23,7 @@ def test_sync_validators_creates_energyplus():
 
     validator = Validator.objects.get(slug="energyplus-idf-validator")
     assert validator.validation_type == ValidationType.ENERGYPLUS
-    assert validator.processor_name == "EnergyPlus Simulation"
+    assert validator.processor_name == "EnergyPlus™ Simulation"
     assert validator.has_processor is True
     assert validator.is_system is True
 

@@ -24,7 +24,7 @@ A signal is a named piece of data that a validator either **consumes** (input) o
 
 Input signals represent values that are available **before** the validator runs. They typically come from metadata that the submitter provides when they launch a validation, or from fields in the submission data itself.
 
-For example, an EnergyPlus validator might define these input signals:
+For example, an EnergyPlus™ validator might define these input signals:
 
 - `expected_floor_area_m2` -- the floor area the submitter says the building should have
 - `target_eui_kwh_m2` -- the energy use intensity target for compliance
@@ -34,9 +34,9 @@ You can write assertions against input signals to catch problems early, even bef
 
 ### Output signals
 
-Output signals represent values the validator **produces** during execution. For advanced validators like EnergyPlus or FMU, these come from the simulation results. For built-in validators, outputs can be populated directly from the submission data.
+Output signals represent values the validator **produces** during execution. For advanced validators like EnergyPlus™ or FMU, these come from the simulation results. For built-in validators, outputs can be populated directly from the submission data.
 
-EnergyPlus output signals include things like:
+EnergyPlus™ output signals include things like:
 
 - `site_electricity_kwh` -- total electricity consumption
 - `site_eui_kwh_m2` -- energy use intensity per square meter

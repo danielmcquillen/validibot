@@ -1,7 +1,7 @@
-# EnergyPlus Modal Integration
+# EnergyPlus™ Modal Integration
 
 This note explains how the Django app talks to the `sv_modal` repository and what
-to watch for when wiring workflow steps to the Modal-backed EnergyPlus runner.
+to watch for when wiring workflow steps to the Modal-backed EnergyPlus™ runner.
 
 ## Repository layout
 

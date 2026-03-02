@@ -32,14 +32,14 @@ Validibot is composed of several repositories that work together:
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
 | **[validibot](https://github.com/danielmcquillen/validibot)**                       | Core platform (this repo) — Django web application, REST API, workflow engine, and built-in validators | AGPL-3.0 |
 | **[validibot-cli](https://github.com/danielmcquillen/validibot-cli)**               | Command-line interface for running validations from terminals and CI/CD pipelines                      | MIT      |
-| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus, FMU) that run as isolated Docker containers                           | MIT      |
+| **[validibot-validators](https://github.com/danielmcquillen/validibot-validators)** | Advanced validators (EnergyPlus™, FMU) that run as isolated Docker containers                          | MIT      |
 | **[validibot-shared](https://github.com/danielmcquillen/validibot-shared)**         | Shared Pydantic models defining the data interchange format between core and validators                | MIT      |
 
 ---
 
 ## What is Validibot?
 
-Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using EnergyPlus), it's now designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
+Validibot is an **open-source data validation platform** that transforms fragmented validation processes into systematic, reliable validation workflows. Originally built for validating building energy models (using [EnergyPlus™](https://energyplus.net/)), it's now designed to handle any structured data validation with complex logic or simulations (e.g. an arbitrary FMU file).
 
 **Key problems Validibot solves:**
 
@@ -65,7 +65,7 @@ These validators run directly in a Django "worker" process -- no extra infrastru
 
 These validators run as isolated Docker containers for complex domain-specific validation:
 
-- **EnergyPlus**: Validate IDF and epJSON building energy models
+- **EnergyPlus™**: Validate IDF and epJSON building energy models
 - **FMU**: Validate Functional Mock-up Units via OpenModelica simulation
 - **Custom**: Bring your own validator containers
 
@@ -178,7 +178,7 @@ Validibot follows an **open-core model**. The core platform is free and open-sou
 Everything you need to run a complete validation platform:
 
 - All built-in validators (JSON Schema, XML Schema, Basic, AI)
-- All advanced validators (EnergyPlus, FMU, custom containers)
+- All advanced validators (EnergyPlus™, FMU, custom containers)
 - Unlimited workflows and validation runs
 - Full REST API and web interface
 - Single-organization workspace
@@ -308,6 +308,8 @@ by the Free Software Foundation, either version 3 of the License, or
 ## Trademarks
 
 The Validibot name, logo, robot character, and associated branding are trademarks of **McQuillen Interactive Pty. Ltd.** and may not be used without permission. This trademark policy does not limit your rights under the AGPL-3.0 license to use, modify, and distribute the software.
+
+EnergyPlus™ is a trademark of the U.S. Department of Energy. Validibot is not affiliated with, endorsed by, or sponsored by the U.S. Department of Energy or the National Renewable Energy Laboratory (NREL).
 
 For trademark usage guidelines, contact [hello@mcquilleninteractive.com](mailto:hello@mcquilleninteractive.com).
 

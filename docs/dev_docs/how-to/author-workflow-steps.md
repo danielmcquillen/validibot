@@ -40,7 +40,7 @@ The **Step Assertions** panel always shows a **Default assertions** card at the 
 - Paste the XSD/RNG/DTD content or upload a file—the editor detects which one you used and stores it in the appropriate ruleset field.
 - The selected schema type is persisted on the ruleset metadata (`metadata['schema_type']`).
 
-### EnergyPlus
+### EnergyPlus™
 - Decide whether the step **runs a simulation** or only performs static IDF checks.
 - Pick initial IDF checks (duplicate names, autosizing, schedule coverage, etc.).
 - Choose post-simulation checks (EUI range, peak load) and define optional EUI minimum/maximum values.

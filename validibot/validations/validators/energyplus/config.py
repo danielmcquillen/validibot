@@ -19,13 +19,13 @@ from validibot.validations.validators.base.config import ValidatorConfig
 
 config = ValidatorConfig(
     slug="energyplus-idf-validator",
-    name="EnergyPlus Validator",
-    description="Validate EnergyPlus IDF models and run simulations.",
+    name="EnergyPlus™ Validator",
+    description="Validate EnergyPlus™ IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
     version="1.0",
     order=10,
     has_processor=True,
-    processor_name="EnergyPlus Simulation",
+    processor_name="EnergyPlus™ Simulation",
     is_system=True,
     supports_assertions=True,
     compute_tier=ComputeTier.HIGH,

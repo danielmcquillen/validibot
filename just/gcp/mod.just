@@ -424,7 +424,7 @@ secrets stage: _require-gcp-config
 #
 # Usage: just gcp secrets-init dev | just gcp secrets-init staging
 [arg('stage', pattern='dev|staging|prod')]
-secrets-init stage:
+secrets-init stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ ! "{{stage}}" =~ ^(dev|staging)$ ]]; then
@@ -494,7 +494,7 @@ logs-follow stage: _require-gcp-config
 # Useful for maintenance or cost control without full teardown.
 # Usage: just gcp pause dev | just gcp pause prod
 [arg('stage', pattern='dev|staging|prod')]
-pause stage:
+pause stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -510,7 +510,7 @@ pause stage:
 # otherwise falls back to --ingress all.
 # Usage: just gcp resume dev | just gcp resume prod
 [arg('stage', pattern='dev|staging|prod')]
-resume stage:
+resume stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -578,7 +578,7 @@ status-all:
 # Open the web service URL in browser
 # Usage: just gcp open dev | just gcp open prod
 [arg('stage', pattern='dev|staging|prod')]
-open stage:
+open stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -601,7 +601,7 @@ open stage:
 # Quick health check - just test if service is responding
 # Usage: just gcp health-check dev | just gcp health-check prod
 [arg('stage', pattern='dev|staging|prod')]
-health-check stage:
+health-check stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -696,7 +696,7 @@ migrate stage: _require-gcp-config
 # Configures site domain, validators, roles, workspaces, etc.
 # Usage: just gcp setup-data dev | just gcp setup-data prod
 [arg('stage', pattern='dev|staging|prod')]
-setup-data stage:
+setup-data stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -769,7 +769,7 @@ setup-data stage:
 # Usage: just gcp management-cmd dev "shell"
 # Usage: just gcp management-cmd prod "migrate --check"
 [arg('stage', pattern='dev|staging|prod')]
-management-cmd stage command:
+management-cmd stage command: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -874,7 +874,7 @@ job-logs job:
 #
 # Usage: just gcp init-stage dev
 [arg('stage', pattern='dev|staging|prod')]
-init-stage stage:
+init-stage stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1179,7 +1179,7 @@ init-stage stage:
 
 # List all resources for a stage (useful for verification)
 [arg('stage', pattern='dev|staging|prod')]
-list-resources stage:
+list-resources stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1244,7 +1244,7 @@ scheduler-list:
 # Creates jobs for session cleanup, idempotency key cleanup, callback receipts,
 # submission purging, and stuck run cleanup.
 [arg('stage', pattern='dev|staging|prod')]
-scheduler-setup stage:
+scheduler-setup stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1389,7 +1389,7 @@ scheduler-run job_name:
 
 # Delete all scheduler jobs for a stage (use with caution)
 [arg('stage', pattern='dev|staging|prod')]
-scheduler-delete-all stage:
+scheduler-delete-all stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1425,7 +1425,7 @@ scheduler-delete-all stage:
 
 # Pause all scheduler jobs for a stage
 [arg('stage', pattern='dev|staging|prod')]
-scheduler-pause-all stage:
+scheduler-pause-all stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1454,7 +1454,7 @@ scheduler-pause-all stage:
 
 # Resume all scheduler jobs for a stage
 [arg('stage', pattern='dev|staging|prod')]
-scheduler-resume-all stage:
+scheduler-resume-all stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1590,7 +1590,7 @@ validator-deploy name stage: _require-gcp-config (validator-build-push name)
 # Build and deploy all validator jobs to a stage
 # Usage: just gcp validators-deploy-all dev | just gcp validators-deploy-all prod
 [arg('stage', pattern='dev|staging|prod')]
-validators-deploy-all stage:
+validators-deploy-all stage: _require-gcp-config
     just gcp validator-deploy energyplus {{stage}}
     just gcp validator-deploy fmu {{stage}}
 
@@ -1744,7 +1744,7 @@ list-weather env:
 # Put a stage into maintenance mode (pause all resources)
 # Usage: just gcp maintenance-on dev
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-on stage:
+maintenance-on stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1844,7 +1844,7 @@ maintenance-on stage:
 # Bring a stage out of maintenance mode (resume all resources)
 # Usage: just gcp maintenance-off dev
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-off stage:
+maintenance-off stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -1949,7 +1949,7 @@ maintenance-off stage:
 
 # Check maintenance status for a stage
 [arg('stage', pattern='dev|staging|prod')]
-maintenance-status stage:
+maintenance-status stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -2046,7 +2046,7 @@ maintenance-status stage:
 # Usage: just gcp lb-setup prod example.com
 # Usage: just gcp lb-setup prod "example.com,www.example.com"
 [arg('stage', pattern='dev|staging|prod')]
-lb-setup stage domains:
+lb-setup stage domains: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -2435,7 +2435,7 @@ test-e2e *args:
 # Verify a deployed environment with smoke tests
 # Usage: just gcp verify-deployment dev | just gcp verify-deployment prod
 [arg('stage', pattern='dev|staging|prod')]
-verify-deployment stage *args:
+verify-deployment stage *args: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -2516,7 +2516,7 @@ verify-deployment stage *args:
 
 # Quick deployment verification (just check services are up)
 [arg('stage', pattern='dev|staging|prod')]
-verify-deployment-quick stage:
+verify-deployment-quick stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -2715,7 +2715,7 @@ auth:
 # Open the Cloud Run console in browser for a stage
 # Usage: just gcp console dev | just gcp console prod
 [arg('stage', pattern='dev|staging|prod')]
-console stage:
+console stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"
@@ -2731,7 +2731,7 @@ console stage:
 # Requires: DATABASE_PASSWORD environment variable set
 # Usage: DATABASE_PASSWORD='yourpass' just gcp local-to-gcp-shell dev
 [arg('stage', pattern='dev|staging|prod')]
-local-to-gcp-shell stage:
+local-to-gcp-shell stage: _require-gcp-config
     #!/usr/bin/env bash
     set -euo pipefail
     APP_NAME="{{app_name}}"

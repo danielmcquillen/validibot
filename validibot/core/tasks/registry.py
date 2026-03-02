@@ -181,6 +181,19 @@ SCHEDULED_ADMIN_TASKS: tuple[ScheduledAdminTaskDefinition, ...] = (
         description="Clear expired Django sessions",
     ),
     # -------------------------------------------------------------------------
+    # Periodic Emails
+    # -------------------------------------------------------------------------
+    ScheduledAdminTaskDefinition(
+        id="send-periodic-emails",
+        name="Send Periodic Emails",
+        celery_task="validibot.send_periodic_emails",
+        api_endpoint="/api/v1/scheduled/send-periodic-emails/",
+        schedule_cron="0 */6 * * *",  # Every 6 hours
+        description=(
+            "Run registered periodic email handlers. No-op in community-only installs."
+        ),
+    ),
+    # -------------------------------------------------------------------------
     # Docker Compose Only Tasks
     # -------------------------------------------------------------------------
     ScheduledAdminTaskDefinition(

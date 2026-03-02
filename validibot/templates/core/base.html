@@ -46,6 +46,9 @@
       </section>
     {% endblock messages %}
     {% block body %}
+      {% if cloud_banner_template %}
+        {% include cloud_banner_template %}
+      {% endif %}
       {# Top navigation bar #}
       {% block top_nav %}
         {% include "core/partial/top_nav.html" %}

@@ -1369,6 +1369,13 @@ scheduler-setup stage:
         "/api/v1/scheduled/cleanup-stuck-runs/" \
         "Mark stuck validation runs as FAILED - 30min timeout ({{stage}})"
 
+    # Job 7: Send periodic emails (every 6 hours)
+    create_or_update_job \
+        "${APP_NAME}-send-periodic-emails${JOB_SUFFIX}" \
+        "0 */6 * * *" \
+        "/api/v1/scheduled/send-periodic-emails/" \
+        "Run periodic email handlers - trial lifecycle etc ({{stage}})"
+
     echo "All scheduler jobs configured for {{stage}}!"
     echo ""
     echo "View jobs: just gcp scheduler-list"

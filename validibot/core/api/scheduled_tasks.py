@@ -375,3 +375,46 @@ class CleanupStuckRunsView(ScheduledTaskBaseView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class SendPeriodicEmailsView(ScheduledTaskBaseView):
+    """
+    Run registered periodic email handlers.
+
+    In community-only installs this is a no-op (no handlers registered).
+    When validibot-cloud is installed, its trial lifecycle email handler
+    is registered at app-ready time and runs here.
+
+    URL: POST /api/v1/scheduled/send-periodic-emails/
+    Recommended schedule: Every 6 hours
+    """
+
+    def post(self, request):
+
+        logger.info("Starting scheduled periodic email send")
+
+        try:
+            out = StringIO()
+            call_command("send_periodic_emails", stdout=out)
+            output = out.getvalue()
+
+            logger.info("Periodic email send completed: %s", output.strip())
+
+            return Response(
+                {
+                    "task": "send_periodic_emails",
+                    "status": "completed",
+                    "output": output.strip(),
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.exception("Failed to send periodic emails")
+            return Response(
+                {
+                    "task": "send_periodic_emails",
+                    "status": "failed",
+                    "error": str(e),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

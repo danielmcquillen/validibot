@@ -24,6 +24,11 @@ WORKFLOW_INVITE_SESSION_KEY = "workflow_invite_token"
 # to activate the trial on the user's personal organization.
 TRIAL_INVITE_SESSION_KEY = "trial_invite_token"
 
+# Session key for storing the selected plan during self-register signup.
+# Set by the cloud onboarding StartTrialView, consumed after signup
+# to activate the trial with the chosen plan.
+SELF_REGISTER_PLAN_SESSION_KEY = "signup_plan"
+
 
 def _is_cloud_self_register() -> bool:
     """
@@ -47,9 +52,10 @@ class AccountAdapter(DefaultAccountAdapter):
     """
     Custom account adapter for Validibot signup flow.
 
-    Handles two types of invite-based signups:
+    Handles three types of signups:
     1. Workflow invites: users get access to specific workflows
     2. Trial invites: users from the cloud onboarding flow get a trial org
+    3. Self-register: users sign up directly, trial activated from session plan
     """
 
     def is_open_for_signup(self, request: HttpRequest) -> bool:
@@ -83,9 +89,10 @@ class AccountAdapter(DefaultAccountAdapter):
         """
         Redirect to appropriate destination after signup.
 
-        Handles two invite flows:
+        Checks session keys in priority order:
         1. Workflow invite: accept invite, redirect to workflow launch page
         2. Trial invite: activate trial on user's org, redirect to dashboard
+        3. Self-register plan: activate trial with selected plan
 
         Otherwise, redirect to the default login redirect URL.
         """
@@ -100,6 +107,13 @@ class AccountAdapter(DefaultAccountAdapter):
         trial_token = request.session.get(TRIAL_INVITE_SESSION_KEY)
         if trial_token:
             redirect_url = self._handle_trial_invite_signup(request, trial_token)
+            if redirect_url:
+                return redirect_url
+
+        # Check for self-register plan (cloud self-registration)
+        plan = request.session.get(SELF_REGISTER_PLAN_SESSION_KEY)
+        if plan:
+            redirect_url = self._handle_self_register_signup(request, plan)
             if redirect_url:
                 return redirect_url
 
@@ -216,6 +230,55 @@ class AccountAdapter(DefaultAccountAdapter):
                 request,
                 _(
                     "Your account was created but we couldn't activate your trial. "
+                    "Please contact support."
+                ),
+            )
+            return None
+        else:
+            messages.success(
+                request,
+                _("Welcome! Your free trial is now active."),
+            )
+            return settings.LOGIN_REDIRECT_URL
+
+    def _handle_self_register_signup(
+        self,
+        request: HttpRequest,
+        plan: str,
+    ) -> str | None:
+        """
+        Handle self-register trial activation after signup.
+
+        Delegates to the cloud onboarding service to activate the trial
+        on the user's personal organization with the selected plan.
+        Returns the redirect URL on success, or None to fall back to
+        default redirect.
+        """
+        from django.contrib import messages
+        from django.utils.translation import gettext_lazy as _
+
+        # Clear the session key regardless of outcome
+        del request.session[SELF_REGISTER_PLAN_SESSION_KEY]
+
+        try:
+            from validibot_cloud.onboarding.services import activate_self_register_trial
+        except ImportError:
+            logger.exception(
+                "signup_plan in session but validibot-cloud not installed",
+            )
+            return None
+
+        try:
+            activate_self_register_trial(request.user, plan)
+        except Exception:
+            logger.exception(
+                "Failed to activate self-register trial for user %s",
+                request.user,
+            )
+            messages.warning(
+                request,
+                _(
+                    "Your account was created but we couldn't start your trial. "
                     "Please contact support."
                 ),
             )

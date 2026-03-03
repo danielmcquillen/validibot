@@ -24,7 +24,8 @@ from validibot.core.api.org_scoped import OrgScopedMixin
 from validibot.core.idempotency import idempotent
 from validibot.validations.serializers import ValidationRunStartSerializer
 from validibot.workflows.models import Workflow
-from validibot.workflows.serializers import OrgScopedWorkflowSerializer
+from validibot.workflows.serializers import WorkflowFullSerializer
+from validibot.workflows.serializers import WorkflowSlimSerializer
 from validibot.workflows.version_utils import get_latest_workflow
 from validibot.workflows.version_utils import get_latest_workflow_ids
 from validibot.workflows.views_helpers import resolve_project
@@ -49,7 +50,7 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     """
 
     throttle_scope: str | None = None
-    serializer_class = OrgScopedWorkflowSerializer
+    serializer_class = WorkflowSlimSerializer
     permission_classes = [permissions.IsAuthenticated, OrgMembershipPermission]
     # Allow lookup by slug (string) or pk (integer)
     lookup_value_regex = r"[^/]+"
@@ -66,8 +67,14 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         1. Try slug lookup first
         2. If no match and identifier is numeric, try pk lookup
         3. If slug matches multiple versions, return the latest
+
+        Prefetches step/ruleset/assertion relations so WorkflowFullSerializer
+        renders without issuing additional queries.
         """
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self.filter_queryset(self.get_queryset()).prefetch_related(
+            "steps__validator__default_ruleset__assertions__target_catalog_entry",
+            "steps__ruleset__assertions__target_catalog_entry",
+        )
         identifier = self.kwargs.get(self.lookup_field)
 
         # First, try slug-based lookup
@@ -110,9 +117,12 @@ class OrgScopedWorkflowViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
         return APIResponse(serializer.data)
 
     def get_serializer_class(self):
-        if getattr(self, "action", None) == "runs":
+        action = getattr(self, "action", None)
+        if action == "runs":
             return ValidationRunStartSerializer
-        return super().get_serializer_class()
+        if action == "retrieve":
+            return WorkflowFullSerializer
+        return WorkflowSlimSerializer
 
     def get_serializer_context(self):
         """Add org_slug to serializer context for URL generation."""
@@ -174,7 +184,7 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
     """
 
     throttle_scope: str | None = None
-    serializer_class = OrgScopedWorkflowSerializer
+    serializer_class = WorkflowSlimSerializer
     permission_classes = [permissions.IsAuthenticated, OrgMembershipPermission]
     lookup_field = "version"
     lookup_value_regex = r"[^/]+"
@@ -188,10 +198,29 @@ class WorkflowVersionViewSet(OrgScopedMixin, viewsets.ReadOnlyModelViewSet):
             is_archived=False,
         )
 
+    def get_object(self) -> Workflow:
+        """
+        Retrieve a specific workflow version.
+
+        Prefetches step/ruleset/assertion relations so WorkflowFullSerializer
+        renders without issuing additional queries.
+        """
+        queryset = self.filter_queryset(self.get_queryset()).prefetch_related(
+            "steps__validator__default_ruleset__assertions__target_catalog_entry",
+            "steps__ruleset__assertions__target_catalog_entry",
+        )
+        version = self.kwargs.get(self.lookup_field)
+        obj = get_object_or_404(queryset, version=version)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer_class(self):
-        if getattr(self, "action", None) == "runs":
+        action = getattr(self, "action", None)
+        if action == "runs":
             return ValidationRunStartSerializer
-        return super().get_serializer_class()
+        if action == "retrieve":
+            return WorkflowFullSerializer
+        return WorkflowSlimSerializer
 
     def get_serializer_context(self):
         """Add org_slug to serializer context for URL generation."""

@@ -1,0 +1,257 @@
+{% extends "app_base.html" %}
+
+{% load i18n %}
+
+{% block title %}
+  {{ workflow.name }} · {% trans "JSON" %} · Validibot
+{% endblock title %}
+{% block left_sidebar %}
+  {% include "app/partial/components/app_left_nav.html" %}
+{% endblock left_sidebar %}
+{% block app_content %}
+  <div class="container-fluid d-flex flex-column flex-grow-1">
+    <div class="app-content-header-bar row">
+      <div class="app-content-header col-12 col-lg-8">
+        <h1 class="app-page-title mb-0">
+          <i class="bi bi-code-slash me-2"></i>{{ workflow.name }} · {% trans "JSON" %}
+        </h1>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+          <a class="btn btn-secondary"
+             href="{% url 'workflows:workflow_detail' workflow.pk %}"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "Back to workflow" %}">
+            <i class="bi-arrow-left me-1"></i>{% trans "Back" %}
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="row flex-grow-1">
+      <div class="col-12">
+        <div class="card app-card mb-3">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="fw-semibold">{% trans "Workflow JSON" %}</span>
+              <span class="text-muted small ms-2">
+                {% blocktrans with slug=workflow.slug %}Full serialized representation of workflow <code>{{ slug }}</code>, including all steps and assertions.{% endblocktrans %}
+              </span>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            {# Raw JSON data embedded as inert data — never executed by the browser.        #}
+            {# |safe suppresses Django's HTML auto-escaping, which would corrupt quotes     #}
+            {# into &quot; entities. The script type="application/json" tag is never        #}
+            {# executed as JS, so this is safe — the content is only read via textContent. #}
+            <script id="json-raw-data" type="application/json">
+              {
+                {
+                  json_data | safe
+                }
+              }
+            </script>
+            <div id="json-viewer-root" class="json-viewer rounded-bottom"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row mt-2 mb-3">
+      <div class="col-12">
+        <a class="btn btn-secondary"
+           href="{% url 'workflows:workflow_detail' workflow.pk %}">
+          <i class="bi-arrow-left me-1"></i>{% trans "Back to workflow" %}
+        </a>
+      </div>
+    </div>
+  </div>
+  {% comment %}
+  Inline JSON syntax highlighter — no CDN dependencies.
+  Tokenises the raw JSON string into typed spans and renders line-numbered
+  rows matching GitHub's light colour scheme.
+
+  innerHTML safety: the only HTML injected via innerHTML is produced by the
+  local span() helper which HTML-escapes all token values before wrapping
+  them in a <span>. The raw JSON text is never inserted unescaped.
+  {% endcomment %}
+  <script>
+    (function() {
+      "use strict";
+
+      /**
+       * Tokenise a JSON string into an array of {type, value} objects.
+       * Types: key, str, num, bool, null, punc, ws (whitespace/newlines).
+       */
+      function tokenise(src) {
+        const tokens = [];
+        let i = 0;
+        while (i < src.length) {
+          const ch = src[i];
+
+          // Whitespace — kept as one token; split into lines later.
+          if (/\s/.test(ch)) {
+            let ws = "";
+            while (i < src.length && /\s/.test(src[i])) ws += src[i++];
+            tokens.push({
+              type: "ws",
+              value: ws
+            });
+            continue;
+          }
+
+          // String literal — classify as key vs value after peeking at ':'.
+          if (ch === '"') {
+            let s = '"';
+            i++;
+            while (i < src.length) {
+              const c = src[i];
+              s += c;
+              i++;
+              if (c === "\\") {
+                // Consume the escaped character so it is not misread.
+                if (i < src.length) s += src[i++];
+              } else if (c === '"') {
+                break;
+              }
+            }
+            let j = i;
+            while (j < src.length && /[ \t]/.test(src[j])) j++;
+            const type = src[j] === ":" ? "key" : "str";
+            tokens.push({
+              type,
+              value: s
+            });
+            continue;
+          }
+
+          // Number (including negative and floating-point).
+          if (ch === "-" || /\d/.test(ch)) {
+            let num = "";
+            while (i < src.length && /[-+\d.eE]/.test(src[i])) num += src[i++];
+            tokens.push({
+              type: "num",
+              value: num
+            });
+            continue;
+          }
+
+          // Keywords.
+          if (src.startsWith("true", i)) {
+            tokens.push({
+              type: "bool",
+              value: "true"
+            });
+            i += 4;
+            continue;
+          }
+          if (src.startsWith("false", i)) {
+            tokens.push({
+              type: "bool",
+              value: "false"
+            });
+            i += 5;
+            continue;
+          }
+          if (src.startsWith("null", i)) {
+            tokens.push({
+              type: "null",
+              value: "null"
+            });
+            i += 4;
+            continue;
+          }
+
+          // Structural punctuation.
+          tokens.push({
+            type: "punc",
+            value: ch
+          });
+          i++;
+        }
+        return tokens;
+      }
+
+      /**
+       * Build a safe <span> for a token value.
+       * All token text is HTML-escaped before insertion — this is the only
+       * point where innerHTML is used, and it never contains raw user input.
+       */
+      function safeSpan(cls, text) {
+        const escaped = text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return '<span class="' + cls + '">' + escaped + "</span>";
+      }
+
+      /**
+       * Convert tokens to an array of HTML strings, one entry per output line.
+       * Newlines inside whitespace tokens trigger a line split.
+       */
+      function tokensToLines(tokens) {
+        const lines = [];
+        let current = "";
+
+        const typeToClass = {
+          key: "jt-key",
+          str: "jt-str",
+          num: "jt-num",
+          bool: "jt-bool",
+          null: "jt-null",
+          punc: "jt-punc",
+        };
+
+        for (const tok of tokens) {
+          if (tok.type === "ws") {
+            const parts = tok.value.split("\n");
+            for (let p = 0; p < parts.length; p++) {
+              current += parts[p];
+              if (p < parts.length - 1) {
+                lines.push(current);
+                current = "";
+              }
+            }
+          } else {
+            current += safeSpan(typeToClass[tok.type] || "jt-punc", tok.value);
+          }
+        }
+        if (current !== "") lines.push(current);
+        return lines;
+      }
+
+      function render() {
+        const dataEl = document.getElementById("json-raw-data");
+        const root = document.getElementById("json-viewer-root");
+        if (!dataEl || !root) return;
+
+        const raw = dataEl.textContent;
+        const tokens = tokenise(raw);
+        const lines = tokensToLines(tokens);
+
+        const linesDiv = document.createElement("div");
+        linesDiv.className = "json-lines";
+
+        for (const lineHtml of lines) {
+          const row = document.createElement("div");
+          row.className = "json-line";
+
+          const numCell = document.createElement("div");
+          numCell.className = "json-line-num";
+
+          const codeCell = document.createElement("div");
+          codeCell.className = "json-line-code";
+          // Safe: lineHtml is built entirely from safeSpan() which escapes all
+          // token text. No raw JSON values are ever inserted unescaped.
+          codeCell.innerHTML = lineHtml || "\u200b";
+
+          row.appendChild(numCell);
+          row.appendChild(codeCell);
+          linesDiv.appendChild(row);
+        }
+
+        root.appendChild(linesDiv);
+      }
+
+      document.addEventListener("DOMContentLoaded", render);
+    })();
+  </script>
+{% endblock app_content %}

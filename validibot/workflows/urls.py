@@ -71,6 +71,11 @@ urlpatterns = [
         name="workflow_invite_resend",
     ),
     path(
+        "<int:pk>/json/",
+        views.WorkflowJsonView.as_view(),
+        name="workflow_json",
+    ),
+    path(
         "<int:pk>/",
         views.WorkflowDetailView.as_view(),
         name="workflow_detail",

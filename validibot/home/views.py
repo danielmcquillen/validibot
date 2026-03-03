@@ -5,16 +5,16 @@ from django.views.generic import TemplateView
 
 
 class HomeView(TemplateView):
-    """Landing page view that redirects authenticated users to the dashboard.
+    """Landing page view that redirects all users appropriately.
 
-    For Docker Compose deployments, the home page provides a simple welcome message
-    and login link. Authenticated users are redirected to their dashboard.
+    Authenticated users go to the dashboard. Unauthenticated users go directly
+    to the sign-in page, which now carries the landing page hero design.
     """
 
     template_name = "home/home.html"
 
     def get(self, request, *args, **kwargs):
-        """Redirect authenticated users to the app dashboard."""
+        """Redirect users: authenticated → dashboard, unauthenticated → sign-in."""
         if request.user.is_authenticated:
             return redirect("dashboard:my_dashboard")
-        return super().get(request, *args, **kwargs)
+        return redirect("account_login")

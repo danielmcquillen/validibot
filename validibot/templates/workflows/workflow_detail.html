@@ -28,7 +28,7 @@
         <div class="d-flex flex-wrap gap-2 justify-content-end">
           {# link to launch #}
           {% if can_launch_workflow %}
-            <a class="btn btn-success bg-success-subtle"
+            <a class="btn btn-launch"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "Start a new validation run with this workflow" %}"
@@ -36,15 +36,22 @@
               <i class="bi-rocket me-1"></i>{% trans "Launch" %}
             </a>
           {% endif %}
+          <a class="btn btn-light text-dark"
+             data-bs-toggle="tooltip"
+             data-bs-placement="top"
+             title="{% trans "View JSON representation" %}"
+             href="{% url 'workflows:workflow_json' workflow.pk %}">
+            <i class="bi-code-slash"></i>
+          </a>
           {% if can_manage_workflow %}
-            <a class="btn btn-secondary"
+            <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "Sharing settings" %}"
                href="{% org_url 'workflows:workflow_sharing' pk=workflow.pk %}">
               <i class="bi-share"></i>
             </a>
-            <a class="btn btn-secondary"
+            <a class="btn btn-light text-dark"
                data-bs-toggle="tooltip"
                data-bs-placement="top"
                title="{% trans "View Validations" %}"

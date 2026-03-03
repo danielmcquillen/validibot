@@ -8,22 +8,26 @@
 {% block title %}
   {% trans "Sign In" %}
 {% endblock title %}
+{% block top_nav %}
+  {# No nav on the sign-in page #}
+{% endblock top_nav %}
 {% block main %}
   <div id="signin" class="container-fluid entrance-page p-4">
     <div class="row justify-content-center align-items-center h-100">
-      <div class="col-12 col-md-8 col-lg-6">
+      <div class="col-12 col-md-10 col-lg-9 col-xl-8">
         <div class="entrance-card-wrapper">
-          <div class="card">
-            <div class="card-body">
-              <div class="row d-flex h-100 w-100 align-items-stretch">
-                <div class="col-12">
-                  <h3 class="card-body-header">{% trans "Sign In" %}</h3>
+          <div class="card signin-card">
+            <div class="card-body p-0">
+              <div class="row g-0 align-items-stretch">
+                {# ── Left column: sign-in form ── #}
+                <div class="col-12 col-md-6 p-4 p-lg-5">
+                  <h3 class="card-body-header mb-3">{% trans "Sign In" %}</h3>
                   {% get_providers as socialaccount_providers %}
                   {% if socialaccount_providers %}
-                    <p>
+                    <p class="text-muted small">
                       {% blocktrans with site.name as site_name %}Please sign in with one
-                                of your existing third party accounts. Or, <a href="{{ signup_url }}">sign up</a>
-                                for a {{ site_name }} account and sign in below:{% endblocktrans %}
+                      of your existing third party accounts. Or, <a href="{{ signup_url }}">sign up</a>
+                      for a {{ site_name }} account and sign in below:{% endblocktrans %}
                     </p>
                     <div class="socialaccount_ballot">
                       <ul class="socialaccount_providers">
@@ -33,18 +37,23 @@
                     </div>
                     {% include "socialaccount/snippets/login_extra.html" %}
                   {% else %}
-                    <p>
-                      {% blocktrans %}If you have not created an account yet, then please
-                                <a href="{{ signup_url }}">sign up</a> first.{% endblocktrans %}
-                    </p>
+                    {% if ACCOUNT_ALLOW_REGISTRATION %}
+                      <p class="text-muted small">
+                        {% blocktrans %}Don't have an account?
+                        <a href="{{ signup_url }}">Sign up</a> first.{% endblocktrans %}
+                      </p>
+                    {% endif %}
                   {% endif %}
                   {% include 'account/partial/login_form.html' %}
                 </div>
-                {% comment %}
-            <div class="col-12 col-md-6">
-              put a graphic here someday
-            </div>
-                {% endcomment %}
+                {# ── Right column: hero branding (hidden on mobile) ── #}
+                <div class="col-12 col-md-6 signin-hero d-none d-md-flex flex-column align-items-center justify-content-center p-4 p-lg-5">
+                  <img src="{% static 'images/robot.png' %}"
+                       alt="Validibot robot"
+                       class="signin-hero-robot mb-4" />
+                  <h2 class="fw-bold text-white mb-2 brand-name">{% trans "Validibot" %}</h2>
+                  <p class="signin-hero-tagline text-center">{% trans "Cloud-enabled data validation engine." %}</p>
+                </div>
               </div>
             </div>
           </div>

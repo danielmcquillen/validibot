@@ -18,7 +18,9 @@ a {
     width: 100%;
 
     box-shadow: 0 1.5rem 2rem rgba(15, 23, 42, 0.03);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
 
     .card-body {
       display: flex;
@@ -30,6 +32,44 @@ a {
   // Wider variant for signup with plan context (two-column layout)
   &--wide .card {
     max-width: 56rem;
+  }
+}
+
+.brand-name {
+  font-family: "Space Grotesk", Arial, sans-serif;
+}
+
+// Sign-in page: two-column split card
+// ========================================
+// Left half: standard form. Right half: branded hero panel.
+// The hero panel is hidden on mobile (d-none d-md-flex in template)
+// so the card collapses cleanly to a single-column form on small screens.
+.signin-card {
+  overflow: hidden; // keeps rounded corners on the hero panel
+
+  .card-body {
+    // override base entrance-card-wrapper rule that sets flex-direction: column
+    flex-direction: row;
+  }
+}
+
+.signin-hero {
+  background: linear-gradient(150deg, #2563eb, #1e40af);
+  border-radius: 0 var(--bs-card-border-radius) var(--bs-card-border-radius) 0;
+
+  .signin-hero-robot {
+    height: 100%;
+    width: auto;
+    filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.25));
+  }
+
+  h2 {
+    letter-spacing: -0.02em;
+  }
+
+  .signin-hero-tagline {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.95rem;
   }
 }
 
@@ -46,7 +86,9 @@ a {
 
 .feature-link-card {
   border: 0;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:hover,
   &:focus {
@@ -122,7 +164,9 @@ a {
 
 .support-card {
   border: 0;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:hover,
   &:focus {
@@ -158,7 +202,9 @@ a {
 
 .resource-card {
   border: 0;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:hover,
   &:focus {
@@ -234,4 +280,99 @@ a {
 
 .flip-x {
   transform: scaleX(-1);
+}
+
+// JSON viewer — light monospace code display
+// ========================================
+// Reusable component: wrap any container with class="json-viewer"
+// and populate with .json-lines > .json-line children via the
+// inline JS tokenizer (see workflows/workflow_json.html for example).
+// No CDN dependencies — all rendering is done client-side via inline JS.
+.json-viewer {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    "Courier New",
+    monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  background: #fafafa;
+  color: #1a1a2e;
+  overflow: auto;
+  max-height: 80vh;
+  counter-reset: line-number;
+
+  .json-lines {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .json-line {
+    display: table-row;
+    counter-increment: line-number;
+
+    &:hover {
+      .json-line-num,
+      .json-line-code {
+        background: #eef2f7;
+      }
+    }
+  }
+
+  .json-line-num {
+    display: table-cell;
+    width: 1%;
+    min-width: 3rem;
+    padding: 0 1rem;
+    text-align: right;
+    color: #9aa0aa;
+    user-select: none;
+    white-space: nowrap;
+    border-right: 1px solid #dde3ea;
+    background: #f0f3f7;
+    vertical-align: top;
+
+    &::before {
+      content: counter(line-number);
+    }
+  }
+
+  .json-line-code {
+    display: table-cell;
+    padding: 0 1rem;
+    white-space: pre;
+    vertical-align: top;
+  }
+
+  // Token colours — clean light palette
+  .jt-key {
+    color: #1a1a2e;
+    font-weight: 600;
+  }
+
+  .jt-str {
+    color: #155e7a;
+  }
+
+  .jt-num {
+    color: #1d4fad;
+  }
+
+  .jt-bool {
+    color: #7c3aed;
+  }
+
+  .jt-null {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  .jt-punc {
+    color: #4b5563;
+  }
 }

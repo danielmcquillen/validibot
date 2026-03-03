@@ -2,7 +2,7 @@
 
 <div class="d-flex flex-row flex-wrap gap-2 justify-content-end align-items-center w-100">
   {% if workflow.curr_user_can_execute %}
-    <a class="btn btn-sm btn-success bg-success-subtle me-auto"
+    <a class="btn btn-sm btn-launch me-auto"
        href="{% org_url 'workflows:workflow_launch' pk=workflow.pk %}"
        data-bs-toggle="tooltip"
        data-bs-placement="top"

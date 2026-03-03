@@ -30,18 +30,12 @@ from django.views.generic import UpdateView
 from django.views.generic.edit import CreateView
 from django.views.generic.edit import DeleteView
 from django.views.generic.edit import FormView
-from rest_framework import permissions
-from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
-from rest_framework.response import Response as APIResponse
 
 from validibot.actions.constants import ActionCategoryType
 from validibot.actions.models import ActionDefinition
 from validibot.actions.models import SignedCertificateAction
 from validibot.actions.models import SlackMessageAction
 from validibot.actions.registry import get_action_form
-from validibot.core.idempotency import idempotent
 from validibot.core.utils import pretty_json
 from validibot.core.utils import pretty_xml
 from validibot.core.utils import reverse_with_org
@@ -62,7 +56,6 @@ from validibot.validations.forms import RulesetAssertionForm
 from validibot.validations.models import RulesetAssertion
 from validibot.validations.models import ValidationRun
 from validibot.validations.models import Validator
-from validibot.validations.serializers import ValidationRunStartSerializer
 from validibot.validations.services.validation_run import ValidationRunService
 from validibot.workflows.constants import WORKFLOW_LIST_LAYOUT_SESSION_KEY
 from validibot.workflows.constants import WORKFLOW_LIST_SHOW_ARCHIVED_SESSION_KEY
@@ -77,161 +70,19 @@ from validibot.workflows.mixins import WorkflowObjectMixin
 from validibot.workflows.mixins import WorkflowStepAssertionsMixin
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
-from validibot.workflows.permissions import WorkflowPermission
-from validibot.workflows.serializers import WorkflowSerializer
+from validibot.workflows.serializers import WorkflowFullSerializer
 from validibot.workflows.views_helpers import ensure_advanced_ruleset
 from validibot.workflows.views_helpers import public_info_card_context
 from validibot.workflows.views_helpers import resequence_workflow_steps
-from validibot.workflows.views_helpers import resolve_project
 from validibot.workflows.views_helpers import save_workflow_action_step
 from validibot.workflows.views_helpers import save_workflow_step
 from validibot.workflows.views_launch_helpers import LaunchValidationError
-from validibot.workflows.views_launch_helpers import build_submission_from_api
 from validibot.workflows.views_launch_helpers import build_submission_from_form
-from validibot.workflows.views_launch_helpers import launch_api_validation_run
 from validibot.workflows.views_launch_helpers import launch_web_validation_run
 
 logger = logging.getLogger(__name__)
 
 MAX_STEP_COUNT = 5
-
-
-# API Views
-# ------------------------------------------------------------------------------
-
-
-class WorkflowViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Read-only API endpoints for workflows, plus validation launching.
-
-    This ViewSet provides:
-    - list: List all workflows accessible to the authenticated user
-    - retrieve: Get details of a specific workflow (by ID or slug)
-    - start_validation: Launch a validation run on a workflow
-
-    Create, update, and delete operations are not available via API.
-    Users must use the web interface for workflow management.
-
-    This restriction is intentional to minimize the API attack surface
-    during the initial CLI rollout. See ADR-2025-12-22 for rationale.
-    """
-
-    throttle_scope: str | None = None
-    queryset = Workflow.objects.all()
-    serializer_class = WorkflowSerializer
-    permission_classes = [permissions.IsAuthenticated, WorkflowPermission]
-    # Allow lookup by either pk (integer) or slug (string)
-    lookup_value_regex = r"[^/]+"
-
-    def get_queryset(self):
-        # List all workflows the user can access (in any of their orgs)
-        return Workflow.objects.for_user(self.request.user)
-
-    def get_object(self):
-        """
-        Retrieve a workflow by ID (integer) or slug (string).
-
-        Supports optional query parameters for disambiguation:
-        - org: Organization slug
-        - version: Workflow version
-        - project: Project slug (for filtering within an org)
-        """
-        queryset = self.filter_queryset(self.get_queryset())
-        lookup_value = self.kwargs.get(self.lookup_field)
-
-        # Try integer lookup first (pk)
-        if lookup_value and lookup_value.isdigit():
-            filter_kwargs = {"pk": int(lookup_value)}
-        else:
-            # Slug-based lookup
-            filter_kwargs = {"slug": lookup_value}
-
-            # Optional org disambiguation
-            org_slug = self.request.query_params.get("org")
-            if org_slug:
-                filter_kwargs["org__slug"] = org_slug
-
-            # Optional version disambiguation
-            version = self.request.query_params.get("version")
-            if version:
-                filter_kwargs["version"] = version
-
-            # Optional project filtering
-            project_slug = self.request.query_params.get("project")
-            if project_slug:
-                filter_kwargs["project__slug"] = project_slug
-
-        # Check for ambiguous matches when using slug without full disambiguation
-        if "slug" in filter_kwargs and "org__slug" not in filter_kwargs:
-            matches = queryset.filter(**filter_kwargs)
-            if matches.count() > 1:
-                # Return helpful error with disambiguation options
-                orgs = list(matches.values_list("org__slug", "version").distinct())
-                raise DRFValidationError(
-                    {
-                        "detail": _(
-                            "Multiple workflows found with slug '%(slug)s'. "
-                            "Use ?org=<org-slug> to disambiguate."
-                        )
-                        % {"slug": lookup_value},
-                        "matches": [{"org": org, "version": ver} for org, ver in orgs],
-                    },
-                )
-
-        obj = get_object_or_404(queryset, **filter_kwargs)
-
-        # May raise a permission denied
-        self.check_object_permissions(self.request, obj)
-
-        return obj
-
-    def get_serializer_class(self):
-        if getattr(self, "action", None) in [
-            "start_validation",
-        ]:
-            return ValidationRunStartSerializer
-        return super().get_serializer_class()
-
-    @action(
-        detail=True,
-        methods=["post"],
-        url_path="start",
-        url_name="start",
-        # Rate limit: 60 launches/minute per user
-        # (configurable via DRF_THROTTLE_RATE_LAUNCH env var)
-        # Protects against runaway automation while allowing batch processing.
-        throttle_scope="workflow_launch",
-    )
-    @idempotent
-    def start_validation(self, request, pk=None, *args, **kwargs):
-        """
-        Launch a validation run on this workflow.
-
-        Accepts multipart/form-data with a file upload or JSON payload.
-        Returns the created ValidationRun details.
-        """
-        workflow = self.get_object()
-        project = resolve_project(workflow=workflow, request=request)
-        try:
-            submission_build = build_submission_from_api(
-                request=request,
-                workflow=workflow,
-                user=request.user,
-                project=project,
-                serializer_factory=self.get_serializer,
-                multipart_payload=lambda: request.data,
-            )
-        except LaunchValidationError as exc:
-            status_code = exc.status_code
-            if status_code == HTTPStatus.FORBIDDEN:
-                status_code = HTTPStatus.NOT_FOUND
-            return APIResponse(exc.payload, status=status_code)
-
-        return launch_api_validation_run(
-            request=request,
-            workflow=workflow,
-            submission_build=submission_build,
-        )
 
 
 # UI Views
@@ -965,6 +816,61 @@ class WorkflowDetailView(WorkflowAccessMixin, DetailView):
                 "can_view_workflow": self.user_can_view_workflow(),
             },
         )
+        return context
+
+
+class WorkflowJsonView(WorkflowObjectMixin, TemplateView):
+    """
+    Read-only JSON representation of a workflow, including all steps and assertions.
+
+    Renders the WorkflowFullSerializer output as pretty-printed JSON in a simple
+    page. Useful for debugging, MCP tooling, and API consumers who want to inspect
+    the full workflow structure before building integrations.
+    """
+
+    template_name = "workflows/workflow_json.html"
+
+    def get_object(self) -> Workflow:
+        return (
+            Workflow.objects.filter(pk=self.kwargs["pk"])
+            .prefetch_related(
+                "steps__validator",
+                "steps__ruleset__assertions__target_catalog_entry",
+            )
+            .get()
+        )
+
+    def get_breadcrumbs(self):
+        workflow = self.get_workflow()
+        breadcrumbs = super().get_breadcrumbs()
+        breadcrumbs.append(
+            {
+                "name": _("Workflows"),
+                "url": reverse_with_org(
+                    "workflows:workflow_list",
+                    request=self.request,
+                ),
+            },
+        )
+        breadcrumbs.append(
+            {
+                "name": workflow.name,
+                "url": reverse_with_org(
+                    "workflows:workflow_detail",
+                    request=self.request,
+                    kwargs={"pk": workflow.pk},
+                ),
+            },
+        )
+        breadcrumbs.append({"name": _("JSON"), "url": ""})
+        return breadcrumbs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        workflow = self.get_object()
+        serializer = WorkflowFullSerializer(workflow, context={"request": self.request})
+        context["workflow"] = workflow
+        context["json_data"] = json.dumps(serializer.data, indent=2, ensure_ascii=False)
         return context
 
 

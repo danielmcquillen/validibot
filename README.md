@@ -191,9 +191,9 @@ For teams that need more:
 
 - Multiple workspaces per organization
 - Team management with workspace-level roles
+- Guest user management
 - Advanced analytics and reporting
 - Cryptographically signed validation badges (JWKS)
-- Billing and subscription management
 - Priority email support
 
 See [Pricing](https://validibot.com/pricing) for details. Need something else? [Get in touch](mailto:sales@mcquilleninteractive.com).

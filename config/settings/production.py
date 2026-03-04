@@ -104,6 +104,11 @@ SESSION_COOKIE_NAME = "__Secure-sessionid"
 CSRF_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-name
 CSRF_COOKIE_NAME = "__Secure-csrftoken"
+# Language cookie - must be Secure on HTTPS or browsers won't store it reliably
+# (especially with HSTS preload enabled)
+LANGUAGE_COOKIE_SECURE = True
+LANGUAGE_COOKIE_SAMESITE = "Lax"
+LANGUAGE_COOKIE_AGE = 31536000  # 1 year
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-seconds
 SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=2592000)
 # https://docs.djangoproject.com/en/dev/ref/settings/#secure-hsts-include-subdomains

@@ -39,6 +39,33 @@
             </li>
           {% endif %}
         {% endblock right_nav_items %}
+        {# Language selector #}
+        {% get_current_language as current_lang %}
+        {% get_available_languages as available_langs %}
+        <li class="nav-item dropdown">
+          <button class="btn btn-link nav-link dropdown-toggle px-2"
+                  type="button"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                  aria-label="{% trans 'Select language' %}">
+            <i class="bi bi-globe2"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            {% for lang_code, lang_name in available_langs %}
+              <li>
+                <form method="post" action="{% url 'set_language' %}" class="d-inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="language" value="{{ lang_code }}" />
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                  <button type="submit"
+                          class="dropdown-item {% if lang_code == current_lang %}active{% endif %}">
+                    {{ lang_name }}
+                  </button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        </li>
         {% if request.user.is_authenticated and ACCOUNT_ALLOW_LOGIN %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle"

@@ -19,6 +19,8 @@ from validibot.core.health import health_check
 from validibot.workflows import views as workflow_views
 
 urlpatterns = [
+    # Language switching — must live outside i18n_patterns so it is always reachable
+    path("i18n/", include("django.conf.urls.i18n")),
     # Health check endpoint for container orchestration (Docker, Kubernetes)
     path("health/", health_check, name="health-check"),
     path("health/deep/", deep_health_check, name="deep-health-check"),

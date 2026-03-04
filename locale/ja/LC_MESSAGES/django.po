@@ -1,0 +1,5816 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-03 04:18+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "English"
+msgstr "英語"
+
+msgid "Japanese"
+msgstr "日本語"
+
+msgid "Spanish"
+msgstr "スペイン語"
+
+msgid "Integration"
+msgstr "インテグレーション"
+
+msgid "Certification"
+msgstr "認証"
+
+msgid "Slack message"
+msgstr "Slackメッセージ"
+
+msgid "Signed certificate"
+msgstr "署名済み証明書"
+
+msgid "Message"
+msgstr "メッセージ"
+
+msgid "Message content delivered to Slack."
+msgstr "Slackに送信されるメッセージ内容。"
+
+msgid "Certificate template"
+msgstr "証明書テンプレート"
+
+msgid "Upload a PDF template. Leave empty to use the default template."
+msgstr "PDFテンプレートをアップロードしてください。デフォルトのテンプレートを使用する場合は空白のままにしてください。"
+
+#, python-format
+msgid "Upload a new template to replace '%(name)s'."
+msgstr "'%(name)s' を置き換える新しいテンプレートをアップロードしてください。"
+
+msgid "WorkflowStep has no validator configured."
+msgstr "ワークフローステップにバリデーターが設定されていません。"
+
+#, python-format
+msgid "File type '%(ft)s' not supported by this validator."
+msgstr "ファイルタイプ '%(ft)s' はこのバリデーターでサポートされていません。"
+
+msgid ""
+"Bootstrap icon class to render when displaying the action (e.g. 'bi-slack')."
+msgstr "アクション表示時にレンダリングするBootstrapアイコンクラス（例：'bi-slack'）。"
+
+msgid "Implementation type identifier (e.g. SLACK_MESSAGE)."
+msgstr "実装タイプ識別子（例：SLACK_MESSAGE）。"
+
+msgid "Optional JSON schema describing the configuration for this action."
+msgstr "このアクションの設定を記述するオプションのJSONスキーマ。"
+
+msgid "Name is required."
+msgstr "名前は必須です。"
+
+msgid "No renderers configured."
+msgstr "レンダラーが設定されていません。"
+
+msgid "API"
+msgstr "API"
+
+msgid "UI"
+msgstr "UI"
+
+msgid "GitHub App"
+msgstr "GitHub App"
+
+msgid "Pending"
+msgstr "処理中"
+
+msgid "Accepted"
+msgstr "承認済み"
+
+msgid "Declined"
+msgstr "拒否済み"
+
+msgid "Canceled"
+msgstr "キャンセル済み"
+
+msgid "Expired"
+msgstr "期限切れ"
+
+msgid "Team Management"
+msgstr "チーム管理"
+
+msgid "Guest Management"
+msgstr "ゲスト管理"
+
+msgid "Billing"
+msgstr "請求"
+
+msgid "Advanced Analytics"
+msgstr "高度な分析"
+
+msgid "Signed Badges"
+msgstr "署名済みバッジ"
+
+msgid "Multiple Organizations"
+msgstr "複数の組織"
+
+msgid "LDAP Integration"
+msgstr "LDAPインテグレーション"
+
+msgid "SAML Single Sign-On"
+msgstr "SAMLシングルサインオン"
+
+msgid "Subject"
+msgstr "件名"
+
+msgid "Please add a little more detail."
+msgstr "もう少し詳しく入力してください。"
+
+msgid "How can we help?"
+msgstr "どのようなサポートが必要ですか？"
+
+#, python-format
+msgid ""
+"%(feature_description)s requires Validibot %(edition_name)s.\n"
+"\n"
+"The Community edition includes all validators.\n"
+"%(edition_name)s adds additional capabilities for teams.\n"
+"\n"
+"Learn more: https://validibot.com/pricing"
+msgstr ""
+"%(feature_description)s には Validibot %(edition_name)s が必要です。\n"
+"\n"
+"コミュニティエディションにはすべてのバリデーターが含まれています。\n"
+"%(edition_name)s はチーム向けの追加機能を提供します。\n"
+"\n"
+"詳細：https://validibot.com/pricing"
+
+msgid "This feature"
+msgstr "この機能"
+
+msgid "Processing"
+msgstr "処理中"
+
+msgid "Completed"
+msgstr "完了"
+
+msgid "Thanks for reaching out. A member of the team will respond soon."
+msgstr "お問い合わせいただきありがとうございます。担当者より近日中にご連絡いたします。"
+
+msgid ""
+"We couldn't send your message. Please correct the highlighted fields and try "
+"again."
+msgstr "メッセージを送信できませんでした。強調表示されているフィールドを修正して再度お試しください。"
+
+msgid "You do not belong to any organizations yet."
+msgstr "まだどの組織にも属していません。"
+
+#, python-format
+msgid "New support message from %(name)s"
+msgstr "%(name)s からの新しいサポートメッセージ"
+
+#, python-format
+msgid ""
+"Subject: %(subject)s\n"
+"Message:\n"
+"%(message)s\n"
+"\n"
+"Submitted by: %(user)s (id=%(user_id)s)"
+msgstr ""
+"件名：%(subject)s\n"
+"メッセージ：\n"
+"%(message)s\n"
+"\n"
+"送信者：%(user)s (id=%(user_id)s)"
+
+msgid ""
+"Dashboard insights are available to organization owners, admins, and authors."
+msgstr "ダッシュボードのインサイトは、組織のオーナー、管理者、作成者が利用できます。"
+
+msgid "Submission Created"
+msgstr "提出物が作成されました"
+
+msgid "Workflow Created"
+msgstr "ワークフローが作成されました"
+
+msgid "Workflow Updated"
+msgstr "ワークフローが更新されました"
+
+msgid "Workflow Deleted"
+msgstr "ワークフローが削除されました"
+
+msgid "Run Created"
+msgstr "実行が作成されました"
+
+msgid "Run Started"
+msgstr "実行が開始されました"
+
+msgid "Run Succeeded"
+msgstr "実行が成功しました"
+
+msgid "Run Failed"
+msgstr "実行が失敗しました"
+
+msgid "Run Canceled"
+msgstr "実行がキャンセルされました"
+
+msgid "Run Timed Out"
+msgstr "実行がタイムアウトしました"
+
+msgid "Run Step Started"
+msgstr "実行ステップが開始されました"
+
+msgid "Run Step Passed"
+msgstr "実行ステップが合格しました"
+
+msgid "Run Step Failed"
+msgstr "実行ステップが失敗しました"
+
+msgid "Run Step Skipped"
+msgstr "実行ステップがスキップされました"
+
+msgid "Ruleset Created"
+msgstr "ルールセットが作成されました"
+
+msgid "Ruleset Updated"
+msgstr "ルールセットが更新されました"
+
+msgid "Validator Created"
+msgstr "バリデーターが作成されました"
+
+msgid "Validator Updated"
+msgstr "バリデーターが更新されました"
+
+msgid "GitHub Check Suite Requested"
+msgstr "GitHubチェックスイートがリクエストされました"
+
+msgid "GitHub Check Suite Completed"
+msgstr "GitHubチェックスイートが完了しました"
+
+msgid "User Logged In"
+msgstr "ユーザーがログインしました"
+
+msgid "User Logged Out"
+msgstr "ユーザーがログアウトしました"
+
+msgid "Invite Created"
+msgstr "招待が作成されました"
+
+msgid "Invite Accepted"
+msgstr "招待が承認されました"
+
+msgid "Invite Declined"
+msgstr "招待が拒否されました"
+
+msgid "Getting started"
+msgstr "はじめに"
+
+msgid "Workflows"
+msgstr "ワークフロー"
+
+msgid "Validators"
+msgstr "バリデーター"
+
+msgid "Concepts"
+msgstr "概念"
+
+msgid "Workspace"
+msgstr "ワークスペース"
+
+msgid "Index"
+msgstr "インデックス"
+
+msgid "Help"
+msgstr "ヘルプ"
+
+msgid "Member added."
+msgstr "メンバーを追加しました。"
+
+msgid "Invitation sent."
+msgstr "招待を送信しました。"
+
+msgid "Invitation canceled."
+msgstr "招待をキャンセルしました。"
+
+msgid "Members"
+msgstr "メンバー"
+
+msgid "Member roles updated."
+msgstr "メンバーの役割を更新しました。"
+
+msgid "You cannot remove yourself."
+msgstr "自分自身を削除することはできません。"
+
+msgid ""
+"The organization owner cannot be removed. Contact support to transfer "
+"ownership."
+msgstr "組織のオーナーは削除できません。オーナーシップを移転するにはサポートにお問い合わせください。"
+
+msgid "Cannot remove the final administrator from an organization."
+msgstr "組織から最後の管理者を削除することはできません。"
+
+msgid "Cannot remove the final owner from an organization."
+msgstr "組織から最後のオーナーを削除することはできません。"
+
+msgid "Member removed."
+msgstr "メンバーを削除しました。"
+
+#, python-format
+msgid "User '%(username)s' removed from organization"
+msgstr "ユーザー '%(username)s' を組織から削除しました"
+
+msgid "Guests"
+msgstr "ゲスト"
+
+msgid "Email address is required."
+msgstr "メールアドレスは必須です。"
+
+msgid "This user is already a member of the organization."
+msgstr "このユーザーはすでに組織のメンバーです。"
+
+msgid "An invitation is already pending for this email."
+msgstr "このメールアドレスへの招待がすでに保留中です。"
+
+msgid "Please select at least one workflow."
+msgstr "少なくとも1つのワークフローを選択してください。"
+
+#, python-format
+msgid "Invitation sent to %(email)s."
+msgstr "%(email)s に招待を送信しました。"
+
+msgid "This user is a member, not a guest. Use member management instead."
+msgstr "このユーザーはゲストではなくメンバーです。メンバー管理を使用してください。"
+
+#, python-format
+msgid "Your guest access to %(org)s has been removed."
+msgstr "%(org)s へのゲストアクセスが削除されました。"
+
+#, python-format
+msgid "Revoked access to %(count)d workflow(s) for %(email)s."
+msgstr "%(email)s の %(count)d 件のワークフローへのアクセスを取り消しました。"
+
+msgid "Member invite"
+msgstr "メンバー招待"
+
+msgid "Guest invite"
+msgstr "ゲスト招待"
+
+msgid "Workflow invite"
+msgstr "ワークフロー招待"
+
+msgid "System alert"
+msgstr "システムアラート"
+
+msgid "Link to MemberInvite for member_invite notifications."
+msgstr "member_invite通知のMemberInviteへのリンク。"
+
+msgid "Link to GuestInvite for guest_invite notifications."
+msgstr "guest_invite通知のGuestInviteへのリンク。"
+
+msgid "Link to WorkflowInvite for workflow_invite notifications."
+msgstr "workflow_invite通知のWorkflowInviteへのリンク。"
+
+msgid "unknown user"
+msgstr "不明なユーザー"
+
+#, python-format
+msgid "Invitation to '%(username)s' to join %(org)s was %(action)s."
+msgstr "%(org)s への '%(username)s' の招待が %(action)s されました。"
+
+msgid "Invite is no longer valid."
+msgstr "招待は無効です。"
+
+msgid "This invite was sent to a different user."
+msgstr "この招待は別のユーザーに送信されました。"
+
+msgid "This invite is not addressed to your account."
+msgstr "この招待はあなたのアカウント宛てではありません。"
+
+msgid "accepted"
+msgstr "承認済み"
+
+msgid "Invitation accepted."
+msgstr "招待を承認しました。"
+
+msgid "declined"
+msgstr "拒否済み"
+
+msgid "Invitation declined."
+msgstr "招待を拒否しました。"
+
+#, python-format
+msgid "Guest invitation to '%(username)s' for %(org)s was %(action)s."
+msgstr "%(org)s への '%(username)s' のゲスト招待が %(action)s されました。"
+
+#, python-format
+msgid ""
+"Guest invitation accepted. You now have access to %(count)d workflow(s)."
+msgstr "ゲスト招待を承認しました。%(count)d 件のワークフローにアクセスできるようになりました。"
+
+msgid "Guest invitation declined."
+msgstr "ゲスト招待を拒否しました。"
+
+#, python-format
+msgid "Workflow invitation to '%(username)s' for %(workflow)s was %(action)s."
+msgstr "%(workflow)s への '%(username)s' のワークフロー招待が %(action)s されました。"
+
+#, python-format
+msgid "Invitation accepted. You now have access to '%(workflow)s'."
+msgstr "招待を承認しました。'%(workflow)s' にアクセスできるようになりました。"
+
+msgid "Used for workflow badges and other UI accents."
+msgstr "ワークフローバッジやその他のUI装飾に使用されます。"
+
+msgid "Badge color"
+msgstr "バッジカラー"
+
+msgid "Use a hex color code like #1F883D."
+msgstr "#1F883Dのような16進カラーコードを使用してください。"
+
+msgid "The organization this project belongs to."
+msgstr "このプロジェクトが属する組織。"
+
+msgid "Name of the project, e.g. 'My Project'"
+msgstr "プロジェクト名（例：'マイプロジェクト'）"
+
+msgid "Optional longer description of the project."
+msgstr "プロジェクトの詳細説明（任意）。"
+
+msgid "A unique identifier for the project, used in URLs."
+msgstr "URLに使用されるプロジェクトの一意の識別子。"
+
+msgid "Indicates the default project for an organization."
+msgstr "組織のデフォルトプロジェクトを示します。"
+
+msgid "Soft-delete flag."
+msgstr "論理削除フラグ。"
+
+msgid "Hex color used when displaying project badges (e.g. #1F883D)."
+msgstr "プロジェクトバッジ表示時に使用する16進カラー（例：#1F883D）。"
+
+msgid "Default projects cannot be deleted."
+msgstr "デフォルトプロジェクトは削除できません。"
+
+msgid "Projects"
+msgstr "プロジェクト"
+
+msgid "Project created."
+msgstr "プロジェクトを作成しました。"
+
+msgid "New"
+msgstr "新規"
+
+msgid "Project updated."
+msgstr "プロジェクトを更新しました。"
+
+msgid "Project deleted."
+msgstr "プロジェクトを削除しました。"
+
+msgid "Do not store (delete after validation)"
+msgstr "保存しない（検証後に削除）"
+
+msgid "Store for 1 day"
+msgstr "1日間保存"
+
+msgid "Store for 7 days"
+msgstr "7日間保存"
+
+msgid "Store for 30 days"
+msgstr "30日間保存"
+
+msgid "Store permanently"
+msgstr "永続的に保存"
+
+msgid "Store for 90 days"
+msgstr "90日間保存"
+
+msgid "Store for 1 year"
+msgstr "1年間保存"
+
+msgid "JSON"
+msgstr "JSON"
+
+msgid "XML"
+msgstr "XML"
+
+msgid "Plain Text"
+msgstr "プレーンテキスト"
+
+msgid "YAML"
+msgstr "YAML"
+
+msgid "Binary"
+msgstr "バイナリ"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "EnergyPlus IDF"
+msgstr "EnergyPlus IDF"
+
+msgid "EnergyPlus epJSON"
+msgstr "EnergyPlus epJSON"
+
+msgid "FMU"
+msgstr "FMU"
+
+msgid "THERM THMX"
+msgstr "THERM THMX"
+
+msgid "THERM THMZ (Archive)"
+msgstr "THERM THMZ（アーカイブ）"
+
+msgid "Binary/archived file not allowed for this content type."
+msgstr "このコンテンツタイプではバイナリ/アーカイブファイルは使用できません。"
+
+msgid "File too large."
+msgstr "ファイルが大きすぎます。"
+
+msgid "Optional descriptive name."
+msgstr "説明的な名前（任意）。"
+
+msgid "The file to validate, e.g. IDF, JSON, XML, etc."
+msgstr "検証するファイル（例：IDF、JSON、XMLなど）。"
+
+msgid "Workflow *version* to run."
+msgstr "実行するワークフローの*バージョン*。"
+
+msgid "Snapshot of workflow's retention policy at submission time."
+msgstr "提出時のワークフロー保存ポリシーのスナップショット。"
+
+msgid "When content should be purged (null = already purged or DO_NOT_STORE)."
+msgstr "コンテンツを削除するタイミング（null = 削除済みまたはDO_NOT_STORE）。"
+
+msgid "When content was purged (for audit trail)."
+msgstr "コンテンツが削除されたタイミング（監査証跡用）。"
+
+msgid "Cannot provide both inline_text and uploaded_file."
+msgstr "inline_textとuploaded_fileを同時に提供することはできません。"
+
+msgid "Must provide either inline_text or uploaded_file."
+msgstr "inline_textまたはuploaded_fileのいずれかを提供する必要があります。"
+
+msgid "inline_text cannot be empty."
+msgstr "inline_textを空にすることはできません。"
+
+msgid "Project must belong to the same organization."
+msgstr "プロジェクトは同じ組織に属している必要があります。"
+
+msgid "Workflow must belong to the same organization."
+msgstr "ワークフローは同じ組織に属している必要があります。"
+
+msgid "User must belong to the same organization."
+msgstr "ユーザーは同じ組織に属している必要があります。"
+
+msgid "Provide exactly one of content or input_file."
+msgstr "contentまたはinput_fileのいずれか1つを指定してください。"
+
+msgid "Submission that failed to purge."
+msgstr "削除に失敗した提出物。"
+
+msgid "When the initial purge failure occurred."
+msgstr "最初の削除失敗が発生したタイミング。"
+
+msgid "When the last retry attempt was made."
+msgstr "最後の再試行が行われたタイミング。"
+
+msgid "When to attempt the next retry."
+msgstr "次の再試行を行うタイミング。"
+
+msgid "Number of retry attempts made."
+msgstr "再試行回数。"
+
+msgid "Error message from the last failed attempt."
+msgstr "最後の失敗した試行からのエラーメッセージ。"
+
+msgid "Server Error"
+msgstr "サーバーエラー"
+
+msgid ""
+"\n"
+"    A 403 Forbidden error was encountered when trying to access this page.\n"
+"  "
+msgstr ""
+"\n"
+"    このページへのアクセス時に403 Forbiddenエラーが発生しました。\n"
+"  "
+
+msgid ""
+"\n"
+"         ERROR 403. Forbidden.\n"
+"      "
+msgstr ""
+"\n"
+"         エラー 403。アクセス禁止。\n"
+"      "
+
+msgid "Validibot robot dealing with a big issue."
+msgstr "大きな問題に対処するValidibotロボット。"
+
+msgid "Page not found"
+msgstr "ページが見つかりません"
+
+msgid ""
+"\n"
+"         ERROR 404. No page found.\n"
+"      "
+msgstr ""
+"\n"
+"         エラー 404。ページが見つかりません。\n"
+"      "
+
+msgid "Validibot robot holding a map while searching for a missing page."
+msgstr "見つからないページを探しながら地図を持つValidibotロボット。"
+
+msgid "Back to homepage"
+msgstr "ホームページに戻る"
+
+msgid ""
+"\n"
+"    An unexpected error occurred on the server. Please try refreshing the "
+"page, or head back to the Validibot\n"
+"    homepage.\n"
+"  "
+msgstr ""
+"\n"
+"    サーバーで予期しないエラーが発生しました。ページを更新するか、Validibotの\n"
+"    ホームページに戻ってください。\n"
+"  "
+
+msgid ""
+"\n"
+"         ERROR 500. Not good.\n"
+"      "
+msgstr ""
+"\n"
+"         エラー 500。問題が発生しました。\n"
+"      "
+
+msgid "Email Addresses"
+msgstr "メールアドレス"
+
+msgid "Manage the addresses you use to sign in and receive updates."
+msgstr "サインインや更新通知の受信に使用するメールアドレスを管理します。"
+
+msgid "Verified"
+msgstr "確認済み"
+
+msgid "Unverified"
+msgstr "未確認"
+
+msgid "Primary"
+msgstr "プライマリ"
+
+msgid "Make Primary"
+msgstr "プライマリに設定"
+
+msgid "Re-send Verification"
+msgstr "確認メールを再送信"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Add Email Address"
+msgstr "メールアドレスを追加"
+
+msgid "Add Email"
+msgstr "メール追加"
+
+msgid "Do you really want to remove the selected email address?"
+msgstr "選択したメールアドレスを本当に削除しますか？"
+
+msgid "Sign In"
+msgstr "サインイン"
+
+#, python-format
+msgid ""
+"Please sign in with one\n"
+"                      of your existing third party accounts. Or, <a "
+"href=\"%(signup_url)s\">sign up</a>\n"
+"                      for a %(site_name)s account and sign in below:"
+msgstr ""
+"既存のサードパーティアカウントのいずれかでサインインしてください。\n"
+"                      または、<a href=\"%(signup_url)s\">サインアップ</a>して\n"
+"                      %(site_name)s アカウントを作成し、以下からサインインしてください："
+
+msgid "or"
+msgstr "または"
+
+#, python-format
+msgid ""
+"Don't have an account?\n"
+"                        <a href=\"%(signup_url)s\">Sign up</a> first."
+msgstr ""
+"アカウントをお持ちでない方は\n"
+"                        まず<a href=\"%(signup_url)s\">サインアップ</a>してください。"
+
+msgid "Validibot"
+msgstr "Validibot"
+
+msgid "Cloud-enabled data validation engine."
+msgstr "クラウド対応データ検証エンジン。"
+
+msgid "Sign Out"
+msgstr "サインアウト"
+
+msgid "Are you sure you want to sign out?"
+msgstr "本当にサインアウトしますか？"
+
+msgid "Forgot Password?"
+msgstr "パスワードをお忘れですか？"
+
+msgid "Reset My Password"
+msgstr "パスワードをリセット"
+
+msgid "Back to Sign In"
+msgstr "サインインに戻る"
+
+#, python-format
+msgid ""
+"I agree to the <a href=\"%(terms_url)s\" target=\"_blank\">Terms of Service</"
+"a> and <a href=\"%(privacy_url)s\" target=\"_blank\">Privacy Policy</a>"
+msgstr ""
+"<a href=\"%(terms_url)s\" target=\"_blank\">利用規約</a>および"
+"<a href=\"%(privacy_url)s\" target=\"_blank\">プライバシーポリシー</a>に同意します"
+
+msgid "Sign Up"
+msgstr "サインアップ"
+
+msgid "Password Reset"
+msgstr "パスワードリセット"
+
+msgid ""
+"Forgotten your password? Enter your e-mail address below,<br />and we'll "
+"send you an e-mail allowing you to reset it."
+msgstr ""
+"パスワードをお忘れですか？以下にメールアドレスを入力してください。<br />"
+"パスワードをリセットするためのメールをお送りします。"
+
+#, python-format
+msgid ""
+"\n"
+"                Please <a href=\"mailto:%(contact_email)s\">contact us</a> "
+"if you have any\n"
+"                trouble resetting your password.\n"
+"            "
+msgstr ""
+"\n"
+"                パスワードのリセットに問題がある場合は、<a href=\"mailto:%(contact_email)s\">お問い合わせ</a>\n"
+"                ください。\n"
+"            "
+
+msgid "Start Your Free Trial"
+msgstr "無料トライアルを開始"
+
+msgid "Create an Account"
+msgstr "アカウントを作成"
+
+msgid "Create an account to start validating your data."
+msgstr "アカウントを作成してデータ検証を開始してください。"
+
+msgid "Already have an account?"
+msgstr "すでにアカウントをお持ちですか？"
+
+msgid "Sign in here"
+msgstr "こちらからサインイン"
+
+msgid "Signup by Invitation Only"
+msgstr "招待制サインアップ"
+
+msgid "Signup is by Invitation Only"
+msgstr "サインアップは招待制です"
+
+msgid ""
+"Validibot is currently available by invitation only. <br /> If you've "
+"received an invite link, please use that to create your account."
+msgstr ""
+"Validibotは現在、招待制でのみご利用いただけます。<br /> "
+"招待リンクを受け取った方は、そのリンクを使用してアカウントを作成してください。"
+
+msgid "How to get access:"
+msgstr "アクセス方法："
+
+msgid ""
+"Ask a workflow author to invite you to run their validation workflow. <br /> "
+"You'll receive an email with a link to create your free account."
+msgstr ""
+"ワークフロー作成者に検証ワークフローの実行への招待をリクエストしてください。<br /> "
+"無料アカウント作成用のリンクが記載されたメールが届きます。"
+
+msgid "Back to Home"
+msgstr "ホームに戻る"
+
+msgid "Validibot logo"
+msgstr "Validibotロゴ"
+
+msgid "Shared Workflows"
+msgstr "共有ワークフロー"
+
+msgid "My Validation Runs"
+msgstr "自分の検証実行"
+
+msgid "User Guide"
+msgstr "ユーザーガイド"
+
+msgid "Validation Runs"
+msgstr "検証実行"
+
+msgid "Dashboard"
+msgstr "ダッシュボード"
+
+msgid "Validator Library"
+msgstr "バリデーターライブラリ"
+
+msgid "Admin"
+msgstr "管理者"
+
+msgid "Organization"
+msgstr "組織"
+
+msgid "Support"
+msgstr "サポート"
+
+msgid "Hide navigation"
+msgstr "ナビゲーションを非表示"
+
+msgid "Show navigation"
+msgstr "ナビゲーションを表示"
+
+msgid "Notifications"
+msgstr "通知"
+
+msgid "unread notifications"
+msgstr "未読の通知"
+
+msgid "Open user menu"
+msgstr "ユーザーメニューを開く"
+
+msgid "User avatar"
+msgstr "ユーザーアバター"
+
+msgid "User Profile"
+msgstr "ユーザープロフィール"
+
+msgid "User Email"
+msgstr "ユーザーメール"
+
+msgid "API Key"
+msgstr "APIキー"
+
+msgid "Manage organizations"
+msgstr "組織を管理"
+
+msgid "Select organization"
+msgstr "組織を選択"
+
+msgid "Switch workspace to org:"
+msgstr "ワークスペースを組織に切り替え："
+
+msgid "No organizations available"
+msgstr "利用可能な組織がありません"
+
+msgid "Terms of Service"
+msgstr "利用規約"
+
+msgid "Pagination"
+msgstr "ページネーション"
+
+msgid "First"
+msgstr "最初"
+
+msgid "Previous"
+msgstr "前へ"
+
+msgid "Next"
+msgstr "次へ"
+
+msgid "Last"
+msgstr "最後"
+
+msgid "Show"
+msgstr "表示"
+
+msgid "per page"
+msgstr "件/ページ"
+
+msgid "App"
+msgstr "アプリ"
+
+msgid "My Profile"
+msgstr "マイプロフィール"
+
+msgid "Range"
+msgstr "範囲"
+
+msgid "CEL Hints"
+msgstr "CELヒント"
+
+msgid "XML tip:"
+msgstr "XMLのヒント："
+
+msgid "Numeric values need casting:"
+msgstr "数値は型変換が必要です："
+
+msgid "XML attributes:"
+msgstr "XML属性："
+
+msgid "Use the @ prefix with bracket notation:"
+msgstr "@プレフィックスと括弧記法を使用してください："
+
+msgid "Data validation engine for building energy models and technical data."
+msgstr "建物エネルギーモデルおよび技術データのデータ検証エンジン。"
+
+msgid "Create Account"
+msgstr "アカウント作成"
+
+msgid "Invite Guest"
+msgstr "ゲストを招待"
+
+#, python-format
+msgid ""
+"\n"
+"        <strong>About guests:</strong> Guests are existing Validibot users "
+"who can access specific workflows you've shared with them.\n"
+"        They are not members of your organization.\n"
+"        (<a href=\"%(members_url)s\">Members</a>, on the other hand, have "
+"full access based on their assigned roles.)\n"
+"      "
+msgstr ""
+"\n"
+"        <strong>ゲストについて：</strong>ゲストは、共有した特定のワークフローにアクセスできる既存のValidibotユーザーです。\n"
+"        ゲストは組織のメンバーではありません。\n"
+"        （<a href=\"%(members_url)s\">メンバー</a>は、割り当てられた役割に基づいてフルアクセスができます。）\n"
+"      "
+
+msgid "Current Guests"
+msgstr "現在のゲスト"
+
+msgid "workflow"
+msgstr "ワークフロー"
+
+msgid "Remove all workflow access for this user?"
+msgstr "このユーザーのすべてのワークフローアクセスを取り消しますか？"
+
+msgid "Revoke All"
+msgstr "すべて取り消す"
+
+msgid "No guests currently have access to workflows in this organization."
+msgstr "現在この組織のワークフローにアクセスできるゲストはいません。"
+
+msgid "Pending Invitations"
+msgstr "保留中の招待"
+
+msgid "All workflows"
+msgstr "すべてのワークフロー"
+
+msgid "selected workflow"
+msgstr "選択したワークフロー"
+
+msgid "Invited"
+msgstr "招待済み"
+
+msgid "Expires"
+msgstr "有効期限"
+
+msgid "Cancel this invitation?"
+msgstr "この招待をキャンセルしますか？"
+
+msgid "No pending invitations."
+msgstr "保留中の招待はありません。"
+
+msgid "Confirm member removal"
+msgstr "メンバー削除の確認"
+
+msgid "Remove member"
+msgstr "メンバーを削除"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to remove user \"%(username)s\" from "
+"organization \"%(org)s\"?\n"
+"              "
+msgstr ""
+"\n"
+"                ユーザー「%(username)s」を組織「%(org)s」から削除してもよろしいですか？\n"
+"              "
+
+msgid "They will lose access to this organization until invited again."
+msgstr "再度招待されるまで、この組織へのアクセスができなくなります。"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Yes, remove member"
+msgstr "はい、メンバーを削除します"
+
+msgid "Edit member"
+msgstr "メンバーを編集"
+
+#, python-format
+msgid ""
+"\n"
+"            Edit Organization Membership for User '%(name)s'\n"
+"          "
+msgstr ""
+"\n"
+"            ユーザー '%(name)s' の組織メンバーシップを編集\n"
+"          "
+
+msgid "User Properties"
+msgstr "ユーザープロパティ"
+
+msgid ""
+"This member is the organization owner and already has every permission. "
+"Ownership changes require Validibot support."
+msgstr "このメンバーは組織のオーナーであり、すべての権限を持っています。オーナーシップの変更にはValidibotのサポートが必要です。"
+
+msgid "Remove user from org"
+msgstr "組織からユーザーを削除"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Quick Help:"
+msgstr "クイックヘルプ："
+
+msgid "About member roles"
+msgstr "メンバーの役割について"
+
+msgid ""
+"\n"
+"                Roles are cumulative: higher roles (Owner, Admin, Author) "
+"automatically include lower ones. The form will check and lock the implied "
+"roles for you so you can see what comes along for the ride.\n"
+"              "
+msgstr ""
+"\n"
+"                役割は累積的です：上位の役割（オーナー、管理者、作成者）は自動的に下位の役割を含みます。フォームは暗示された役割をチェックしてロックするので、何が含まれているかを確認できます。\n"
+"              "
+
+msgid ""
+"\n"
+"                <strong>Want everything for a user?</strong><br /> Pick "
+"Admin (or Owner).\n"
+"              "
+msgstr ""
+"\n"
+"                <strong>ユーザーにすべての権限を付与したいですか？</strong><br /> 管理者（またはオーナー）を選択してください。\n"
+"              "
+
+msgid ""
+"\n"
+"               <strong>Want a tailored mix?</strong><br /> Uncheck the "
+"higher role and select the specific pieces you need—like Executor plus "
+"Validation Results Viewer, or Analytics Viewer alone.\n"
+"              "
+msgstr ""
+"\n"
+"               <strong>カスタマイズした組み合わせを希望ですか？</strong><br /> 上位の役割のチェックを外して、実行者＋検証結果ビューアーや分析ビューアー単体など、必要な部分を選択してください。\n"
+"              "
+
+msgid ""
+"\n"
+"             Here's a quick cheat sheet to help you pick:\n"
+"              "
+msgstr ""
+"\n"
+"             選択に役立つクイックチートシートです：\n"
+"              "
+
+msgid "Role"
+msgstr "役割"
+
+msgid "Includes automatically"
+msgstr "自動的に含まれる"
+
+msgid "Best for"
+msgstr "最適な用途"
+
+msgid ""
+"Author, Executor, Validation Results Viewer, Analytics Viewer, Workflow "
+"Viewer"
+msgstr "作成者、実行者、検証結果ビューアー、分析ビューアー、ワークフロービューアー"
+
+msgid "Full control of org settings, members, and content"
+msgstr "組織の設定、メンバー、コンテンツの完全な管理"
+
+msgid "Author"
+msgstr "作成者"
+
+msgid "Executor, Validation Results Viewer, Analytics Viewer, Workflow Viewer"
+msgstr "実行者、検証結果ビューアー、分析ビューアー、ワークフロービューアー"
+
+msgid "Building and maintaining workflows/validators"
+msgstr "ワークフロー/バリデーターの構築と維持"
+
+msgid "Executor"
+msgstr "実行者"
+
+msgid "Workflow Viewer"
+msgstr "ワークフロービューアー"
+
+msgid "Running validations and seeing their own runs"
+msgstr "検証の実行と自分の実行結果の確認"
+
+msgid "Analytics Viewer"
+msgstr "分析ビューアー"
+
+msgid "None (view dashboards only)"
+msgstr "なし（ダッシュボードの閲覧のみ）"
+
+msgid "Stakeholders who need dashboards without edit/run access"
+msgstr "編集/実行権限なしでダッシュボードが必要な関係者"
+
+msgid "None (read-only workflows)"
+msgstr "なし（読み取り専用ワークフロー）"
+
+msgid "Visibility into workflows without edit or run rights"
+msgstr "編集または実行権限なしでワークフローを参照"
+
+msgid "Validation Results Viewer"
+msgstr "検証結果ビューアー"
+
+msgid "None (view validation results org-wide)"
+msgstr "なし（組織全体の検証結果を閲覧）"
+
+msgid "Reviewers who inspect validation findings"
+msgstr "検証結果を確認するレビュアー"
+
+msgid ""
+"Tip: if a role is auto-selected and locked, it is implied by a higher role "
+"you chose. Uncheck the higher role to fine-tune the lower roles."
+msgstr "ヒント：役割が自動選択されてロックされている場合、選択した上位の役割によって暗示されています。上位の役割のチェックを外して下位の役割を細かく調整してください。"
+
+msgid "Invite Member"
+msgstr "メンバーを招待"
+
+#, python-format
+msgid ""
+"\n"
+"        <strong>About members:</strong> Members have access to your\n"
+"        organization, based on the roles you give them. Members can do "
+"things like author workflows, manage\n"
+"        organization settings and view analytics.\n"
+"        (<a href=\"%(guests_url)s\">Guests</a>, on the other hand, can only "
+"access specific workflows you've shared with them.\n"
+"      )\n"
+"      "
+msgstr ""
+"\n"
+"        <strong>メンバーについて：</strong>メンバーは、付与した役割に基づいて組織にアクセスできます。\n"
+"        メンバーはワークフローの作成、組織の設定管理、分析の閲覧などができます。\n"
+"        （<a href=\"%(guests_url)s\">ゲスト</a>は、共有した特定のワークフローにのみアクセスできます。\n"
+"      ）\n"
+"      "
+
+msgid "Current Members"
+msgstr "現在のメンバー"
+
+msgid "Close"
+msgstr "閉じる"
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to access workflows in \"%(name)s\" as a guest. They "
+"won't become a member of your organization.\n"
+"      "
+msgstr ""
+"\n"
+"        「%(name)s」のワークフローにゲストとしてアクセスするよう誰かを招待します。組織のメンバーにはなりません。\n"
+"      "
+
+msgid "Email address"
+msgstr "メールアドレス"
+
+msgid "Workflow Access"
+msgstr "ワークフローアクセス"
+
+msgid "Grant access to all current active workflows in this organization."
+msgstr "この組織のすべての有効なワークフローへのアクセスを許可します。"
+
+msgid "Selected workflows"
+msgstr "選択したワークフロー"
+
+msgid "Choose specific workflows to share."
+msgstr "共有する特定のワークフローを選択してください。"
+
+msgid "Select workflows"
+msgstr "ワークフローを選択"
+
+msgid "No active workflows available."
+msgstr "有効なワークフローがありません。"
+
+msgid "Send Invitation"
+msgstr "招待を送信"
+
+msgid "Select a user to invite:"
+msgstr "招待するユーザーを選択："
+
+msgid "Start typing at least 3 characters to search for a user."
+msgstr "ユーザーを検索するには3文字以上入力してください。"
+
+#, python-format
+msgid "No users found for \"%(query)s\". You can invite by email instead."
+msgstr "「%(query)s」に一致するユーザーが見つかりません。代わりにメールで招待できます。"
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to join \"%(name)s\" as a member. They'll have access "
+"based on the roles you assign.\n"
+"      "
+msgstr ""
+"\n"
+"        「%(name)s」にメンバーとして参加するよう誰かを招待します。割り当てた役割に基づいてアクセスできます。\n"
+"      "
+
+msgid "User or email"
+msgstr "ユーザーまたはメール"
+
+msgid "Type a username or email"
+msgstr "ユーザー名またはメールを入力"
+
+msgid "Organization members"
+msgstr "組織メンバー"
+
+msgid "Total members"
+msgstr "メンバー合計"
+
+msgid "Member"
+msgstr "メンバー"
+
+msgid "Roles"
+msgstr "役割"
+
+msgid "Actions"
+msgstr "アクション"
+
+msgid "No roles assigned "
+msgstr "役割が割り当てられていません"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "The organization owner cannot be removed."
+msgstr "組織のオーナーは削除できません。"
+
+msgid "Owner"
+msgstr "オーナー"
+
+msgid "Remove member with username"
+msgstr "ユーザー名でメンバーを削除"
+
+#, python-format
+msgid " Remove member %(membership.user.username)s "
+msgstr " メンバー %(membership.user.username)s を削除 "
+
+msgid "No members yet."
+msgstr "まだメンバーがいません。"
+
+msgid "Show dismissed"
+msgstr "非表示にした通知を表示"
+
+msgid "No notifications."
+msgstr "通知はありません。"
+
+#, python-format
+msgid "Invitation to %(org)s"
+msgstr "%(org)s への招待"
+
+#, python-format
+msgid "Guest access invitation for %(org)s"
+msgstr "%(org)s へのゲストアクセス招待"
+
+#, python-format
+msgid "Workflow invitation: %(workflow)s"
+msgstr "ワークフロー招待：%(workflow)s"
+
+msgid "Invitation"
+msgstr "招待"
+
+msgid "Workflow:"
+msgstr "ワークフロー："
+
+msgid "Organization:"
+msgstr "組織："
+
+msgid "Accept"
+msgstr "承認"
+
+msgid "Decline"
+msgstr "拒否"
+
+msgid "Dismiss"
+msgstr "非表示"
+
+msgid "Dismiss notification"
+msgstr "通知を非表示"
+
+msgid "(notification dismissed)"
+msgstr "（通知を非表示にしました）"
+
+msgid "Notification"
+msgstr "通知"
+
+msgid "Generate a new color"
+msgstr "新しい色を生成"
+
+#, python-format
+msgid "Delete %(name)s"
+msgstr "%(name)s を削除"
+
+msgid "This project and its related records will be removed."
+msgstr "このプロジェクトと関連するレコードが削除されます。"
+
+msgid "Delete project"
+msgstr "プロジェクトを削除"
+
+#, python-format
+msgid "Edit %(name)s"
+msgstr "%(name)s を編集"
+
+msgid "New project"
+msgstr "新しいプロジェクト"
+
+msgid "Create project"
+msgstr "プロジェクトを作成"
+
+msgid "Name"
+msgstr "名前"
+
+msgid "Color"
+msgstr "カラー"
+
+msgid "Description"
+msgstr "説明"
+
+msgid "Default"
+msgstr "デフォルト"
+
+msgid "No description"
+msgstr "説明なし"
+
+msgid "Protected"
+msgstr "保護済み"
+
+msgid "Delete this project?"
+msgstr "このプロジェクトを削除しますか？"
+
+#, python-format
+msgid "Delete project %(project.name)s"
+msgstr "プロジェクト %(project.name)s を削除"
+
+msgid "No projects yet."
+msgstr "まだプロジェクトがありません。"
+
+msgid "CEL expression help (opens in new tab)"
+msgstr "CEL式のヘルプ（新しいタブで開く）"
+
+msgid "Your API Key"
+msgstr "APIキー"
+
+msgid "Manage the credentials you use to call the Validibot API."
+msgstr "Validibot APIの呼び出しに使用する認証情報を管理します。"
+
+msgid ""
+"This action cannot be undone. All associated memberships and projects will "
+"be removed."
+msgstr "この操作は取り消せません。関連するすべてのメンバーシップとプロジェクトが削除されます。"
+
+msgid "Delete organization"
+msgstr "組織を削除"
+
+msgid "View and manage organization settings."
+msgstr "組織の設定を表示・管理します。"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Details"
+msgstr "詳細"
+
+msgid "Slug"
+msgstr "スラッグ"
+
+msgid "Workspace type"
+msgstr "ワークスペースタイプ"
+
+msgid "Personal workspace"
+msgstr "個人ワークスペース"
+
+msgid "Team workspace"
+msgstr "チームワークスペース"
+
+msgid "Created"
+msgstr "作成日"
+
+msgid "Manage members"
+msgstr "メンバーを管理"
+
+msgid "Manage projects"
+msgstr "プロジェクトを管理"
+
+msgid "Need to invite or remove people?"
+msgstr "メンバーの招待や削除が必要ですか？"
+
+msgid ""
+"Use the Manage members page to invite teammates, adjust roles, or remove "
+"access. Return here anytime to review organization metadata."
+msgstr "メンバー管理ページを使用してチームメートを招待したり、役割を調整したり、アクセスを削除したりしてください。組織のメタデータを確認するためにいつでもここに戻ることができます。"
+
+msgid "New organization"
+msgstr "新しい組織"
+
+msgid "Create Organization"
+msgstr "組織を作成"
+
+msgid "Manage your organization settings."
+msgstr "組織の設定を管理します。"
+
+msgid "Set up a new organization."
+msgstr "新しい組織を設定します。"
+
+msgid "Back"
+msgstr "戻る"
+
+msgid "Organizations"
+msgstr "組織"
+
+msgid "You are not an administrator for any organizations yet."
+msgstr "まだどの組織の管理者でもありません。"
+
+msgid "Edit member roles"
+msgstr "メンバーの役割を編集"
+
+msgid "Personal"
+msgstr "個人"
+
+msgid "Use this key to authenticate API requests with the application API."
+msgstr "このキーを使用してアプリケーションAPIへのAPIリクエストを認証します。"
+
+msgid "API key"
+msgstr "APIキー"
+
+msgid "Copied"
+msgstr "コピーしました"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Generate new key"
+msgstr "新しいキーを生成"
+
+msgid ""
+"Generating a new key immediately invalidates the previous key. Update any "
+"clients that use the API."
+msgstr "新しいキーを生成すると、以前のキーはすぐに無効になります。APIを使用しているクライアントを更新してください。"
+
+msgid "Profile"
+msgstr "プロフィール"
+
+msgid "Email"
+msgstr "メールアドレス"
+
+msgid "Granted automatically by a higher-level role."
+msgstr "上位の役割によって自動的に付与されます。"
+
+msgid "Account Settings"
+msgstr "アカウント設定"
+
+msgid "Your User Profile"
+msgstr "ユーザープロフィール"
+
+msgid "Update how you appear to teammates and across the product."
+msgstr "チームメートや製品全体での表示方法を更新します。"
+
+msgid "Current avatar"
+msgstr "現在のアバター"
+
+msgid "Save changes"
+msgstr "変更を保存"
+
+msgid "Profile Overview"
+msgstr "プロフィール概要"
+
+msgid "See the details teammates view across the product."
+msgstr "チームメートが製品全体で閲覧する詳細を確認します。"
+
+#, python-format
+msgid ""
+"\n"
+"              Public profile information for %(username)s.\n"
+"            "
+msgstr ""
+"\n"
+"              %(username)s の公開プロフィール情報。\n"
+"            "
+
+msgid "About"
+msgstr "概要"
+
+msgid "Username"
+msgstr "ユーザー名"
+
+msgid "Timezone"
+msgstr "タイムゾーン"
+
+msgid "Edit profile"
+msgstr "プロフィールを編集"
+
+msgid "Update Profile"
+msgstr "プロフィールを更新"
+
+msgid "Adjust how your information appears to teammates."
+msgstr "チームメートへの情報表示を調整します。"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Validation runs you've submitted on shared workflows"
+msgstr "共有ワークフローで提出した検証実行"
+
+msgid "All organizations"
+msgstr "すべての組織"
+
+msgid "Status"
+msgstr "ステータス"
+
+msgid "All statuses"
+msgstr "すべてのステータス"
+
+msgid "Workflow"
+msgstr "ワークフロー"
+
+msgid "Sort"
+msgstr "並べ替え"
+
+msgid "Newest first"
+msgstr "新しい順"
+
+msgid "Oldest first"
+msgstr "古い順"
+
+msgid "Workflow A-Z"
+msgstr "ワークフロー A-Z"
+
+msgid "Workflow Z-A"
+msgstr "ワークフロー Z-A"
+
+msgid "Filter"
+msgstr "フィルター"
+
+msgid "Reset"
+msgstr "リセット"
+
+msgid "ID"
+msgstr "ID"
+
+msgid "Submission"
+msgstr "提出物"
+
+msgid "Started"
+msgstr "開始日時"
+
+msgid "N/A"
+msgstr "N/A"
+
+msgid "View"
+msgstr "表示"
+
+msgid ""
+"No validation runs match your filters yet. Run a workflow to see your "
+"results here."
+msgstr "フィルターに一致する検証実行がありません。ワークフローを実行してここで結果を確認してください。"
+
+msgid "Delete Custom Basic Validator"
+msgstr "カスタムベーシックバリデーターを削除"
+
+msgid "Delete Validator"
+msgstr "バリデーターを削除"
+
+msgid "Warning"
+msgstr "警告"
+
+#, python-format
+msgid ""
+"\n"
+"            You are about to delete <strong>%(name)s</strong>. This action "
+"will remove the validator\n"
+"            and its catalog entries for everyone in your organization.\n"
+"              "
+msgstr ""
+"\n"
+"            <strong>%(name)s</strong> を削除しようとしています。この操作により、組織内の全員のバリデーターと\n"
+"            そのカタログエントリが削除されます。\n"
+"              "
+
+msgid "Are you sure you want to continue?"
+msgstr "続行してもよろしいですか？"
+
+msgid "This validator cannot be deleted because it is still referenced by:"
+msgstr "このバリデーターはまだ参照されているため削除できません："
+
+msgid "Unknown blocker"
+msgstr "不明なブロッカー"
+
+msgid "Validation Library"
+msgstr "検証ライブラリ"
+
+#, python-format
+msgid "Back to Edit \"%(validator_name)s\""
+msgstr "「%(validator_name)s」の編集に戻る"
+
+msgid "Save validator"
+msgstr "バリデーターを保存"
+
+msgid "Tips"
+msgstr "ヒント"
+
+msgid ""
+"Use clear, action-oriented names so authors recognize the validator "
+"instantly."
+msgstr "作成者がバリデーターをすぐに認識できるよう、明確でアクション指向の名前を使用してください。"
+
+msgid ""
+"Share context in the notes field—other team members see it while building "
+"workflows."
+msgstr "メモフィールドにコンテキストを共有してください。他のチームメンバーがワークフロー構築中に確認できます。"
+
+msgid "Pick the validator type that matches the backing engine or integration."
+msgstr "バッキングエンジンまたはインテグレーションに一致するバリデータータイプを選択してください。"
+
+msgid "Type"
+msgstr "タイプ"
+
+msgid "Create FMU Validator"
+msgstr "FMUバリデーターを作成"
+
+msgid "Create Validator"
+msgstr "バリデーターを作成"
+
+msgid "Toggle layout"
+msgstr "レイアウトを切り替え"
+
+msgid "List view"
+msgstr "リストビュー"
+
+msgid "Grid view"
+msgstr "グリッドビュー"
+
+msgid "New Validator"
+msgstr "新しいバリデーター"
+
+msgid "Custom"
+msgstr "カスタム"
+
+msgid "System"
+msgstr "システム"
+
+msgid "You have not created any custom validators yet."
+msgstr "まだカスタムバリデーターを作成していません。"
+
+msgid "No system validators are registered."
+msgstr "登録されたシステムバリデーターはありません。"
+
+msgid "Catalog Entries"
+msgstr "カタログエントリ"
+
+msgid "No catalog entries registered yet."
+msgstr "まだカタログエントリが登録されていません。"
+
+msgid "Filter:"
+msgstr "フィルター："
+
+msgid "Filter by signal name"
+msgstr "シグナル名でフィルター"
+
+msgid "Stage"
+msgstr "ステージ"
+
+msgid "View details"
+msgstr "詳細を表示"
+
+msgid "No entries match your filter."
+msgstr "フィルターに一致するエントリがありません。"
+
+msgid "Inputs"
+msgstr "入力"
+
+msgid "Outputs"
+msgstr "出力"
+
+msgid "Filter entries"
+msgstr "エントリをフィルター"
+
+msgid "No entries."
+msgstr "エントリがありません。"
+
+msgid "Signal name"
+msgstr "シグナル名"
+
+msgid "Target Path"
+msgstr "ターゲットパス"
+
+msgid "Add Resource File"
+msgstr "リソースファイルを追加"
+
+msgid "Upload"
+msgstr "アップロード"
+
+msgid "Edit Resource File"
+msgstr "リソースファイルを編集"
+
+msgid "Add default assertion"
+msgstr "デフォルトアサーションを追加"
+
+msgid "Save default assertion"
+msgstr "デフォルトアサーションを保存"
+
+msgid "Edit default assertion"
+msgstr "デフォルトアサーションを編集"
+
+msgid "Add signal"
+msgstr "シグナルを追加"
+
+msgid "Save signal"
+msgstr "シグナルを保存"
+
+msgid "Edit signal"
+msgstr "シグナルを編集"
+
+msgid "Create validator"
+msgstr "バリデーターを作成"
+
+msgid "Select the type of validator you want to build."
+msgstr "作成するバリデーターのタイプを選択してください。"
+
+msgid "Create"
+msgstr "作成"
+
+msgid "No validator types are available yet."
+msgstr "利用可能なバリデータータイプがまだありません。"
+
+msgid "Signal Name"
+msgstr "シグナル名"
+
+msgid "Label"
+msgstr "ラベル"
+
+msgid "Data Type"
+msgstr "データタイプ"
+
+msgid "Entry Type"
+msgstr "エントリタイプ"
+
+msgid "Signal Details"
+msgstr "シグナルの詳細"
+
+msgid "Order"
+msgstr "順序"
+
+msgid "Assertion"
+msgstr "アサーション"
+
+msgid "Signal"
+msgstr "シグナル"
+
+msgid "Default assertion actions"
+msgstr "デフォルトアサーションのアクション"
+
+#, python-format
+msgid "Delete default assertion '%(name)s'?"
+msgstr "デフォルトアサーション '%(name)s' を削除しますか？"
+
+msgid "No default assertions in this validator."
+msgstr "このバリデーターにデフォルトアサーションはありません。"
+
+msgid "No default assertions yet."
+msgstr "まだデフォルトアサーションがありません。"
+
+#, python-format
+msgid "Default assertions for %(name)s"
+msgstr "%(name)s のデフォルトアサーション"
+
+msgid "This validator has no default assertions."
+msgstr "このバリデーターにはデフォルトアサーションがありません。"
+
+msgid "View Validator Assertions"
+msgstr "バリデーターアサーションを表示"
+
+msgid "No description provided."
+msgstr "説明が提供されていません。"
+
+msgid "Validation Type"
+msgstr "検証タイプ"
+
+msgid "Version"
+msgstr "バージョン"
+
+msgid "Short Description"
+msgstr "短い説明"
+
+msgid "Coming soon"
+msgstr "近日公開"
+
+#, python-format
+msgid "Edit %(validator_name)s"
+msgstr "%(validator_name)s を編集"
+
+msgid "Delete validator"
+msgstr "バリデーターを削除"
+
+msgid "Add file"
+msgstr "ファイルを追加"
+
+msgid "Scope"
+msgstr "スコープ"
+
+msgid "Org"
+msgstr "組織"
+
+msgid "Resource file actions"
+msgstr "リソースファイルのアクション"
+
+#, python-format
+msgid "Delete resource file '%(name)s'?"
+msgstr "リソースファイル '%(name)s' を削除しますか？"
+
+msgid "No resource files for this validator."
+msgstr "このバリデーターにはリソースファイルがありません。"
+
+msgid "View all"
+msgstr "すべて表示"
+
+msgid "Target path"
+msgstr "ターゲットパス"
+
+msgid "Input"
+msgstr "入力"
+
+msgid "Signal actions"
+msgstr "シグナルのアクション"
+
+#, python-format
+msgid "Delete signal '%(name)s'?"
+msgstr "シグナル '%(name)s' を削除しますか？"
+
+msgid "Output"
+msgstr "出力"
+
+msgid ""
+"Signals are defined after an FMU is uploaded into this validator within a "
+"validation workflow."
+msgstr "シグナルは、検証ワークフロー内でこのバリデーターにFMUがアップロードされた後に定義されます。"
+
+msgid "No signals have been added yet."
+msgstr "まだシグナルが追加されていません。"
+
+msgid "Edit Validator Settings"
+msgstr "バリデーター設定を編集"
+
+msgid "FMU Probe Status"
+msgstr "FMUプローブのステータス"
+
+msgid "Run Probe"
+msgstr "プローブを実行"
+
+msgid "Refresh Status"
+msgstr "ステータスを更新"
+
+msgid "Signals"
+msgstr "シグナル"
+
+msgid "Default Assertions"
+msgstr "デフォルトアサーション"
+
+msgid "Resource Files"
+msgstr "リソースファイル"
+
+msgid "Back to Validator Library"
+msgstr "バリデーターライブラリに戻る"
+
+msgid "Add Signal"
+msgstr "シグナルを追加"
+
+#, python-format
+msgid "Signals for \"%(name)s\""
+msgstr "\"%(name)s\" のシグナル"
+
+msgid "All Signals"
+msgstr "すべてのシグナル"
+
+msgid "No signals have been defined for this validator."
+msgstr "このバリデーターにはシグナルが定義されていません。"
+
+#, python-format
+msgid "Back to \"%(name)s\""
+msgstr "\"%(name)s\" に戻る"
+
+msgid "Delete Validation"
+msgstr "検証を削除"
+
+msgid "Confirm deletion"
+msgstr "削除の確認"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to delete validation run #%(run)s? "
+"This action cannot be undone.\n"
+"              "
+msgstr ""
+"\n"
+"                検証実行 #%(run)s を削除してもよろしいですか？この操作は取り消せません。\n"
+"              "
+
+msgid "Validation Run"
+msgstr "検証実行"
+
+msgid "View Workflow"
+msgstr "ワークフローを表示"
+
+msgid "Delete this validation run?"
+msgstr "この検証実行を削除しますか？"
+
+msgid "Validations"
+msgstr "検証"
+
+msgid "Workflow A→Z"
+msgstr "ワークフロー A→Z"
+
+msgid "Workflow Z→A"
+msgstr "ワークフロー Z→A"
+
+msgid "Status A→Z"
+msgstr "ステータス A→Z"
+
+msgid "Status Z→A"
+msgstr "ステータス Z→A"
+
+msgid "Reset filters"
+msgstr "フィルターをリセット"
+
+msgid "Source"
+msgstr "ソース"
+
+msgid "No validation runs match your filters yet."
+msgstr "フィルターに一致する検証実行がありません。"
+
+msgid "Validations for the"
+msgstr "以下の検証："
+
+msgid "validation"
+msgstr "検証"
+
+msgid "Recent runs that have executed against this workflow."
+msgstr "このワークフローに対して実行された最近の実行。"
+
+msgid "Back to workflow"
+msgstr "ワークフローに戻る"
+
+msgid "Run"
+msgstr "実行"
+
+msgid "No validation runs yet for this workflow."
+msgstr "このワークフローの検証実行はまだありません。"
+
+msgid "Workflows you've been invited to use"
+msgstr "招待されたワークフロー"
+
+msgid "Active"
+msgstr "有効"
+
+msgid "Project"
+msgstr "プロジェクト"
+
+msgid "Unversioned"
+msgstr "バージョンなし"
+
+msgid ""
+"No shared workflows yet. You'll see workflows here once you've been invited "
+"to use them."
+msgstr "まだ共有ワークフローがありません。招待されると、ここにワークフローが表示されます。"
+
+msgid "Run in progress"
+msgstr "実行中"
+
+msgid "Run complete"
+msgstr "実行完了"
+
+msgid "Run failed"
+msgstr "実行失敗"
+
+msgid "Run canceled"
+msgstr "実行キャンセル"
+
+msgid "Refreshing automatically…"
+msgstr "自動更新中…"
+
+msgid "Cancel this workflow run?"
+msgstr "このワークフロー実行をキャンセルしますか？"
+
+msgid "Cancel workflow"
+msgstr "ワークフローをキャンセル"
+
+msgid "This run was canceled."
+msgstr "この実行はキャンセルされました。"
+
+msgid "Back to launch"
+msgstr "実行ページに戻る"
+
+msgid "View previous runs"
+msgstr "過去の実行を表示"
+
+msgid "Launch again"
+msgstr "再度実行"
+
+msgid "View full run"
+msgstr "実行全体を表示"
+
+msgid "Validation is currently running."
+msgstr "現在検証を実行中です。"
+
+msgid "We refresh this status automatically until the run completes."
+msgstr "実行が完了するまで自動的にステータスを更新します。"
+
+msgid "If you navigate away, you can use this URL to check back:"
+msgstr "ページを離れた場合は、このURLで確認できます："
+
+msgid "Submit content"
+msgstr "コンテンツを送信"
+
+msgid "Extra data"
+msgstr "追加データ"
+
+msgid "Input mode"
+msgstr "入力モード"
+
+msgid "Select input mode"
+msgstr "入力モードを選択"
+
+msgid "Upload file"
+msgstr "ファイルをアップロード"
+
+msgid "Paste text"
+msgstr "テキストを貼り付け"
+
+msgid "Upload file by browsing or dropping it here"
+msgstr "ファイルを参照またはドロップしてアップロード"
+
+msgid "Drag & drop a file"
+msgstr "ファイルをドラッグ＆ドロップ"
+
+msgid "or click to browse"
+msgstr "またはクリックして参照"
+
+msgid "Browse files"
+msgstr "ファイルを参照"
+
+msgid "No file selected yet."
+msgstr "まだファイルが選択されていません。"
+
+msgid ""
+"The workflow runs asynchronously. After submission you'll be redirected to "
+"the run status page."
+msgstr "ワークフローは非同期で実行されます。送信後、実行ステータスページにリダイレクトされます。"
+
+msgid "Submitting..."
+msgstr "送信中..."
+
+msgid "Launch Validation"
+msgstr "検証を実行"
+
+msgid "Launch Workflow"
+msgstr "ワークフローを実行"
+
+msgid "Launch Workflow "
+msgstr "ワークフローを実行 "
+
+msgid "This workflow is currently inactive."
+msgstr "このワークフローは現在無効です。"
+
+msgid ""
+"Re-enable the workflow from the settings page before launching new runs."
+msgstr "新しい実行を開始する前に、設定ページからワークフローを再有効化してください。"
+
+msgid "Manage workflow"
+msgstr "ワークフローを管理"
+
+msgid "This workflow has no steps yet."
+msgstr "このワークフローにはまだステップがありません。"
+
+msgid "Add at least one validation step before launching new runs."
+msgstr "新しい実行を開始する前に、少なくとも1つの検証ステップを追加してください。"
+
+msgid ""
+"\n"
+"                  You do not have permission to run this workflow. Contact "
+"an organization admin to request the Executor role.\n"
+"                "
+msgstr ""
+"\n"
+"                  このワークフローを実行する権限がありません。実行者役割をリクエストするには組織の管理者にお問い合わせください。\n"
+"                "
+
+msgid "You can still review the workflow configuration from the Info tab."
+msgstr "情報タブからワークフローの設定を確認することはできます。"
+
+msgid "Workflow Run"
+msgstr "ワークフロー実行"
+
+msgid "Status for workflow:"
+msgstr "ワークフローのステータス："
+
+msgid "No assertions defined yet."
+msgstr "まだアサーションが定義されていません。"
+
+msgid "Assertion actions"
+msgstr "アサーションのアクション"
+
+msgid "Edit assertion"
+msgstr "アサーションを編集"
+
+msgid "Move assertion up"
+msgstr "アサーションを上に移動"
+
+msgid "Move assertion down"
+msgstr "アサーションを下に移動"
+
+msgid "Delete this assertion?"
+msgstr "このアサーションを削除しますか？"
+
+msgid "Delete assertion"
+msgstr "アサーションを削除"
+
+msgid "Recent Validations"
+msgstr "最近の検証"
+
+msgid "No validations have been recorded for this workflow yet."
+msgstr "このワークフローにはまだ検証が記録されていません。"
+
+msgid "Default assertions"
+msgstr "デフォルトアサーション"
+
+#, python-format
+msgid ""
+"Default assertions run by the validator selected for this step: %(count)s "
+"assertion."
+msgid_plural ""
+"Default assertions run by validator selected for this step: %(count)s "
+"assertions."
+msgstr[0] "このステップで選択されたバリデーターが実行するデフォルトアサーション：%(count)s 件。"
+
+msgid ""
+"Because these assertions are defined in the validator, they always run, and "
+"are always evaluated first."
+msgstr "これらのアサーションはバリデーターで定義されているため、常に実行され、常に最初に評価されます。"
+
+msgid "View default assertions"
+msgstr "デフォルトアサーションを表示"
+
+msgid "No assertions have been added yet."
+msgstr "まだアサーションが追加されていません。"
+
+msgid "Create the first assertion"
+msgstr "最初のアサーションを作成"
+
+msgid "Step"
+msgstr "ステップ"
+
+msgid "Workflow step"
+msgstr "ワークフローステップ"
+
+msgid "Show schema"
+msgstr "スキーマを表示"
+
+msgid "Step details"
+msgstr "ステップの詳細"
+
+msgid "Edit step"
+msgstr "ステップを編集"
+
+msgid "Validator"
+msgstr "バリデーター"
+
+msgid "Validation type"
+msgstr "検証タイプ"
+
+msgid "Notes"
+msgstr "メモ"
+
+msgid "Launch workflow"
+msgstr "ワークフローを実行"
+
+#, python-format
+msgid "Launch %(workflow_name)s"
+msgstr "%(workflow_name)s を実行"
+
+msgid "Launch"
+msgstr "実行"
+
+msgid "Executor access required to run this workflow"
+msgstr "このワークフローを実行するには実行者アクセスが必要です"
+
+msgid "This workflow is archived and cannot be launched"
+msgstr "このワークフローはアーカイブされており、実行できません"
+
+msgid "Edit workflow"
+msgstr "ワークフローを編集"
+
+msgid "View workflow (archived)"
+msgstr "ワークフローを表示（アーカイブ済み）"
+
+msgid "View workflow"
+msgstr "ワークフローを表示"
+
+msgid "Unarchive workflow"
+msgstr "ワークフローのアーカイブを解除"
+
+#, python-format
+msgid "Unarchive %(workflow_name)s"
+msgstr "%(workflow_name)s のアーカイブを解除"
+
+msgid "Unarchive this workflow?"
+msgstr "このワークフローのアーカイブを解除しますか？"
+
+msgid "Archive workflow"
+msgstr "ワークフローをアーカイブ"
+
+#, python-format
+msgid "Archive %(workflow_name)s"
+msgstr "%(workflow_name)s をアーカイブ"
+
+msgid ""
+"Archive and disable this workflow? Existing runs will be allowed to finish."
+msgstr "このワークフローをアーカイブして無効化しますか？既存の実行は完了することができます。"
+
+msgid "Delete workflow"
+msgstr "ワークフローを削除"
+
+#, python-format
+msgid "Delete %(workflow_name)s"
+msgstr "%(workflow_name)s を削除"
+
+msgid "Delete this workflow?"
+msgstr "このワークフローを削除しますか？"
+
+msgid "Locked"
+msgstr "ロック済み"
+
+msgid "Archived"
+msgstr "アーカイブ済み"
+
+msgid "Inactive"
+msgstr "無効"
+
+msgid "Updated"
+msgstr "更新日"
+
+msgid "Delete Workflow"
+msgstr "ワークフローを削除"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to delete the workflow \"%(name)s\"? "
+"This action cannot be undone.\n"
+"              "
+msgstr ""
+"\n"
+"                ワークフロー「%(name)s」を削除してもよろしいですか？この操作は取り消せません。\n"
+"              "
+
+msgid "Guest Access"
+msgstr "ゲストアクセス"
+
+msgid "People with access to this workflow:"
+msgstr "このワークフローにアクセスできるユーザー："
+
+msgid "Added"
+msgstr "追加日"
+
+#, python-format
+msgid "by %(name)s"
+msgstr "%(name)s による"
+
+msgid "Remove access for this user?"
+msgstr "このユーザーのアクセスを取り消しますか？"
+
+msgid "No guests have been granted access to this workflow yet."
+msgstr "このワークフローへのアクセスを付与されたゲストはまだいません。"
+
+msgid "Pending invitations:"
+msgstr "保留中の招待："
+
+msgid "Resend invitation"
+msgstr "招待を再送信"
+
+msgid "Cancel invitation"
+msgstr "招待をキャンセル"
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to access the workflow \"%(name)s\". They will be "
+"able to launch validations but won't become a member of your organization.\n"
+"      "
+msgstr ""
+"\n"
+"        ワークフロー「%(name)s」にアクセスするよう誰かを招待します。検証を実行できますが、組織のメンバーにはなりません。\n"
+"      "
+
+msgid "Enter the email address of the person you want to invite."
+msgstr "招待したい人のメールアドレスを入力してください。"
+
+msgid "Workflow Public Info Page"
+msgstr "ワークフロー公開情報ページ"
+
+msgid "Visible"
+msgstr "表示"
+
+msgid "Private"
+msgstr "非公開"
+
+msgid "Hide public info page"
+msgstr "公開情報ページを非表示"
+
+msgid "Publish workflow info"
+msgstr "ワークフロー情報を公開"
+
+msgid "View public info"
+msgstr "公開情報を表示"
+
+msgid "Anyone with the link can currently view the workflow info page."
+msgstr "現在、リンクを持つ誰でもワークフロー情報ページを閲覧できます。"
+
+msgid "Only teammates with access can currently view the workflow info page."
+msgstr "現在、アクセス権を持つチームメートのみがワークフロー情報ページを閲覧できます。"
+
+msgid "Edit public info"
+msgstr "公開情報を編集"
+
+msgid "Untitled step"
+msgstr "無題のステップ"
+
+msgid "Policy check"
+msgstr "ポリシーチェック"
+
+msgid "AI critic"
+msgstr "AI批評"
+
+msgid "Blocking"
+msgstr "ブロッキング"
+
+msgid "Advisory"
+msgstr "アドバイザリ"
+
+msgid "rules"
+msgstr "ルール"
+
+msgid "Selectors"
+msgstr "セレクター"
+
+msgid "Cost cap"
+msgstr "コスト上限"
+
+msgid "JSON Schema validation"
+msgstr "JSONスキーマ検証"
+
+msgid "XML Schema"
+msgstr "XMLスキーマ"
+
+msgid "Simulation"
+msgstr "シミュレーション"
+
+msgid "Yes"
+msgstr "はい"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "EUI"
+msgstr "EUI"
+
+msgid "No additional configuration"
+msgstr "追加設定なし"
+
+msgid "Step actions"
+msgstr "ステップのアクション"
+
+msgid "Move up"
+msgstr "上に移動"
+
+msgid "Move down"
+msgstr "下に移動"
+
+msgid "Remove this step?"
+msgstr "このステップを削除しますか？"
+
+msgid "Policy sample"
+msgstr "ポリシーサンプル"
+
+msgid "Author notes"
+msgstr "作成者メモ"
+
+msgid "No workflow steps yet"
+msgstr "まだワークフローステップがありません"
+
+msgid "Add workflow steps to build your validation workflow."
+msgstr "ワークフローステップを追加して検証ワークフローを構築してください。"
+
+msgid "Add your first step"
+msgstr "最初のステップを追加"
+
+#, python-format
+msgid "You have reached the limit of %(max)s steps for a workflow."
+msgstr "ワークフローのステップ数の上限（%(max)s）に達しました。"
+
+msgid "Add workflow step"
+msgstr "ワークフローステップを追加"
+
+msgid "Choose the type of operation to run in this step."
+msgstr "このステップで実行する操作のタイプを選択してください。"
+
+#, python-format
+msgid ""
+"\n"
+"        This workflow already has %(max)s steps. Remove a step before adding "
+"another.\n"
+"      "
+msgstr ""
+"\n"
+"        このワークフローにはすでに %(max)s ステップがあります。別のステップを追加する前にステップを削除してください。\n"
+"      "
+
+msgid "No custom validators available yet."
+msgstr "まだカスタムバリデーターがありません。"
+
+msgid "Continue"
+msgstr "続ける"
+
+msgid "Visibility"
+msgstr "公開設定"
+
+msgid "Current"
+msgstr "現在"
+
+msgid "Only org members and invited guests can launch this workflow."
+msgstr "組織メンバーと招待されたゲストのみがこのワークフローを実行できます。"
+
+msgid "Public"
+msgstr "公開"
+
+msgid ""
+"Any logged-in user can launch this workflow. Usage is billed to your "
+"organization."
+msgstr "ログインしているユーザーは誰でもこのワークフローを実行できます。使用料は組織に請求されます。"
+
+msgid "The info page is automatically made public when the workflow is public."
+msgstr "ワークフローが公開されると、情報ページも自動的に公開されます。"
+
+msgid "Workflow access"
+msgstr "ワークフローアクセス"
+
+msgid ""
+"\n"
+"                    You can manage this workflow from the internal app.\n"
+"                    "
+msgstr ""
+"\n"
+"                    このワークフローは内部アプリから管理できます。\n"
+"                    "
+
+msgid ""
+"\n"
+"                    You do not currently have permission to run this "
+"workflow. Contact the workflow owner to request access.\n"
+"                    "
+msgstr ""
+"\n"
+"                    現在このワークフローを実行する権限がありません。アクセスをリクエストするにはワークフローのオーナーにお問い合わせください。\n"
+"                    "
+
+msgid ""
+"\n"
+"                Sign in to your Validibot account to request access or "
+"launch this workflow.\n"
+"                "
+msgstr ""
+"\n"
+"                アクセスをリクエストするか、このワークフローを実行するにはValidibotアカウントにサインインしてください。\n"
+"                "
+
+msgid "Open in app"
+msgstr "アプリで開く"
+
+msgid "Sign in"
+msgstr "サインイン"
+
+msgid "Start trial"
+msgstr "トライアルを開始"
+
+msgid "Workflow overview"
+msgstr "ワークフロー概要"
+
+msgid "Validibot Workflow Information"
+msgstr "Validibotワークフロー情報"
+
+msgid " You can manage this workflow from the internal app. "
+msgstr " このワークフローは内部アプリから管理できます。 "
+
+msgid ""
+" You do not currently have permission to run this workflow. Contact the "
+"workflow owner to request access. "
+msgstr " 現在このワークフローを実行する権限がありません。アクセスをリクエストするにはワークフローのオーナーにお問い合わせください。 "
+
+msgid ""
+" Sign in to your Validibot account to request access or launch this "
+"workflow. "
+msgstr " アクセスをリクエストするか、このワークフローを実行するにはValidibotアカウントにサインインしてください。 "
+
+msgid "Workflow Validation Steps"
+msgstr "ワークフロー検証ステップ"
+
+msgid "Workflow complete"
+msgstr "ワークフロー完了"
+
+msgid "No validation steps have been defined for this workflow."
+msgstr "このワークフローには検証ステップが定義されていません。"
+
+msgid "Workflow Details"
+msgstr "ワークフローの詳細"
+
+msgid "UUID"
+msgstr "UUID"
+
+msgid "File types"
+msgstr "ファイルタイプ"
+
+msgid "All Workflows"
+msgstr "すべてのワークフロー"
+
+msgid "Search workflows"
+msgstr "ワークフローを検索"
+
+msgid "Search by name or slug"
+msgstr "名前またはスラッグで検索"
+
+msgid "Workflow layout toggle"
+msgstr "ワークフローレイアウト切り替え"
+
+msgid "Ungrouped"
+msgstr "グループなし"
+
+#, python-format
+msgid ""
+"\n"
+"                          %(total)s validation step\n"
+"                        "
+msgid_plural ""
+"\n"
+"                          %(total)s validation steps\n"
+"                        "
+msgstr[0] "\n                          %(total)s 件の検証ステップ\n                        "
+
+msgid "Member access"
+msgstr "メンバーアクセス"
+
+#, python-format
+msgid ""
+"\n"
+"                            %(total)s validation step\n"
+"                          "
+msgid_plural ""
+"\n"
+"                            %(total)s validation steps\n"
+"                          "
+msgstr[0] "\n                            %(total)s 件の検証ステップ\n                          "
+
+#, python-format
+msgid ""
+"\n"
+"              No workflows match \"%(query)s\". Try a different search.\n"
+"            "
+msgstr ""
+"\n"
+"              「%(query)s」に一致するワークフローがありません。別の検索をお試しください。\n"
+"            "
+
+msgid "No workflows are available yet."
+msgstr "まだワークフローがありません。"
+
+msgid "Findings"
+msgstr "結果"
+
+msgid "Success"
+msgstr "成功"
+
+msgid "Validation successful. No errors reported."
+msgstr "検証成功。エラーは報告されていません。"
+
+msgid "robot image"
+msgstr "ロボット画像"
+
+msgid "Severity"
+msgstr "重大度"
+
+msgid "Path"
+msgstr "パス"
+
+msgid "No errors, warnings, or info for this step."
+msgstr "このステップにエラー、警告、情報はありません。"
+
+msgid "Run Summary"
+msgstr "実行サマリー"
+
+msgid "Submission name"
+msgstr "提出物名"
+
+msgid "Short description"
+msgstr "短い説明"
+
+msgid "Errors"
+msgstr "エラー"
+
+msgid "warnings"
+msgstr "警告"
+
+msgid "info"
+msgstr "情報"
+
+msgid "Total findings"
+msgstr "結果合計"
+
+msgid "Duration"
+msgstr "所要時間"
+
+msgid "Running…"
+msgstr "実行中…"
+
+msgid "Not captured"
+msgstr "キャプチャされていません"
+
+msgid "Submission metadata"
+msgstr "提出物メタデータ"
+
+msgid "Start a new validation run with this workflow"
+msgstr "このワークフローで新しい検証実行を開始"
+
+msgid "View JSON representation"
+msgstr "JSON表現を表示"
+
+msgid "Sharing settings"
+msgstr "共有設定"
+
+msgid "View Validations"
+msgstr "検証を表示"
+
+msgid "Delete this workflow"
+msgstr "このワークフローを削除"
+
+msgid "Workflow steps"
+msgstr "ワークフローステップ"
+
+msgid "Design the sequence of validations and actions."
+msgstr "検証とアクションのシーケンスを設計します。"
+
+msgid "Add step"
+msgstr "ステップを追加"
+
+msgid "Workflow details"
+msgstr "ワークフローの詳細"
+
+msgid "Edit workflow details"
+msgstr "ワークフローの詳細を編集"
+
+msgid "Workflow settings"
+msgstr "ワークフロー設定"
+
+#, python-format
+msgid " Image for workflow %(name)s "
+msgstr " ワークフロー %(name)s の画像 "
+
+msgid "Disable workflow"
+msgstr "ワークフローを無効化"
+
+msgid "Enable workflow"
+msgstr "ワークフローを有効化"
+
+msgid ""
+"Inactive workflows stay visible in the catalog but block new validation runs."
+msgstr "無効なワークフローはカタログに表示されますが、新しい検証実行はブロックされます。"
+
+msgid "not set"
+msgstr "未設定"
+
+msgid "Created by"
+msgstr "作成者"
+
+msgid "API access"
+msgstr "APIアクセス"
+
+msgid "Start this workflow via API"
+msgstr "APIでこのワークフローを開始"
+
+msgid "POST requests launch a validation run for this workflow."
+msgstr "POSTリクエストでこのワークフローの検証実行を開始します。"
+
+msgid "Endpoint"
+msgstr "エンドポイント"
+
+msgid "Auth"
+msgstr "認証"
+
+#, python-format
+msgid "Bearer token with the Executor role in %(org_name)s."
+msgstr "%(org_name)s の実行者役割を持つBearerトークン。"
+
+msgid "Content"
+msgstr "コンテンツ"
+
+msgid "Send raw content, a JSON envelope, or multipart form-data."
+msgstr "生コンテンツ、JSONエンベロープ、またはマルチパートフォームデータを送信します。"
+
+msgid ""
+"See the developer guide 'Using a Workflow via the API' for additional "
+"payload examples."
+msgstr "追加のペイロード例については、開発者ガイド「APIを使用したワークフロー」を参照してください。"
+
+msgid "Edit Workflow"
+msgstr "ワークフローを編集"
+
+msgid "New Workflow"
+msgstr "新しいワークフロー"
+
+msgid "Edit Workflow Settings"
+msgstr "ワークフロー設定を編集"
+
+msgid "Create workflow"
+msgstr "ワークフローを作成"
+
+msgid "Workflow JSON"
+msgstr "ワークフローJSON"
+
+#, python-format
+msgid ""
+"Full serialized representation of workflow <code>%(slug)s</code>, including "
+"all steps and assertions."
+msgstr "すべてのステップとアサーションを含むワークフロー <code>%(slug)s</code> の完全なシリアライズ表現。"
+
+msgid "Workflow List"
+msgstr "ワークフローリスト"
+
+msgid "Search"
+msgstr "検索"
+
+msgid "Clear"
+msgstr "クリア"
+
+msgid "Archived toggle"
+msgstr "アーカイブ切り替え"
+
+msgid "Hide archived workflows"
+msgstr "アーカイブ済みワークフローを非表示"
+
+msgid "Show archived workflows"
+msgstr "アーカイブ済みワークフローを表示"
+
+msgid "No workflows yet"
+msgstr "まだワークフローがありません"
+
+msgid "Get started by creating your first workflow."
+msgstr "最初のワークフローを作成して始めましょう。"
+
+msgid "Create a workflow"
+msgstr "ワークフローを作成"
+
+msgid "Edit Public Info"
+msgstr "公開情報を編集"
+
+msgid "Workflow Public Info"
+msgstr "ワークフロー公開情報"
+
+msgid "Supports Markdown. Content is sanitized before publishing."
+msgstr "Markdownをサポートしています。コンテンツは公開前にサニタイズされます。"
+
+msgid "Public page preview"
+msgstr "公開ページのプレビュー"
+
+msgid "Changes appear on the public page immediately after saving."
+msgstr "変更は保存後すぐに公開ページに反映されます。"
+
+msgid "View public page"
+msgstr "公開ページを表示"
+
+msgid "Sharing"
+msgstr "共有"
+
+msgid "Back to Workflow"
+msgstr "ワークフローに戻る"
+
+msgid "This workflow is public"
+msgstr "このワークフローは公開されています"
+
+msgid ""
+"Any authenticated user can launch this workflow. Guest access management is "
+"not needed for public workflows."
+msgstr "認証済みのユーザーは誰でもこのワークフローを実行できます。公開ワークフローにはゲストアクセス管理は不要です。"
+
+msgid "About Sharing"
+msgstr "共有について"
+
+#, python-format
+msgid "Edit Step · %(step)s"
+msgstr "ステップを編集 · %(step)s"
+
+msgid "Step Assertions"
+msgstr "ステップアサーション"
+
+msgid "Design the assertions for this step"
+msgstr "このステップのアサーションを設計します"
+
+msgid "Add assertion"
+msgstr "アサーションを追加"
+
+msgid "Input assertions"
+msgstr "入力アサーション"
+
+msgid "No input assertions yet."
+msgstr "まだ入力アサーションがありません。"
+
+msgid "Validator process"
+msgstr "バリデータープロセス"
+
+msgid "Output assertions"
+msgstr "出力アサーション"
+
+msgid "No output assertions yet."
+msgstr "まだ出力アサーションがありません。"
+
+msgid "This validator does not support assertions."
+msgstr "このバリデーターはアサーションをサポートしていません。"
+
+#, python-format
+msgid "Add Step · %(name)s · Validibot"
+msgstr "ステップを追加 · %(name)s · Validibot"
+
+#, python-format
+msgid "Step %(step_id)s · %(name)s · Validibot"
+msgstr "ステップ %(step_id)s · %(name)s · Validibot"
+
+msgid "Edit step details"
+msgstr "ステップの詳細を編集"
+
+msgid "We found a few issues. Please update the highlighted fields."
+msgstr "いくつかの問題が見つかりました。強調表示されているフィールドを更新してください。"
+
+msgid "Back to workflow step"
+msgstr "ワークフローステップに戻る"
+
+msgid "Previous step"
+msgstr "前のステップ"
+
+msgid "Next step"
+msgstr "次のステップ"
+
+msgid "Create step"
+msgstr "ステップを作成"
+
+msgid "Page View"
+msgstr "ページビュー"
+
+msgid "Button Click"
+msgstr "ボタンクリック"
+
+msgid "Form Submit"
+msgstr "フォーム送信"
+
+msgid "Application Event"
+msgstr "アプリケーションイベント"
+
+msgid "The project this event is associated with."
+msgstr "このイベントが関連するプロジェクト。"
+
+msgid "The organization this event is associated with."
+msgstr "このイベントが関連する組織。"
+
+msgid "The user who triggered this event."
+msgstr "このイベントをトリガーしたユーザー。"
+
+msgid "Optional additional data related to the event."
+msgstr "イベントに関連する追加データ（任意）。"
+
+msgid "Specific application event identifier when type is APP_EVENT."
+msgstr "タイプがAPP_EVENTの場合の特定のアプリケーションイベント識別子。"
+
+msgid "Event type is required to log a tracking event"
+msgstr "トラッキングイベントを記録するにはイベントタイプが必要です"
+
+msgid "The workflow invite is no longer valid."
+msgstr "ワークフロー招待は無効です。"
+
+#, python-format
+msgid ""
+"Welcome! You now have access to the workflow '%(name)s'. You can run "
+"validations on this workflow."
+msgstr "ようこそ！ワークフロー '%(name)s' にアクセスできるようになりました。このワークフローで検証を実行できます。"
+
+msgid ""
+"Your account was created but we couldn't activate your trial. Please contact "
+"support."
+msgstr "アカウントは作成されましたが、トライアルを有効化できませんでした。サポートにお問い合わせください。"
+
+msgid "Welcome! Your free trial is now active."
+msgstr "ようこそ！無料トライアルが開始されました。"
+
+msgid ""
+"Your account was created but we couldn't start your trial. Please contact "
+"support."
+msgstr "アカウントは作成されましたが、トライアルを開始できませんでした。サポートにお問い合わせください。"
+
+msgid "Personal info"
+msgstr "個人情報"
+
+msgid "Permissions"
+msgstr "権限"
+
+msgid "Important dates"
+msgstr "重要な日付"
+
+msgid "Users"
+msgstr "ユーザー"
+
+msgid "Start workflow runs"
+msgstr "ワークフロー実行を開始"
+
+msgid "View all validation results"
+msgstr "すべての検証結果を表示"
+
+msgid "View validation results for own runs"
+msgstr "自分の実行の検証結果を表示"
+
+msgid "View workflow definitions and metadata"
+msgstr "ワークフローの定義とメタデータを表示"
+
+msgid "Create or edit workflows"
+msgstr "ワークフローを作成・編集"
+
+msgid "View validators and catalog entries"
+msgstr "バリデーターとカタログエントリを表示"
+
+msgid "Create or edit validators"
+msgstr "バリデーターを作成・編集"
+
+msgid "View analytics and reporting dashboards"
+msgstr "分析・レポートダッシュボードを表示"
+
+msgid "Review or approve analytics outputs"
+msgstr "分析結果を確認・承認"
+
+msgid "Manage organization users and roles"
+msgstr "組織のユーザーと役割を管理"
+
+msgid ""
+"ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. Sole org authority with all "
+"admin rights."
+msgstr "セットアップ時に割り当てられ、ここでは変更できません。すべての管理者権限を持つ唯一の組織権限者。"
+
+msgid ""
+"Includes Author, Executor, Validation Results Viewer, Analytics Viewer, and "
+"Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
+msgstr "作成者、実行者、検証結果ビューアー、分析ビューアー、ワークフロービューアーが含まれます。個別の権限を細かく設定するには管理者のチェックを外してください。"
+
+msgid ""
+"Includes Executor, Validation Results Viewer, Analytics Viewer, and Workflow "
+"Viewer capabilities plus creating and editing workflows, validators, and "
+"rulesets."
+msgstr "実行者、検証結果ビューアー、分析ビューアー、ワークフロービューアーの機能に加え、ワークフロー、バリデーター、ルールセットの作成・編集が含まれます。"
+
+msgid ""
+"Includes Workflow Viewer access plus launch workflows, monitor progress, and "
+"review the runs they launch."
+msgstr "ワークフロービューアーアクセスに加え、ワークフローの実行、進捗の監視、実行した実行の確認が含まれます。"
+
+msgid "Read-only access to analytics dashboards and reports."
+msgstr "分析ダッシュボードとレポートへの読み取り専用アクセス。"
+
+msgid "Read-only access to all validation runs in organization."
+msgstr "組織内のすべての検証実行への読み取り専用アクセス。"
+
+msgid ""
+"Read-only access to workflows and org reports (no edit or execution "
+"permissions)."
+msgstr "ワークフローと組織レポートへの読み取り専用アクセス（編集または実行権限なし）。"
+
+msgid "Remove current avatar"
+msgstr "現在のアバターを削除"
+
+msgid "Check to delete your uploaded avatar."
+msgstr "アップロードしたアバターを削除するにはチェックしてください。"
+
+msgid "Manage your sign-in email from the User Email page."
+msgstr "ユーザーメールページからサインインメールを管理します。"
+
+msgid "This appears in shared links and invitations."
+msgstr "共有リンクや招待に表示されます。"
+
+msgid "Optional short bio that appears in team areas."
+msgstr "チームエリアに表示される短い自己紹介（任意）。"
+
+msgid "Acme Validation Lab"
+msgstr "Acme Validation Lab"
+
+msgid "This organization name is reserved. Please choose another."
+msgstr "この組織名は予約済みです。別の名前を選択してください。"
+
+msgid "User email"
+msgstr "ユーザーメール"
+
+msgid ""
+"Invitees may become Admins, Authors, Executors, or Viewers. The Owner role "
+"is fixed and cannot be granted through this form."
+msgstr "招待者は管理者、作成者、実行者、またはビューアーになれます。オーナー役割は固定されており、このフォームから付与することはできません。"
+
+#, python-format
+msgid "Enter the email address of an existing user to add them to %(org)s."
+msgstr "%(org)s に追加する既存ユーザーのメールアドレスを入力してください。"
+
+msgid "No user with that email exists in Validibot."
+msgstr "そのメールアドレスのユーザーはValidibotに存在しません。"
+
+msgid "That user is already a member of this organization."
+msgstr "そのユーザーはすでにこの組織のメンバーです。"
+
+msgid "Owner role cannot be assigned through this form."
+msgstr "オーナー役割はこのフォームから割り当てることはできません。"
+
+msgid "Start typing a username or email to search."
+msgstr "検索するにはユーザー名またはメールの入力を開始してください。"
+
+msgid "Organization context is required."
+msgstr "組織コンテキストが必要です。"
+
+msgid "Select a user or provide an email."
+msgstr "ユーザーを選択するかメールアドレスを入力してください。"
+
+msgid "Selected user does not exist."
+msgstr "選択したユーザーは存在しません。"
+
+msgid "The Owner role cannot be assigned through this screen."
+msgstr "オーナー役割はこの画面から割り当てることはできません。"
+
+msgid "This username has already been taken."
+msgstr "このユーザー名はすでに使用されています。"
+
+msgid "I agree to the Terms of Service and Privacy Policy"
+msgstr "利用規約とプライバシーポリシーに同意します"
+
+msgid "You must agree to the Terms of Service and Privacy Policy."
+msgstr "利用規約とプライバシーポリシーに同意する必要があります。"
+
+msgid "Default Project"
+msgstr "デフォルトプロジェクト"
+
+msgid "Name of the organization, e.g. 'My Organization'"
+msgstr "組織名（例：'マイ組織'）"
+
+msgid "Indicates if this organization is a personal workspace for a user."
+msgstr "この組織がユーザーの個人ワークスペースかどうかを示します。"
+
+msgid ""
+"When this organization's trial expires. NULL means no trial (community/self-"
+"hosted or paid subscription)."
+msgstr "この組織のトライアルが期限切れになるタイミング。NULLはトライアルなし（コミュニティ/セルフホストまたは有料サブスクリプション）を意味します。"
+
+msgid ""
+"The trial duration in days, snapshotted when the trial was activated. NULL "
+"for non-trial orgs."
+msgstr "トライアルの期間（日数）、トライアル有効化時のスナップショット。トライアルなしの組織はNULL。"
+
+msgid "This organization name is reserved."
+msgstr "この組織名は予約済みです。"
+
+msgid "Name of User"
+msgstr "ユーザー名"
+
+msgid "Square image works best across the app."
+msgstr "正方形の画像がアプリ全体で最適に表示されます。"
+
+msgid "Job title"
+msgstr "役職"
+
+msgid "Company"
+msgstr "会社"
+
+msgid "Location"
+msgstr "場所"
+
+msgid "Bio"
+msgstr "自己紹介"
+
+msgid "Organization the user is currently working in (can be changed by user)."
+msgstr "ユーザーが現在所属している組織（ユーザーが変更可能）。"
+
+msgid "member invite"
+msgstr "メンバー招待"
+
+msgid "member invites"
+msgstr "メンバー招待"
+
+msgid "Profile updated successfully"
+msgstr "プロフィールを更新しました"
+
+msgid "Overview"
+msgstr "概要"
+
+msgid "User Settings"
+msgstr "ユーザー設定"
+
+msgid "Generated a new API key."
+msgstr "新しいAPIキーを生成しました。"
+
+msgid "Organization created."
+msgstr "組織を作成しました。"
+
+msgid "Organization updated."
+msgstr "組織を更新しました。"
+
+msgid "Organization deleted."
+msgstr "組織を削除しました。"
+
+msgid "Personal workspaces cannot be deleted."
+msgstr "個人ワークスペースは削除できません。"
+
+msgid ""
+"You must assign another administrator before deleting this organization."
+msgstr "この組織を削除する前に別の管理者を割り当てる必要があります。"
+
+msgid "An organization must retain at least one administrator."
+msgstr "組織には少なくとも1人の管理者が必要です。"
+
+msgid "An organization must retain at least one owner."
+msgstr "組織には少なくとも1人のオーナーが必要です。"
+
+msgid "Roles updated."
+msgstr "役割を更新しました。"
+
+#, python-format
+msgid "Value for '%(path)s' was not found."
+msgstr "'%(path)s' の値が見つかりませんでした。"
+
+#, python-format
+msgid "Value was %(state)s."
+msgstr "値は %(state)s でした。"
+
+msgid "null"
+msgstr "null"
+
+msgid "not null"
+msgstr "nullではない"
+
+msgid "empty"
+msgstr "空"
+
+msgid "not empty"
+msgstr "空ではない"
+
+#, python-format
+msgid "Operator '%(operator)s' is not supported yet."
+msgstr "演算子 '%(operator)s' はまだサポートされていません。"
+
+msgid "Value is not numeric."
+msgstr "値が数値ではありません。"
+
+msgid "Value does not support counting."
+msgstr "値はカウントをサポートしていません。"
+
+#, python-format
+msgid "Expected between %(low)s and %(high)s."
+msgstr "%(low)s から %(high)s の範囲が期待されます。"
+
+msgid "Membership check failed."
+msgstr "メンバーシップチェックに失敗しました。"
+
+msgid "Value is not textual."
+msgstr "値がテキストではありません。"
+
+msgid "String comparison failed."
+msgstr "文字列比較に失敗しました。"
+
+msgid "Regular expression is missing."
+msgstr "正規表現がありません。"
+
+msgid "Regex evaluation timed out (possible ReDoS pattern)."
+msgstr "正規表現の評価がタイムアウトしました（ReDoSパターンの可能性）。"
+
+#, python-format
+msgid "Invalid regex: %(error)s"
+msgstr "無効な正規表現：%(error)s"
+
+msgid "Regex comparison failed."
+msgstr "正規表現比較に失敗しました。"
+
+msgid "Value has no length."
+msgstr "値に長さがありません。"
+
+msgid "Length comparison target missing."
+msgstr "長さ比較のターゲットがありません。"
+
+msgid "Length comparison failed."
+msgstr "長さ比較に失敗しました。"
+
+#, python-format
+msgid "Unsupported expected type '%(value)s'."
+msgstr "サポートされていない期待タイプ '%(value)s'。"
+
+msgid "Type mismatch."
+msgstr "タイプが一致しません。"
+
+#, python-format
+msgid "Difference %(diff)s exceeds tolerance %(tol)s."
+msgstr "差分 %(diff)s が許容誤差 %(tol)s を超えています。"
+
+msgid "Value is not a collection."
+msgstr "値がコレクションではありません。"
+
+msgid "Nested operator missing."
+msgstr "ネストされた演算子がありません。"
+
+msgid "Not every element satisfied the condition."
+msgstr "すべての要素が条件を満たしているわけではありません。"
+
+msgid "At least one element matched when none should."
+msgstr "一致してはいけない要素が少なくとも1つ一致しました。"
+
+msgid "No collection elements satisfied the condition."
+msgstr "条件を満たしたコレクション要素がありません。"
+
+msgid "Duplicate values detected."
+msgstr "重複する値が検出されました。"
+
+msgid "Collection is not a subset."
+msgstr "コレクションがサブセットではありません。"
+
+msgid "Collection is not a superset."
+msgstr "コレクションがスーパーセットではありません。"
+
+#, python-format
+msgid "Actual value %(actual)s failed comparison against %(expected)s."
+msgstr "実際の値 %(actual)s が %(expected)s との比較に失敗しました。"
+
+#, python-format
+msgid "%(target)s expected %(condition)s but was %(actual)s."
+msgstr "%(target)s に %(condition)s が期待されましたが、%(actual)s でした。"
+
+msgid "value"
+msgstr "値"
+
+msgid "Message template error - falling back to default output."
+msgstr "メッセージテンプレートエラー - デフォルト出力にフォールバックします。"
+
+#, python-format
+msgid "Unable to build CEL context: %(err)s"
+msgstr "CELコンテキストを構築できません：%(err)s"
+
+msgid "CEL expression is too long."
+msgstr "CEL式が長すぎます。"
+
+msgid "CEL context is too large."
+msgstr "CELコンテキストが大きすぎます。"
+
+#, python-format
+msgid "CEL 'when' failed: %(err)s"
+msgstr "CEL 'when' が失敗しました：%(err)s"
+
+#, python-format
+msgid "CEL evaluation failed: %(err)s"
+msgstr "CEL評価が失敗しました：%(err)s"
+
+msgid "CEL assertion evaluated to false."
+msgstr "CELアサーションがfalseと評価されました。"
+
+msgid ""
+"The '@' character cannot be used with dot notation in CEL. Use bracket "
+"notation for XML attributes — for example, m[\"@Conductivity\"] instead of "
+"m.@Conductivity."
+msgstr "CELでは '@' 文字をドット記法と一緒に使用できません。XML属性には括弧記法を使用してください — 例えば、m.@Conductivity の代わりに m[\"@Conductivity\"] を使用します。"
+
+msgid ""
+"A field in the expression was not found. XML attributes require an '@' "
+"prefix — for example, use m[\"@Conductivity\"] or "
+"double(m[\"@Conductivity\"]) instead of m.Conductivity."
+msgstr "式のフィールドが見つかりませんでした。XML属性には '@' プレフィックスが必要です — 例えば、m.Conductivity の代わりに m[\"@Conductivity\"] または double(m[\"@Conductivity\"]) を使用します。"
+
+#, python-format
+msgid ""
+"Field '%(name)s' was not found. If this is an XML attribute, use the '@' "
+"prefix with bracket notation: m[\"@%(name)s\"] instead of m.%(name)s."
+msgstr "フィールド '%(name)s' が見つかりませんでした。これがXML属性の場合は、'@' プレフィックスと括弧記法を使用してください：m.%(name)s の代わりに m[\"@%(name)s\"]。"
+
+#, python-format
+msgid ""
+"CEL references undefined name '%(identifier)s'. Check that this data path "
+"exists in the submission."
+msgstr "CELが未定義の名前 '%(identifier)s' を参照しています。このデータパスが提出物に存在することを確認してください。"
+
+#, python-format
+msgid ""
+"CEL references undefined name '%(identifier)s'. Ensure a matching validator "
+"signal exists."
+msgstr "CELが未定義の名前 '%(identifier)s' を参照しています。一致するバリデーターシグナルが存在することを確認してください。"
+
+msgid "Returns true when the value is not null/empty."
+msgstr "値がnull/空でない場合にtrueを返します。"
+
+msgid "Returns true when the numeric value is an integer."
+msgstr "数値が整数の場合にtrueを返します。"
+
+msgid "Calculates the q-quantile for the numeric list."
+msgstr "数値リストのq分位数を計算します。"
+
+msgid "Average of a list of numbers (ignores nulls)."
+msgstr "数値リストの平均（nullは無視）。"
+
+msgid "Sum of a list of numbers."
+msgstr "数値リストの合計。"
+
+msgid "Maximum value in a list of numbers."
+msgstr "数値リストの最大値。"
+
+msgid "Minimum value in a list of numbers."
+msgstr "数値リストの最小値。"
+
+msgid "Absolute value of a number."
+msgstr "数値の絶対値。"
+
+msgid "Round the numeric value to a number of decimal places."
+msgstr "数値を指定した小数点以下の桁数に丸めます。"
+
+msgid ""
+"Calculates the duration (in sample count) where predicate(series[i]) is true."
+msgstr "predicate(series[i])がtrueである期間（サンプル数）を計算します。"
+
+msgid "Running"
+msgstr "実行中"
+
+msgid "Succeeded"
+msgstr "成功"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "Timed Out"
+msgstr "タイムアウト"
+
+msgid "Pass"
+msgstr "合格"
+
+msgid "Fail"
+msgstr "失敗"
+
+msgid "Error"
+msgstr "エラー"
+
+msgid "Validation Failed"
+msgstr "検証失敗"
+
+msgid "Out of Memory"
+msgstr "メモリ不足"
+
+msgid "Runtime Error"
+msgstr "ランタイムエラー"
+
+msgid "System Error"
+msgstr "システムエラー"
+
+msgid "Grid"
+msgstr "グリッド"
+
+msgid "List"
+msgstr "リスト"
+
+msgid "Passed"
+msgstr "合格"
+
+msgid "Skipped"
+msgstr "スキップ済み"
+
+msgid "Cancelled"
+msgstr "キャンセル済み"
+
+msgid "Basic Assertions"
+msgstr "基本アサーション"
+
+msgid "JSON Schema"
+msgstr "JSONスキーマ"
+
+msgid "EnergyPlus"
+msgstr "EnergyPlus"
+
+msgid "FMU Validator"
+msgstr "FMUバリデーター"
+
+msgid "Custom Basic Validator"
+msgstr "カスタムベーシックバリデーター"
+
+msgid "THERM"
+msgstr "THERM"
+
+msgid "AI Assist"
+msgstr "AIアシスト"
+
+msgid "THERM Thermal Analysis"
+msgstr "THERM熱解析"
+
+msgid "Draft"
+msgstr "ドラフト"
+
+msgid "Coming Soon"
+msgstr "近日公開"
+
+msgid "Published"
+msgstr "公開済み"
+
+msgid "Low compute"
+msgstr "低演算"
+
+msgid "High compute"
+msgstr "高演算"
+
+msgid "Normal (1x)"
+msgstr "通常（1x）"
+
+msgid "Medium (2x)"
+msgstr "中程度（2x）"
+
+msgid "Heavy (3x)"
+msgstr "重い（3x）"
+
+msgid "Extreme (5x)"
+msgstr "極端（5x）"
+
+msgid "Simple"
+msgstr "シンプル"
+
+msgid "Modelica"
+msgstr "Modelica"
+
+msgid "KerML"
+msgstr "KerML"
+
+msgid "Info"
+msgstr "情報"
+
+msgid "Launch Page"
+msgstr "実行ページ"
+
+msgid "Document Type Definition (DTD)"
+msgstr "文書型定義（DTD）"
+
+msgid "XML Schema Definition (XSD)"
+msgstr "XMLスキーマ定義（XSD）"
+
+msgid "Relax NG (RNG)"
+msgstr "Relax NG（RNG）"
+
+msgid "Draft 2020-12"
+msgstr "ドラフト 2020-12"
+
+msgid "Draft 2019-09"
+msgstr "ドラフト 2019-09"
+
+msgid "Draft 7"
+msgstr "ドラフト 7"
+
+msgid "Draft 6"
+msgstr "ドラフト 6"
+
+msgid "Draft 4"
+msgstr "ドラフト 4"
+
+msgid "Derivation"
+msgstr "派生"
+
+msgid "Number"
+msgstr "数値"
+
+msgid "Timeseries"
+msgstr "時系列"
+
+msgid "String"
+msgstr "文字列"
+
+msgid "Boolean"
+msgstr "ブール値"
+
+msgid "Object"
+msgstr "オブジェクト"
+
+msgid "Basic Assertion"
+msgstr "基本アサーション"
+
+msgid "CEL expression"
+msgstr "CEL式"
+
+msgid "Equals"
+msgstr "等しい"
+
+msgid "Not equals"
+msgstr "等しくない"
+
+msgid "Less than"
+msgstr "より小さい"
+
+msgid "Less than or equal"
+msgstr "以下"
+
+msgid "Greater than"
+msgstr "より大きい"
+
+msgid "Greater than or equal"
+msgstr "以上"
+
+msgid "Between (range)"
+msgstr "範囲内"
+
+msgid "Is one of"
+msgstr "いずれかである"
+
+msgid "Is not one of"
+msgstr "いずれでもない"
+
+msgid "Set is subset of"
+msgstr "セットがサブセットである"
+
+msgid "Set is superset of"
+msgstr "セットがスーパーセットである"
+
+msgid "All values unique"
+msgstr "すべての値が一意"
+
+msgid "Contains"
+msgstr "含む"
+
+msgid "Does not contain"
+msgstr "含まない"
+
+msgid "Starts with"
+msgstr "で始まる"
+
+msgid "Ends with"
+msgstr "で終わる"
+
+msgid "Matches regex"
+msgstr "正規表現に一致"
+
+msgid "Is null"
+msgstr "nullである"
+
+msgid "Is not null"
+msgstr "nullではない"
+
+msgid "Is empty"
+msgstr "空である"
+
+msgid "Is not empty"
+msgstr "空ではない"
+
+msgid "Type is"
+msgstr "タイプが"
+
+msgid "Length equals"
+msgstr "長さが等しい"
+
+msgid "Length ≤"
+msgstr "長さ ≤"
+
+msgid "Length ≥"
+msgstr "長さ ≥"
+
+msgid "Count between"
+msgstr "カウントが範囲内"
+
+msgid "Before"
+msgstr "前"
+
+msgid "After"
+msgstr "後"
+
+msgid "Within duration"
+msgstr "期間内"
+
+msgid "≈ Equals (tolerance)"
+msgstr "≈ 等しい（許容誤差）"
+
+msgid "Any element satisfies"
+msgstr "いずれかの要素が満たす"
+
+msgid "All elements satisfy"
+msgstr "すべての要素が満たす"
+
+msgid "No element satisfies"
+msgstr "いずれの要素も満たさない"
+
+msgid "EnergyPlus Weather File (EPW)"
+msgstr "EnergyPlus気象ファイル（EPW）"
+
+msgid "Shown in lists and cards."
+msgstr "リストとカードに表示されます。"
+
+msgid "Supports Markdown. Plain text also works."
+msgstr "Markdownをサポートしています。プレーンテキストも使用できます。"
+
+msgid "Version label (e.g. '1.0', '2025-01')."
+msgstr "バージョンラベル（例：'1.0'、'2025-01'）。"
+
+msgid "Allow custom data paths in assertions"
+msgstr "アサーションでカスタムデータパスを許可"
+
+msgid "Allow assertions against data paths not declared as signals."
+msgstr "シグナルとして宣言されていないデータパスに対するアサーションを許可します。"
+
+msgid "Supported data format"
+msgstr "サポートされているデータ形式"
+
+msgid "Pick the single data format this validator will parse."
+msgstr "このバリデーターが解析する単一のデータ形式を選択してください。"
+
+msgid "Optional notes shown to other authors in your org."
+msgstr "組織内の他の作成者に表示される任意のメモ。"
+
+msgid "Optional project scope for this validator."
+msgstr "このバリデーターの任意のプロジェクトスコープ。"
+
+msgid "FMU file"
+msgstr "FMUファイル"
+
+msgid "Upload an FMU archive containing modelDescription.xml."
+msgstr "modelDescription.xmlを含むFMUアーカイブをアップロードしてください。"
+
+msgid "Upload an FMU archive."
+msgstr "FMUアーカイブをアップロードしてください。"
+
+msgid "Uploaded file is empty."
+msgstr "アップロードされたファイルが空です。"
+
+msgid "Expected a .fmu file."
+msgstr ".fmuファイルが必要です。"
+
+msgid "Absolute value"
+msgstr "絶対値"
+
+msgid "Percent of target"
+msgstr "ターゲットの割合"
+
+msgid "Assertion Type"
+msgstr "アサーションタイプ"
+
+msgid "Target Signal"
+msgstr "ターゲットシグナル"
+
+msgid "Catalog Signal"
+msgstr "カタログシグナル"
+
+msgid "Condition"
+msgstr "条件"
+
+msgid "Value"
+msgstr "値"
+
+msgid "Second value"
+msgstr "第2の値"
+
+msgid "Values (one per line)"
+msgstr "値（1行に1つ）"
+
+msgid "Regular expression"
+msgstr "正規表現"
+
+msgid "Include minimum"
+msgstr "最小値を含む"
+
+msgid "Include maximum"
+msgstr "最大値を含む"
+
+msgid "Case-insensitive"
+msgstr "大文字・小文字を区別しない"
+
+msgid "Unicode/locale fold"
+msgstr "Unicode/ロケールフォールド"
+
+msgid "Coerce numeric strings"
+msgstr "数値文字列を強制変換"
+
+msgid "Treat missing as null"
+msgstr "欠損値をnullとして扱う"
+
+msgid "Tolerance"
+msgstr "許容誤差"
+
+msgid "Tolerance type"
+msgstr "許容誤差タイプ"
+
+msgid "Date/Time"
+msgstr "日付/時刻"
+
+msgid "Collection member condition"
+msgstr "コレクションメンバーの条件"
+
+msgid "Collection member value"
+msgstr "コレクションメンバーの値"
+
+msgid "When (optional)"
+msgstr "条件（任意）"
+
+msgid "CEL expression, e.g., has(series('fac_elec'))"
+msgstr "CEL式（例：has(series('fac_elec'))）"
+
+msgid "Failure message"
+msgstr "失敗メッセージ"
+
+msgid ""
+"Shown when the assertion fails. Supports {{value}} style placeholders plus "
+"filters round, upper, lower, default."
+msgstr "アサーション失敗時に表示されます。{{value}}スタイルのプレースホルダーとフィルター（round、upper、lower、default）をサポートします。"
+
+msgid "Use template variables like {{value}}"
+msgstr "{{value}}のようなテンプレート変数を使用してください"
+
+msgid "Success message"
+msgstr "成功メッセージ"
+
+msgid "Shown when the assertion passes. Supports {{value}} style placeholders."
+msgstr "アサーション成功時に表示されます。{{value}}スタイルのプレースホルダーをサポートします。"
+
+msgid "e.g. EUI is within acceptable range"
+msgstr "例：EUIは許容範囲内です"
+
+msgid "Select a signal"
+msgstr "シグナルを選択"
+
+msgid ""
+"You may enter new targets using dot notation (e.g., data.error.message) and "
+"[index] for lists."
+msgstr "ドット記法（例：data.error.message）とリストの[index]を使用して新しいターゲットを入力できます。"
+
+msgid "Only declared signals are available for this validator."
+msgstr "このバリデーターでは宣言されたシグナルのみ利用可能です。"
+
+msgid ""
+"Use dot notation for nested objects and [index] for lists, e.g. "
+"`payload.results[0].value`"
+msgstr "ネストされたオブジェクトにはドット記法、リストには[index]を使用してください（例：`payload.results[0].value`）"
+
+msgid "Target Signal or Path"
+msgstr "ターゲットシグナルまたはパス"
+
+msgid ""
+"Use `output.<name>` to disambiguate output signals when an input signal "
+"shares the same name. Use dot notation for nested objects and [index] for "
+"lists, e.g. `payload.results[0].value`."
+msgstr "入力シグナルと同じ名前を持つ出力シグナルを区別するには `output.<name>` を使用してください。ネストされたオブジェクトにはドット記法、リストには[index]を使用してください（例：`payload.results[0].value`）。"
+
+msgid ""
+"Use `output.<name>` to disambiguate output signals when an input shares the "
+"same name."
+msgstr "入力と同じ名前を持つ出力シグナルを区別するには `output.<name>` を使用してください。"
+
+msgid "Search or enter a custom path"
+msgstr "検索またはカスタムパスを入力"
+
+msgid "(Select one)"
+msgstr "（選択してください）"
+
+msgid "Select a condition."
+msgstr "条件を選択してください。"
+
+#, python-format
+msgid "Unknown signal(s) referenced: %(names)s"
+msgstr "不明なシグナルが参照されています：%(names)s"
+
+msgid ""
+"Unknown signal(s) referenced. Provide a catalog signal or enable custom "
+"targets."
+msgstr "不明なシグナルが参照されています。カタログシグナルを指定するか、カスタムターゲットを有効にしてください。"
+
+#, python-format
+msgid ""
+"Both an input and output are named '%(name)s'. Use `output.%(name)s` to "
+"target the output signal."
+msgstr "入力と出力の両方が '%(name)s' という名前です。出力シグナルをターゲットにするには `output.%(name)s` を使用してください。"
+
+msgid ""
+"Custom targets must use dot notation with optional numeric indexes, e.g. "
+"`data.results[0].value`."
+msgstr "カスタムターゲットはオプションの数値インデックスを含むドット記法を使用する必要があります（例：`data.results[0].value`）。"
+
+msgid "Provide a regular expression."
+msgstr "正規表現を入力してください。"
+
+msgid "Provide a tolerance value."
+msgstr "許容誤差の値を入力してください。"
+
+msgid "Select a tolerance type."
+msgstr "許容誤差タイプを選択してください。"
+
+msgid "Provide a date/time value."
+msgstr "日付/時刻の値を入力してください。"
+
+msgid "Select a condition for the collection members."
+msgstr "コレクションメンバーの条件を選択してください。"
+
+#, python-format
+msgid "Operator %(op)s is not supported."
+msgstr "演算子 %(op)s はサポートされていません。"
+
+msgid "Provide a value."
+msgstr "値を入力してください。"
+
+msgid "Provide at least one value (one per line)."
+msgstr "少なくとも1つの値を入力してください（1行に1つ）。"
+
+msgid "Provide a CEL expression."
+msgstr "CEL式を入力してください。"
+
+msgid "Parentheses and brackets must be balanced."
+msgstr "括弧は対応している必要があります。"
+
+msgid "Assertion type"
+msgstr "アサーションタイプ"
+
+msgid "Enter a CEL expression that references validator signals."
+msgstr "バリデーターシグナルを参照するCEL式を入力してください。"
+
+msgid "Lower numbers run first."
+msgstr "小さい数値が先に実行されます。"
+
+msgid "Signals referenced"
+msgstr "参照されるシグナル"
+
+msgid "Signals are detected from the CEL expression and shown for reference."
+msgstr "シグナルはCEL式から検出され、参照用に表示されます。"
+
+msgid "Unsupported assertion type."
+msgstr "サポートされていないアサーションタイプです。"
+
+msgid "CEL expression is required."
+msgstr "CEL式は必須です。"
+
+msgid ""
+"Short, slug-form name (lowercase letters, numbers, hyphens) used in "
+"assertions and CEL expressions."
+msgstr "アサーションおよびCEL式で使用される短いスラッグ形式の名前（小文字、数字、ハイフン）。"
+
+msgid "Signal name is required."
+msgstr "シグナル名は必須です。"
+
+msgid ""
+"A short description to help you remember what data this signal represents."
+msgstr "このシグナルが表すデータを覚えるための短い説明。"
+
+msgid ""
+"Requires the signal to be present in the submission (inputs) or processor "
+"output (outputs)."
+msgstr "シグナルが提出物（入力）またはプロセッサー出力（出力）に存在することを要求します。"
+
+msgid "Data path"
+msgstr "データパス"
+
+#, python-format
+msgid ""
+"Use slug format (lowercase letters, numbers, hyphens). Try: %(suggested)s"
+msgstr "スラッグ形式（小文字、数字、ハイフン）を使用してください。試してみてください：%(suggested)s"
+
+msgid "a-slug-name"
+msgstr "スラッグ名"
+
+msgid ""
+"Signal name must be unique across inputs and outputs for this validator."
+msgstr "シグナル名は、このバリデーターの入力と出力で一意である必要があります。"
+
+#, python-format
+msgid "File type '.%(ext)s' is not allowed. Accepted: %(allowed)s."
+msgstr "ファイルタイプ '.%(ext)s' は許可されていません。許可されているタイプ：%(allowed)s。"
+
+#, python-format
+msgid "File is too large (max %(max)s MB)."
+msgstr "ファイルが大きすぎます（最大 %(max)s MB）。"
+
+msgid "This file appears to be a binary archive or executable."
+msgstr "このファイルはバイナリアーカイブまたは実行可能ファイルのようです。"
+
+#, python-format
+msgid "File content does not match expected format for %(type)s."
+msgstr "ファイルコンテンツが %(type)s の期待される形式と一致しません。"
+
+msgid ""
+"Username or email of the user (defaults to current user or first available)"
+msgstr "ユーザーのユーザー名またはメール（デフォルトは現在のユーザーまたは最初に利用可能なユーザー）"
+
+msgid "The user who created this ruleset."
+msgstr "このルールセットを作成したユーザー。"
+
+msgid "Type of validation ruleset, e.g. 'json_schema', 'xml_schema'"
+msgstr "検証ルールセットのタイプ（例：'json_schema'、'xml_schema'）"
+
+msgid ""
+"Optional uploaded file containing the ruleset definition. Leave empty when "
+"pasting rules directly."
+msgstr "ルールセット定義を含むアップロードファイル（任意）。ルールを直接貼り付ける場合は空白のままにしてください。"
+
+msgid ""
+"Inline ruleset definition (for example, JSON Schema or XML schema text). Use "
+"this when you prefer to paste or store the rules without uploading a file."
+msgstr "インラインのルールセット定義（例：JSONスキーマまたはXMLスキーマのテキスト）。ファイルをアップロードせずにルールを貼り付けるか保存する場合に使用してください。"
+
+msgid "Additional metadata about the ruleset (non-rule data only)."
+msgstr "ルールセットに関する追加メタデータ（ルール以外のデータのみ）。"
+
+msgid "Provide rules either as text or file, not both."
+msgstr "ルールはテキストまたはファイルのどちらか一方で指定してください。"
+
+msgid "XML schema rulesets must define metadata['schema_type']."
+msgstr "XMLスキーマルールセットはmetadata['schema_type']を定義する必要があります。"
+
+#, python-format
+msgid "Schema type '%(st)s' is not valid for %(rt)s."
+msgstr "スキーマタイプ '%(st)s' は %(rt)s に対して有効ではありません。"
+
+msgid "JSON schema rulesets must define metadata['schema_type']."
+msgstr "JSONスキーマルールセットはmetadata['schema_type']を定義する必要があります。"
+
+msgid ""
+"Schema rulesets must include either inline rules text or an uploaded file."
+msgstr "スキーマルールセットにはインラインのルールテキストまたはアップロードされたファイルのいずれかが含まれている必要があります。"
+
+msgid "Structured operator used for BASIC assertions."
+msgstr "BASIC アサーションに使用される構造化演算子。"
+
+msgid "Reference to a catalog entry when targeting a known signal."
+msgstr "既知のシグナルをターゲットにする場合のカタログエントリへの参照。"
+
+msgid "Custom JSON-style path for validators that allow free-form targets."
+msgstr "自由形式のターゲットを許可するバリデーター用のカスタムJSONスタイルパス。"
+
+msgid "Optional CEL expression gating when the assertion evaluates."
+msgstr "アサーションが評価される際のオプションのCEL式ゲーティング。"
+
+msgid "Operator payload (values, range bounds, regex pattern, etc.)."
+msgstr "演算子ペイロード（値、範囲境界、正規表現パターンなど）。"
+
+msgid ""
+"Operator options (inclusive bounds, tolerance metadata, case folding, etc.)."
+msgstr "演算子オプション（包含境界、許容誤差メタデータ、ケースフォールディングなど）。"
+
+msgid "Message rendered when the assertion fails."
+msgstr "アサーション失敗時に表示されるメッセージ。"
+
+msgid "Message rendered when the assertion passes."
+msgstr "アサーション成功時に表示されるメッセージ。"
+
+msgid "Normalized CEL preview generated from the stored payload."
+msgstr "保存されたペイロードから生成された正規化CELプレビュー。"
+
+msgid "Schema version for `rhs` and `options` payloads."
+msgstr "`rhs`および`options`ペイロードのスキーマバージョン。"
+
+msgid "Provide either a catalog target or a custom path (but not both)."
+msgstr "カタログターゲットまたはカスタムパスのいずれか一方を指定してください（両方は不可）。"
+
+#, python-format
+msgid "≤ %(value)s"
+msgstr "≤ %(value)s"
+
+#, python-format
+msgid "< %(value)s"
+msgstr "< %(value)s"
+
+#, python-format
+msgid "≥ %(value)s"
+msgstr "≥ %(value)s"
+
+#, python-format
+msgid "> %(value)s"
+msgstr "> %(value)s"
+
+#, python-format
+msgid "Equals %(value)s"
+msgstr "%(value)s に等しい"
+
+#, python-format
+msgid "Not equals %(value)s"
+msgstr "%(value)s に等しくない"
+
+#, python-format
+msgid "%(min)s %(min_cmp)s target %(max_cmp)s %(max)s"
+msgstr "%(min)s %(min_cmp)s ターゲット %(max_cmp)s %(max)s"
+
+#, python-format
+msgid "One of %(values)s"
+msgstr "%(values)s のいずれか"
+
+#, python-format
+msgid "Not in %(values)s"
+msgstr "%(values)s に含まれない"
+
+#, python-format
+msgid "Matches %(pattern)s"
+msgstr "%(pattern)s に一致"
+
+#, python-format
+msgid "%(verb)s %(value)s"
+msgstr "%(verb)s %(value)s"
+
+#, python-format
+msgid "≈ %(value)s ± %(tol)s"
+msgstr "≈ %(value)s ± %(tol)s"
+
+msgid "true"
+msgstr "true"
+
+msgid "false"
+msgstr "false"
+
+msgid "Model Exchange"
+msgstr "モデル交換"
+
+msgid "Co-Simulation"
+msgstr "コシミュレーション"
+
+msgid "FMI 2.0"
+msgstr "FMI 2.0"
+
+msgid "FMI 3.0"
+msgstr "FMI 3.0"
+
+msgid "SHA256 checksum used to reference cached FMUs in storage."
+msgstr "ストレージにキャッシュされたFMUを参照するために使用されるSHA256チェックサム。"
+
+msgid ""
+"Cloud storage URI to the canonical FMU object (e.g., gs://bucket/fmus/"
+"<checksum>.fmu for GCS)."
+msgstr "正規FMUオブジェクトへのクラウドストレージURI（例：GCSの場合 gs://bucket/fmus/<checksum>.fmu）。"
+
+msgid "A unique identifier for the validator, used in URLs."
+msgstr "URLに使用されるバリデーターの一意の識別子。"
+
+msgid ""
+"A brief summary of the validator's purpose. This description appears in "
+"lists and cards."
+msgstr "バリデーターの目的の簡単な要約。この説明はリストとカードに表示されます。"
+
+msgid "Optional longer description of the validator."
+msgstr "バリデーターの詳細説明（任意）。"
+
+msgid "Owning organization for custom validators (null for system validators)."
+msgstr "カスタムバリデーターを所有する組織（システムバリデーターの場合はnull）。"
+
+msgid "Version label for this validator (e.g. '2020-12', '1.0')."
+msgstr "このバリデーターのバージョンラベル（例：'2020-12'、'1.0'）。"
+
+msgid ""
+"The name of the process that generates output signals from input signals."
+msgstr "入力シグナルから出力シグナルを生成するプロセスの名前。"
+
+msgid ""
+"True when the validator includes an intermediate processor that produces "
+"output signals."
+msgstr "バリデーターが出力シグナルを生成する中間プロセッサーを含む場合にtrueです。"
+
+msgid ""
+"True when this validator supports step-level assertions (Basic and CEL). "
+"Schema-only validators (JSON Schema, XML Schema) do not support assertions."
+msgstr "このバリデーターがステップレベルのアサーション（BasicとCEL）をサポートする場合にtrueです。スキーマのみのバリデーター（JSONスキーマ、XMLスキーマ）はアサーションをサポートしません。"
+
+msgid "FMU artifact backing this validator (only used for FMU validators)."
+msgstr "このバリデーターを支えるFMUアーティファクト（FMUバリデーターでのみ使用）。"
+
+msgid "Relative ordering for display purposes."
+msgstr "表示目的の相対的な順序。"
+
+msgid "True when the validator ships with the platform."
+msgstr "バリデーターがプラットフォームに付属している場合にtrueです。"
+
+msgid ""
+"Disabled validators are hidden from users and cannot be added to workflows. "
+"Toggle via the admin panel."
+msgstr "無効なバリデーターはユーザーから非表示になり、ワークフローに追加できません。管理パネルで切り替えてください。"
+
+msgid ""
+"Release state for system validators. DRAFT hides the validator, COMING_SOON "
+"shows it disabled, PUBLISHED makes it fully available."
+msgstr "システムバリデーターのリリース状態。DRAFTはバリデーターを非表示にし、COMING_SOONは無効として表示し、PUBLISHEDは完全に利用可能にします。"
+
+msgid "Data formats this validator can parse (e.g., JSON, EnergyPlus IDF)."
+msgstr "このバリデーターが解析できるデータ形式（例：JSON、EnergyPlus IDF）。"
+
+msgid "Logical file types this validator can process (JSON, XML, text, etc.)."
+msgstr "このバリデーターが処理できる論理ファイルタイプ（JSON、XML、テキストなど）。"
+
+msgid ""
+"Compute intensity classification. LOW = metered by launch count. HIGH = "
+"metered by credit consumption."
+msgstr "演算強度の分類。LOW = 実行回数で計測。HIGH = クレジット消費で計測。"
+
+msgid ""
+"Credit multiplier for HIGH-compute validators. Higher weight = more credits "
+"consumed per minute of runtime."
+msgstr "高演算バリデーターのクレジット乗数。重みが大きいほど、実行時間1分あたりに消費されるクレジットが多くなります。"
+
+#, python-format
+msgid "'%(value)s' is not a supported submission data format."
+msgstr "'%(value)s' はサポートされている提出データ形式ではありません。"
+
+msgid "Custom validators support only JSON or YAML."
+msgstr "カスタムバリデーターはJSONまたはYAMLのみをサポートします。"
+
+msgid "Select exactly one data format for a custom validator."
+msgstr "カスタムバリデーターのデータ形式を1つだけ選択してください。"
+
+#, python-format
+msgid "'%(value)s' is not a supported submission file type."
+msgstr "'%(value)s' はサポートされている提出ファイルタイプではありません。"
+
+msgid "Assign an FMU asset before saving an FMU validator."
+msgstr "FMUバリデーターを保存する前にFMUアセットを割り当ててください。"
+
+msgid "FMU assets can only be attached to FMU validators."
+msgstr "FMUアセットはFMUバリデーターにのみ添付できます。"
+
+msgid ""
+"Phase of the validator run when this entry is available. INPUT is before the "
+"validator's processor operates on the data. OUTPUT is the data generated by "
+"the validator's processor."
+msgstr "このエントリが利用可能なバリデーター実行のフェーズ。INPUTはバリデーターのプロセッサーがデータを処理する前。OUTPUTはバリデーターのプロセッサーによって生成されたデータ。"
+
+msgid ""
+"Unique name for this catalog entry within the validator. You use this name "
+"in assertions and CEL statements."
+msgstr "バリデーター内のこのカタログエントリの一意の名前。アサーションおよびCELステートメントでこの名前を使用します。"
+
+msgid "Human-friendly label shown in editors."
+msgstr "エディターに表示される分かりやすいラベル。"
+
+msgid "Path used to locate this signal in the input or processor output."
+msgstr "入力またはプロセッサー出力でこのシグナルを見つけるためのパス。"
+
+msgid "Provider-specific binding metadata."
+msgstr "プロバイダー固有のバインディングメタデータ。"
+
+msgid "Additional UI metadata (example units, tags, etc.)."
+msgstr "追加のUIメタデータ（単位例、タグなど）。"
+
+msgid ""
+"Hidden signals remain available to bindings but are not shown in authoring "
+"interfaces."
+msgstr "非表示のシグナルはバインディングには引き続き利用可能ですが、オーサリングインターフェイスには表示されません。"
+
+msgid "Optional default applied when the signal is hidden."
+msgstr "シグナルが非表示の場合に適用されるオプションのデフォルト値。"
+
+msgid "Base validation type must match the linked Validator validation_type."
+msgstr "基本検証タイプはリンクされたバリデーターのvalidation_typeと一致する必要があります。"
+
+msgid "Validator already belongs to a different organization."
+msgstr "バリデーターはすでに別の組織に属しています。"
+
+msgid ""
+"Can be NULL if submission record was deleted. Code accessing this field must "
+"handle the None case."
+msgstr "提出レコードが削除された場合はNULLになる可能性があります。このフィールドにアクセスするコードはNoneの場合を処理する必要があります。"
+
+msgid "Optional short description of this validation run."
+msgstr "この検証実行の短い説明（任意）。"
+
+msgid "Classification of why the run failed (TIMEOUT, OOM, etc.)."
+msgstr "実行が失敗した理由の分類（タイムアウト、メモリ不足など）。"
+
+msgid "Where this run was initiated (web launch page, API, etc.)."
+msgstr "この実行が開始された場所（Webの実行ページ、APIなど）。"
+
+msgid "Snapshot of workflow's output retention policy at run time."
+msgstr "実行時のワークフロー出力保存ポリシーのスナップショット。"
+
+msgid ""
+"When outputs should be purged (null = never expires or not yet computed)."
+msgstr "出力を削除するタイミング（null = 期限なしまたはまだ計算されていない）。"
+
+msgid "When outputs were purged (for audit trail)."
+msgstr "出力が削除されたタイミング（監査証跡用）。"
+
+msgid "Run org must match submission org."
+msgstr "実行の組織は提出の組織と一致する必要があります。"
+
+msgid "Optional metadata for reporting (for example exemplar messages)."
+msgstr "レポート用のオプションのメタデータ（例：メッセージの例）。"
+
+msgid "Step must belong to the run's workflow."
+msgstr "ステップは実行のワークフローに属している必要があります。"
+
+msgid "Must equal WorkflowStep.order."
+msgstr "WorkflowStep.orderと等しくなければなりません。"
+
+msgid "Validation run must match the step run's parent run."
+msgstr "検証実行はステップ実行の親実行と一致する必要があります。"
+
+msgid "Artifact org must match run org."
+msgstr "アーティファクトの組織は実行の組織と一致する必要があります。"
+
+msgid "Unique callback identifier from the input envelope."
+msgstr "入力エンベロープからの一意のコールバック識別子。"
+
+msgid "The validation run this callback was for."
+msgstr "このコールバックが対象とした検証実行。"
+
+msgid "When this callback was first processed."
+msgstr "このコールバックが最初に処理されたタイミング。"
+
+msgid "Processing status of this callback receipt."
+msgstr "このコールバック受信の処理ステータス。"
+
+msgid "URI to the output envelope (e.g., gs:// for GCS, s3:// for S3)."
+msgstr "出力エンベロープへのURI（例：GCSの場合 gs://、S3の場合 s3://）。"
+
+msgid "The validator this resource file is for."
+msgstr "このリソースファイルの対象バリデーター。"
+
+msgid ""
+"Owning organization (NULL for system-wide resources visible to all orgs)."
+msgstr "所有組織（すべての組織に表示されるシステム全体のリソースの場合はNULL）。"
+
+msgid "Type of resource (weather, library, config, etc.)."
+msgstr "リソースのタイプ（気象、ライブラリ、設定など）。"
+
+msgid "Human-readable name (e.g., 'San Francisco TMY3')."
+msgstr "人間が読みやすい名前（例：'San Francisco TMY3'）。"
+
+msgid "Original filename (e.g., 'USA_CA_San.Francisco...epw')."
+msgstr "元のファイル名（例：'USA_CA_San.Francisco...epw'）。"
+
+msgid "The resource file stored in default media storage (public/ prefix)."
+msgstr "デフォルトメディアストレージに保存されたリソースファイル（public/プレフィックス）。"
+
+msgid ""
+"Mark this resource as a default when displaying to workflow authors. System "
+"defaults are shown to all orgs; org defaults only to that org."
+msgstr "ワークフロー作成者に表示する際にこのリソースをデフォルトとしてマークします。システムデフォルトはすべての組織に表示されます。組織デフォルトはその組織にのみ表示されます。"
+
+msgid "User who uploaded this resource file."
+msgstr "このリソースファイルをアップロードしたユーザー。"
+
+msgid "Optional description or notes about this resource."
+msgstr "このリソースの説明またはメモ（任意）。"
+
+msgid "Validator-specific metadata (e.g., location info for weather)."
+msgstr "バリデーター固有のメタデータ（例：気象の位置情報）。"
+
+#, python-format
+msgid ""
+"File extension '.%(ext)s' is not allowed for %(type)s. Allowed: %(allowed)s."
+msgstr "ファイル拡張子 '.%(ext)s' は %(type)s には許可されていません。許可されている拡張子：%(allowed)s。"
+
+msgid "Must be valid JSON."
+msgstr "有効なJSONである必要があります。"
+
+msgid "content_type is required."
+msgstr "content_typeは必須です。"
+
+#, python-format
+msgid "Unsupported content_type '%(ct)s'. Supported: %(supported)s"
+msgstr "サポートされていないcontent_type '%(ct)s'。サポートされているタイプ：%(supported)s"
+
+msgid "Provide exactly one of 'file' (multipart) or 'content' (JSON envelope)."
+msgstr "'file'（マルチパート）または'content'（JSONエンベロープ）のいずれか1つを指定してください。"
+
+msgid "content_type required (or detectable from file)."
+msgstr "content_typeが必要です（またはファイルから検出可能）。"
+
+msgid "content_type is required with content."
+msgstr "コンテンツにはcontent_typeが必要です。"
+
+msgid "Invalid base64 content."
+msgstr "無効なbase64コンテンツです。"
+
+msgid "Base64 content exceeds size limit."
+msgstr "base64コンテンツがサイズ制限を超えています。"
+
+msgid "Inline content exceeds size limit."
+msgstr "インラインコンテンツがサイズ制限を超えています。"
+
+#, python-format
+msgid "FMU %(name)s exceeds the maximum size of %(limit)s bytes."
+msgstr "FMU %(name)s は最大サイズ %(limit)s バイトを超えています。"
+
+#, python-format
+msgid "FMU %(name)s is missing modelDescription.xml."
+msgstr "FMU %(name)s に modelDescription.xml がありません。"
+
+#, python-format
+msgid "FMU %(name)s contains unsafe path entries."
+msgstr "FMU %(name)s には安全でないパスエントリが含まれています。"
+
+#, python-format
+msgid "FMU %(name)s contains disallowed file %(file)s."
+msgstr "FMU %(name)s には許可されていないファイル %(file)s が含まれています。"
+
+#, python-format
+msgid "FMU %(name)s is not a valid zip archive."
+msgstr "FMU %(name)s は有効なzipアーカイブではありません。"
+
+#, python-format
+msgid "modelDescription.xml in %(name)s is not UTF-8 text."
+msgstr "%(name)s の modelDescription.xml はUTF-8テキストではありません。"
+
+msgid "Awaiting probe run."
+msgstr "プローブ実行を待機中。"
+
+msgid "This validation run could not be completed. Please try again later."
+msgstr "この検証実行を完了できませんでした。後でもう一度お試しください。"
+
+msgid "Run canceled by user."
+msgstr "実行はユーザーによってキャンセルされました。"
+
+msgid "Validation run is not in a state that allows execution."
+msgstr "検証実行は実行が許可されている状態ではありません。"
+
+msgid "One or more validation steps failed."
+msgstr "1つ以上の検証ステップが失敗しました。"
+
+msgid "WorkflowStep has no validator or action configured."
+msgstr "ワークフローステップにバリデーターまたはアクションが設定されていません。"
+
+msgid "Basic Validator"
+msgstr "基本バリデーター"
+
+msgid ""
+"The simplest validator. Allows workflow author to add signals and assertions "
+"directly without a validator catalog."
+msgstr ""
+"最もシンプルなバリデーターです。ワークフロー作成者はバリデーターカタログなしで"
+"シグナルとアサーションを直接追加できます。"
+
+msgid ""
+"\n"
+"                <p>Workflow authors can use the 'Basic Validator' as a "
+"starting point\n"
+"                for creating assertions directly. There are no signals\n"
+"                or predefined assertions.\n"
+"                Perfect for lightweight checks or ad-hoc rules expressed in "
+"CEL.</p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>ワークフロー作成者は「基本バリデーター」をアサーションを直接作成する出発点として"
+"使用できます。\n"
+"                シグナルや定義済みアサーションはありません。\n"
+"                CELで表現した軽量チェックやアドホックルールに最適です。</p>\n"
+"                "
+
+msgid "JSON Schema Validator"
+msgstr "JSONスキーマバリデーター"
+
+msgid ""
+"Validate JSON payloads against a JSON schema provided by the workflow author."
+msgstr "ワークフロー作成者が提供するJSONスキーマに対してJSONペイロードを検証します。"
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator validates JSON payloads against a predefined "
+"JSON schema.\n"
+"                When a workflow author selects this validator, they must "
+"attach\n"
+"                a valid JSON schema.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                このバリデーターは、事前定義されたJSONスキーマに対してJSONペイロードを検証します。\n"
+"                ワークフロー作成者がこのバリデーターを選択する場合、\n"
+"                有効なJSONスキーマを添付する必要があります。\n"
+"                </p>\n"
+"                "
+
+msgid "XML Validator"
+msgstr "XMLバリデーター"
+
+msgid ""
+"Validate XML submissions against a XSD, DTD, or RelaxNG schema provided by "
+"the workflow author."
+msgstr ""
+"ワークフロー作成者が提供するXSD、DTD、またはRelaxNGスキーマに対してXML提出物を検証します。"
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator validates XML submissions against an XSD, "
+"DTD\n"
+"                or RelaxNG schema.\n"
+"                When a workflow author selects this validator, they must "
+"attach\n"
+"                a valid schema.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                このバリデーターは、XSD、DTD、\n"
+"                またはRelaxNGスキーマに対してXML提出物を検証します。\n"
+"                ワークフロー作成者がこのバリデーターを選択する場合、\n"
+"                有効なスキーマを添付する必要があります。\n"
+"                </p>\n"
+"                "
+
+msgid "EnergyPlus™ Validator"
+msgstr "EnergyPlus™ バリデーター"
+
+msgid "Validate EnergyPlus IDF files and outputs."
+msgstr "EnergyPlus IDFファイルと出力を検証します。"
+
+msgid ""
+"\n"
+"                <p>Validate EnergyPlus IDF files for correctness and "
+"expected outputs.\n"
+"                Run simulations, surface findings, and keep building models\n"
+"                reliable.</p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>EnergyPlus IDFファイルの正確性と期待される出力を検証します。\n"
+"                シミュレーションを実行して結果を確認し、建物モデルの\n"
+"                信頼性を維持します。</p>\n"
+"                "
+
+msgid "Run FMUs and assert against inputs and outputs."
+msgstr "FMUを実行し、入出力に対してアサーションを行います。"
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator allows a workflow author to write assertions\n"
+"                against incoming data.\n"
+"                It allows a workflow author to validating incoming data as\n"
+"                well as simulation outputs.\n"
+"                </p>\n"
+"                <p>\n"
+"                The validator sends inputs using the Functional Mock-up "
+"Interface (FMI)\n"
+"                standard to an\n"
+"                FMU-based simulation running in an isolated runtime. If the\n"
+"                simulation succeeds it\n"
+"                gathers outputs and returns them as output signals for "
+"further\n"
+"                validation, if defined.\n"
+"                </p>\n"
+"                <p>\n"
+"                The workflow author to write assertions against simulation\n"
+"                output signals.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                このバリデーターにより、ワークフロー作成者は受信データに対して\n"
+"                アサーションを記述できます。\n"
+"                受信データとシミュレーション出力の両方を\n"
+"                検証できます。\n"
+"                </p>\n"
+"                <p>\n"
+"                バリデーターは、Functional Mock-up Interface（FMI）\n"
+"                標準を使用して入力を\n"
+"                隔離されたランタイムで実行されるFMUベースのシミュレーションに送信します。シミュレーションが\n"
+"                成功すると、\n"
+"                出力を収集し、定義されている場合はさらなる\n"
+"                検証のための出力シグナルとして返します。\n"
+"                </p>\n"
+"                <p>\n"
+"                ワークフロー作成者はシミュレーション\n"
+"                出力シグナルに対するアサーションを記述できます。\n"
+"                </p>\n"
+"                "
+
+msgid "AI Assisted Validator"
+msgstr "AI支援バリデーター"
+
+msgid "Use AI to validate submission content against your criteria."
+msgstr "AIを使用して、お客様の基準に対して提出コンテンツを検証します。"
+
+msgid ""
+"\n"
+"                <p>Use AI to validate submission content against your "
+"criteria. Blend\n"
+"                traditional assertions with AI scoring to review nuanced "
+"data quickly.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>AIを使用して、お客様の基準に対して提出コンテンツを検証します。従来の\n"
+"                アサーションとAIスコアリングを組み合わせて、複雑なデータを素早く確認します。\n"
+"                </p>\n"
+"                "
+
+msgid "THERM Validator"
+msgstr "THERMバリデーター"
+
+msgid ""
+"Validate THERM thermal analysis files (THMX/THMZ) for geometry, materials, "
+"and boundary conditions."
+msgstr ""
+"形状、材料、境界条件についてTHERM熱解析ファイル（THMX/THMZ）を検証します。"
+
+msgid ""
+"\n"
+"                <p>Validate LBNL THERM files before submission to NFRC or\n"
+"                other certification bodies. Checks geometry closure, "
+"material\n"
+"                property ranges, boundary condition completeness, and\n"
+"                reference integrity. Extracts signals for downstream\n"
+"                compliance assertions (e.g. NFRC 100 winter conditions).</"
+"p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>NFRCや他の認証機関への提出前にLBNL THERMファイルを検証します。\n"
+"                形状の閉合性、材料\n"
+"                特性値の範囲、境界条件の完全性、\n"
+"                参照整合性を確認します。下流の\n"
+"                コンプライアンスアサーション（例：NFRC 100冬条件）のシグナルを抽出します。</"
+"p>\n"
+"                "
+
+#, python-format
+msgid ""
+"%(name)s validation requires workflow context. Ensure the validator is "
+"called via the workflow handler."
+msgstr ""
+"%(name)s の検証にはワークフローコンテキストが必要です。バリデーターがワークフロー"
+"ハンドラー経由で呼び出されていることを確認してください。"
+
+msgid ""
+"Validation backend is not available. Check your deployment configuration."
+msgstr "検証バックエンドを利用できません。デプロイ設定を確認してください。"
+
+#, python-format
+msgid "Assertion passed: %(target)s %(condition)s"
+msgstr "アサーション合格：%(target)s %(condition)s"
+
+#, python-format
+msgid "Assertion passed: %(target)s"
+msgstr "アサーション合格：%(target)s"
+
+msgid "Assertion passed."
+msgstr "アサーションが合格しました。"
+
+#, python-format
+msgid ""
+"Basic validators require JSON or XML content. Received file type: "
+"%(file_type)s"
+msgstr ""
+"基本バリデーターにはJSONまたはXMLコンテンツが必要です。受信したファイルタイプ：%(file_type)s"
+
+#, python-format
+msgid "Invalid JSON submission: %(error)s"
+msgstr "無効なJSON提出物：%(error)s"
+
+#, python-format
+msgid "Invalid XML submission: %(error)s"
+msgstr "無効なXML提出物：%(error)s"
+
+#, python-format
+msgid ""
+"JSON Schema validators require JSON content. Received file type: "
+"%(file_type)s"
+msgstr ""
+"JSONスキーマバリデーターにはJSONコンテンツが必要です。受信したファイルタイプ：%(file_type)s"
+
+msgid "Invalid JSON payload"
+msgstr "無効なJSONペイロード"
+
+msgid "Ruleset must provide schema text via rules_text or rules_file."
+msgstr "ルールセットはrules_textまたはrules_fileでスキーマテキストを提供する必要があります。"
+
+msgid "Unsupported schema type; expected dict or JSON string."
+msgstr "サポートされていないスキーマタイプです。dictまたはJSON文字列が期待されます。"
+
+msgid "This validator only accepts XML submissions."
+msgstr "このバリデーターはXML提出物のみを受け付けます。"
+
+msgid "lxml not installed or unusable: "
+msgstr "lxmlがインストールされていないか、使用できません："
+
+msgid "Missing 'schema' in ruleset/validator config."
+msgstr "ルールセット/バリデーター設定に'schema'がありません。"
+
+msgid "Could not read submission content: "
+msgstr "提出コンテンツを読み取れませんでした："
+
+msgid "Empty submission content."
+msgstr "提出コンテンツが空です。"
+
+msgid "Invalid XML payload: "
+msgstr "無効なXMLペイロード："
+
+#, python-format
+msgid ""
+"Invalid or missing XML schema_type '%(schema_type)s';must be 'XSD', "
+"'RELAXNG', or 'DTD'."
+msgstr ""
+"無効またはXML schema_type '%(schema_type)s' がありません。'XSD'、'RELAXNG'、または'DTD'である必要があります。"
+
+msgid "XML validation requires lxml: "
+msgstr "XML検証にはlxmlが必要です："
+
+msgid "Unsupported XML schema type: "
+msgstr "サポートされていないXMLスキーマタイプ："
+
+#, python-format
+msgid "Run #%(pk)s"
+msgstr "実行 #%(pk)s"
+
+msgid "You do not have permission to manage custom validators."
+msgstr "カスタムバリデーターを管理する権限がありません。"
+
+msgid "Select an organization before modifying validators."
+msgstr "バリデーターを変更する前に組織を選択してください。"
+
+msgid ""
+"Validator Library is limited to organization owners, admins, and authors."
+msgstr "バリデーターライブラリは組織のオーナー、管理者、および作成者に限定されています。"
+
+msgid "Create the first custom validator"
+msgstr "最初のカスタムバリデーターを作成する"
+
+msgid "Author-defined"
+msgstr "作成者定義"
+
+msgid "Create a validator with custom inputs, outputs, and assertions."
+msgstr "カスタムの入力、出力、アサーションを持つバリデーターを作成します。"
+
+msgid "Simulation-based"
+msgstr "シミュレーションベース"
+
+msgid ""
+"Upload an FMU to auto-discover input and output signals and create default "
+"assertions."
+msgstr ""
+"FMUをアップロードして入出力シグナルを自動検出し、デフォルトアサーションを作成します。"
+
+msgid "This validator is not yet available."
+msgstr "このバリデーターはまだ利用できません。"
+
+#, python-format
+msgid "View \"%(name)s\""
+msgstr "「%(name)s」を表示"
+
+#, python-format
+msgid "Edit \"%(name)s\""
+msgstr "「%(name)s」を編集"
+
+msgid "Edit Input Signal"
+msgstr "入力シグナルを編集"
+
+msgid "Create FMU validator"
+msgstr "FMUバリデーターを作成"
+
+#, python-format
+msgid "Created FMU validator \"%(name)s\"."
+msgstr "FMUバリデーター「%(name)s」を作成しました。"
+
+msgid "No FMU attached to this validator."
+msgstr "このバリデーターにFMUが添付されていません。"
+
+msgid "Probe has not been requested."
+msgstr "プローブはリクエストされていません。"
+
+msgid "Create Custom Basic Validator"
+msgstr "カスタム基本バリデーターを作成"
+
+msgid "Create new validator"
+msgstr "新しいバリデーターを作成"
+
+#, python-format
+msgid "Created custom validator \"%(name)s\"."
+msgstr "カスタムバリデーター「%(name)s」を作成しました。"
+
+msgid ""
+"This custom validator is missing its configuration. Please recreate it from "
+"the Validator Library."
+msgstr ""
+"このカスタムバリデーターの設定がありません。バリデーターライブラリから再作成してください。"
+
+#, python-format
+msgid "Edit %(name)s Settings"
+msgstr "%(name)s の設定を編集"
+
+msgid "Edit Settings"
+msgstr "設定を編集"
+
+#, python-format
+msgid "Updated custom validator \"%(name)s\"."
+msgstr "カスタムバリデーター「%(name)s」を更新しました。"
+
+#, python-format
+msgid "Deleted custom validator \"%(name)s\"."
+msgstr "カスタムバリデーター「%(name)s」を削除しました。"
+
+#, python-format
+msgid ""
+"Cannot delete %(name)s because workflow steps still reference this validator."
+msgstr "%(name)s は現在もワークフローステップから参照されているため削除できません。"
+
+#, python-format
+msgid "Workflow step \"%(step)s\" (workflow: %(workflow)s)"
+msgstr "ワークフローステップ「%(step)s」（ワークフロー：%(workflow)s）"
+
+msgid "Signal created."
+msgstr "シグナルを作成しました。"
+
+msgid "Please correct the errors below."
+msgstr "以下のエラーを修正してください。"
+
+msgid "Signal updated."
+msgstr "シグナルを更新しました。"
+
+msgid "Signal deleted."
+msgstr "シグナルを削除しました。"
+
+msgid "Default assertion created."
+msgstr "デフォルトアサーションを作成しました。"
+
+msgid "Default assertion updated."
+msgstr "デフォルトアサーションを更新しました。"
+
+msgid "Default assertion deleted."
+msgstr "デフォルトアサーションを削除しました。"
+
+msgid "You do not have permission to manage resource files."
+msgstr "リソースファイルを管理する権限がありません。"
+
+msgid "Resource file uploaded."
+msgstr "リソースファイルをアップロードしました。"
+
+msgid "Resource file updated."
+msgstr "リソースファイルを更新しました。"
+
+#, python-format
+msgid ""
+"Cannot delete '%(name)s' because it is used by active workflow(s): "
+"%(workflows)s. Remove it from these workflows first."
+msgstr ""
+"'%(name)s' はアクティブなワークフロー（%(workflows)s）で使用されているため削除できません。"
+"まずこれらのワークフローから削除してください。"
+
+#, python-format
+msgid "Deleted resource file '%(name)s'."
+msgstr "リソースファイル '%(name)s' を削除しました。"
+
+msgid "Table"
+msgstr "テーブル"
+
+msgid "All members of the workflow's organization"
+msgstr "ワークフローの組織の全メンバー"
+
+msgid "Restricted to allowed users and/or roles"
+msgstr "許可されたユーザーおよび/またはロールに制限"
+
+msgid "Continue on failure"
+msgstr "失敗時も続行"
+
+msgid "Fail fast"
+msgstr "即時失敗"
+
+msgid "Manual"
+msgstr "手動"
+
+msgid "Schedule"
+msgstr "スケジュール"
+
+msgid "Workflow has no steps to execute"
+msgstr "ワークフローに実行するステップがありません"
+
+msgid "Workflow is inactive"
+msgstr "ワークフローは非アクティブです"
+
+msgid "Invalid request payload"
+msgstr "無効なリクエストペイロード"
+
+msgid "Workflow cannot accept the submitted file type"
+msgstr "ワークフローは提出されたファイルタイプを受け付けられません"
+
+msgid "You do not have permission to run this workflow"
+msgstr "このワークフローを実行する権限がありません"
+
+#, python-format
+msgid "You've been invited to use %(workflow_name)s on Validibot"
+msgstr "Validibotで %(workflow_name)s へのご招待"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to access the workflow "
+"\"%(workflow_name)s\"\n"
+"from %(org_name)s on Validibot.\n"
+"\n"
+"Click the link below to accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"こんにちは、\n"
+"\n"
+"%(inviter_name)s があなたをValidibotの %(org_name)s のワークフロー\n"
+"「%(workflow_name)s」にご招待しました。\n"
+"\n"
+"以下のリンクをクリックして招待を承認してください：\n"
+"%(accept_url)s\n"
+"\n"
+"この招待は7日間有効です。\n"
+"\n"
+"心当たりのない場合は、このメールを無視してください。\n"
+"\n"
+"よろしくお願いいたします。\n"
+"Validibotチーム\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to access the workflow\n"
+"\"<strong>%(workflow_name)s</strong>\" from %(org_name)s on Validibot.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to accept this invitation</a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>こんにちは、</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> があなたをValidibotの %(org_name)s のワークフロー\n"
+"「<strong>%(workflow_name)s</strong>」にご招待しました。</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">こちらをクリックして招待を承認する</a></p>\n"
+"\n"
+"<p>この招待は7日間有効です。</p>\n"
+"\n"
+"<p>心当たりのない場合は、このメールを無視してください。</p>\n"
+"\n"
+"<p>よろしくお願いいたします。<br>\n"
+"Validibotチーム</p>\n"
+
+#, python-format
+msgid "%(grantee_name)s accepted your workflow invitation"
+msgstr "%(grantee_name)s がワークフロー招待を承認しました"
+
+#, python-format
+msgid ""
+"Hi %(inviter_name)s,\n"
+"\n"
+"Good news! %(grantee_name)s has accepted your invitation to access the "
+"workflow\n"
+"\"%(workflow_name)s\".\n"
+"\n"
+"They can now execute validations using this workflow.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"%(inviter_name)s 様、\n"
+"\n"
+"お知らせです。%(grantee_name)s がワークフロー\n"
+"「%(workflow_name)s」へのアクセス招待を承認しました。\n"
+"\n"
+"このワークフローを使用して検証を実行できるようになりました。\n"
+"\n"
+"よろしくお願いいたします。\n"
+"Validibotチーム\n"
+
+#, python-format
+msgid ""
+"<p>Hi %(inviter_name)s,</p>\n"
+"\n"
+"<p>Good news! <strong>%(grantee_name)s</strong> has accepted your invitation "
+"to access\n"
+"the workflow \"<strong>%(workflow_name)s</strong>\".</p>\n"
+"\n"
+"<p>They can now execute validations using this workflow.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>%(inviter_name)s 様、</p>\n"
+"\n"
+"<p>お知らせです。<strong>%(grantee_name)s</strong> がワークフロー\n"
+"「<strong>%(workflow_name)s</strong>」へのアクセス招待を承認しました。</p>\n"
+"\n"
+"<p>このワークフローを使用して検証を実行できるようになりました。</p>\n"
+"\n"
+"<p>よろしくお願いいたします。<br>\n"
+"Validibotチーム</p>\n"
+
+msgid "all workflows"
+msgstr "すべてのワークフロー"
+
+#, python-format
+msgid "%(count)d selected workflow(s)"
+msgstr "%(count)d 件のワークフローを選択中"
+
+#, python-format
+msgid "You've been invited as a guest to %(org_name)s on Validibot"
+msgstr "Validibotの %(org_name)s にゲストとしてご招待されました"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to access %(scope_desc)s\n"
+"in %(org_name)s on Validibot as a guest.\n"
+"\n"
+"Click the link below to view and accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"こんにちは、\n"
+"\n"
+"%(inviter_name)s があなたをValidibotの %(org_name)s にある %(scope_desc)s へ\n"
+"ゲストとしてご招待しました。\n"
+"\n"
+"以下のリンクをクリックして招待を確認・承認してください：\n"
+"%(accept_url)s\n"
+"\n"
+"この招待は7日間有効です。\n"
+"\n"
+"心当たりのない場合は、このメールを無視してください。\n"
+"\n"
+"よろしくお願いいたします。\n"
+"Validibotチーム\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to access "
+"%(scope_desc)s\n"
+"in <strong>%(org_name)s</strong> on Validibot as a guest.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to view and accept this invitation</"
+"a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>こんにちは、</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> があなたをValidibotの <strong>%(org_name)s</strong> にある "
+"%(scope_desc)s へ\n"
+"ゲストとしてご招待しました。</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">こちらをクリックして招待を確認・承認する</"
+"a></p>\n"
+"\n"
+"<p>この招待は7日間有効です。</p>\n"
+"\n"
+"<p>心当たりのない場合は、このメールを無視してください。</p>\n"
+"\n"
+"<p>よろしくお願いいたします。<br>\n"
+"Validibotチーム</p>\n"
+
+msgid "member"
+msgstr "メンバー"
+
+#, python-format
+msgid "You've been invited to join %(org_name)s on Validibot"
+msgstr "Validibotの %(org_name)s に参加するようご招待されました"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to join %(org_name)s on Validibot\n"
+"as a %(roles_desc)s.\n"
+"\n"
+"Click the link below to view and accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"こんにちは、\n"
+"\n"
+"%(inviter_name)s があなたを %(roles_desc)s として\n"
+"Validibotの %(org_name)s に参加するようご招待しました。\n"
+"\n"
+"以下のリンクをクリックして招待を確認・承認してください：\n"
+"%(accept_url)s\n"
+"\n"
+"この招待は7日間有効です。\n"
+"\n"
+"心当たりのない場合は、このメールを無視してください。\n"
+"\n"
+"よろしくお願いいたします。\n"
+"Validibotチーム\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to join\n"
+"<strong>%(org_name)s</strong> on Validibot as a %(roles_desc)s.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to view and accept this invitation</"
+"a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>こんにちは、</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> があなたを <strong>%(org_name)s</strong> に\n"
+"%(roles_desc)s としてValidibotへ参加するようご招待しました。</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">こちらをクリックして招待を確認・承認する</"
+"a></p>\n"
+"\n"
+"<p>この招待は7日間有効です。</p>\n"
+"\n"
+"<p>心当たりのない場合は、このメールを無視してください。</p>\n"
+"\n"
+"<p>よろしくお願いいたします。<br>\n"
+"Validibotチーム</p>\n"
+
+msgid "AI Critic"
+msgstr "AIクリティック"
+
+msgid "Policy Check"
+msgstr "ポリシーチェック"
+
+msgid "Advisory (warnings only)"
+msgstr "アドバイザリー（警告のみ）"
+
+msgid "Blocking (fail on violations)"
+msgstr "ブロッキング（違反時に失敗）"
+
+msgid "Detect duplicate object names"
+msgstr "重複オブジェクト名を検出"
+
+msgid "Ensure HVAC autosizing is enabled"
+msgstr "HVACの自動サイジングが有効であることを確認"
+
+msgid "Check schedules cover 7 days"
+msgstr "スケジュールが7日間をカバーしていることを確認"
+
+msgid "Expected list for 'in' operator."
+msgstr "'in'演算子にはリストが必要です。"
+
+msgid "Rule lines must include at least a path and operator."
+msgstr "ルール行にはパスと演算子を少なくとも1つ含める必要があります。"
+
+msgid "'between' rules require two numeric bounds."
+msgstr "'between'ルールには2つの数値境界が必要です。"
+
+#, python-format
+msgid "'%s' rules require a list of options."
+msgstr "'%s'ルールにはオプションのリストが必要です。"
+
+#, python-format
+msgid "Operator '%(op)s' requires a comparison value."
+msgstr "演算子 '%(op)s' には比較値が必要です。"
+
+msgid "Workflow description (Markdown)"
+msgstr "ワークフローの説明（Markdown）"
+
+msgid "Describe what this workflow validates and who it's for..."
+msgstr "このワークフローが何を検証し、誰向けかを説明してください..."
+
+msgid ""
+"Shown on the workflow info page. This is stored as Markdown and sanitized "
+"before display. You can control visibility from the Public Info card on the "
+"workflow detail page."
+msgstr ""
+"ワークフロー情報ページに表示されます。Markdown形式で保存され、表示前にサニタイズされます。"
+"ワークフロー詳細ページの公開情報カードから表示設定を変更できます。"
+
+msgid "Allowed file types"
+msgstr "許可されたファイルタイプ"
+
+msgid ""
+"Choose the submission file types this workflow accepts. Note that each "
+"validator in the workflow may further constrain the allowed types."
+msgstr ""
+"このワークフローが受け付ける提出ファイルタイプを選択してください。ワークフロー内の"
+"各バリデーターによって許可されるタイプがさらに制限される場合があります。"
+
+msgid "Optional label to help you track iterations."
+msgstr "繰り返しを追跡するためのオプションラベル。"
+
+msgid "Disable a workflow to pause new validation runs without removing it."
+msgstr "ワークフローを削除せずに新しい検証実行を一時停止するには無効にしてください。"
+
+msgid ""
+"Choose the submission file types this workflow accepts. Launchers can only "
+"upload/run content using these formats."
+msgstr ""
+"このワークフローが受け付ける提出ファイルタイプを選択してください。起動者はこれらの形式のみで"
+"コンテンツをアップロード/実行できます。"
+
+msgid ""
+"Controls how long the user's submission data is kept after validation. The "
+"submission record is always preserved for audit purposes."
+msgstr ""
+"検証後にユーザーの提出データを保持する期間を設定します。提出レコードは監査目的で常に保持されます。"
+
+msgid "Name your workflow"
+msgstr "ワークフローに名前をつけてください"
+
+msgid "Workflow active"
+msgstr "ワークフローをアクティブにする"
+
+msgid ""
+"When unchecked, teammates can still view the workflow but cannot launch runs "
+"until you reactivate it."
+msgstr ""
+"チェックを外すと、チームメートはワークフローを確認できますが、再アクティブ化するまで実行を開始できません。"
+
+msgid "Featured image"
+msgstr "メインイメージ"
+
+msgid "Optional image shown on the workflow info page."
+msgstr "ワークフロー情報ページに表示されるオプション画像。"
+
+msgid "Data retention"
+msgstr "データ保持"
+
+msgid ""
+"Custom message shown when validation succeeds. Leave blank to use the "
+"default message."
+msgstr ""
+"検証成功時に表示されるカスタムメッセージ。デフォルトメッセージを使用する場合は空白のままにしてください。"
+
+msgid "e.g. Your model passed all validation checks!"
+msgstr "例：モデルがすべての検証チェックに合格しました！"
+
+msgid "Select a project from your current organization."
+msgstr "現在の組織からプロジェクトを選択してください。"
+
+#, python-format
+msgid "'%(value)s' is not a supported file type."
+msgstr "'%(value)s' はサポートされていないファイルタイプです。"
+
+msgid "Select at least one file type."
+msgstr "少なくとも1つのファイルタイプを選択してください。"
+
+msgid "Select a project"
+msgstr "プロジェクトを選択"
+
+msgid ""
+"Workflow runs started from this workflow default to the selected project. "
+"Projects listed belong to your current organization."
+msgstr ""
+"このワークフローから開始されたワークフロー実行は、選択されたプロジェクトにデフォルトで関連付けられます。"
+"表示されているプロジェクトは現在の組織に属しています。"
+
+msgid "Optional name for reporting."
+msgstr "レポート用のオプション名。"
+
+msgid "File type"
+msgstr "ファイルタイプ"
+
+msgid "Submission data"
+msgstr "提出データ"
+
+msgid "{ \"example\": \"value\" }"
+msgstr "{ \"example\": \"value\" }"
+
+msgid "Paste JSON, XML, or text. Leave blank when uploading a file."
+msgstr ""
+
+msgid "Attachment"
+msgstr ""
+
+msgid "Upload a file instead of pasting submission data."
+msgstr ""
+
+msgid "Metadata (JSON)"
+msgstr ""
+
+msgid "{\"source\": \"ui\"}"
+msgstr ""
+
+msgid "Optional JSON payload stored with the submission."
+msgstr ""
+
+msgid "Brief context for this submission"
+msgstr ""
+
+msgid "Optional short description stored with the submission."
+msgstr ""
+
+msgid "Provide inline content or upload a file, not both."
+msgstr ""
+
+msgid "Paste in content or upload a file before starting the validation."
+msgstr ""
+
+msgid "Select a supported file type."
+msgstr ""
+
+#, python-format
+msgid ""
+"File extension '.%(ext)s' is not allowed. Accepted extensions: %(allowed)s"
+msgstr ""
+
+msgid "Metadata must be valid JSON."
+msgstr ""
+
+msgid "Step option"
+msgstr ""
+
+msgid "Step name"
+msgstr ""
+
+msgid "Describe what this step checks"
+msgstr ""
+
+msgid "In this step, we check that..."
+msgstr ""
+
+msgid "Brief description to help users understand what this step does."
+msgstr ""
+
+msgid "User can view schema"
+msgstr ""
+
+msgid "When enabled, users can view the schema."
+msgstr ""
+
+msgid "Show success messages for passed assertions"
+msgstr ""
+
+msgid ""
+"When enabled, all assertions in this step will return a success message when "
+"they pass. If an assertion has no custom success message, a default message "
+"will be shown."
+msgstr ""
+
+msgid "Note to self..."
+msgstr ""
+
+msgid ""
+"Author notes about this step (visible only by you and other users with "
+"author permissions for this workflow)."
+msgstr ""
+
+msgid "Schema version"
+msgstr ""
+
+msgid "Upload schema"
+msgstr ""
+
+msgid "Leave blank to keep the existing schema. Paste new JSON to replace it."
+msgstr ""
+
+msgid "Paste your JSON schema or upload a file below."
+msgstr ""
+
+msgid "Paste the schema or upload a file, not both."
+msgstr ""
+
+msgid "Uploaded schema files must be 2 MB or smaller."
+msgstr ""
+
+msgid "Add content directly or upload a file."
+msgstr ""
+
+msgid "Uploaded schema must be UTF-8 encoded."
+msgstr ""
+
+msgid "Schema content must be valid JSON."
+msgstr ""
+
+msgid "JSON schemas must declare $schema as Draft 2020-12."
+msgstr ""
+
+msgid "Schema type"
+msgstr ""
+
+msgid "Leave blank to keep the existing schema. Paste new XML to replace it."
+msgstr ""
+
+msgid "Paste your XML schema or upload a file below."
+msgstr ""
+
+msgid "XML schema"
+msgstr ""
+
+#, python-format
+msgid ""
+"Unable to parse the XML schema. Ensure it matches the %(expected)s format."
+msgstr ""
+
+#, python-format
+msgid ""
+"Uploaded schema appears to be %(detected)s but you selected %(selected)s."
+msgstr ""
+
+msgid "Weather file"
+msgstr ""
+
+msgid ""
+"Weather file (EPW) used for EnergyPlus simulations. This determines the "
+"climate data for the simulation."
+msgstr ""
+
+msgid "Initial IDF checks"
+msgstr ""
+
+msgid "Run EnergyPlus simulation"
+msgstr ""
+
+msgid "If this option is unchecked, only IDF syntax checks will be performed."
+msgstr ""
+
+msgid "— Select a weather file —"
+msgstr ""
+
+msgid "AI template"
+msgstr ""
+
+msgid "Optional JSONPath selectors (one per line)."
+msgstr ""
+
+msgid "Policy rules"
+msgstr ""
+
+msgid "$.zones[*].cooling_setpoint >= 18 | Cooling setpoint must be ≥18°C"
+msgstr ""
+
+msgid "Cost cap (cents)"
+msgstr ""
+
+msgid "Behaviour"
+msgstr ""
+
+msgid "Limit selectors to 10 paths."
+msgstr ""
+
+msgid "Add at least one policy rule."
+msgstr ""
+
+msgid "Make info page public"
+msgstr ""
+
+msgid "When enabled, anyone with the link can view the workflow's info page."
+msgstr ""
+
+msgid "Optional headline for the public page"
+msgstr ""
+
+msgid ""
+"# Overview\n"
+"Describe the workflow for public viewers..."
+msgstr ""
+
+msgid "Public title"
+msgstr ""
+
+msgid "Public description (Markdown)"
+msgstr ""
+
+msgid "Create dummy workflows with random data for demos."
+msgstr ""
+
+msgid "Number of workflows to create (default: 10)."
+msgstr ""
+
+msgid "Assertions are only available for advanced validators."
+msgstr ""
+
+msgid "Assertions"
+msgstr ""
+
+msgid ""
+"Version must be an integer (e.g., '1') or semantic version (e.g., '1.0.0')."
+msgstr ""
+
+msgid "Optional image to represent the workflow Shown on the 'info' page."
+msgstr ""
+
+msgid "Default project to associate with runs triggered from this workflow."
+msgstr ""
+
+msgid "The user who created this workflow."
+msgstr ""
+
+msgid "Name of the workflow, e.g. 'My Workflow'"
+msgstr ""
+
+msgid "Unique identifier for the workflow."
+msgstr ""
+
+msgid ""
+"A unique identifier for the workflow, used in URLs. (Leave blank to auto-"
+"generate from name.)"
+msgstr ""
+
+msgid ""
+"Allow users to submit a custom name along with their data for validation."
+msgstr ""
+
+msgid "Allow users to submit meta-data along with their data for validation."
+msgstr ""
+
+msgid ""
+"Allow users to submit a short description along with their data for "
+"validation."
+msgstr ""
+
+msgid "Version identifier (integer or semantic version, e.g., '1' or '1.0.0')."
+msgstr ""
+
+msgid "Inactive workflows stay visible but cannot run validations."
+msgstr ""
+
+msgid "Archived workflows are disabled and hidden unless explicitly shown."
+msgstr ""
+
+msgid "Allows non-logged in users to see the workflow's info page."
+msgstr ""
+
+msgid "If true, any authenticated user can launch this workflow."
+msgstr ""
+
+msgid "Logical file types (JSON, XML, text, etc.) this workflow can accept."
+msgstr ""
+
+msgid ""
+"How long to keep user-submitted files after validation completes. "
+"DO_NOT_STORE deletes the submission immediately after successful completion. "
+"The submission record is preserved for audit."
+msgstr ""
+
+msgid ""
+"How long to keep validation outputs (results, artifacts, findings) after "
+"validation completes. Users need time to download results, so immediate "
+"deletion is not an option."
+msgstr ""
+
+msgid ""
+"Custom message displayed when validation succeeds. Leave blank for the "
+"default message."
+msgstr ""
+
+msgid "Project must belong to the workflow's organization."
+msgstr ""
+
+msgid "Select at least one submission file type."
+msgstr ""
+
+msgid ""
+"Optional title to show on the public info page. If blank, the Workflow name "
+"will be used."
+msgstr ""
+
+msgid "Whether to show the workflow steps on the public info page."
+msgstr ""
+
+msgid "Allow launchers to view this schema in public workflow pages."
+msgstr ""
+
+msgid ""
+"When enabled, assertions display their success message when they pass. If an "
+"assertion has no success message defined, a default is generated."
+msgstr ""
+
+msgid "Order already used in this workflow."
+msgstr ""
+
+msgid "Specify either a validator or an action for this step."
+msgstr ""
+
+msgid "Ruleset type must match validator type."
+msgstr ""
+
+msgid "The workflow this grant provides access to."
+msgstr ""
+
+msgid "The user who has been granted access."
+msgstr ""
+
+msgid "The user who created this grant."
+msgstr ""
+
+msgid "Whether this grant is currently active."
+msgstr ""
+
+msgid "Optional notes about this access grant."
+msgstr ""
+
+msgid "workflow access grant"
+msgstr ""
+
+msgid "workflow access grants"
+msgstr ""
+
+msgid "The workflow this invite grants access to."
+msgstr ""
+
+msgid "The user who sent this invite."
+msgstr ""
+
+msgid "The invited user, if they already have an account."
+msgstr ""
+
+msgid "Email address of invitee (used when inviting non-users)."
+msgstr ""
+
+msgid "Unique token for invite acceptance URL."
+msgstr ""
+
+msgid "When this invite expires."
+msgstr ""
+
+msgid "workflow invite"
+msgstr ""
+
+msgid "workflow invites"
+msgstr ""
+
+msgid "All workflows in org"
+msgstr ""
+
+msgid "The organization this invite is for."
+msgstr ""
+
+msgid "Whether to grant access to all current workflows or a selection."
+msgstr ""
+
+msgid "Workflows to grant access to (used when scope=SELECTED)."
+msgstr ""
+
+msgid "guest invite"
+msgstr ""
+
+msgid "guest invites"
+msgstr ""
+
+msgid "Could not run the workflow. Please try again."
+msgstr ""
+
+msgid "Something went wrong while preparing the submission."
+msgstr ""
+
+msgid "You do not have permission to run this workflow."
+msgstr ""
+
+msgid "Workflow validation canceled."
+msgstr ""
+
+msgid "Process completed before it could be cancelled."
+msgstr ""
+
+msgid "Process failed before it could be cancelled."
+msgstr ""
+
+msgid "Unable to cancel this run."
+msgstr ""
+
+#, python-format
+msgid "Workflow '%(name)s'"
+msgstr ""
+
+msgid "This workflow has not run yet. Launch it to see run details."
+msgstr ""
+
+msgid "You need an organization before creating workflows."
+msgstr ""
+
+msgid "Workflow created."
+msgstr ""
+
+msgid "Workflow updated."
+msgstr ""
+
+msgid "Workflow deleted."
+msgstr ""
+
+msgid "Workflow is already active."
+msgstr ""
+
+msgid "Workflow unarchived and re-enabled for new runs."
+msgstr ""
+
+msgid "Workflow is already archived."
+msgstr ""
+
+msgid "Workflow archived and disabled. Runs remain available for audit."
+msgstr ""
+
+msgid "Public workflow info updated."
+msgstr ""
+
+msgid "Public info"
+msgstr ""
+
+msgid "Workflow reactivated. New validation runs can start immediately."
+msgstr ""
+
+msgid "Workflow disabled. Existing runs finish, but new ones are blocked."
+msgstr ""
+
+msgid "No change applied—the workflow is already in that state."
+msgstr ""
+
+#, python-format
+msgid "You can add up to %(count)s steps per workflow."
+msgstr ""
+
+#, python-format
+msgid ""
+"%(validator)s cannot be added because this workflow only accepts %(allowed)s "
+"submissions."
+msgstr ""
+
+msgid "the selected"
+msgstr ""
+
+msgid "Advanced Validators"
+msgstr ""
+
+msgid "Custom Validators"
+msgstr ""
+
+msgid "Integrations"
+msgstr ""
+
+msgid "Certifications"
+msgstr ""
+
+#, python-format
+msgid "Not allowed for this workflow's submission types (%(allowed)s)."
+msgstr ""
+
+msgid "selected types"
+msgstr ""
+
+msgid "Workflow step added."
+msgstr ""
+
+msgid "Workflow step updated."
+msgstr ""
+
+msgid "Edit Step Detail"
+msgstr ""
+
+msgid "Workflow step removed."
+msgstr ""
+
+msgid "Step not found."
+msgstr ""
+
+msgid "Workflow step order updated."
+msgstr ""
+
+msgid "Add Assertion"
+msgstr ""
+
+msgid "Assertion added."
+msgstr ""
+
+msgid "Edit Assertion"
+msgstr ""
+
+msgid "Assertion updated."
+msgstr ""
+
+msgid "Assertion removed."
+msgstr ""
+
+msgid "Assertion not found."
+msgstr ""
+
+#, python-format
+msgid "This invite is no longer valid (status: %(status)s)."
+msgstr ""
+
+#, python-format
+msgid ""
+"You now have access to the workflow '%(name)s'. You can run validations on "
+"this workflow."
+msgstr ""
+
+#, python-format
+msgid ""
+"Please sign up or log in to accept your invitation to workflow '%(name)s'."
+msgstr ""
+
+msgid "This user already has access to this workflow."
+msgstr ""
+
+#, python-format
+msgid "Your access to '%(workflow)s' has been removed."
+msgstr ""
+
+#, python-format
+msgid "Access revoked for %(email)s."
+msgstr ""
+
+msgid "Invitation resent."
+msgstr ""
+
+msgid "Select a file type before launching the workflow."
+msgstr ""
+
+msgid "no file types"
+msgstr ""
+
+#, python-format
+msgid "This workflow accepts %(allowed)s submissions."
+msgstr ""
+
+#, python-format
+msgid "Step %(step)s (%(validator)s) does not support %(file_type)s files."
+msgstr ""
+
+#, python-format
+msgid "Step %(step)s does not support %(file_type)s files."
+msgstr ""
+
+msgid "Select a valid JSON Schema draft."
+msgstr ""
+
+msgid "Upload a JSON schema file."
+msgstr ""
+
+msgid "Select a valid XML schema type."
+msgstr ""
+
+msgid "Upload an XML schema file."
+msgstr ""
+
+msgid "Payload too large."
+msgstr ""
+
+msgid "Unsupported Content-Encoding (only base64)."
+msgstr ""
+
+msgid "Invalid base64 payload."
+msgstr ""
+
+#, python-format
+msgid "Unsupported Content-Type '%s'. "
+msgstr ""
+
+#, python-format
+msgid "Supported : %s"
+msgstr ""
+
+msgid "Invalid request payload."
+msgstr ""
+
+msgid "No content provided."
+msgstr ""
+
+msgid "Unsupported request content type."
+msgstr ""
+
+msgid "This workflow has no steps defined and cannot be executed."
+msgstr ""

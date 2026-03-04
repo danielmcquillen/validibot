@@ -82,7 +82,7 @@ from validibot.workflows.views_launch_helpers import launch_web_validation_run
 
 logger = logging.getLogger(__name__)
 
-MAX_STEP_COUNT = 5
+MAX_STEP_COUNT = 50
 
 
 # UI Views

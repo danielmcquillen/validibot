@@ -1,0 +1,5914 @@
+# Spanish (Latin American) translation for Validibot.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-03 04:18+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: Spanish <es@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "English"
+msgstr "Inglés"
+
+msgid "Japanese"
+msgstr "Japonés"
+
+msgid "Spanish"
+msgstr "Español"
+
+msgid "Integration"
+msgstr "Integración"
+
+msgid "Certification"
+msgstr "Certificación"
+
+msgid "Slack message"
+msgstr "Mensaje de Slack"
+
+msgid "Signed certificate"
+msgstr "Certificado firmado"
+
+msgid "Message"
+msgstr "Mensaje"
+
+msgid "Message content delivered to Slack."
+msgstr "Contenido del mensaje enviado a Slack."
+
+msgid "Certificate template"
+msgstr "Plantilla de certificado"
+
+msgid "Upload a PDF template. Leave empty to use the default template."
+msgstr "Suba una plantilla PDF. Déjelo vacío para usar la plantilla predeterminada."
+
+#, python-format
+msgid "Upload a new template to replace '%(name)s'."
+msgstr "Suba una nueva plantilla para reemplazar '%(name)s'."
+
+msgid "WorkflowStep has no validator configured."
+msgstr "El paso del flujo de trabajo no tiene un validador configurado."
+
+#, python-format
+msgid "File type '%(ft)s' not supported by this validator."
+msgstr "El tipo de archivo '%(ft)s' no es compatible con este validador."
+
+msgid ""
+"Bootstrap icon class to render when displaying the action (e.g. 'bi-slack')."
+msgstr "Clase de icono Bootstrap para mostrar al visualizar la acción (p. ej. 'bi-slack')."
+
+msgid "Implementation type identifier (e.g. SLACK_MESSAGE)."
+msgstr "Identificador del tipo de implementación (p. ej. SLACK_MESSAGE)."
+
+msgid "Optional JSON schema describing the configuration for this action."
+msgstr "Esquema JSON opcional que describe la configuración de esta acción."
+
+msgid "Name is required."
+msgstr "El nombre es obligatorio."
+
+msgid "No renderers configured."
+msgstr "No hay renderizadores configurados."
+
+msgid "API"
+msgstr "API"
+
+msgid "UI"
+msgstr "UI"
+
+msgid "GitHub App"
+msgstr "GitHub App"
+
+msgid "Pending"
+msgstr "Pendiente"
+
+msgid "Accepted"
+msgstr "Aceptado"
+
+msgid "Declined"
+msgstr "Rechazado"
+
+msgid "Canceled"
+msgstr "Cancelado"
+
+msgid "Expired"
+msgstr "Vencido"
+
+msgid "Team Management"
+msgstr "Gestión de equipos"
+
+msgid "Guest Management"
+msgstr "Gestión de invitados"
+
+msgid "Billing"
+msgstr "Facturación"
+
+msgid "Advanced Analytics"
+msgstr "Analíticas avanzadas"
+
+msgid "Signed Badges"
+msgstr "Insignias firmadas"
+
+msgid "Multiple Organizations"
+msgstr "Múltiples organizaciones"
+
+msgid "LDAP Integration"
+msgstr "Integración LDAP"
+
+msgid "SAML Single Sign-On"
+msgstr "Inicio de sesión único SAML"
+
+msgid "Subject"
+msgstr "Asunto"
+
+msgid "Please add a little more detail."
+msgstr "Por favor, agregue un poco más de detalle."
+
+msgid "How can we help?"
+msgstr "¿Cómo podemos ayudarle?"
+
+#, python-format
+msgid ""
+"%(feature_description)s requires Validibot %(edition_name)s.\n"
+"\n"
+"The Community edition includes all validators.\n"
+"%(edition_name)s adds additional capabilities for teams.\n"
+"\n"
+"Learn more: https://validibot.com/pricing"
+msgstr ""
+"%(feature_description)s requiere Validibot %(edition_name)s.\n"
+"\n"
+"La edición Community incluye todos los validadores.\n"
+"%(edition_name)s agrega capacidades adicionales para equipos.\n"
+"\n"
+"Más información: https://validibot.com/pricing"
+
+msgid "This feature"
+msgstr "Esta funcionalidad"
+
+msgid "Processing"
+msgstr "Procesando"
+
+msgid "Completed"
+msgstr "Completado"
+
+msgid "Thanks for reaching out. A member of the team will respond soon."
+msgstr "Gracias por comunicarse. Un miembro del equipo responderá pronto."
+
+msgid ""
+"We couldn't send your message. Please correct the highlighted fields and try "
+"again."
+msgstr ""
+"No pudimos enviar su mensaje. Por favor, corrija los campos resaltados e intente de nuevo."
+
+msgid "You do not belong to any organizations yet."
+msgstr "Todavía no pertenece a ninguna organización."
+
+#, python-format
+msgid "New support message from %(name)s"
+msgstr "Nuevo mensaje de soporte de %(name)s"
+
+#, python-format
+msgid ""
+"Subject: %(subject)s\n"
+"Message:\n"
+"%(message)s\n"
+"\n"
+"Submitted by: %(user)s (id=%(user_id)s)"
+msgstr ""
+"Asunto: %(subject)s\n"
+"Mensaje:\n"
+"%(message)s\n"
+"\n"
+"Enviado por: %(user)s (id=%(user_id)s)"
+
+msgid ""
+"Dashboard insights are available to organization owners, admins, and authors."
+msgstr "Las estadísticas del panel están disponibles para propietarios, administradores y autores de la organización."
+
+msgid "Submission Created"
+msgstr "Envío creado"
+
+msgid "Workflow Created"
+msgstr "Flujo de trabajo creado"
+
+msgid "Workflow Updated"
+msgstr "Flujo de trabajo actualizado"
+
+msgid "Workflow Deleted"
+msgstr "Flujo de trabajo eliminado"
+
+msgid "Run Created"
+msgstr "Ejecución creada"
+
+msgid "Run Started"
+msgstr "Ejecución iniciada"
+
+msgid "Run Succeeded"
+msgstr "Ejecución exitosa"
+
+msgid "Run Failed"
+msgstr "Ejecución fallida"
+
+msgid "Run Canceled"
+msgstr "Ejecución cancelada"
+
+msgid "Run Timed Out"
+msgstr "Ejecución agotó el tiempo"
+
+msgid "Run Step Started"
+msgstr "Paso de ejecución iniciado"
+
+msgid "Run Step Passed"
+msgstr "Paso de ejecución aprobado"
+
+msgid "Run Step Failed"
+msgstr "Paso de ejecución fallido"
+
+msgid "Run Step Skipped"
+msgstr "Paso de ejecución omitido"
+
+msgid "Ruleset Created"
+msgstr "Conjunto de reglas creado"
+
+msgid "Ruleset Updated"
+msgstr "Conjunto de reglas actualizado"
+
+msgid "Validator Created"
+msgstr "Validador creado"
+
+msgid "Validator Updated"
+msgstr "Validador actualizado"
+
+msgid "GitHub Check Suite Requested"
+msgstr "Suite de verificación de GitHub solicitada"
+
+msgid "GitHub Check Suite Completed"
+msgstr "Suite de verificación de GitHub completada"
+
+msgid "User Logged In"
+msgstr "Usuario inició sesión"
+
+msgid "User Logged Out"
+msgstr "Usuario cerró sesión"
+
+msgid "Invite Created"
+msgstr "Invitación creada"
+
+msgid "Invite Accepted"
+msgstr "Invitación aceptada"
+
+msgid "Invite Declined"
+msgstr "Invitación rechazada"
+
+msgid "Getting started"
+msgstr "Primeros pasos"
+
+msgid "Workflows"
+msgstr "Flujos de trabajo"
+
+msgid "Validators"
+msgstr "Validadores"
+
+msgid "Concepts"
+msgstr "Conceptos"
+
+msgid "Workspace"
+msgstr "Espacio de trabajo"
+
+msgid "Index"
+msgstr "Índice"
+
+msgid "Help"
+msgstr "Ayuda"
+
+msgid "Member added."
+msgstr "Miembro agregado."
+
+msgid "Invitation sent."
+msgstr "Invitación enviada."
+
+msgid "Invitation canceled."
+msgstr "Invitación cancelada."
+
+msgid "Members"
+msgstr "Miembros"
+
+msgid "Member roles updated."
+msgstr "Roles del miembro actualizados."
+
+msgid "You cannot remove yourself."
+msgstr "No puede eliminarse a sí mismo."
+
+msgid ""
+"The organization owner cannot be removed. Contact support to transfer "
+"ownership."
+msgstr ""
+"El propietario de la organización no puede ser eliminado. Contacte a soporte para transferir la propiedad."
+
+msgid "Cannot remove the final administrator from an organization."
+msgstr "No se puede eliminar al último administrador de una organización."
+
+msgid "Cannot remove the final owner from an organization."
+msgstr "No se puede eliminar al último propietario de una organización."
+
+msgid "Member removed."
+msgstr "Miembro eliminado."
+
+#, python-format
+msgid "User '%(username)s' removed from organization"
+msgstr "Usuario '%(username)s' eliminado de la organización"
+
+msgid "Guests"
+msgstr "Invitados"
+
+msgid "Email address is required."
+msgstr "La dirección de correo electrónico es obligatoria."
+
+msgid "This user is already a member of the organization."
+msgstr "Este usuario ya es miembro de la organización."
+
+msgid "An invitation is already pending for this email."
+msgstr "Ya hay una invitación pendiente para este correo electrónico."
+
+msgid "Please select at least one workflow."
+msgstr "Por favor, seleccione al menos un flujo de trabajo."
+
+#, python-format
+msgid "Invitation sent to %(email)s."
+msgstr "Invitación enviada a %(email)s."
+
+msgid "This user is a member, not a guest. Use member management instead."
+msgstr "Este usuario es miembro, no invitado. Use la gestión de miembros en su lugar."
+
+#, python-format
+msgid "Your guest access to %(org)s has been removed."
+msgstr "Su acceso de invitado a %(org)s ha sido revocado."
+
+#, python-format
+msgid "Revoked access to %(count)d workflow(s) for %(email)s."
+msgstr "Acceso revocado a %(count)d flujo(s) de trabajo para %(email)s."
+
+msgid "Member invite"
+msgstr "Invitación de miembro"
+
+msgid "Guest invite"
+msgstr "Invitación de invitado"
+
+msgid "Workflow invite"
+msgstr "Invitación de flujo de trabajo"
+
+msgid "System alert"
+msgstr "Alerta del sistema"
+
+msgid "Link to MemberInvite for member_invite notifications."
+msgstr "Vínculo a MemberInvite para notificaciones de invitación de miembro."
+
+msgid "Link to GuestInvite for guest_invite notifications."
+msgstr "Vínculo a GuestInvite para notificaciones de invitación de invitado."
+
+msgid "Link to WorkflowInvite for workflow_invite notifications."
+msgstr "Vínculo a WorkflowInvite para notificaciones de invitación de flujo de trabajo."
+
+msgid "unknown user"
+msgstr "usuario desconocido"
+
+#, python-format
+msgid "Invitation to '%(username)s' to join %(org)s was %(action)s."
+msgstr "La invitación a '%(username)s' para unirse a %(org)s fue %(action)s."
+
+msgid "Invite is no longer valid."
+msgstr "La invitación ya no es válida."
+
+msgid "This invite was sent to a different user."
+msgstr "Esta invitación fue enviada a un usuario diferente."
+
+msgid "This invite is not addressed to your account."
+msgstr "Esta invitación no está dirigida a su cuenta."
+
+msgid "accepted"
+msgstr "aceptada"
+
+msgid "Invitation accepted."
+msgstr "Invitación aceptada."
+
+msgid "declined"
+msgstr "rechazada"
+
+msgid "Invitation declined."
+msgstr "Invitación rechazada."
+
+#, python-format
+msgid "Guest invitation to '%(username)s' for %(org)s was %(action)s."
+msgstr "La invitación de invitado a '%(username)s' para %(org)s fue %(action)s."
+
+#, python-format
+msgid ""
+"Guest invitation accepted. You now have access to %(count)d workflow(s)."
+msgstr "Invitación de invitado aceptada. Ahora tiene acceso a %(count)d flujo(s) de trabajo."
+
+msgid "Guest invitation declined."
+msgstr "Invitación de invitado rechazada."
+
+#, python-format
+msgid "Workflow invitation to '%(username)s' for %(workflow)s was %(action)s."
+msgstr "La invitación de flujo de trabajo a '%(username)s' para %(workflow)s fue %(action)s."
+
+#, python-format
+msgid "Invitation accepted. You now have access to '%(workflow)s'."
+msgstr "Invitación aceptada. Ahora tiene acceso a '%(workflow)s'."
+
+msgid "Used for workflow badges and other UI accents."
+msgstr "Usado para insignias de flujos de trabajo y otros acentos de la interfaz."
+
+msgid "Badge color"
+msgstr "Color de insignia"
+
+msgid "Use a hex color code like #1F883D."
+msgstr "Use un código de color hexadecimal como #1F883D."
+
+msgid "The organization this project belongs to."
+msgstr "La organización a la que pertenece este proyecto."
+
+msgid "Name of the project, e.g. 'My Project'"
+msgstr "Nombre del proyecto, p. ej. 'Mi proyecto'"
+
+msgid "Optional longer description of the project."
+msgstr "Descripción más detallada del proyecto (opcional)."
+
+msgid "A unique identifier for the project, used in URLs."
+msgstr "Identificador único del proyecto, utilizado en las URL."
+
+msgid "Indicates the default project for an organization."
+msgstr "Indica el proyecto predeterminado de una organización."
+
+msgid "Soft-delete flag."
+msgstr "Indicador de eliminación lógica."
+
+msgid "Hex color used when displaying project badges (e.g. #1F883D)."
+msgstr "Color hexadecimal usado al mostrar insignias del proyecto (p. ej. #1F883D)."
+
+msgid "Default projects cannot be deleted."
+msgstr "Los proyectos predeterminados no se pueden eliminar."
+
+msgid "Projects"
+msgstr "Proyectos"
+
+msgid "Project created."
+msgstr "Proyecto creado."
+
+msgid "New"
+msgstr "Nuevo"
+
+msgid "Project updated."
+msgstr "Proyecto actualizado."
+
+msgid "Project deleted."
+msgstr "Proyecto eliminado."
+
+msgid "Do not store (delete after validation)"
+msgstr "No almacenar (eliminar después de la validación)"
+
+msgid "Store for 1 day"
+msgstr "Almacenar por 1 día"
+
+msgid "Store for 7 days"
+msgstr "Almacenar por 7 días"
+
+msgid "Store for 30 days"
+msgstr "Almacenar por 30 días"
+
+msgid "Store permanently"
+msgstr "Almacenar permanentemente"
+
+msgid "Store for 90 days"
+msgstr "Almacenar por 90 días"
+
+msgid "Store for 1 year"
+msgstr "Almacenar por 1 año"
+
+msgid "JSON"
+msgstr "JSON"
+
+msgid "XML"
+msgstr "XML"
+
+msgid "Plain Text"
+msgstr "Texto plano"
+
+msgid "YAML"
+msgstr "YAML"
+
+msgid "Binary"
+msgstr "Binario"
+
+msgid "Unknown"
+msgstr "Desconocido"
+
+msgid "EnergyPlus IDF"
+msgstr "EnergyPlus IDF"
+
+msgid "EnergyPlus epJSON"
+msgstr "EnergyPlus epJSON"
+
+msgid "FMU"
+msgstr "FMU"
+
+msgid "THERM THMX"
+msgstr "THERM THMX"
+
+msgid "THERM THMZ (Archive)"
+msgstr "THERM THMZ (Archivo)"
+
+msgid "Binary/archived file not allowed for this content type."
+msgstr "El archivo binario o comprimido no está permitido para este tipo de contenido."
+
+msgid "File too large."
+msgstr "El archivo es demasiado grande."
+
+msgid "Optional descriptive name."
+msgstr "Nombre descriptivo (opcional)."
+
+msgid "The file to validate, e.g. IDF, JSON, XML, etc."
+msgstr "El archivo a validar, p. ej. IDF, JSON, XML, etc."
+
+msgid "Workflow *version* to run."
+msgstr "*Versión* del flujo de trabajo a ejecutar."
+
+msgid "Snapshot of workflow's retention policy at submission time."
+msgstr "Instantánea de la política de retención del flujo de trabajo al momento del envío."
+
+msgid "When content should be purged (null = already purged or DO_NOT_STORE)."
+msgstr "Cuándo debe eliminarse el contenido (nulo = ya eliminado o DO_NOT_STORE)."
+
+msgid "When content was purged (for audit trail)."
+msgstr "Cuándo se eliminó el contenido (para auditoría)."
+
+msgid "Cannot provide both inline_text and uploaded_file."
+msgstr "No puede proporcionar tanto inline_text como uploaded_file."
+
+msgid "Must provide either inline_text or uploaded_file."
+msgstr "Debe proporcionar inline_text o uploaded_file."
+
+msgid "inline_text cannot be empty."
+msgstr "inline_text no puede estar vacío."
+
+msgid "Project must belong to the same organization."
+msgstr "El proyecto debe pertenecer a la misma organización."
+
+msgid "Workflow must belong to the same organization."
+msgstr "El flujo de trabajo debe pertenecer a la misma organización."
+
+msgid "User must belong to the same organization."
+msgstr "El usuario debe pertenecer a la misma organización."
+
+msgid "Provide exactly one of content or input_file."
+msgstr "Proporcione exactamente uno de: content o input_file."
+
+msgid "Submission that failed to purge."
+msgstr "Envío que no pudo ser eliminado."
+
+msgid "When the initial purge failure occurred."
+msgstr "Cuándo ocurrió el primer fallo de eliminación."
+
+msgid "When the last retry attempt was made."
+msgstr "Cuándo se realizó el último intento de reintento."
+
+msgid "When to attempt the next retry."
+msgstr "Cuándo intentar el próximo reintento."
+
+msgid "Number of retry attempts made."
+msgstr "Número de intentos de reintento realizados."
+
+msgid "Error message from the last failed attempt."
+msgstr "Mensaje de error del último intento fallido."
+
+msgid "Server Error"
+msgstr "Error del servidor"
+
+msgid ""
+"\n"
+"    A 403 Forbidden error was encountered when trying to access this page.\n"
+"  "
+msgstr ""
+"\n"
+"    Se encontró un error 403 Prohibido al intentar acceder a esta página.\n"
+"  "
+
+msgid ""
+"\n"
+"         ERROR 403. Forbidden.\n"
+"      "
+msgstr ""
+"\n"
+"         ERROR 403. Prohibido.\n"
+"      "
+
+msgid "Validibot robot dealing with a big issue."
+msgstr "Robot de Validibot lidiando con un gran problema."
+
+msgid "Page not found"
+msgstr "Página no encontrada"
+
+msgid ""
+"\n"
+"         ERROR 404. No page found.\n"
+"      "
+msgstr ""
+"\n"
+"         ERROR 404. Página no encontrada.\n"
+"      "
+
+msgid "Validibot robot holding a map while searching for a missing page."
+msgstr "Robot de Validibot sosteniendo un mapa mientras busca una página que falta."
+
+msgid "Back to homepage"
+msgstr "Volver a la página de inicio"
+
+msgid ""
+"\n"
+"    An unexpected error occurred on the server. Please try refreshing the "
+"page, or head back to the Validibot\n"
+"    homepage.\n"
+"  "
+msgstr ""
+"\n"
+"    Ocurrió un error inesperado en el servidor. Por favor, intente recargar la página o regrese a la página de inicio de Validibot.\n"
+"  "
+
+msgid ""
+"\n"
+"         ERROR 500. Not good.\n"
+"      "
+msgstr ""
+"\n"
+"         ERROR 500. Algo salió mal.\n"
+"      "
+
+msgid "Email Addresses"
+msgstr "Direcciones de correo electrónico"
+
+msgid "Manage the addresses you use to sign in and receive updates."
+msgstr "Administre las direcciones que usa para iniciar sesión y recibir actualizaciones."
+
+msgid "Verified"
+msgstr "Verificado"
+
+msgid "Unverified"
+msgstr "Sin verificar"
+
+msgid "Primary"
+msgstr "Principal"
+
+msgid "Make Primary"
+msgstr "Establecer como principal"
+
+msgid "Re-send Verification"
+msgstr "Reenviar verificación"
+
+msgid "Remove"
+msgstr "Eliminar"
+
+msgid "Add Email Address"
+msgstr "Agregar dirección de correo electrónico"
+
+msgid "Add Email"
+msgstr "Agregar correo electrónico"
+
+msgid "Do you really want to remove the selected email address?"
+msgstr "¿Realmente desea eliminar la dirección de correo electrónico seleccionada?"
+
+msgid "Sign In"
+msgstr "Iniciar sesión"
+
+#, python-format
+msgid ""
+"Please sign in with one\n"
+"                      of your existing third party accounts. Or, <a "
+"href=\"%(signup_url)s\">sign up</a>\n"
+"                      for a %(site_name)s account and sign in below:"
+msgstr ""
+"Por favor, inicie sesión con una\n"
+"                      de sus cuentas de terceros existentes. O bien, <a "
+"href=\"%(signup_url)s\">regístrese</a>\n"
+"                      para obtener una cuenta de %(site_name)s e inicie sesión a continuación:"
+
+msgid "or"
+msgstr "o"
+
+#, python-format
+msgid ""
+"Don't have an account?\n"
+"                        <a href=\"%(signup_url)s\">Sign up</a> first."
+msgstr ""
+"¿No tiene una cuenta?\n"
+"                        <a href=\"%(signup_url)s\">Regístrese</a> primero."
+
+msgid "Validibot"
+msgstr "Validibot"
+
+msgid "Cloud-enabled data validation engine."
+msgstr "Motor de validación de datos habilitado para la nube."
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Are you sure you want to sign out?"
+msgstr "¿Está seguro de que desea cerrar sesión?"
+
+msgid "Forgot Password?"
+msgstr "¿Olvidó su contraseña?"
+
+msgid "Reset My Password"
+msgstr "Restablecer mi contraseña"
+
+msgid "Back to Sign In"
+msgstr "Volver a iniciar sesión"
+
+#, python-format
+msgid ""
+"I agree to the <a href=\"%(terms_url)s\" target=\"_blank\">Terms of Service</"
+"a> and <a href=\"%(privacy_url)s\" target=\"_blank\">Privacy Policy</a>"
+msgstr ""
+"Acepto los <a href=\"%(terms_url)s\" target=\"_blank\">Términos de Servicio</"
+"a> y la <a href=\"%(privacy_url)s\" target=\"_blank\">Política de Privacidad</a>"
+
+msgid "Sign Up"
+msgstr "Registrarse"
+
+msgid "Password Reset"
+msgstr "Restablecer contraseña"
+
+msgid ""
+"Forgotten your password? Enter your e-mail address below,<br />and we'll "
+"send you an e-mail allowing you to reset it."
+msgstr ""
+"¿Olvidó su contraseña? Ingrese su dirección de correo electrónico a continuación,<br />y le enviaremos un correo para restablecerla."
+
+#, python-format
+msgid ""
+"\n"
+"                Please <a href=\"mailto:%(contact_email)s\">contact us</a> "
+"if you have any\n"
+"                trouble resetting your password.\n"
+"            "
+msgstr ""
+"\n"
+"                Por favor <a href=\"mailto:%(contact_email)s\">contáctenos</a> "
+"si tiene algún\n"
+"                problema para restablecer su contraseña.\n"
+"            "
+
+msgid "Start Your Free Trial"
+msgstr "Inicie su prueba gratuita"
+
+msgid "Create an Account"
+msgstr "Crear una cuenta"
+
+msgid "Create an account to start validating your data."
+msgstr "Cree una cuenta para comenzar a validar sus datos."
+
+msgid "Already have an account?"
+msgstr "¿Ya tiene una cuenta?"
+
+msgid "Sign in here"
+msgstr "Inicie sesión aquí"
+
+msgid "Signup by Invitation Only"
+msgstr "Registro solo por invitación"
+
+msgid "Signup is by Invitation Only"
+msgstr "El registro es solo por invitación"
+
+msgid ""
+"Validibot is currently available by invitation only. <br /> If you've "
+"received an invite link, please use that to create your account."
+msgstr ""
+"Validibot está disponible actualmente solo por invitación. <br /> Si ha recibido un enlace de invitación, úselo para crear su cuenta."
+
+msgid "How to get access:"
+msgstr "Cómo obtener acceso:"
+
+msgid ""
+"Ask a workflow author to invite you to run their validation workflow. <br /> "
+"You'll receive an email with a link to create your free account."
+msgstr ""
+"Solicite a un autor de flujo de trabajo que le invite a ejecutar su flujo de validación. <br /> Recibirá un correo electrónico con un enlace para crear su cuenta gratuita."
+
+msgid "Back to Home"
+msgstr "Volver al inicio"
+
+msgid "Validibot logo"
+msgstr "Logo de Validibot"
+
+msgid "Shared Workflows"
+msgstr "Flujos de trabajo compartidos"
+
+msgid "My Validation Runs"
+msgstr "Mis ejecuciones de validación"
+
+msgid "User Guide"
+msgstr "Guía del usuario"
+
+msgid "Validation Runs"
+msgstr "Ejecuciones de validación"
+
+msgid "Dashboard"
+msgstr "Panel de control"
+
+msgid "Validator Library"
+msgstr "Biblioteca de validadores"
+
+msgid "Admin"
+msgstr "Administrador"
+
+msgid "Organization"
+msgstr "Organización"
+
+msgid "Support"
+msgstr "Soporte"
+
+msgid "Hide navigation"
+msgstr "Ocultar navegación"
+
+msgid "Show navigation"
+msgstr "Mostrar navegación"
+
+msgid "Notifications"
+msgstr "Notificaciones"
+
+msgid "unread notifications"
+msgstr "notificaciones sin leer"
+
+msgid "Open user menu"
+msgstr "Abrir menú de usuario"
+
+msgid "User avatar"
+msgstr "Avatar de usuario"
+
+msgid "User Profile"
+msgstr "Perfil de usuario"
+
+msgid "User Email"
+msgstr "Correo electrónico del usuario"
+
+msgid "API Key"
+msgstr "Clave API"
+
+msgid "Manage organizations"
+msgstr "Administrar organizaciones"
+
+msgid "Select organization"
+msgstr "Seleccionar organización"
+
+msgid "Switch workspace to org:"
+msgstr "Cambiar espacio de trabajo a la organización:"
+
+msgid "No organizations available"
+msgstr "No hay organizaciones disponibles"
+
+msgid "Terms of Service"
+msgstr "Términos de Servicio"
+
+msgid "Pagination"
+msgstr "Paginación"
+
+msgid "First"
+msgstr "Primero"
+
+msgid "Previous"
+msgstr "Anterior"
+
+msgid "Next"
+msgstr "Siguiente"
+
+msgid "Last"
+msgstr "Último"
+
+msgid "Show"
+msgstr "Mostrar"
+
+msgid "per page"
+msgstr "por página"
+
+msgid "App"
+msgstr "Aplicación"
+
+msgid "My Profile"
+msgstr "Mi perfil"
+
+msgid "Range"
+msgstr "Rango"
+
+msgid "CEL Hints"
+msgstr "Sugerencias CEL"
+
+msgid "XML tip:"
+msgstr "Consejo XML:"
+
+msgid "Numeric values need casting:"
+msgstr "Los valores numéricos necesitan conversión de tipo:"
+
+msgid "XML attributes:"
+msgstr "Atributos XML:"
+
+msgid "Use the @ prefix with bracket notation:"
+msgstr "Use el prefijo @ con notación de corchetes:"
+
+msgid "Data validation engine for building energy models and technical data."
+msgstr "Motor de validación de datos para modelos de energía de edificios y datos técnicos."
+
+msgid "Create Account"
+msgstr "Crear cuenta"
+
+msgid "Invite Guest"
+msgstr "Invitar invitado"
+
+#, python-format
+msgid ""
+"\n"
+"        <strong>About guests:</strong> Guests are existing Validibot users "
+"who can access specific workflows you've shared with them.\n"
+"        They are not members of your organization.\n"
+"        (<a href=\"%(members_url)s\">Members</a>, on the other hand, have "
+"full access based on their assigned roles.)\n"
+"      "
+msgstr ""
+"\n"
+"        <strong>Acerca de los invitados:</strong> Los invitados son usuarios de Validibot existentes "
+"que pueden acceder a flujos de trabajo específicos que usted ha compartido con ellos.\n"
+"        No son miembros de su organización.\n"
+"        (Los <a href=\"%(members_url)s\">miembros</a>, en cambio, tienen "
+"acceso completo según los roles asignados.)\n"
+"      "
+
+msgid "Current Guests"
+msgstr "Invitados actuales"
+
+msgid "workflow"
+msgstr "flujo de trabajo"
+
+msgid "Remove all workflow access for this user?"
+msgstr "¿Revocar todo el acceso a flujos de trabajo para este usuario?"
+
+msgid "Revoke All"
+msgstr "Revocar todo"
+
+msgid "No guests currently have access to workflows in this organization."
+msgstr "Actualmente ningún invitado tiene acceso a flujos de trabajo en esta organización."
+
+msgid "Pending Invitations"
+msgstr "Invitaciones pendientes"
+
+msgid "All workflows"
+msgstr "Todos los flujos de trabajo"
+
+msgid "selected workflow"
+msgstr "flujo de trabajo seleccionado"
+
+msgid "Invited"
+msgstr "Invitado"
+
+msgid "Expires"
+msgstr "Vence"
+
+msgid "Cancel this invitation?"
+msgstr "¿Cancelar esta invitación?"
+
+msgid "No pending invitations."
+msgstr "No hay invitaciones pendientes."
+
+msgid "Confirm member removal"
+msgstr "Confirmar eliminación de miembro"
+
+msgid "Remove member"
+msgstr "Eliminar miembro"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to remove user \"%(username)s\" from "
+"organization \"%(org)s\"?\n"
+"              "
+msgstr ""
+"\n"
+"                ¿Está seguro de que desea eliminar al usuario «%(username)s» de "
+"la organización «%(org)s»?\n"
+"              "
+
+msgid "They will lose access to this organization until invited again."
+msgstr "Perderán acceso a esta organización hasta que sean invitados de nuevo."
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Yes, remove member"
+msgstr "Sí, eliminar miembro"
+
+msgid "Edit member"
+msgstr "Editar miembro"
+
+#, python-format
+msgid ""
+"\n"
+"            Edit Organization Membership for User '%(name)s'\n"
+"          "
+msgstr ""
+"\n"
+"            Editar membresía en la organización para el usuario '%(name)s'\n"
+"          "
+
+msgid "User Properties"
+msgstr "Propiedades del usuario"
+
+msgid ""
+"This member is the organization owner and already has every permission. "
+"Ownership changes require Validibot support."
+msgstr ""
+"Este miembro es el propietario de la organización y ya tiene todos los permisos. "
+"Los cambios de propiedad requieren soporte de Validibot."
+
+msgid "Remove user from org"
+msgstr "Eliminar usuario de la organización"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Quick Help:"
+msgstr "Ayuda rápida:"
+
+msgid "About member roles"
+msgstr "Acerca de los roles de miembros"
+
+msgid ""
+"\n"
+"                Roles are cumulative: higher roles (Owner, Admin, Author) "
+"automatically include lower ones. The form will check and lock the implied "
+"roles for you so you can see what comes along for the ride.\n"
+"              "
+msgstr ""
+"\n"
+"                Los roles son acumulativos: los roles superiores (Propietario, Administrador, Autor) "
+"incluyen automáticamente los inferiores. El formulario marcará y bloqueará los roles implicados "
+"para que pueda ver qué viene incluido.\n"
+"              "
+
+msgid ""
+"\n"
+"                <strong>Want everything for a user?</strong><br /> Pick "
+"Admin (or Owner).\n"
+"              "
+msgstr ""
+"\n"
+"                <strong>¿Quiere todo para un usuario?</strong><br /> Elija "
+"Administrador (o Propietario).\n"
+"              "
+
+msgid ""
+"\n"
+"               <strong>Want a tailored mix?</strong><br /> Uncheck the "
+"higher role and select the specific pieces you need—like Executor plus "
+"Validation Results Viewer, or Analytics Viewer alone.\n"
+"              "
+msgstr ""
+"\n"
+"               <strong>¿Quiere una combinación personalizada?</strong><br /> Desmarque el "
+"rol superior y seleccione los elementos específicos que necesita, como Ejecutor más "
+"Visor de resultados de validación, o solo Visor de analíticas.\n"
+"              "
+
+msgid ""
+"\n"
+"             Here's a quick cheat sheet to help you pick:\n"
+"              "
+msgstr ""
+"\n"
+"             Aquí tiene una guía rápida para ayudarle a elegir:\n"
+"              "
+
+msgid "Role"
+msgstr "Rol"
+
+msgid "Includes automatically"
+msgstr "Incluye automáticamente"
+
+msgid "Best for"
+msgstr "Ideal para"
+
+msgid ""
+"Author, Executor, Validation Results Viewer, Analytics Viewer, Workflow "
+"Viewer"
+msgstr ""
+"Autor, Ejecutor, Visor de resultados de validación, Visor de analíticas, Visor de flujos de trabajo"
+
+msgid "Full control of org settings, members, and content"
+msgstr "Control total de la configuración, miembros y contenido de la organización"
+
+msgid "Author"
+msgstr "Autor"
+
+msgid "Executor, Validation Results Viewer, Analytics Viewer, Workflow Viewer"
+msgstr "Ejecutor, Visor de resultados de validación, Visor de analíticas, Visor de flujos de trabajo"
+
+msgid "Building and maintaining workflows/validators"
+msgstr "Crear y mantener flujos de trabajo y validadores"
+
+msgid "Executor"
+msgstr "Ejecutor"
+
+msgid "Workflow Viewer"
+msgstr "Visor de flujos de trabajo"
+
+msgid "Running validations and seeing their own runs"
+msgstr "Ejecutar validaciones y ver sus propias ejecuciones"
+
+msgid "Analytics Viewer"
+msgstr "Visor de analíticas"
+
+msgid "None (view dashboards only)"
+msgstr "Ninguno (solo ver paneles)"
+
+msgid "Stakeholders who need dashboards without edit/run access"
+msgstr "Partes interesadas que necesitan paneles sin permisos de edición o ejecución"
+
+msgid "None (read-only workflows)"
+msgstr "Ninguno (flujos de trabajo de solo lectura)"
+
+msgid "Visibility into workflows without edit or run rights"
+msgstr "Visibilidad de flujos de trabajo sin derechos de edición o ejecución"
+
+msgid "Validation Results Viewer"
+msgstr "Visor de resultados de validación"
+
+msgid "None (view validation results org-wide)"
+msgstr "Ninguno (ver resultados de validación en toda la organización)"
+
+msgid "Reviewers who inspect validation findings"
+msgstr "Revisores que inspeccionan los resultados de validación"
+
+msgid ""
+"Tip: if a role is auto-selected and locked, it is implied by a higher role "
+"you chose. Uncheck the higher role to fine-tune the lower roles."
+msgstr ""
+"Consejo: si un rol está seleccionado y bloqueado automáticamente, está implícito en un rol superior "
+"que eligió. Desmarque el rol superior para ajustar los roles inferiores."
+
+msgid "Invite Member"
+msgstr "Invitar miembro"
+
+#, python-format
+msgid ""
+"\n"
+"        <strong>About members:</strong> Members have access to your\n"
+"        organization, based on the roles you give them. Members can do "
+"things like author workflows, manage\n"
+"        organization settings and view analytics.\n"
+"        (<a href=\"%(guests_url)s\">Guests</a>, on the other hand, can only "
+"access specific workflows you've shared with them.\n"
+"      )\n"
+"      "
+msgstr ""
+"\n"
+"        <strong>Acerca de los miembros:</strong> Los miembros tienen acceso a su\n"
+"        organización, según los roles que usted les asigne. Los miembros pueden "
+"hacer cosas como crear flujos de trabajo, administrar\n"
+"        la configuración de la organización y ver analíticas.\n"
+"        (Los <a href=\"%(guests_url)s\">invitados</a>, en cambio, solo pueden "
+"acceder a flujos de trabajo específicos que usted ha compartido con ellos.\n"
+"      )\n"
+"      "
+
+msgid "Current Members"
+msgstr "Miembros actuales"
+
+msgid "Close"
+msgstr "Cerrar"
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to access workflows in \"%(name)s\" as a guest. They "
+"won't become a member of your organization.\n"
+"      "
+msgstr ""
+"\n"
+"        Invite a alguien a acceder a los flujos de trabajo en «%(name)s» como invitado. "
+"No se convertirá en miembro de su organización.\n"
+"      "
+
+msgid "Email address"
+msgstr "Dirección de correo electrónico"
+
+msgid "Workflow Access"
+msgstr "Acceso a flujos de trabajo"
+
+msgid "Grant access to all current active workflows in this organization."
+msgstr "Otorgar acceso a todos los flujos de trabajo activos actuales de esta organización."
+
+msgid "Selected workflows"
+msgstr "Flujos de trabajo seleccionados"
+
+msgid "Choose specific workflows to share."
+msgstr "Elija flujos de trabajo específicos para compartir."
+
+msgid "Select workflows"
+msgstr "Seleccionar flujos de trabajo"
+
+msgid "No active workflows available."
+msgstr "No hay flujos de trabajo activos disponibles."
+
+msgid "Send Invitation"
+msgstr "Enviar invitación"
+
+msgid "Select a user to invite:"
+msgstr "Seleccione un usuario para invitar:"
+
+msgid "Start typing at least 3 characters to search for a user."
+msgstr "Comience a escribir al menos 3 caracteres para buscar un usuario."
+
+#, python-format
+msgid "No users found for \"%(query)s\". You can invite by email instead."
+msgstr "No se encontraron usuarios para \"%(query)s\". Puede invitar por correo electrónico en su lugar."
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to join \"%(name)s\" as a member. They'll have access "
+"based on the roles you assign.\n"
+"      "
+msgstr ""
+"\n"
+"        Invite a alguien a unirse a «%(name)s» como miembro. Tendrán acceso "
+"según los roles que usted asigne.\n"
+"      "
+
+msgid "User or email"
+msgstr "Usuario o correo electrónico"
+
+msgid "Type a username or email"
+msgstr "Escriba un nombre de usuario o correo electrónico"
+
+msgid "Organization members"
+msgstr "Miembros de la organización"
+
+msgid "Total members"
+msgstr "Total de miembros"
+
+msgid "Member"
+msgstr "Miembro"
+
+msgid "Roles"
+msgstr "Roles"
+
+msgid "Actions"
+msgstr "Acciones"
+
+msgid "No roles assigned "
+msgstr "Sin roles asignados"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "The organization owner cannot be removed."
+msgstr "El propietario de la organización no puede ser eliminado."
+
+msgid "Owner"
+msgstr "Propietario"
+
+msgid "Remove member with username"
+msgstr "Eliminar miembro con nombre de usuario"
+
+#, python-format
+msgid " Remove member %(membership.user.username)s "
+msgstr " Eliminar miembro %(membership.user.username)s "
+
+msgid "No members yet."
+msgstr "Aún no hay miembros."
+
+msgid "Show dismissed"
+msgstr "Mostrar descartadas"
+
+msgid "No notifications."
+msgstr "No hay notificaciones."
+
+#, python-format
+msgid "Invitation to %(org)s"
+msgstr "Invitación a %(org)s"
+
+#, python-format
+msgid "Guest access invitation for %(org)s"
+msgstr "Invitación de acceso como invitado para %(org)s"
+
+#, python-format
+msgid "Workflow invitation: %(workflow)s"
+msgstr "Invitación de flujo de trabajo: %(workflow)s"
+
+msgid "Invitation"
+msgstr "Invitación"
+
+msgid "Workflow:"
+msgstr "Flujo de trabajo:"
+
+msgid "Organization:"
+msgstr "Organización:"
+
+msgid "Accept"
+msgstr "Aceptar"
+
+msgid "Decline"
+msgstr "Rechazar"
+
+msgid "Dismiss"
+msgstr "Descartar"
+
+msgid "Dismiss notification"
+msgstr "Descartar notificación"
+
+msgid "(notification dismissed)"
+msgstr "(notificación descartada)"
+
+msgid "Notification"
+msgstr "Notificación"
+
+msgid "Generate a new color"
+msgstr "Generar un nuevo color"
+
+#, python-format
+msgid "Delete %(name)s"
+msgstr "Eliminar %(name)s"
+
+msgid "This project and its related records will be removed."
+msgstr "Este proyecto y sus registros relacionados serán eliminados."
+
+msgid "Delete project"
+msgstr "Eliminar proyecto"
+
+#, python-format
+msgid "Edit %(name)s"
+msgstr "Editar %(name)s"
+
+msgid "New project"
+msgstr "Nuevo proyecto"
+
+msgid "Create project"
+msgstr "Crear proyecto"
+
+msgid "Name"
+msgstr "Nombre"
+
+msgid "Color"
+msgstr "Color"
+
+msgid "Description"
+msgstr "Descripción"
+
+msgid "Default"
+msgstr "Predeterminado"
+
+msgid "No description"
+msgstr "Sin descripción"
+
+msgid "Protected"
+msgstr "Protegido"
+
+msgid "Delete this project?"
+msgstr "¿Eliminar este proyecto?"
+
+#, python-format
+msgid "Delete project %(project.name)s"
+msgstr "Eliminar proyecto %(project.name)s"
+
+msgid "No projects yet."
+msgstr "Aún no hay proyectos."
+
+msgid "CEL expression help (opens in new tab)"
+msgstr "Ayuda sobre expresiones CEL (se abre en una pestaña nueva)"
+
+msgid "Your API Key"
+msgstr "Su clave API"
+
+msgid "Manage the credentials you use to call the Validibot API."
+msgstr "Administre las credenciales que usa para llamar a la API de Validibot."
+
+msgid ""
+"This action cannot be undone. All associated memberships and projects will "
+"be removed."
+msgstr ""
+"Esta acción no se puede deshacer. Todas las membresías y proyectos asociados serán eliminados."
+
+msgid "Delete organization"
+msgstr "Eliminar organización"
+
+msgid "View and manage organization settings."
+msgstr "Ver y administrar la configuración de la organización."
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Details"
+msgstr "Detalles"
+
+msgid "Slug"
+msgstr "Slug"
+
+msgid "Workspace type"
+msgstr "Tipo de espacio de trabajo"
+
+msgid "Personal workspace"
+msgstr "Espacio de trabajo personal"
+
+msgid "Team workspace"
+msgstr "Espacio de trabajo de equipo"
+
+msgid "Created"
+msgstr "Creado"
+
+msgid "Manage members"
+msgstr "Gestionar miembros"
+
+msgid "Manage projects"
+msgstr "Gestionar proyectos"
+
+msgid "Need to invite or remove people?"
+msgstr "¿Necesita invitar o eliminar personas?"
+
+msgid ""
+"Use the Manage members page to invite teammates, adjust roles, or remove "
+"access. Return here anytime to review organization metadata."
+msgstr ""
+"Use la página de gestión de miembros para invitar colaboradores, ajustar roles o revocar acceso. Regrese aquí cuando quiera revisar los metadatos de la organización."
+
+msgid "New organization"
+msgstr "Nueva organización"
+
+msgid "Create Organization"
+msgstr "Crear organización"
+
+msgid "Manage your organization settings."
+msgstr "Administre la configuración de su organización."
+
+msgid "Set up a new organization."
+msgstr "Configure una nueva organización."
+
+msgid "Back"
+msgstr "Volver"
+
+msgid "Organizations"
+msgstr "Organizaciones"
+
+msgid "You are not an administrator for any organizations yet."
+msgstr "Aún no es administrador de ninguna organización."
+
+msgid "Edit member roles"
+msgstr "Editar roles de miembro"
+
+msgid "Personal"
+msgstr "Personal"
+
+msgid "Use this key to authenticate API requests with the application API."
+msgstr "Use esta clave para autenticar las solicitudes a la API de la aplicación."
+
+msgid "API key"
+msgstr "Clave API"
+
+msgid "Copied"
+msgstr "Copiado"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Generate new key"
+msgstr "Generar nueva clave"
+
+msgid ""
+"Generating a new key immediately invalidates the previous key. Update any "
+"clients that use the API."
+msgstr ""
+"Generar una nueva clave invalida inmediatamente la clave anterior. Actualice todos los clientes que usen la API."
+
+msgid "Profile"
+msgstr "Perfil"
+
+msgid "Email"
+msgstr "Correo electrónico"
+
+msgid "Granted automatically by a higher-level role."
+msgstr "Otorgado automáticamente por un rol de nivel superior."
+
+msgid "Account Settings"
+msgstr "Configuración de la cuenta"
+
+msgid "Your User Profile"
+msgstr "Su perfil de usuario"
+
+msgid "Update how you appear to teammates and across the product."
+msgstr "Actualice cómo aparece ante sus colaboradores y en el producto."
+
+msgid "Current avatar"
+msgstr "Avatar actual"
+
+msgid "Save changes"
+msgstr "Guardar cambios"
+
+msgid "Profile Overview"
+msgstr "Resumen del perfil"
+
+msgid "See the details teammates view across the product."
+msgstr "Vea los detalles que sus colaboradores ven en el producto."
+
+#, python-format
+msgid ""
+"\n"
+"              Public profile information for %(username)s.\n"
+"            "
+msgstr ""
+"\n"
+"              Información del perfil público de %(username)s.\n"
+"            "
+
+msgid "About"
+msgstr "Acerca de"
+
+msgid "Username"
+msgstr "Nombre de usuario"
+
+msgid "Timezone"
+msgstr "Zona horaria"
+
+msgid "Edit profile"
+msgstr "Editar perfil"
+
+msgid "Update Profile"
+msgstr "Actualizar perfil"
+
+msgid "Adjust how your information appears to teammates."
+msgstr "Ajuste cómo aparece su información ante sus colaboradores."
+
+msgid "Update"
+msgstr "Actualizar"
+
+msgid "Validation runs you've submitted on shared workflows"
+msgstr "Ejecuciones de validación que ha enviado en flujos de trabajo compartidos"
+
+msgid "All organizations"
+msgstr "Todas las organizaciones"
+
+msgid "Status"
+msgstr "Estado"
+
+msgid "All statuses"
+msgstr "Todos los estados"
+
+msgid "Workflow"
+msgstr "Flujo de trabajo"
+
+msgid "Sort"
+msgstr "Ordenar"
+
+msgid "Newest first"
+msgstr "Más recientes primero"
+
+msgid "Oldest first"
+msgstr "Más antiguos primero"
+
+msgid "Workflow A-Z"
+msgstr "Flujo de trabajo A-Z"
+
+msgid "Workflow Z-A"
+msgstr "Flujo de trabajo Z-A"
+
+msgid "Filter"
+msgstr "Filtrar"
+
+msgid "Reset"
+msgstr "Restablecer"
+
+msgid "ID"
+msgstr "ID"
+
+msgid "Submission"
+msgstr "Envío"
+
+msgid "Started"
+msgstr "Iniciado"
+
+msgid "N/A"
+msgstr "N/D"
+
+msgid "View"
+msgstr "Ver"
+
+msgid ""
+"No validation runs match your filters yet. Run a workflow to see your "
+"results here."
+msgstr ""
+"Aún no hay ejecuciones de validación que coincidan con sus filtros. Ejecute un flujo de trabajo para ver sus resultados aquí."
+
+msgid "Delete Custom Basic Validator"
+msgstr "Eliminar validador básico personalizado"
+
+msgid "Delete Validator"
+msgstr "Eliminar validador"
+
+msgid "Warning"
+msgstr "Advertencia"
+
+#, python-format
+msgid ""
+"\n"
+"            You are about to delete <strong>%(name)s</strong>. This action "
+"will remove the validator\n"
+"            and its catalog entries for everyone in your organization.\n"
+"              "
+msgstr ""
+"\n"
+"            Está a punto de eliminar <strong>%(name)s</strong>. Esta acción "
+"eliminará el validador\n"
+"            y sus entradas de catálogo para todos en su organización.\n"
+"              "
+
+msgid "Are you sure you want to continue?"
+msgstr "¿Está seguro de que desea continuar?"
+
+msgid "This validator cannot be deleted because it is still referenced by:"
+msgstr "Este validador no puede eliminarse porque todavía es referenciado por:"
+
+msgid "Unknown blocker"
+msgstr "Bloqueo desconocido"
+
+msgid "Validation Library"
+msgstr "Biblioteca de validación"
+
+#, python-format
+msgid "Back to Edit \"%(validator_name)s\""
+msgstr "Volver a editar «%(validator_name)s»"
+
+msgid "Save validator"
+msgstr "Guardar validador"
+
+msgid "Tips"
+msgstr "Consejos"
+
+msgid ""
+"Use clear, action-oriented names so authors recognize the validator "
+"instantly."
+msgstr ""
+"Use nombres claros y orientados a la acción para que los autores reconozcan el validador de inmediato."
+
+msgid ""
+"Share context in the notes field—other team members see it while building "
+"workflows."
+msgstr ""
+"Comparta contexto en el campo de notas: otros miembros del equipo lo verán mientras crean flujos de trabajo."
+
+msgid "Pick the validator type that matches the backing engine or integration."
+msgstr "Elija el tipo de validador que coincida con el motor o la integración subyacente."
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "Create FMU Validator"
+msgstr "Crear validador FMU"
+
+msgid "Create Validator"
+msgstr "Crear validador"
+
+msgid "Toggle layout"
+msgstr "Cambiar disposición"
+
+msgid "List view"
+msgstr "Vista de lista"
+
+msgid "Grid view"
+msgstr "Vista de cuadrícula"
+
+msgid "New Validator"
+msgstr "Nuevo validador"
+
+msgid "Custom"
+msgstr "Personalizado"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "You have not created any custom validators yet."
+msgstr "Aún no ha creado ningún validador personalizado."
+
+msgid "No system validators are registered."
+msgstr "No hay validadores del sistema registrados."
+
+msgid "Catalog Entries"
+msgstr "Entradas de catálogo"
+
+msgid "No catalog entries registered yet."
+msgstr "Aún no hay entradas de catálogo registradas."
+
+msgid "Filter:"
+msgstr "Filtrar:"
+
+msgid "Filter by signal name"
+msgstr "Filtrar por nombre de señal"
+
+msgid "Stage"
+msgstr "Etapa"
+
+msgid "View details"
+msgstr "Ver detalles"
+
+msgid "No entries match your filter."
+msgstr "Ninguna entrada coincide con su filtro."
+
+msgid "Inputs"
+msgstr "Entradas"
+
+msgid "Outputs"
+msgstr "Salidas"
+
+msgid "Filter entries"
+msgstr "Filtrar entradas"
+
+msgid "No entries."
+msgstr "Sin entradas."
+
+msgid "Signal name"
+msgstr "Nombre de señal"
+
+msgid "Target Path"
+msgstr "Ruta de destino"
+
+msgid "Add Resource File"
+msgstr "Agregar archivo de recursos"
+
+msgid "Upload"
+msgstr "Subir"
+
+msgid "Edit Resource File"
+msgstr "Editar archivo de recursos"
+
+msgid "Add default assertion"
+msgstr "Agregar aserción predeterminada"
+
+msgid "Save default assertion"
+msgstr "Guardar aserción predeterminada"
+
+msgid "Edit default assertion"
+msgstr "Editar aserción predeterminada"
+
+msgid "Add signal"
+msgstr "Agregar señal"
+
+msgid "Save signal"
+msgstr "Guardar señal"
+
+msgid "Edit signal"
+msgstr "Editar señal"
+
+msgid "Create validator"
+msgstr "Crear validador"
+
+msgid "Select the type of validator you want to build."
+msgstr "Seleccione el tipo de validador que desea crear."
+
+msgid "Create"
+msgstr "Crear"
+
+msgid "No validator types are available yet."
+msgstr "Aún no hay tipos de validador disponibles."
+
+msgid "Signal Name"
+msgstr "Nombre de señal"
+
+msgid "Label"
+msgstr "Etiqueta"
+
+msgid "Data Type"
+msgstr "Tipo de dato"
+
+msgid "Entry Type"
+msgstr "Tipo de entrada"
+
+msgid "Signal Details"
+msgstr "Detalles de la señal"
+
+msgid "Order"
+msgstr "Orden"
+
+msgid "Assertion"
+msgstr "Aserción"
+
+msgid "Signal"
+msgstr "Señal"
+
+msgid "Default assertion actions"
+msgstr "Acciones de aserción predeterminada"
+
+#, python-format
+msgid "Delete default assertion '%(name)s'?"
+msgstr "¿Eliminar la aserción predeterminada '%(name)s'?"
+
+msgid "No default assertions in this validator."
+msgstr "No hay aserciones predeterminadas en este validador."
+
+msgid "No default assertions yet."
+msgstr "Aún no hay aserciones predeterminadas."
+
+#, python-format
+msgid "Default assertions for %(name)s"
+msgstr "Aserciones predeterminadas para %(name)s"
+
+msgid "This validator has no default assertions."
+msgstr "Este validador no tiene aserciones predeterminadas."
+
+msgid "View Validator Assertions"
+msgstr "Ver aserciones del validador"
+
+msgid "No description provided."
+msgstr "No se proporcionó descripción."
+
+msgid "Validation Type"
+msgstr "Tipo de validación"
+
+msgid "Version"
+msgstr "Versión"
+
+msgid "Short Description"
+msgstr "Descripción breve"
+
+msgid "Coming soon"
+msgstr "Próximamente"
+
+#, python-format
+msgid "Edit %(validator_name)s"
+msgstr "Editar %(validator_name)s"
+
+msgid "Delete validator"
+msgstr "Eliminar validador"
+
+msgid "Add file"
+msgstr "Agregar archivo"
+
+msgid "Scope"
+msgstr "Alcance"
+
+msgid "Org"
+msgstr "Org"
+
+msgid "Resource file actions"
+msgstr "Acciones de archivo de recursos"
+
+#, python-format
+msgid "Delete resource file '%(name)s'?"
+msgstr "¿Eliminar el archivo de recursos '%(name)s'?"
+
+msgid "No resource files for this validator."
+msgstr "No hay archivos de recursos para este validador."
+
+msgid "View all"
+msgstr "Ver todos"
+
+msgid "Target path"
+msgstr "Ruta de destino"
+
+msgid "Input"
+msgstr "Entrada"
+
+msgid "Signal actions"
+msgstr "Acciones de señal"
+
+#, python-format
+msgid "Delete signal '%(name)s'?"
+msgstr "¿Eliminar la señal '%(name)s'?"
+
+msgid "Output"
+msgstr "Salida"
+
+msgid ""
+"Signals are defined after an FMU is uploaded into this validator within a "
+"validation workflow."
+msgstr ""
+"Las señales se definen después de que se sube un FMU a este validador dentro de un flujo de trabajo de validación."
+
+msgid "No signals have been added yet."
+msgstr "Aún no se han agregado señales."
+
+msgid "Edit Validator Settings"
+msgstr "Editar configuración del validador"
+
+msgid "FMU Probe Status"
+msgstr "Estado de sondeo FMU"
+
+msgid "Run Probe"
+msgstr "Ejecutar sondeo"
+
+msgid "Refresh Status"
+msgstr "Actualizar estado"
+
+msgid "Signals"
+msgstr "Señales"
+
+msgid "Default Assertions"
+msgstr "Aserciones predeterminadas"
+
+msgid "Resource Files"
+msgstr "Archivos de recursos"
+
+msgid "Back to Validator Library"
+msgstr "Volver a la biblioteca de validadores"
+
+msgid "Add Signal"
+msgstr "Agregar señal"
+
+#, python-format
+msgid "Signals for \"%(name)s\""
+msgstr "Señales para «%(name)s»"
+
+msgid "All Signals"
+msgstr "Todas las señales"
+
+msgid "No signals have been defined for this validator."
+msgstr "No se han definido señales para este validador."
+
+#, python-format
+msgid "Back to \"%(name)s\""
+msgstr "Volver a «%(name)s»"
+
+msgid "Delete Validation"
+msgstr "Eliminar validación"
+
+msgid "Confirm deletion"
+msgstr "Confirmar eliminación"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to delete validation run #%(run)s? "
+"This action cannot be undone.\n"
+"              "
+msgstr ""
+"\n"
+"                ¿Está seguro de que desea eliminar la ejecución de validación #%(run)s? "
+"Esta acción no se puede deshacer.\n"
+"              "
+
+msgid "Validation Run"
+msgstr "Ejecución de validación"
+
+msgid "View Workflow"
+msgstr "Ver flujo de trabajo"
+
+msgid "Delete this validation run?"
+msgstr "¿Eliminar esta ejecución de validación?"
+
+msgid "Validations"
+msgstr "Validaciones"
+
+msgid "Workflow A→Z"
+msgstr "Flujo de trabajo A→Z"
+
+msgid "Workflow Z→A"
+msgstr "Flujo de trabajo Z→A"
+
+msgid "Status A→Z"
+msgstr "Estado A→Z"
+
+msgid "Status Z→A"
+msgstr "Estado Z→A"
+
+msgid "Reset filters"
+msgstr "Restablecer filtros"
+
+msgid "Source"
+msgstr "Origen"
+
+msgid "No validation runs match your filters yet."
+msgstr "Aún no hay ejecuciones de validación que coincidan con sus filtros."
+
+msgid "Validations for the"
+msgstr "Validaciones para el"
+
+msgid "validation"
+msgstr "validación"
+
+msgid "Recent runs that have executed against this workflow."
+msgstr "Ejecuciones recientes que se han realizado con este flujo de trabajo."
+
+msgid "Back to workflow"
+msgstr "Volver al flujo de trabajo"
+
+msgid "Run"
+msgstr "Ejecución"
+
+msgid "No validation runs yet for this workflow."
+msgstr "Aún no hay ejecuciones de validación para este flujo de trabajo."
+
+msgid "Workflows you've been invited to use"
+msgstr "Flujos de trabajo a los que ha sido invitado"
+
+msgid "Active"
+msgstr "Activo"
+
+msgid "Project"
+msgstr "Proyecto"
+
+msgid "Unversioned"
+msgstr "Sin versión"
+
+msgid ""
+"No shared workflows yet. You'll see workflows here once you've been invited "
+"to use them."
+msgstr ""
+"Aún no hay flujos de trabajo compartidos. Los verá aquí una vez que haya sido invitado a usarlos."
+
+msgid "Run in progress"
+msgstr "Ejecución en curso"
+
+msgid "Run complete"
+msgstr "Ejecución completada"
+
+msgid "Run failed"
+msgstr "Ejecución fallida"
+
+msgid "Run canceled"
+msgstr "Ejecución cancelada"
+
+msgid "Refreshing automatically…"
+msgstr "Actualizando automáticamente…"
+
+msgid "Cancel this workflow run?"
+msgstr "¿Cancelar esta ejecución del flujo de trabajo?"
+
+msgid "Cancel workflow"
+msgstr "Cancelar flujo de trabajo"
+
+msgid "This run was canceled."
+msgstr "Esta ejecución fue cancelada."
+
+msgid "Back to launch"
+msgstr "Volver al inicio de ejecución"
+
+msgid "View previous runs"
+msgstr "Ver ejecuciones anteriores"
+
+msgid "Launch again"
+msgstr "Ejecutar de nuevo"
+
+msgid "View full run"
+msgstr "Ver ejecución completa"
+
+msgid "Validation is currently running."
+msgstr "La validación está en curso."
+
+msgid "We refresh this status automatically until the run completes."
+msgstr "Actualizamos este estado automáticamente hasta que la ejecución se complete."
+
+msgid "If you navigate away, you can use this URL to check back:"
+msgstr "Si navega a otra página, puede usar esta URL para volver a verificar:"
+
+msgid "Submit content"
+msgstr "Enviar contenido"
+
+msgid "Extra data"
+msgstr "Datos adicionales"
+
+msgid "Input mode"
+msgstr "Modo de entrada"
+
+msgid "Select input mode"
+msgstr "Seleccionar modo de entrada"
+
+msgid "Upload file"
+msgstr "Subir archivo"
+
+msgid "Paste text"
+msgstr "Pegar texto"
+
+msgid "Upload file by browsing or dropping it here"
+msgstr "Suba un archivo navegando o arrastrándolo aquí"
+
+msgid "Drag & drop a file"
+msgstr "Arrastre y suelte un archivo"
+
+msgid "or click to browse"
+msgstr "o haga clic para buscar"
+
+msgid "Browse files"
+msgstr "Buscar archivos"
+
+msgid "No file selected yet."
+msgstr "Aún no se ha seleccionado ningún archivo."
+
+msgid ""
+"The workflow runs asynchronously. After submission you'll be redirected to "
+"the run status page."
+msgstr ""
+"El flujo de trabajo se ejecuta de forma asíncrona. Después del envío será redirigido a la página de estado de la ejecución."
+
+msgid "Submitting..."
+msgstr "Enviando..."
+
+msgid "Launch Validation"
+msgstr "Ejecutar validación"
+
+msgid "Launch Workflow"
+msgstr "Ejecutar flujo de trabajo"
+
+msgid "Launch Workflow "
+msgstr "Ejecutar flujo de trabajo "
+
+msgid "This workflow is currently inactive."
+msgstr "Este flujo de trabajo está actualmente inactivo."
+
+msgid ""
+"Re-enable the workflow from the settings page before launching new runs."
+msgstr ""
+"Reactive el flujo de trabajo desde la página de configuración antes de iniciar nuevas ejecuciones."
+
+msgid "Manage workflow"
+msgstr "Administrar flujo de trabajo"
+
+msgid "This workflow has no steps yet."
+msgstr "Este flujo de trabajo no tiene pasos aún."
+
+msgid "Add at least one validation step before launching new runs."
+msgstr "Agregue al menos un paso de validación antes de iniciar nuevas ejecuciones."
+
+msgid ""
+"\n"
+"                  You do not have permission to run this workflow. Contact "
+"an organization admin to request the Executor role.\n"
+"                "
+msgstr ""
+"\n"
+"                  No tiene permiso para ejecutar este flujo de trabajo. Contacte a un administrador de la organización para solicitar el rol de Ejecutor.\n"
+"                "
+
+msgid "You can still review the workflow configuration from the Info tab."
+msgstr "Aún puede revisar la configuración del flujo de trabajo desde la pestaña de información."
+
+msgid "Workflow Run"
+msgstr "Ejecución del flujo de trabajo"
+
+msgid "Status for workflow:"
+msgstr "Estado del flujo de trabajo:"
+
+msgid "No assertions defined yet."
+msgstr "Aún no se han definido aserciones."
+
+msgid "Assertion actions"
+msgstr "Acciones de aserción"
+
+msgid "Edit assertion"
+msgstr "Editar aserción"
+
+msgid "Move assertion up"
+msgstr "Mover aserción arriba"
+
+msgid "Move assertion down"
+msgstr "Mover aserción abajo"
+
+msgid "Delete this assertion?"
+msgstr "¿Eliminar esta aserción?"
+
+msgid "Delete assertion"
+msgstr "Eliminar aserción"
+
+msgid "Recent Validations"
+msgstr "Validaciones recientes"
+
+msgid "No validations have been recorded for this workflow yet."
+msgstr "Aún no se han registrado validaciones para este flujo de trabajo."
+
+msgid "Default assertions"
+msgstr "Aserciones predeterminadas"
+
+#, python-format
+msgid ""
+"Default assertions run by the validator selected for this step: %(count)s "
+"assertion."
+msgid_plural ""
+"Default assertions run by validator selected for this step: %(count)s "
+"assertions."
+msgstr[0] "Aserciones predeterminadas ejecutadas por el validador seleccionado para este paso: %(count)s aserción."
+msgstr[1] "Aserciones predeterminadas ejecutadas por el validador seleccionado para este paso: %(count)s aserciones."
+
+msgid ""
+"Because these assertions are defined in the validator, they always run, and "
+"are always evaluated first."
+msgstr ""
+"Debido a que estas aserciones están definidas en el validador, siempre se ejecutan y siempre se evalúan primero."
+
+msgid "View default assertions"
+msgstr "Ver aserciones predeterminadas"
+
+msgid "No assertions have been added yet."
+msgstr "Aún no se han agregado aserciones."
+
+msgid "Create the first assertion"
+msgstr "Crear la primera aserción"
+
+msgid "Step"
+msgstr "Paso"
+
+msgid "Workflow step"
+msgstr "Paso del flujo de trabajo"
+
+msgid "Show schema"
+msgstr "Mostrar esquema"
+
+msgid "Step details"
+msgstr "Detalles del paso"
+
+msgid "Edit step"
+msgstr "Editar paso"
+
+msgid "Validator"
+msgstr "Validador"
+
+msgid "Validation type"
+msgstr "Tipo de validación"
+
+msgid "Notes"
+msgstr "Notas"
+
+msgid "Launch workflow"
+msgstr "Ejecutar flujo de trabajo"
+
+#, python-format
+msgid "Launch %(workflow_name)s"
+msgstr "Ejecutar %(workflow_name)s"
+
+msgid "Launch"
+msgstr "Ejecutar"
+
+msgid "Executor access required to run this workflow"
+msgstr "Se requiere acceso de Ejecutor para ejecutar este flujo de trabajo"
+
+msgid "This workflow is archived and cannot be launched"
+msgstr "Este flujo de trabajo está archivado y no puede ejecutarse"
+
+msgid "Edit workflow"
+msgstr "Editar flujo de trabajo"
+
+msgid "View workflow (archived)"
+msgstr "Ver flujo de trabajo (archivado)"
+
+msgid "View workflow"
+msgstr "Ver flujo de trabajo"
+
+msgid "Unarchive workflow"
+msgstr "Desarchivar flujo de trabajo"
+
+#, python-format
+msgid "Unarchive %(workflow_name)s"
+msgstr "Desarchivar %(workflow_name)s"
+
+msgid "Unarchive this workflow?"
+msgstr "¿Desarchivar este flujo de trabajo?"
+
+msgid "Archive workflow"
+msgstr "Archivar flujo de trabajo"
+
+#, python-format
+msgid "Archive %(workflow_name)s"
+msgstr "Archivar %(workflow_name)s"
+
+msgid ""
+"Archive and disable this workflow? Existing runs will be allowed to finish."
+msgstr ""
+"¿Archivar y deshabilitar este flujo de trabajo? Las ejecuciones existentes podrán completarse."
+
+msgid "Delete workflow"
+msgstr "Eliminar flujo de trabajo"
+
+#, python-format
+msgid "Delete %(workflow_name)s"
+msgstr "Eliminar %(workflow_name)s"
+
+msgid "Delete this workflow?"
+msgstr "¿Eliminar este flujo de trabajo?"
+
+msgid "Locked"
+msgstr "Bloqueado"
+
+msgid "Archived"
+msgstr "Archivado"
+
+msgid "Inactive"
+msgstr "Inactivo"
+
+msgid "Updated"
+msgstr "Actualizado"
+
+msgid "Delete Workflow"
+msgstr "Eliminar flujo de trabajo"
+
+#, python-format
+msgid ""
+"\n"
+"                Are you sure you want to delete the workflow \"%(name)s\"? "
+"This action cannot be undone.\n"
+"              "
+msgstr ""
+"\n"
+"                ¿Está seguro de que desea eliminar el flujo de trabajo «%(name)s»? "
+"Esta acción no se puede deshacer.\n"
+"              "
+
+msgid "Guest Access"
+msgstr "Acceso de invitados"
+
+msgid "People with access to this workflow:"
+msgstr "Personas con acceso a este flujo de trabajo:"
+
+msgid "Added"
+msgstr "Agregado"
+
+#, python-format
+msgid "by %(name)s"
+msgstr "por %(name)s"
+
+msgid "Remove access for this user?"
+msgstr "¿Revocar el acceso de este usuario?"
+
+msgid "No guests have been granted access to this workflow yet."
+msgstr "Aún no se ha otorgado acceso a ningún invitado para este flujo de trabajo."
+
+msgid "Pending invitations:"
+msgstr "Invitaciones pendientes:"
+
+msgid "Resend invitation"
+msgstr "Reenviar invitación"
+
+msgid "Cancel invitation"
+msgstr "Cancelar invitación"
+
+#, python-format
+msgid ""
+"\n"
+"        Invite someone to access the workflow \"%(name)s\". They will be "
+"able to launch validations but won't become a member of your organization.\n"
+"      "
+msgstr ""
+"\n"
+"        Invite a alguien a acceder al flujo de trabajo «%(name)s». Podrá "
+"ejecutar validaciones pero no se convertirá en miembro de su organización.\n"
+"      "
+
+msgid "Enter the email address of the person you want to invite."
+msgstr "Ingrese la dirección de correo electrónico de la persona que desea invitar."
+
+msgid "Workflow Public Info Page"
+msgstr "Página de información pública del flujo de trabajo"
+
+msgid "Visible"
+msgstr "Visible"
+
+msgid "Private"
+msgstr "Privado"
+
+msgid "Hide public info page"
+msgstr "Ocultar página de información pública"
+
+msgid "Publish workflow info"
+msgstr "Publicar información del flujo de trabajo"
+
+msgid "View public info"
+msgstr "Ver información pública"
+
+msgid "Anyone with the link can currently view the workflow info page."
+msgstr "Actualmente, cualquier persona con el enlace puede ver la página de información del flujo de trabajo."
+
+msgid "Only teammates with access can currently view the workflow info page."
+msgstr "Actualmente, solo los colaboradores con acceso pueden ver la página de información del flujo de trabajo."
+
+msgid "Edit public info"
+msgstr "Editar información pública"
+
+msgid "Untitled step"
+msgstr "Paso sin título"
+
+msgid "Policy check"
+msgstr "Verificación de políticas"
+
+msgid "AI critic"
+msgstr "Crítico de IA"
+
+msgid "Blocking"
+msgstr "Bloqueante"
+
+msgid "Advisory"
+msgstr "Informativo"
+
+msgid "rules"
+msgstr "reglas"
+
+msgid "Selectors"
+msgstr "Selectores"
+
+msgid "Cost cap"
+msgstr "Límite de costo"
+
+msgid "JSON Schema validation"
+msgstr "Validación de esquema JSON"
+
+msgid "XML Schema"
+msgstr "Esquema XML"
+
+msgid "Simulation"
+msgstr "Simulación"
+
+msgid "Yes"
+msgstr "Sí"
+
+msgid "No"
+msgstr "No"
+
+msgid "EUI"
+msgstr "EUI"
+
+msgid "No additional configuration"
+msgstr "Sin configuración adicional"
+
+msgid "Step actions"
+msgstr "Acciones del paso"
+
+msgid "Move up"
+msgstr "Mover arriba"
+
+msgid "Move down"
+msgstr "Mover abajo"
+
+msgid "Remove this step?"
+msgstr "¿Eliminar este paso?"
+
+msgid "Policy sample"
+msgstr "Muestra de política"
+
+msgid "Author notes"
+msgstr "Notas del autor"
+
+msgid "No workflow steps yet"
+msgstr "Aún no hay pasos en el flujo de trabajo"
+
+msgid "Add workflow steps to build your validation workflow."
+msgstr "Agregue pasos al flujo de trabajo para construir su flujo de validación."
+
+msgid "Add your first step"
+msgstr "Agregue su primer paso"
+
+#, python-format
+msgid "You have reached the limit of %(max)s steps for a workflow."
+msgstr "Ha alcanzado el límite de %(max)s pasos para un flujo de trabajo."
+
+msgid "Add workflow step"
+msgstr "Agregar paso al flujo de trabajo"
+
+msgid "Choose the type of operation to run in this step."
+msgstr "Elija el tipo de operación a ejecutar en este paso."
+
+#, python-format
+msgid ""
+"\n"
+"        This workflow already has %(max)s steps. Remove a step before adding "
+"another.\n"
+"      "
+msgstr ""
+"\n"
+"        Este flujo de trabajo ya tiene %(max)s pasos. Elimine un paso antes de agregar otro.\n"
+"      "
+
+msgid "No custom validators available yet."
+msgstr "Aún no hay validadores personalizados disponibles."
+
+msgid "Continue"
+msgstr "Continuar"
+
+msgid "Visibility"
+msgstr "Visibilidad"
+
+msgid "Current"
+msgstr "Actual"
+
+msgid "Only org members and invited guests can launch this workflow."
+msgstr "Solo los miembros de la organización e invitados pueden ejecutar este flujo de trabajo."
+
+msgid "Public"
+msgstr "Público"
+
+msgid ""
+"Any logged-in user can launch this workflow. Usage is billed to your "
+"organization."
+msgstr ""
+"Cualquier usuario autenticado puede ejecutar este flujo de trabajo. El uso se factura a su organización."
+
+msgid "The info page is automatically made public when the workflow is public."
+msgstr "La página de información se hace pública automáticamente cuando el flujo de trabajo es público."
+
+msgid "Workflow access"
+msgstr "Acceso al flujo de trabajo"
+
+msgid ""
+"\n"
+"                    You can manage this workflow from the internal app.\n"
+"                    "
+msgstr ""
+"\n"
+"                    Puede administrar este flujo de trabajo desde la aplicación interna.\n"
+"                    "
+
+msgid ""
+"\n"
+"                    You do not currently have permission to run this "
+"workflow. Contact the workflow owner to request access.\n"
+"                    "
+msgstr ""
+"\n"
+"                    Actualmente no tiene permiso para ejecutar este flujo de trabajo. Contacte al propietario del flujo de trabajo para solicitar acceso.\n"
+"                    "
+
+msgid ""
+"\n"
+"                Sign in to your Validibot account to request access or "
+"launch this workflow.\n"
+"                "
+msgstr ""
+"\n"
+"                Inicie sesión en su cuenta de Validibot para solicitar acceso o ejecutar este flujo de trabajo.\n"
+"                "
+
+msgid "Open in app"
+msgstr "Abrir en la aplicación"
+
+msgid "Sign in"
+msgstr "Iniciar sesión"
+
+msgid "Start trial"
+msgstr "Iniciar prueba"
+
+msgid "Workflow overview"
+msgstr "Resumen del flujo de trabajo"
+
+msgid "Validibot Workflow Information"
+msgstr "Información del flujo de trabajo de Validibot"
+
+msgid " You can manage this workflow from the internal app. "
+msgstr " Puede administrar este flujo de trabajo desde la aplicación interna. "
+
+msgid ""
+" You do not currently have permission to run this workflow. Contact the "
+"workflow owner to request access. "
+msgstr ""
+" Actualmente no tiene permiso para ejecutar este flujo de trabajo. Contacte al propietario del flujo de trabajo para solicitar acceso. "
+
+msgid ""
+" Sign in to your Validibot account to request access or launch this "
+"workflow. "
+msgstr ""
+" Inicie sesión en su cuenta de Validibot para solicitar acceso o ejecutar este flujo de trabajo. "
+
+msgid "Workflow Validation Steps"
+msgstr "Pasos de validación del flujo de trabajo"
+
+msgid "Workflow complete"
+msgstr "Flujo de trabajo completado"
+
+msgid "No validation steps have been defined for this workflow."
+msgstr "No se han definido pasos de validación para este flujo de trabajo."
+
+msgid "Workflow Details"
+msgstr "Detalles del flujo de trabajo"
+
+msgid "UUID"
+msgstr "UUID"
+
+msgid "File types"
+msgstr "Tipos de archivo"
+
+msgid "All Workflows"
+msgstr "Todos los flujos de trabajo"
+
+msgid "Search workflows"
+msgstr "Buscar flujos de trabajo"
+
+msgid "Search by name or slug"
+msgstr "Buscar por nombre o slug"
+
+msgid "Workflow layout toggle"
+msgstr "Cambiar disposición de flujos de trabajo"
+
+msgid "Ungrouped"
+msgstr "Sin agrupar"
+
+#, python-format
+msgid ""
+"\n"
+"                          %(total)s validation step\n"
+"                        "
+msgid_plural ""
+"\n"
+"                          %(total)s validation steps\n"
+"                        "
+msgstr[0] "\n                          %(total)s paso de validación\n                        "
+msgstr[1] "\n                          %(total)s pasos de validación\n                        "
+
+msgid "Member access"
+msgstr "Acceso de miembros"
+
+#, python-format
+msgid ""
+"\n"
+"                            %(total)s validation step\n"
+"                          "
+msgid_plural ""
+"\n"
+"                            %(total)s validation steps\n"
+"                          "
+msgstr[0] "\n                            %(total)s paso de validación\n                          "
+msgstr[1] "\n                            %(total)s pasos de validación\n                          "
+
+#, python-format
+msgid ""
+"\n"
+"              No workflows match \"%(query)s\". Try a different search.\n"
+"            "
+msgstr ""
+"\n"
+"              Ningún flujo de trabajo coincide con «%(query)s». Intente una búsqueda diferente.\n"
+"            "
+
+msgid "No workflows are available yet."
+msgstr "Aún no hay flujos de trabajo disponibles."
+
+msgid "Findings"
+msgstr "Resultados"
+
+msgid "Success"
+msgstr "Éxito"
+
+msgid "Validation successful. No errors reported."
+msgstr "Validación exitosa. No se reportaron errores."
+
+msgid "robot image"
+msgstr "imagen de robot"
+
+msgid "Severity"
+msgstr "Gravedad"
+
+msgid "Path"
+msgstr "Ruta"
+
+msgid "No errors, warnings, or info for this step."
+msgstr "No hay errores, advertencias ni información para este paso."
+
+msgid "Run Summary"
+msgstr "Resumen de la ejecución"
+
+msgid "Submission name"
+msgstr "Nombre del envío"
+
+msgid "Short description"
+msgstr "Descripción breve"
+
+msgid "Errors"
+msgstr "Errores"
+
+msgid "warnings"
+msgstr "advertencias"
+
+msgid "info"
+msgstr "información"
+
+msgid "Total findings"
+msgstr "Total de resultados"
+
+msgid "Duration"
+msgstr "Duración"
+
+msgid "Running…"
+msgstr "Ejecutando…"
+
+msgid "Not captured"
+msgstr "No capturado"
+
+msgid "Submission metadata"
+msgstr "Metadatos del envío"
+
+msgid "Start a new validation run with this workflow"
+msgstr "Iniciar una nueva ejecución de validación con este flujo de trabajo"
+
+msgid "View JSON representation"
+msgstr "Ver representación JSON"
+
+msgid "Sharing settings"
+msgstr "Configuración de uso compartido"
+
+msgid "View Validations"
+msgstr "Ver validaciones"
+
+msgid "Delete this workflow"
+msgstr "Eliminar este flujo de trabajo"
+
+msgid "Workflow steps"
+msgstr "Pasos del flujo de trabajo"
+
+msgid "Design the sequence of validations and actions."
+msgstr "Diseñe la secuencia de validaciones y acciones."
+
+msgid "Add step"
+msgstr "Agregar paso"
+
+msgid "Workflow details"
+msgstr "Detalles del flujo de trabajo"
+
+msgid "Edit workflow details"
+msgstr "Editar detalles del flujo de trabajo"
+
+msgid "Workflow settings"
+msgstr "Configuración del flujo de trabajo"
+
+#, python-format
+msgid " Image for workflow %(name)s "
+msgstr " Imagen para el flujo de trabajo %(name)s "
+
+msgid "Disable workflow"
+msgstr "Deshabilitar flujo de trabajo"
+
+msgid "Enable workflow"
+msgstr "Habilitar flujo de trabajo"
+
+msgid ""
+"Inactive workflows stay visible in the catalog but block new validation runs."
+msgstr ""
+"Los flujos de trabajo inactivos permanecen visibles en el catálogo pero bloquean nuevas ejecuciones de validación."
+
+msgid "not set"
+msgstr "no establecido"
+
+msgid "Created by"
+msgstr "Creado por"
+
+msgid "API access"
+msgstr "Acceso API"
+
+msgid "Start this workflow via API"
+msgstr "Iniciar este flujo de trabajo mediante API"
+
+msgid "POST requests launch a validation run for this workflow."
+msgstr "Las solicitudes POST inician una ejecución de validación para este flujo de trabajo."
+
+msgid "Endpoint"
+msgstr "Endpoint"
+
+msgid "Auth"
+msgstr "Autenticación"
+
+#, python-format
+msgid "Bearer token with the Executor role in %(org_name)s."
+msgstr "Token Bearer con el rol de Ejecutor en %(org_name)s."
+
+msgid "Content"
+msgstr "Contenido"
+
+msgid "Send raw content, a JSON envelope, or multipart form-data."
+msgstr "Envíe contenido sin procesar, un envelope JSON o datos de formulario multiparte."
+
+msgid ""
+"See the developer guide 'Using a Workflow via the API' for additional "
+"payload examples."
+msgstr ""
+"Consulte la guía del desarrollador 'Uso de un flujo de trabajo mediante la API' para ver ejemplos adicionales de payload."
+
+msgid "Edit Workflow"
+msgstr "Editar flujo de trabajo"
+
+msgid "New Workflow"
+msgstr "Nuevo flujo de trabajo"
+
+msgid "Edit Workflow Settings"
+msgstr "Editar configuración del flujo de trabajo"
+
+msgid "Create workflow"
+msgstr "Crear flujo de trabajo"
+
+msgid "Workflow JSON"
+msgstr "JSON del flujo de trabajo"
+
+#, python-format
+msgid ""
+"Full serialized representation of workflow <code>%(slug)s</code>, including "
+"all steps and assertions."
+msgstr ""
+"Representación serializada completa del flujo de trabajo <code>%(slug)s</code>, incluyendo todos los pasos y aserciones."
+
+msgid "Workflow List"
+msgstr "Lista de flujos de trabajo"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Clear"
+msgstr "Limpiar"
+
+msgid "Archived toggle"
+msgstr "Alternar archivados"
+
+msgid "Hide archived workflows"
+msgstr "Ocultar flujos de trabajo archivados"
+
+msgid "Show archived workflows"
+msgstr "Mostrar flujos de trabajo archivados"
+
+msgid "No workflows yet"
+msgstr "Aún no hay flujos de trabajo"
+
+msgid "Get started by creating your first workflow."
+msgstr "Comience creando su primer flujo de trabajo."
+
+msgid "Create a workflow"
+msgstr "Crear un flujo de trabajo"
+
+msgid "Edit Public Info"
+msgstr "Editar información pública"
+
+msgid "Workflow Public Info"
+msgstr "Información pública del flujo de trabajo"
+
+msgid "Supports Markdown. Content is sanitized before publishing."
+msgstr "Compatible con Markdown. El contenido se sanea antes de publicarse."
+
+msgid "Public page preview"
+msgstr "Vista previa de la página pública"
+
+msgid "Changes appear on the public page immediately after saving."
+msgstr "Los cambios aparecen en la página pública inmediatamente después de guardar."
+
+msgid "View public page"
+msgstr "Ver página pública"
+
+msgid "Sharing"
+msgstr "Uso compartido"
+
+msgid "Back to Workflow"
+msgstr "Volver al flujo de trabajo"
+
+msgid "This workflow is public"
+msgstr "Este flujo de trabajo es público"
+
+msgid ""
+"Any authenticated user can launch this workflow. Guest access management is "
+"not needed for public workflows."
+msgstr ""
+"Cualquier usuario autenticado puede ejecutar este flujo de trabajo. La gestión de acceso de invitados no es necesaria para flujos de trabajo públicos."
+
+msgid "About Sharing"
+msgstr "Acerca del uso compartido"
+
+#, python-format
+msgid "Edit Step · %(step)s"
+msgstr "Editar paso · %(step)s"
+
+msgid "Step Assertions"
+msgstr "Aserciones del paso"
+
+msgid "Design the assertions for this step"
+msgstr "Diseñe las aserciones para este paso"
+
+msgid "Add assertion"
+msgstr "Agregar aserción"
+
+msgid "Input assertions"
+msgstr "Aserciones de entrada"
+
+msgid "No input assertions yet."
+msgstr "Aún no hay aserciones de entrada."
+
+msgid "Validator process"
+msgstr "Proceso del validador"
+
+msgid "Output assertions"
+msgstr "Aserciones de salida"
+
+msgid "No output assertions yet."
+msgstr "Aún no hay aserciones de salida."
+
+msgid "This validator does not support assertions."
+msgstr "Este validador no admite aserciones."
+
+#, python-format
+msgid "Add Step · %(name)s · Validibot"
+msgstr "Agregar paso · %(name)s · Validibot"
+
+#, python-format
+msgid "Step %(step_id)s · %(name)s · Validibot"
+msgstr "Paso %(step_id)s · %(name)s · Validibot"
+
+msgid "Edit step details"
+msgstr "Editar detalles del paso"
+
+msgid "We found a few issues. Please update the highlighted fields."
+msgstr "Encontramos algunos problemas. Por favor, actualice los campos resaltados."
+
+msgid "Back to workflow step"
+msgstr "Volver al paso del flujo de trabajo"
+
+msgid "Previous step"
+msgstr "Paso anterior"
+
+msgid "Next step"
+msgstr "Siguiente paso"
+
+msgid "Create step"
+msgstr "Crear paso"
+
+msgid "Page View"
+msgstr "Vista de página"
+
+msgid "Button Click"
+msgstr "Clic en botón"
+
+msgid "Form Submit"
+msgstr "Envío de formulario"
+
+msgid "Application Event"
+msgstr "Evento de aplicación"
+
+msgid "The project this event is associated with."
+msgstr "El proyecto con el que está asociado este evento."
+
+msgid "The organization this event is associated with."
+msgstr "La organización con la que está asociado este evento."
+
+msgid "The user who triggered this event."
+msgstr "El usuario que desencadenó este evento."
+
+msgid "Optional additional data related to the event."
+msgstr "Datos adicionales opcionales relacionados con el evento."
+
+msgid "Specific application event identifier when type is APP_EVENT."
+msgstr "Identificador específico del evento de aplicación cuando el tipo es APP_EVENT."
+
+msgid "Event type is required to log a tracking event"
+msgstr "El tipo de evento es obligatorio para registrar un evento de seguimiento"
+
+msgid "The workflow invite is no longer valid."
+msgstr "La invitación al flujo de trabajo ya no es válida."
+
+#, python-format
+msgid ""
+"Welcome! You now have access to the workflow '%(name)s'. You can run "
+"validations on this workflow."
+msgstr ""
+"¡Bienvenido! Ahora tiene acceso al flujo de trabajo '%(name)s'. Puede ejecutar validaciones en este flujo de trabajo."
+
+msgid ""
+"Your account was created but we couldn't activate your trial. Please contact "
+"support."
+msgstr ""
+"Su cuenta fue creada pero no pudimos activar su prueba. Por favor, contacte a soporte."
+
+msgid "Welcome! Your free trial is now active."
+msgstr "¡Bienvenido! Su prueba gratuita está ahora activa."
+
+msgid ""
+"Your account was created but we couldn't start your trial. Please contact "
+"support."
+msgstr ""
+"Su cuenta fue creada pero no pudimos iniciar su prueba. Por favor, contacte a soporte."
+
+msgid "Personal info"
+msgstr "Información personal"
+
+msgid "Permissions"
+msgstr "Permisos"
+
+msgid "Important dates"
+msgstr "Fechas importantes"
+
+msgid "Users"
+msgstr "Usuarios"
+
+msgid "Start workflow runs"
+msgstr "Iniciar ejecuciones de flujo de trabajo"
+
+msgid "View all validation results"
+msgstr "Ver todos los resultados de validación"
+
+msgid "View validation results for own runs"
+msgstr "Ver resultados de validación de las propias ejecuciones"
+
+msgid "View workflow definitions and metadata"
+msgstr "Ver definiciones y metadatos de flujos de trabajo"
+
+msgid "Create or edit workflows"
+msgstr "Crear o editar flujos de trabajo"
+
+msgid "View validators and catalog entries"
+msgstr "Ver validadores y entradas de catálogo"
+
+msgid "Create or edit validators"
+msgstr "Crear o editar validadores"
+
+msgid "View analytics and reporting dashboards"
+msgstr "Ver paneles de analíticas e informes"
+
+msgid "Review or approve analytics outputs"
+msgstr "Revisar o aprobar resultados de analíticas"
+
+msgid "Manage organization users and roles"
+msgstr "Gestionar usuarios y roles de la organización"
+
+msgid ""
+"ASSIGNED AT SETUP AND CANNOT BE CHANGED HERE. Sole org authority with all "
+"admin rights."
+msgstr ""
+"ASIGNADO EN LA CONFIGURACIÓN Y NO PUEDE CAMBIARSE AQUÍ. Única autoridad de la organización con todos los derechos de administrador."
+
+msgid ""
+"Includes Author, Executor, Validation Results Viewer, Analytics Viewer, and "
+"Workflow Viewer. Uncheck Admin to fine-tune individual permissions."
+msgstr ""
+"Incluye Autor, Ejecutor, Visor de resultados de validación, Visor de analíticas y Visor de flujos de trabajo. Desmarque Administrador para ajustar permisos individuales."
+
+msgid ""
+"Includes Executor, Validation Results Viewer, Analytics Viewer, and Workflow "
+"Viewer capabilities plus creating and editing workflows, validators, and "
+"rulesets."
+msgstr ""
+"Incluye las capacidades de Ejecutor, Visor de resultados de validación, Visor de analíticas y Visor de flujos de trabajo, más la creación y edición de flujos de trabajo, validadores y conjuntos de reglas."
+
+msgid ""
+"Includes Workflow Viewer access plus launch workflows, monitor progress, and "
+"review the runs they launch."
+msgstr ""
+"Incluye acceso de Visor de flujos de trabajo, más ejecución de flujos de trabajo, monitoreo de progreso y revisión de las ejecuciones que inicien."
+
+msgid "Read-only access to analytics dashboards and reports."
+msgstr "Acceso de solo lectura a paneles de analíticas e informes."
+
+msgid "Read-only access to all validation runs in organization."
+msgstr "Acceso de solo lectura a todas las ejecuciones de validación de la organización."
+
+msgid ""
+"Read-only access to workflows and org reports (no edit or execution "
+"permissions)."
+msgstr ""
+"Acceso de solo lectura a flujos de trabajo e informes de la organización (sin permisos de edición o ejecución)."
+
+msgid "Remove current avatar"
+msgstr "Eliminar avatar actual"
+
+msgid "Check to delete your uploaded avatar."
+msgstr "Marque esta casilla para eliminar su avatar subido."
+
+msgid "Manage your sign-in email from the User Email page."
+msgstr "Administre su correo electrónico de inicio de sesión desde la página de correo del usuario."
+
+msgid "This appears in shared links and invitations."
+msgstr "Esto aparece en los enlaces compartidos y las invitaciones."
+
+msgid "Optional short bio that appears in team areas."
+msgstr "Biografía breve opcional que aparece en las áreas del equipo."
+
+msgid "Acme Validation Lab"
+msgstr "Laboratorio de Validación Acme"
+
+msgid "This organization name is reserved. Please choose another."
+msgstr "Este nombre de organización está reservado. Por favor, elija otro."
+
+msgid "User email"
+msgstr "Correo electrónico del usuario"
+
+msgid ""
+"Invitees may become Admins, Authors, Executors, or Viewers. The Owner role "
+"is fixed and cannot be granted through this form."
+msgstr ""
+"Los invitados pueden convertirse en Administradores, Autores, Ejecutores o Visores. El rol de Propietario es fijo y no puede otorgarse mediante este formulario."
+
+#, python-format
+msgid "Enter the email address of an existing user to add them to %(org)s."
+msgstr "Ingrese la dirección de correo electrónico de un usuario existente para agregarlo a %(org)s."
+
+msgid "No user with that email exists in Validibot."
+msgstr "No existe ningún usuario con ese correo electrónico en Validibot."
+
+msgid "That user is already a member of this organization."
+msgstr "Ese usuario ya es miembro de esta organización."
+
+msgid "Owner role cannot be assigned through this form."
+msgstr "El rol de Propietario no puede asignarse mediante este formulario."
+
+msgid "Start typing a username or email to search."
+msgstr "Comience a escribir un nombre de usuario o correo electrónico para buscar."
+
+msgid "Organization context is required."
+msgstr "El contexto de organización es obligatorio."
+
+msgid "Select a user or provide an email."
+msgstr "Seleccione un usuario o proporcione un correo electrónico."
+
+msgid "Selected user does not exist."
+msgstr "El usuario seleccionado no existe."
+
+msgid "The Owner role cannot be assigned through this screen."
+msgstr "El rol de Propietario no puede asignarse mediante esta pantalla."
+
+msgid "This username has already been taken."
+msgstr "Este nombre de usuario ya está en uso."
+
+msgid "I agree to the Terms of Service and Privacy Policy"
+msgstr "Acepto los Términos de Servicio y la Política de Privacidad"
+
+msgid "You must agree to the Terms of Service and Privacy Policy."
+msgstr "Debe aceptar los Términos de Servicio y la Política de Privacidad."
+
+msgid "Default Project"
+msgstr "Proyecto predeterminado"
+
+msgid "Name of the organization, e.g. 'My Organization'"
+msgstr "Nombre de la organización, p. ej. 'Mi organización'"
+
+msgid "Indicates if this organization is a personal workspace for a user."
+msgstr "Indica si esta organización es un espacio de trabajo personal para un usuario."
+
+msgid ""
+"When this organization's trial expires. NULL means no trial (community/self-"
+"hosted or paid subscription)."
+msgstr ""
+"Cuándo vence la prueba de esta organización. NULL significa que no hay prueba (community/autoalojado o suscripción de pago)."
+
+msgid ""
+"The trial duration in days, snapshotted when the trial was activated. NULL "
+"for non-trial orgs."
+msgstr ""
+"La duración de la prueba en días, registrada cuando se activó la prueba. NULL para organizaciones sin prueba."
+
+msgid "This organization name is reserved."
+msgstr "Este nombre de organización está reservado."
+
+msgid "Name of User"
+msgstr "Nombre del usuario"
+
+msgid "Square image works best across the app."
+msgstr "Una imagen cuadrada funciona mejor en toda la aplicación."
+
+msgid "Job title"
+msgstr "Cargo"
+
+msgid "Company"
+msgstr "Empresa"
+
+msgid "Location"
+msgstr "Ubicación"
+
+msgid "Bio"
+msgstr "Biografía"
+
+msgid "Organization the user is currently working in (can be changed by user)."
+msgstr "Organización en la que trabaja actualmente el usuario (puede cambiarse por el usuario)."
+
+msgid "member invite"
+msgstr "invitación de miembro"
+
+msgid "member invites"
+msgstr "invitaciones de miembro"
+
+msgid "Profile updated successfully"
+msgstr "Perfil actualizado correctamente"
+
+msgid "Overview"
+msgstr "Resumen"
+
+msgid "User Settings"
+msgstr "Configuración del usuario"
+
+msgid "Generated a new API key."
+msgstr "Se generó una nueva clave API."
+
+msgid "Organization created."
+msgstr "Organización creada."
+
+msgid "Organization updated."
+msgstr "Organización actualizada."
+
+msgid "Organization deleted."
+msgstr "Organización eliminada."
+
+msgid "Personal workspaces cannot be deleted."
+msgstr "Los espacios de trabajo personales no pueden eliminarse."
+
+msgid ""
+"You must assign another administrator before deleting this organization."
+msgstr ""
+"Debe asignar otro administrador antes de eliminar esta organización."
+
+msgid "An organization must retain at least one administrator."
+msgstr "Una organización debe conservar al menos un administrador."
+
+msgid "An organization must retain at least one owner."
+msgstr "Una organización debe conservar al menos un propietario."
+
+msgid "Roles updated."
+msgstr "Roles actualizados."
+
+#, python-format
+msgid "Value for '%(path)s' was not found."
+msgstr "No se encontró el valor para '%(path)s'."
+
+#, python-format
+msgid "Value was %(state)s."
+msgstr "El valor era %(state)s."
+
+msgid "null"
+msgstr "nulo"
+
+msgid "not null"
+msgstr "no nulo"
+
+msgid "empty"
+msgstr "vacío"
+
+msgid "not empty"
+msgstr "no vacío"
+
+#, python-format
+msgid "Operator '%(operator)s' is not supported yet."
+msgstr "El operador '%(operator)s' aún no es compatible."
+
+msgid "Value is not numeric."
+msgstr "El valor no es numérico."
+
+msgid "Value does not support counting."
+msgstr "El valor no admite conteo."
+
+#, python-format
+msgid "Expected between %(low)s and %(high)s."
+msgstr "Se esperaba entre %(low)s y %(high)s."
+
+msgid "Membership check failed."
+msgstr "La verificación de membresía falló."
+
+msgid "Value is not textual."
+msgstr "El valor no es textual."
+
+msgid "String comparison failed."
+msgstr "La comparación de cadenas falló."
+
+msgid "Regular expression is missing."
+msgstr "Falta la expresión regular."
+
+msgid "Regex evaluation timed out (possible ReDoS pattern)."
+msgstr "El tiempo de evaluación de la expresión regular se agotó (posible patrón ReDoS)."
+
+#, python-format
+msgid "Invalid regex: %(error)s"
+msgstr "Expresión regular no válida: %(error)s"
+
+msgid "Regex comparison failed."
+msgstr "La comparación con expresión regular falló."
+
+msgid "Value has no length."
+msgstr "El valor no tiene longitud."
+
+msgid "Length comparison target missing."
+msgstr "Falta el objetivo de comparación de longitud."
+
+msgid "Length comparison failed."
+msgstr "La comparación de longitud falló."
+
+#, python-format
+msgid "Unsupported expected type '%(value)s'."
+msgstr "Tipo esperado no compatible: '%(value)s'."
+
+msgid "Type mismatch."
+msgstr "Tipo incompatible."
+
+#, python-format
+msgid "Difference %(diff)s exceeds tolerance %(tol)s."
+msgstr "La diferencia %(diff)s supera la tolerancia %(tol)s."
+
+msgid "Value is not a collection."
+msgstr "El valor no es una colección."
+
+msgid "Nested operator missing."
+msgstr "Falta el operador anidado."
+
+msgid "Not every element satisfied the condition."
+msgstr "No todos los elementos cumplieron la condición."
+
+msgid "At least one element matched when none should."
+msgstr "Al menos un elemento coincidió cuando ninguno debería."
+
+msgid "No collection elements satisfied the condition."
+msgstr "Ningún elemento de la colección cumplió la condición."
+
+msgid "Duplicate values detected."
+msgstr "Se detectaron valores duplicados."
+
+msgid "Collection is not a subset."
+msgstr "La colección no es un subconjunto."
+
+msgid "Collection is not a superset."
+msgstr "La colección no es un superconjunto."
+
+#, python-format
+msgid "Actual value %(actual)s failed comparison against %(expected)s."
+msgstr "El valor real %(actual)s falló la comparación con %(expected)s."
+
+#, python-format
+msgid "%(target)s expected %(condition)s but was %(actual)s."
+msgstr "%(target)s esperaba %(condition)s pero fue %(actual)s."
+
+msgid "value"
+msgstr "valor"
+
+msgid "Message template error - falling back to default output."
+msgstr "Error en la plantilla del mensaje: usando la salida predeterminada."
+
+#, python-format
+msgid "Unable to build CEL context: %(err)s"
+msgstr "No se pudo construir el contexto CEL: %(err)s"
+
+msgid "CEL expression is too long."
+msgstr "La expresión CEL es demasiado larga."
+
+msgid "CEL context is too large."
+msgstr "El contexto CEL es demasiado grande."
+
+#, python-format
+msgid "CEL 'when' failed: %(err)s"
+msgstr "La cláusula 'when' de CEL falló: %(err)s"
+
+#, python-format
+msgid "CEL evaluation failed: %(err)s"
+msgstr "La evaluación CEL falló: %(err)s"
+
+msgid "CEL assertion evaluated to false."
+msgstr "La aserción CEL evaluó como falsa."
+
+msgid ""
+"The '@' character cannot be used with dot notation in CEL. Use bracket "
+"notation for XML attributes — for example, m[\"@Conductivity\"] instead of "
+"m.@Conductivity."
+msgstr ""
+"El carácter '@' no puede usarse con notación de punto en CEL. Use notación de corchetes para atributos XML, por ejemplo, m[\"@Conductivity\"] en lugar de m.@Conductivity."
+
+msgid ""
+"A field in the expression was not found. XML attributes require an '@' "
+"prefix — for example, use m[\"@Conductivity\"] or "
+"double(m[\"@Conductivity\"]) instead of m.Conductivity."
+msgstr ""
+"No se encontró un campo en la expresión. Los atributos XML requieren un prefijo '@'; por ejemplo, use m[\"@Conductivity\"] o double(m[\"@Conductivity\"]) en lugar de m.Conductivity."
+
+#, python-format
+msgid ""
+"Field '%(name)s' was not found. If this is an XML attribute, use the '@' "
+"prefix with bracket notation: m[\"@%(name)s\"] instead of m.%(name)s."
+msgstr ""
+"No se encontró el campo '%(name)s'. Si es un atributo XML, use el prefijo '@' con notación de corchetes: m[\"@%(name)s\"] en lugar de m.%(name)s."
+
+#, python-format
+msgid ""
+"CEL references undefined name '%(identifier)s'. Check that this data path "
+"exists in the submission."
+msgstr ""
+"CEL hace referencia al nombre no definido '%(identifier)s'. Verifique que esta ruta de datos exista en el envío."
+
+#, python-format
+msgid ""
+"CEL references undefined name '%(identifier)s'. Ensure a matching validator "
+"signal exists."
+msgstr ""
+"CEL hace referencia al nombre no definido '%(identifier)s'. Asegúrese de que exista una señal de validador coincidente."
+
+msgid "Returns true when the value is not null/empty."
+msgstr "Devuelve verdadero cuando el valor no es nulo/vacío."
+
+msgid "Returns true when the numeric value is an integer."
+msgstr "Devuelve verdadero cuando el valor numérico es un entero."
+
+msgid "Calculates the q-quantile for the numeric list."
+msgstr "Calcula el cuantil q para la lista numérica."
+
+msgid "Average of a list of numbers (ignores nulls)."
+msgstr "Promedio de una lista de números (ignora nulos)."
+
+msgid "Sum of a list of numbers."
+msgstr "Suma de una lista de números."
+
+msgid "Maximum value in a list of numbers."
+msgstr "Valor máximo en una lista de números."
+
+msgid "Minimum value in a list of numbers."
+msgstr "Valor mínimo en una lista de números."
+
+msgid "Absolute value of a number."
+msgstr "Valor absoluto de un número."
+
+msgid "Round the numeric value to a number of decimal places."
+msgstr "Redondea el valor numérico a un número de decimales."
+
+msgid ""
+"Calculates the duration (in sample count) where predicate(series[i]) is true."
+msgstr "Calcula la duración (en conteo de muestras) donde predicate(series[i]) es verdadero."
+
+msgid "Running"
+msgstr "Ejecutando"
+
+msgid "Succeeded"
+msgstr "Exitoso"
+
+msgid "Failed"
+msgstr "Fallido"
+
+msgid "Timed Out"
+msgstr "Tiempo agotado"
+
+msgid "Pass"
+msgstr "Aprobado"
+
+msgid "Fail"
+msgstr "Fallido"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Validation Failed"
+msgstr "Validación fallida"
+
+msgid "Out of Memory"
+msgstr "Memoria insuficiente"
+
+msgid "Runtime Error"
+msgstr "Error de ejecución"
+
+msgid "System Error"
+msgstr "Error del sistema"
+
+msgid "Grid"
+msgstr "Cuadrícula"
+
+msgid "List"
+msgstr "Lista"
+
+msgid "Passed"
+msgstr "Aprobado"
+
+msgid "Skipped"
+msgstr "Omitido"
+
+msgid "Cancelled"
+msgstr "Cancelado"
+
+msgid "Basic Assertions"
+msgstr "Aserciones básicas"
+
+msgid "JSON Schema"
+msgstr "Esquema JSON"
+
+msgid "EnergyPlus"
+msgstr "EnergyPlus"
+
+msgid "FMU Validator"
+msgstr "Validador FMU"
+
+msgid "Custom Basic Validator"
+msgstr "Validador básico personalizado"
+
+msgid "THERM"
+msgstr "THERM"
+
+msgid "AI Assist"
+msgstr "Asistencia de IA"
+
+msgid "THERM Thermal Analysis"
+msgstr "Análisis térmico THERM"
+
+msgid "Draft"
+msgstr "Borrador"
+
+msgid "Coming Soon"
+msgstr "Próximamente"
+
+msgid "Published"
+msgstr "Publicado"
+
+msgid "Low compute"
+msgstr "Cómputo bajo"
+
+msgid "High compute"
+msgstr "Cómputo alto"
+
+msgid "Normal (1x)"
+msgstr "Normal (1x)"
+
+msgid "Medium (2x)"
+msgstr "Medio (2x)"
+
+msgid "Heavy (3x)"
+msgstr "Intenso (3x)"
+
+msgid "Extreme (5x)"
+msgstr "Extremo (5x)"
+
+msgid "Simple"
+msgstr "Simple"
+
+msgid "Modelica"
+msgstr "Modelica"
+
+msgid "KerML"
+msgstr "KerML"
+
+msgid "Info"
+msgstr "Información"
+
+msgid "Launch Page"
+msgstr "Página de ejecución"
+
+msgid "Document Type Definition (DTD)"
+msgstr "Definición de tipo de documento (DTD)"
+
+msgid "XML Schema Definition (XSD)"
+msgstr "Definición de esquema XML (XSD)"
+
+msgid "Relax NG (RNG)"
+msgstr "Relax NG (RNG)"
+
+msgid "Draft 2020-12"
+msgstr "Borrador 2020-12"
+
+msgid "Draft 2019-09"
+msgstr "Borrador 2019-09"
+
+msgid "Draft 7"
+msgstr "Borrador 7"
+
+msgid "Draft 6"
+msgstr "Borrador 6"
+
+msgid "Draft 4"
+msgstr "Borrador 4"
+
+msgid "Derivation"
+msgstr "Derivación"
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Timeseries"
+msgstr "Serie temporal"
+
+msgid "String"
+msgstr "Cadena"
+
+msgid "Boolean"
+msgstr "Booleano"
+
+msgid "Object"
+msgstr "Objeto"
+
+msgid "Basic Assertion"
+msgstr "Aserción básica"
+
+msgid "CEL expression"
+msgstr "Expresión CEL"
+
+msgid "Equals"
+msgstr "Igual a"
+
+msgid "Not equals"
+msgstr "Distinto de"
+
+msgid "Less than"
+msgstr "Menor que"
+
+msgid "Less than or equal"
+msgstr "Menor o igual que"
+
+msgid "Greater than"
+msgstr "Mayor que"
+
+msgid "Greater than or equal"
+msgstr "Mayor o igual que"
+
+msgid "Between (range)"
+msgstr "Entre (rango)"
+
+msgid "Is one of"
+msgstr "Es uno de"
+
+msgid "Is not one of"
+msgstr "No es uno de"
+
+msgid "Set is subset of"
+msgstr "El conjunto es subconjunto de"
+
+msgid "Set is superset of"
+msgstr "El conjunto es superconjunto de"
+
+msgid "All values unique"
+msgstr "Todos los valores son únicos"
+
+msgid "Contains"
+msgstr "Contiene"
+
+msgid "Does not contain"
+msgstr "No contiene"
+
+msgid "Starts with"
+msgstr "Comienza con"
+
+msgid "Ends with"
+msgstr "Termina con"
+
+msgid "Matches regex"
+msgstr "Coincide con expresión regular"
+
+msgid "Is null"
+msgstr "Es nulo"
+
+msgid "Is not null"
+msgstr "No es nulo"
+
+msgid "Is empty"
+msgstr "Está vacío"
+
+msgid "Is not empty"
+msgstr "No está vacío"
+
+msgid "Type is"
+msgstr "El tipo es"
+
+msgid "Length equals"
+msgstr "La longitud es igual a"
+
+msgid "Length ≤"
+msgstr "Longitud ≤"
+
+msgid "Length ≥"
+msgstr "Longitud ≥"
+
+msgid "Count between"
+msgstr "Conteo entre"
+
+msgid "Before"
+msgstr "Antes de"
+
+msgid "After"
+msgstr "Después de"
+
+msgid "Within duration"
+msgstr "Dentro de la duración"
+
+msgid "≈ Equals (tolerance)"
+msgstr "≈ Igual (tolerancia)"
+
+msgid "Any element satisfies"
+msgstr "Algún elemento satisface"
+
+msgid "All elements satisfy"
+msgstr "Todos los elementos satisfacen"
+
+msgid "No element satisfies"
+msgstr "Ningún elemento satisface"
+
+msgid "EnergyPlus Weather File (EPW)"
+msgstr "Archivo meteorológico EnergyPlus (EPW)"
+
+msgid "Shown in lists and cards."
+msgstr "Mostrado en listas y tarjetas."
+
+msgid "Supports Markdown. Plain text also works."
+msgstr "Compatible con Markdown. El texto plano también funciona."
+
+msgid "Version label (e.g. '1.0', '2025-01')."
+msgstr "Etiqueta de versión (p. ej. '1.0', '2025-01')."
+
+msgid "Allow custom data paths in assertions"
+msgstr "Permitir rutas de datos personalizadas en aserciones"
+
+msgid "Allow assertions against data paths not declared as signals."
+msgstr "Permite aserciones contra rutas de datos no declaradas como señales."
+
+msgid "Supported data format"
+msgstr "Formato de datos admitido"
+
+msgid "Pick the single data format this validator will parse."
+msgstr "Elija el formato de datos único que este validador analizará."
+
+msgid "Optional notes shown to other authors in your org."
+msgstr "Notas opcionales mostradas a otros autores en su organización."
+
+msgid "Optional project scope for this validator."
+msgstr "Alcance de proyecto opcional para este validador."
+
+msgid "FMU file"
+msgstr "Archivo FMU"
+
+msgid "Upload an FMU archive containing modelDescription.xml."
+msgstr "Suba un archivo FMU que contenga modelDescription.xml."
+
+msgid "Upload an FMU archive."
+msgstr "Suba un archivo FMU."
+
+msgid "Uploaded file is empty."
+msgstr "El archivo subido está vacío."
+
+msgid "Expected a .fmu file."
+msgstr "Se esperaba un archivo .fmu."
+
+msgid "Absolute value"
+msgstr "Valor absoluto"
+
+msgid "Percent of target"
+msgstr "Porcentaje del objetivo"
+
+msgid "Assertion Type"
+msgstr "Tipo de aserción"
+
+msgid "Target Signal"
+msgstr "Señal de destino"
+
+msgid "Catalog Signal"
+msgstr "Señal de catálogo"
+
+msgid "Condition"
+msgstr "Condición"
+
+msgid "Value"
+msgstr "Valor"
+
+msgid "Second value"
+msgstr "Segundo valor"
+
+msgid "Values (one per line)"
+msgstr "Valores (uno por línea)"
+
+msgid "Regular expression"
+msgstr "Expresión regular"
+
+msgid "Include minimum"
+msgstr "Incluir mínimo"
+
+msgid "Include maximum"
+msgstr "Incluir máximo"
+
+msgid "Case-insensitive"
+msgstr "Sin distinción de mayúsculas/minúsculas"
+
+msgid "Unicode/locale fold"
+msgstr "Plegado Unicode/locale"
+
+msgid "Coerce numeric strings"
+msgstr "Forzar cadenas numéricas"
+
+msgid "Treat missing as null"
+msgstr "Tratar ausente como nulo"
+
+msgid "Tolerance"
+msgstr "Tolerancia"
+
+msgid "Tolerance type"
+msgstr "Tipo de tolerancia"
+
+msgid "Date/Time"
+msgstr "Fecha/Hora"
+
+msgid "Collection member condition"
+msgstr "Condición del elemento de la colección"
+
+msgid "Collection member value"
+msgstr "Valor del elemento de la colección"
+
+msgid "When (optional)"
+msgstr "Cuando (opcional)"
+
+msgid "CEL expression, e.g., has(series('fac_elec'))"
+msgstr "Expresión CEL, p. ej., has(series('fac_elec'))"
+
+msgid "Failure message"
+msgstr "Mensaje de fallo"
+
+msgid ""
+"Shown when the assertion fails. Supports {{value}} style placeholders plus "
+"filters round, upper, lower, default."
+msgstr ""
+"Se muestra cuando la aserción falla. Compatible con marcadores de posición estilo {{value}} más los filtros round, upper, lower, default."
+
+msgid "Use template variables like {{value}}"
+msgstr "Use variables de plantilla como {{value}}"
+
+msgid "Success message"
+msgstr "Mensaje de éxito"
+
+msgid "Shown when the assertion passes. Supports {{value}} style placeholders."
+msgstr "Se muestra cuando la aserción se aprueba. Compatible con marcadores de posición estilo {{value}}."
+
+msgid "e.g. EUI is within acceptable range"
+msgstr "p. ej. El EUI está dentro del rango aceptable"
+
+msgid "Select a signal"
+msgstr "Seleccione una señal"
+
+msgid ""
+"You may enter new targets using dot notation (e.g., data.error.message) and "
+"[index] for lists."
+msgstr ""
+"Puede ingresar nuevos objetivos usando notación de punto (p. ej., data.error.message) y [índice] para listas."
+
+msgid "Only declared signals are available for this validator."
+msgstr "Solo están disponibles las señales declaradas para este validador."
+
+msgid ""
+"Use dot notation for nested objects and [index] for lists, e.g. "
+"`payload.results[0].value`"
+msgstr ""
+"Use notación de punto para objetos anidados y [índice] para listas, p. ej. `payload.results[0].value`"
+
+msgid "Target Signal or Path"
+msgstr "Señal o ruta de destino"
+
+msgid ""
+"Use `output.<name>` to disambiguate output signals when an input signal "
+"shares the same name. Use dot notation for nested objects and [index] for "
+"lists, e.g. `payload.results[0].value`."
+msgstr ""
+"Use `output.<name>` para desambiguar señales de salida cuando una señal de entrada comparte el mismo nombre. Use notación de punto para objetos anidados y [índice] para listas, p. ej. `payload.results[0].value`."
+
+msgid ""
+"Use `output.<name>` to disambiguate output signals when an input shares the "
+"same name."
+msgstr ""
+"Use `output.<name>` para desambiguar señales de salida cuando una entrada comparte el mismo nombre."
+
+msgid "Search or enter a custom path"
+msgstr "Buscar o ingresar una ruta personalizada"
+
+msgid "(Select one)"
+msgstr "(Seleccione uno)"
+
+msgid "Select a condition."
+msgstr "Seleccione una condición."
+
+#, python-format
+msgid "Unknown signal(s) referenced: %(names)s"
+msgstr "Señal(es) referenciada(s) desconocida(s): %(names)s"
+
+msgid ""
+"Unknown signal(s) referenced. Provide a catalog signal or enable custom "
+"targets."
+msgstr ""
+"Se hizo referencia a señal(es) desconocida(s). Proporcione una señal de catálogo o habilite objetivos personalizados."
+
+#, python-format
+msgid ""
+"Both an input and output are named '%(name)s'. Use `output.%(name)s` to "
+"target the output signal."
+msgstr ""
+"Tanto una entrada como una salida se llaman '%(name)s'. Use `output.%(name)s` para apuntar a la señal de salida."
+
+msgid ""
+"Custom targets must use dot notation with optional numeric indexes, e.g. "
+"`data.results[0].value`."
+msgstr ""
+"Los objetivos personalizados deben usar notación de punto con índices numéricos opcionales, p. ej. `data.results[0].value`."
+
+msgid "Provide a regular expression."
+msgstr "Proporcione una expresión regular."
+
+msgid "Provide a tolerance value."
+msgstr "Proporcione un valor de tolerancia."
+
+msgid "Select a tolerance type."
+msgstr "Seleccione un tipo de tolerancia."
+
+msgid "Provide a date/time value."
+msgstr "Proporcione un valor de fecha/hora."
+
+msgid "Select a condition for the collection members."
+msgstr "Seleccione una condición para los elementos de la colección."
+
+#, python-format
+msgid "Operator %(op)s is not supported."
+msgstr "El operador %(op)s no es compatible."
+
+msgid "Provide a value."
+msgstr "Proporcione un valor."
+
+msgid "Provide at least one value (one per line)."
+msgstr "Proporcione al menos un valor (uno por línea)."
+
+msgid "Provide a CEL expression."
+msgstr "Proporcione una expresión CEL."
+
+msgid "Parentheses and brackets must be balanced."
+msgstr "Los paréntesis y corchetes deben estar balanceados."
+
+msgid "Assertion type"
+msgstr "Tipo de aserción"
+
+msgid "Enter a CEL expression that references validator signals."
+msgstr "Ingrese una expresión CEL que haga referencia a señales del validador."
+
+msgid "Lower numbers run first."
+msgstr "Los números menores se ejecutan primero."
+
+msgid "Signals referenced"
+msgstr "Señales referenciadas"
+
+msgid "Signals are detected from the CEL expression and shown for reference."
+msgstr "Las señales se detectan desde la expresión CEL y se muestran como referencia."
+
+msgid "Unsupported assertion type."
+msgstr "Tipo de aserción no compatible."
+
+msgid "CEL expression is required."
+msgstr "La expresión CEL es obligatoria."
+
+msgid ""
+"Short, slug-form name (lowercase letters, numbers, hyphens) used in "
+"assertions and CEL expressions."
+msgstr ""
+"Nombre corto en formato slug (letras minúsculas, números, guiones) usado en aserciones y expresiones CEL."
+
+msgid "Signal name is required."
+msgstr "El nombre de la señal es obligatorio."
+
+msgid ""
+"A short description to help you remember what data this signal represents."
+msgstr ""
+"Una breve descripción para ayudarle a recordar qué datos representa esta señal."
+
+msgid ""
+"Requires the signal to be present in the submission (inputs) or processor "
+"output (outputs)."
+msgstr ""
+"Requiere que la señal esté presente en el envío (entradas) o en la salida del procesador (salidas)."
+
+msgid "Data path"
+msgstr "Ruta de datos"
+
+#, python-format
+msgid ""
+"Use slug format (lowercase letters, numbers, hyphens). Try: %(suggested)s"
+msgstr ""
+"Use formato slug (letras minúsculas, números, guiones). Pruebe: %(suggested)s"
+
+msgid "a-slug-name"
+msgstr "nombre-en-slug"
+
+msgid ""
+"Signal name must be unique across inputs and outputs for this validator."
+msgstr ""
+"El nombre de la señal debe ser único entre entradas y salidas de este validador."
+
+#, python-format
+msgid "File type '.%(ext)s' is not allowed. Accepted: %(allowed)s."
+msgstr "El tipo de archivo '.%(ext)s' no está permitido. Aceptados: %(allowed)s."
+
+#, python-format
+msgid "File is too large (max %(max)s MB)."
+msgstr "El archivo es demasiado grande (máx. %(max)s MB)."
+
+msgid "This file appears to be a binary archive or executable."
+msgstr "Este archivo parece ser un archivo comprimido binario o ejecutable."
+
+#, python-format
+msgid "File content does not match expected format for %(type)s."
+msgstr "El contenido del archivo no coincide con el formato esperado para %(type)s."
+
+msgid ""
+"Username or email of the user (defaults to current user or first available)"
+msgstr "Nombre de usuario o correo electrónico (por defecto el usuario actual o el primero disponible)"
+
+msgid "The user who created this ruleset."
+msgstr "El usuario que creó este conjunto de reglas."
+
+msgid "Type of validation ruleset, e.g. 'json_schema', 'xml_schema'"
+msgstr "Tipo de conjunto de reglas de validación, p. ej. 'json_schema', 'xml_schema'"
+
+msgid ""
+"Optional uploaded file containing the ruleset definition. Leave empty when "
+"pasting rules directly."
+msgstr ""
+"Archivo subido opcional que contiene la definición del conjunto de reglas. Déjelo vacío al pegar reglas directamente."
+
+msgid ""
+"Inline ruleset definition (for example, JSON Schema or XML schema text). Use "
+"this when you prefer to paste or store the rules without uploading a file."
+msgstr ""
+"Definición de conjunto de reglas en línea (por ejemplo, texto de esquema JSON o XML). Úselo cuando prefiera pegar o almacenar las reglas sin subir un archivo."
+
+msgid "Additional metadata about the ruleset (non-rule data only)."
+msgstr "Metadatos adicionales sobre el conjunto de reglas (solo datos que no son reglas)."
+
+msgid "Provide rules either as text or file, not both."
+msgstr "Proporcione las reglas como texto o archivo, no ambos."
+
+msgid "XML schema rulesets must define metadata['schema_type']."
+msgstr "Los conjuntos de reglas de esquema XML deben definir metadata['schema_type']."
+
+#, python-format
+msgid "Schema type '%(st)s' is not valid for %(rt)s."
+msgstr "El tipo de esquema '%(st)s' no es válido para %(rt)s."
+
+msgid "JSON schema rulesets must define metadata['schema_type']."
+msgstr "Los conjuntos de reglas de esquema JSON deben definir metadata['schema_type']."
+
+msgid ""
+"Schema rulesets must include either inline rules text or an uploaded file."
+msgstr ""
+"Los conjuntos de reglas de esquema deben incluir texto de reglas en línea o un archivo subido."
+
+msgid "Structured operator used for BASIC assertions."
+msgstr "Operador estructurado usado para aserciones BASIC."
+
+msgid "Reference to a catalog entry when targeting a known signal."
+msgstr "Referencia a una entrada de catálogo cuando se apunta a una señal conocida."
+
+msgid "Custom JSON-style path for validators that allow free-form targets."
+msgstr "Ruta de estilo JSON personalizada para validadores que permiten objetivos de forma libre."
+
+msgid "Optional CEL expression gating when the assertion evaluates."
+msgstr "Expresión CEL opcional que condiciona cuándo se evalúa la aserción."
+
+msgid "Operator payload (values, range bounds, regex pattern, etc.)."
+msgstr "Payload del operador (valores, límites de rango, patrón de expresión regular, etc.)."
+
+msgid ""
+"Operator options (inclusive bounds, tolerance metadata, case folding, etc.)."
+msgstr ""
+"Opciones del operador (límites inclusivos, metadatos de tolerancia, plegado de mayúsculas, etc.)."
+
+msgid "Message rendered when the assertion fails."
+msgstr "Mensaje mostrado cuando la aserción falla."
+
+msgid "Message rendered when the assertion passes."
+msgstr "Mensaje mostrado cuando la aserción se aprueba."
+
+msgid "Normalized CEL preview generated from the stored payload."
+msgstr "Vista previa CEL normalizada generada desde el payload almacenado."
+
+msgid "Schema version for `rhs` and `options` payloads."
+msgstr "Versión de esquema para los payloads `rhs` y `options`."
+
+msgid "Provide either a catalog target or a custom path (but not both)."
+msgstr "Proporcione un objetivo de catálogo o una ruta personalizada (pero no ambos)."
+
+#, python-format
+msgid "≤ %(value)s"
+msgstr "≤ %(value)s"
+
+#, python-format
+msgid "< %(value)s"
+msgstr "< %(value)s"
+
+#, python-format
+msgid "≥ %(value)s"
+msgstr "≥ %(value)s"
+
+#, python-format
+msgid "> %(value)s"
+msgstr "> %(value)s"
+
+#, python-format
+msgid "Equals %(value)s"
+msgstr "Igual a %(value)s"
+
+#, python-format
+msgid "Not equals %(value)s"
+msgstr "Distinto de %(value)s"
+
+#, python-format
+msgid "%(min)s %(min_cmp)s target %(max_cmp)s %(max)s"
+msgstr "%(min)s %(min_cmp)s objetivo %(max_cmp)s %(max)s"
+
+#, python-format
+msgid "One of %(values)s"
+msgstr "Uno de %(values)s"
+
+#, python-format
+msgid "Not in %(values)s"
+msgstr "No está en %(values)s"
+
+#, python-format
+msgid "Matches %(pattern)s"
+msgstr "Coincide con %(pattern)s"
+
+#, python-format
+msgid "%(verb)s %(value)s"
+msgstr "%(verb)s %(value)s"
+
+#, python-format
+msgid "≈ %(value)s ± %(tol)s"
+msgstr "≈ %(value)s ± %(tol)s"
+
+msgid "true"
+msgstr "verdadero"
+
+msgid "false"
+msgstr "falso"
+
+msgid "Model Exchange"
+msgstr "Intercambio de modelo"
+
+msgid "Co-Simulation"
+msgstr "Co-simulación"
+
+msgid "FMI 2.0"
+msgstr "FMI 2.0"
+
+msgid "FMI 3.0"
+msgstr "FMI 3.0"
+
+msgid "SHA256 checksum used to reference cached FMUs in storage."
+msgstr "Suma de verificación SHA256 utilizada para referenciar FMUs en caché en el almacenamiento."
+
+msgid ""
+"Cloud storage URI to the canonical FMU object (e.g., gs://bucket/fmus/"
+"<checksum>.fmu for GCS)."
+msgstr ""
+"URI de almacenamiento en la nube al objeto FMU canónico (p. ej., gs://bucket/fmus/<checksum>.fmu para GCS)."
+
+msgid "A unique identifier for the validator, used in URLs."
+msgstr "Identificador único del validador, utilizado en las URL."
+
+msgid ""
+"A brief summary of the validator's purpose. This description appears in "
+"lists and cards."
+msgstr ""
+"Un resumen breve del propósito del validador. Esta descripción aparece en listas y tarjetas."
+
+msgid "Optional longer description of the validator."
+msgstr "Descripción más detallada del validador (opcional)."
+
+msgid "Owning organization for custom validators (null for system validators)."
+msgstr "Organización propietaria para validadores personalizados (nulo para validadores del sistema)."
+
+msgid "Version label for this validator (e.g. '2020-12', '1.0')."
+msgstr "Etiqueta de versión para este validador (p. ej. '2020-12', '1.0')."
+
+msgid ""
+"The name of the process that generates output signals from input signals."
+msgstr ""
+"El nombre del proceso que genera señales de salida a partir de señales de entrada."
+
+msgid ""
+"True when the validator includes an intermediate processor that produces "
+"output signals."
+msgstr ""
+"Verdadero cuando el validador incluye un procesador intermedio que produce señales de salida."
+
+msgid ""
+"True when this validator supports step-level assertions (Basic and CEL). "
+"Schema-only validators (JSON Schema, XML Schema) do not support assertions."
+msgstr ""
+"Verdadero cuando este validador admite aserciones a nivel de paso (Basic y CEL). Los validadores solo de esquema (JSON Schema, XML Schema) no admiten aserciones."
+
+msgid "FMU artifact backing this validator (only used for FMU validators)."
+msgstr "Artefacto FMU que respalda este validador (solo se usa para validadores FMU)."
+
+msgid "Relative ordering for display purposes."
+msgstr "Orden relativo para fines de visualización."
+
+msgid "True when the validator ships with the platform."
+msgstr "Verdadero cuando el validador viene incluido con la plataforma."
+
+msgid ""
+"Disabled validators are hidden from users and cannot be added to workflows. "
+"Toggle via the admin panel."
+msgstr ""
+"Los validadores deshabilitados están ocultos para los usuarios y no pueden agregarse a flujos de trabajo. Actívelos o desactívelos desde el panel de administración."
+
+msgid ""
+"Release state for system validators. DRAFT hides the validator, COMING_SOON "
+"shows it disabled, PUBLISHED makes it fully available."
+msgstr ""
+"Estado de publicación para validadores del sistema. DRAFT oculta el validador, COMING_SOON lo muestra deshabilitado, PUBLISHED lo hace completamente disponible."
+
+msgid "Data formats this validator can parse (e.g., JSON, EnergyPlus IDF)."
+msgstr "Formatos de datos que este validador puede analizar (p. ej., JSON, EnergyPlus IDF)."
+
+msgid "Logical file types this validator can process (JSON, XML, text, etc.)."
+msgstr "Tipos de archivo lógicos que este validador puede procesar (JSON, XML, texto, etc.)."
+
+msgid ""
+"Compute intensity classification. LOW = metered by launch count. HIGH = "
+"metered by credit consumption."
+msgstr ""
+"Clasificación de intensidad de cómputo. LOW = medido por conteo de ejecuciones. HIGH = medido por consumo de créditos."
+
+msgid ""
+"Credit multiplier for HIGH-compute validators. Higher weight = more credits "
+"consumed per minute of runtime."
+msgstr ""
+"Multiplicador de créditos para validadores de cómputo HIGH. Mayor peso = más créditos consumidos por minuto de ejecución."
+
+#, python-format
+msgid "'%(value)s' is not a supported submission data format."
+msgstr "'%(value)s' no es un formato de datos de envío compatible."
+
+msgid "Custom validators support only JSON or YAML."
+msgstr "Los validadores personalizados solo admiten JSON o YAML."
+
+msgid "Select exactly one data format for a custom validator."
+msgstr "Seleccione exactamente un formato de datos para un validador personalizado."
+
+#, python-format
+msgid "'%(value)s' is not a supported submission file type."
+msgstr "'%(value)s' no es un tipo de archivo de envío compatible."
+
+msgid "Assign an FMU asset before saving an FMU validator."
+msgstr "Asigne un activo FMU antes de guardar un validador FMU."
+
+msgid "FMU assets can only be attached to FMU validators."
+msgstr "Los activos FMU solo pueden adjuntarse a validadores FMU."
+
+msgid ""
+"Phase of the validator run when this entry is available. INPUT is before the "
+"validator's processor operates on the data. OUTPUT is the data generated by "
+"the validator's processor."
+msgstr ""
+"Fase de la ejecución del validador en que esta entrada está disponible. INPUT es antes de que el procesador del validador opere sobre los datos. OUTPUT son los datos generados por el procesador del validador."
+
+msgid ""
+"Unique name for this catalog entry within the validator. You use this name "
+"in assertions and CEL statements."
+msgstr ""
+"Nombre único para esta entrada de catálogo dentro del validador. Use este nombre en aserciones y declaraciones CEL."
+
+msgid "Human-friendly label shown in editors."
+msgstr "Etiqueta legible mostrada en los editores."
+
+msgid "Path used to locate this signal in the input or processor output."
+msgstr "Ruta utilizada para localizar esta señal en la entrada o salida del procesador."
+
+msgid "Provider-specific binding metadata."
+msgstr "Metadatos de enlace específicos del proveedor."
+
+msgid "Additional UI metadata (example units, tags, etc.)."
+msgstr "Metadatos adicionales de la interfaz (unidades de ejemplo, etiquetas, etc.)."
+
+msgid ""
+"Hidden signals remain available to bindings but are not shown in authoring "
+"interfaces."
+msgstr ""
+"Las señales ocultas permanecen disponibles para los enlaces pero no se muestran en las interfaces de autoría."
+
+msgid "Optional default applied when the signal is hidden."
+msgstr "Valor predeterminado opcional aplicado cuando la señal está oculta."
+
+msgid "Base validation type must match the linked Validator validation_type."
+msgstr "El tipo de validación base debe coincidir con el validation_type del validador vinculado."
+
+msgid "Validator already belongs to a different organization."
+msgstr "El validador ya pertenece a una organización diferente."
+
+msgid ""
+"Can be NULL if submission record was deleted. Code accessing this field must "
+"handle the None case."
+msgstr ""
+"Puede ser NULL si el registro del envío fue eliminado. El código que accede a este campo debe manejar el caso None."
+
+msgid "Optional short description of this validation run."
+msgstr "Descripción breve opcional de esta ejecución de validación."
+
+msgid "Classification of why the run failed (TIMEOUT, OOM, etc.)."
+msgstr "Clasificación de por qué falló la ejecución (TIMEOUT, OOM, etc.)."
+
+msgid "Where this run was initiated (web launch page, API, etc.)."
+msgstr "Desde dónde se inició esta ejecución (página de lanzamiento web, API, etc.)."
+
+msgid "Snapshot of workflow's output retention policy at run time."
+msgstr "Instantánea de la política de retención de salidas del flujo de trabajo en el momento de la ejecución."
+
+msgid ""
+"When outputs should be purged (null = never expires or not yet computed)."
+msgstr ""
+"Cuándo deben eliminarse las salidas (nulo = nunca vence o aún no calculado)."
+
+msgid "When outputs were purged (for audit trail)."
+msgstr "Cuándo se eliminaron las salidas (para auditoría)."
+
+msgid "Run org must match submission org."
+msgstr "La organización de la ejecución debe coincidir con la del envío."
+
+msgid "Optional metadata for reporting (for example exemplar messages)."
+msgstr "Metadatos opcionales para informes (por ejemplo, mensajes de ejemplo)."
+
+msgid "Step must belong to the run's workflow."
+msgstr "El paso debe pertenecer al flujo de trabajo de la ejecución."
+
+msgid "Must equal WorkflowStep.order."
+msgstr "Debe ser igual a WorkflowStep.order."
+
+msgid "Validation run must match the step run's parent run."
+msgstr "La ejecución de validación debe coincidir con la ejecución padre del paso."
+
+msgid "Artifact org must match run org."
+msgstr "La organización del artefacto debe coincidir con la de la ejecución."
+
+msgid "Unique callback identifier from the input envelope."
+msgstr "Identificador de callback único del envelope de entrada."
+
+msgid "The validation run this callback was for."
+msgstr "La ejecución de validación para la que fue este callback."
+
+msgid "When this callback was first processed."
+msgstr "Cuándo se procesó este callback por primera vez."
+
+msgid "Processing status of this callback receipt."
+msgstr "Estado de procesamiento de este recibo de callback."
+
+msgid "URI to the output envelope (e.g., gs:// for GCS, s3:// for S3)."
+msgstr "URI al envelope de salida (p. ej., gs:// para GCS, s3:// para S3)."
+
+msgid "The validator this resource file is for."
+msgstr "El validador al que pertenece este archivo de recursos."
+
+msgid ""
+"Owning organization (NULL for system-wide resources visible to all orgs)."
+msgstr ""
+"Organización propietaria (NULL para recursos del sistema visibles para todas las organizaciones)."
+
+msgid "Type of resource (weather, library, config, etc.)."
+msgstr "Tipo de recurso (meteorológico, biblioteca, configuración, etc.)."
+
+msgid "Human-readable name (e.g., 'San Francisco TMY3')."
+msgstr "Nombre legible (p. ej., 'San Francisco TMY3')."
+
+msgid "Original filename (e.g., 'USA_CA_San.Francisco...epw')."
+msgstr "Nombre de archivo original (p. ej., 'USA_CA_San.Francisco...epw')."
+
+msgid "The resource file stored in default media storage (public/ prefix)."
+msgstr "El archivo de recursos almacenado en el almacenamiento de medios predeterminado (prefijo public/)."
+
+msgid ""
+"Mark this resource as a default when displaying to workflow authors. System "
+"defaults are shown to all orgs; org defaults only to that org."
+msgstr ""
+"Marque este recurso como predeterminado al mostrarlo a los autores de flujos de trabajo. Los predeterminados del sistema se muestran a todas las organizaciones; los predeterminados de la organización solo a esa organización."
+
+msgid "User who uploaded this resource file."
+msgstr "Usuario que subió este archivo de recursos."
+
+msgid "Optional description or notes about this resource."
+msgstr "Descripción o notas opcionales sobre este recurso."
+
+msgid "Validator-specific metadata (e.g., location info for weather)."
+msgstr "Metadatos específicos del validador (p. ej., información de ubicación para datos meteorológicos)."
+
+#, python-format
+msgid ""
+"File extension '.%(ext)s' is not allowed for %(type)s. Allowed: %(allowed)s."
+msgstr "La extensión de archivo '.%(ext)s' no está permitida para %(type)s. Permitidas: %(allowed)s."
+
+msgid "Must be valid JSON."
+msgstr "Debe ser JSON válido."
+
+msgid "content_type is required."
+msgstr "Se requiere content_type."
+
+#, python-format
+msgid "Unsupported content_type '%(ct)s'. Supported: %(supported)s"
+msgstr "content_type '%(ct)s' no compatible. Compatible: %(supported)s"
+
+msgid "Provide exactly one of 'file' (multipart) or 'content' (JSON envelope)."
+msgstr "Proporcione exactamente uno de: 'file' (multiparte) o 'content' (envelope JSON)."
+
+msgid "content_type required (or detectable from file)."
+msgstr "Se requiere content_type (o detectable desde el archivo)."
+
+msgid "content_type is required with content."
+msgstr "Se requiere content_type con content."
+
+msgid "Invalid base64 content."
+msgstr "Contenido base64 no válido."
+
+msgid "Base64 content exceeds size limit."
+msgstr "El contenido base64 supera el límite de tamaño."
+
+msgid "Inline content exceeds size limit."
+msgstr "El contenido en línea supera el límite de tamaño."
+
+#, python-format
+msgid "FMU %(name)s exceeds the maximum size of %(limit)s bytes."
+msgstr "El FMU %(name)s supera el tamaño máximo de %(limit)s bytes."
+
+#, python-format
+msgid "FMU %(name)s is missing modelDescription.xml."
+msgstr "Al FMU %(name)s le falta modelDescription.xml."
+
+#, python-format
+msgid "FMU %(name)s contains unsafe path entries."
+msgstr "El FMU %(name)s contiene entradas de ruta no seguras."
+
+#, python-format
+msgid "FMU %(name)s contains disallowed file %(file)s."
+msgstr "El FMU %(name)s contiene el archivo no permitido %(file)s."
+
+#, python-format
+msgid "FMU %(name)s is not a valid zip archive."
+msgstr "El FMU %(name)s no es un archivo zip válido."
+
+#, python-format
+msgid "modelDescription.xml in %(name)s is not UTF-8 text."
+msgstr "modelDescription.xml en %(name)s no es texto UTF-8."
+
+msgid "Awaiting probe run."
+msgstr "Esperando ejecución de sondeo."
+
+msgid "This validation run could not be completed. Please try again later."
+msgstr "Esta ejecución de validación no pudo completarse. Por favor, inténtelo de nuevo más tarde."
+
+msgid "Run canceled by user."
+msgstr "Ejecución cancelada por el usuario."
+
+msgid "Validation run is not in a state that allows execution."
+msgstr "La ejecución de validación no está en un estado que permita la ejecución."
+
+msgid "One or more validation steps failed."
+msgstr "Uno o más pasos de validación fallaron."
+
+msgid "WorkflowStep has no validator or action configured."
+msgstr "El paso del flujo de trabajo no tiene un validador o acción configurada."
+
+msgid "Basic Validator"
+msgstr "Validador básico"
+
+msgid ""
+"The simplest validator. Allows workflow author to add signals and assertions "
+"directly without a validator catalog."
+msgstr ""
+"El validador más simple. Permite al autor del flujo de trabajo agregar señales y aserciones directamente sin un catálogo de validadores."
+
+msgid ""
+"\n"
+"                <p>Workflow authors can use the 'Basic Validator' as a "
+"starting point\n"
+"                for creating assertions directly. There are no signals\n"
+"                or predefined assertions.\n"
+"                Perfect for lightweight checks or ad-hoc rules expressed in "
+"CEL.</p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>Los autores de flujos de trabajo pueden usar el 'Validador básico' como punto de partida\n"
+"                para crear aserciones directamente. No hay señales\n"
+"                ni aserciones predefinidas.\n"
+"                Ideal para verificaciones ligeras o reglas ad-hoc expresadas en CEL.</p>\n"
+"                "
+
+msgid "JSON Schema Validator"
+msgstr "Validador de esquema JSON"
+
+msgid ""
+"Validate JSON payloads against a JSON schema provided by the workflow author."
+msgstr ""
+"Valida payloads JSON contra un esquema JSON proporcionado por el autor del flujo de trabajo."
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator validates JSON payloads against a predefined "
+"JSON schema.\n"
+"                When a workflow author selects this validator, they must "
+"attach\n"
+"                a valid JSON schema.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                Este validador valida payloads JSON contra un esquema JSON predefinido.\n"
+"                Cuando un autor del flujo de trabajo selecciona este validador, debe adjuntar\n"
+"                un esquema JSON válido.\n"
+"                </p>\n"
+"                "
+
+msgid "XML Validator"
+msgstr "Validador XML"
+
+msgid ""
+"Validate XML submissions against a XSD, DTD, or RelaxNG schema provided by "
+"the workflow author."
+msgstr ""
+"Valida envíos XML contra un esquema XSD, DTD o RelaxNG proporcionado por el autor del flujo de trabajo."
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator validates XML submissions against an XSD, "
+"DTD\n"
+"                or RelaxNG schema.\n"
+"                When a workflow author selects this validator, they must "
+"attach\n"
+"                a valid schema.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                Este validador valida envíos XML contra un esquema XSD, DTD\n"
+"                o RelaxNG.\n"
+"                Cuando un autor del flujo de trabajo selecciona este validador, debe adjuntar\n"
+"                un esquema válido.\n"
+"                </p>\n"
+"                "
+
+msgid "EnergyPlus™ Validator"
+msgstr "Validador EnergyPlus™"
+
+msgid "Validate EnergyPlus IDF files and outputs."
+msgstr "Valida archivos IDF de EnergyPlus y sus salidas."
+
+msgid ""
+"\n"
+"                <p>Validate EnergyPlus IDF files for correctness and "
+"expected outputs.\n"
+"                Run simulations, surface findings, and keep building models\n"
+"                reliable.</p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>Valide archivos IDF de EnergyPlus para verificar su corrección y las salidas esperadas.\n"
+"                Ejecute simulaciones, muestre resultados y mantenga los modelos de edificios confiables.</p>\n"
+"                "
+
+msgid "Run FMUs and assert against inputs and outputs."
+msgstr "Ejecute FMUs y aplique aserciones contra entradas y salidas."
+
+msgid ""
+"\n"
+"                <p>\n"
+"                This validator allows a workflow author to write assertions\n"
+"                against incoming data.\n"
+"                It allows a workflow author to validating incoming data as\n"
+"                well as simulation outputs.\n"
+"                </p>\n"
+"                <p>\n"
+"                The validator sends inputs using the Functional Mock-up "
+"Interface (FMI)\n"
+"                standard to an\n"
+"                FMU-based simulation running in an isolated runtime. If the\n"
+"                simulation succeeds it\n"
+"                gathers outputs and returns them as output signals for "
+"further\n"
+"                validation, if defined.\n"
+"                </p>\n"
+"                <p>\n"
+"                The workflow author to write assertions against simulation\n"
+"                output signals.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>\n"
+"                Este validador permite al autor del flujo de trabajo escribir aserciones\n"
+"                contra los datos entrantes.\n"
+"                Permite al autor del flujo de trabajo validar los datos entrantes así como las salidas de la simulación.\n"
+"                </p>\n"
+"                <p>\n"
+"                El validador envía entradas usando el estándar de Interfaz de Maqueta Funcional (FMI)\n"
+"                a una simulación basada en FMU que se ejecuta en un entorno aislado. Si la simulación tiene éxito,\n"
+"                recopila las salidas y las devuelve como señales de salida para validación adicional, si se define.\n"
+"                </p>\n"
+"                <p>\n"
+"                El autor del flujo de trabajo puede escribir aserciones contra las señales de salida de la simulación.\n"
+"                </p>\n"
+"                "
+
+msgid "AI Assisted Validator"
+msgstr "Validador asistido por IA"
+
+msgid "Use AI to validate submission content against your criteria."
+msgstr "Use IA para validar el contenido del envío contra sus criterios."
+
+msgid ""
+"\n"
+"                <p>Use AI to validate submission content against your "
+"criteria. Blend\n"
+"                traditional assertions with AI scoring to review nuanced "
+"data quickly.\n"
+"                </p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>Use IA para validar el contenido del envío contra sus criterios. Combine\n"
+"                aserciones tradicionales con puntuación de IA para revisar datos complejos rápidamente.\n"
+"                </p>\n"
+"                "
+
+msgid "THERM Validator"
+msgstr "Validador THERM"
+
+msgid ""
+"Validate THERM thermal analysis files (THMX/THMZ) for geometry, materials, "
+"and boundary conditions."
+msgstr ""
+"Valida archivos de análisis térmico THERM (THMX/THMZ) para geometría, materiales y condiciones de contorno."
+
+msgid ""
+"\n"
+"                <p>Validate LBNL THERM files before submission to NFRC or\n"
+"                other certification bodies. Checks geometry closure, "
+"material\n"
+"                property ranges, boundary condition completeness, and\n"
+"                reference integrity. Extracts signals for downstream\n"
+"                compliance assertions (e.g. NFRC 100 winter conditions).</"
+"p>\n"
+"                "
+msgstr ""
+"\n"
+"                <p>Valide archivos THERM de LBNL antes de enviarlos al NFRC u\n"
+"                otros organismos de certificación. Verifica el cierre de geometría,\n"
+"                rangos de propiedades de materiales, completitud de condiciones de contorno\n"
+"                e integridad de referencias. Extrae señales para aserciones de cumplimiento\n"
+"                en etapas posteriores (p. ej., condiciones de invierno NFRC 100).</p>\n"
+"                "
+
+#, python-format
+msgid ""
+"%(name)s validation requires workflow context. Ensure the validator is "
+"called via the workflow handler."
+msgstr ""
+"La validación de %(name)s requiere contexto del flujo de trabajo. Asegúrese de que el validador sea llamado a través del manejador del flujo de trabajo."
+
+msgid ""
+"Validation backend is not available. Check your deployment configuration."
+msgstr ""
+"El backend de validación no está disponible. Verifique la configuración de su despliegue."
+
+#, python-format
+msgid "Assertion passed: %(target)s %(condition)s"
+msgstr "Aserción aprobada: %(target)s %(condition)s"
+
+#, python-format
+msgid "Assertion passed: %(target)s"
+msgstr "Aserción aprobada: %(target)s"
+
+msgid "Assertion passed."
+msgstr "Aserción aprobada."
+
+#, python-format
+msgid ""
+"Basic validators require JSON or XML content. Received file type: "
+"%(file_type)s"
+msgstr ""
+"Los validadores básicos requieren contenido JSON o XML. Se recibió el tipo de archivo: %(file_type)s"
+
+#, python-format
+msgid "Invalid JSON submission: %(error)s"
+msgstr "Envío JSON no válido: %(error)s"
+
+#, python-format
+msgid "Invalid XML submission: %(error)s"
+msgstr "Envío XML no válido: %(error)s"
+
+#, python-format
+msgid ""
+"JSON Schema validators require JSON content. Received file type: "
+"%(file_type)s"
+msgstr ""
+"Los validadores de esquema JSON requieren contenido JSON. Se recibió el tipo de archivo: %(file_type)s"
+
+msgid "Invalid JSON payload"
+msgstr "Payload JSON no válido"
+
+msgid "Ruleset must provide schema text via rules_text or rules_file."
+msgstr "El conjunto de reglas debe proporcionar texto de esquema mediante rules_text o rules_file."
+
+msgid "Unsupported schema type; expected dict or JSON string."
+msgstr "Tipo de esquema no compatible; se esperaba dict o cadena JSON."
+
+msgid "This validator only accepts XML submissions."
+msgstr "Este validador solo acepta envíos XML."
+
+msgid "lxml not installed or unusable: "
+msgstr "lxml no está instalado o no es utilizable: "
+
+msgid "Missing 'schema' in ruleset/validator config."
+msgstr "Falta 'schema' en la configuración del conjunto de reglas/validador."
+
+msgid "Could not read submission content: "
+msgstr "No se pudo leer el contenido del envío: "
+
+msgid "Empty submission content."
+msgstr "El contenido del envío está vacío."
+
+msgid "Invalid XML payload: "
+msgstr "Payload XML no válido: "
+
+#, python-format
+msgid ""
+"Invalid or missing XML schema_type '%(schema_type)s';must be 'XSD', "
+"'RELAXNG', or 'DTD'."
+msgstr ""
+"schema_type XML '%(schema_type)s' no válido o faltante; debe ser 'XSD', 'RELAXNG' o 'DTD'."
+
+msgid "XML validation requires lxml: "
+msgstr "La validación XML requiere lxml: "
+
+msgid "Unsupported XML schema type: "
+msgstr "Tipo de esquema XML no compatible: "
+
+#, python-format
+msgid "Run #%(pk)s"
+msgstr "Ejecución #%(pk)s"
+
+msgid "You do not have permission to manage custom validators."
+msgstr "No tiene permiso para gestionar validadores personalizados."
+
+msgid "Select an organization before modifying validators."
+msgstr "Seleccione una organización antes de modificar validadores."
+
+msgid ""
+"Validator Library is limited to organization owners, admins, and authors."
+msgstr ""
+"La biblioteca de validadores está disponible solo para propietarios, administradores y autores de la organización."
+
+msgid "Create the first custom validator"
+msgstr "Crear el primer validador personalizado"
+
+msgid "Author-defined"
+msgstr "Definido por el autor"
+
+msgid "Create a validator with custom inputs, outputs, and assertions."
+msgstr "Cree un validador con entradas, salidas y aserciones personalizadas."
+
+msgid "Simulation-based"
+msgstr "Basado en simulación"
+
+msgid ""
+"Upload an FMU to auto-discover input and output signals and create default "
+"assertions."
+msgstr ""
+"Suba un FMU para detectar automáticamente señales de entrada y salida y crear aserciones predeterminadas."
+
+msgid "This validator is not yet available."
+msgstr "Este validador aún no está disponible."
+
+#, python-format
+msgid "View \"%(name)s\""
+msgstr "Ver «%(name)s»"
+
+#, python-format
+msgid "Edit \"%(name)s\""
+msgstr "Editar «%(name)s»"
+
+msgid "Edit Input Signal"
+msgstr "Editar señal de entrada"
+
+msgid "Create FMU validator"
+msgstr "Crear validador FMU"
+
+#, python-format
+msgid "Created FMU validator \"%(name)s\"."
+msgstr "Validador FMU «%(name)s» creado."
+
+msgid "No FMU attached to this validator."
+msgstr "No hay FMU adjunto a este validador."
+
+msgid "Probe has not been requested."
+msgstr "No se ha solicitado el sondeo."
+
+msgid "Create Custom Basic Validator"
+msgstr "Crear validador básico personalizado"
+
+msgid "Create new validator"
+msgstr "Crear nuevo validador"
+
+#, python-format
+msgid "Created custom validator \"%(name)s\"."
+msgstr "Validador personalizado «%(name)s» creado."
+
+msgid ""
+"This custom validator is missing its configuration. Please recreate it from "
+"the Validator Library."
+msgstr ""
+"A este validador personalizado le falta su configuración. Por favor, recréelo desde la Biblioteca de validadores."
+
+#, python-format
+msgid "Edit %(name)s Settings"
+msgstr "Editar configuración de %(name)s"
+
+msgid "Edit Settings"
+msgstr "Editar configuración"
+
+#, python-format
+msgid "Updated custom validator \"%(name)s\"."
+msgstr "Validador personalizado «%(name)s» actualizado."
+
+#, python-format
+msgid "Deleted custom validator \"%(name)s\"."
+msgstr "Validador personalizado «%(name)s» eliminado."
+
+#, python-format
+msgid ""
+"Cannot delete %(name)s because workflow steps still reference this validator."
+msgstr ""
+"No se puede eliminar %(name)s porque los pasos del flujo de trabajo todavía hacen referencia a este validador."
+
+#, python-format
+msgid "Workflow step \"%(step)s\" (workflow: %(workflow)s)"
+msgstr "Paso del flujo de trabajo «%(step)s» (flujo de trabajo: %(workflow)s)"
+
+msgid "Signal created."
+msgstr "Señal creada."
+
+msgid "Please correct the errors below."
+msgstr "Por favor, corrija los errores a continuación."
+
+msgid "Signal updated."
+msgstr "Señal actualizada."
+
+msgid "Signal deleted."
+msgstr "Señal eliminada."
+
+msgid "Default assertion created."
+msgstr "Aserción predeterminada creada."
+
+msgid "Default assertion updated."
+msgstr "Aserción predeterminada actualizada."
+
+msgid "Default assertion deleted."
+msgstr "Aserción predeterminada eliminada."
+
+msgid "You do not have permission to manage resource files."
+msgstr "No tiene permiso para gestionar archivos de recursos."
+
+msgid "Resource file uploaded."
+msgstr "Archivo de recursos subido."
+
+msgid "Resource file updated."
+msgstr "Archivo de recursos actualizado."
+
+#, python-format
+msgid ""
+"Cannot delete '%(name)s' because it is used by active workflow(s): "
+"%(workflows)s. Remove it from these workflows first."
+msgstr ""
+"No se puede eliminar '%(name)s' porque es utilizado por flujo(s) de trabajo activo(s): %(workflows)s. Retírelo de estos flujos de trabajo primero."
+
+#, python-format
+msgid "Deleted resource file '%(name)s'."
+msgstr "Archivo de recursos '%(name)s' eliminado."
+
+msgid "Table"
+msgstr "Tabla"
+
+msgid "All members of the workflow's organization"
+msgstr "Todos los miembros de la organización del flujo de trabajo"
+
+msgid "Restricted to allowed users and/or roles"
+msgstr "Restringido a usuarios y/o roles permitidos"
+
+msgid "Continue on failure"
+msgstr "Continuar ante fallo"
+
+msgid "Fail fast"
+msgstr "Fallar rápido"
+
+msgid "Manual"
+msgstr "Manual"
+
+msgid "Schedule"
+msgstr "Programado"
+
+msgid "Workflow has no steps to execute"
+msgstr "El flujo de trabajo no tiene pasos para ejecutar"
+
+msgid "Workflow is inactive"
+msgstr "El flujo de trabajo está inactivo"
+
+msgid "Invalid request payload"
+msgstr "Payload de solicitud no válido"
+
+msgid "Workflow cannot accept the submitted file type"
+msgstr "El flujo de trabajo no puede aceptar el tipo de archivo enviado"
+
+msgid "You do not have permission to run this workflow"
+msgstr "No tiene permiso para ejecutar este flujo de trabajo"
+
+#, python-format
+msgid "You've been invited to use %(workflow_name)s on Validibot"
+msgstr "Ha sido invitado a usar %(workflow_name)s en Validibot"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to access the workflow "
+"\"%(workflow_name)s\"\n"
+"from %(org_name)s on Validibot.\n"
+"\n"
+"Click the link below to accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"Hola,\n"
+"\n"
+"%(inviter_name)s le ha invitado a acceder al flujo de trabajo "
+"\"%(workflow_name)s\"\n"
+"de %(org_name)s en Validibot.\n"
+"\n"
+"Haga clic en el enlace a continuación para aceptar esta invitación:\n"
+"%(accept_url)s\n"
+"\n"
+"Esta invitación vencerá en 7 días.\n"
+"\n"
+"Si no esperaba esta invitación, puede ignorar este correo con seguridad.\n"
+"\n"
+"Gracias,\n"
+"El equipo de Validibot\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to access the workflow\n"
+"\"<strong>%(workflow_name)s</strong>\" from %(org_name)s on Validibot.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to accept this invitation</a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>Hola,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> le ha invitado a acceder al flujo de trabajo\n"
+"\"<strong>%(workflow_name)s</strong>\" de %(org_name)s en Validibot.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Haga clic aquí para aceptar esta invitación</a></p>\n"
+"\n"
+"<p>Esta invitación vencerá en 7 días.</p>\n"
+"\n"
+"<p>Si no esperaba esta invitación, puede ignorar este correo con seguridad.</p>\n"
+"\n"
+"<p>Gracias,<br>\n"
+"El equipo de Validibot</p>\n"
+
+#, python-format
+msgid "%(grantee_name)s accepted your workflow invitation"
+msgstr "%(grantee_name)s aceptó su invitación al flujo de trabajo"
+
+#, python-format
+msgid ""
+"Hi %(inviter_name)s,\n"
+"\n"
+"Good news! %(grantee_name)s has accepted your invitation to access the "
+"workflow\n"
+"\"%(workflow_name)s\".\n"
+"\n"
+"They can now execute validations using this workflow.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"Hola %(inviter_name)s,\n"
+"\n"
+"¡Buenas noticias! %(grantee_name)s ha aceptado su invitación para acceder al flujo de trabajo\n"
+"\"%(workflow_name)s\".\n"
+"\n"
+"Ahora puede ejecutar validaciones usando este flujo de trabajo.\n"
+"\n"
+"Gracias,\n"
+"El equipo de Validibot\n"
+
+#, python-format
+msgid ""
+"<p>Hi %(inviter_name)s,</p>\n"
+"\n"
+"<p>Good news! <strong>%(grantee_name)s</strong> has accepted your invitation "
+"to access\n"
+"the workflow \"<strong>%(workflow_name)s</strong>\".</p>\n"
+"\n"
+"<p>They can now execute validations using this workflow.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>Hola %(inviter_name)s,</p>\n"
+"\n"
+"<p>¡Buenas noticias! <strong>%(grantee_name)s</strong> ha aceptado su invitación para acceder\n"
+"al flujo de trabajo \"<strong>%(workflow_name)s</strong>\".</p>\n"
+"\n"
+"<p>Ahora puede ejecutar validaciones usando este flujo de trabajo.</p>\n"
+"\n"
+"<p>Gracias,<br>\n"
+"El equipo de Validibot</p>\n"
+
+msgid "all workflows"
+msgstr "todos los flujos de trabajo"
+
+#, python-format
+msgid "%(count)d selected workflow(s)"
+msgstr "%(count)d flujo(s) de trabajo seleccionado(s)"
+
+#, python-format
+msgid "You've been invited as a guest to %(org_name)s on Validibot"
+msgstr "Ha sido invitado como invitado a %(org_name)s en Validibot"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to access %(scope_desc)s\n"
+"in %(org_name)s on Validibot as a guest.\n"
+"\n"
+"Click the link below to view and accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"Hola,\n"
+"\n"
+"%(inviter_name)s le ha invitado a acceder a %(scope_desc)s\n"
+"en %(org_name)s en Validibot como invitado.\n"
+"\n"
+"Haga clic en el enlace a continuación para ver y aceptar esta invitación:\n"
+"%(accept_url)s\n"
+"\n"
+"Esta invitación vencerá en 7 días.\n"
+"\n"
+"Si no esperaba esta invitación, puede ignorar este correo con seguridad.\n"
+"\n"
+"Gracias,\n"
+"El equipo de Validibot\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to access "
+"%(scope_desc)s\n"
+"in <strong>%(org_name)s</strong> on Validibot as a guest.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to view and accept this invitation</"
+"a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>Hola,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> le ha invitado a acceder a %(scope_desc)s\n"
+"en <strong>%(org_name)s</strong> en Validibot como invitado.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Haga clic aquí para ver y aceptar esta invitación</a></p>\n"
+"\n"
+"<p>Esta invitación vencerá en 7 días.</p>\n"
+"\n"
+"<p>Si no esperaba esta invitación, puede ignorar este correo con seguridad.</p>\n"
+"\n"
+"<p>Gracias,<br>\n"
+"El equipo de Validibot</p>\n"
+
+msgid "member"
+msgstr "miembro"
+
+#, python-format
+msgid "You've been invited to join %(org_name)s on Validibot"
+msgstr "Ha sido invitado a unirse a %(org_name)s en Validibot"
+
+#, python-format
+msgid ""
+"Hi there,\n"
+"\n"
+"%(inviter_name)s has invited you to join %(org_name)s on Validibot\n"
+"as a %(roles_desc)s.\n"
+"\n"
+"Click the link below to view and accept this invitation:\n"
+"%(accept_url)s\n"
+"\n"
+"This invitation will expire in 7 days.\n"
+"\n"
+"If you weren't expecting this invitation, you can safely ignore this email.\n"
+"\n"
+"Thanks,\n"
+"The Validibot Team\n"
+msgstr ""
+"Hola,\n"
+"\n"
+"%(inviter_name)s le ha invitado a unirse a %(org_name)s en Validibot\n"
+"como %(roles_desc)s.\n"
+"\n"
+"Haga clic en el enlace a continuación para ver y aceptar esta invitación:\n"
+"%(accept_url)s\n"
+"\n"
+"Esta invitación vencerá en 7 días.\n"
+"\n"
+"Si no esperaba esta invitación, puede ignorar este correo con seguridad.\n"
+"\n"
+"Gracias,\n"
+"El equipo de Validibot\n"
+
+#, python-format
+msgid ""
+"<p>Hi there,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> has invited you to join\n"
+"<strong>%(org_name)s</strong> on Validibot as a %(roles_desc)s.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Click here to view and accept this invitation</"
+"a></p>\n"
+"\n"
+"<p>This invitation will expire in 7 days.</p>\n"
+"\n"
+"<p>If you weren't expecting this invitation, you can safely ignore this "
+"email.</p>\n"
+"\n"
+"<p>Thanks,<br>\n"
+"The Validibot Team</p>\n"
+msgstr ""
+"<p>Hola,</p>\n"
+"\n"
+"<p><strong>%(inviter_name)s</strong> le ha invitado a unirse a\n"
+"<strong>%(org_name)s</strong> en Validibot como %(roles_desc)s.</p>\n"
+"\n"
+"<p><a href=\"%(accept_url)s\">Haga clic aquí para ver y aceptar esta invitación</a></p>\n"
+"\n"
+"<p>Esta invitación vencerá en 7 días.</p>\n"
+"\n"
+"<p>Si no esperaba esta invitación, puede ignorar este correo con seguridad.</p>\n"
+"\n"
+"<p>Gracias,<br>\n"
+"El equipo de Validibot</p>\n"
+
+msgid "AI Critic"
+msgstr "Crítico de IA"
+
+msgid "Policy Check"
+msgstr "Verificación de políticas"
+
+msgid "Advisory (warnings only)"
+msgstr "Informativo (solo advertencias)"
+
+msgid "Blocking (fail on violations)"
+msgstr "Bloqueante (falla ante violaciones)"
+
+msgid "Detect duplicate object names"
+msgstr "Detectar nombres de objetos duplicados"
+
+msgid "Ensure HVAC autosizing is enabled"
+msgstr "Verificar que el dimensionamiento automático de HVAC está habilitado"
+
+msgid "Check schedules cover 7 days"
+msgstr "Verificar que los horarios cubren 7 días"
+
+msgid "Expected list for 'in' operator."
+msgstr "Se esperaba una lista para el operador 'in'."
+
+msgid "Rule lines must include at least a path and operator."
+msgstr "Las líneas de reglas deben incluir al menos una ruta y un operador."
+
+msgid "'between' rules require two numeric bounds."
+msgstr "Las reglas 'between' requieren dos límites numéricos."
+
+#, python-format
+msgid "'%s' rules require a list of options."
+msgstr "Las reglas '%s' requieren una lista de opciones."
+
+#, python-format
+msgid "Operator '%(op)s' requires a comparison value."
+msgstr "El operador '%(op)s' requiere un valor de comparación."
+
+msgid "Workflow description (Markdown)"
+msgstr "Descripción del flujo de trabajo (Markdown)"
+
+msgid "Describe what this workflow validates and who it's for..."
+msgstr "Describa qué valida este flujo de trabajo y para quién es..."
+
+msgid ""
+"Shown on the workflow info page. This is stored as Markdown and sanitized "
+"before display. You can control visibility from the Public Info card on the "
+"workflow detail page."
+msgstr ""
+"Se muestra en la página de información del flujo de trabajo. Se almacena como Markdown y se sanea antes de mostrarse. Puede controlar la visibilidad desde la tarjeta de Información pública en la página de detalles del flujo de trabajo."
+
+msgid "Allowed file types"
+msgstr "Tipos de archivo permitidos"
+
+msgid ""
+"Choose the submission file types this workflow accepts. Note that each "
+"validator in the workflow may further constrain the allowed types."
+msgstr ""
+"Elija los tipos de archivo de envío que acepta este flujo de trabajo. Tenga en cuenta que cada validador en el flujo de trabajo puede restringir aún más los tipos permitidos."
+
+msgid "Optional label to help you track iterations."
+msgstr "Etiqueta opcional para ayudarle a rastrear las iteraciones."
+
+msgid "Disable a workflow to pause new validation runs without removing it."
+msgstr "Deshabilite un flujo de trabajo para pausar nuevas ejecuciones de validación sin eliminarlo."
+
+msgid ""
+"Choose the submission file types this workflow accepts. Launchers can only "
+"upload/run content using these formats."
+msgstr ""
+"Elija los tipos de archivo de envío que acepta este flujo de trabajo. Los ejecutores solo pueden subir/ejecutar contenido usando estos formatos."
+
+msgid ""
+"Controls how long the user's submission data is kept after validation. The "
+"submission record is always preserved for audit purposes."
+msgstr ""
+"Controla cuánto tiempo se conservan los datos del envío del usuario después de la validación. El registro del envío siempre se preserva para fines de auditoría."
+
+msgid "Name your workflow"
+msgstr "Nombre su flujo de trabajo"
+
+msgid "Workflow active"
+msgstr "Flujo de trabajo activo"
+
+msgid ""
+"When unchecked, teammates can still view the workflow but cannot launch runs "
+"until you reactivate it."
+msgstr ""
+"Cuando está desmarcado, los colaboradores aún pueden ver el flujo de trabajo pero no pueden iniciar ejecuciones hasta que lo reactive."
+
+msgid "Featured image"
+msgstr "Imagen destacada"
+
+msgid "Optional image shown on the workflow info page."
+msgstr "Imagen opcional mostrada en la página de información del flujo de trabajo."
+
+msgid "Data retention"
+msgstr "Retención de datos"
+
+msgid ""
+"Custom message shown when validation succeeds. Leave blank to use the "
+"default message."
+msgstr ""
+"Mensaje personalizado mostrado cuando la validación tiene éxito. Déjelo en blanco para usar el mensaje predeterminado."
+
+msgid "e.g. Your model passed all validation checks!"
+msgstr "p. ej. ¡Su modelo superó todas las verificaciones de validación!"
+
+msgid "Select a project from your current organization."
+msgstr "Seleccione un proyecto de su organización actual."
+
+#, python-format
+msgid "'%(value)s' is not a supported file type."
+msgstr "'%(value)s' no es un tipo de archivo compatible."
+
+msgid "Select at least one file type."
+msgstr "Seleccione al menos un tipo de archivo."
+
+msgid "Select a project"
+msgstr "Seleccionar un proyecto"
+
+msgid ""
+"Workflow runs started from this workflow default to the selected project. "
+"Projects listed belong to your current organization."
+msgstr ""
+"Las ejecuciones de flujo de trabajo iniciadas desde este flujo de trabajo se asignan por defecto al proyecto seleccionado. Los proyectos listados pertenecen a su organización actual."
+
+msgid "Optional name for reporting."
+msgstr "Nombre opcional para informes."
+
+msgid "File type"
+msgstr "Tipo de archivo"
+
+msgid "Submission data"
+msgstr "Datos del envío"
+
+msgid "{ \"example\": \"value\" }"
+msgstr "{ \"example\": \"value\" }"
+
+msgid "Paste JSON, XML, or text. Leave blank when uploading a file."
+msgstr "Pegue JSON, XML o texto. Déjelo en blanco al subir un archivo."
+
+msgid "Attachment"
+msgstr "Adjunto"
+
+msgid "Upload a file instead of pasting submission data."
+msgstr "Suba un archivo en lugar de pegar los datos del envío."
+
+msgid "Metadata (JSON)"
+msgstr "Metadatos (JSON)"
+
+msgid "{\"source\": \"ui\"}"
+msgstr "{\"source\": \"ui\"}"
+
+msgid "Optional JSON payload stored with the submission."
+msgstr "Payload JSON opcional almacenado con el envío."
+
+msgid "Brief context for this submission"
+msgstr "Contexto breve para este envío"
+
+msgid "Optional short description stored with the submission."
+msgstr "Descripción breve opcional almacenada con el envío."
+
+msgid "Provide inline content or upload a file, not both."
+msgstr "Proporcione contenido en línea o suba un archivo, no ambos."
+
+msgid "Paste in content or upload a file before starting the validation."
+msgstr "Pegue contenido o suba un archivo antes de iniciar la validación."
+
+msgid "Select a supported file type."
+msgstr "Seleccione un tipo de archivo compatible."
+
+#, python-format
+msgid ""
+"File extension '.%(ext)s' is not allowed. Accepted extensions: %(allowed)s"
+msgstr "La extensión de archivo '.%(ext)s' no está permitida. Extensiones aceptadas: %(allowed)s"
+
+msgid "Metadata must be valid JSON."
+msgstr "Los metadatos deben ser JSON válido."
+
+msgid "Step option"
+msgstr "Opción del paso"
+
+msgid "Step name"
+msgstr "Nombre del paso"
+
+msgid "Describe what this step checks"
+msgstr "Describa qué verifica este paso"
+
+msgid "In this step, we check that..."
+msgstr "En este paso, verificamos que..."
+
+msgid "Brief description to help users understand what this step does."
+msgstr "Descripción breve para ayudar a los usuarios a entender qué hace este paso."
+
+msgid "User can view schema"
+msgstr "El usuario puede ver el esquema"
+
+msgid "When enabled, users can view the schema."
+msgstr "Cuando está habilitado, los usuarios pueden ver el esquema."
+
+msgid "Show success messages for passed assertions"
+msgstr "Mostrar mensajes de éxito para aserciones aprobadas"
+
+msgid ""
+"When enabled, all assertions in this step will return a success message when "
+"they pass. If an assertion has no custom success message, a default message "
+"will be shown."
+msgstr ""
+"Cuando está habilitado, todas las aserciones de este paso devolverán un mensaje de éxito cuando se aprueben. Si una aserción no tiene un mensaje de éxito personalizado, se mostrará un mensaje predeterminado."
+
+msgid "Note to self..."
+msgstr "Nota personal..."
+
+msgid ""
+"Author notes about this step (visible only by you and other users with "
+"author permissions for this workflow)."
+msgstr ""
+"Notas del autor sobre este paso (visibles solo por usted y otros usuarios con permisos de autor para este flujo de trabajo)."
+
+msgid "Schema version"
+msgstr "Versión del esquema"
+
+msgid "Upload schema"
+msgstr "Subir esquema"
+
+msgid "Leave blank to keep the existing schema. Paste new JSON to replace it."
+msgstr "Déjelo en blanco para conservar el esquema existente. Pegue nuevo JSON para reemplazarlo."
+
+msgid "Paste your JSON schema or upload a file below."
+msgstr "Pegue su esquema JSON o suba un archivo a continuación."
+
+msgid "Paste the schema or upload a file, not both."
+msgstr "Pegue el esquema o suba un archivo, no ambos."
+
+msgid "Uploaded schema files must be 2 MB or smaller."
+msgstr "Los archivos de esquema subidos deben ser de 2 MB o menos."
+
+msgid "Add content directly or upload a file."
+msgstr "Agregue contenido directamente o suba un archivo."
+
+msgid "Uploaded schema must be UTF-8 encoded."
+msgstr "El esquema subido debe estar codificado en UTF-8."
+
+msgid "Schema content must be valid JSON."
+msgstr "El contenido del esquema debe ser JSON válido."
+
+msgid "JSON schemas must declare $schema as Draft 2020-12."
+msgstr "Los esquemas JSON deben declarar $schema como Draft 2020-12."
+
+msgid "Schema type"
+msgstr "Tipo de esquema"
+
+msgid "Leave blank to keep the existing schema. Paste new XML to replace it."
+msgstr "Déjelo en blanco para conservar el esquema existente. Pegue nuevo XML para reemplazarlo."
+
+msgid "Paste your XML schema or upload a file below."
+msgstr "Pegue su esquema XML o suba un archivo a continuación."
+
+msgid "XML schema"
+msgstr "Esquema XML"
+
+#, python-format
+msgid ""
+"Unable to parse the XML schema. Ensure it matches the %(expected)s format."
+msgstr "No se pudo analizar el esquema XML. Asegúrese de que coincide con el formato %(expected)s."
+
+#, python-format
+msgid ""
+"Uploaded schema appears to be %(detected)s but you selected %(selected)s."
+msgstr "El esquema subido parece ser %(detected)s pero seleccionó %(selected)s."
+
+msgid "Weather file"
+msgstr "Archivo meteorológico"
+
+msgid ""
+"Weather file (EPW) used for EnergyPlus simulations. This determines the "
+"climate data for the simulation."
+msgstr ""
+"Archivo meteorológico (EPW) usado para simulaciones de EnergyPlus. Esto determina los datos climáticos para la simulación."
+
+msgid "Initial IDF checks"
+msgstr "Verificaciones iniciales del IDF"
+
+msgid "Run EnergyPlus simulation"
+msgstr "Ejecutar simulación EnergyPlus"
+
+msgid "If this option is unchecked, only IDF syntax checks will be performed."
+msgstr "Si esta opción está desmarcada, solo se realizarán verificaciones de sintaxis del IDF."
+
+msgid "— Select a weather file —"
+msgstr "— Seleccionar un archivo meteorológico —"
+
+msgid "AI template"
+msgstr "Plantilla de IA"
+
+msgid "Optional JSONPath selectors (one per line)."
+msgstr "Selectores JSONPath opcionales (uno por línea)."
+
+msgid "Policy rules"
+msgstr "Reglas de política"
+
+msgid "$.zones[*].cooling_setpoint >= 18 | Cooling setpoint must be ≥18°C"
+msgstr "$.zones[*].cooling_setpoint >= 18 | El punto de ajuste de enfriamiento debe ser ≥18°C"
+
+msgid "Cost cap (cents)"
+msgstr "Límite de costo (centavos)"
+
+msgid "Behaviour"
+msgstr "Comportamiento"
+
+msgid "Limit selectors to 10 paths."
+msgstr "Limitar los selectores a 10 rutas."
+
+msgid "Add at least one policy rule."
+msgstr "Agregue al menos una regla de política."
+
+msgid "Make info page public"
+msgstr "Hacer pública la página de información"
+
+msgid "When enabled, anyone with the link can view the workflow's info page."
+msgstr "Cuando está habilitado, cualquier persona con el enlace puede ver la página de información del flujo de trabajo."
+
+msgid "Optional headline for the public page"
+msgstr "Titular opcional para la página pública"
+
+msgid ""
+"# Overview\n"
+"Describe the workflow for public viewers..."
+msgstr ""
+"# Resumen\n"
+"Describa el flujo de trabajo para los visitantes públicos..."
+
+msgid "Public title"
+msgstr "Título público"
+
+msgid "Public description (Markdown)"
+msgstr "Descripción pública (Markdown)"
+
+msgid "Create dummy workflows with random data for demos."
+msgstr "Crear flujos de trabajo de prueba con datos aleatorios para demostraciones."
+
+msgid "Number of workflows to create (default: 10)."
+msgstr "Número de flujos de trabajo a crear (predeterminado: 10)."
+
+msgid "Assertions are only available for advanced validators."
+msgstr "Las aserciones solo están disponibles para validadores avanzados."
+
+msgid "Assertions"
+msgstr "Aserciones"
+
+msgid ""
+"Version must be an integer (e.g., '1') or semantic version (e.g., '1.0.0')."
+msgstr ""
+"La versión debe ser un entero (p. ej., '1') o una versión semántica (p. ej., '1.0.0')."
+
+msgid "Optional image to represent the workflow Shown on the 'info' page."
+msgstr "Imagen opcional para representar el flujo de trabajo. Se muestra en la página 'info'."
+
+msgid "Default project to associate with runs triggered from this workflow."
+msgstr "Proyecto predeterminado para asociar con las ejecuciones iniciadas desde este flujo de trabajo."
+
+msgid "The user who created this workflow."
+msgstr "El usuario que creó este flujo de trabajo."
+
+msgid "Name of the workflow, e.g. 'My Workflow'"
+msgstr "Nombre del flujo de trabajo, p. ej. 'Mi flujo de trabajo'"
+
+msgid "Unique identifier for the workflow."
+msgstr "Identificador único del flujo de trabajo."
+
+msgid ""
+"A unique identifier for the workflow, used in URLs. (Leave blank to auto-"
+"generate from name.)"
+msgstr ""
+"Identificador único del flujo de trabajo, utilizado en las URL. (Déjelo en blanco para generarlo automáticamente desde el nombre.)"
+
+msgid ""
+"Allow users to submit a custom name along with their data for validation."
+msgstr ""
+"Permite a los usuarios enviar un nombre personalizado junto con sus datos para validación."
+
+msgid "Allow users to submit meta-data along with their data for validation."
+msgstr "Permite a los usuarios enviar metadatos junto con sus datos para validación."
+
+msgid ""
+"Allow users to submit a short description along with their data for "
+"validation."
+msgstr ""
+"Permite a los usuarios enviar una descripción breve junto con sus datos para validación."
+
+msgid "Version identifier (integer or semantic version, e.g., '1' or '1.0.0')."
+msgstr "Identificador de versión (entero o versión semántica, p. ej., '1' o '1.0.0')."
+
+msgid "Inactive workflows stay visible but cannot run validations."
+msgstr "Los flujos de trabajo inactivos permanecen visibles pero no pueden ejecutar validaciones."
+
+msgid "Archived workflows are disabled and hidden unless explicitly shown."
+msgstr "Los flujos de trabajo archivados están deshabilitados y ocultos a menos que se muestren explícitamente."
+
+msgid "Allows non-logged in users to see the workflow's info page."
+msgstr "Permite a los usuarios no autenticados ver la página de información del flujo de trabajo."
+
+msgid "If true, any authenticated user can launch this workflow."
+msgstr "Si es verdadero, cualquier usuario autenticado puede ejecutar este flujo de trabajo."
+
+msgid "Logical file types (JSON, XML, text, etc.) this workflow can accept."
+msgstr "Tipos de archivo lógicos (JSON, XML, texto, etc.) que este flujo de trabajo puede aceptar."
+
+msgid ""
+"How long to keep user-submitted files after validation completes. "
+"DO_NOT_STORE deletes the submission immediately after successful completion. "
+"The submission record is preserved for audit."
+msgstr ""
+"Cuánto tiempo se conservan los archivos enviados por el usuario después de que se completa la validación. DO_NOT_STORE elimina el envío inmediatamente después de una finalización exitosa. El registro del envío se preserva para auditoría."
+
+msgid ""
+"How long to keep validation outputs (results, artifacts, findings) after "
+"validation completes. Users need time to download results, so immediate "
+"deletion is not an option."
+msgstr ""
+"Cuánto tiempo se conservan las salidas de validación (resultados, artefactos, hallazgos) después de que se completa la validación. Los usuarios necesitan tiempo para descargar los resultados, por lo que la eliminación inmediata no es una opción."
+
+msgid ""
+"Custom message displayed when validation succeeds. Leave blank for the "
+"default message."
+msgstr ""
+"Mensaje personalizado mostrado cuando la validación tiene éxito. Déjelo en blanco para el mensaje predeterminado."
+
+msgid "Project must belong to the workflow's organization."
+msgstr "El proyecto debe pertenecer a la organización del flujo de trabajo."
+
+msgid "Select at least one submission file type."
+msgstr "Seleccione al menos un tipo de archivo de envío."
+
+msgid ""
+"Optional title to show on the public info page. If blank, the Workflow name "
+"will be used."
+msgstr ""
+"Título opcional para mostrar en la página de información pública. Si está en blanco, se usará el nombre del flujo de trabajo."
+
+msgid "Whether to show the workflow steps on the public info page."
+msgstr "Si se muestran los pasos del flujo de trabajo en la página de información pública."
+
+msgid "Allow launchers to view this schema in public workflow pages."
+msgstr "Permite a los ejecutores ver este esquema en las páginas públicas del flujo de trabajo."
+
+msgid ""
+"When enabled, assertions display their success message when they pass. If an "
+"assertion has no success message defined, a default is generated."
+msgstr ""
+"Cuando está habilitado, las aserciones muestran su mensaje de éxito cuando se aprueban. Si una aserción no tiene definido un mensaje de éxito, se genera uno predeterminado."
+
+msgid "Order already used in this workflow."
+msgstr "El orden ya está en uso en este flujo de trabajo."
+
+msgid "Specify either a validator or an action for this step."
+msgstr "Especifique un validador o una acción para este paso."
+
+msgid "Ruleset type must match validator type."
+msgstr "El tipo de conjunto de reglas debe coincidir con el tipo de validador."
+
+msgid "The workflow this grant provides access to."
+msgstr "El flujo de trabajo al que este permiso otorga acceso."
+
+msgid "The user who has been granted access."
+msgstr "El usuario al que se le ha otorgado acceso."
+
+msgid "The user who created this grant."
+msgstr "El usuario que creó este permiso."
+
+msgid "Whether this grant is currently active."
+msgstr "Si este permiso está actualmente activo."
+
+msgid "Optional notes about this access grant."
+msgstr "Notas opcionales sobre este permiso de acceso."
+
+msgid "workflow access grant"
+msgstr "permiso de acceso al flujo de trabajo"
+
+msgid "workflow access grants"
+msgstr "permisos de acceso al flujo de trabajo"
+
+msgid "The workflow this invite grants access to."
+msgstr "El flujo de trabajo al que esta invitación otorga acceso."
+
+msgid "The user who sent this invite."
+msgstr "El usuario que envió esta invitación."
+
+msgid "The invited user, if they already have an account."
+msgstr "El usuario invitado, si ya tiene una cuenta."
+
+msgid "Email address of invitee (used when inviting non-users)."
+msgstr "Dirección de correo electrónico del invitado (usado al invitar a personas sin cuenta)."
+
+msgid "Unique token for invite acceptance URL."
+msgstr "Token único para la URL de aceptación de la invitación."
+
+msgid "When this invite expires."
+msgstr "Cuándo vence esta invitación."
+
+msgid "workflow invite"
+msgstr "invitación al flujo de trabajo"
+
+msgid "workflow invites"
+msgstr "invitaciones al flujo de trabajo"
+
+msgid "All workflows in org"
+msgstr "Todos los flujos de trabajo de la organización"
+
+msgid "The organization this invite is for."
+msgstr "La organización para la que es esta invitación."
+
+msgid "Whether to grant access to all current workflows or a selection."
+msgstr "Si se otorga acceso a todos los flujos de trabajo actuales o a una selección."
+
+msgid "Workflows to grant access to (used when scope=SELECTED)."
+msgstr "Flujos de trabajo a los que se otorga acceso (usado cuando scope=SELECTED)."
+
+msgid "guest invite"
+msgstr "invitación de invitado"
+
+msgid "guest invites"
+msgstr "invitaciones de invitado"
+
+msgid "Could not run the workflow. Please try again."
+msgstr "No se pudo ejecutar el flujo de trabajo. Por favor, inténtelo de nuevo."
+
+msgid "Something went wrong while preparing the submission."
+msgstr "Algo salió mal al preparar el envío."
+
+msgid "You do not have permission to run this workflow."
+msgstr "No tiene permiso para ejecutar este flujo de trabajo."
+
+msgid "Workflow validation canceled."
+msgstr "Validación del flujo de trabajo cancelada."
+
+msgid "Process completed before it could be cancelled."
+msgstr "El proceso se completó antes de que pudiera cancelarse."
+
+msgid "Process failed before it could be cancelled."
+msgstr "El proceso falló antes de que pudiera cancelarse."
+
+msgid "Unable to cancel this run."
+msgstr "No se puede cancelar esta ejecución."
+
+#, python-format
+msgid "Workflow '%(name)s'"
+msgstr "Flujo de trabajo '%(name)s'"
+
+msgid "This workflow has not run yet. Launch it to see run details."
+msgstr "Este flujo de trabajo aún no se ha ejecutado. Ejecútelo para ver los detalles."
+
+msgid "You need an organization before creating workflows."
+msgstr "Necesita una organización antes de crear flujos de trabajo."
+
+msgid "Workflow created."
+msgstr "Flujo de trabajo creado."
+
+msgid "Workflow updated."
+msgstr "Flujo de trabajo actualizado."
+
+msgid "Workflow deleted."
+msgstr "Flujo de trabajo eliminado."
+
+msgid "Workflow is already active."
+msgstr "El flujo de trabajo ya está activo."
+
+msgid "Workflow unarchived and re-enabled for new runs."
+msgstr "Flujo de trabajo desarchivado y reactivado para nuevas ejecuciones."
+
+msgid "Workflow is already archived."
+msgstr "El flujo de trabajo ya está archivado."
+
+msgid "Workflow archived and disabled. Runs remain available for audit."
+msgstr "Flujo de trabajo archivado y deshabilitado. Las ejecuciones siguen disponibles para auditoría."
+
+msgid "Public workflow info updated."
+msgstr "Información pública del flujo de trabajo actualizada."
+
+msgid "Public info"
+msgstr "Información pública"
+
+msgid "Workflow reactivated. New validation runs can start immediately."
+msgstr "Flujo de trabajo reactivado. Se pueden iniciar nuevas ejecuciones de validación de inmediato."
+
+msgid "Workflow disabled. Existing runs finish, but new ones are blocked."
+msgstr "Flujo de trabajo deshabilitado. Las ejecuciones existentes finalizan, pero las nuevas están bloqueadas."
+
+msgid "No change applied—the workflow is already in that state."
+msgstr "No se aplicó ningún cambio: el flujo de trabajo ya está en ese estado."
+
+#, python-format
+msgid "You can add up to %(count)s steps per workflow."
+msgstr "Puede agregar hasta %(count)s pasos por flujo de trabajo."
+
+#, python-format
+msgid ""
+"%(validator)s cannot be added because this workflow only accepts %(allowed)s "
+"submissions."
+msgstr ""
+"%(validator)s no puede agregarse porque este flujo de trabajo solo acepta envíos %(allowed)s."
+
+msgid "the selected"
+msgstr "los seleccionados"
+
+msgid "Advanced Validators"
+msgstr "Validadores avanzados"
+
+msgid "Custom Validators"
+msgstr "Validadores personalizados"
+
+msgid "Integrations"
+msgstr "Integraciones"
+
+msgid "Certifications"
+msgstr "Certificaciones"
+
+#, python-format
+msgid "Not allowed for this workflow's submission types (%(allowed)s)."
+msgstr "No permitido para los tipos de envío de este flujo de trabajo (%(allowed)s)."
+
+msgid "selected types"
+msgstr "tipos seleccionados"
+
+msgid "Workflow step added."
+msgstr "Paso del flujo de trabajo agregado."
+
+msgid "Workflow step updated."
+msgstr "Paso del flujo de trabajo actualizado."
+
+msgid "Edit Step Detail"
+msgstr "Editar detalle del paso"
+
+msgid "Workflow step removed."
+msgstr "Paso del flujo de trabajo eliminado."
+
+msgid "Step not found."
+msgstr "Paso no encontrado."
+
+msgid "Workflow step order updated."
+msgstr "Orden de los pasos del flujo de trabajo actualizado."
+
+msgid "Add Assertion"
+msgstr "Agregar aserción"
+
+msgid "Assertion added."
+msgstr "Aserción agregada."
+
+msgid "Edit Assertion"
+msgstr "Editar aserción"
+
+msgid "Assertion updated."
+msgstr "Aserción actualizada."
+
+msgid "Assertion removed."
+msgstr "Aserción eliminada."
+
+msgid "Assertion not found."
+msgstr "Aserción no encontrada."
+
+#, python-format
+msgid "This invite is no longer valid (status: %(status)s)."
+msgstr "Esta invitación ya no es válida (estado: %(status)s)."
+
+#, python-format
+msgid ""
+"You now have access to the workflow '%(name)s'. You can run validations on "
+"this workflow."
+msgstr ""
+"Ahora tiene acceso al flujo de trabajo '%(name)s'. Puede ejecutar validaciones en este flujo de trabajo."
+
+#, python-format
+msgid ""
+"Please sign up or log in to accept your invitation to workflow '%(name)s'."
+msgstr ""
+"Por favor, regístrese o inicie sesión para aceptar su invitación al flujo de trabajo '%(name)s'."
+
+msgid "This user already has access to this workflow."
+msgstr "Este usuario ya tiene acceso a este flujo de trabajo."
+
+#, python-format
+msgid "Your access to '%(workflow)s' has been removed."
+msgstr "Su acceso a '%(workflow)s' ha sido revocado."
+
+#, python-format
+msgid "Access revoked for %(email)s."
+msgstr "Acceso revocado para %(email)s."
+
+msgid "Invitation resent."
+msgstr "Invitación reenviada."
+
+msgid "Select a file type before launching the workflow."
+msgstr "Seleccione un tipo de archivo antes de ejecutar el flujo de trabajo."
+
+msgid "no file types"
+msgstr "sin tipos de archivo"
+
+#, python-format
+msgid "This workflow accepts %(allowed)s submissions."
+msgstr "Este flujo de trabajo acepta envíos %(allowed)s."
+
+#, python-format
+msgid "Step %(step)s (%(validator)s) does not support %(file_type)s files."
+msgstr "El paso %(step)s (%(validator)s) no admite archivos %(file_type)s."
+
+#, python-format
+msgid "Step %(step)s does not support %(file_type)s files."
+msgstr "El paso %(step)s no admite archivos %(file_type)s."
+
+msgid "Select a valid JSON Schema draft."
+msgstr "Seleccione un borrador de JSON Schema válido."
+
+msgid "Upload a JSON schema file."
+msgstr "Suba un archivo de esquema JSON."
+
+msgid "Select a valid XML schema type."
+msgstr "Seleccione un tipo de esquema XML válido."
+
+msgid "Upload an XML schema file."
+msgstr "Suba un archivo de esquema XML."
+
+msgid "Payload too large."
+msgstr "El payload es demasiado grande."
+
+msgid "Unsupported Content-Encoding (only base64)."
+msgstr "Codificación de contenido no compatible (solo base64)."
+
+msgid "Invalid base64 payload."
+msgstr "Payload base64 no válido."
+
+#, python-format
+msgid "Unsupported Content-Type '%s'. "
+msgstr "Content-Type '%s' no compatible. "
+
+#, python-format
+msgid "Supported : %s"
+msgstr "Compatible: %s"
+
+msgid "Invalid request payload."
+msgstr "Payload de solicitud no válido."
+
+msgid "No content provided."
+msgstr "No se proporcionó contenido."
+
+msgid "Unsupported request content type."
+msgstr "Tipo de contenido de solicitud no compatible."
+
+msgid "This workflow has no steps defined and cannot be executed."
+msgstr "Este flujo de trabajo no tiene pasos definidos y no puede ejecutarse."

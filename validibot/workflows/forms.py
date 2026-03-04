@@ -1034,6 +1034,9 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 choices.append((str(rf.id), label))
 
         self.fields["weather_file"].choices = choices
+        # Expose to template so we can show a warning when no files are available.
+        # len==1 means only the empty placeholder choice was added.
+        self.has_weather_files = len(choices) > 1
 
     def _get_default_resource_file(self, org, validator):
         """Return the first default resource file for pre-selection on new steps."""

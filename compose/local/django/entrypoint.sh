@@ -44,5 +44,10 @@ if [ -S /var/run/docker.sock ]; then
   echo "Docker socket configured for django user (GID: $(stat -c '%g' /var/run/docker.sock))"
 fi
 
+# Ensure storage directories exist and are writable by the django user.
+# The named volume starts empty; these dirs must be created on first boot.
+mkdir -p /app/storage/public /app/storage/private
+chown -R django:django /app/storage
+
 # Drop privileges and run command as django user
 exec gosu django "$@"

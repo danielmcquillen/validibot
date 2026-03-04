@@ -49,6 +49,15 @@
             {% endif %}
           </div>
         {% endif %}
+        {% if form.has_weather_files is False %}
+          <div class="alert alert-warning d-flex gap-2" role="alert">
+            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+            <div>
+              <strong>{% trans "No weather files available." %}</strong>
+              {% trans "A workflow author or administrator must upload at least one weather file (EPW) to the EnergyPlus validator in the Validator Library before this step can be configured." %}
+            </div>
+          </div>
+        {% endif %}
         <form method="post"
               enctype="multipart/form-data"
               class="d-flex flex-column gap-4">
@@ -82,7 +91,9 @@
                   {% trans "Next step" %}<i class="bi-arrow-right ms-1"></i>
                 </a>
               {% endif %}
-              <button type="submit" class="btn btn-secondary">
+              <button type="submit"
+                      class="btn btn-secondary"
+                      {% if form.has_weather_files is False %}disabled aria-disabled="true"{% endif %}>
                 {% if is_create %}
                   {% trans "Create step" %}
                 {% else %}

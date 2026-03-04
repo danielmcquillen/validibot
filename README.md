@@ -173,30 +173,7 @@ See the [Security Guide](https://docs.validibot.com/security) for complete recom
 
 Validibot follows an **open-core model**. The core platform is free and open-source under AGPL-3.0, with optional commercial extensions for teams that need additional features.
 
-### What's Free (Community Edition)
-
-Everything you need to run a complete validation platform:
-
-- All built-in validators (JSON Schema, XML Schema, Basic, AI)
-- All advanced validators (EnergyPlus™, FMU, custom containers)
-- Unlimited workflows and validation runs
-- Full REST API and web interface
-- Single-organization workspace
-- Basic user roles (Owner, Admin, Author, Executor, Viewer)
-- Command-line interface ([validibot-cli](https://github.com/danielmcquillen/validibot-cli))
-
-### What's in Pro
-
-For teams that need more:
-
-- Multiple workspaces per organization
-- Team management with workspace-level roles
-- Guest user management
-- Advanced analytics and reporting
-- Cryptographically signed validation badges (JWKS)
-- Priority email support
-
-See [Pricing](https://validibot.com/pricing) for details. Need something else? [Get in touch](mailto:sales@mcquilleninteractive.com).
+See [Pricing](https://validibot.com/pricing) for commercial product details. Need something else? [Get in touch](mailto:sales@mcquilleninteractive.com).
 
 ### License Details
 

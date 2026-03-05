@@ -742,13 +742,17 @@ class WorkflowStep(TimeStampedModel):
         Parses the raw config JSONField into the appropriate Pydantic model
         based on the step's validator or action type. For example, an
         EnergyPlus step returns an EnergyPlusStepConfig instance with typed
-        fields like ``resource_file_ids: list[str]``.
+        fields like ``idf_checks: list[str]``.
+
+        Resource file references (weather files, templates) are stored
+        relationally via ``self.step_resources`` rather than in config.
 
         Returns BaseStepConfig for unknown types (still gives dict-like access
         via ``extra="allow"``).
 
         See Also:
             validibot.workflows.step_configs for available config models.
+            WorkflowStepResource for relational resource bindings.
         """
         from validibot.workflows.step_configs import get_step_config
 
@@ -818,6 +822,118 @@ class WorkflowStep(TimeStampedModel):
                 raise ValidationError(
                     {"config": str(exc)},
                 ) from exc
+
+
+class WorkflowStepResource(models.Model):
+    """Links a resource to a workflow step.
+
+    Supports two mutually exclusive modes:
+
+    1. **Catalog reference** — points to a shared ValidatorResourceFile from the
+       validator library (e.g., weather files). Uses PROTECT on delete so you
+       can't delete a catalog file that steps still need.
+
+    2. **Step-owned file** — stores the file directly on this record (e.g., a
+       template IDF uploaded for this specific step). The file cascades
+       with the step — no orphaned files, no catalog clutter.
+
+    Exactly one of ``validator_resource_file`` or ``step_resource_file`` must be
+    populated (DB-level XOR constraint).
+
+    See Also:
+        ADR 2026-03-04: EnergyPlus Parameterized Model Templates
+        (WorkflowStepResource — Relational Resource Binding)
+    """
+
+    # Role constants — the purpose of this resource in the step.
+    WEATHER_FILE = "WEATHER_FILE"
+    MODEL_TEMPLATE = "MODEL_TEMPLATE"
+
+    step = models.ForeignKey(
+        "workflows.WorkflowStep",
+        on_delete=models.CASCADE,
+        related_name="step_resources",
+    )
+    role = models.CharField(
+        max_length=50,
+        help_text="Purpose of this resource (e.g., WEATHER_FILE, MODEL_TEMPLATE).",
+    )
+
+    # ── Mode 1: Catalog reference (shared resources) ──────────────
+
+    validator_resource_file = models.ForeignKey(
+        "validations.ValidatorResourceFile",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="step_usages",
+        help_text="Shared resource from the validator library.",
+    )
+
+    # ── Mode 2: Step-owned file (step-specific resources) ─────────
+
+    step_resource_file = models.FileField(
+        upload_to="step_resources/",
+        max_length=500,
+        blank=True,
+        help_text="File owned by this step. Deleted when the step is deleted.",
+    )
+    filename = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Original filename of the step-owned file.",
+    )
+    resource_type = models.CharField(
+        max_length=32,
+        blank=True,
+        help_text="Resource type identifier for step-owned files.",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name="ck_step_resource_xor_file",
+                condition=(
+                    models.Q(
+                        validator_resource_file__isnull=False,
+                        step_resource_file="",
+                    )
+                    | (
+                        models.Q(validator_resource_file__isnull=True)
+                        & ~models.Q(step_resource_file="")
+                    )
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        if self.is_catalog_reference:
+            return (
+                f"StepResource({self.step_id}, {self.role},"
+                f" catalog={self.validator_resource_file_id})"
+            )
+        return f"StepResource({self.step_id}, {self.role}, file={self.filename})"
+
+    @property
+    def is_catalog_reference(self) -> bool:
+        """True when this resource points to a shared ValidatorResourceFile."""
+        return self.validator_resource_file_id is not None
+
+    @property
+    def is_step_owned(self) -> bool:
+        """True when this resource stores a file directly on this record."""
+        return self.validator_resource_file_id is None
+
+    def get_storage_uri(self) -> str:
+        """Return the storage URI for this resource, regardless of mode.
+
+        For catalog references, delegates to the ValidatorResourceFile's
+        ``get_storage_uri()`` method (which handles GCS vs local paths).
+        For step-owned files, returns the FileField's URL.
+        """
+        if self.is_catalog_reference:
+            return self.validator_resource_file.get_storage_uri()
+        return self.step_resource_file.url
 
 
 class WorkflowRoleAccess(models.Model):

@@ -157,69 +157,57 @@ def build_energyplus_input_envelope(
     return envelope
 
 
-def _resolve_resource_files(
-    resource_file_ids: list[str],
+def _resolve_step_resources(
+    step,
     *,
-    validator_id: str | None = None,
-    org_id: str | None = None,
+    role: str | None = None,
 ) -> list[ResourceFileItem]:
-    """
-    Resolve resource file IDs to ResourceFileItem objects with storage URIs.
+    """Resolve a step's ``WorkflowStepResource`` rows to ``ResourceFileItem`` objects.
 
-    Enforces runtime authorization: only returns resource files that:
-    - Belong to the specified validator (if validator_id provided)
-    - Are system-wide (org=NULL) OR belong to the specified org (if org_id provided)
+    Queries the relational ``step.step_resources`` reverse relation (FK-backed)
+    rather than parsing UUID strings from the JSON config. This provides
+    referential integrity: stale or unauthorized references are impossible
+    because the FK is PROTECT on ``ValidatorResourceFile``.
+
+    For catalog-reference resources, the ``ResourceFileItem.id`` and ``type``
+    come from the underlying ``ValidatorResourceFile``. For step-owned files,
+    the ``id`` is the ``WorkflowStepResource.pk`` and ``type`` is the
+    ``resource_type`` field on the record itself.
 
     Args:
-        resource_file_ids: List of ValidatorResourceFile UUIDs from step config
-        validator_id: Validator ID to scope resources to (optional but recommended)
-        org_id: Organization ID - resources must be system-wide or match this org
+        step: WorkflowStep instance with ``step_resources`` relation.
+        role: If provided, only return resources matching this role
+              (e.g., ``WorkflowStepResource.WEATHER_FILE``).
 
     Returns:
-        List of ResourceFileItem objects with resolved URIs
-
-    Raises:
-        ValueError: If any requested resource file is not accessible
+        List of ``ResourceFileItem`` objects with resolved storage URIs.
     """
-    if not resource_file_ids:
-        return []
 
-    from django.db.models import Q
+    queryset = step.step_resources.select_related("validator_resource_file")
+    if role:
+        queryset = queryset.filter(role=role)
 
-    from validibot.validations.models import ValidatorResourceFile
-
-    # Build query with authorization scoping
-    queryset = ValidatorResourceFile.objects.filter(id__in=resource_file_ids)
-
-    # Scope to validator if provided
-    if validator_id:
-        queryset = queryset.filter(validator_id=validator_id)
-
-    # Scope to org: must be system-wide (org=NULL) OR match the run's org
-    if org_id:
-        queryset = queryset.filter(Q(org__isnull=True) | Q(org_id=org_id))
-
-    resource_files = list(queryset)
-
-    # Verify all requested IDs were found and authorized
-    found_ids = {str(rf.id) for rf in resource_files}
-    requested_ids = set(resource_file_ids)
-    missing_ids = requested_ids - found_ids
-    if missing_ids:
-        msg = (
-            f"Resource files not found or not authorized: {missing_ids}. "
-            f"validator_id={validator_id}, org_id={org_id}"
-        )
-        raise ValueError(msg)
-
-    return [
-        ResourceFileItem(
-            id=str(rf.id),
-            type=rf.resource_type,
-            uri=rf.get_storage_uri(),
-        )
-        for rf in resource_files
-    ]
+    items: list[ResourceFileItem] = []
+    for sr in queryset:
+        if sr.is_catalog_reference:
+            vrf = sr.validator_resource_file
+            items.append(
+                ResourceFileItem(
+                    id=str(vrf.id),
+                    type=vrf.resource_type,
+                    uri=sr.get_storage_uri(),
+                )
+            )
+        else:
+            # Step-owned file
+            items.append(
+                ResourceFileItem(
+                    id=str(sr.pk),
+                    type=sr.resource_type,
+                    uri=sr.get_storage_uri(),
+                )
+            )
+    return items
 
 
 def build_input_envelope(
@@ -286,21 +274,19 @@ def build_input_envelope(
             msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
-        # Resolve resource files from IDs stored in step config
-        # Pass validator and org for runtime authorization scoping
-        resource_file_ids = step_config.get("resource_file_ids", [])
-        resource_files = _resolve_resource_files(
-            resource_file_ids,
-            validator_id=str(validator.id),
-            org_id=str(run.org.id),
-        )
+        # Resolve resource files from relational WorkflowStepResource rows
+
+        resource_files = _resolve_step_resources(step)
 
         # Validate that we have a weather file for EnergyPlus
         has_weather = any(
             rf.type == ResourceFileType.ENERGYPLUS_WEATHER for rf in resource_files
         )
         if not has_weather:
-            msg = f"Step {step.id} has no weather file configured in resource_file_ids"
+            msg = (
+                f"Step {step.id} has no weather file configured"
+                " (no WEATHER_FILE step resource)"
+            )
             raise ValueError(msg)
 
         # Get EnergyPlus-specific settings from step config

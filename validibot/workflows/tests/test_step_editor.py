@@ -597,7 +597,14 @@ def test_create_energyplus_step_with_idf_checks(client):
     assert step is not None
     assert step.config["idf_checks"] == ["duplicate-names", "hvac-sizing"]
     assert step.config["run_simulation"] is True
-    assert step.config["resource_file_ids"] == [str(weather_resource.id)]
+    # Weather file is stored relationally via WorkflowStepResource, not in config
+    from validibot.workflows.models import WorkflowStepResource
+
+    weather_sr = step.step_resources.filter(
+        role=WorkflowStepResource.WEATHER_FILE
+    ).first()
+    assert weather_sr is not None
+    assert weather_sr.validator_resource_file_id == weather_resource.id
 
 
 def test_step_settings_does_not_expose_validator_selector(client):

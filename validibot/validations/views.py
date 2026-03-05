@@ -2487,7 +2487,7 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
     Delete a resource file with active-workflow blocker checks.
 
     Deletion is blocked if any active workflow step references this file
-    via resource_file_ids in its JSONField config.
+    via a ``WorkflowStepResource`` foreign-key relationship.
     """
 
     def post(self, request, *args, **kwargs):
@@ -2514,6 +2514,17 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
             messages.error(request, message)
             return self._redirect_to_resource_files()
 
+        # Clean up WorkflowStepResource references from *inactive* workflows
+        # before deleting.  The blocker check above already confirmed there are
+        # no active-workflow references, but Django's PROTECT FK constraint
+        # fires for all references regardless of workflow state.
+        from validibot.workflows.models import WorkflowStepResource
+
+        WorkflowStepResource.objects.filter(
+            validator_resource_file=resource_file,
+            step__workflow__is_active=False,
+        ).delete()
+
         name = resource_file.name
         resource_file.delete()
         messages.success(
@@ -2525,23 +2536,20 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
         return self._redirect_to_resource_files()
 
     def _get_delete_blockers(self, resource_file):
+        """Return list of active workflow names that reference this resource file.
+
+        Queries the ``WorkflowStepResource`` through table via the
+        ``step_usages`` reverse relation (FK-backed, no JSON scanning).
+        Only considers resources in active workflows.
         """
-        Return list of active workflow names that reference this resource file.
+        from validibot.workflows.models import WorkflowStepResource
 
-        Uses PostgreSQL's JSONField containment lookup to find steps whose
-        config.resource_file_ids contains this file's UUID.
+        usages = WorkflowStepResource.objects.filter(
+            validator_resource_file=resource_file,
+            step__workflow__is_active=True,
+        ).select_related("step__workflow")
 
-        Note: This performs a sequential scan because the JSONField has no GIN
-        index. Acceptable at current scale (user-initiated delete action only).
-        If WorkflowStep row count grows significantly, add a GIN index on
-        ``config`` via migration.
-        """
-        steps = WorkflowStep.objects.filter(
-            workflow__is_active=True,
-            config__resource_file_ids__contains=[str(resource_file.id)],
-        ).select_related("workflow")
-
-        return list({step.workflow.name for step in steps})
+        return list({usage.step.workflow.name for usage in usages})
 
 
 class CatalogEntryDetailView(LoginRequiredMixin, View):

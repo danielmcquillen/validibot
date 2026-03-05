@@ -52,14 +52,18 @@ class MockSubmission:
 
 
 class MockWorkflowStep:
-    """Mock workflow step for testing."""
+    """Mock workflow step for testing.
+
+    Resource references (weather files, templates) are stored relationally
+    via WorkflowStepResource, not in config. The ``primary_file_uri`` is
+    injected at runtime by the launcher, not stored on the step.
+    """
 
     def __init__(self):
         self.id = "step-test-012"
         self.name = "Test Step"
         self.config = {
             "primary_file_uri": "file:///test/model.idf",
-            "resource_file_ids": ["resource-weather-123"],
         }
         self.validator = MockValidator()
 

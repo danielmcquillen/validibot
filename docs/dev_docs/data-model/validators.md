@@ -87,14 +87,15 @@ Each resource file has:
   defines allowed extensions, max file size, and optional header validation. Adding a new resource
   type requires only adding a config entry -- no form or view changes needed.
 
-Resource files are referenced by step configs via UUID strings in a JSONField
-(`resource_file_ids: list[str]` in the Pydantic step config). This is a deliberate design choice
-rather than FKs or M2M, keeping `step.config` as the single source of truth and avoiding
-dual-write complexity.
+Resource files are referenced by workflow steps via the `WorkflowStepResource` through table
+(FK-backed). Each step resource has a `role` (e.g., `WEATHER_FILE`, `MODEL_TEMPLATE`) and
+points to either a shared `ValidatorResourceFile` (catalog reference, PROTECT on delete) or
+stores its own file directly (step-owned, CASCADE with step). This provides referential
+integrity and eliminates the stale-UUID problem of the earlier JSON-based approach.
 
 **RBAC**: Authors can view and select resource files, but only ADMIN/OWNER can create, edit, or
 delete them (uses `ADMIN_MANAGE_ORG` permission). Deletion is blocked if the file is referenced
-by any active workflow step.
+by any active workflow step (checked via `WorkflowStepResource` FK query).
 
 ## Validator detail page (UI)
 

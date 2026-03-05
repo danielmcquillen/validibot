@@ -31,6 +31,7 @@ from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.models import WorkflowStepResource
 
 logger = logging.getLogger(__name__)
 
@@ -401,15 +402,53 @@ def build_xml_schema_config(
 
 
 def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
-    # Store weather file UUID in resource_file_ids list
-    weather_file_id = form.cleaned_data.get("weather_file", "")
-    resource_file_ids = [weather_file_id] if weather_file_id else []
+    """Build the JSON config dict for an EnergyPlus step.
 
+    Resource file references (weather files, templates) are stored
+    relationally via ``WorkflowStepResource`` and are synced separately
+    by ``_sync_energyplus_resources()`` after the step is saved.
+    """
     return {
-        "resource_file_ids": resource_file_ids,
         "idf_checks": form.cleaned_data.get("idf_checks", []),
         "run_simulation": form.cleaned_data.get("run_simulation", False),
     }
+
+
+def _sync_energyplus_resources(
+    step: WorkflowStep,
+    form: EnergyPlusStepConfigForm,
+) -> None:
+    """Sync the relational ``WorkflowStepResource`` rows for an EnergyPlus step.
+
+    Called *after* ``step.save()`` so the step has a PK. Replaces the old
+    approach of storing UUID strings in ``config["resource_file_ids"]``.
+
+    Currently handles the WEATHER_FILE role only. Future phases will add
+    MODEL_TEMPLATE when parameterized templates are implemented.
+    """
+    from validibot.validations.models import ValidatorResourceFile
+
+    # ── Weather file ────────────────────────────────────────────────
+    weather_file_id = form.cleaned_data.get("weather_file", "")
+
+    # Remove existing weather file resources for this step
+    step.step_resources.filter(role=WorkflowStepResource.WEATHER_FILE).delete()
+
+    # Create new one if a weather file was selected
+    if weather_file_id:
+        try:
+            vrf = ValidatorResourceFile.objects.get(pk=weather_file_id)
+            WorkflowStepResource.objects.create(
+                step=step,
+                role=WorkflowStepResource.WEATHER_FILE,
+                validator_resource_file=vrf,
+            )
+        except ValidatorResourceFile.DoesNotExist:
+            logger.warning(
+                "Weather file UUID %s not found when saving step %s.",
+                weather_file_id,
+                step.pk,
+            )
 
 
 def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
@@ -480,6 +519,12 @@ def save_workflow_step(
         step.order = (max_order or 0) + 10
 
     step.save()
+
+    # Sync relational resource bindings (weather files, templates) after
+    # step.save() gives us a PK for new steps.
+    if vtype == ValidationType.ENERGYPLUS:
+        _sync_energyplus_resources(step, form)
+
     return step
 
 

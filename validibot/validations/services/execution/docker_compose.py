@@ -318,7 +318,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
         input_file_uris["primary_file_uri"] = self.storage.get_uri(submission_path)
 
         # Note: Weather files and other resource files are resolved from
-        # resource_file_ids in the envelope builder, not here.
+        # WorkflowStepResource rows in the envelope builder, not here.
 
         return input_file_uris
 

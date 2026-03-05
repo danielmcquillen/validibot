@@ -20,7 +20,7 @@ Usage::
     # Parse a WorkflowStep's config into a typed model
     typed = get_step_config(step)
     if isinstance(typed, EnergyPlusStepConfig):
-        file_ids = typed.resource_file_ids  # list[str], type-checked
+        checks = typed.idf_checks  # list[str], type-checked
 
 See Also:
     - GitHub issue #96: Add type-safe Pydantic models for WorkflowStep.config
@@ -102,12 +102,12 @@ class XmlSchemaStepConfig(BaseStepConfig):
 class EnergyPlusStepConfig(BaseStepConfig):
     """Config for EnergyPlus validator steps.
 
-    Controls which checks to run, whether to run the simulation, and which
-    weather/resource files to include.
-    """
+    Controls which checks to run and whether to run the simulation.
 
-    resource_file_ids: list[str] = Field(default_factory=list)
-    """UUIDs of ValidatorResourceFile records (e.g., weather files)."""
+    Resource files (weather EPWs, model templates) are stored relationally
+    via ``WorkflowStepResource`` rather than in this config. See the
+    ``step.step_resources`` reverse relation.
+    """
 
     idf_checks: list[str] = Field(default_factory=list)
     """Subset of: "duplicate-names", "hvac-sizing", "schedule-coverage"."""

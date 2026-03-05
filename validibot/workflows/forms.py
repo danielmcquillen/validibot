@@ -983,9 +983,17 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
         if step:
             config = step.config or {}
-            # Get weather file from resource_file_ids (new format)
-            resource_file_ids = config.get("resource_file_ids", [])
-            weather_file_id = resource_file_ids[0] if resource_file_ids else ""
+            # Read weather file from relational WorkflowStepResource (Phase 0)
+            from validibot.workflows.models import WorkflowStepResource
+
+            weather_resource = step.step_resources.filter(
+                role=WorkflowStepResource.WEATHER_FILE,
+            ).first()
+            weather_file_id = (
+                str(weather_resource.validator_resource_file_id)
+                if weather_resource and weather_resource.validator_resource_file_id
+                else ""
+            )
             self.initial.update(
                 {
                     "weather_file": weather_file_id,

@@ -481,15 +481,84 @@ def build_energyplus_config(
         # Attach warnings to the form so the view can display them.
         form.template_warnings = result.warnings
     elif step:
-        # No upload, no removal — preserve existing template config
-        # from the current step (if a template was previously uploaded).
+        # No upload, no removal — merge author annotations from the
+        # dynamic form fields into the existing template variables.
+        # The variable *names* are immutable (set during scan); all
+        # other fields can be updated by the author.
         existing_config = step.config or {}
-        if existing_config.get("template_variables"):
-            config["template_variables"] = existing_config["template_variables"]
-            config["case_sensitive"] = existing_config.get("case_sensitive", True)
-            config["display_signals"] = existing_config.get("display_signals", [])
+        existing_vars = existing_config.get("template_variables", [])
+        if existing_vars:
+            merged = []
+            for i, var in enumerate(existing_vars):
+                prefix = f"tplvar_{i}"
+                merged.append(
+                    {
+                        "name": var["name"],
+                        "description": form.cleaned_data.get(
+                            f"{prefix}_description",
+                            var.get("description", ""),
+                        ),
+                        "default": form.cleaned_data.get(
+                            f"{prefix}_default",
+                            var.get("default", ""),
+                        ),
+                        "units": form.cleaned_data.get(
+                            f"{prefix}_units",
+                            var.get("units", ""),
+                        ),
+                        "variable_type": form.cleaned_data.get(
+                            f"{prefix}_variable_type",
+                            var.get("variable_type", "text"),
+                        ),
+                        "min_value": _parse_optional_float(
+                            form.cleaned_data.get(f"{prefix}_min_value", ""),
+                        ),
+                        "min_exclusive": form.cleaned_data.get(
+                            f"{prefix}_min_exclusive",
+                            False,
+                        ),
+                        "max_value": _parse_optional_float(
+                            form.cleaned_data.get(f"{prefix}_max_value", ""),
+                        ),
+                        "max_exclusive": form.cleaned_data.get(
+                            f"{prefix}_max_exclusive",
+                            False,
+                        ),
+                        "choices": _parse_choices(
+                            form.cleaned_data.get(f"{prefix}_choices", ""),
+                        ),
+                    }
+                )
+            config["template_variables"] = merged
+            config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
+            config["display_signals"] = form.cleaned_data.get("display_signals", [])
 
     return config
+
+
+def _parse_optional_float(value: str) -> float | None:
+    """Convert a string to float, returning None for empty or invalid values.
+
+    Used by ``build_energyplus_config()`` to parse min/max values from
+    the template variable editor form fields.
+    """
+    if not value or not value.strip():
+        return None
+    try:
+        return float(value.strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_choices(value: str) -> list[str]:
+    """Split a newline-separated string into a list of non-empty choices.
+
+    Used by ``build_energyplus_config()`` to parse the "Allowed values"
+    textarea from the template variable editor.
+    """
+    if not value:
+        return []
+    return [line.strip() for line in value.splitlines() if line.strip()]
 
 
 def _sync_energyplus_resources(

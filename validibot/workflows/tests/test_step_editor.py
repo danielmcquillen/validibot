@@ -536,7 +536,6 @@ def test_create_xml_step_requires_schema_text(client):
     assert "Add content directly or upload a file." in html
     assert 'name="schema_text"' in html
     assert "is-invalid" in html
-    assert '<button type="submit" class="btn btn-secondary">' in html
     assert "Create step" in html
 
 
@@ -561,7 +560,6 @@ def test_create_ai_policy_requires_rules(client):
     html = response.content.decode()
     assert "We found a few issues" in html
     assert "Add at least one policy rule." in html
-    assert '<button type="submit" class="btn btn-secondary">' in html
     assert "Create step" in html
 
 

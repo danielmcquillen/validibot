@@ -401,17 +401,95 @@ def build_xml_schema_config(
     return config, ruleset
 
 
-def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
+def build_energyplus_config(
+    form: EnergyPlusStepConfigForm,
+    step: WorkflowStep | None = None,
+) -> dict[str, Any]:
     """Build the JSON config dict for an EnergyPlus step.
 
     Resource file references (weather files, templates) are stored
     relationally via ``WorkflowStepResource`` and are synced separately
     by ``_sync_energyplus_resources()`` after the step is saved.
+
+    Template handling (Phase 2):
+
+    - **Template upload**: Validates the IDF, scans for ``$VARIABLE_NAME``
+      placeholders, and populates ``template_variables`` in the config.
+      Raises ``ValidationError`` if the file fails validation.
+    - **Template removal**: Clears ``template_variables`` and resets
+      ``case_sensitive`` to True.
+    - **No change**: Preserves existing ``template_variables`` from the
+      step's current config (if any).
+
+    The template *file* itself is persisted by
+    ``_sync_energyplus_resources()`` after ``step.save()``.
     """
-    return {
+    from validibot.validations.utils.idf_template import validate_idf_template
+
+    config: dict[str, Any] = {
         "idf_checks": form.cleaned_data.get("idf_checks", []),
         "run_simulation": form.cleaned_data.get("run_simulation", False),
     }
+
+    remove_template = form.cleaned_data.get("remove_template", False)
+    template_file = form.cleaned_data.get("template_file")
+
+    if remove_template:
+        # Author clicked "Remove template" — clear all template metadata.
+        config["template_variables"] = []
+        config["case_sensitive"] = True
+        config["display_signals"] = []
+    elif template_file:
+        # New template uploaded — validate, scan, and populate config.
+        content = template_file.read()
+        case_sensitive = form.cleaned_data.get("case_sensitive", True)
+
+        result = validate_idf_template(
+            filename=template_file.name,
+            content=content,
+            case_sensitive=case_sensitive,
+        )
+
+        if result.errors:
+            raise ValidationError(result.errors)
+
+        # Convert TemplateVariableContext → IDFTemplateVariable dicts.
+        # At this point, only auto-detected metadata is populated.
+        # The author will refine descriptions, defaults, and constraints
+        # in Phase 3 (Template Variable Editor).
+        template_vars = []
+        for var_ctx in result.scan_result.variables:
+            template_vars.append(
+                {
+                    "name": var_ctx.name,
+                    "description": var_ctx.label,
+                    "default": "",
+                    "units": var_ctx.units,
+                    "variable_type": "text",
+                    "min_value": None,
+                    "min_exclusive": False,
+                    "max_value": None,
+                    "max_exclusive": False,
+                    "choices": [],
+                }
+            )
+
+        config["template_variables"] = template_vars
+        config["case_sensitive"] = case_sensitive
+        config["display_signals"] = []
+
+        # Attach warnings to the form so the view can display them.
+        form.template_warnings = result.warnings
+    elif step:
+        # No upload, no removal — preserve existing template config
+        # from the current step (if a template was previously uploaded).
+        existing_config = step.config or {}
+        if existing_config.get("template_variables"):
+            config["template_variables"] = existing_config["template_variables"]
+            config["case_sensitive"] = existing_config.get("case_sensitive", True)
+            config["display_signals"] = existing_config.get("display_signals", [])
+
+    return config
 
 
 def _sync_energyplus_resources(
@@ -423,9 +501,14 @@ def _sync_energyplus_resources(
     Called *after* ``step.save()`` so the step has a PK. Replaces the old
     approach of storing UUID strings in ``config["resource_file_ids"]``.
 
-    Currently handles the WEATHER_FILE role only. Future phases will add
-    MODEL_TEMPLATE when parameterized templates are implemented.
+    Handles two resource roles:
+
+    - **WEATHER_FILE** — catalog reference to a shared ``ValidatorResourceFile``.
+    - **MODEL_TEMPLATE** — step-owned file uploaded for parameterized templates
+      (Phase 2).  The template file is stored directly on the
+      ``WorkflowStepResource`` via ``step_resource_file``.
     """
+    from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
     from validibot.validations.models import ValidatorResourceFile
 
     # ── Weather file ────────────────────────────────────────────────
@@ -449,6 +532,34 @@ def _sync_energyplus_resources(
                 weather_file_id,
                 step.pk,
             )
+
+    # ── Model template (Phase 2) ──────────────────────────────────
+    remove_template = form.cleaned_data.get("remove_template", False)
+    template_file = form.cleaned_data.get("template_file")
+
+    if remove_template:
+        # Author chose to remove the template — delete the resource row
+        # (and the step-owned file via Django storage cleanup).
+        step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).delete()
+    elif template_file:
+        # New template uploaded — replace any existing template resource.
+        step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).delete()
+
+        # Reset the file pointer — build_energyplus_config() already
+        # called .read() for validation.
+        template_file.seek(0)
+
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+            step_resource_file=template_file,
+            filename=template_file.name,
+            resource_type=ENERGYPLUS_MODEL_TEMPLATE,
+        )
 
 
 def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
@@ -497,7 +608,20 @@ def save_workflow_step(
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
-        config = build_energyplus_config(form)
+        config = build_energyplus_config(form, step)
+        # File type enforcement: parameterized templates require JSON
+        # submissions (the submitter sends variable values as JSON).
+        if config.get("template_variables"):
+            allowed = [ft.lower() for ft in (workflow.allowed_file_types or [])]
+            if SubmissionFileType.JSON.lower() not in allowed:
+                raise ValidationError(
+                    _(
+                        "This step uses a parameterized template, which "
+                        "requires JSON submissions. Please add JSON to "
+                        "the workflow's allowed file types before "
+                        "activating a template."
+                    )
+                )
     elif vtype == ValidationType.FMU:
         config = {}
     elif vtype == ValidationType.AI_ASSIST:

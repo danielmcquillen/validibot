@@ -944,9 +944,16 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
     Validation checks (EUI ranges, etc.) should be defined as assertions
     against the returned signals.
 
+    When a parameterized template is active, the form also handles template
+    file upload, case sensitivity, and template removal.  The template *file*
+    is stored on ``WorkflowStepResource`` (role=MODEL_TEMPLATE); the template
+    *configuration* (variables, case sensitivity) is stored in step config
+    and built by ``build_energyplus_config()`` in ``views_helpers.py``.
+
     Example:
         form = EnergyPlusStepConfigForm(
             data={"run_simulation": True},
+            files=request.FILES,
             org=my_org,
             validator=energyplus_validator,
         )
@@ -974,6 +981,29 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
     )
 
+    # ── Template fields (Phase 2) ─────────────────────────────────
+    template_file = forms.FileField(
+        label=_("Template IDF file"),
+        required=False,
+        help_text=_(
+            "Upload an IDF file with $VARIABLE_NAME placeholders. "
+            "Variables will be auto-detected and shown below."
+        ),
+    )
+    case_sensitive = forms.BooleanField(
+        label=_("Case-sensitive variable matching"),
+        required=False,
+        initial=True,
+        help_text=_(
+            "When checked, only $UPPERCASE_NAMES are detected as variables. "
+            "Uncheck to allow $Mixed_Case names (normalized to uppercase)."
+        ),
+    )
+    remove_template = forms.BooleanField(
+        required=False,
+        widget=forms.HiddenInput,
+    )
+
     def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
         super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
         self.fields.pop("display_schema", None)
@@ -981,11 +1011,18 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         # Populate weather file choices from ValidatorResourceFile
         self._populate_weather_file_choices(org, validator)
 
+        # ── Template state (for template display in the form) ─────
+        # These flags tell the template whether to show "upload" or
+        # "current template" UI, and what filename to display.
+        from validibot.workflows.models import WorkflowStepResource
+
+        self.has_template = False
+        self.template_filename = ""
+        self.template_warnings: list[str] = []
+
         if step:
             config = step.config or {}
             # Read weather file from relational WorkflowStepResource (Phase 0)
-            from validibot.workflows.models import WorkflowStepResource
-
             weather_resource = step.step_resources.filter(
                 role=WorkflowStepResource.WEATHER_FILE,
             ).first()
@@ -999,11 +1036,20 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "weather_file": weather_file_id,
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
+                    "case_sensitive": config.get("case_sensitive", True),
                 }
             )
             for key, value in self.initial.items():
                 if key in self.fields and value not in (None, ""):
                     self.fields[key].initial = value
+
+            # Check for existing template resource
+            template_resource = step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            ).first()
+            if template_resource:
+                self.has_template = True
+                self.template_filename = template_resource.filename or ""
         else:
             # Pre-select the first default resource file for new steps
             default_rf = self._get_default_resource_file(org, validator)

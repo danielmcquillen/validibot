@@ -1,0 +1,777 @@
+"""
+Integration tests for the EnergyPlus parameterized template workflow.
+
+These tests verify the end-to-end pipeline from form submission through
+config building and resource syncing:
+
+1. ``build_energyplus_config()`` — Validates uploaded IDF files, scans for
+   ``$VARIABLE_NAME`` placeholders, populates ``template_variables`` in the
+   config dict, handles template removal, and preserves existing config when
+   no upload occurs.
+
+2. ``_sync_energyplus_resources()`` — Creates/deletes ``WorkflowStepResource``
+   rows with ``role=MODEL_TEMPLATE`` for step-owned template files.
+
+3. ``save_workflow_step()`` — File type enforcement ensures workflows with
+   parameterized templates accept JSON submissions.
+
+Unlike the pure-Python scanner tests in ``test_idf_template.py``, these
+tests require a Django database because they exercise form objects, model
+instances, and ORM queries.
+
+Phase: 2 (IDF Parsing Utility and Variable Detection) of the EnergyPlus
+Parameterized Templates ADR.
+"""
+
+from __future__ import annotations
+
+import pytest
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from validibot.submissions.constants import SubmissionFileType
+from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
+from validibot.validations.constants import ValidationType
+from validibot.validations.tests.factories import ValidatorFactory
+from validibot.validations.tests.factories import ValidatorResourceFileFactory
+from validibot.workflows.forms import EnergyPlusStepConfigForm
+from validibot.workflows.models import WorkflowStepResource
+from validibot.workflows.tests.factories import WorkflowFactory
+from validibot.workflows.tests.factories import WorkflowStepFactory
+from validibot.workflows.views_helpers import _sync_energyplus_resources
+from validibot.workflows.views_helpers import build_energyplus_config
+from validibot.workflows.views_helpers import save_workflow_step
+
+pytestmark = pytest.mark.django_db
+
+# ---------------------------------------------------------------------------
+# Shared IDF template content for integration tests
+# ---------------------------------------------------------------------------
+
+VALID_TEMPLATE_IDF = b"""\
+Version,
+    24.2;  !- Version Identifier
+
+WindowMaterial:SimpleGlazingSystem,
+    Glazing System,          !- Name
+    $U_FACTOR,               !- U-Factor {W/m2-K}
+    $SHGC,                   !- Solar Heat Gain Coefficient
+    $VISIBLE_TRANSMITTANCE;  !- Visible Transmittance
+"""
+
+
+def _make_energyplus_validator():
+    """Create an EnergyPlus validator with a weather file resource.
+
+    Also creates a default weather file resource so the form's required
+    ``weather_file`` ChoiceField has at least one selectable option.
+    Returns the validator instance.
+    """
+    validator = ValidatorFactory(
+        validation_type=ValidationType.ENERGYPLUS,
+        slug="energyplus-test",
+        name="EnergyPlus Test",
+    )
+    # The form requires a weather file selection.  Create one so the
+    # ChoiceField has a valid option.
+    ValidatorResourceFileFactory(validator=validator, is_default=True)
+    return validator
+
+
+def _make_template_upload(
+    content: bytes = VALID_TEMPLATE_IDF,
+    filename: str = "template.idf",
+) -> SimpleUploadedFile:
+    """Create a SimpleUploadedFile for a template IDF."""
+    return SimpleUploadedFile(filename, content, content_type="text/plain")
+
+
+def _make_form(
+    *,
+    step=None,
+    org=None,
+    validator=None,
+    data=None,
+    files=None,
+):
+    """Build an EnergyPlusStepConfigForm with sensible defaults.
+
+    The ``data`` dict must include all required form fields (``name``,
+    ``weather_file``, etc.) or validation will fail.  The ``files`` dict
+    can contain a ``template_file`` key for upload tests.
+
+    Auto-selects the first available weather file from the database to
+    satisfy the required ChoiceField — callers don't need to pass it.
+    """
+    if data is None:
+        data = {}
+
+    # Auto-select a weather file from the DB if one exists and
+    # the caller didn't explicitly set one.
+    weather_file_id = data.get("weather_file", "")
+    if not weather_file_id and validator:
+        from validibot.validations.constants import ResourceFileType
+        from validibot.validations.models import ValidatorResourceFile
+
+        vrf = ValidatorResourceFile.objects.filter(
+            validator=validator,
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+        ).first()
+        if vrf:
+            weather_file_id = str(vrf.pk)
+
+    defaults = {
+        "name": "Test Step",
+        "weather_file": weather_file_id,
+        "idf_checks": [],
+        "run_simulation": False,
+        "case_sensitive": True,
+        "remove_template": False,
+    }
+    defaults.update(data)
+
+    form = EnergyPlusStepConfigForm(
+        data=defaults,
+        files=files or {},
+        step=step,
+        org=org,
+        validator=validator,
+    )
+    return form
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_energyplus_config() — template upload
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildConfigWithTemplateUpload:
+    """Tests for ``build_energyplus_config`` when a template file is uploaded.
+
+    This verifies the pipeline: uploaded file → ``validate_idf_template()``
+    → ``scan_idf_template_variables()`` → ``template_variables`` dicts in
+    the config.  The scan/validation is tested exhaustively in
+    ``test_idf_template.py``; here we test the integration with the form
+    and config builder.
+    """
+
+    def test_upload_populates_template_variables(self):
+        """A valid template upload produces ``template_variables`` in config.
+
+        The config should contain one dict per detected variable, with
+        auto-populated metadata from the IDF annotation.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert "template_variables" in config
+        assert len(config["template_variables"]) == 3  # noqa: PLR2004
+        names = [v["name"] for v in config["template_variables"]]
+        assert names == ["U_FACTOR", "SHGC", "VISIBLE_TRANSMITTANCE"]
+
+    def test_upload_preserves_annotation_metadata(self):
+        """Auto-populated descriptions and units from IDF annotations are
+        stored in the variable dicts.
+
+        The ``!- U-Factor {W/m2-K}`` annotation should produce
+        ``description='U-Factor'`` and ``units='W/m2-K'``.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        u_factor = config["template_variables"][0]
+        assert u_factor["description"] == "U-Factor"
+        assert u_factor["units"] == "W/m2-K"
+
+    def test_upload_stores_case_sensitive_setting(self):
+        """The ``case_sensitive`` form value is included in the config.
+
+        This setting controls how the scanner detects variables and must
+        be persisted so future scans use the same mode.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            data={"case_sensitive": False},
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert config["case_sensitive"] is False
+
+    def test_upload_initializes_display_signals_empty(self):
+        """Display signals start empty — the author configures them later.
+
+        The empty list means "show all signals" (backward-compatible default).
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert config["display_signals"] == []
+
+    def test_upload_invalid_file_raises_validation_error(self):
+        """An invalid template file causes ``ValidationError``.
+
+        ``build_energyplus_config()`` delegates to ``validate_idf_template()``,
+        which produces blocking errors for non-IDF files.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload(
+            content=b'{"not": "idf"}',
+            filename="not_idf.epjson",
+        )
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+
+        with pytest.raises(ValidationError):
+            build_energyplus_config(form)
+
+    def test_upload_attaches_warnings_to_form(self):
+        """Non-blocking warnings from the scan are attached to the form.
+
+        The view layer can then display these to the author (e.g., "This
+        template is 600 KB. Consider using ##include.").
+        """
+        # Use a template with a bare $ to trigger a warning
+        content = b"""\
+WindowMaterial:SimpleGlazingSystem,
+    Glazing System,          !- Name
+    $U_FACTOR,               !- U-Factor {W/m2-K}
+    $ SHGC,                  !- Solar Heat Gain Coefficient
+    $VISIBLE_TRANSMITTANCE;  !- Visible Transmittance
+"""
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload(content=content)
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        build_energyplus_config(form)
+
+        assert hasattr(form, "template_warnings")
+        assert len(form.template_warnings) > 0
+
+    def test_upload_variable_defaults_are_text_type(self):
+        """Auto-detected variables default to ``variable_type='text'``.
+
+        The author refines types (number, choice) in the Template Variable
+        Editor (Phase 3).  Until then, 'text' is the safest default because
+        it accepts any value.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        for var in config["template_variables"]:
+            assert var["variable_type"] == "text"
+            assert var["default"] == ""
+            assert var["choices"] == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_energyplus_config() — template removal
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildConfigWithTemplateRemoval:
+    """Tests for ``build_energyplus_config`` when the template is removed.
+
+    Removal means the author is switching from template mode back to direct
+    IDF submission.  All template metadata should be cleared from config.
+    """
+
+    def test_remove_clears_template_variables(self):
+        """``remove_template=True`` clears the ``template_variables`` list.
+
+        Even if the step had template variables before, the config should
+        come back with an empty list.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={
+                "idf_checks": [],
+                "run_simulation": False,
+                "template_variables": [{"name": "U_FACTOR"}],
+                "case_sensitive": True,
+            },
+        )
+        form = _make_form(
+            validator=validator,
+            step=step,
+            data={"remove_template": True},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form, step)
+
+        assert config["template_variables"] == []
+        assert config["case_sensitive"] is True
+        assert config["display_signals"] == []
+
+    def test_remove_preserves_non_template_config(self):
+        """Simulation settings are preserved even when template is removed.
+
+        ``idf_checks`` and ``run_simulation`` are independent of the
+        template feature and should survive template removal.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={"idf_checks": ["duplicate-names"], "run_simulation": True},
+        )
+        form = _make_form(
+            validator=validator,
+            step=step,
+            data={
+                "remove_template": True,
+                "idf_checks": ["duplicate-names"],
+                "run_simulation": True,
+            },
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form, step)
+
+        assert config["idf_checks"] == ["duplicate-names"]
+        assert config["run_simulation"] is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# build_energyplus_config() — no upload, no removal
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildConfigPreservesExisting:
+    """Tests for ``build_energyplus_config`` when no template change occurs.
+
+    If the author edits other settings (idf_checks, run_simulation) without
+    touching the template, existing template metadata should be preserved.
+    """
+
+    def test_preserves_existing_template_variables(self):
+        """Existing ``template_variables`` survive a settings-only edit.
+
+        If the author only changes ``run_simulation``, the template metadata
+        from the previous save should carry forward unchanged.
+        """
+        validator = _make_energyplus_validator()
+        existing_vars = [
+            {"name": "U_FACTOR", "description": "U-Factor", "units": "W/m2-K"},
+            {"name": "SHGC", "description": "Solar Heat Gain Coefficient"},
+        ]
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={
+                "idf_checks": [],
+                "run_simulation": False,
+                "template_variables": existing_vars,
+                "case_sensitive": True,
+                "display_signals": ["total-site-energy"],
+            },
+        )
+        form = _make_form(
+            validator=validator,
+            step=step,
+            data={"run_simulation": True},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form, step)
+
+        assert config["template_variables"] == existing_vars
+        assert config["case_sensitive"] is True
+        assert config["display_signals"] == ["total-site-energy"]
+
+    def test_no_step_no_template_keys(self):
+        """A new step (no existing step) has no template metadata in config.
+
+        When ``step=None`` and no template is uploaded, the config should
+        only contain simulation settings — no ``template_variables`` key.
+        """
+        validator = _make_energyplus_validator()
+        form = _make_form(validator=validator)
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form, step=None)
+
+        assert "template_variables" not in config
+
+    def test_step_without_template_has_no_template_keys(self):
+        """An existing step that never had a template has no template keys.
+
+        This is the backward-compatibility path: pre-template steps have
+        ``config={"idf_checks": [], "run_simulation": False}`` with no
+        template keys.  Re-saving should preserve this state.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={"idf_checks": [], "run_simulation": False},
+        )
+        form = _make_form(validator=validator, step=step)
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form, step)
+
+        assert "template_variables" not in config
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# _sync_energyplus_resources() — MODEL_TEMPLATE resource management
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSyncResourcesTemplate:
+    """Tests for ``_sync_energyplus_resources()`` MODEL_TEMPLATE handling.
+
+    The template file is stored as a step-owned ``WorkflowStepResource``
+    (mode 2: ``step_resource_file`` populated, ``validator_resource_file``
+    NULL).  These tests verify create, replace, and delete operations.
+    """
+
+    def test_upload_creates_step_owned_resource(self):
+        """Uploading a template creates a ``WorkflowStepResource`` with
+        the template file stored directly on the record.
+
+        The resource should use ``role=MODEL_TEMPLATE`` and store the
+        original filename and resource type.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+        upload = _make_template_upload()
+
+        form = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+
+        _sync_energyplus_resources(step, form)
+
+        resource = step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).first()
+        assert resource is not None
+        assert resource.filename == "template.idf"
+        assert resource.resource_type == ENERGYPLUS_MODEL_TEMPLATE
+        assert resource.validator_resource_file is None  # step-owned, not catalog
+        assert resource.step_resource_file  # file field is populated
+
+    def test_upload_replaces_existing_template(self):
+        """A new upload replaces any existing template resource.
+
+        The old resource row (and its file) should be deleted before
+        creating the new one.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+
+        # Create initial template resource
+        first_upload = _make_template_upload(filename="first.idf")
+        form1 = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": first_upload},
+        )
+        assert form1.is_valid(), form1.errors
+        _sync_energyplus_resources(step, form1)
+
+        assert (
+            step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            ).count()
+            == 1
+        )
+
+        # Upload replacement template
+        second_upload = _make_template_upload(filename="second.idf")
+        form2 = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": second_upload},
+        )
+        assert form2.is_valid(), form2.errors
+        _sync_energyplus_resources(step, form2)
+
+        # Should still be exactly one template resource
+        resources = step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        )
+        assert resources.count() == 1
+        assert resources.first().filename == "second.idf"
+
+    def test_remove_deletes_template_resource(self):
+        """``remove_template=True`` deletes the template resource row."""
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+
+        # Create template resource
+        upload = _make_template_upload()
+        form1 = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": upload},
+        )
+        assert form1.is_valid(), form1.errors
+        _sync_energyplus_resources(step, form1)
+
+        assert (
+            step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            ).count()
+            == 1
+        )
+
+        # Remove template
+        form2 = _make_form(
+            validator=validator,
+            step=step,
+            data={"remove_template": True},
+        )
+        assert form2.is_valid(), form2.errors
+        _sync_energyplus_resources(step, form2)
+
+        assert (
+            step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            ).count()
+            == 0
+        )
+
+    def test_no_upload_preserves_existing_resource(self):
+        """When no file is uploaded and no removal, existing template
+        resource is untouched.
+
+        This is the normal case when the author edits simulation settings
+        without touching the template.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+
+        # Create template resource
+        upload = _make_template_upload()
+        form1 = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": upload},
+        )
+        assert form1.is_valid(), form1.errors
+        _sync_energyplus_resources(step, form1)
+
+        resource_pk = (
+            step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            )
+            .first()
+            .pk
+        )
+
+        # Submit form without template changes
+        form2 = _make_form(validator=validator, step=step)
+        assert form2.is_valid(), form2.errors
+        _sync_energyplus_resources(step, form2)
+
+        # Same resource should still exist with the same PK
+        resources = step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        )
+        assert resources.count() == 1
+        assert resources.first().pk == resource_pk
+
+    def test_template_does_not_affect_weather_file(self):
+        """Template operations don't interfere with weather file resources.
+
+        Weather files use ``role=WEATHER_FILE`` and catalog references.
+        Template operations only touch ``role=MODEL_TEMPLATE`` rows.
+        The weather file resource created by ``_sync_energyplus_resources``
+        (from the auto-selected weather file) should survive template
+        operations unchanged.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+
+        # Create template resource (also syncs weather file)
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        _sync_energyplus_resources(step, form)
+
+        # Both resource types should exist independently
+        weather_count = step.step_resources.filter(
+            role=WorkflowStepResource.WEATHER_FILE,
+        ).count()
+        template_count = step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).count()
+        assert weather_count == 1  # Auto-selected weather file
+        assert template_count == 1
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# save_workflow_step() — file type enforcement
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestFileTypeEnforcement:
+    """Tests for JSON file type enforcement on parameterized template steps.
+
+    Parameterized templates require JSON submissions because the submitter
+    sends variable values as a JSON payload.  The enforcement check in
+    ``save_workflow_step()`` rejects template activation on workflows that
+    don't allow JSON file types.
+    """
+
+    def test_template_allowed_when_json_in_file_types(self):
+        """Template activation succeeds when the workflow allows JSON.
+
+        This is the normal case — the factory default includes JSON in
+        ``allowed_file_types``.
+        """
+        validator = _make_energyplus_validator()
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.JSON],
+        )
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+
+        step = save_workflow_step(workflow, validator, form)
+
+        assert step.config.get("template_variables") is not None
+        assert len(step.config["template_variables"]) == 3  # noqa: PLR2004
+
+    def test_template_rejected_when_json_not_in_file_types(self):
+        """Template activation fails when the workflow doesn't allow JSON.
+
+        The author must add JSON to ``allowed_file_types`` before
+        activating a parameterized template.
+        """
+        validator = _make_energyplus_validator()
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.XML],
+        )
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+
+        with pytest.raises(ValidationError, match="JSON"):
+            save_workflow_step(workflow, validator, form)
+
+    def test_no_template_no_enforcement(self):
+        """Steps without templates don't trigger file type enforcement.
+
+        Non-template EnergyPlus steps accept any file type — the
+        enforcement is only for parameterized templates.
+        """
+        validator = _make_energyplus_validator()
+        workflow = WorkflowFactory(
+            allowed_file_types=[SubmissionFileType.XML],
+        )
+        form = _make_form(validator=validator)
+        assert form.is_valid(), form.errors
+
+        # Should not raise — no template variables in config
+        step = save_workflow_step(workflow, validator, form)
+        assert "template_variables" not in step.config
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EnergyPlusStepConfigForm — template state
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestFormTemplateState:
+    """Tests for template-related state on the form instance.
+
+    The form exposes ``has_template`` and ``template_filename`` so that
+    the Django template can render the appropriate UI: "upload a template"
+    vs "current template: glazing_template.idf [Remove]".
+    """
+
+    def test_new_step_has_no_template(self):
+        """A form for a new step reports no template."""
+        validator = _make_energyplus_validator()
+        form = _make_form(validator=validator)
+
+        assert form.has_template is False
+        assert form.template_filename == ""
+
+    def test_step_with_template_resource_reports_template(self):
+        """A form for an existing step with a template resource shows it.
+
+        The ``has_template`` flag and ``template_filename`` are populated
+        from the ``WorkflowStepResource`` query in ``__init__``.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(validator=validator)
+
+        # Create a template resource for the step
+        upload = _make_template_upload(filename="glazing.idf")
+        form1 = _make_form(
+            validator=validator,
+            step=step,
+            files={"template_file": upload},
+        )
+        assert form1.is_valid(), form1.errors
+        _sync_energyplus_resources(step, form1)
+
+        # Now create a fresh form for the same step
+        form2 = _make_form(validator=validator, step=step)
+
+        assert form2.has_template is True
+        assert form2.template_filename == "glazing.idf"
+
+    def test_case_sensitive_initial_from_config(self):
+        """The ``case_sensitive`` field initial value comes from step config.
+
+        When editing an existing step, the form should show the current
+        case sensitivity setting, not the default.
+        """
+        validator = _make_energyplus_validator()
+        step = WorkflowStepFactory(
+            validator=validator,
+            config={
+                "idf_checks": [],
+                "run_simulation": False,
+                "case_sensitive": False,
+            },
+        )
+        form = _make_form(validator=validator, step=step)
+
+        assert form.fields["case_sensitive"].initial is False

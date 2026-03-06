@@ -15,14 +15,19 @@ Design: Simple function-based orchestration. No complex state management.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from validibot_shared.fmu.envelopes import FMUInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
+from validibot.validations.services.cloud_run.envelope_builder import (
+    _resolve_step_resources,
+)
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
 )
@@ -31,8 +36,13 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope_
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import run_validator_job
 from validibot.validations.services.fmu_bindings import resolve_input_value
+from validibot.validations.utils.idf_template import (
+    merge_and_validate_template_parameters,
+)
+from validibot.validations.utils.idf_template import substitute_template_parameters
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
+from validibot.workflows.step_configs import get_step_config
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -97,38 +107,34 @@ def launch_energyplus_validation(
     """
     Launch an EnergyPlus validation via Cloud Run Jobs.
 
-    This function orchestrates the complete flow:
-    1. Extract weather file from step config
-    2. Upload submission file to GCS
-    3. Build typed input envelope
-    4. Upload envelope to GCS
-    5. Trigger Cloud Run Job directly via Jobs API
-    6. Return pending ValidationResult
+    Supports two modes:
+
+    **Direct mode** (existing): The submission is a complete IDF/epJSON
+    file, uploaded directly to GCS for the container to run.
+
+    **Template mode** (new): The step has a ``MODEL_TEMPLATE`` resource
+    containing an IDF with ``$VARIABLE_NAME`` placeholders.  The
+    submission is a JSON dict of parameter values.  This function merges
+    the values with author defaults, validates constraints, substitutes
+    into the template, and uploads the resolved IDF.  The container
+    receives a normal IDF with no template awareness.
 
     Args:
         run: ValidationRun instance (already created in PENDING status)
         validator: Validator instance
-        submission: Submission instance with IDF/epJSON content
+        submission: Submission instance with IDF/epJSON or JSON params
         ruleset: Ruleset instance (may be None for EnergyPlus)
         step: WorkflowStep instance with config including weather_file
 
     Returns:
-        ValidationResult with passed=None (pending), issues=[], stats with job info
+        ValidationResult with passed=None (pending), issues=[], stats
+        with job info.  In template mode, stats also include
+        ``template_parameters_used``, ``template_warnings``, and
+        ``template_original_uri``.
 
     Raises:
         ValueError: If required config is missing (e.g., weather_file)
         Exception: If GCS upload or job trigger fails
-
-    Example:
-        >>> result = launch_energyplus_validation(
-        ...     run=validation_run,
-        ...     validator=energyplus_validator,
-        ...     submission=idf_submission,
-        ...     ruleset=energyplus_ruleset,
-        ...     step=workflow_step,
-        ... )
-        >>> assert result.passed is None  # Pending
-        >>> assert "job_name" in result.stats
     """
     try:
         # 0. Idempotency check: if this step run already has job info in output,
@@ -152,52 +158,51 @@ def launch_energyplus_validation(
                 stats=existing_output,
             )
 
-        # 1. Extract weather file from step config
-        step_config = step.config or {}
-        weather_file = step_config.get("weather_file")
-        if not weather_file:
-            msg = (
-                "EnergyPlus step config must include 'weather_file' "
-                "(e.g., 'USA_CA_SF.epw')"
-            )
-            raise ValueError(msg)  # noqa: TRY301
-
-        # 2. Build GCS paths
+        # 1. Build GCS paths
         org_id = str(run.org.id)
         run_id = str(run.id)
         execution_bundle_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
         )
-        model_file_uri = f"{execution_bundle_uri}/model.epjson"
-        weather_file_uri = (
-            f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
-        )
         input_envelope_uri = f"{execution_bundle_uri}/input.json"
 
-        # 3. Upload submission file to GCS
-        # NOTE: Currently assumes epJSON. IDF support requires detecting file type
-        # and using the appropriate extension here.
-        logger.info("Uploading submission to %s", model_file_uri)
-        upload_file(
-            content=submission.get_content().encode("utf-8"),
-            uri=model_file_uri,
-            content_type="application/json",
-        )
+        # 2. Detect template mode via relational step_resources
+        template_resource = step.step_resources.filter(
+            role="MODEL_TEMPLATE",
+        ).first()
 
-        # 4. Build callback URL (IAM protected worker service)
+        template_metadata: dict[str, object] = {}
+
+        if template_resource:
+            # ── Template mode ─────────────────────────────────────
+            # Submission is JSON params; IDF comes from the template
+            # resource.  Merge, validate, substitute, and upload the
+            # resolved IDF.
+            model_file_uri, template_metadata = _handle_template_mode(
+                template_resource=template_resource,
+                submission=submission,
+                step=step,
+                execution_bundle_uri=execution_bundle_uri,
+            )
+        else:
+            # ── Direct mode ───────────────────────────────────────
+            # Submission is a complete IDF/epJSON, uploaded directly.
+            model_file_uri = f"{execution_bundle_uri}/model.epjson"
+            logger.info("Uploading submission to %s", model_file_uri)
+            upload_file(
+                content=submission.get_content().encode("utf-8"),
+                uri=model_file_uri,
+                content_type="application/json",
+            )
+
+        # 3. Build callback URL and idempotency key
         callback_url = build_validation_callback_url()
-
-        # 4.5. Generate deterministic idempotency key for callback deduplication.
-        # Using the step run ID ensures that retries use the same callback_id,
-        # allowing the callback receipt fencing to correctly identify and handle
-        # duplicate callbacks. Note: Job launch idempotency is handled by the
-        # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = f"step-run-{current_step_run.id}"
 
-        # 5. Build typed input envelope
+        # 4. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
+        resource_files = _resolve_step_resources(step, role="WEATHER_FILE")
 
         envelope = build_energyplus_input_envelope(
             run_id=run_id,
@@ -208,18 +213,18 @@ def launch_energyplus_validation(
             step_id=str(step.id),
             step_name=step.name,
             model_file_uri=model_file_uri,
-            weather_file_uri=weather_file_uri,
+            resource_files=resource_files,
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
         )
 
-        # 6. Upload envelope to GCS
+        # 5. Upload envelope to GCS
         logger.info("Uploading input envelope to %s", input_envelope_uri)
         upload_envelope(envelope, input_envelope_uri)
 
-        # 7. Trigger Cloud Run Job directly via Jobs API
+        # 6. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
         logger.info("Triggering Cloud Run Job: %s", job_name)
@@ -230,11 +235,7 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
         )
 
-        # 7.5. Update step run status to RUNNING
-        # Note: run.status and run.started_at are already set by
-        # execute_workflow_steps() when
-        # the run transitions from PENDING to RUNNING. We only need to mark the
-        # step run as running here.
+        # 6.5. Update step run status to RUNNING
         from datetime import UTC
         from datetime import datetime
 
@@ -251,13 +252,14 @@ def launch_energyplus_validation(
             run.id,
         )
 
-        # 8. Return pending ValidationResult
+        # 7. Return pending ValidationResult
         stats = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
             "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
+            **template_metadata,
         }
 
         return ValidationResult(
@@ -266,9 +268,21 @@ def launch_energyplus_validation(
             stats=stats,
         )
 
+    except ValidationError as exc:
+        # Template parameter validation failed — surface as user-friendly errors
+        logger.warning("Template parameter validation failed: %s", exc.messages)
+        issues = [
+            ValidationIssue(
+                path="template_parameters",
+                message=msg,
+                severity=Severity.ERROR,
+            )
+            for msg in exc.messages
+        ]
+        return ValidationResult(passed=False, issues=issues, stats={})
+
     except Exception as e:
         logger.exception("Failed to launch EnergyPlus Cloud Run Job")
-        # Return failure result
         issues = [
             ValidationIssue(
                 path="",
@@ -277,6 +291,79 @@ def launch_energyplus_validation(
             ),
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
+
+
+def _handle_template_mode(
+    *,
+    template_resource,
+    submission: Submission,
+    step: WorkflowStep,
+    execution_bundle_uri: str,
+) -> tuple[str, dict[str, object]]:
+    """Handle template mode: merge params, substitute, upload resolved IDF.
+
+    Reads the template from the step-owned resource file, parses the
+    submission as JSON parameter values, merges with author defaults,
+    validates constraints, substitutes into the template, and uploads
+    both the resolved IDF and the original template to GCS.
+
+    Returns:
+        Tuple of (model_file_uri, template_metadata).
+
+    Raises:
+        ValidationError: If parameter validation fails.
+        ValueError: If template substitution fails.
+    """
+    # Read the template IDF from the step-owned resource
+    template_content = template_resource.step_resource_file.read().decode("utf-8")
+    # Reset file pointer in case it's read again later
+    template_resource.step_resource_file.seek(0)
+
+    # Parse submission as flat JSON parameter dict
+    submitter_params = json.loads(submission.get_content())
+
+    # Get typed step config for template variable definitions
+    typed_config = get_step_config(step)
+
+    # Merge submitter values with author defaults and validate
+    merge_result = merge_and_validate_template_parameters(
+        submitter_params=submitter_params,
+        template_variables=typed_config.template_variables,
+        case_sensitive=typed_config.case_sensitive,
+    )
+
+    # Perform template substitution — resolve $VARIABLES into values
+    resolved_idf = substitute_template_parameters(
+        idf_text=template_content,
+        parameters=merge_result.parameters,
+        case_sensitive=typed_config.case_sensitive,
+    )
+
+    # Upload resolved IDF as the model file
+    model_file_uri = f"{execution_bundle_uri}/model.idf"
+    logger.info("Uploading resolved template IDF to %s", model_file_uri)
+    upload_file(
+        content=resolved_idf.encode("utf-8"),
+        uri=model_file_uri,
+        content_type="text/plain",
+    )
+
+    # Upload original template for audit trail
+    template_artifact_uri = f"{execution_bundle_uri}/template_original.idf"
+    logger.info("Uploading original template to %s", template_artifact_uri)
+    upload_file(
+        content=template_content.encode("utf-8"),
+        uri=template_artifact_uri,
+        content_type="text/plain",
+    )
+
+    template_metadata: dict[str, object] = {
+        "template_parameters_used": merge_result.parameters,
+        "template_warnings": merge_result.warnings,
+        "template_original_uri": template_artifact_uri,
+    }
+
+    return model_file_uri, template_metadata
 
 
 def launch_fmu_validation(

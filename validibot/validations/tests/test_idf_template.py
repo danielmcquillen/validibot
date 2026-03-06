@@ -1,7 +1,7 @@
 """
-Tests for IDF template scanning and validation utilities.
+Tests for IDF template scanning, validation, merge, and substitution.
 
-This test suite exercises the two core functions in
+This test suite exercises the core functions in
 ``validibot.validations.utils.idf_template``:
 
 1. ``scan_idf_template_variables()`` — Extracts ``$VARIABLE_NAME``
@@ -12,9 +12,19 @@ This test suite exercises the two core functions in
    values.
 
 2. ``validate_idf_template()`` — Validates uploaded IDF template files
-   with a layered check pipeline (extension → encoding → structure →
+   with a layered check pipeline (extension -> encoding -> structure ->
    variables).  This is the author's first line of defense against
    uploading wrong files.
+
+3. ``merge_and_validate_template_parameters()`` — Merges submitter-
+   provided values with author defaults and validates against type,
+   range, and IDF safety constraints.  This is the trust boundary
+   between untrusted user input and the template.
+
+4. ``substitute_template_parameters()`` — Replaces ``$VARIABLE_NAME``
+   placeholders in IDF text with validated values using regex-based
+   text substitution with negative lookahead to prevent overlapping
+   variable name corruption.
 
 The tests are organized by concern:
 
@@ -27,15 +37,27 @@ The tests are organized by concern:
 - **Edge cases**: empty input, malformed IDF, unusual formatting
 - **Validation blocking errors**: each rejection reason individually tested
 - **Validation warnings**: mixed-case, duplicates, invalid ``$``, file size
+- **Merge happy paths**: defaults, overrides, JSON coercion
+- **Merge required missing**: clear error messages with names
+- **Merge type validation**: number bounds, choice allowlist, text safety
+- **Substitute**: overlapping names, comments, case insensitivity
 
-Phase: 2 (IDF Parsing Utility and Variable Detection) of the EnergyPlus
-Parameterized Templates ADR.
+Phases: 2 (scanning/validation) and 4 (merge/substitution) of the
+EnergyPlus Parameterized Templates ADR.
 """
 
 from __future__ import annotations
 
+import pytest
+from django.core.exceptions import ValidationError
+
+from validibot.validations.utils.idf_template import (
+    merge_and_validate_template_parameters,
+)
 from validibot.validations.utils.idf_template import scan_idf_template_variables
+from validibot.validations.utils.idf_template import substitute_template_parameters
 from validibot.validations.utils.idf_template import validate_idf_template
+from validibot.workflows.step_configs import TemplateVariable
 
 # ---------------------------------------------------------------------------
 # Shared IDF text fixtures used across multiple test classes.
@@ -1259,3 +1281,649 @@ Schedule:Compact,
         assert result.errors == []
         assert result.scan_result is not None
         assert len(result.scan_result.variables) == 6  # noqa: PLR2004
+
+
+# ===========================================================================
+# Phase 4 — Template parameter merge/validation and substitution
+#
+# These tests exercise the runtime pipeline:
+# 1. merge_and_validate_template_parameters() — merges submitter values
+#    with author defaults, validates type/range/safety constraints.
+# 2. substitute_template_parameters() — replaces $VARIABLE_NAME
+#    placeholders in IDF text with validated values.
+# ===========================================================================
+
+
+def _make_var(
+    name: str = "U_FACTOR",
+    *,
+    description: str = "",
+    default: str = "",
+    units: str = "",
+    variable_type: str = "number",
+    min_value: float | None = None,
+    min_exclusive: bool = False,
+    max_value: float | None = None,
+    max_exclusive: bool = False,
+    choices: list[str] | None = None,
+) -> TemplateVariable:
+    """Convenience factory for creating TemplateVariable instances in tests.
+
+    Returns a TemplateVariable with sensible defaults — callers override
+    only the fields relevant to the specific test scenario.
+    """
+    return TemplateVariable(
+        name=name,
+        description=description,
+        default=default,
+        units=units,
+        variable_type=variable_type,
+        min_value=min_value,
+        min_exclusive=min_exclusive,
+        max_value=max_value,
+        max_exclusive=max_exclusive,
+        choices=choices or [],
+    )
+
+
+# ── Merge and validate ───────────────────────────────────────────────
+# The merge function is the trust boundary between untrusted submitter
+# input and the IDF template.  It enforces type constraints, range
+# bounds, and IDF structural safety.
+
+
+class TestMergeHappyPaths:
+    """Test successful merge scenarios — the common paths through
+    merge_and_validate_template_parameters() where validation passes
+    and a MergeResult is returned.
+    """
+
+    def test_all_required_provided(self):
+        """When all required variables are provided, merge succeeds."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+            _make_var("SHGC", variable_type="number"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0", "SHGC": "0.38"},
+            template_variables=variables,
+        )
+        assert result.parameters == {"U_FACTOR": "2.0", "SHGC": "0.38"}
+        assert result.warnings == []
+
+    def test_defaults_fill_gaps(self):
+        """Optional variables with defaults are filled when omitted."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+            _make_var("VT", variable_type="number", default="0.3"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0"},
+            template_variables=variables,
+        )
+        assert result.parameters == {"U_FACTOR": "2.0", "VT": "0.3"}
+
+    def test_all_defaults_empty_submission(self):
+        """Empty submission uses all author defaults when every variable
+        has a default value.
+        """
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", default="2.0"),
+            _make_var("SHGC", variable_type="number", default="0.38"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={},
+            template_variables=variables,
+        )
+        assert result.parameters == {"U_FACTOR": "2.0", "SHGC": "0.38"}
+
+    def test_submitter_overrides_default(self):
+        """Submitter values take precedence over author defaults."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", default="2.0"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "1.7"},
+            template_variables=variables,
+        )
+        assert result.parameters["U_FACTOR"] == "1.7"
+
+    def test_json_numeric_coercion_float(self):
+        """json.loads() produces float for unquoted numbers.  The merge
+        function coerces to string so float values validate correctly.
+        """
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": 1.99},  # type: ignore[dict-item]
+            template_variables=variables,
+        )
+        assert result.parameters["U_FACTOR"] == "1.99"
+
+    def test_json_numeric_coercion_int(self):
+        """json.loads() produces int for whole numbers without decimals.
+        The merge function coerces to string for validation.
+        """
+        variables = [
+            _make_var("TIMESTEP", variable_type="number"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"TIMESTEP": 4},  # type: ignore[dict-item]
+            template_variables=variables,
+        )
+        assert result.parameters["TIMESTEP"] == "4"
+
+
+class TestMergeRequiredMissing:
+    """Test that missing required parameters raise ValidationError with
+    clear messages including variable name and description.
+    """
+
+    def test_single_missing_required(self):
+        """A single missing required variable raises ValidationError."""
+        variables = [
+            _make_var("U_FACTOR", description="Window U-Factor"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={},
+                template_variables=variables,
+            )
+        messages = exc_info.value.messages
+        assert len(messages) == 1
+        assert "U_FACTOR" in messages[0]
+        assert "Window U-Factor" in messages[0]
+
+    def test_multiple_missing_all_listed(self):
+        """Multiple missing required variables produce one error each."""
+        variables = [
+            _make_var("U_FACTOR", description="U-Factor"),
+            _make_var("SHGC", description="Solar heat gain"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={},
+                template_variables=variables,
+            )
+        messages = exc_info.value.messages
+        assert len(messages) == 2  # noqa: PLR2004
+        names_in_errors = " ".join(messages)
+        assert "U_FACTOR" in names_in_errors
+        assert "SHGC" in names_in_errors
+
+
+class TestMergeNumberValidation:
+    """Test number type validation — float parsing, min/max bounds,
+    exclusive flags, and Autosize/Autocalculate keywords.
+    """
+
+    def test_valid_float_in_range(self):
+        """A float within min/max range passes validation."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", min_value=0.1, max_value=7.0),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0"},
+            template_variables=variables,
+        )
+        assert result.parameters["U_FACTOR"] == "2.0"
+
+    def test_below_inclusive_min(self):
+        """Value below the inclusive minimum raises error."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", min_value=0.1),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"U_FACTOR": "0.05"},
+                template_variables=variables,
+            )
+        assert "below minimum" in exc_info.value.messages[0]
+
+    def test_above_inclusive_max(self):
+        """Value above the inclusive maximum raises error."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", max_value=7.0),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"U_FACTOR": "8.0"},
+                template_variables=variables,
+            )
+        assert "above maximum" in exc_info.value.messages[0]
+
+    def test_at_inclusive_min_accepted(self):
+        """Value exactly at the inclusive minimum is accepted."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number", min_value=0.1),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "0.1"},
+            template_variables=variables,
+        )
+        assert result.parameters["U_FACTOR"] == "0.1"
+
+    def test_exclusive_min_rejects_boundary(self):
+        """Value equal to exclusive minimum is rejected (must be
+        strictly greater).
+        """
+        variables = [
+            _make_var(
+                "SHGC", variable_type="number", min_value=0.0, min_exclusive=True
+            ),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"SHGC": "0.0"},
+                template_variables=variables,
+            )
+        assert "greater than" in exc_info.value.messages[0]
+
+    def test_exclusive_max_rejects_boundary(self):
+        """Value equal to exclusive maximum is rejected (must be
+        strictly less).
+        """
+        variables = [
+            _make_var(
+                "SHGC", variable_type="number", max_value=1.0, max_exclusive=True
+            ),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"SHGC": "1.0"},
+                template_variables=variables,
+            )
+        assert "less than" in exc_info.value.messages[0]
+
+    def test_invalid_number_string(self):
+        """A non-numeric string for a number field raises error."""
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"U_FACTOR": "abc"},
+                template_variables=variables,
+            )
+        assert "must be a number" in exc_info.value.messages[0]
+
+    def test_autosize_accepted(self):
+        """EnergyPlus Autosize keyword bypasses float parsing and range
+        checks because EnergyPlus handles it internally.
+        """
+        variables = [
+            _make_var(
+                "CAPACITY", variable_type="number", min_value=0.0, max_value=100.0
+            ),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"CAPACITY": "Autosize"},
+            template_variables=variables,
+        )
+        assert result.parameters["CAPACITY"] == "Autosize"
+
+    def test_autocalculate_accepted(self):
+        """EnergyPlus Autocalculate keyword is also accepted."""
+        variables = [
+            _make_var("AREA", variable_type="number", min_value=0.0),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"AREA": "autocalculate"},
+            template_variables=variables,
+        )
+        assert result.parameters["AREA"] == "autocalculate"
+
+
+class TestMergeChoiceValidation:
+    """Test choice type validation — allowlist enforcement."""
+
+    def test_valid_choice(self):
+        """A value in the choices list is accepted."""
+        variables = [
+            _make_var(
+                "ROUGHNESS",
+                variable_type="choice",
+                choices=["VeryRough", "Rough", "Smooth"],
+            ),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"ROUGHNESS": "Smooth"},
+            template_variables=variables,
+        )
+        assert result.parameters["ROUGHNESS"] == "Smooth"
+
+    def test_invalid_choice(self):
+        """A value not in the choices list raises error listing allowed."""
+        variables = [
+            _make_var(
+                "ROUGHNESS",
+                variable_type="choice",
+                choices=["VeryRough", "Rough", "Smooth"],
+            ),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"ROUGHNESS": "SuperSmooth"},
+                template_variables=variables,
+            )
+        msg = exc_info.value.messages[0]
+        assert "not a valid choice" in msg
+        assert "VeryRough" in msg
+
+
+class TestMergeTextValidation:
+    """Test text type validation — empty rejection and IDF safety."""
+
+    def test_empty_text_rejected(self):
+        """Whitespace-only text values are rejected."""
+        variables = [
+            _make_var("ZONE_NAME", variable_type="text"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"ZONE_NAME": "   "},
+                template_variables=variables,
+            )
+        assert "cannot be empty" in exc_info.value.messages[0]
+
+    def test_comma_rejected(self):
+        """Commas in text values are rejected — they separate IDF fields."""
+        variables = [_make_var("ZONE_NAME", variable_type="text")]
+        with pytest.raises(ValidationError):
+            merge_and_validate_template_parameters(
+                submitter_params={"ZONE_NAME": "Zone A, Zone B"},
+                template_variables=variables,
+            )
+
+    def test_semicolon_rejected(self):
+        """Semicolons in text values are rejected — they terminate IDF objects."""
+        variables = [_make_var("ZONE_NAME", variable_type="text")]
+        with pytest.raises(ValidationError):
+            merge_and_validate_template_parameters(
+                submitter_params={"ZONE_NAME": "Zone;"},
+                template_variables=variables,
+            )
+
+    def test_exclamation_rejected(self):
+        """Exclamation marks in text values are rejected — they start IDF comments."""
+        variables = [_make_var("ZONE_NAME", variable_type="text")]
+        with pytest.raises(ValidationError):
+            merge_and_validate_template_parameters(
+                submitter_params={"ZONE_NAME": "Zone!1"},
+                template_variables=variables,
+            )
+
+    def test_newline_rejected(self):
+        """Newlines in text values are rejected — they break IDF line structure."""
+        variables = [_make_var("ZONE_NAME", variable_type="text")]
+        with pytest.raises(ValidationError):
+            merge_and_validate_template_parameters(
+                submitter_params={"ZONE_NAME": "Zone\nB"},
+                template_variables=variables,
+            )
+
+    def test_valid_text_accepted(self):
+        """A clean text string without IDF structural chars is accepted."""
+        variables = [_make_var("ZONE_NAME", variable_type="text")]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"ZONE_NAME": "My Office Zone"},
+            template_variables=variables,
+        )
+        assert result.parameters["ZONE_NAME"] == "My Office Zone"
+
+
+class TestMergeWarningsAndEdgeCases:
+    """Test warning generation and edge cases — extra parameters,
+    case insensitivity, and unknown variable types.
+    """
+
+    def test_extra_params_produce_warning(self):
+        """Unrecognized parameters produce a warning (not an error) so
+        the submitter sees typo feedback without the submission failing.
+        """
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"U_FACTOR": "2.0", "U_FACTR": "1.5"},
+            template_variables=variables,
+        )
+        assert len(result.warnings) == 1
+        assert "U_FACTR" in result.warnings[0]
+        assert "Unrecognized" in result.warnings[0]
+
+    def test_case_insensitive_normalization(self):
+        """In case-insensitive mode, lowercase keys are normalized to
+        uppercase before matching against variable names.
+        """
+        variables = [
+            _make_var("U_FACTOR", variable_type="number"),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"u_factor": "2.0"},
+            template_variables=variables,
+            case_sensitive=False,
+        )
+        assert result.parameters["U_FACTOR"] == "2.0"
+
+    def test_unknown_variable_type_raises(self):
+        """An unknown variable_type is an author config error — it should
+        produce a clear error listing the allowed types.
+
+        We use model_construct() to bypass Pydantic's Literal validation,
+        simulating a corrupted step config dict.
+        """
+        bad_var = TemplateVariable.model_construct(
+            name="U_FACTOR",
+            description="",
+            default="",
+            units="",
+            variable_type="nubmer",  # typo, bypasses Literal check
+            min_value=None,
+            min_exclusive=False,
+            max_value=None,
+            max_exclusive=False,
+            choices=[],
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"U_FACTOR": "2.0"},
+                template_variables=[bad_var],
+            )
+        msg = exc_info.value.messages[0]
+        assert "unknown variable_type" in msg
+        assert "'nubmer'" in msg
+
+
+# ── Substitute ────────────────────────────────────────────────────────
+# The substitution function replaces $VARIABLE_NAME placeholders in IDF
+# text.  It must handle overlapping names, case insensitivity, and
+# correctly skip comments when checking for unresolved variables.
+
+
+class TestSubstituteHappyPaths:
+    """Test successful substitution scenarios."""
+
+    TEMPLATE = """\
+WindowMaterial:SimpleGlazingSystem,
+    Glazing System,          !- Name
+    $U_FACTOR,               !- U-Factor {W/m2-K}
+    $SHGC,                   !- Solar Heat Gain Coefficient
+    $VT;                     !- Visible Transmittance
+"""
+
+    def test_all_placeholders_replaced(self):
+        """All $VARIABLE_NAME placeholders are replaced with values."""
+        result = substitute_template_parameters(
+            idf_text=self.TEMPLATE,
+            parameters={"U_FACTOR": "2.0", "SHGC": "0.38", "VT": "0.3"},
+        )
+        assert "$U_FACTOR" not in result
+        assert "$SHGC" not in result
+        assert "$VT" not in result
+        assert "2.0," in result
+        assert "0.38," in result
+        assert "0.3;" in result
+
+    def test_multiple_occurrences_replaced(self):
+        """A variable appearing on multiple lines is replaced everywhere."""
+        idf = """\
+Zone:Object,
+    $TEMP,               !- First use
+    $TEMP;               !- Second use
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"TEMP": "21.0"},
+        )
+        assert result.count("21.0") == 2  # noqa: PLR2004
+        assert "$TEMP" not in result
+
+    def test_autosize_value_preserved(self):
+        """Autosize keyword appears literally in the resolved IDF output."""
+        idf = """\
+Sizing:Zone,
+    $CAPACITY;               !- Cooling capacity
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"CAPACITY": "Autosize"},
+        )
+        assert "Autosize;" in result
+
+
+class TestSubstituteOverlapping:
+    """Test that overlapping variable names are handled correctly.
+
+    This is critical: without the negative lookahead ``(?![A-Z0-9_])``,
+    ``$U`` would match inside ``$U_FACTOR``, replacing only the ``$U``
+    prefix and leaving ``_FACTOR`` as garbage in the output.
+    """
+
+    def test_u_and_u_factor_no_corruption(self):
+        """$U must NOT match inside $U_FACTOR — both substituted correctly."""
+        idf = """\
+Object:Type,
+    $U,                  !- Short var
+    $U_FACTOR;           !- Long var
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"U": "5.0", "U_FACTOR": "2.0"},
+        )
+        assert "5.0," in result  # $U replaced
+        assert "2.0;" in result  # $U_FACTOR replaced
+        # $U_FACTOR should NOT become "5.0_FACTOR"
+        assert "_FACTOR" not in result
+
+
+class TestSubstituteComments:
+    """Test comment handling during substitution.
+
+    The unresolved-variable check scans only data portions (not comments),
+    but substitution runs on the full text.  Variables appearing only in
+    comments must not cause unresolved-variable errors.
+    """
+
+    def test_comment_only_var_not_unresolved(self):
+        """A $VARIABLE that appears only in a comment does not trigger
+        the unresolved variable error, because comments are excluded
+        from the data-portion scan.
+        """
+        idf = """\
+! This file references $AUTHOR_NOTE in a comment
+WindowMaterial:SimpleGlazingSystem,
+    Glazing,             !- Name
+    $U_FACTOR;           !- U-Factor
+"""
+        # Only $U_FACTOR is in data portions; $AUTHOR_NOTE is comment-only
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"U_FACTOR": "2.0"},
+        )
+        assert "2.0;" in result
+        # $AUTHOR_NOTE stays in the comment (not a recognized variable)
+        assert "$AUTHOR_NOTE" in result
+
+    def test_var_in_both_data_and_comment(self):
+        """When $U_FACTOR appears in both data and a comment, both
+        occurrences get substituted — the comment reflects the value.
+        """
+        idf = """\
+WindowMaterial:SimpleGlazingSystem,
+    Glazing,             !- Name
+    $U_FACTOR;           !- U-Factor is $U_FACTOR
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"U_FACTOR": "2.0"},
+        )
+        # Data portion substituted
+        assert "2.0;" in result
+        # Comment also substituted (same var matches in full-text pass)
+        assert result.count("2.0") >= 2  # noqa: PLR2004
+
+
+class TestSubstituteEdgeCases:
+    """Test edge cases — unresolved variables, extra params, case
+    insensitivity, and regex metacharacters in values.
+    """
+
+    def test_unresolved_variable_raises(self):
+        """Missing a parameter for a data-portion variable raises ValueError."""
+        idf = """\
+Object:Type,
+    $U_FACTOR,           !- U-Factor
+    $SHGC;               !- SHGC
+"""
+        with pytest.raises(ValueError, match="unresolved"):
+            substitute_template_parameters(
+                idf_text=idf,
+                parameters={"U_FACTOR": "2.0"},
+                # SHGC not provided
+            )
+
+    def test_extra_params_no_error(self):
+        """Extra parameters (not in template) produce a warning but
+        substitution completes successfully.
+        """
+        idf = """\
+Object:Type,
+    $U_FACTOR;           !- U-Factor
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"U_FACTOR": "2.0", "UNUSED": "999"},
+        )
+        assert "2.0;" in result
+
+    def test_case_insensitive_matching(self):
+        """In case-insensitive mode, $u_factor in IDF is matched
+        against the uppercase parameter key.
+        """
+        idf = """\
+Object:Type,
+    $u_factor;           !- U-Factor
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"U_FACTOR": "2.0"},
+            case_sensitive=False,
+        )
+        assert "2.0;" in result
+        assert "$u_factor" not in result
+
+    def test_regex_metacharacters_in_value(self):
+        """Values containing regex metacharacters (., *, +) must not
+        cause regex errors during substitution.
+        """
+        idf = """\
+Object:Type,
+    $PATTERN;            !- Pattern
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"PATTERN": "value.with*special+chars"},
+        )
+        assert "value.with*special+chars;" in result

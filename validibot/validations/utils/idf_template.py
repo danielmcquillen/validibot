@@ -28,10 +28,17 @@ References:
 from __future__ import annotations
 
 import contextlib
+import logging
 import re
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from validibot.workflows.step_configs import TemplateVariable
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Regex patterns
@@ -145,6 +152,33 @@ class ValidationResult:
     scan_result: ScanResult | None = None
     """The scan result, populated when the scanner ran successfully
     (no blocking errors prevented it)."""
+
+
+@dataclass
+class MergeResult:
+    """Result of merging and validating template parameters.
+
+    Separates the merged parameter dict from any warnings, so that
+    warnings can be surfaced to the submitter in the validation response
+    and stored on the step run for display in the run detail view.
+    """
+
+    parameters: dict[str, str] = field(default_factory=dict)
+    """Complete variable name → value mapping after merging submitter
+    values with author defaults.  Keys are variable names (uppercase),
+    values are string representations ready for substitution."""
+
+    warnings: list[str] = field(default_factory=list)
+    """Non-blocking warnings (e.g., unrecognized parameter names).
+    Stored on step run output and shown to the submitter."""
+
+
+#: IDF structural characters that would corrupt the file if substituted
+#: into a field value.  Commas separate fields, semicolons terminate
+#: objects, ``!`` starts comments, and newlines break field boundaries.
+#: Only applied to ``text`` type values — ``number`` values are float-parsed
+#: (safe) and ``choice`` values are author-curated (trusted).
+IDF_UNSAFE_CHARS_PATTERN = re.compile(r"[,;!\n\r]")
 
 
 # ---------------------------------------------------------------------------
@@ -673,3 +707,287 @@ def _emit_invalid_dollar_warnings(
                     f"Line {line_number}: Found a bare '$' character "
                     f"with no variable name following it."
                 )
+
+
+# ---------------------------------------------------------------------------
+# Template parameter merge and validation (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def merge_and_validate_template_parameters(
+    submitter_params: dict[str, str],
+    template_variables: list[TemplateVariable],
+    *,
+    case_sensitive: bool = True,
+) -> MergeResult:
+    """Merge submitter values with author defaults and validate constraints.
+
+    The merge strategy mirrors how EnergyPlus handles ``\\default``
+    directives in the IDD: author defaults fill gaps, submitter values
+    override.
+
+    Args:
+        submitter_params: Flat dict from submission JSON content.  Keys
+            are variable names (e.g. ``"U_FACTOR"``), values are the
+            submitter's input.  ``json.loads()`` may produce ``int``,
+            ``float``, ``bool``, or ``None`` for non-string JSON values;
+            all are coerced to strings before validation.
+        template_variables: Author-defined variable metadata with
+            defaults and constraints (from ``step.config``).
+        case_sensitive: Whether variable name matching is case-sensitive.
+            When ``False``, submitter keys are normalized to uppercase.
+
+    Returns:
+        ``MergeResult`` with the complete parameter dict and any warnings.
+        Warnings are non-blocking (e.g., unrecognized parameter names)
+        and should be included in the validation response for the
+        submitter and stored on the step run output.
+
+    Raises:
+        django.core.exceptions.ValidationError: If required variables
+            are missing or values fail type/range/safety checks.
+    """
+    from django.core.exceptions import ValidationError
+
+    merged: dict[str, str] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Normalize keys if case-insensitive
+    if not case_sensitive:
+        submitter_params = {k.upper(): v for k, v in submitter_params.items()}
+
+    # Build lookup of expected variable names
+    expected_names = {v.name for v in template_variables}
+
+    # Check for extra (unrecognized) parameters -- likely typos
+    extra = set(submitter_params.keys()) - expected_names
+    if extra:
+        warnings.append(
+            f"Unrecognized parameters (not in template): "
+            f"{', '.join(sorted(extra))}. "
+            f"Expected: {', '.join(sorted(expected_names))}. "
+            f"Check for typos."
+        )
+
+    for var in template_variables:
+        name = var.name
+        if name in submitter_params:
+            value = submitter_params[name]
+        elif var.default:
+            value = var.default
+        else:
+            errors.append(
+                f"Required parameter '{name}' is missing and has no "
+                f"default. Description: "
+                f"{var.description or '(no description)'}."
+            )
+            continue
+
+        # Coerce to string early.  json.loads() produces int/float for
+        # unquoted numeric values (e.g., {"U_FACTOR": 1.99}), but our
+        # validation logic calls .strip() and other string methods.
+        # Coercing here means submitters can use idiomatic JSON without
+        # quoting every value as a string.
+        value = str(value)
+
+        # ── Type validation ───────────────────────────────────────
+        if var.variable_type == "number":
+            _validate_number(var, name, value, errors)
+        elif var.variable_type == "choice":
+            if var.choices and value not in var.choices:
+                errors.append(
+                    f"Parameter '{name}' value '{value}' is not a valid "
+                    f"choice. Allowed: {', '.join(var.choices)}."
+                )
+        elif var.variable_type == "text":
+            if not value.strip():
+                errors.append(f"Parameter '{name}' cannot be empty.")
+            elif IDF_UNSAFE_CHARS_PATTERN.search(value):
+                errors.append(
+                    f"Parameter '{name}' contains characters that would "
+                    f"corrupt the IDF file (comma, semicolon, !, or "
+                    f"newline). Value: '{value[:50]}'. Use "
+                    f"variable_type='choice' with an explicit allowlist "
+                    f"if these characters are needed."
+                )
+        else:
+            errors.append(
+                f"Parameter '{name}' has unknown variable_type "
+                f"'{var.variable_type}'. "
+                f"Allowed types: 'text', 'number', 'choice'."
+            )
+
+        merged[name] = str(value)
+
+    if errors:
+        raise ValidationError(errors)
+
+    # Log warnings for server-side observability
+    if warnings:
+        logger.warning("Template parameter warnings: %s", "; ".join(warnings))
+
+    return MergeResult(parameters=merged, warnings=warnings)
+
+
+def _validate_number(
+    var: TemplateVariable,
+    name: str,
+    value: str,
+    errors: list[str],
+) -> None:
+    """Validate a number-type template variable value.
+
+    EnergyPlus allows ``Autosize`` and ``Autocalculate`` as special
+    keywords in numeric fields.  These bypass float parsing and
+    min/max validation because EnergyPlus handles them internally.
+
+    See: https://bigladdersoftware.com/epx/docs/22-2/interface-developer/idd-conventions.html
+    """
+    if value.strip().lower() in ("autosize", "autocalculate"):
+        return  # Accept as-is, no range check
+
+    try:
+        num = float(value)
+    except (ValueError, TypeError):
+        errors.append(
+            f"Parameter '{name}' must be a number (or "
+            f"'Autosize'/'Autocalculate'), got '{value}'."
+        )
+        return
+
+    if var.min_value is not None:
+        if var.min_exclusive and num <= var.min_value:
+            errors.append(
+                f"Parameter '{name}' value {num} must be greater than {var.min_value}."
+            )
+        elif not var.min_exclusive and num < var.min_value:
+            errors.append(
+                f"Parameter '{name}' value {num} is below minimum {var.min_value}."
+            )
+    if var.max_value is not None:
+        if var.max_exclusive and num >= var.max_value:
+            errors.append(
+                f"Parameter '{name}' value {num} must be less than {var.max_value}."
+            )
+        elif not var.max_exclusive and num > var.max_value:
+            errors.append(
+                f"Parameter '{name}' value {num} is above maximum {var.max_value}."
+            )
+
+
+# ---------------------------------------------------------------------------
+# Template substitution (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def substitute_template_parameters(
+    idf_text: str,
+    parameters: dict[str, str],
+    *,
+    case_sensitive: bool = True,
+) -> str:
+    """Replace ``$VARIABLE_NAME`` placeholders in IDF text with values.
+
+    Performs regex-based text substitution using a negative lookahead to
+    prevent overlapping variable name corruption (e.g., ``$U`` must not
+    match inside ``$U_FACTOR``).  Does NOT parse the IDF structurally —
+    treats the entire file as text.
+
+    The ``parameters`` dict is expected to be pre-validated and complete
+    (all required variables present, all values passing type checks).
+    The merge function handles validation; this function trusts the
+    parameters but checks defensively.
+
+    Called by the launcher before uploading the IDF to storage.  The
+    container runner receives the fully resolved IDF and has no awareness
+    of templates.
+
+    Args:
+        idf_text: Complete IDF template content as text.
+        parameters: Variable name -> value mapping.  Keys are variable
+            names without the ``$`` prefix.  Keys are uppercase
+            (normalized during merge).
+        case_sensitive: Whether to use case-sensitive matching for
+            variable names.  Must match the setting used during template
+            scanning.
+
+    Returns:
+        The resolved IDF content as a string (all ``$VARIABLES``
+        replaced).
+
+    Raises:
+        ValueError: If any ``$VARIABLE_NAME`` in the IDF data portions
+            has no matching parameter.  Unresolved variables should not
+            happen if the merge function did its job, but we check
+            defensively because uploading an IDF with unresolved
+            ``$placeholders`` to the container would produce cryptic
+            EnergyPlus errors.
+    """
+    # Select regex pattern based on case sensitivity
+    re_flags = 0 if case_sensitive else re.IGNORECASE
+    var_pattern = re.compile(r"\$([A-Z][A-Z0-9_]*)", re_flags)
+
+    # ── Scan data portions only for unresolved variable detection ──
+    # We strip comment text before scanning because IDF comments
+    # frequently reference $VARIABLES (e.g., "!- see also $OTHER_VAR").
+    # Without this, a $FOO in a comment would be flagged as "unresolved"
+    # and block the substitution.  This logic must be consistent with
+    # scan_idf_template_variables() -- both strip comments the same way.
+    found_vars: set[str] = set()
+    for raw_line in idf_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("!"):
+            continue  # Skip empty lines and full-line comments
+        data, _ = _split_data_and_comment(raw_line)
+        for match in var_pattern.finditer(data):
+            found_vars.add(match.group(1).upper())
+
+    provided_vars = set(parameters.keys())
+
+    # Defensive check: unresolved variables (should not happen post-merge)
+    missing = found_vars - provided_vars
+    if missing:
+        msg = (
+            f"Template has unresolved variables: "
+            f"{', '.join(sorted(missing))}. "
+            f"Provided: {', '.join(sorted(provided_vars))}. "
+            f"This indicates a bug in the merge/validation step — all "
+            f"variables should have been resolved before substitution."
+        )
+        raise ValueError(msg)
+
+    # Warn about extra parameters (provided but not in template)
+    extra = provided_vars - found_vars
+    if extra:
+        logger.warning(
+            "Template substitution: parameters provided but not found "
+            "in template: %s. These will be ignored.",
+            ", ".join(sorted(extra)),
+        )
+
+    # ── Perform substitution on the FULL text (including comments) ──
+    # We scan only data portions for unresolved-variable detection above,
+    # but substitution runs on the full text.  This means $VARS in
+    # comments are left as-is (they don't match any parameter because
+    # they weren't in found_vars).  If a comment happens to contain the
+    # same $VAR as a data field, it gets substituted too -- this is
+    # acceptable because it makes the comment reflect the actual value.
+    #
+    # The pattern \$VAR_NAME(?![A-Z0-9_]) uses a negative lookahead to
+    # prevent overlapping matches: $U must not match inside $U_FACTOR.
+    content = idf_text
+    for var_name, value in parameters.items():
+        safe_name = re.escape(var_name)
+        pattern = re.compile(
+            rf"\${safe_name}(?![A-Z0-9_])",
+            re_flags,
+        )
+        content = pattern.sub(value, content)
+
+    logger.info(
+        "Template substitution complete: %d variables resolved.",
+        len(parameters),
+    )
+
+    return content

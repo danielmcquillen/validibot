@@ -416,13 +416,42 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         run: ValidationRun = context["run"]
-        step_runs = list(run.step_runs.all())
+        step_runs = list(
+            run.step_runs.select_related(
+                "workflow_step",
+                "workflow_step__validator",
+            ).prefetch_related("findings"),
+        )
         findings = list(run.findings.all())
+
+        # Build display signals and template params for each step run.
+        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_template_params_display,
+        )
+
+        step_signals: dict[int, list] = {}
+        step_params: dict[int, list] = {}
+        step_template_warnings: dict[int, list] = {}
+        for sr in step_runs:
+            signals = build_display_signals(sr)
+            if signals:
+                step_signals[sr.pk] = signals
+            params = build_template_params_display(sr)
+            if params:
+                step_params[sr.pk] = params
+            warnings = (sr.output or {}).get("template_warnings")
+            if warnings:
+                step_template_warnings[sr.pk] = warnings
+
         context.update(
             {
                 "step_runs": step_runs,
                 "all_findings": findings,
                 "summary_record": getattr(run, "summary_record", None),
+                "step_signals": step_signals,
+                "step_params": step_params,
+                "step_template_warnings": step_template_warnings,
             },
         )
         return context

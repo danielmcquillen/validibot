@@ -22,9 +22,11 @@ config building and resource syncing:
    objects for template rendering.
 
 5. ``launch_energyplus_validation()`` (Phase 4) — Launcher integration
-   testing with template mode detection, parameter validation, and
-   substitution.  These tests use real Django models with mocked GCS/Cloud
-   Run I/O to verify the orchestration pipeline.
+   testing with real Django models and mocked GCS/Cloud Run I/O to verify
+   the upload and job-trigger pipeline.  Template preprocessing (parameter
+   merging, validation, substitution) happens earlier in the pipeline in
+   ``EnergyPlusValidator.preprocess_submission()`` — those tests live in
+   ``test_energyplus_preprocessing.py``.
 
 Unlike the pure-Python scanner tests in ``test_idf_template.py``, these
 tests require a Django database because they exercise form objects, model
@@ -35,7 +37,6 @@ Phases: 2-4 of the EnergyPlus Parameterized Templates ADR.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -1316,25 +1317,16 @@ class TestDisplaySignals:
 # models (factories create actual DB rows) but mock the external I/O
 # layer (GCS uploads, Cloud Run job triggering, callback URL building).
 #
-# The launcher is the orchestration point where template mode detection,
-# parameter validation, IDF substitution, and envelope building all
-# converge.  Integration tests verify this wiring — the individual
-# functions (`merge_and_validate_template_parameters`, `substitute_
-# template_parameters`) have thorough unit tests in `test_idf_template.py`.
+# Architecture note: Template preprocessing (parameter merging, validation,
+# substitution) now happens *before* the launcher is called, in the shared
+# `AdvancedValidator.validate()` → `EnergyPlusValidator.preprocess_
+# submission()` pipeline.  By the time `launch_energyplus_validation()` is
+# called, `submission.get_content()` already returns a fully resolved IDF.
+# Template-specific tests (merge, validate, substitute) now live in
+# `test_energyplus_preprocessing.py`.
+#
+# The launcher tests here verify the upload and job-trigger wiring only.
 # ===========================================================================
-
-# Template IDF used in launcher integration tests.  Identical to
-# VALID_TEMPLATE_IDF above but kept separate so launcher tests are
-# self-contained if the form tests evolve.
-_LAUNCHER_TEMPLATE_IDF = """\
-Version,
-    24.2;  !- Version Identifier
-
-WindowMaterial:SimpleGlazingSystem,
-    Glazing System,          !- Name
-    $U_FACTOR,               !- U-Factor {W/m2-K}
-    $SHGC;                   !- Solar Heat Gain Coefficient
-"""
 
 # Common mock targets — all live in the launcher module's namespace.
 _PATCH_PREFIX = "validibot.validations.services.cloud_run.launcher"
@@ -1534,8 +1526,9 @@ class TestLauncherDirectMode:
     def test_direct_mode_no_template_metadata_in_stats(self):
         """Direct mode stats contain job info but no template-related keys.
 
-        This confirms the ``**template_metadata`` spread in the stats dict
-        correctly produces an empty merge when there is no template.
+        Template metadata is added by ``AdvancedValidator.validate()`` after
+        preprocessing, not by the launcher.  Direct-mode submissions skip
+        preprocessing entirely, so no template keys should appear.
         """
         from validibot.validations.services.cloud_run.launcher import (
             launch_energyplus_validation,
@@ -1565,40 +1558,48 @@ class TestLauncherDirectMode:
             assert key not in result.stats
 
 
-class TestLauncherTemplateMode:
-    """Tests for the template mode code path in the launcher.
+class TestLauncherWithPreprocessedSubmission:
+    """Tests for the launcher when the submission has been preprocessed.
 
-    Template mode activates when the step has a ``WorkflowStepResource``
-    with ``role=MODEL_TEMPLATE``.  The submission is JSON parameters that
-    get merged, validated, and substituted into the template IDF.  The
-    container receives a resolved IDF with no ``$VARIABLE`` placeholders.
+    After the template preprocessing refactor, template resolution (parameter
+    merging, validation, substitution) happens in
+    ``EnergyPlusValidator.preprocess_submission()`` **before** the launcher
+    is called.  By that point, ``submission.content`` has been set to the
+    resolved IDF and ``submission.original_filename`` to ``resolved_model.idf``.
+
+    These tests verify the launcher correctly handles such pre-processed
+    submissions — uploading the resolved content with the proper file
+    extension and MIME type.
     """
 
-    def test_template_mode_detected_and_resolved_idf_uploaded(self):
-        """When a MODEL_TEMPLATE resource exists, the launcher reads the
-        template, substitutes parameters, and uploads the resolved IDF.
+    def test_preprocessed_submission_uploads_resolved_idf(self):
+        """When a submission has been preprocessed (content set to resolved IDF),
+        the launcher uploads the resolved content with ``.idf`` extension.
 
-        This is the core happy-path test for the template pipeline.  We
-        verify that ``upload_file`` is called with the resolved IDF content
-        (placeholders replaced) rather than the raw JSON submission.
+        This verifies the launcher's filename-based extension detection works
+        correctly with ``submission.original_filename = 'resolved_model.idf'``
+        set by the preprocessing step.
         """
         from validibot.validations.services.cloud_run.launcher import (
             launch_energyplus_validation,
         )
 
-        submitter_params = json.dumps({"U_FACTOR": "2.5", "SHGC": "0.4"})
-
-        fixtures = _make_launcher_fixtures(
-            template_content=_LAUNCHER_TEMPLATE_IDF,
-            submission_content=submitter_params,
-            step_config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "variable_type": "number"},
-                    {"name": "SHGC", "variable_type": "number"},
-                ],
-                "case_sensitive": True,
-            },
+        resolved_idf_content = (
+            "Version,\n    24.2;\n\n"
+            "WindowMaterial:SimpleGlazingSystem,\n"
+            "    Glazing System,\n    2.5,\n    0.4;\n"
         )
+
+        # Create fixtures WITHOUT a template resource — the launcher doesn't
+        # need to know about templates.  Simulate preprocessing by setting
+        # the submission content to the resolved IDF.
+        fixtures = _make_launcher_fixtures(
+            submission_content=resolved_idf_content,
+        )
+
+        # Simulate what preprocessing does: set original_filename to .idf
+        fixtures["submission"].original_filename = "resolved_model.idf"
+        fixtures["submission"].save(update_fields=["original_filename"])
 
         with _LauncherMocks() as mocks:
             result = launch_energyplus_validation(
@@ -1609,62 +1610,41 @@ class TestLauncherTemplateMode:
                 step=fixtures["step"],
             )
 
-        # Should return pending
         assert result.passed is None
         assert result.issues == []
 
-        # upload_file should be called for both the resolved IDF and
-        # the original template (at minimum).
-        expected_min_uploads = 2  # model.idf + template_original.idf
-        assert mocks.upload_file.call_count >= expected_min_uploads
-
-        # Find the resolved IDF upload (the one to model.idf)
-        resolved_call = None
-        template_call = None
-        for call in mocks.upload_file.call_args_list:
-            uri = call.kwargs.get("uri", call[1].get("uri", ""))
-            if "model.idf" in uri and "template_original" not in uri:
-                resolved_call = call
-            elif "template_original" in uri:
-                template_call = call
-
-        # Resolved IDF should contain substituted values, not placeholders
-        assert resolved_call is not None, "No upload_file call for model.idf"
-        resolved_content = resolved_call.kwargs.get(
-            "content", resolved_call[1].get("content", b"")
+        # The upload should use .idf extension and text/plain content type
+        upload_call = mocks.upload_file.call_args
+        uploaded_uri = upload_call.kwargs.get("uri", upload_call[1].get("uri", ""))
+        uploaded_content_type = upload_call.kwargs.get(
+            "content_type", upload_call[1].get("content_type", "")
+        )
+        uploaded_content = upload_call.kwargs.get(
+            "content", upload_call[1].get("content", b"")
         ).decode("utf-8")
-        assert "2.5" in resolved_content
-        assert "0.4" in resolved_content
-        assert "$U_FACTOR" not in resolved_content
-        assert "$SHGC" not in resolved_content
 
-        # Original template should be uploaded for audit trail
-        assert template_call is not None, "No upload_file call for template_original"
+        assert uploaded_uri.endswith("/model.idf")
+        assert uploaded_content_type == "text/plain"
+        assert "2.5" in uploaded_content
+        assert "0.4" in uploaded_content
 
-    def test_template_metadata_in_stats(self):
-        """Template mode stats include parameter values, warnings, and the
-        original template URI so audit and debugging are possible.
+    def test_preprocessed_submission_no_template_metadata_in_launcher_stats(self):
+        """The launcher itself no longer produces template metadata in its stats.
 
-        These metadata keys are merged into the step run's output and
-        persisted alongside the usual job tracking info.
+        Template metadata (``template_parameters_used``, ``template_warnings``)
+        is now added by ``AdvancedValidator.validate()`` after preprocessing
+        completes, not by the launcher.  The launcher stats contain only job
+        tracking info (job_name, execution_name, etc.).
         """
         from validibot.validations.services.cloud_run.launcher import (
             launch_energyplus_validation,
         )
 
-        submitter_params = json.dumps({"U_FACTOR": "2.5", "SHGC": "0.4"})
-
         fixtures = _make_launcher_fixtures(
-            template_content=_LAUNCHER_TEMPLATE_IDF,
-            submission_content=submitter_params,
-            step_config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "variable_type": "number"},
-                    {"name": "SHGC", "variable_type": "number"},
-                ],
-                "case_sensitive": True,
-            },
+            submission_content="Version,\n    24.2;\n",
         )
+        fixtures["submission"].original_filename = "resolved_model.idf"
+        fixtures["submission"].save(update_fields=["original_filename"])
 
         with _LauncherMocks():
             result = launch_energyplus_validation(
@@ -1675,130 +1655,9 @@ class TestLauncherTemplateMode:
                 step=fixtures["step"],
             )
 
-        # Template metadata should be present in stats
-        assert "template_parameters_used" in result.stats
-        assert result.stats["template_parameters_used"] == {
-            "U_FACTOR": "2.5",
-            "SHGC": "0.4",
-        }
-        assert "template_warnings" in result.stats
-        assert isinstance(result.stats["template_warnings"], list)
-        assert "template_original_uri" in result.stats
-        assert "template_original" in result.stats["template_original_uri"]
-
-    def test_merge_validation_error_returns_failed(self):
-        """When submitter parameters fail validation (e.g., missing required
-        variable), the launcher returns ``passed=False`` with user-friendly
-        error issues rather than an unhandled exception.
-
-        The ``ValidationError`` raised by ``merge_and_validate_template_
-        parameters()`` is caught by the launcher's ``except ValidationError``
-        handler and converted to ``ValidationIssue`` objects with
-        ``path="template_parameters"``.
-        """
-        from validibot.validations.services.cloud_run.launcher import (
-            launch_energyplus_validation,
-        )
-
-        # Submit empty params but template variables are required (no defaults)
-        submitter_params = json.dumps({})
-
-        fixtures = _make_launcher_fixtures(
-            template_content=_LAUNCHER_TEMPLATE_IDF,
-            submission_content=submitter_params,
-            step_config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "variable_type": "number"},
-                    {"name": "SHGC", "variable_type": "number"},
-                ],
-                "case_sensitive": True,
-            },
-        )
-
-        with _LauncherMocks() as mocks:
-            result = launch_energyplus_validation(
-                run=fixtures["run"],
-                validator=fixtures["validator"],
-                submission=fixtures["submission"],
-                ruleset=None,
-                step=fixtures["step"],
-            )
-
-        # Should fail (not pending, not passed)
-        assert result.passed is False
-        assert len(result.issues) >= 1
-
-        # Issues should reference template_parameters path
-        assert all(issue.path == "template_parameters" for issue in result.issues)
-
-        # Error messages should mention the missing variable names
-        messages = [issue.message for issue in result.issues]
-        combined = " ".join(messages)
-        assert "U_FACTOR" in combined
-        assert "SHGC" in combined
-
-        # No GCS upload or job trigger should happen on validation failure
-        mocks.upload_file.assert_not_called()
-        mocks.run_validator_job.assert_not_called()
-
-    def test_template_defaults_fill_missing_params(self):
-        """When a template variable has a default value and the submitter
-        omits it, the default is used in the resolved IDF.
-
-        This verifies the merge logic integration: author-defined defaults
-        from the step config fill gaps in the submitter's JSON payload.
-        """
-        from validibot.validations.services.cloud_run.launcher import (
-            launch_energyplus_validation,
-        )
-
-        # Only provide U_FACTOR; SHGC has a default
-        submitter_params = json.dumps({"U_FACTOR": "3.0"})
-
-        fixtures = _make_launcher_fixtures(
-            template_content=_LAUNCHER_TEMPLATE_IDF,
-            submission_content=submitter_params,
-            step_config={
-                "template_variables": [
-                    {"name": "U_FACTOR", "variable_type": "number"},
-                    {
-                        "name": "SHGC",
-                        "variable_type": "number",
-                        "default": "0.25",
-                    },
-                ],
-                "case_sensitive": True,
-            },
-        )
-
-        with _LauncherMocks() as mocks:
-            result = launch_energyplus_validation(
-                run=fixtures["run"],
-                validator=fixtures["validator"],
-                submission=fixtures["submission"],
-                ruleset=None,
-                step=fixtures["step"],
-            )
-
-        # Should succeed (pending)
-        assert result.passed is None
-        assert result.issues == []
-
-        # Template metadata should show the default was used
-        assert result.stats["template_parameters_used"]["SHGC"] == "0.25"
-        assert result.stats["template_parameters_used"]["U_FACTOR"] == "3.0"
-
-        # Resolved IDF should contain the default value
-        resolved_call = None
-        for call in mocks.upload_file.call_args_list:
-            uri = call.kwargs.get("uri", call[1].get("uri", ""))
-            if "model.idf" in uri and "template_original" not in uri:
-                resolved_call = call
-                break
-
-        assert resolved_call is not None
-        resolved_content = resolved_call.kwargs.get(
-            "content", resolved_call[1].get("content", b"")
-        ).decode("utf-8")
-        assert "3.0" in resolved_content
-        assert "0.25" in resolved_content
+        # Launcher stats contain job info only — no template metadata
+        assert "job_status" in result.stats
+        assert "job_name" in result.stats
+        assert "template_parameters_used" not in result.stats
+        assert "template_warnings" not in result.stats
+        assert "template_original_uri" not in result.stats

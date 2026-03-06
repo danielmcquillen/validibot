@@ -678,16 +678,20 @@ def save_workflow_step(
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
         config = build_energyplus_config(form, step)
-        # File type enforcement: parameterized templates require JSON
-        # submissions (the submitter sends variable values as JSON).
+        # File type enforcement: parameterized templates require JSON-only
+        # submissions (the submitter sends variable values as a flat JSON
+        # object, not an IDF or epJSON file).  Allowing other file types
+        # alongside JSON would let users upload IDF files that the launcher
+        # would attempt to parse as JSON parameters — causing a confusing
+        # error downstream instead of a clear rejection at upload time.
         if config.get("template_variables"):
             allowed = [ft.lower() for ft in (workflow.allowed_file_types or [])]
-            if SubmissionFileType.JSON.lower() not in allowed:
+            if allowed != [SubmissionFileType.JSON.lower()]:
                 raise ValidationError(
                     _(
                         "This step uses a parameterized template, which "
-                        "requires JSON submissions. Please add JSON to "
-                        "the workflow's allowed file types before "
+                        "requires JSON-only submissions. Please set the "
+                        "workflow's allowed file types to JSON only before "
                         "activating a template."
                     )
                 )

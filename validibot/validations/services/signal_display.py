@@ -169,7 +169,7 @@ def build_template_params_display(
         try:
             typed_config = workflow_step.typed_config
             for v in getattr(typed_config, "template_variables", []):
-                key = f"${v.name}"
+                key = v.name
                 var_meta[key] = {
                     "label": v.description or v.name,
                     "units": v.units,

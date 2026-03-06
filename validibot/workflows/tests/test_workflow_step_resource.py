@@ -30,6 +30,7 @@ from django.db import IntegrityError
 
 from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.models import WorkflowStepResource
+from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 
@@ -284,3 +285,103 @@ def test_step_can_have_multiple_resources():
         step.step_resources.filter(role=WorkflowStepResource.MODEL_TEMPLATE).first()
         == template
     )
+
+
+# ── Workflow cloning ───────────────────────────────────────────────
+#
+# When a workflow is cloned to a new version, all step resources must
+# be copied to the new steps. Without this, cloned workflows silently
+# lose their weather files and model templates.
+
+
+@pytest.mark.django_db
+def test_clone_preserves_catalog_reference_resources():
+    """Cloning a workflow must copy catalog-reference resources to the
+    new step. The new resource should point to the same shared
+    ValidatorResourceFile (it's a shared library item, not a copy).
+    """
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow)
+    vrf = ValidatorResourceFileFactory()
+    WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.WEATHER_FILE,
+        validator_resource_file=vrf,
+    )
+
+    cloned = workflow.clone_to_new_version(user=workflow.user)
+
+    cloned_step = cloned.steps.first()
+    assert cloned_step is not None
+    assert cloned_step.step_resources.count() == 1
+    cloned_res = cloned_step.step_resources.first()
+    assert cloned_res.role == WorkflowStepResource.WEATHER_FILE
+    assert cloned_res.is_catalog_reference is True
+    assert cloned_res.validator_resource_file == vrf
+
+
+@pytest.mark.django_db
+def test_clone_preserves_step_owned_file_resources():
+    """Cloning a workflow must copy step-owned file resources with a
+    fresh copy of the file content. The original and clone should have
+    independent file records so deleting one doesn't affect the other.
+    """
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow)
+    original_content = b"! IDF template content"
+    WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.MODEL_TEMPLATE,
+        step_resource_file=SimpleUploadedFile("template.idf", original_content),
+        filename="template.idf",
+        resource_type="ENERGYPLUS_IDF",
+    )
+
+    cloned = workflow.clone_to_new_version(user=workflow.user)
+
+    cloned_step = cloned.steps.first()
+    assert cloned_step is not None
+    assert cloned_step.step_resources.count() == 1
+    cloned_res = cloned_step.step_resources.first()
+    assert cloned_res.role == WorkflowStepResource.MODEL_TEMPLATE
+    assert cloned_res.is_step_owned is True
+    assert cloned_res.filename == "template.idf"
+    assert cloned_res.resource_type == "ENERGYPLUS_IDF"
+    # File content is an independent copy
+    cloned_res.step_resource_file.open("rb")
+    assert cloned_res.step_resource_file.read() == original_content
+    cloned_res.step_resource_file.close()
+
+
+@pytest.mark.django_db
+def test_clone_preserves_multiple_resources_per_step():
+    """A step with both a weather file (catalog) and template (step-owned)
+    should have both resources copied to the cloned step. This is the
+    expected configuration for EnergyPlus template-mode workflows.
+    """
+    workflow = WorkflowFactory()
+    step = WorkflowStepFactory(workflow=workflow)
+    vrf = ValidatorResourceFileFactory()
+    WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.WEATHER_FILE,
+        validator_resource_file=vrf,
+    )
+    WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.MODEL_TEMPLATE,
+        step_resource_file=SimpleUploadedFile("template.idf", b"! IDF"),
+        filename="template.idf",
+    )
+
+    cloned = workflow.clone_to_new_version(user=workflow.user)
+
+    cloned_step = cloned.steps.first()
+    expected_count = 2
+    assert cloned_step.step_resources.count() == expected_count
+    assert cloned_step.step_resources.filter(
+        role=WorkflowStepResource.WEATHER_FILE,
+    ).exists()
+    assert cloned_step.step_resources.filter(
+        role=WorkflowStepResource.MODEL_TEMPLATE,
+    ).exists()

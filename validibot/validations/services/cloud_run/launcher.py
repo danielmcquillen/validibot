@@ -2,25 +2,29 @@
 Cloud Run Job launcher service.
 
 This module orchestrates the complete flow of triggering Cloud Run Jobs:
-1. Build typed input envelope
-2. Upload submission and envelope to GCS
-3. Trigger Cloud Run Job directly via Jobs API
-4. Return ValidationResult with pending status
+1. Upload submission and envelope to GCS
+2. Trigger Cloud Run Job directly via Jobs API
+3. Return ValidationResult with pending status
 
 Architecture:
     Web -> Cloud Run Job (this module) -> Callback to worker
 
 Design: Simple function-based orchestration. No complex state management.
+
+Note: Template preprocessing (resolving parameterized IDF templates into
+concrete IDF files) happens earlier in the pipeline — in
+``AdvancedValidator.validate()`` via ``preprocess_submission()`` — before
+the submission reaches this module.  By the time the launcher sees the
+submission, ``Submission.get_content()`` already returns a fully resolved
+IDF, regardless of whether the original was a template or a direct upload.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from validibot_shared.fmu.envelopes import FMUInputEnvelope
 
 from validibot.validations.constants import CloudRunJobStatus
@@ -36,13 +40,8 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope_
 from validibot.validations.services.cloud_run.gcs_client import upload_file
 from validibot.validations.services.cloud_run.job_client import run_validator_job
 from validibot.validations.services.fmu_bindings import resolve_input_value
-from validibot.validations.utils.idf_template import (
-    merge_and_validate_template_parameters,
-)
-from validibot.validations.utils.idf_template import substitute_template_parameters
 from validibot.validations.validators.base import ValidationIssue
 from validibot.validations.validators.base import ValidationResult
-from validibot.workflows.step_configs import get_step_config
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -107,30 +106,28 @@ def launch_energyplus_validation(
     """
     Launch an EnergyPlus validation via Cloud Run Jobs.
 
-    Supports two modes:
+    Uploads the submission (IDF or epJSON) to GCS, builds an input envelope,
+    triggers the Cloud Run Job, and returns a pending ValidationResult.
 
-    **Direct mode** (existing): The submission is a complete IDF/epJSON
-    file, uploaded directly to GCS for the container to run.
+    .. note::
 
-    **Template mode** (new): The step has a ``MODEL_TEMPLATE`` resource
-    containing an IDF with ``$VARIABLE_NAME`` placeholders.  The
-    submission is a JSON dict of parameter values.  This function merges
-    the values with author defaults, validates constraints, substitutes
-    into the template, and uploads the resolved IDF.  The container
-    receives a normal IDF with no template awareness.
+       Template preprocessing (resolving ``$VARIABLE`` placeholders) happens
+       earlier in ``AdvancedValidator.validate()`` via
+       ``EnergyPlusValidator.preprocess_submission()``.  By the time this
+       function is called, ``submission.get_content()`` already returns a
+       fully resolved IDF — this function does not need to distinguish
+       between template and direct-upload submissions.
 
     Args:
         run: ValidationRun instance (already created in PENDING status)
         validator: Validator instance
-        submission: Submission instance with IDF/epJSON or JSON params
+        submission: Submission instance with IDF/epJSON content
         ruleset: Ruleset instance (may be None for EnergyPlus)
         step: WorkflowStep instance with config including weather_file
 
     Returns:
         ValidationResult with passed=None (pending), issues=[], stats
-        with job info.  In template mode, stats also include
-        ``template_parameters_used``, ``template_warnings``, and
-        ``template_original_uri``.
+        with job info.
 
     Raises:
         ValueError: If required config is missing (e.g., weather_file)
@@ -166,34 +163,24 @@ def launch_energyplus_validation(
         )
         input_envelope_uri = f"{execution_bundle_uri}/input.json"
 
-        # 2. Detect template mode via relational step_resources
-        template_resource = step.step_resources.filter(
-            role="MODEL_TEMPLATE",
-        ).first()
-
-        template_metadata: dict[str, object] = {}
-
-        if template_resource:
-            # ── Template mode ─────────────────────────────────────
-            # Submission is JSON params; IDF comes from the template
-            # resource.  Merge, validate, substitute, and upload the
-            # resolved IDF.
-            model_file_uri, template_metadata = _handle_template_mode(
-                template_resource=template_resource,
-                submission=submission,
-                step=step,
-                execution_bundle_uri=execution_bundle_uri,
-            )
+        # 2. Upload submission file to GCS.
+        # After preprocessing, submission.get_content() returns the resolved
+        # IDF (for template mode) or the original IDF/epJSON (for direct mode).
+        # Determine file extension from the submission's filename.
+        filename = submission.original_filename or "model.epjson"
+        if filename.lower().endswith(".idf"):
+            model_file_uri = f"{execution_bundle_uri}/model.idf"
+            content_type = "text/plain"
         else:
-            # ── Direct mode ───────────────────────────────────────
-            # Submission is a complete IDF/epJSON, uploaded directly.
             model_file_uri = f"{execution_bundle_uri}/model.epjson"
-            logger.info("Uploading submission to %s", model_file_uri)
-            upload_file(
-                content=submission.get_content().encode("utf-8"),
-                uri=model_file_uri,
-                content_type="application/json",
-            )
+            content_type = "application/json"
+
+        logger.info("Uploading submission to %s", model_file_uri)
+        upload_file(
+            content=submission.get_content().encode("utf-8"),
+            uri=model_file_uri,
+            content_type=content_type,
+        )
 
         # 3. Build callback URL and idempotency key
         callback_url = build_validation_callback_url()
@@ -259,7 +246,6 @@ def launch_energyplus_validation(
             "execution_name": execution_name,
             "input_uri": input_envelope_uri,
             "execution_bundle_uri": execution_bundle_uri,
-            **template_metadata,
         }
 
         return ValidationResult(
@@ -267,19 +253,6 @@ def launch_energyplus_validation(
             issues=[],
             stats=stats,
         )
-
-    except ValidationError as exc:
-        # Template parameter validation failed — surface as user-friendly errors
-        logger.warning("Template parameter validation failed: %s", exc.messages)
-        issues = [
-            ValidationIssue(
-                path="template_parameters",
-                message=msg,
-                severity=Severity.ERROR,
-            )
-            for msg in exc.messages
-        ]
-        return ValidationResult(passed=False, issues=issues, stats={})
 
     except Exception as e:
         logger.exception("Failed to launch EnergyPlus Cloud Run Job")
@@ -291,79 +264,6 @@ def launch_energyplus_validation(
             ),
         ]
         return ValidationResult(passed=False, issues=issues, stats={})
-
-
-def _handle_template_mode(
-    *,
-    template_resource,
-    submission: Submission,
-    step: WorkflowStep,
-    execution_bundle_uri: str,
-) -> tuple[str, dict[str, object]]:
-    """Handle template mode: merge params, substitute, upload resolved IDF.
-
-    Reads the template from the step-owned resource file, parses the
-    submission as JSON parameter values, merges with author defaults,
-    validates constraints, substitutes into the template, and uploads
-    both the resolved IDF and the original template to GCS.
-
-    Returns:
-        Tuple of (model_file_uri, template_metadata).
-
-    Raises:
-        ValidationError: If parameter validation fails.
-        ValueError: If template substitution fails.
-    """
-    # Read the template IDF from the step-owned resource
-    template_content = template_resource.step_resource_file.read().decode("utf-8")
-    # Reset file pointer in case it's read again later
-    template_resource.step_resource_file.seek(0)
-
-    # Parse submission as flat JSON parameter dict
-    submitter_params = json.loads(submission.get_content())
-
-    # Get typed step config for template variable definitions
-    typed_config = get_step_config(step)
-
-    # Merge submitter values with author defaults and validate
-    merge_result = merge_and_validate_template_parameters(
-        submitter_params=submitter_params,
-        template_variables=typed_config.template_variables,
-        case_sensitive=typed_config.case_sensitive,
-    )
-
-    # Perform template substitution — resolve $VARIABLES into values
-    resolved_idf = substitute_template_parameters(
-        idf_text=template_content,
-        parameters=merge_result.parameters,
-        case_sensitive=typed_config.case_sensitive,
-    )
-
-    # Upload resolved IDF as the model file
-    model_file_uri = f"{execution_bundle_uri}/model.idf"
-    logger.info("Uploading resolved template IDF to %s", model_file_uri)
-    upload_file(
-        content=resolved_idf.encode("utf-8"),
-        uri=model_file_uri,
-        content_type="text/plain",
-    )
-
-    # Upload original template for audit trail
-    template_artifact_uri = f"{execution_bundle_uri}/template_original.idf"
-    logger.info("Uploading original template to %s", template_artifact_uri)
-    upload_file(
-        content=template_content.encode("utf-8"),
-        uri=template_artifact_uri,
-        content_type="text/plain",
-    )
-
-    template_metadata: dict[str, object] = {
-        "template_parameters_used": merge_result.parameters,
-        "template_warnings": merge_result.warnings,
-        "template_original_uri": template_artifact_uri,
-    }
-
-    return model_file_uri, template_metadata
 
 
 def launch_fmu_validation(

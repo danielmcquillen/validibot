@@ -865,16 +865,19 @@ class TestValidateBlockingErrors:
         assert len(result.errors) == 1
         assert "semicolon" in result.errors[0].lower()
 
-    def test_reject_no_object_types_with_colon(self):
-        """Reject file with no colon-containing object type tokens.
+    def test_reject_file_with_semicolons_but_no_variables(self):
+        """A file that looks like data but has no ``$VARIABLE`` placeholders
+        is rejected at the variable-scan step.
 
-        If there are semicolons but no tokens with colons, it's probably
-        not a valid IDF.
+        Many valid EnergyPlus object types don't contain colons (Version,
+        Building, Zone, Timestep, etc.), so we don't check for colons.
+        Instead, after passing the semicolon check, the file falls through
+        to the variable-scan step which rejects it for having no placeholders.
         """
         content = b"data line one;\ndata line two;\n"
         result = validate_idf_template(filename="notypes.idf", content=content)
         assert len(result.errors) == 1
-        assert "object type" in result.errors[0].lower()
+        assert "no template variables" in result.errors[0].lower()
 
     def test_reject_json_with_idf_extension(self):
         """Reject a JSON file masquerading with ``.idf`` extension.
@@ -1646,6 +1649,25 @@ class TestMergeChoiceValidation:
         msg = exc_info.value.messages[0]
         assert "not a valid choice" in msg
         assert "VeryRough" in msg
+
+    def test_choice_with_empty_choices_rejected(self):
+        """A choice variable with an empty allowlist is a misconfiguration.
+
+        If the author sets ``variable_type="choice"`` but leaves
+        ``choices=[]``, the membership check would be skipped, allowing any
+        value through — including structural characters that could corrupt
+        the IDF. This test verifies that empty choices produce a clear error
+        directing the author to fix the variable definition.
+        """
+        variables = [
+            _make_var("ROUGHNESS", variable_type="choice", choices=[]),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"ROUGHNESS": "Anything"},
+                template_variables=variables,
+            )
+        assert "no allowed values" in exc_info.value.messages[0]
 
     def test_choice_with_structural_chars_accepted(self):
         """Choice values bypass the IDF structural character check.

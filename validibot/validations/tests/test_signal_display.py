@@ -300,12 +300,17 @@ class TestBuildTemplateParamsDisplay:
     def test_returns_params_with_metadata(self):
         """Parameters should be enriched with labels and units from the
         step config's ``template_variables``.  The ``description`` field
-        on a template variable serves as the human-readable label."""
+        on a template variable serves as the human-readable label.
+
+        The launcher stores parameters WITHOUT the ``$`` prefix — keys
+        are plain variable names like ``"U_FACTOR"``, not ``"$U_FACTOR"``.
+        The display helper must match on plain names.
+        """
         sr = _make_energyplus_step_run(
             output={
                 "template_parameters_used": {
-                    "$U_FACTOR": "2.0",
-                    "$COOLING_SETPOINT": "24.0",
+                    "U_FACTOR": "2.0",
+                    "COOLING_SETPOINT": "24.0",
                 },
             },
             template_variables=[
@@ -327,29 +332,28 @@ class TestBuildTemplateParamsDisplay:
         expected_count = 2
         assert len(result) == expected_count
 
-        u_factor = next(p for p in result if p["name"] == "$U_FACTOR")
+        u_factor = next(p for p in result if p["name"] == "U_FACTOR")
         assert u_factor["label"] == "Window U-Factor"
         assert u_factor["value"] == "2.0"
         assert u_factor["units"] == "W/m2-K"
 
-        setpoint = next(p for p in result if p["name"] == "$COOLING_SETPOINT")
+        setpoint = next(p for p in result if p["name"] == "COOLING_SETPOINT")
         assert setpoint["label"] == "Cooling Setpoint Temperature"
         assert setpoint["units"] == "°C"
 
     def test_falls_back_to_variable_name_as_label(self):
         """When ``template_variables`` has no description for a variable,
-        the raw variable name (e.g., ``$U_FACTOR``) is used as the label.
-        This handles runs that occurred before the author annotated
-        variables with descriptions."""
+        the raw variable name is used as the label.  This handles runs
+        that occurred before the author annotated variables."""
         sr = _make_energyplus_step_run(
             output={
-                "template_parameters_used": {"$UNKNOWN_VAR": "42"},
+                "template_parameters_used": {"UNKNOWN_VAR": "42"},
             },
             template_variables=[],  # No variable metadata
         )
         result = build_template_params_display(sr)
         assert len(result) == 1
-        assert result[0]["label"] == "$UNKNOWN_VAR"
+        assert result[0]["label"] == "UNKNOWN_VAR"
         assert result[0]["value"] == "42"
 
 

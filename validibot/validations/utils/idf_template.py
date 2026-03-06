@@ -501,11 +501,13 @@ def validate_idf_template(
         return ValidationResult(errors=errors, warnings=warnings)
 
     text: str | None = None
+    used_latin1 = False
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
         with contextlib.suppress(UnicodeDecodeError):
             text = content.decode("latin-1")
+            used_latin1 = True
 
     if text is None:
         errors.append(
@@ -513,6 +515,14 @@ def validate_idf_template(
             "IDF templates must be plain text."
         )
         return ValidationResult(errors=errors, warnings=warnings)
+
+    if used_latin1:
+        warnings.append(
+            "This IDF file uses Latin-1 encoding instead of UTF-8. "
+            "It has been accepted, but we recommend converting to "
+            "UTF-8 to avoid potential encoding issues during "
+            "simulation launch."
+        )
 
     # ── 3. Not empty ──────────────────────────────────────────────
     has_data_line = False
@@ -542,22 +552,17 @@ def validate_idf_template(
         )
         return ValidationResult(errors=errors, warnings=warnings)
 
-    # 4b. At least one semicolon in data lines.
-    has_semicolon = False
-    has_colon_token = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("!"):
-            continue
-        data, _ = _split_data_and_comment(line)
-        if ";" in data:
-            has_semicolon = True
-        # Check for object-type tokens (contain a colon, don't start
-        # with a digit).
-        for token in data.split(","):
-            tok = token.strip()
-            if tok and ":" in tok and not tok[0].isdigit():
-                has_colon_token = True
+    # 4b. At least one semicolon in data lines — the fundamental IDF
+    #     structural marker.  Many valid EnergyPlus object types don't
+    #     contain colons (Version, Building, Zone, Timestep, RunPeriod,
+    #     ScheduleTypeLimits, etc.), so we only check for semicolons
+    #     here.  The variable scan in step 5 provides further validation
+    #     that this is actually a template file.
+    has_semicolon = any(
+        ";" in _split_data_and_comment(line)[0]
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("!")
+    )
 
     if not has_semicolon:
         errors.append(
@@ -565,15 +570,6 @@ def validate_idf_template(
             "object-terminating semicolons found. IDF objects must end "
             "with a semicolon (;). Check that you uploaded the correct "
             "file."
-        )
-        return ValidationResult(errors=errors, warnings=warnings)
-
-    if not has_colon_token:
-        errors.append(
-            "This file does not appear to be a valid IDF — no EnergyPlus "
-            "object types found. IDF objects start with a type name "
-            "containing a colon (e.g., 'Zone:', 'Material:NoMass'). "
-            "Check that you uploaded the correct file."
         )
         return ValidationResult(errors=errors, warnings=warnings)
 
@@ -668,8 +664,9 @@ def _emit_invalid_dollar_warnings(
     ``$my-var`` (contains hyphen), or bare ``$`` characters.
     """
     # Pattern to find $ followed by something that is NOT a valid variable.
-    # We look for $ followed by characters that could be an attempted name.
-    dollar_pattern = re.compile(r"\$(\S*)")
+    # We stop at IDF delimiters (comma, semicolon, comment marker) so that
+    # valid usages like ``$U_FACTOR,`` or ``$SHGC;`` are not over-matched.
+    dollar_pattern = re.compile(r"\$([^\s,;!]*)")
     valid_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
     warned: set[str] = set()
@@ -795,7 +792,13 @@ def merge_and_validate_template_parameters(
         if var.variable_type == "number":
             _validate_number(var, name, value, errors)
         elif var.variable_type == "choice":
-            if var.choices and value not in var.choices:
+            if not var.choices:
+                errors.append(
+                    f"Parameter '{name}' has type 'choice' but no allowed "
+                    f"values are defined. The workflow author must add at "
+                    f"least one choice."
+                )
+            elif value not in var.choices:
                 errors.append(
                     f"Parameter '{name}' value '{value}' is not a valid "
                     f"choice. Allowed: {', '.join(var.choices)}."
@@ -821,7 +824,12 @@ def merge_and_validate_template_parameters(
         merged[name] = str(value)
 
     if errors:
-        raise ValidationError(errors)
+        # Include warnings alongside errors so the submitter sees helpful
+        # hints (like typo detection for unrecognized parameter names).
+        # Without this, a typo like "U_FACTR" causes a missing-parameter
+        # error for "U_FACTOR" but the "unrecognized: U_FACTR" hint is lost.
+        all_messages = errors + [f"Note: {w}" for w in warnings]
+        raise ValidationError(all_messages)
 
     # Log warnings for server-side observability
     if warnings:

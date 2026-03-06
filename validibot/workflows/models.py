@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 from django.core.files.storage import storages
 from django.db import models
 from django.db import transaction
@@ -534,12 +535,49 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
             data_retention=self.data_retention,
             output_retention=self.output_retention,
         )
-        steps = []
-        for step in self.steps.all().order_by("order"):
+        # Capture original step PKs and resources before cloning.
+        # We must snapshot these before mutating pk=None on the step objects,
+        # because prefetch_related results are cached on the Python objects.
+        original_steps = list(
+            self.steps.prefetch_related("step_resources").order_by("order"),
+        )
+        old_pks = [step.pk for step in original_steps]
+        step_resource_map = {
+            step.pk: list(step.step_resources.all()) for step in original_steps
+        }
+
+        # Clone steps (bulk_create sets .pk on PostgreSQL)
+        for step in original_steps:
             step.pk = None
             step.workflow = new
-            steps.append(step)
-        WorkflowStep.objects.bulk_create(steps)
+        WorkflowStep.objects.bulk_create(original_steps)
+
+        # Clone step resources for each new step.
+        # Catalog references point to the same shared ValidatorResourceFile.
+        # Step-owned files get a fresh copy of the file content.
+        for old_pk, new_step in zip(old_pks, original_steps, strict=True):
+            for old_res in step_resource_map.get(old_pk, []):
+                if old_res.is_catalog_reference:
+                    WorkflowStepResource.objects.create(
+                        step=new_step,
+                        role=old_res.role,
+                        validator_resource_file=old_res.validator_resource_file,
+                    )
+                else:
+                    old_res.step_resource_file.open("rb")
+                    file_content = old_res.step_resource_file.read()
+                    old_res.step_resource_file.close()
+                    WorkflowStepResource.objects.create(
+                        step=new_step,
+                        role=old_res.role,
+                        step_resource_file=ContentFile(
+                            file_content,
+                            name=old_res.filename or "file",
+                        ),
+                        filename=old_res.filename,
+                        resource_type=old_res.resource_type,
+                    )
+
         self.is_locked = True
         self.save(update_fields=["is_locked"])
         return new
@@ -929,11 +967,31 @@ class WorkflowStepResource(models.Model):
 
         For catalog references, delegates to the ValidatorResourceFile's
         ``get_storage_uri()`` method (which handles GCS vs local paths).
-        For step-owned files, returns the FileField's URL.
+        For step-owned files, constructs a proper storage URI from the
+        FileField's storage backend — ``gs://`` for GCS or ``file://``
+        for local filesystems.
+
+        This follows the same pattern as
+        ``ValidatorResourceFile.get_storage_uri()``.
         """
         if self.is_catalog_reference:
             return self.validator_resource_file.get_storage_uri()
-        return self.step_resource_file.url
+
+        # Step-owned file: construct proper URI for the storage backend.
+        # Previously returned `.url` which gives a media URL (e.g.,
+        # "/media/files/...") instead of a storage URI that containers
+        # can use to download the file.
+        file_storage = self.step_resource_file.storage
+        storage_class_name = file_storage.__class__.__name__
+        if storage_class_name == "GoogleCloudStorage":
+            bucket_name = getattr(file_storage, "bucket_name", "")
+            location = getattr(file_storage, "location", "")
+            if location:
+                return f"gs://{bucket_name}/{location}/{self.step_resource_file.name}"
+            return f"gs://{bucket_name}/{self.step_resource_file.name}"
+
+        # Local filesystem storage
+        return f"file://{self.step_resource_file.path}"
 
 
 class WorkflowRoleAccess(models.Model):

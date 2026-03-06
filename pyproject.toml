@@ -288,7 +288,7 @@ dev = [
   # Linting and formatting
   "djlint==1.36.4",
   "pre-commit==4.5.1",
-  "ruff==0.15.4",
+  "ruff==0.15.5",
   # Type checking
   "django-stubs[compatible-mypy]==5.2.9",
   "djangorestframework-stubs==3.16.8",

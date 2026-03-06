@@ -227,21 +227,41 @@ class EnergyPlusStepConfig(BaseStepConfig):
     """
 
     # ── Simulation settings ──────────────────────────────────────────
+    # NOTE: These settings are stored in the step config and validated by
+    # Pydantic, but they are NOT yet forwarded to the validator container.
+    # ``timestep_per_hour`` reaches the input envelope but the runner
+    # ignores it.  ``idf_checks`` and ``run_simulation`` are not included
+    # in the envelope schema at all.  Wiring these requires changes to
+    # both validibot-shared (envelope schema) and validibot-validators
+    # (runner logic).  This is a pre-existing gap, not a regression from
+    # the template work.
+    # TODO: Forward run settings to the container (requires validibot-shared
+    #       and validibot-validators changes).
 
     idf_checks: list[str] = Field(default_factory=list)
     """Author-selected IDF compliance checks to run before simulation
     (e.g., ``'duplicate-names'``, ``'hvac-sizing'``, ``'schedule-coverage'``).
-    Maps to EnergyPlus's ``-x`` flags."""
+    Maps to EnergyPlus's ``-x`` flags.
+
+    .. warning:: Not yet forwarded to the container. Stored for future use.
+    """
 
     run_simulation: bool = False
     """Whether to run the full EnergyPlus simulation or just IDF syntax
     checks. When False, only ``idf_checks`` are executed (fast, no weather
-    file needed)."""
+    file needed).
+
+    .. warning:: Not yet forwarded to the container. Stored for future use.
+    """
 
     timestep_per_hour: int = 4
     """Number of simulation timesteps per hour (1-60). Higher values
     increase accuracy but slow the simulation. EnergyPlus default is 6;
-    we default to 4."""
+    we default to 4.
+
+    .. note:: Reaches the input envelope (``inputs.timestep_per_hour``)
+       but the validator runner currently ignores it.
+    """
 
     # ── Template metadata ────────────────────────────────────────────
     # The template FILE is stored in WorkflowStepResource (role=MODEL_TEMPLATE).

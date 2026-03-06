@@ -71,12 +71,22 @@ def build_energyplus_input_envelope(
         workflow_id: Workflow UUID
         step_id: Workflow step UUID
         step_name: Human-readable step name
-        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local)
+        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local).
+            The file extension determines the envelope metadata: ``.idf`` URIs
+            produce ``name="model.idf"`` with ``mime_type=ENERGYPLUS_IDF``;
+            ``.epjson`` URIs produce ``name="model.epjson"`` with
+            ``mime_type=ENERGYPLUS_EPJSON``.  The runner uses the ``name`` field
+            to determine the local filename when downloading, and EnergyPlus
+            uses the extension to decide IDF vs epJSON parsing mode.
         resource_files: List of ResourceFileItem objects (weather files, etc.)
         callback_url: Django endpoint to POST results
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: Directory URI for this run's files
-        timestep_per_hour: EnergyPlus timesteps (default: 4)
+        timestep_per_hour: EnergyPlus timesteps (default: 4).
+            NOTE: This value reaches the container envelope but the runner
+            does not yet use it to configure the EnergyPlus CLI.  See
+            ``idf_checks`` and ``run_simulation`` in EnergyPlusStepConfig
+            for other settings that are stored but not yet forwarded.
         skip_callback: If True, container won't POST callback after completion
 
     Returns:
@@ -119,11 +129,21 @@ def build_energyplus_input_envelope(
         step_name=step_name,
     )
 
-    # Build input files list (only the model file; weather comes via resource_files)
+    # Build input files list (only the model file; weather comes via resource_files).
+    # The file extension determines the envelope metadata — the runner uses
+    # file_item.name as the local filename, and EnergyPlus uses the extension
+    # to decide IDF vs epJSON parsing mode.
+    if model_file_uri.lower().endswith(".epjson"):
+        model_name = "model.epjson"
+        model_mime = SupportedMimeType.ENERGYPLUS_EPJSON
+    else:
+        model_name = "model.idf"
+        model_mime = SupportedMimeType.ENERGYPLUS_IDF
+
     input_files = [
         InputFileItem(
-            name="model.idf",
-            mime_type=SupportedMimeType.ENERGYPLUS_IDF,
+            name=model_name,
+            mime_type=model_mime,
             role="primary-model",
             uri=model_file_uri,
         ),
@@ -274,9 +294,17 @@ def build_input_envelope(
             msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
-        # Resolve resource files from relational WorkflowStepResource rows
+        # Resolve resource files from relational WorkflowStepResource rows.
+        # Exclude MODEL_TEMPLATE resources — the template is consumed during
+        # preprocessing (in Django) and the resolved IDF is uploaded as the
+        # primary model file.  Including the template in resource_files would
+        # cause the runner to download it unnecessarily, and if the template
+        # filename matches the resolved model filename it could overwrite it.
+        from validibot.workflows.models import WorkflowStepResource
 
-        resource_files = _resolve_step_resources(step)
+        resource_files = _resolve_step_resources(
+            step, role=WorkflowStepResource.WEATHER_FILE
+        )
 
         # Validate that we have a weather file for EnergyPlus
         has_weather = any(
@@ -289,7 +317,11 @@ def build_input_envelope(
             )
             raise ValueError(msg)
 
-        # Get EnergyPlus-specific settings from step config
+        # Get EnergyPlus-specific settings from step config.
+        # TODO: Also forward ``idf_checks`` and ``run_simulation`` to the
+        #       container once the envelope schema and runner support them.
+        #       Currently only ``timestep_per_hour`` reaches the envelope
+        #       (and even that is ignored by the runner).
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
 
         return build_energyplus_input_envelope(

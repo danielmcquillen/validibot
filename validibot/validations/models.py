@@ -2170,8 +2170,9 @@ class ValidatorResourceFile(TimeStampedModel):
 
     1. Admin uploads resource file via Validator Library UI
     2. Workflow step editor shows dropdown of available resources (filtered by type)
-    3. User selects resource → step config stores `resource_file_ids: [uuid, ...]`
-    4. At execution time, envelope builder resolves IDs to storage URIs
+    3. User selects resource → a ``WorkflowStepResource`` row is created linking
+       the step to this file (FK-backed, PROTECT on delete)
+    4. At execution time, envelope builder resolves step resources to storage URIs
     5. Validator container downloads files from URIs
     """
 

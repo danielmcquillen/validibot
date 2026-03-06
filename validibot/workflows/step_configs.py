@@ -20,7 +20,7 @@ Usage::
     # Parse a WorkflowStep's config into a typed model
     typed = get_step_config(step)
     if isinstance(typed, EnergyPlusStepConfig):
-        file_ids = typed.resource_file_ids  # list[str], type-checked
+        checks = typed.idf_checks  # list[str], type-checked
 
 See Also:
     - GitHub issue #96: Add type-safe Pydantic models for WorkflowStep.config
@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -99,24 +100,196 @@ class XmlSchemaStepConfig(BaseStepConfig):
     """Human-readable label for the schema type (computed in views)."""
 
 
+# ---------------------------------------------------------------------------
+# Template variable schemas
+# ---------------------------------------------------------------------------
+# These are embedded models used inside step configs (e.g.,
+# EnergyPlusStepConfig.template_variables), not standalone step configs.
+# They extend BaseModel directly (not BaseStepConfig) because they should
+# reject unknown keys rather than silently allowing them.
+
+
+class TemplateVariable(BaseModel):
+    """Base schema for a template variable placeholder.
+
+    Generic enough to work with any template format — IDF, epJSON, or future
+    formats. Contains the core variable metadata that all template types share:
+    name, description, default, type constraints, and allowed values.
+
+    Required/optional logic:
+
+    - If ``default`` is non-empty, the variable is optional — the default is
+      used when the submitter omits it.
+    - If ``default`` is empty, the variable is required — the submitter must
+      provide a value or the submission will be rejected.
+    """
+
+    name: str
+    """Variable name (without any prefix). e.g., ``'U_FACTOR'``."""
+
+    description: str = ""
+    """Human-readable label shown to submitters. e.g., ``'Window U-Factor'``.
+    The author can override this with a more descriptive label."""
+
+    default: str = ""
+    """Default value used when the submitter omits this variable.
+    When non-empty, the variable becomes optional.
+    When empty, the variable is required.
+    e.g., ``'2.0'`` for a U-factor, ``'VerySmooth'`` for a roughness choice."""
+
+    units: str = ""
+    """Display units. e.g., ``'W/m2-K'``. Informational only — not enforced."""
+
+    variable_type: Literal["text", "number", "choice"] = "text"
+    """Input type constraint.
+
+    - ``'text'``: Accepts any non-empty string (subclasses may add further
+      restrictions, e.g., blocking IDF structural characters).
+    - ``'number'``: Enables min/max validation. Value must parse as a float
+      (subclasses may also accept keywords like ``'Autosize'``).
+    - ``'choice'``: Restricts values to the ``choices`` list.
+
+    Unknown values are rejected at validation time."""
+
+    min_value: float | None = None
+    """Minimum allowed value. Only enforced when ``variable_type='number'``.
+    See ``min_exclusive`` for whether the bound is inclusive or exclusive."""
+
+    min_exclusive: bool = False
+    """If True, ``min_value`` is an exclusive lower bound (value must be
+    strictly greater). If False (default), ``min_value`` is inclusive.
+    Auto-set to True when populated from a schema's ``exclusiveMinimum``."""
+
+    max_value: float | None = None
+    """Maximum allowed value. Only enforced when ``variable_type='number'``.
+    See ``max_exclusive`` for whether the bound is inclusive or exclusive."""
+
+    max_exclusive: bool = False
+    """If True, ``max_value`` is an exclusive upper bound (value must be
+    strictly less). If False (default), ``max_value`` is inclusive.
+    Auto-set to True when populated from a schema's ``exclusiveMaximum``."""
+
+    choices: list[str] = Field(default_factory=list)
+    """Allowed values when ``variable_type='choice'``. Submission is rejected
+    if the provided value is not in this list. Useful for fields that accept
+    enumerated values (e.g., surface roughness: ``['VeryRough', 'Rough',
+    'MediumRough', 'MediumSmooth', 'Smooth', 'VerySmooth']``)."""
+
+
+class IDFTemplateVariable(TemplateVariable):
+    """IDF-specific template variable.
+
+    Inherits all fields from ``TemplateVariable``. Currently adds no extra
+    properties, but exists as a distinct type so that:
+
+    1. IDF-specific behavior (e.g., blocking IDF structural characters in
+       ``'text'`` values, accepting ``'Autosize'``/``'Autocalculate'`` in
+       ``'number'`` values) is clearly scoped to IDF templates.
+    2. Future template formats (epJSON, gbXML) can define their own subclasses
+       with format-specific constraints without polluting the base schema.
+    3. Serialization and deserialization can use the type to dispatch to the
+       correct validation logic.
+
+    IDF-specific conventions:
+
+    - Variable names use ``$UPPERCASE_WITH_UNDERSCORES`` (matching EnergyPlus
+      parametric convention). Name must match ``[A-Z][A-Z0-9_]*``
+      (case-sensitive) or ``[A-Za-z][A-Za-z0-9_]*`` (case-insensitive).
+    - ``'text'`` type values must not contain IDF structural characters
+      (``,`` ``;`` ``!`` newline).
+    - ``'number'`` type also accepts ``'Autosize'`` and ``'Autocalculate'``
+      keywords, which bypass float parsing and range checks.
+    - ``'choice'`` values bypass the structural character check
+      (author-trusted).
+    - Labels and units are auto-populated from IDF ``!-`` annotations during
+      template upload (see Phase 2).
+    - ``min``/``max`` can be auto-populated from the EnergyPlus JSON schema
+      (Phase 2+).
+    """
+
+
+# ---------------------------------------------------------------------------
+# EnergyPlus
+# ---------------------------------------------------------------------------
+
+
 class EnergyPlusStepConfig(BaseStepConfig):
     """Config for EnergyPlus validator steps.
 
-    Controls which checks to run, whether to run the simulation, and which
-    weather/resource files to include.
+    Stores simulation settings (checks, timestep) and, when a parameterized
+    template is active, template variable metadata and output signal selection.
+
+    Resource files (weather EPWs, model templates) are stored relationally
+    via ``WorkflowStepResource`` rather than in this config. See the
+    ``step.step_resources`` reverse relation. The template *file* lives on
+    ``WorkflowStepResource`` with ``role=MODEL_TEMPLATE``; the template
+    *configuration* (variable definitions, case sensitivity) lives here.
     """
 
-    resource_file_ids: list[str] = Field(default_factory=list)
-    """UUIDs of ValidatorResourceFile records (e.g., weather files)."""
+    # ── Simulation settings ──────────────────────────────────────────
+    # NOTE: These settings are stored in the step config and validated by
+    # Pydantic, but they are NOT yet forwarded to the validator container.
+    # ``timestep_per_hour`` reaches the input envelope but the runner
+    # ignores it.  ``idf_checks`` and ``run_simulation`` are not included
+    # in the envelope schema at all.  Wiring these requires changes to
+    # both validibot-shared (envelope schema) and validibot-validators
+    # (runner logic).  This is a pre-existing gap, not a regression from
+    # the template work.
+    # TODO: Forward run settings to the container (requires validibot-shared
+    #       and validibot-validators changes).
 
     idf_checks: list[str] = Field(default_factory=list)
-    """Subset of: "duplicate-names", "hvac-sizing", "schedule-coverage"."""
+    """Author-selected IDF compliance checks to run before simulation
+    (e.g., ``'duplicate-names'``, ``'hvac-sizing'``, ``'schedule-coverage'``).
+    Maps to EnergyPlus's ``-x`` flags.
+
+    .. warning:: Not yet forwarded to the container. Stored for future use.
+    """
 
     run_simulation: bool = False
-    """Whether to run the EnergyPlus simulation (not just IDF checks)."""
+    """Whether to run the full EnergyPlus simulation or just IDF syntax
+    checks. When False, only ``idf_checks`` are executed (fast, no weather
+    file needed).
+
+    .. warning:: Not yet forwarded to the container. Stored for future use.
+    """
 
     timestep_per_hour: int = 4
-    """EnergyPlus simulation timesteps per hour (default: 4)."""
+    """Number of simulation timesteps per hour (1-60). Higher values
+    increase accuracy but slow the simulation. EnergyPlus default is 6;
+    we default to 4.
+
+    .. note:: Reaches the input envelope (``inputs.timestep_per_hour``)
+       but the validator runner currently ignores it.
+    """
+
+    # ── Template metadata ────────────────────────────────────────────
+    # The template FILE is stored in WorkflowStepResource (role=MODEL_TEMPLATE).
+    # These fields store template CONFIGURATION that governs how variables
+    # are scanned, validated, and substituted.
+
+    template_variables: list[IDFTemplateVariable] = Field(default_factory=list)
+    """Detected ``$VARIABLE_NAME`` placeholders with author-provided metadata.
+    Ordered by first appearance in the IDF template. Uses
+    ``IDFTemplateVariable`` (not the base ``TemplateVariable``) so IDF-specific
+    validation rules apply."""
+
+    case_sensitive: bool = True
+    """Whether template variable matching is case-sensitive.
+
+    When True (default), only ``$UPPERCASE_NAMES`` (matching
+    ``[A-Z][A-Z0-9_]*``) are detected as template variables. ``$u_factor``
+    or ``$U_Factor`` in the IDF would not be detected — the scanner emits a
+    warning so the author can rename or switch modes.
+
+    When False, all variable names are normalized to uppercase during
+    scanning and matching."""
+
+    display_signals: list[str] = Field(default_factory=list)
+    """Catalog entry slugs for output signals to display to the submitter.
+    After simulation, EnergyPlus extracts many metrics. This list controls
+    which are shown in the results view and returned by the API. Empty means
+    return all signals (backward-compatible default)."""
 
 
 class FmuStepConfig(BaseStepConfig):

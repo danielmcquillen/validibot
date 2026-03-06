@@ -376,6 +376,18 @@ class ResourceFileType(TextChoices):
     ENERGYPLUS_WEATHER = "energyplus_weather", _("EnergyPlus Weather File (EPW)")
 
 
+# Step-owned resource type constants.
+# These are NOT members of ResourceFileType (which is for catalog
+# ValidatorResourceFile types).  They are plain string constants used as the
+# ``resource_type`` value on ``WorkflowStepResource`` rows for step-owned
+# files that don't belong in the shared catalog.
+
+ENERGYPLUS_MODEL_TEMPLATE = "energyplus_model_template"
+# Resource type for a parameterized IDF template uploaded by a workflow
+# author.  Used on ``WorkflowStepResource`` rows with
+# ``role=MODEL_TEMPLATE``.
+
+
 # ---------------------------------------------------------------------------
 # Resource file type configuration registry
 # ---------------------------------------------------------------------------

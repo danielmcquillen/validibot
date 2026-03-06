@@ -32,6 +32,7 @@
     </div>
     <div class="row">
       <div class="col-12 col-xxl-7 mb-3">
+        {% include "workflows/results/partials/block_validation_run_step_signals.html" with step_runs=step_runs step_signals=step_signals step_params=step_params step_template_warnings=step_template_warnings %}
         {% include "workflows/results/partials/block_validation_run_step_findings.html" with step_runs=step_runs %}
       </div>
       <div class="col-12 col-xxl-5 order-first order-xxl-last mb-3">

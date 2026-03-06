@@ -1,5 +1,20 @@
 """
-Tests for gcs_client service.
+Tests for the GCS client service — envelope upload/download and URI parsing.
+
+The GCS client is the I/O layer between Django and Google Cloud Storage for
+advanced validator execution.  It handles three operations:
+
+- **URI parsing** (``parse_gcs_uri``): Splits ``gs://bucket/path/to/blob``
+  into bucket name and blob path.  Used by both upload and download.
+- **Envelope upload** (``upload_envelope``): Serializes a Pydantic model to
+  JSON and uploads it to GCS as the input envelope for a validator container.
+- **Envelope download** (``download_envelope``): Downloads JSON from GCS and
+  deserializes it into a typed Pydantic model — used by the callback handler
+  to retrieve output envelopes after async validation completes.
+
+These tests mock the ``google.cloud.storage.Client`` to avoid needing real
+GCS credentials.  No Django models are involved, so no ``@pytest.mark.django_db``
+is needed.
 """
 
 from unittest.mock import MagicMock
@@ -14,14 +29,24 @@ from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 
 
 def test_parse_gcs_uri():
-    """Test GCS URI parsing."""
+    """A well-formed ``gs://`` URI should split into bucket and blob path.
+
+    The blob path preserves the full directory structure after the bucket
+    name — this is critical because ``bucket.blob(path)`` uses the full
+    path to locate the object in GCS.
+    """
     bucket, blob = parse_gcs_uri("gs://my-bucket/path/to/file.json")
     assert bucket == "my-bucket"
     assert blob == "path/to/file.json"
 
 
 def test_parse_gcs_uri_invalid():
-    """Test GCS URI parsing with invalid URIs."""
+    """Non-GCS URIs and bucket-only URIs should raise ``ValueError``.
+
+    The ``s3://`` check catches accidental AWS URIs in GCP deployments.
+    The bucket-only check catches truncated URIs that would cause a
+    confusing empty-blob error downstream.
+    """
     with pytest.raises(ValueError, match="must start with gs://"):
         parse_gcs_uri("s3://bucket/file.json")
 
@@ -31,7 +56,12 @@ def test_parse_gcs_uri_invalid():
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
 def test_upload_envelope(mock_storage_client):
-    """Test envelope upload to GCS."""
+    """Uploading a Pydantic model should serialize it to JSON in GCS.
+
+    The upload path splits the ``gs://`` URI into bucket and blob path,
+    then calls ``blob.upload_from_string()`` with the JSON payload.
+    This verifies both the URI parsing integration and the serialization.
+    """
 
     # Create a simple test model
     class TestModel(BaseModel):
@@ -67,7 +97,12 @@ def test_upload_envelope(mock_storage_client):
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
 def test_download_envelope(mock_storage_client):
-    """Test envelope download from GCS."""
+    """Downloading should deserialize GCS JSON into the specified Pydantic model.
+
+    The callback handler uses this to reconstruct typed output envelopes
+    (e.g., ``EnergyPlusOutputEnvelope``) from the JSON that the validator
+    container uploaded to GCS after completing its simulation.
+    """
 
     class TestModel(BaseModel):
         test_field: str
@@ -105,7 +140,12 @@ def test_download_envelope(mock_storage_client):
 
 @patch("validibot.validations.services.cloud_run.gcs_client.storage.Client")
 def test_download_envelope_not_found(mock_storage_client):
-    """Test envelope download when file doesn't exist."""
+    """Downloading a missing blob should raise ``ValueError``.
+
+    This catches the case where a callback arrives before the container
+    has finished uploading its output, or when the output blob was
+    garbage-collected.  The callback handler retries on this error.
+    """
 
     class TestModel(BaseModel):
         test_field: str

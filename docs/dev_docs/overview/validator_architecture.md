@@ -405,6 +405,45 @@ if validator.type == "myvalidator":
     envelope_class = MyValidatorInputEnvelope
 ```
 
+## Django-Side Orchestration (`AdvancedValidator`)
+
+Before a container is started, the Django-side `AdvancedValidator` base class orchestrates the full validation lifecycle. This is the Template Method pattern — the base class handles shared orchestration while subclasses override hooks for domain-specific behavior.
+
+### Lifecycle
+
+```
+AdvancedValidator.validate()
+  1. Validate run_context (must have validation_run and step)
+  2. Get the configured ExecutionBackend (Docker or Cloud Run)
+  3. ★ preprocess_submission() — domain-specific input transformation
+  4. Build ExecutionRequest and call backend.execute()
+  5. Convert ExecutionResponse to ValidationResult
+```
+
+### Preprocessing Hook
+
+`preprocess_submission()` is called **before** backend dispatch. This is where domain-specific input transformations happen — for example, EnergyPlus resolves parameterized IDF templates into concrete model files:
+
+```python
+# In EnergyPlusValidator
+def preprocess_submission(self, *, step, submission):
+    from .preprocessing import preprocess_energyplus_submission
+    result = preprocess_energyplus_submission(step=step, submission=submission)
+    return result.template_metadata
+```
+
+Key design principle: **preprocessing happens in Django, not in containers.** After preprocessing, the submission looks identical to a direct upload — execution backends never need to know that preprocessing occurred. This ensures all platforms (Docker Compose, Cloud Run, future backends) see identical input.
+
+The default implementation is a no-op (returns empty dict). Subclasses override when needed.
+
+### Subclass Hooks
+
+| Method | Required | Purpose |
+|--------|----------|---------|
+| `validator_display_name` | Yes | Human-readable name for error messages |
+| `extract_output_signals()` | Yes | Extract metrics from output envelope for assertions |
+| `preprocess_submission()` | No | Transform submission before backend dispatch |
+
 ## Container Lifecycle
 
 A validator container goes through these stages:

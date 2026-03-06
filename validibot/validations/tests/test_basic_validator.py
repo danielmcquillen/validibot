@@ -1,8 +1,31 @@
-"""Tests for BasicValidator, including XML submission support."""
+"""
+Tests for ``BasicValidator`` — JSON and XML submission validation.
+
+The BasicValidator is the simplest validator type: it parses JSON or XML
+submissions and evaluates BASIC/CEL assertions against the parsed data.
+No external processor or container is involved — everything runs in-process.
+
+These tests cover:
+
+- **File type gating**: only JSON and XML are accepted; text/binary are rejected
+  with a clear error before any parsing is attempted.
+- **Parse error handling**: malformed JSON/XML produces actionable error messages.
+- **CEL context building**: payload keys are promoted to top-level CEL variables,
+  but keys that aren't valid CEL identifiers (hyphens, ``@``-prefixes, ``#text``)
+  are skipped to prevent ``ValueError`` from cel-python.
+- **End-to-end XML with hyphenated elements**: full ``validate()`` calls with
+  XML documents whose element names contain hyphens (e.g., ``<THERM-XML>``).
+- **CEL error messages**: error formatting produces context-appropriate guidance
+  depending on whether the validator uses custom data paths or catalog entries.
+- **THERM XML integration**: full pipeline from XML parsing through CEL assertion
+  evaluation with real THERM fixture files.
+
+Tests use Django's test database via FactoryBoy factories for all model instances
+(validators, submissions, rulesets), ensuring ORM queryset behavior is exercised
+rather than hand-wired MagicMock chains.
+"""
 
 from __future__ import annotations
-
-from unittest.mock import MagicMock
 
 from django.test import SimpleTestCase
 from django.test import TestCase
@@ -23,107 +46,124 @@ from validibot.validations.validators.base.base import _collect_all_keys
 from validibot.validations.validators.base.base import _is_valid_cel_identifier
 from validibot.validations.validators.basic import BasicValidator
 
+# ==============================================================================
+# File type gating — BasicValidator only accepts JSON and XML
+# ==============================================================================
+# The file type check is the first guard in validate(). If it rejects the
+# submission, no parsing or assertion evaluation happens. This prevents
+# confusing downstream errors from hitting users.
+# ==============================================================================
 
-class BasicValidatorFileTypeTests(SimpleTestCase):
-    """BasicValidator accepts JSON and XML, rejects other types."""
 
-    def _make_submission(self, *, file_type: str, content: str) -> MagicMock:
-        sub = MagicMock()
-        sub.file_type = file_type
-        sub.get_content.return_value = content
-        return sub
+class BasicValidatorFileTypeTests(TestCase):
+    """BasicValidator accepts JSON and XML, rejects other types.
 
-    def _make_validator(self) -> MagicMock:
-        validator = MagicMock()
-        entries_qs = validator.catalog_entries.all.return_value
-        entries_qs.only.return_value.filter.return_value = []
-        validator.default_ruleset = None
-        validator.allow_custom_assertion_targets = False
-        return validator
+    Uses real Django model instances via FactoryBoy so the ORM queryset
+    paths in ``_build_cel_context()`` and ``evaluate_assertions_for_stage()``
+    are exercised — not just mocked away.
+    """
 
-    @staticmethod
-    def _make_empty_ruleset() -> MagicMock:
-        """Create a mock ruleset that safely exposes an empty assertions QS."""
-        ruleset = MagicMock(unsafe=True)
-        assertions_qs = ruleset.assertions.all.return_value
-        assertions_qs.select_related.return_value.order_by.return_value = []
-        return ruleset
+    @classmethod
+    def setUpTestData(cls):
+        cls.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
 
     def test_rejects_text_file_type(self):
-        """Plain text submissions are rejected with a clear error."""
-        submission = self._make_submission(
+        """Plain text submissions are rejected with a clear error.
+
+        The validator checks ``submission.file_type`` before parsing.
+        TEXT is not in ``_SUPPORTED_FILE_TYPES``, so we get a rejection
+        without any JSON/XML parsing attempt.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.TEXT,
             content="hello",
         )
         engine = BasicValidator()
-        result = engine.validate(self._make_validator(), submission, MagicMock())
+        result = engine.validate(self.validator, submission, None)
 
         self.assertFalse(result.passed)
         self.assertEqual(len(result.issues), 1)
         self.assertIn("JSON or XML", result.issues[0].message)
 
     def test_rejects_binary_file_type(self):
-        """Binary submissions are rejected."""
-        submission = self._make_submission(
+        """Binary submissions are rejected before parsing.
+
+        BINARY file type hits the same guard as TEXT — the validator
+        never attempts to interpret the content.  Note: the Submission
+        model requires non-empty content (DB constraint), so we pass
+        placeholder content even though it's never read.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.BINARY,
-            content="",
+            content="(binary placeholder)",
         )
         engine = BasicValidator()
-        result = engine.validate(self._make_validator(), submission, MagicMock())
+        result = engine.validate(self.validator, submission, None)
 
         self.assertFalse(result.passed)
         self.assertIn("JSON or XML", result.issues[0].message)
 
     def test_accepts_json(self):
-        """JSON submissions are parsed and assertions evaluated."""
-        submission = self._make_submission(
+        """JSON submissions are parsed and assertions evaluated.
+
+        With no assertions on the ruleset and no default_ruleset on the
+        validator, the result should be ``passed=True`` — the submission
+        parsed successfully and there's nothing to fail against.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.JSON,
             content='{"price": 10}',
         )
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         engine = BasicValidator()
-        result = engine.validate(
-            self._make_validator(),
-            submission,
-            self._make_empty_ruleset(),
-        )
+        result = engine.validate(self.validator, submission, ruleset)
 
         self.assertTrue(result.passed)
 
     def test_accepts_xml(self):
-        """XML submissions are parsed via xml_to_dict and assertions evaluated."""
-        submission = self._make_submission(
+        """XML submissions are parsed via xml_to_dict and assertions evaluated.
+
+        XML is converted to a nested dict before assertion evaluation,
+        so the downstream code path is identical to JSON.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
             content="<root><price>10</price></root>",
         )
+        ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
         engine = BasicValidator()
-        result = engine.validate(
-            self._make_validator(),
-            submission,
-            self._make_empty_ruleset(),
-        )
+        result = engine.validate(self.validator, submission, ruleset)
 
         self.assertTrue(result.passed)
 
     def test_invalid_json_returns_error(self):
-        """Malformed JSON returns a clear parse error."""
-        submission = self._make_submission(
+        """Malformed JSON returns a clear parse error.
+
+        The error message should identify the problem as a JSON parse
+        failure, not a downstream assertion error.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.JSON,
             content="{broken",
         )
         engine = BasicValidator()
-        result = engine.validate(self._make_validator(), submission, MagicMock())
+        result = engine.validate(self.validator, submission, None)
 
         self.assertFalse(result.passed)
         self.assertIn("Invalid JSON", result.issues[0].message)
 
     def test_invalid_xml_returns_error(self):
-        """Malformed XML returns a clear parse error."""
-        submission = self._make_submission(
+        """Malformed XML returns a clear parse error.
+
+        Similar to invalid JSON — the error message should reference
+        XML, not a generic assertion failure.
+        """
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
             content="<root><unclosed>",
         )
         engine = BasicValidator()
-        result = engine.validate(self._make_validator(), submission, MagicMock())
+        result = engine.validate(self.validator, submission, None)
 
         self.assertFalse(result.passed)
         self.assertIn("Invalid XML", result.issues[0].message)
@@ -317,9 +357,9 @@ class IsValidCelIdentifierTests(SimpleTestCase):
 # ---------------------------------------------------------------------------
 
 
-class CelContextInvalidKeyTests(SimpleTestCase):
+class CelContextInvalidKeyTests(TestCase):
     """
-    Verify that _build_cel_context() gracefully handles payload dict keys
+    Verify that ``_build_cel_context()`` gracefully handles payload dict keys
     that are not valid CEL identifiers.
 
     When ``allow_custom_assertion_targets`` is True, the context builder
@@ -336,26 +376,25 @@ class CelContextInvalidKeyTests(SimpleTestCase):
     The fix: skip keys that fail ``_is_valid_cel_identifier()`` during
     promotion.  The data is still accessible via bracket notation on the
     ``payload`` variable (e.g., ``payload["THERM-XML"]``).
+
+    Uses real Django model instances via FactoryBoy so the
+    ``catalog_entries.all().only().filter()`` ORM path is exercised naturally.
     """
 
-    @staticmethod
-    def _make_validator(*, allow_custom: bool = True) -> MagicMock:
-        validator = MagicMock()
-        entries_qs = validator.catalog_entries.all.return_value
-        entries_qs.only.return_value.filter.return_value = []
-        validator.default_ruleset = None
-        validator.allow_custom_assertion_targets = allow_custom
-        return validator
+    @classmethod
+    def setUpTestData(cls):
+        # BASIC validators automatically get allow_custom_assertion_targets=True,
+        # which is the default for most tests in this class.
+        cls.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
 
     def test_hyphenated_root_key_not_promoted(self):
-        """
-        A hyphenated root key like 'THERM-XML' (from xml_to_dict) must NOT
+        """A hyphenated root key like ``THERM-XML`` (from xml_to_dict) must NOT
         be added as a top-level CEL variable — cel-python would raise
-        ValueError.  It should still be in payload.
+        ``ValueError``.  It should still be accessible under ``payload``.
         """
         engine = BasicValidator()
         payload = {"THERM-XML": {"Materials": {"Material": []}}}
-        context = engine._build_cel_context(payload, self._make_validator())
+        context = engine._build_cel_context(payload, self.validator)
 
         self.assertNotIn("THERM-XML", context)
         self.assertEqual(
@@ -364,9 +403,8 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         )
 
     def test_children_of_invalid_root_key_are_promoted(self):
-        """
-        When the root element has an invalid identifier name (e.g.
-        'THERM-XML'), its valid-identifier children should still be
+        """When the root element has an invalid identifier name (e.g.
+        ``THERM-XML``), its valid-identifier children should still be
         promoted via the deep key collection.  This allows CEL
         expressions like ``Materials.Material.all(...)`` to work even
         when the root tag is inaccessible as a top-level variable.
@@ -378,7 +416,7 @@ class CelContextInvalidKeyTests(SimpleTestCase):
                 "Units": "SI",
             },
         }
-        context = engine._build_cel_context(payload, self._make_validator())
+        context = engine._build_cel_context(payload, self.validator)
 
         self.assertNotIn("THERM-XML", context)
         # Valid children promoted via deep key collection
@@ -391,13 +429,12 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         self.assertEqual(context["Units"], "SI")
 
     def test_valid_keys_still_promoted(self):
-        """
-        Valid identifier keys from the payload should be promoted to
+        """Valid identifier keys from the payload should be promoted to
         top-level context variables as before.
         """
         engine = BasicValidator()
         payload = {"price": 10, "name": "Widget"}
-        context = engine._build_cel_context(payload, self._make_validator())
+        context = engine._build_cel_context(payload, self.validator)
 
         self.assertIn("price", context)
         self.assertEqual(context["price"], 10)
@@ -405,8 +442,7 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         self.assertEqual(context["name"], "Widget")
 
     def test_mixed_valid_and_invalid_keys(self):
-        """
-        Only valid-identifier keys are promoted; invalid ones are silently
+        """Only valid-identifier keys are promoted; invalid ones are silently
         skipped.  Both remain accessible under ``payload``.
         """
         engine = BasicValidator()
@@ -414,7 +450,7 @@ class CelContextInvalidKeyTests(SimpleTestCase):
             "THERM-XML": {"Units": "SI"},
             "Materials": {"Material": [{"@Name": "Wood"}]},
         }
-        context = engine._build_cel_context(payload, self._make_validator())
+        context = engine._build_cel_context(payload, self.validator)
 
         # "Materials" is valid → promoted
         self.assertIn("Materials", context)
@@ -425,14 +461,13 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         self.assertIn("Materials", context["payload"])
 
     def test_at_prefixed_keys_not_promoted_via_collect(self):
-        """
-        The partial-path-match collector should not surface @-prefixed
+        """The partial-path-match collector should not surface @-prefixed
         attribute keys (from xml_to_dict) as top-level variables.
         """
         engine = BasicValidator()
         # xml_to_dict produces @-prefixed keys for XML attributes
         payload = {"root": {"child": {"@id": "42", "value": "hello"}}}
-        context = engine._build_cel_context(payload, self._make_validator())
+        context = engine._build_cel_context(payload, self.validator)
 
         # @id should NOT appear as a top-level variable
         self.assertNotIn("@id", context)
@@ -440,13 +475,15 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         self.assertIn("root", context)
 
     def test_disabled_custom_targets_skips_promotion(self):
-        """
-        When allow_custom_assertion_targets is False, payload keys are never
-        promoted — so invalid keys are irrelevant.
+        """When ``allow_custom_assertion_targets`` is False, payload keys are
+        never promoted — so invalid keys are irrelevant.
+
+        Uses a JSON_SCHEMA validator (not BASIC) because BASIC validators
+        always have ``allow_custom_assertion_targets=True`` by design.
         """
         engine = BasicValidator()
         payload = {"THERM-XML": {"Units": "SI"}, "Materials": []}
-        validator = self._make_validator(allow_custom=False)
+        validator = ValidatorFactory(allow_custom_assertion_targets=False)
         context = engine._build_cel_context(payload, validator)
 
         # Only "payload" should be a top-level key
@@ -455,45 +492,37 @@ class CelContextInvalidKeyTests(SimpleTestCase):
         self.assertNotIn("Materials", context)
 
 
-class BasicValidatorHyphenatedXmlEndToEndTests(SimpleTestCase):
-    """
-    End-to-end validation tests with XML documents whose element names
+class BasicValidatorHyphenatedXmlEndToEndTests(TestCase):
+    """End-to-end validation tests with XML documents whose element names
     contain hyphens, confirming the full pipeline doesn't crash.
+
+    Hyphenated element names are common in real-world XML formats (e.g.,
+    THERM's ``<THERM-XML>`` root element). Before the CEL identifier fix,
+    these caused ``ValueError: Invalid name THERM-XML`` when the key was
+    promoted to a top-level CEL variable.
+
+    Uses real Django model instances via FactoryBoy to exercise the full
+    ORM path through ``catalog_entries`` and ``assertions`` querysets.
     """
 
-    @staticmethod
-    def _make_submission(*, file_type: str, content: str) -> MagicMock:
-        sub = MagicMock()
-        sub.file_type = file_type
-        sub.get_content.return_value = content
-        return sub
-
-    @staticmethod
-    def _make_validator(*, allow_custom: bool = True) -> MagicMock:
-        validator = MagicMock()
-        entries_qs = validator.catalog_entries.all.return_value
-        entries_qs.only.return_value.filter.return_value = []
-        validator.default_ruleset = None
-        validator.allow_custom_assertion_targets = allow_custom
-        return validator
-
-    @staticmethod
-    def _make_empty_ruleset() -> MagicMock:
-        ruleset = MagicMock(unsafe=True)
-        assertions_qs = ruleset.assertions.all.return_value
-        assertions_qs.select_related.return_value.order_by.return_value = []
-        return ruleset
+    @classmethod
+    def setUpTestData(cls):
+        cls.validator = ValidatorFactory(validation_type=ValidationType.BASIC)
+        # A ruleset with no assertions — submissions should pass validation
+        # since there's nothing to assert against.
+        cls.ruleset = RulesetFactory(ruleset_type=RulesetType.BASIC)
 
     def test_xml_with_hyphenated_root_validates_without_crash(self):
-        """
-        A full validate() call with a hyphenated root element like
-        <THERM-XML> should complete without raising ValueError.
+        """A full ``validate()`` call with a hyphenated root element like
+        ``<THERM-XML>`` should complete without raising ``ValueError``.
 
-        Before the fix, this would crash with:
+        Before the fix, this would crash with::
+
             ValueError: Invalid name THERM-XML
+
         because the root key was promoted to a top-level CEL variable.
         """
-        submission = self._make_submission(
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
             content=(
                 '<THERM-XML xmlns="http://windows.lbl.gov">'
@@ -502,19 +531,18 @@ class BasicValidatorHyphenatedXmlEndToEndTests(SimpleTestCase):
             ),
         )
         engine = BasicValidator()
-        result = engine.validate(
-            self._make_validator(),
-            submission,
-            self._make_empty_ruleset(),
-        )
+        result = engine.validate(self.validator, submission, self.ruleset)
 
         self.assertTrue(result.passed)
 
     def test_xml_with_hyphenated_child_elements_validates(self):
+        """Hyphenated child element names should also not crash the pipeline.
+
+        Even when nested inside a valid root element, hyphenated children
+        (e.g., ``<energy-rating>``) must be silently skipped during CEL
+        context promotion.
         """
-        Hyphenated child element names should also not crash the pipeline.
-        """
-        submission = self._make_submission(
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
             content=(
                 "<root>"
@@ -524,29 +552,23 @@ class BasicValidatorHyphenatedXmlEndToEndTests(SimpleTestCase):
             ),
         )
         engine = BasicValidator()
-        result = engine.validate(
-            self._make_validator(),
-            submission,
-            self._make_empty_ruleset(),
-        )
+        result = engine.validate(self.validator, submission, self.ruleset)
 
         self.assertTrue(result.passed)
 
     def test_xml_with_attributes_validates(self):
+        """XML attributes (converted to ``@``-prefixed keys by xml_to_dict)
+        should not crash CEL context building.
+
+        The ``@``-prefix makes these invalid CEL identifiers, so they
+        must be filtered out during key promotion.
         """
-        XML attributes (converted to @-prefixed keys by xml_to_dict) should
-        not crash CEL context building.
-        """
-        submission = self._make_submission(
+        submission = SubmissionFactory(
             file_type=SubmissionFileType.XML,
             content='<root><item id="1" type="widget">Test</item></root>',
         )
         engine = BasicValidator()
-        result = engine.validate(
-            self._make_validator(),
-            submission,
-            self._make_empty_ruleset(),
-        )
+        result = engine.validate(self.validator, submission, self.ruleset)
 
         self.assertTrue(result.passed)
 
@@ -622,11 +644,21 @@ class CollectAllKeysTests(SimpleTestCase):
 
 
 class CelErrorMessageTests(TestCase):
-    """Tests for CelAssertionEvaluator._format_error_message().
+    """Tests for ``CelAssertionEvaluator._format_error_message()``.
 
     The error message for undefined identifiers should vary based on
     whether the validator uses custom data paths (Basic-style) or
-    catalog entries (EnergyPlus-style), so the guidance is actionable.
+    catalog entries (EnergyPlus-style), so the guidance is actionable:
+
+    - **Custom targets** (``allow_custom_assertion_targets=True``): the error
+      suggests checking the data path, since the user controls which paths
+      are exposed as CEL variables.
+    - **Catalog targets** (``allow_custom_assertion_targets=False``): the error
+      suggests checking signal names, since the validator defines which
+      catalog entries are available.
+
+    Uses real Django model instances for validators to exercise the
+    ``allow_custom_assertion_targets`` field naturally.
     """
 
     def _get_evaluator(self):
@@ -637,10 +669,14 @@ class CelErrorMessageTests(TestCase):
         return CelAssertionEvaluator()
 
     def test_custom_targets_message(self):
-        """Validators with custom data paths get data-path guidance."""
+        """Validators with custom data paths get data-path guidance.
+
+        BASIC validators have ``allow_custom_assertion_targets=True`` by
+        design, so the error message refers to "data path" rather than
+        "signal".
+        """
         evaluator = self._get_evaluator()
-        validator = MagicMock()
-        validator.allow_custom_assertion_targets = True
+        validator = ValidatorFactory(validation_type=ValidationType.BASIC)
 
         msg = evaluator._format_error_message(
             "undeclared reference to 'Materials'",
@@ -651,10 +687,14 @@ class CelErrorMessageTests(TestCase):
         self.assertNotIn("signal", msg)
 
     def test_catalog_targets_message(self):
-        """Validators without custom targets get signal guidance."""
+        """Validators without custom targets get signal guidance.
+
+        Non-BASIC validators (e.g., JSON_SCHEMA) have
+        ``allow_custom_assertion_targets=False`` by default, so the error
+        message refers to "signal" names from the catalog.
+        """
         evaluator = self._get_evaluator()
-        validator = MagicMock()
-        validator.allow_custom_assertion_targets = False
+        validator = ValidatorFactory(allow_custom_assertion_targets=False)
 
         msg = evaluator._format_error_message(
             "undeclared reference to 'price'",
@@ -665,14 +705,19 @@ class CelErrorMessageTests(TestCase):
         self.assertNotIn("data path", msg)
 
     def test_non_identifier_error_passes_through(self):
-        """Errors that aren't about undefined identifiers pass through."""
+        """Errors that aren't about undefined identifiers pass through unchanged."""
         evaluator = self._get_evaluator()
         raw = "type mismatch: int vs string"
         msg = evaluator._format_error_message(raw)
         self.assertEqual(msg, raw)
 
     def test_dot_at_syntax_error_message(self):
-        """m.@Conductivity compile error gets a helpful message."""
+        """``m.@Conductivity`` compile error gets a helpful message.
+
+        This is a common mistake with XML-derived data: users write dot
+        notation for @-prefixed keys, but CEL treats ``@`` as a syntax
+        error. The message should suggest bracket notation instead.
+        """
         evaluator = self._get_evaluator()
         raw = (
             "Materials.Material.all(m, double(m.@Conductivity) > 0.0)\n"
@@ -684,7 +729,7 @@ class CelErrorMessageTests(TestCase):
         self.assertNotIn("^", msg)
 
     def test_field_selection_error_message(self):
-        """Field selection failure on @-keyed dict gets helpful message."""
+        """Field selection failure on ``@``-keyed dict gets helpful message."""
         evaluator = self._get_evaluator()
         raw = (
             "({'Material': [{'@Name': 'Wood'}]} "
@@ -695,7 +740,8 @@ class CelErrorMessageTests(TestCase):
         self.assertIn("@Conductivity", msg)
 
     def test_no_such_member_error_message(self):
-        """Missing member on MapType (e.g. Conductivity instead of @Conductivity)."""
+        """Missing member on MapType (e.g. ``Conductivity``
+        instead of ``@Conductivity``)."""
         evaluator = self._get_evaluator()
         # cel-python wraps the error with escaped quotes
         raw = (

@@ -114,6 +114,20 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Sync execution - container completed, call post_execute_validate()
         # We already persisted input-stage findings above, so we must APPEND
         # output-stage findings to preserve them.
+        #
+        # Persist preprocessing metadata (e.g., template_parameters_used,
+        # template_warnings) into step_run.output NOW, before
+        # _complete_with_envelope() rebuilds the output from the envelope.
+        # finalize_step() merges new stats into existing output, so this
+        # metadata will survive the envelope serialization.
+        # (On the async path, _record_pending_state() does the same thing.)
+        if result.stats:
+            self.step_run.output = {
+                **(self.step_run.output or {}),
+                **result.stats,
+            }
+            self.step_run.save(update_fields=["output"])
+
         if result.output_envelope is None:
             return self._handle_missing_envelope()
         return self._complete_with_envelope(

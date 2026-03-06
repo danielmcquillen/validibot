@@ -14,6 +14,7 @@ from validibot.validations.constants import CatalogRunStage
 from validibot.validations.constants import CatalogValueType
 from validibot.validations.constants import CustomValidatorType
 from validibot.validations.constants import JSONSchemaVersion
+from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import RulesetType
 from validibot.validations.constants import Severity
 from validibot.validations.constants import StepStatus
@@ -31,6 +32,7 @@ from validibot.validations.models import ValidationRun
 from validibot.validations.models import ValidationStepRun
 from validibot.validations.models import Validator
 from validibot.validations.models import ValidatorCatalogEntry
+from validibot.validations.models import ValidatorResourceFile
 from validibot.validations.models import default_supported_data_formats_for_validation
 from validibot.validations.models import default_supported_file_types_for_validation
 from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -239,3 +241,24 @@ class CallbackReceiptFactory(DjangoModelFactory):
     result_uri = factory.LazyAttribute(
         lambda o: f"gs://bucket/runs/{o.validation_run.id}/output.json"
     )
+
+
+class ValidatorResourceFileFactory(DjangoModelFactory):
+    """Factory for ValidatorResourceFile — catalog-mode resource files.
+
+    Creates an EnergyPlus weather file by default. The ``file`` field uses
+    a SimpleUploadedFile so tests don't touch the real filesystem.
+    """
+
+    class Meta:
+        model = ValidatorResourceFile
+
+    validator = factory.SubFactory(
+        ValidatorFactory,
+        validation_type=ValidationType.ENERGYPLUS,
+    )
+    resource_type = ResourceFileType.ENERGYPLUS_WEATHER
+    name = factory.Sequence(lambda n: f"Weather File {n}")
+    filename = factory.Sequence(lambda n: f"weather-{n}.epw")
+    file = factory.django.FileField(filename="weather.epw", data=b"LOCATION,Test")
+    is_default = False

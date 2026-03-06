@@ -307,6 +307,58 @@ config = ValidatorConfig(
             order=141,
         ),
         # ==================================================================
+        # OUTPUT SIGNALS - Window Envelope
+        # ==================================================================
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_heat_gain_kwh",
+            label="Window Heat Gain (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual heat gain through windows. Extracted from "
+                "Surface Window Heat Gain Energy output variable."
+            ),
+            binding_config={"source": "metric", "key": "window_heat_gain_kwh"},
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=150,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_heat_loss_kwh",
+            label="Window Heat Loss (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual heat loss through windows. Extracted from "
+                "Surface Window Heat Loss Energy output variable."
+            ),
+            binding_config={"source": "metric", "key": "window_heat_loss_kwh"},
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=151,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_transmitted_solar_kwh",
+            label="Transmitted Solar (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual solar radiation transmitted through windows. "
+                "Direct expression of SHGC effect. Extracted from Surface "
+                "Window Transmitted Solar Radiation Energy output variable."
+            ),
+            binding_config={
+                "source": "metric",
+                "key": "window_transmitted_solar_kwh",
+            },
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=152,
+        ),
+        # ==================================================================
         # DERIVATIONS (computed from other signals)
         # ==================================================================
         CatalogEntrySpec(

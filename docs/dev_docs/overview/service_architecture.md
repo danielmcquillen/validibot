@@ -114,7 +114,7 @@ from validibot.workflows.step_configs import get_step_config
 
 typed = get_step_config(step)
 if isinstance(typed, EnergyPlusStepConfig):
-    file_ids = typed.resource_file_ids  # list[str], type-checked
+    checks = typed.idf_checks  # list[str], type-checked
 ```
 
 All models use `extra="allow"` so runtime-injected keys (like
@@ -136,7 +136,7 @@ mismatches at save time rather than at runtime.
 |--------------------|-------|------------|
 | JSON_SCHEMA | `JsonSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
 | XML_SCHEMA | `XmlSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
-| ENERGYPLUS | `EnergyPlusStepConfig` | `resource_file_ids`, `idf_checks`, `run_simulation`, `timestep_per_hour` |
+| ENERGYPLUS | `EnergyPlusStepConfig` | `idf_checks`, `run_simulation`, `timestep_per_hour` (resource files stored via `WorkflowStepResource`) |
 | AI_ASSIST | `AiAssistStepConfig` | `template`, `mode`, `cost_cap_cents`, `selectors`, `policy_rules` |
 | BASIC | `BasicStepConfig` | (empty) |
 | FMU | `FmuStepConfig` | (empty) |

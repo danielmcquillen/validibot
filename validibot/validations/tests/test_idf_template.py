@@ -1414,6 +1414,42 @@ class TestMergeHappyPaths:
         )
         assert result.parameters["TIMESTEP"] == "4"
 
+    def test_json_boolean_coerced_to_string(self):
+        """json.loads() produces Python bool for JSON true/false.
+
+        Since bool is an int subclass in Python, ``str(True)`` → ``"True"``,
+        which is not a valid float.  The merge function should coerce to
+        string first, then the number validator rejects ``"True"`` with a
+        clear error.  This catches the real-world case where a submitter
+        accidentally sends ``{"RUN_SIM": true}`` instead of a string.
+        """
+        variables = [
+            _make_var("FLAG", variable_type="number"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"FLAG": True},  # type: ignore[dict-item]
+                template_variables=variables,
+            )
+        assert "must be a number" in exc_info.value.messages[0]
+
+    def test_json_null_coerced_to_string(self):
+        """json.loads() produces Python None for JSON null.
+
+        ``str(None)`` → ``"None"``, which is not a valid float.  The merge
+        function should coerce and reject, not crash with an AttributeError
+        on ``None.strip()``.
+        """
+        variables = [
+            _make_var("VALUE", variable_type="number"),
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            merge_and_validate_template_parameters(
+                submitter_params={"VALUE": None},  # type: ignore[dict-item]
+                template_variables=variables,
+            )
+        assert "must be a number" in exc_info.value.messages[0]
+
 
 class TestMergeRequiredMissing:
     """Test that missing required parameters raise ValidationError with
@@ -1610,6 +1646,30 @@ class TestMergeChoiceValidation:
         msg = exc_info.value.messages[0]
         assert "not a valid choice" in msg
         assert "VeryRough" in msg
+
+    def test_choice_with_structural_chars_accepted(self):
+        """Choice values bypass the IDF structural character check.
+
+        The author explicitly curated the allowlist, so values containing
+        commas or semicolons are intentional.  This is the trust boundary:
+        text-type values with structural chars are BLOCKED (untrusted user
+        input), but choice-type values are ACCEPTED (author-curated).
+
+        This test documents the deliberate design decision from the ADR's
+        "Choice Values with IDF Structural Characters" edge case section.
+        """
+        variables = [
+            _make_var(
+                "NODE_NAME",
+                variable_type="choice",
+                choices=["Zone A, Return", "Zone B; Exhaust"],
+            ),
+        ]
+        result = merge_and_validate_template_parameters(
+            submitter_params={"NODE_NAME": "Zone A, Return"},
+            template_variables=variables,
+        )
+        assert result.parameters["NODE_NAME"] == "Zone A, Return"
 
 
 class TestMergeTextValidation:

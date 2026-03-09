@@ -6,9 +6,8 @@ config building and resource syncing:
 
 1. ``build_energyplus_config()`` — Validates uploaded IDF files, scans for
    ``$VARIABLE_NAME`` placeholders, populates ``template_variables`` in the
-   config dict, handles template removal, and preserves existing config when
-   no upload occurs.  Also merges author annotations from the Template
-   Variable Editor (Phase 3) into the stored config.
+   config dict, handles template removal, and preserves existing config
+   as-is when no upload occurs.
 
 2. ``_sync_energyplus_resources()`` — Creates/deletes ``WorkflowStepResource``
    rows with ``role=MODEL_TEMPLATE`` for step-owned template files.
@@ -16,10 +15,11 @@ config building and resource syncing:
 3. ``save_workflow_step()`` — File type enforcement ensures workflows with
    parameterized templates accept JSON submissions.
 
-4. Template Variable Editor (Phase 3) — Dynamic form fields for per-variable
-   annotation, including type constraints, defaults, min/max bounds, and
-   choices.  The ``template_variable_fields`` property groups BoundField
-   objects for template rendering.
+4. Template Variable Annotation — ``TemplateVariableAnnotationForm`` (a
+   standalone form) creates dynamic ``tplvar_*`` fields for per-variable
+   annotation.  ``merge_template_variable_annotations()`` (an extracted
+   helper in ``views_helpers``) merges author annotations into the stored
+   config.  These are tested independently of ``build_energyplus_config()``.
 
 5. ``launch_energyplus_validation()`` (Phase 4) — Launcher integration
    testing with real Django models and mocked GCS/Cloud Run I/O to verify
@@ -50,12 +50,14 @@ from validibot.validations.tests.factories import ValidationStepRunFactory
 from validibot.validations.tests.factories import ValidatorFactory
 from validibot.validations.tests.factories import ValidatorResourceFileFactory
 from validibot.workflows.forms import EnergyPlusStepConfigForm
+from validibot.workflows.forms import TemplateVariableAnnotationForm
 from validibot.workflows.models import WorkflowStepResource
 from validibot.workflows.tests.factories import WorkflowFactory
 from validibot.workflows.tests.factories import WorkflowStepFactory
 from validibot.workflows.tests.factories import WorkflowStepResourceFactory
 from validibot.workflows.views_helpers import _sync_energyplus_resources
 from validibot.workflows.views_helpers import build_energyplus_config
+from validibot.workflows.views_helpers import merge_template_variable_annotations
 from validibot.workflows.views_helpers import save_workflow_step
 
 pytestmark = pytest.mark.django_db
@@ -118,12 +120,6 @@ def _make_form(
 
     Auto-selects the first available weather file from the database to
     satisfy the required ChoiceField — callers don't need to pass it.
-
-    When a step has ``template_variables`` in its config, the
-    dynamic ``tplvar_*`` fields are auto-populated from the existing
-    config values.  This simulates a browser form submission where
-    pre-populated fields are included in the POST data.  Callers can
-    override individual fields via the ``data`` dict.
     """
     if data is None:
         data = {}
@@ -162,36 +158,6 @@ def _make_form(
         "case_sensitive": True,
         "remove_template": False,
     }
-
-    # Auto-populate tplvar_* fields from step config.  This mirrors
-    # what happens in a real browser submission: the pre-populated
-    # initial values are included in the POST data.
-    if step:
-        config = step.config or {}
-        for i, var in enumerate(config.get("template_variables", [])):
-            prefix = f"tplvar_{i}"
-            defaults.setdefault(f"{prefix}_description", var.get("description", ""))
-            defaults.setdefault(f"{prefix}_default", var.get("default", ""))
-            defaults.setdefault(f"{prefix}_units", var.get("units", ""))
-            defaults.setdefault(
-                f"{prefix}_variable_type", var.get("variable_type", "text")
-            )
-            min_val = var.get("min_value")
-            defaults.setdefault(
-                f"{prefix}_min_value", str(min_val) if min_val is not None else ""
-            )
-            defaults.setdefault(
-                f"{prefix}_min_exclusive", var.get("min_exclusive", False)
-            )
-            max_val = var.get("max_value")
-            defaults.setdefault(
-                f"{prefix}_max_value", str(max_val) if max_val is not None else ""
-            )
-            defaults.setdefault(
-                f"{prefix}_max_exclusive", var.get("max_exclusive", False)
-            )
-            choices_list = var.get("choices", [])
-            defaults.setdefault(f"{prefix}_choices", "\n".join(choices_list))
 
     defaults.update(data)
 
@@ -567,10 +533,10 @@ class TestBuildConfigPreservesExisting:
     def test_preserves_existing_template_variables(self):
         """Existing ``template_variables`` survive a settings-only edit.
 
-        If the author only changes ``run_simulation``, the template metadata
-        from the previous save should carry forward unchanged.  The merge
-        logic reads the dynamic ``tplvar_*`` form fields, which are auto-
-        populated from step config by ``_make_form``.
+        When no template upload or removal occurs, ``build_energyplus_config()``
+        preserves existing ``template_variables`` from the step's config as-is.
+        Annotation editing now happens in the dedicated template variables card
+        (via ``merge_template_variable_annotations``), not in the step config form.
         """
         validator = _make_energyplus_validator()
         existing_vars = [
@@ -995,20 +961,28 @@ class TestFormTemplateState:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 3: Template Variable Editor — dynamic form fields
+# TemplateVariableAnnotationForm — dynamic form fields
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _make_annotation_form(step):
+    """Create a ``TemplateVariableAnnotationForm`` bound to the given step.
+
+    This is the standalone form that renders the per-variable annotation
+    card on the step detail page.  It reads ``template_variables`` from
+    ``step.config`` and creates dynamic ``tplvar_*`` fields.
+    """
+    return TemplateVariableAnnotationForm(step=step)
+
+
 class TestVariableEditorDynamicFields:
-    """Tests for the dynamic per-variable form fields on EnergyPlusStepConfigForm.
+    """Tests for the dynamic per-variable fields on TemplateVariableAnnotationForm.
 
-    When a step has ``template_variables`` in its config, the form creates
-    dynamic fields (``tplvar_0_description``, ``tplvar_0_variable_type``, etc.)
-    for each variable.  These fields let the author annotate each variable
-    with a type, constraints, default value, and label.
-
-    The fields are excluded from the crispy ``Layout`` and rendered by the
-    ``template_variable_editor.html`` partial instead.
+    When a step has ``template_variables`` in its config, the standalone
+    annotation form creates dynamic fields (``tplvar_0_description``,
+    ``tplvar_0_variable_type``, etc.) for each variable.  These fields
+    let the author annotate each variable with a type, constraints,
+    default value, and label.
     """
 
     def test_dynamic_fields_created_for_template_variables(self):
@@ -1022,15 +996,13 @@ class TestVariableEditorDynamicFields:
         step = WorkflowStepFactory(
             validator=validator,
             config={
-                "idf_checks": [],
-                "run_simulation": False,
                 "template_variables": [
                     {"name": "U_FACTOR", "description": "U-Factor"},
                     {"name": "SHGC", "description": "SHGC"},
                 ],
             },
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         # 9 fields per variable x 2 variables = 18 dynamic fields
         tplvar_fields = [f for f in form.fields if f.startswith("tplvar_")]
@@ -1052,7 +1024,7 @@ class TestVariableEditorDynamicFields:
             validator=validator,
             config={"idf_checks": [], "run_simulation": False},
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         tplvar_fields = [f for f in form.fields if f.startswith("tplvar_")]
         assert tplvar_fields == []
@@ -1067,8 +1039,6 @@ class TestVariableEditorDynamicFields:
         step = WorkflowStepFactory(
             validator=validator,
             config={
-                "idf_checks": [],
-                "run_simulation": False,
                 "template_variables": [
                     {
                         "name": "U_FACTOR",
@@ -1085,7 +1055,7 @@ class TestVariableEditorDynamicFields:
                 ],
             },
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         assert form.fields["tplvar_0_description"].initial == "Window U-Factor"
         assert form.fields["tplvar_0_default"].initial == "2.0"
@@ -1102,20 +1072,19 @@ class TestVariableEditorDynamicFields:
         Template variables only exist after the first template upload and
         save cycle.
         """
-        validator = _make_energyplus_validator()
-        form = _make_form(validator=validator, step=None)
+        form = TemplateVariableAnnotationForm(step=None)
 
         tplvar_fields = [f for f in form.fields if f.startswith("tplvar_")]
         assert tplvar_fields == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 3: template_variable_fields property
+# TemplateVariableAnnotationForm.template_variable_fields property
 # ══════════════════════════════════════════════════════════════════════════════
 
 
 class TestTemplateVariableFieldsProperty:
-    """Tests for the ``template_variable_fields`` form property.
+    """Tests for ``TemplateVariableAnnotationForm.template_variable_fields``.
 
     This property returns a list of dicts, each containing a variable's
     name, index, required/optional badge state, and BoundField objects.
@@ -1133,14 +1102,12 @@ class TestTemplateVariableFieldsProperty:
         step = WorkflowStepFactory(
             validator=validator,
             config={
-                "idf_checks": [],
-                "run_simulation": False,
                 "template_variables": [
                     {"name": "U_FACTOR", "description": "U-Factor"},
                 ],
             },
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         fields = form.template_variable_fields
         assert len(fields) == 1
@@ -1162,14 +1129,12 @@ class TestTemplateVariableFieldsProperty:
         step = WorkflowStepFactory(
             validator=validator,
             config={
-                "idf_checks": [],
-                "run_simulation": False,
                 "template_variables": [
                     {"name": "U_FACTOR", "default": ""},
                 ],
             },
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         assert form.template_variable_fields[0]["is_required"] is True
 
@@ -1179,71 +1144,60 @@ class TestTemplateVariableFieldsProperty:
         step = WorkflowStepFactory(
             validator=validator,
             config={
-                "idf_checks": [],
-                "run_simulation": False,
                 "template_variables": [
                     {"name": "U_FACTOR", "default": "2.0"},
                 ],
             },
         )
-        form = _make_form(validator=validator, step=step)
+        form = _make_annotation_form(step)
 
         assert form.template_variable_fields[0]["is_required"] is False
 
     def test_empty_when_no_template_variables(self):
         """Returns empty list when no template variables exist."""
-        validator = _make_energyplus_validator()
-        form = _make_form(validator=validator, step=None)
+        form = TemplateVariableAnnotationForm(step=None)
 
         assert form.template_variable_fields == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Phase 3: Annotation merge in build_energyplus_config()
+# merge_template_variable_annotations() — annotation merge
 # ══════════════════════════════════════════════════════════════════════════════
 
 
 class TestAnnotationMerge:
-    """Tests for annotation merge when saving with the variable editor.
+    """Tests for ``merge_template_variable_annotations()``.
 
-    When an existing step has template variables and the author saves the
-    form (without uploading a new template or removing the existing one),
-    ``build_energyplus_config()`` reads the dynamic ``tplvar_*`` fields
-    and merges author-provided annotations into the config.
+    This extracted helper takes existing template variable dicts and
+    form data with ``tplvar_*`` keys, then returns a new list of
+    variable dicts with author annotations merged in.  It is called by
+    ``WorkflowStepTemplateVariablesView`` when saving annotations from
+    the step detail page's template variables card.
     """
 
     def test_annotations_persist_on_save(self):
-        """Author annotations from the form are written to config.
+        """Author annotations from form data are merged into the variable dicts.
 
         When the author fills in description, default, and type fields,
-        those values should appear in the merged ``template_variables``.
+        those values should appear in the merged output.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [
-                    {"name": "U_FACTOR", "description": "U-Factor", "units": "W/m2-K"},
-                ],
-            },
-        )
-        form = _make_form(
-            validator=validator,
-            step=step,
-            data={
-                "tplvar_0_description": "Window U-Factor",
-                "tplvar_0_default": "2.0",
-                "tplvar_0_variable_type": "number",
-                "tplvar_0_min_value": "0.1",
-                "tplvar_0_max_value": "7.0",
-            },
-        )
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        existing_vars = [
+            {"name": "U_FACTOR", "description": "U-Factor", "units": "W/m2-K"},
+        ]
+        form_data = {
+            "tplvar_0_description": "Window U-Factor",
+            "tplvar_0_default": "2.0",
+            "tplvar_0_variable_type": "number",
+            "tplvar_0_units": "W/m2-K",
+            "tplvar_0_min_value": "0.1",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "7.0",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        var = config["template_variables"][0]
+        var = result[0]
         assert var["name"] == "U_FACTOR"
         assert var["description"] == "Window U-Factor"
         assert var["default"] == "2.0"
@@ -1254,28 +1208,25 @@ class TestAnnotationMerge:
     def test_name_is_immutable(self):
         """Variable names cannot be changed via form data.
 
-        Even if the form data includes a different name, the merge logic
-        always uses the name from the existing config.  This prevents
-        accidental renaming via DOM manipulation.
+        The merge logic always uses the name from the existing variable
+        dict.  Even if someone tampers with form data to include a name
+        field, it is ignored.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [
-                    {"name": "U_FACTOR"},
-                ],
-            },
-        )
-        # Note: there's no tplvar_0_name field — the name is not editable.
-        # But even if someone adds extra POST data, it won't be in cleaned_data.
-        form = _make_form(validator=validator, step=step)
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        existing_vars = [{"name": "U_FACTOR"}]
+        form_data = {
+            "tplvar_0_description": "",
+            "tplvar_0_default": "",
+            "tplvar_0_units": "",
+            "tplvar_0_variable_type": "text",
+            "tplvar_0_min_value": "",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        assert config["template_variables"][0]["name"] == "U_FACTOR"
+        assert result[0]["name"] == "U_FACTOR"
 
     def test_min_max_parsing(self):
         """String min/max values are parsed to floats; empty strings become None.
@@ -1283,28 +1234,21 @@ class TestAnnotationMerge:
         The form fields use CharField (not FloatField) so we can distinguish
         "empty" from "0".  The ``_parse_optional_float`` helper converts them.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [{"name": "U_FACTOR"}],
-            },
-        )
-        form = _make_form(
-            validator=validator,
-            step=step,
-            data={
-                "tplvar_0_variable_type": "number",
-                "tplvar_0_min_value": "0.5",
-                "tplvar_0_max_value": "",
-            },
-        )
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        existing_vars = [{"name": "U_FACTOR"}]
+        form_data = {
+            "tplvar_0_description": "",
+            "tplvar_0_default": "",
+            "tplvar_0_units": "",
+            "tplvar_0_variable_type": "number",
+            "tplvar_0_min_value": "0.5",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        var = config["template_variables"][0]
+        var = result[0]
         assert var["min_value"] == 0.5  # noqa: PLR2004
         assert var["max_value"] is None
 
@@ -1314,66 +1258,52 @@ class TestAnnotationMerge:
         The textarea value is split by newlines, each line is stripped of
         whitespace, and empty lines are filtered out.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [{"name": "ROUGHNESS"}],
-            },
-        )
-        form = _make_form(
-            validator=validator,
-            step=step,
-            data={
-                "tplvar_0_variable_type": "choice",
-                "tplvar_0_choices": "VerySmooth\nSmooth\n\nMediumSmooth\n",
-            },
-        )
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        existing_vars = [{"name": "ROUGHNESS"}]
+        form_data = {
+            "tplvar_0_description": "",
+            "tplvar_0_default": "",
+            "tplvar_0_units": "",
+            "tplvar_0_variable_type": "choice",
+            "tplvar_0_min_value": "",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "VerySmooth\nSmooth\n\nMediumSmooth\n",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        var = config["template_variables"][0]
+        var = result[0]
         assert var["choices"] == ["VerySmooth", "Smooth", "MediumSmooth"]
 
     def test_type_change_preserves_all_fields(self):
         """Changing variable_type stores all annotation fields.
 
         Even when the author changes from 'number' to 'text', min/max
-        values are still stored in the config.  The UI hides them, but
-        the data is preserved in case the author switches back.
+        values are still stored.  The UI hides them, but the data is
+        preserved in case the author switches back.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [
-                    {
-                        "name": "U_FACTOR",
-                        "variable_type": "number",
-                        "min_value": 0.1,
-                        "max_value": 7.0,
-                    },
-                ],
+        existing_vars = [
+            {
+                "name": "U_FACTOR",
+                "variable_type": "number",
+                "min_value": 0.1,
+                "max_value": 7.0,
             },
-        )
-        form = _make_form(
-            validator=validator,
-            step=step,
-            data={
-                "tplvar_0_variable_type": "text",
-                # min/max still in POST data from hidden fields
-                "tplvar_0_min_value": "0.1",
-                "tplvar_0_max_value": "7.0",
-            },
-        )
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        ]
+        form_data = {
+            "tplvar_0_description": "",
+            "tplvar_0_default": "",
+            "tplvar_0_units": "",
+            "tplvar_0_variable_type": "text",
+            "tplvar_0_min_value": "0.1",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "7.0",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        var = config["template_variables"][0]
+        var = result[0]
         assert var["variable_type"] == "text"
         assert var["min_value"] == 0.1  # noqa: PLR2004
         assert var["max_value"] == 7.0  # noqa: PLR2004
@@ -1383,38 +1313,36 @@ class TestAnnotationMerge:
 
         Annotations for variable 0 don't bleed into variable 1.
         """
-        validator = _make_energyplus_validator()
-        step = WorkflowStepFactory(
-            validator=validator,
-            config={
-                "idf_checks": [],
-                "run_simulation": False,
-                "template_variables": [
-                    {"name": "U_FACTOR"},
-                    {"name": "SHGC"},
-                ],
-            },
-        )
-        form = _make_form(
-            validator=validator,
-            step=step,
-            data={
-                "tplvar_0_description": "Window U-Factor",
-                "tplvar_0_variable_type": "number",
-                "tplvar_1_description": "Solar Heat Gain Coefficient",
-                "tplvar_1_variable_type": "text",
-            },
-        )
-        assert form.is_valid(), form.errors
-        config = build_energyplus_config(form, step)
+        existing_vars = [
+            {"name": "U_FACTOR"},
+            {"name": "SHGC"},
+        ]
+        form_data = {
+            "tplvar_0_description": "Window U-Factor",
+            "tplvar_0_default": "",
+            "tplvar_0_units": "",
+            "tplvar_0_variable_type": "number",
+            "tplvar_0_min_value": "",
+            "tplvar_0_min_exclusive": False,
+            "tplvar_0_max_value": "",
+            "tplvar_0_max_exclusive": False,
+            "tplvar_0_choices": "",
+            "tplvar_1_description": "Solar Heat Gain Coefficient",
+            "tplvar_1_default": "",
+            "tplvar_1_units": "",
+            "tplvar_1_variable_type": "text",
+            "tplvar_1_min_value": "",
+            "tplvar_1_min_exclusive": False,
+            "tplvar_1_max_value": "",
+            "tplvar_1_max_exclusive": False,
+            "tplvar_1_choices": "",
+        }
+        result = merge_template_variable_annotations(existing_vars, form_data)
 
-        assert config["template_variables"][0]["description"] == "Window U-Factor"
-        assert config["template_variables"][0]["variable_type"] == "number"
-        assert (
-            config["template_variables"][1]["description"]
-            == "Solar Heat Gain Coefficient"
-        )
-        assert config["template_variables"][1]["variable_type"] == "text"
+        assert result[0]["description"] == "Window U-Factor"
+        assert result[0]["variable_type"] == "number"
+        assert result[1]["description"] == "Solar Heat Gain Coefficient"
+        assert result[1]["variable_type"] == "text"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

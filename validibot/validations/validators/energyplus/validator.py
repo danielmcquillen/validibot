@@ -39,9 +39,7 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.advanced import AdvancedValidator
-from validibot.validations.validators.base.registry import register_validator
 
 if TYPE_CHECKING:
     from validibot.submissions.models import Submission
@@ -50,7 +48,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@register_validator(ValidationType.ENERGYPLUS)
 class EnergyPlusValidator(AdvancedValidator):
     """
     EnergyPlus simulation validator.

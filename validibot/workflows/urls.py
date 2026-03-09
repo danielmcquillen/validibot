@@ -141,6 +141,11 @@ urlpatterns = [
         name="workflow_step_settings",
     ),
     path(
+        "<int:pk>/steps/<int:step_id>/template-variables/",
+        views.WorkflowStepTemplateVariablesView.as_view(),
+        name="workflow_step_template_variables",
+    ),
+    path(
         "<int:pk>/steps/<int:step_id>/delete/",
         views.WorkflowStepDeleteView.as_view(),
         name="workflow_step_delete",

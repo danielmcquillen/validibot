@@ -15,6 +15,7 @@ from validibot.validations.constants import ComputeTier
 from validibot.validations.constants import ResourceFileType
 from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.config import CatalogEntrySpec
+from validibot.validations.validators.base.config import StepEditorCardSpec
 from validibot.validations.validators.base.config import ValidatorConfig
 
 config = ValidatorConfig(
@@ -22,6 +23,9 @@ config = ValidatorConfig(
     name="EnergyPlus™ Validator",
     description="Validate EnergyPlus™ IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
+    validator_class=(
+        "validibot.validations.validators.energyplus.validator.EnergyPlusValidator"
+    ),
     version="1.0",
     order=10,
     has_processor=True,
@@ -398,6 +402,21 @@ config = ValidatorConfig(
             metadata={"units": "kWh"},
             is_required=False,
             order=201,
+        ),
+    ],
+    # -- Step editor UI extensions --
+    # When a step uses a parameterized IDF template, this card appears
+    # in the step detail page's right column for editing variable
+    # annotations (label, default, type, constraints).
+    step_editor_cards=[
+        StepEditorCardSpec(
+            slug="template-variables",
+            label="Template Variables",
+            template_name="workflows/partials/template_variables_card.html",
+            form_class=("validibot.workflows.forms.TemplateVariableAnnotationForm"),
+            view_class=("validibot.workflows.views.WorkflowStepTemplateVariablesView"),
+            order=40,
+            condition=("validibot.workflows.views_helpers.step_has_template_variables"),
         ),
     ],
 )

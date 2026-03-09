@@ -1,19 +1,25 @@
 """
 Declarative configuration schema for Validibot system validators.
 
-Every validator package that needs database synchronization includes a
-``config.py`` module with a module-level ``config`` instance of
-``ValidatorConfig``. The config carries all metadata the host system
-needs to register the validator in the database and populate its
-catalog entries.
+``ValidatorConfig`` is the **single source of truth** for each validator.
+It carries all metadata the host system needs:
 
-The ``discover_configs()`` function scans validator sub-packages for
-these config modules and returns the list of configs for the
-``sync_validators`` management command.
+- **Identity and DB sync** — slug, name, catalog entries, etc.  Synced to
+  the database by the ``sync_validators`` management command.
+- **Validator class** — a dotted Python path (``validator_class``) resolved
+  at startup so the runtime can instantiate the validator.
+- **Step editor cards** — optional UI extensions (``step_editor_cards``)
+  that inject custom cards into the workflow step detail page.
 
-This follows the Django convention of using config modules for
-application-level configuration (cf. AppConfig, django-appconf)
-and uses Pydantic for schema validation.
+Every validator — whether a sub-package with its own ``config.py`` or a
+single-file built-in — declares a ``ValidatorConfig`` instance.  The
+``populate_registry()`` function, called once from
+``ValidationsConfig.ready()``, discovers all configs and populates both
+the **config registry** (metadata lookups) and the **validator class
+registry** (runtime instantiation).
+
+This replaces the previous two-registry approach where configs and
+classes were registered separately.
 """
 
 from __future__ import annotations
@@ -53,27 +59,68 @@ class CatalogEntrySpec(BaseModel):
     is_required: bool = False
 
 
-class ValidatorConfig(BaseModel):
-    """Declarative metadata for a system validator.
+class StepEditorCardSpec(BaseModel):
+    """Declares a custom card for the workflow step editor's right column.
 
-    Each validator package that needs its metadata synced to the database
-    exposes a module-level ``config`` instance of this class in its
-    ``config.py`` module. The ``discover_configs()`` function collects
-    these and the ``sync_validators`` management command writes them to
-    the database.
+    Validators use this to inject additional UI into the step detail page
+    without scattering validator-specific template logic throughout the
+    app.  The step detail view resolves these specs generically: it
+    evaluates the ``condition``, instantiates the ``form_class`` (if
+    provided), and renders ``template_name`` into the right column.
+
+    Example::
+
+        StepEditorCardSpec(
+            slug="template-variables",
+            label="Template Variables",
+            template_name="workflows/partials/template_variables_card.html",
+            form_class="validibot.workflows.forms.TemplateVariableAnnotationForm",
+            view_class="validibot.workflows.views.WorkflowStepTemplateVariablesView",
+            order=40,
+            condition="validibot.workflows.views_helpers.step_has_template_variables",
+        )
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Unique identifier for this card (used for HTML id, HTMx targeting).
+    slug: str
+    # Display label shown in tab header.
+    label: str
+    # Django template path to render.
+    template_name: str
+    # Dotted path to a Form class (optional).  If provided, the card
+    # renders an editable form.  Resolved via ``import_string()``.
+    form_class: str = ""
+    # Dotted path to a View class that handles GET/POST for this card.
+    # If omitted, the card is rendered inline with no separate endpoint.
+    view_class: str = ""
+    # Order within the right column (lower = higher).
+    order: int = 50
+    # Dotted path to a ``func(step) -> bool`` condition.  If set, the
+    # card only renders when this returns True.
+    condition: str = ""
+
+
+class ValidatorConfig(BaseModel):
+    """Single source of truth for a system validator.
+
+    Every validator declares a ``ValidatorConfig`` instance — either in a
+    ``config.py`` module inside its sub-package, or in
+    ``builtin_configs.py`` for single-file validators.  At startup,
+    ``populate_registry()`` discovers all configs and populates both the
+    config registry (metadata) and the validator class registry (runtime).
 
     Example::
 
         # In validations/validators/therm/config.py
-        from validibot.validations.validators.base.config import (
-            CatalogEntrySpec,
-            ValidatorConfig,
-        )
-
         config = ValidatorConfig(
             slug="therm-validator",
             name="THERM Validator",
             validation_type="THERM",
+            validator_class=(
+                "validibot.validations.validators.therm.validator.ThermValidator"
+            ),
             ...
         )
     """
@@ -95,6 +142,11 @@ class ValidatorConfig(BaseModel):
     # if different validators need different assertion capabilities.
     supports_assertions: bool = False
 
+    # --- Validator class ---
+    # Dotted Python path to the BaseValidator subclass.  Resolved at
+    # startup by ``populate_registry()`` via ``import_string()``.
+    validator_class: str = ""
+
     # --- File handling ---
     supported_file_types: list[str] = Field(default_factory=list)
     supported_data_formats: list[str] = Field(default_factory=list)
@@ -110,6 +162,10 @@ class ValidatorConfig(BaseModel):
 
     # --- Catalog ---
     catalog_entries: list[CatalogEntrySpec] = Field(default_factory=list)
+
+    # --- Step editor UI extensions ---
+    # Custom cards rendered in the step detail page's right column.
+    step_editor_cards: list[StepEditorCardSpec] = Field(default_factory=list)
 
 
 def discover_configs() -> list[ValidatorConfig]:
@@ -156,25 +212,35 @@ def discover_configs() -> list[ValidatorConfig]:
 
 
 # ---------------------------------------------------------------------------
-# Config Registry
+# Unified Registry
 #
 # Populated once at startup by populate_registry(), keyed by validation_type.
-# Consumers use get_config() for single lookups and get_all_configs() for
-# the full list. Functions that read from this registry handle None gracefully
-# (not every validation_type has a config — e.g. dynamically created custom
-# validators).
+#
+# Two registries are populated from a single pass over all ValidatorConfig
+# instances:
+#
+#   _CONFIG_REGISTRY — ValidatorConfig metadata (slug, catalog entries, etc.)
+#   _VALIDATOR_REGISTRY — validator class references (for runtime instantiation)
+#
+# The validator class registry lives in registry.py but is populated here.
+# Consumers use get_config() / get_all_configs() for metadata lookups and
+# registry.get() for validator class lookups.
 # ---------------------------------------------------------------------------
 
 _CONFIG_REGISTRY: dict[str, ValidatorConfig] = {}
 
 
 def populate_registry() -> None:
-    """Discover all configs and populate the global registry.
+    """Discover all configs and populate both the config and class registries.
 
-    Called once from ``ValidationsConfig.ready()``. Pulls configs from:
+    Called once from ``ValidationsConfig.ready()``.  Pulls configs from:
 
     1. ``discover_configs()`` — package-based validators with ``config.py``
     2. ``BUILTIN_CONFIGS`` — single-file built-in validators
+
+    For each config that declares a ``validator_class`` dotted path, the
+    class is resolved via ``import_string()`` and stored in the validator
+    class registry (``registry._VALIDATOR_REGISTRY``).
 
     Idempotent: skips if the registry is already populated (handles
     Django's autoreloader calling ``ready()`` twice).
@@ -182,7 +248,10 @@ def populate_registry() -> None:
     if _CONFIG_REGISTRY:
         return
 
+    from django.utils.module_loading import import_string
+
     from validibot.validations.validators.base.builtin_configs import BUILTIN_CONFIGS
+    from validibot.validations.validators.base.registry import _VALIDATOR_REGISTRY
 
     all_configs = list(discover_configs()) + list(BUILTIN_CONFIGS)
 
@@ -195,6 +264,11 @@ def populate_registry() -> None:
             )
             raise ValueError(msg)
         _CONFIG_REGISTRY[cfg.validation_type] = cfg
+
+        if cfg.validator_class:
+            cls = import_string(cfg.validator_class)
+            _VALIDATOR_REGISTRY[cfg.validation_type] = cls
+            cls.validation_type = cfg.validation_type
 
 
 def get_config(validation_type: str) -> ValidatorConfig | None:

@@ -151,7 +151,10 @@ mismatches at save time rather than at runtime.
    `BaseStepConfig`.
 3. Register it in the `STEP_CONFIG_MODELS` dict.
 4. Create the validator class implementing `BaseValidator`.
-5. Register the validator with `@register_validator`.
+5. Create a `ValidatorConfig` with `validator_class` pointing to your class
+   (in `config.py` for package-based validators, or `builtin_configs.py` for single-file).
+6. Optionally add `step_editor_cards` to declare custom UI on the step detail page.
+7. Run `python manage.py sync_validators` to sync to the database.
 
 ## File Structure
 

@@ -133,56 +133,183 @@ the database. Version upgrades happen entirely inside code by registering new pr
 
 ## Validator configuration
 
-Advanced validators (EnergyPlus, FMU, etc.) are packaged as Docker containers and have predefined
-input/output signals. Each validator defines its configuration in a `config.py` module co-located
-with its validator code (e.g., `validibot/validations/validators/energyplus/config.py`).
+`ValidatorConfig` (a Pydantic model in `validations/validators/base/config.py`) is the **single
+source of truth** for each system validator. Everything the platform needs to know about a
+validator is declared in one place:
 
-The configuration for each validator includes:
+- **Identity and DB sync** — `slug`, `name`, `description`, `validation_type`, `version`, `order`.
+  The `sync_validators` management command reads these fields and creates or updates `Validator`
+  rows and their catalog entries in the database.
+- **Validator class binding** — `validator_class` is a dotted Python path to the `BaseValidator`
+  subclass (e.g., `"validibot.validations.validators.energyplus.validator.EnergyPlusValidator"`).
+  At startup, `populate_registry()` resolves this path and stores the class in the runtime
+  registry so the engine can instantiate validators without storing Python paths in the database.
+- **File handling** — `supported_file_types`, `supported_data_formats`, `allowed_extensions`,
+  and `resource_types` declare what files the validator accepts.
+- **Compute** — `compute_tier` (LOW, MEDIUM, HIGH) tells the platform how much resource the
+  validator needs when dispatching containers.
+- **Display** — `icon` (Bootstrap Icons class) and `card_image` for the validator library UI.
+- **Catalog entries** — a list of `CatalogEntrySpec` objects describing signals, outputs, and
+  derivations the validator exposes. These map 1:1 to `ValidatorCatalogEntry` rows in the database.
+- **Step editor cards** — a list of `StepEditorCardSpec` objects that inject custom UI cards
+  into the workflow step detail page (see below).
 
-1. **Validator metadata** — slug, name, description, validation type, and configuration.
-2. **Input signals** — parameters available before the validator runs (e.g., `expected_floor_area_m2`
-   for EnergyPlus). These enable "Input Assertions" in the step editor.
-3. **Output signals** — metrics produced by the validator (e.g., `site_electricity_kwh` for EnergyPlus).
-   These enable "Output Assertions" in the step editor.
-4. **Derivations** — computed metrics derived from signals (e.g., `total_unmet_hours` calculated from
-   heating and cooling unmet hours).
+### Where configs live
 
-Configurations use typed Pydantic models (`ValidatorConfig` and `CatalogEntrySpec` from
-`validibot.validations.validators.base`). The binding configurations must match field names in the
-corresponding shared library models (e.g.,
-`validibot_shared.energyplus.models.EnergyPlusSimulationMetrics`), which is what the container
-validator populates after running the simulation.
+Validators that are full sub-packages (EnergyPlus, FMU, etc.) declare their config in a
+`config.py` module inside the package. For example, the EnergyPlus config lives at
+`validibot/validations/validators/energyplus/config.py` and exports a module-level `config`
+attribute.
 
-To sync configurations to the database:
+Simpler validators that are single Python files (Basic, JSON Schema, XML Schema, AI Assist,
+Custom) don't have their own packages. Their configs are collected in
+`validibot/validations/validators/base/builtin_configs.py` as a `BUILTIN_CONFIGS` list.
+
+### Discovery and registry population
+
+At startup, `populate_registry()` runs inside `ValidationsConfig.ready()` and does a single
+pass over all validator configs. It pulls from two sources:
+
+1. `discover_configs()` — walks the `validations/validators/` directory, imports any sub-package
+   that has a `config.py` with a `ValidatorConfig` instance.
+2. `BUILTIN_CONFIGS` — the list of single-file validators from `builtin_configs.py`.
+
+For each config, two registries are populated:
+
+- The **config registry** — keyed by `validation_type`, stores the `ValidatorConfig` for metadata
+  lookups (catalog entries, file types, display info, step editor cards).
+- The **validator class registry** — keyed by `validation_type`, stores the resolved Python class
+  for runtime instantiation. Only populated if the config declares a `validator_class` path.
+
+This unified approach replaced an earlier two-registry system where configs and classes were
+registered separately via different mechanisms.
+
+### Syncing to the database
 
 ```bash
 python manage.py sync_validators
 ```
 
-This command discovers all validator configs automatically via convention-based package scanning
-and is idempotent. It runs automatically at container startup, creating validators and catalog
-entries if they don't exist, or updating them if the configuration has changed.
+This command reads from the config registry and creates or updates `Validator` rows and their
+catalog entries. It is idempotent and runs automatically at container startup.
 
-**Versioning (current approach):** The validator `version` field in the config tracks the overall
-validator version. When signals change significantly, bump this version. The sync command updates
-existing validators but uses `get_or_create` for catalog entries (existing entries are preserved).
-For now, if you need to change existing catalog entries, manually update them in the database or
-delete and re-sync. A more sophisticated versioning system is planned for the future
+**Versioning (current approach):** The `version` field tracks the overall validator version. When
+signals change significantly, bump this version. The sync command updates existing validators but
+uses `get_or_create` for catalog entries (existing entries are preserved). For now, if you need
+to change existing catalog entries, manually update them in the database or delete and re-sync.
+A more sophisticated versioning system is planned for the future
 ([GitHub issue #92](https://github.com/danielmcquillen/validibot/issues/92)).
+
+### Step editor cards
+
+Validators can declare custom UI cards that appear in the workflow step detail page's right
+column. This is done via `StepEditorCardSpec` objects in the config's `step_editor_cards` list.
+
+Each card spec has the following fields:
+
+- `slug` — unique identifier, used for the HTML `id` attribute and HTMx targeting.
+- `label` — display text shown in the card header.
+- `template_name` — Django template path to render the card content.
+- `form_class` — optional dotted path to a Form class. If provided, the card renders an
+  editable form. Resolved via `import_string()`.
+- `view_class` — optional dotted path to a View class that handles GET/POST for the card.
+  If omitted, the card is rendered inline with no separate endpoint.
+- `order` — position within the right column (lower numbers appear higher).
+- `condition` — optional dotted path to a `func(step) -> bool` callable. When set, the card
+  only renders if the function returns `True`.
+
+The step detail view resolves these specs generically: it evaluates the condition, instantiates
+the form class (if any), and renders the template into the right column. This keeps
+validator-specific UI logic out of the core views.
+
+### Concrete example: EnergyPlus config
+
+Here's a condensed look at the EnergyPlus config (`validators/energyplus/config.py`) to show
+how all these pieces fit together:
+
+```python
+from validibot.validations.validators.base.config import (
+    CatalogEntrySpec,
+    StepEditorCardSpec,
+    ValidatorConfig,
+)
+
+config = ValidatorConfig(
+    slug="energyplus-idf-validator",
+    name="EnergyPlus Validator",
+    validation_type=ValidationType.ENERGYPLUS,
+    validator_class=(
+        "validibot.validations.validators.energyplus"
+        ".validator.EnergyPlusValidator"
+    ),
+    compute_tier=ComputeTier.HIGH,
+    supports_assertions=True,
+    catalog_entries=[
+        CatalogEntrySpec(
+            slug="site_electricity_kwh",
+            label="Site Electricity (kWh)",
+            entry_type="signal",
+            run_stage="output",
+            data_type="number",
+            binding_config={"source": "metric", "key": "site_electricity_kwh"},
+        ),
+        CatalogEntrySpec(
+            slug="total_unmet_hours",
+            label="Total Unmet Hours",
+            entry_type="derivation",
+            run_stage="output",
+            data_type="number",
+            binding_config={
+                "expr": "unmet_heating_hours + unmet_cooling_hours",
+            },
+        ),
+        # ... more signals, derivations ...
+    ],
+    step_editor_cards=[
+        StepEditorCardSpec(
+            slug="template-variables",
+            label="Template Variables",
+            template_name="workflows/partials/template_variables_card.html",
+            form_class="validibot.workflows.forms.TemplateVariableAnnotationForm",
+            view_class="validibot.workflows.views.WorkflowStepTemplateVariablesView",
+            order=40,
+            condition="validibot.workflows.views_helpers.step_has_template_variables",
+        ),
+    ],
+)
+```
+
+The `step_editor_cards` entry here means: when a workflow step uses an EnergyPlus validator
+with a parameterized IDF template, a "Template Variables" card appears in the step detail page,
+letting authors annotate template variables with labels, defaults, types, and constraints.
 
 ## Validator lifecycle
 
-1. **Registration** — migrations or bootstrap logic call `create_default_validators()` to ensure every
-   built-in validator row exists. Advanced validators are synced via `sync_validators` which
-   populates their catalog entries. Custom validators are created through the Validator Library UI.
-2. **Selection** -- workflow steps reference a validator via FK. When the step runs, the runtime fetches
-   the validator, resolves its provider, and loads the catalog/allowlists.
-3. **Ruleset preparation** — when authors publish a ruleset against a validator, the preparation
-   service ensures every referenced slug exists in the validator catalog and that the helper functions
-   used in derivations/assertions are allowed. Prepared plans are cached by validator + provider version.
-4. **Execution** — the provider optionally instruments the uploaded artifact, binds helper closures,
-   and the validator evaluates derivations followed by assertions. Findings are emitted with references
-   back to the validator + catalog snapshot for auditability.
+1. **Discovery** — `populate_registry()` runs inside `ValidationsConfig.ready()` at application
+   startup. It calls `discover_configs()` to find package-based validators (those with a
+   `config.py` module) and loads `BUILTIN_CONFIGS` for single-file validators. Both the config
+   registry and the validator class registry are populated in a single pass.
+
+2. **DB sync** — the `sync_validators` management command reads from the config registry and
+   creates or updates `Validator` rows and their `ValidatorCatalogEntry` rows in the database.
+   This runs at container startup and is idempotent. Custom validators are created separately
+   through the Validator Library UI.
+
+3. **Selection** — workflow steps reference a `Validator` via FK. The step editor UI uses
+   the config registry to display available validators with their metadata, icons, and
+   supported file types.
+
+4. **Step editor resolution** — when the step detail page loads, it reads `step_editor_cards`
+   from the validator's config, evaluates each card's `condition` callable, instantiates the
+   `form_class` if provided, and renders the card template into the right column. This is how
+   validators inject custom UI (like EnergyPlus's "Template Variables" card) without modifying
+   the core step detail view.
+
+5. **Execution** — the runtime calls `registry.get(validation_type)` to retrieve the validator
+   class, instantiates it, and runs validation. The provider optionally instruments the uploaded
+   artifact, binds helper closures, and the validator evaluates derivations followed by
+   assertions. Findings are emitted with references back to the validator and catalog snapshot
+   for auditability.
 
 See [Assertions](assertions.md) for how the validator catalog is consumed by rulesets, and
 how findings reference these slugs.

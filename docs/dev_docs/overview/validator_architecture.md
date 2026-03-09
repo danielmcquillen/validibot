@@ -396,14 +396,53 @@ def run_validation(input_envelope):
 
 ### 3. Register in Validibot
 
-Update the Django code to recognize your validator type:
+Create a `ValidatorConfig` to register your validator with the system. This is the
+single source of truth for all validator metadata, class binding, and UI extensions.
+
+**For package-based validators**, create `config.py` in your validator package:
 
 ```python
-# In the validator factory/registry
-if validator.type == "myvalidator":
-    from validibot_shared.myvalidator import MyValidatorInputEnvelope
-    envelope_class = MyValidatorInputEnvelope
+# validibot/validations/validators/myvalidator/config.py
+from validibot.validations.validators.base.config import (
+    CatalogEntrySpec,
+    ValidatorConfig,
+)
+
+config = ValidatorConfig(
+    slug="myvalidator",
+    name="My Validator",
+    description="Validates things using my custom logic.",
+    validation_type="MY_VALIDATOR",
+    validator_class="validibot.validations.validators.myvalidator.validator.MyValidator",
+    has_processor=True,
+    supported_file_types=["application/json"],
+    catalog_entries=[
+        CatalogEntrySpec(
+            slug="result-metric",
+            label="Result Metric",
+            entry_type="signal",
+            run_stage="output",
+            data_type="number",
+        ),
+    ],
+)
 ```
+
+**For single-file validators**, add to `builtin_configs.py`:
+
+```python
+# validibot/validations/validators/base/builtin_configs.py
+ValidatorConfig(
+    slug="my-simple-validator",
+    name="My Simple Validator",
+    validation_type="MY_SIMPLE",
+    validator_class="validibot.validations.validators.my_simple.MySimpleValidator",
+)
+```
+
+Then add your `ValidationType` to the enum and run `python manage.py sync_validators`
+to sync to the database. The validator class is automatically resolved at startup by
+`populate_registry()`.
 
 ## Django-Side Orchestration (`AdvancedValidator`)
 

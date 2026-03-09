@@ -10,11 +10,9 @@ from jsonschema import FormatChecker
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.base.registry import register_validator
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -23,7 +21,6 @@ if TYPE_CHECKING:
     from validibot.validations.models import Validator
 
 
-@register_validator(ValidationType.JSON_SCHEMA)
 class JsonSchemaValidator(BaseValidator):
     """
     JSON Schema validator (Draft 2020-12 compatible).

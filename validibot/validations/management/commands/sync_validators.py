@@ -45,6 +45,8 @@ class Command(BaseCommand):
                         "resource_types",
                         "icon",
                         "card_image",
+                        "validator_class",
+                        "step_editor_cards",
                     },
                 )
 

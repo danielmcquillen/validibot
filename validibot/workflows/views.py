@@ -2228,6 +2228,13 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             if validator and validator.default_ruleset_id
             else 0
         )
+
+        # Resolve step editor cards from the validator's config.
+        # Each card spec can declare a condition, form class, and
+        # template — we evaluate them generically here so the
+        # template just iterates over the resolved list.
+        editor_cards = self._resolve_editor_cards(validator)
+
         context.update(
             {
                 "workflow": workflow,
@@ -2244,9 +2251,51 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_display": catalog_display,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
+                "editor_cards": editor_cards,
             },
         )
         return context
+
+    def _resolve_editor_cards(self, validator) -> list[dict]:
+        """Resolve step editor card specs from the validator's config.
+
+        Evaluates each card's condition, instantiates its form class
+        (if any), and returns a list of context dicts ready for the
+        template to iterate and render.
+        """
+        from django.utils.module_loading import import_string
+
+        from validibot.validations.validators.base.config import get_config
+
+        if not validator:
+            return []
+
+        validator_config = get_config(validator.validation_type)
+        if not validator_config:
+            return []
+
+        cards = []
+        for card_spec in validator_config.step_editor_cards:
+            if card_spec.condition:
+                check_fn = import_string(card_spec.condition)
+                if not check_fn(self.step):
+                    continue
+
+            card_ctx = {
+                "card_spec": card_spec,
+                "step": self.step,
+                "workflow": self.get_workflow(),
+                "catalog_display": (validator.catalog_display if validator else None),
+                "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
+            }
+            if card_spec.form_class:
+                form_cls = import_string(card_spec.form_class)
+                card_ctx["tplvar_form"] = form_cls(step=self.step)
+
+            cards.append(card_ctx)
+
+        cards.sort(key=lambda c: c["card_spec"].order)
+        return cards
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
@@ -2281,6 +2330,105 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             },
         )
         return breadcrumbs
+
+
+class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
+    """HTMx endpoint for editing template variable annotations.
+
+    Renders and processes the template variables card that appears in
+    the step detail page's right column.  This view is declared as the
+    ``view_class`` in the EnergyPlus ``StepEditorCardSpec``.
+
+    GET returns the rendered card partial (for initial page load).
+    POST validates the form, merges annotations into ``step.config``,
+    and returns the re-rendered card with a toast trigger.
+    """
+
+    template_name = "workflows/partials/template_variables_card.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import TemplateVariableAnnotationForm
+
+        return TemplateVariableAnnotationForm(
+            data=self.request.POST or None,
+            step=self.step,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        validator = self.step.validator
+        catalog_display = validator.catalog_display if validator else None
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+                "tplvar_form": context.get("form"),
+                "catalog_display": catalog_display,
+                "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        from validibot.workflows.views_helpers import (
+            merge_template_variable_annotations,
+        )
+
+        existing_vars = (self.step.config or {}).get("template_variables", [])
+        merged = merge_template_variable_annotations(
+            existing_vars,
+            form.cleaned_data,
+        )
+        config = dict(self.step.config or {})
+        config["template_variables"] = merged
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        if self.request.headers.get("HX-Request"):
+            # Re-render the card with updated data and a toast trigger
+            context = self.get_context_data(form=self.get_form())
+            html = render_to_string(
+                self.template_name,
+                context,
+                request=self.request,
+            )
+            response = HttpResponse(html)
+            response["HX-Trigger"] = json.dumps(
+                {
+                    "showToast": {
+                        "message": str(
+                            _("Template variable annotations saved."),
+                        ),
+                        "level": "success",
+                    },
+                },
+            )
+            return response
+
+        return HttpResponseRedirect(
+            reverse_with_org(
+                "workflows:workflow_step_edit",
+                request=self.request,
+                kwargs={
+                    "pk": self.get_workflow().pk,
+                    "step_id": self.step.pk,
+                },
+            ),
+        )
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
 
 
 class WorkflowStepCreateView(WorkflowStepFormView):

@@ -20,10 +20,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.base.registry import register_validator
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -32,7 +30,6 @@ if TYPE_CHECKING:
     from validibot.validations.models import Validator
 
 
-@register_validator(ValidationType.AI_ASSIST)
 class AIValidator(BaseValidator):
     """
     AI-assisted validator.

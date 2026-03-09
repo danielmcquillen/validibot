@@ -25,6 +25,7 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
             " and assertions directly without a validator catalog."
         ),
         validation_type=ValidationType.BASIC,
+        validator_class="validibot.validations.validators.basic.BasicValidator",
         version="1.0",
         order=0,
         supported_file_types=[
@@ -45,6 +46,9 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         name="JSON Schema Validator",
         description="Validate JSON data against a JSON Schema definition.",
         validation_type=ValidationType.JSON_SCHEMA,
+        validator_class=(
+            "validibot.validations.validators.json_schema.JsonSchemaValidator"
+        ),
         version="1.0",
         order=1,
         supported_file_types=[SubmissionFileType.JSON],
@@ -58,6 +62,9 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         name="XML Validator",
         description="Validate XML data against XSD, RelaxNG, or DTD schemas.",
         validation_type=ValidationType.XML_SCHEMA,
+        validator_class=(
+            "validibot.validations.validators.xml_schema.XmlSchemaValidator"
+        ),
         version="1.0",
         order=2,
         supported_file_types=[SubmissionFileType.XML],
@@ -71,6 +78,7 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         name="AI Assisted Validator",
         description="AI-powered validation using language models.",
         validation_type=ValidationType.AI_ASSIST,
+        validator_class=("validibot.validations.validators.ai.validator.AIValidator"),
         version="1.0",
         order=5,
         supported_file_types=[SubmissionFileType.JSON, SubmissionFileType.TEXT],
@@ -85,6 +93,9 @@ BUILTIN_CONFIGS: list[ValidatorConfig] = [
         name="Custom Validator",
         description="User-defined validator with custom container logic.",
         validation_type=ValidationType.CUSTOM_VALIDATOR,
+        validator_class=(
+            "validibot.validations.validators.custom.validator.CustomValidator"
+        ),
         version="1.0",
         order=99,
         is_system=False,

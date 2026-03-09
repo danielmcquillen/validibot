@@ -511,55 +511,13 @@ def build_energyplus_config(
         # Attach warnings to the form so the view can display them.
         form.template_warnings = result.warnings
     elif step:
-        # No upload, no removal — merge author annotations from the
-        # dynamic form fields into the existing template variables.
-        # The variable *names* are immutable (set during scan); all
-        # other fields can be updated by the author.
+        # No upload, no removal — preserve existing template variables
+        # as-is.  Variable annotation editing happens in the dedicated
+        # template variables card on the step detail page (not here).
         existing_config = step.config or {}
         existing_vars = existing_config.get("template_variables", [])
         if existing_vars:
-            merged = []
-            for i, var in enumerate(existing_vars):
-                prefix = f"tplvar_{i}"
-                merged.append(
-                    {
-                        "name": var["name"],
-                        "description": form.cleaned_data.get(
-                            f"{prefix}_description",
-                            var.get("description", ""),
-                        ),
-                        "default": form.cleaned_data.get(
-                            f"{prefix}_default",
-                            var.get("default", ""),
-                        ),
-                        "units": form.cleaned_data.get(
-                            f"{prefix}_units",
-                            var.get("units", ""),
-                        ),
-                        "variable_type": form.cleaned_data.get(
-                            f"{prefix}_variable_type",
-                            var.get("variable_type", "text"),
-                        ),
-                        "min_value": _parse_optional_float(
-                            form.cleaned_data.get(f"{prefix}_min_value", ""),
-                        ),
-                        "min_exclusive": form.cleaned_data.get(
-                            f"{prefix}_min_exclusive",
-                            False,
-                        ),
-                        "max_value": _parse_optional_float(
-                            form.cleaned_data.get(f"{prefix}_max_value", ""),
-                        ),
-                        "max_exclusive": form.cleaned_data.get(
-                            f"{prefix}_max_exclusive",
-                            False,
-                        ),
-                        "choices": _parse_choices(
-                            form.cleaned_data.get(f"{prefix}_choices", ""),
-                        ),
-                    }
-                )
-            config["template_variables"] = merged
+            config["template_variables"] = existing_vars
             config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
             config["display_signals"] = form.cleaned_data.get("display_signals", [])
 
@@ -589,6 +547,82 @@ def _parse_choices(value: str) -> list[str]:
     if not value:
         return []
     return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def merge_template_variable_annotations(
+    existing_vars: list[dict[str, Any]],
+    form_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Merge author annotations from the template variable editor form.
+
+    Takes the existing template variable dicts (from ``step.config``)
+    and merges in the updated annotations from the form's cleaned_data.
+    Variable **names** are immutable (set during IDF scan); all other
+    fields (description, default, units, type, constraints, choices)
+    can be updated by the author.
+
+    Called by the ``WorkflowStepTemplateVariablesView`` when saving
+    annotations from the step detail page's template variables card.
+
+    Args:
+        existing_vars: List of template variable dicts from step config.
+        form_data: The form's ``cleaned_data`` dict containing
+            ``tplvar_{i}_{field_name}`` keys.
+
+    Returns:
+        New list of template variable dicts with merged annotations.
+    """
+    merged = []
+    for i, var in enumerate(existing_vars):
+        prefix = f"tplvar_{i}"
+        merged.append(
+            {
+                "name": var["name"],
+                "description": form_data.get(
+                    f"{prefix}_description",
+                    var.get("description", ""),
+                ),
+                "default": form_data.get(
+                    f"{prefix}_default",
+                    var.get("default", ""),
+                ),
+                "units": form_data.get(
+                    f"{prefix}_units",
+                    var.get("units", ""),
+                ),
+                "variable_type": form_data.get(
+                    f"{prefix}_variable_type",
+                    var.get("variable_type", "text"),
+                ),
+                "min_value": _parse_optional_float(
+                    form_data.get(f"{prefix}_min_value", ""),
+                ),
+                "min_exclusive": form_data.get(
+                    f"{prefix}_min_exclusive",
+                    False,
+                ),
+                "max_value": _parse_optional_float(
+                    form_data.get(f"{prefix}_max_value", ""),
+                ),
+                "max_exclusive": form_data.get(
+                    f"{prefix}_max_exclusive",
+                    False,
+                ),
+                "choices": _parse_choices(
+                    form_data.get(f"{prefix}_choices", ""),
+                ),
+            }
+        )
+    return merged
+
+
+def step_has_template_variables(step: WorkflowStep) -> bool:
+    """Condition function for the template variables step editor card.
+
+    Returns True when the step has template variables configured,
+    indicating the template variables card should be rendered.
+    """
+    return bool((step.config or {}).get("template_variables"))
 
 
 def _sync_energyplus_resources(

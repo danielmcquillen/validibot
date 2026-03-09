@@ -45,6 +45,12 @@ ENERGYPLUS_IDF_CHECK_CHOICES = (
     ("schedule-coverage", _("Check schedules cover 7 days")),
 )
 
+TEMPLATE_VARIABLE_TYPE_CHOICES = (
+    ("number", _("Number")),
+    ("text", _("Text")),
+    ("choice", _("Choice")),
+)
+
 MIN_NUMBER_RULE_LINE_PARTS = 2
 
 MAX_SELECTORS = 20
@@ -1052,13 +1058,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         ),
     )
 
-    # Variable type choices used by the dynamic per-variable type field.
-    VARIABLE_TYPE_CHOICES = (
-        ("number", _("Number")),
-        ("text", _("Text")),
-        ("choice", _("Choice")),
-    )
-
     def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
         super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
         self.fields.pop("display_schema", None)
@@ -1078,18 +1077,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         self.template_filename = ""
         self.template_warnings: list[str] = []
 
-        # ── Dynamic template variable fields (Phase 3) ────────────
-        # When an existing step has template_variables in its config,
-        # we create per-variable form fields so the author can annotate
-        # each variable's type, constraints, default value, etc.
-        # These fields are NOT included in the crispy Layout — they're
-        # rendered by a separate template partial.
-        self._template_variable_meta: list[dict[str, Any]] = []
-        template_vars: list[dict[str, Any]] = []
-
         if step:
             config = step.config or {}
-            template_vars = config.get("template_variables", [])
 
             # Read weather file from relational WorkflowStepResource (Phase 0)
             weather_resource = step.step_resources.filter(
@@ -1134,17 +1123,12 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             if default_rf:
                 self.initial["weather_file"] = str(default_rf.id)
 
-        # Create dynamic fields for each template variable.
-        # This runs after the step-loading block above so template_vars
-        # is populated from step.config.
-        self._create_template_variable_fields(template_vars)
-
         # ── Crispy Layout ─────────────────────────────────────────
         # Groups fields by validation mode.  Client-side JS toggles
         # the ``d-none`` class on the mode-specific Div wrappers when
-        # the author changes the radio selection.  Dynamic tplvar_*
-        # fields are excluded — the template variable editor partial
-        # renders them separately.
+        # the author changes the radio selection.  Template variable
+        # annotations are now edited via a separate plugin card on
+        # the step detail page (see TemplateVariableAnnotationForm).
         self.helper.layout = Layout(
             "name",
             "description",
@@ -1258,6 +1242,41 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             if selected:
                 self.fields["display_signals"].initial = selected
 
+
+# ---------------------------------------------------------------------------
+# Standalone form for editing template variable annotations from the step
+# detail page's right-column card.  This form is instantiated by the
+# StepEditorCardSpec plugin system — the EnergyPlus ValidatorConfig
+# declares it as the form_class for its "template-variables" card.
+# ---------------------------------------------------------------------------
+
+
+class TemplateVariableAnnotationForm(forms.Form):
+    """Per-variable annotation form for EnergyPlus parameterized templates.
+
+    Rendered in a dedicated card on the step detail page (not inline in
+    the step config form).  Accepts a ``step`` kwarg, reads existing
+    variable metadata from ``step.config["template_variables"]``, and
+    creates 9 dynamic fields per variable with the ``tplvar_{i}_*``
+    naming convention.
+
+    The ``template_variable_fields`` property groups bound fields for
+    template rendering — the partial iterates over this list to render
+    the per-variable annotation cards.
+    """
+
+    VARIABLE_TYPE_CHOICES = TEMPLATE_VARIABLE_TYPE_CHOICES
+
+    def __init__(self, *args: Any, step: Any = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._template_variable_meta: list[dict[str, Any]] = []
+
+        template_vars: list[dict[str, Any]] = []
+        if step and step.config:
+            template_vars = step.config.get("template_variables", [])
+
+        self._create_template_variable_fields(template_vars)
+
     def _create_template_variable_fields(
         self,
         template_vars: list[dict[str, Any]],
@@ -1265,14 +1284,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         """Create dynamic form fields for each template variable.
 
         For every variable in ``template_vars``, nine fields are added with
-        the naming convention ``tplvar_{index}_{field_name}``.  These fields
-        are intentionally **excluded** from the crispy ``Layout`` — the
-        template partial ``template_variable_editor.html`` renders them
-        using the ``template_variable_fields`` property.
-
-        Args:
-            template_vars: List of ``IDFTemplateVariable`` dicts from
-                ``step.config["template_variables"]``.
+        the naming convention ``tplvar_{index}_{field_name}``.
         """
         for i, var in enumerate(template_vars):
             prefix = f"tplvar_{i}"
@@ -1291,7 +1303,10 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 required=False,
                 initial=var.get("description", ""),
                 widget=forms.TextInput(
-                    attrs={"placeholder": _("Human-readable label")},
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("Human-readable label"),
+                    },
                 ),
             )
             self.fields[f"{prefix}_default"] = forms.CharField(
@@ -1300,7 +1315,10 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 required=False,
                 initial=var.get("default", ""),
                 widget=forms.TextInput(
-                    attrs={"placeholder": _("Leave empty = required")},
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("Leave empty = required"),
+                    },
                 ),
             )
             self.fields[f"{prefix}_units"] = forms.CharField(
@@ -1309,44 +1327,54 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 required=False,
                 initial=var.get("units", ""),
                 widget=forms.TextInput(
-                    attrs={"placeholder": _("e.g. W/m2-K")},
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("e.g. W/m2-K"),
+                    },
                 ),
             )
             self.fields[f"{prefix}_variable_type"] = forms.ChoiceField(
                 label=_("Type"),
                 choices=self.VARIABLE_TYPE_CHOICES,
                 initial=var.get("variable_type", "text"),
-                widget=forms.RadioSelect,
+                widget=forms.RadioSelect(
+                    attrs={"class": "form-check-input"},
+                ),
             )
-            # Min/max are stored as floats but edited as text so we can
-            # distinguish "empty" from "0".  Parsing happens in the view
-            # helper build_energyplus_config().
             min_val = var.get("min_value")
             self.fields[f"{prefix}_min_value"] = forms.CharField(
                 label=_("Min value"),
                 required=False,
                 initial=str(min_val) if min_val is not None else "",
-                widget=forms.TextInput(attrs={"placeholder": _("—")}),
+                widget=forms.TextInput(
+                    attrs={"class": "form-control", "placeholder": _("—")},
+                ),
             )
             self.fields[f"{prefix}_min_exclusive"] = forms.BooleanField(
                 label=_("Exclusive"),
                 required=False,
                 initial=var.get("min_exclusive", False),
+                widget=forms.CheckboxInput(
+                    attrs={"class": "form-check-input"},
+                ),
             )
             max_val = var.get("max_value")
             self.fields[f"{prefix}_max_value"] = forms.CharField(
                 label=_("Max value"),
                 required=False,
                 initial=str(max_val) if max_val is not None else "",
-                widget=forms.TextInput(attrs={"placeholder": _("—")}),
+                widget=forms.TextInput(
+                    attrs={"class": "form-control", "placeholder": _("—")},
+                ),
             )
             self.fields[f"{prefix}_max_exclusive"] = forms.BooleanField(
                 label=_("Exclusive"),
                 required=False,
                 initial=var.get("max_exclusive", False),
+                widget=forms.CheckboxInput(
+                    attrs={"class": "form-check-input"},
+                ),
             )
-            # Choices are stored as a list but edited as a newline-separated
-            # textarea.  Parsing happens in build_energyplus_config().
             choices_list = var.get("choices", [])
             self.fields[f"{prefix}_choices"] = forms.CharField(
                 label=_("Allowed values"),
@@ -1354,6 +1382,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 initial="\n".join(choices_list),
                 widget=forms.Textarea(
                     attrs={
+                        "class": "form-control",
                         "rows": 4,
                         "placeholder": _("Enter one value per line"),
                     },
@@ -1365,10 +1394,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         """Return template variable fields grouped for template rendering.
 
         Each item contains the variable's name, index, and BoundField
-        objects keyed by field name.  The template partial iterates over
-        this list to render the per-variable annotation cards.
-
-        Returns an empty list when no template variables are configured.
+        objects keyed by field name.
         """
         result: list[dict[str, Any]] = []
         for meta in self._template_variable_meta:

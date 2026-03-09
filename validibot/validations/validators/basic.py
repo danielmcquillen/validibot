@@ -21,12 +21,10 @@ from django.utils.translation import gettext as _
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.base import AssertionStats
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.base.registry import register_validator
 from validibot.validations.xml_utils import XmlParseError
 from validibot.validations.xml_utils import xml_to_dict
 
@@ -39,7 +37,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@register_validator(ValidationType.BASIC)
 class BasicValidator(BaseValidator):
     """
     Validates a submission by evaluating the BASIC assertions stored on a ruleset.

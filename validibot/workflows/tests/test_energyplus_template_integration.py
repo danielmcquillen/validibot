@@ -142,9 +142,21 @@ def _make_form(
         if vrf:
             weather_file_id = str(vrf.pk)
 
+    # Infer a sensible validation_mode default: template mode when the
+    # test uploads a template file or the step already has template_variables.
+    has_template_context = bool(files and files.get("template_file"))
+    if step and (step.config or {}).get("template_variables"):
+        has_template_context = True
+    default_mode = (
+        EnergyPlusStepConfigForm.VALIDATION_MODE_TEMPLATE
+        if has_template_context
+        else EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT
+    )
+
     defaults = {
         "name": "Test Step",
         "weather_file": weather_file_id,
+        "validation_mode": default_mode,
         "idf_checks": [],
         "run_simulation": False,
         "case_sensitive": True,
@@ -351,6 +363,125 @@ WindowMaterial:SimpleGlazingSystem,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# build_energyplus_config() — validation_mode routing
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildConfigValidationMode:
+    """Tests for the ``validation_mode`` field that routes config building.
+
+    The form's ``validation_mode`` radio selector determines which config keys
+    are populated by ``build_energyplus_config()``.  Direct mode stores IDF
+    check/simulation settings and clears template metadata.  Template mode
+    stores template variables, case sensitivity, and display signals.
+    """
+
+    def test_direct_mode_stores_idf_settings(self):
+        """Direct mode populates ``idf_checks`` and ``run_simulation``.
+
+        These are the settings relevant when submitters upload a complete IDF
+        file for validation.
+        """
+        validator = _make_energyplus_validator()
+        form = _make_form(
+            validator=validator,
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+                "idf_checks": ["duplicate-names"],
+                "run_simulation": True,
+            },
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert config["validation_mode"] == "direct"
+        assert config["idf_checks"] == ["duplicate-names"]
+        assert config["run_simulation"] is True
+
+    def test_direct_mode_clears_template_metadata(self):
+        """Direct mode clears template variables and display signals.
+
+        Even if template data existed before, switching to direct mode should
+        produce empty template metadata so the step no longer expects JSON
+        parameter submissions.
+        """
+        validator = _make_energyplus_validator()
+        form = _make_form(
+            validator=validator,
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+            },
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert config["template_variables"] == []
+        assert config["display_signals"] == []
+        assert config["case_sensitive"] is True
+
+    def test_template_mode_stores_template_settings(self):
+        """Template mode populates template-specific config keys.
+
+        When a template file is uploaded, the config should include
+        ``template_variables`` from the IDF scan, plus the author's
+        ``case_sensitive`` and ``display_signals`` preferences.
+        """
+        validator = _make_energyplus_validator()
+        upload = _make_template_upload()
+        form = _make_form(
+            validator=validator,
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_TEMPLATE,
+            },
+            files={"template_file": upload},
+        )
+        assert form.is_valid(), form.errors
+        config = build_energyplus_config(form)
+
+        assert config["validation_mode"] == "template"
+        expected_var_count = 3
+        assert len(config["template_variables"]) == expected_var_count
+        assert config["idf_checks"] == []
+        assert config["run_simulation"] is True
+
+    def test_direct_mode_signals_template_removal(self):
+        """Direct mode sets ``remove_template`` in cleaned_data.
+
+        This tells ``_sync_energyplus_resources()`` to delete any existing
+        template file resource from a previous template-mode configuration.
+        """
+        validator = _make_energyplus_validator()
+        form = _make_form(
+            validator=validator,
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+            },
+        )
+        assert form.is_valid(), form.errors
+        build_energyplus_config(form)
+
+        assert form.cleaned_data["remove_template"] is True
+
+    def test_validation_mode_persisted_in_config(self):
+        """The chosen validation mode is stored in the config dict.
+
+        This allows the step details card and other views to display the
+        correct mode label without inspecting resource files.
+        """
+        validator = _make_energyplus_validator()
+        for mode in ("direct", "template"):
+            data = {"validation_mode": mode}
+            if mode == "template":
+                files = {"template_file": _make_template_upload()}
+            else:
+                files = None
+            form = _make_form(validator=validator, data=data, files=files)
+            assert form.is_valid(), form.errors
+            config = build_energyplus_config(form)
+            assert config["validation_mode"] == mode
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # build_energyplus_config() — template removal
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -363,10 +494,10 @@ class TestBuildConfigWithTemplateRemoval:
     """
 
     def test_remove_clears_template_variables(self):
-        """``remove_template=True`` clears the ``template_variables`` list.
+        """Switching to direct mode clears the ``template_variables`` list.
 
         Even if the step had template variables before, the config should
-        come back with an empty list.
+        come back with an empty list because the author selected direct mode.
         """
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
@@ -381,7 +512,10 @@ class TestBuildConfigWithTemplateRemoval:
         form = _make_form(
             validator=validator,
             step=step,
-            data={"remove_template": True},
+            data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+                "remove_template": True,
+            },
         )
         assert form.is_valid(), form.errors
         config = build_energyplus_config(form, step)
@@ -391,7 +525,7 @@ class TestBuildConfigWithTemplateRemoval:
         assert config["display_signals"] == []
 
     def test_remove_preserves_non_template_config(self):
-        """Simulation settings are preserved even when template is removed.
+        """Simulation settings are preserved when switching to direct mode.
 
         ``idf_checks`` and ``run_simulation`` are independent of the
         template feature and should survive template removal.
@@ -405,6 +539,7 @@ class TestBuildConfigWithTemplateRemoval:
             validator=validator,
             step=step,
             data={
+                "validation_mode": EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
                 "remove_template": True,
                 "idf_checks": ["duplicate-names"],
                 "run_simulation": True,
@@ -489,24 +624,26 @@ class TestBuildConfigPreservesExisting:
         assert config["case_sensitive"] is True
 
     def test_no_step_no_template_keys(self):
-        """A new step (no existing step) has no template metadata in config.
+        """A new step (no existing step) in direct mode has empty template metadata.
 
         When ``step=None`` and no template is uploaded, the config should
-        only contain simulation settings — no ``template_variables`` key.
+        contain simulation settings with empty template metadata (direct mode
+        always clears template data).
         """
         validator = _make_energyplus_validator()
         form = _make_form(validator=validator)
         assert form.is_valid(), form.errors
         config = build_energyplus_config(form, step=None)
 
-        assert "template_variables" not in config
+        assert config["template_variables"] == []
+        assert config["display_signals"] == []
 
-    def test_step_without_template_has_no_template_keys(self):
-        """An existing step that never had a template has no template keys.
+    def test_step_without_template_has_empty_template_keys(self):
+        """An existing step in direct mode has empty template metadata.
 
-        This is the backward-compatibility path: pre-template steps have
-        ``config={"idf_checks": [], "run_simulation": False}`` with no
-        template keys.  Re-saving should preserve this state.
+        Pre-template steps have ``config={"idf_checks": [], "run_simulation": False}``
+        with no template keys.  Re-saving in direct mode produces empty
+        template lists (consistent cleanup).
         """
         validator = _make_energyplus_validator()
         step = WorkflowStepFactory(
@@ -517,7 +654,8 @@ class TestBuildConfigPreservesExisting:
         assert form.is_valid(), form.errors
         config = build_energyplus_config(form, step)
 
-        assert "template_variables" not in config
+        assert config["template_variables"] == []
+        assert config["display_signals"] == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -785,9 +923,9 @@ class TestFileTypeEnforcement:
         form = _make_form(validator=validator)
         assert form.is_valid(), form.errors
 
-        # Should not raise — no template variables in config
+        # Should not raise — direct mode has empty template variables
         step = save_workflow_step(workflow, validator, form)
-        assert "template_variables" not in step.config
+        assert step.config["template_variables"] == []
 
 
 # ══════════════════════════════════════════════════════════════════════════════

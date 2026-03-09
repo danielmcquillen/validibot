@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Div
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
 from django import forms
@@ -940,25 +941,60 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
     """Collects EnergyPlus step configuration options.
 
-    The EnergyPlus validator runs the simulation and returns output values.
-    Validation checks (EUI ranges, etc.) should be defined as assertions
-    against the returned signals.
+    The form presents two validation modes via the ``validation_mode`` field:
 
-    When a parameterized template is active, the form also handles template
-    file upload, case sensitivity, and template removal.  The template *file*
-    is stored on ``WorkflowStepResource`` (role=MODEL_TEMPLATE); the template
-    *configuration* (variables, case sensitivity) is stored in step config
-    and built by ``build_energyplus_config()`` in ``views_helpers.py``.
+    - **direct**: Users submit a complete IDF file.  The form shows
+      IDF-check and simulation options.
+    - **template**: Users submit JSON parameter values.  The form shows
+      template upload, case-sensitivity, and signal-selection options.
+
+    Client-side JavaScript toggles the visibility of mode-specific field
+    groups.  On the server side, ``build_energyplus_config()`` reads the
+    selected mode and only processes the relevant cleaned data.
+
+    The template *file* is stored on ``WorkflowStepResource``
+    (role=MODEL_TEMPLATE); the template *configuration* (variables, case
+    sensitivity) is stored in step config and built by
+    ``build_energyplus_config()`` in ``views_helpers.py``.
 
     Example:
         form = EnergyPlusStepConfigForm(
-            data={"run_simulation": True},
+            data={"validation_mode": "direct", "run_simulation": True},
             files=request.FILES,
             org=my_org,
             validator=energyplus_validator,
         )
     """
 
+    # ── Mode selector ─────────────────────────────────────────────
+    VALIDATION_MODE_DIRECT = "direct"
+    VALIDATION_MODE_TEMPLATE = "template"
+    VALIDATION_MODE_CHOICES = (
+        (
+            VALIDATION_MODE_DIRECT,
+            _("Validate submitted EnergyPlus IDF"),
+        ),
+        (
+            VALIDATION_MODE_TEMPLATE,
+            _("Validate values using EnergyPlus template"),
+        ),
+    )
+
+    validation_mode = forms.ChoiceField(
+        label=_("What does this step validate?"),
+        choices=VALIDATION_MODE_CHOICES,
+        widget=forms.RadioSelect,
+        initial=VALIDATION_MODE_DIRECT,
+        help_text=_(
+            "Choose 'Validate submitted EnergyPlus IDF' if submitters will "
+            "upload a complete IDF file for validation. Choose 'Validate values "
+            "using EnergyPlus template' if you want to provide a pre-built IDF "
+            "with $VARIABLE placeholders and have submitters supply only the "
+            "parameter values as JSON."
+        ),
+    )
+
+    # ── Shared fields ─────────────────────────────────────────────
     weather_file = forms.ChoiceField(
         label=_("Weather file"),
         choices=[],
@@ -967,6 +1003,8 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "This determines the climate data for the simulation."
         ),
     )
+
+    # ── Direct-mode fields ────────────────────────────────────────
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
         required=False,
@@ -981,7 +1019,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
     )
 
-    # ── Template fields (Phase 2) ─────────────────────────────────
+    # ── Template-mode fields ──────────────────────────────────────
     template_file = forms.FileField(
         label=_("Template IDF file"),
         required=False,
@@ -1003,14 +1041,13 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
         widget=forms.HiddenInput,
     )
-
-    # ── Signal selection (Phase 3) ────────────────────────────────
     display_signals = forms.MultipleChoiceField(
         label=_("Output signals to display"),
         required=False,
         widget=forms.CheckboxSelectMultiple,
         help_text=_(
-            "Select which output signals to show in submission results. "
+            "Select which output signals to show in submission results "
+            "returned to the user. "
             "If none are selected, all signals are returned."
         ),
     )
@@ -1082,6 +1119,15 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             if template_resource:
                 self.has_template = True
                 self.template_filename = template_resource.filename or ""
+
+            # Derive initial validation mode from existing step state.
+            # If a template resource exists, the step is in template mode.
+            initial_mode = (
+                self.VALIDATION_MODE_TEMPLATE
+                if self.has_template
+                else self.VALIDATION_MODE_DIRECT
+            )
+            self.fields["validation_mode"].initial = initial_mode
         else:
             # Pre-select the first default resource file for new steps
             default_rf = self._get_default_resource_file(org, validator)
@@ -1094,21 +1140,32 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         self._create_template_variable_fields(template_vars)
 
         # ── Crispy Layout ─────────────────────────────────────────
-        # Explicitly list only the "static" fields so {% crispy form %}
-        # skips the dynamic tplvar_* fields.  The template variable
-        # editor partial renders the dynamic fields separately.
+        # Groups fields by validation mode.  Client-side JS toggles
+        # the ``d-none`` class on the mode-specific Div wrappers when
+        # the author changes the radio selection.  Dynamic tplvar_*
+        # fields are excluded — the template variable editor partial
+        # renders them separately.
         self.helper.layout = Layout(
             "name",
             "description",
             "show_success_messages",
-            "notes",
+            "validation_mode",
             "weather_file",
-            "idf_checks",
-            "run_simulation",
-            "template_file",
-            "case_sensitive",
-            "remove_template",
-            "display_signals",
+            Div(
+                "idf_checks",
+                "run_simulation",
+                css_class="energyplus-mode-direct",
+                data_mode="direct",
+            ),
+            Div(
+                "template_file",
+                "case_sensitive",
+                "remove_template",
+                "display_signals",
+                css_class="energyplus-mode-template",
+                data_mode="template",
+            ),
+            "notes",
         )
 
     def _populate_weather_file_choices(self, org, validator):

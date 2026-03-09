@@ -407,17 +407,26 @@ def build_energyplus_config(
 ) -> dict[str, Any]:
     """Build the JSON config dict for an EnergyPlus step.
 
+    The ``validation_mode`` field determines which config keys are
+    populated:
+
+    - **direct**: ``idf_checks`` and ``run_simulation`` are stored.
+      Template metadata is cleared.
+    - **template**: Template variables, case sensitivity, and display
+      signals are stored.  IDF-check and simulation flags are omitted
+      (the template pipeline always runs the simulation).
+
     Resource file references (weather files, templates) are stored
     relationally via ``WorkflowStepResource`` and are synced separately
     by ``_sync_energyplus_resources()`` after the step is saved.
 
-    Template handling (Phase 2):
+    Template handling:
 
     - **Template upload**: Validates the IDF, scans for ``$VARIABLE_NAME``
       placeholders, and populates ``template_variables`` in the config.
       Raises ``ValidationError`` if the file fails validation.
-    - **Template removal**: Clears ``template_variables`` and resets
-      ``case_sensitive`` to True.
+    - **Template removal** (switching to direct mode or explicit remove):
+      Clears ``template_variables`` and resets ``case_sensitive`` to True.
     - **No change**: Preserves existing ``template_variables`` from the
       step's current config (if any).
 
@@ -426,10 +435,31 @@ def build_energyplus_config(
     """
     from validibot.validations.utils.idf_template import validate_idf_template
 
+    validation_mode = form.cleaned_data.get(
+        "validation_mode",
+        EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+    )
+
     config: dict[str, Any] = {
-        "idf_checks": form.cleaned_data.get("idf_checks", []),
-        "run_simulation": form.cleaned_data.get("run_simulation", False),
+        "validation_mode": validation_mode,
     }
+
+    if validation_mode == EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT:
+        # Direct IDF mode — store IDF check/simulation settings,
+        # clear any template metadata.
+        config["idf_checks"] = form.cleaned_data.get("idf_checks", [])
+        config["run_simulation"] = form.cleaned_data.get("run_simulation", False)
+        config["template_variables"] = []
+        config["case_sensitive"] = True
+        config["display_signals"] = []
+        # Signal _sync_energyplus_resources to remove the template file
+        # if one exists from a previous template-mode configuration.
+        form.cleaned_data["remove_template"] = True
+        return config
+
+    # ── Template mode ─────────────────────────────────────────────
+    config["idf_checks"] = []
+    config["run_simulation"] = True
 
     remove_template = form.cleaned_data.get("remove_template", False)
     template_file = form.cleaned_data.get("template_file")
@@ -456,7 +486,7 @@ def build_energyplus_config(
         # Convert TemplateVariableContext → IDFTemplateVariable dicts.
         # At this point, only auto-detected metadata is populated.
         # The author will refine descriptions, defaults, and constraints
-        # in Phase 3 (Template Variable Editor).
+        # in the Template Variable Editor.
         template_vars = []
         for var_ctx in result.scan_result.variables:
             template_vars.append(

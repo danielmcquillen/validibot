@@ -586,6 +586,7 @@ def test_create_energyplus_step_with_idf_checks(client):
         create_url,
         data={
             "name": "EnergyPlus QA",
+            "validation_mode": "direct",
             "weather_file": str(weather_resource.id),
             "run_simulation": "on",
             "idf_checks": ["duplicate-names", "hvac-sizing"],

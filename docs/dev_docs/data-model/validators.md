@@ -203,7 +203,15 @@ A more sophisticated versioning system is planned for the future
 ### Step editor cards
 
 Validators can declare custom UI cards that appear in the workflow step detail page's right
-column. This is done via `StepEditorCardSpec` objects in the config's `step_editor_cards` list.
+column via `StepEditorCardSpec` objects in the config's `step_editor_cards` list. This extension
+point is available for future use, but no validators currently declare custom cards.
+
+!!! note "Template variables use the unified signals card"
+    Since ADR-2026-03-10, template variable editing is handled by the unified "Inputs and
+    Outputs" card that appears on every step detail page. Template variables are treated as
+    input signals with `source="template"`, alongside catalog entries with `source="catalog"`.
+    Each template variable has a per-variable edit modal for annotations (label, default,
+    type, constraints). This replaced the earlier `StepEditorCardSpec`-based approach.
 
 Each card spec has the following fields:
 
@@ -218,9 +226,27 @@ Each card spec has the following fields:
 - `condition` — optional dotted path to a `func(step) -> bool` callable. When set, the card
   only renders if the function returns `True`.
 
-The step detail view resolves these specs generically: it evaluates the condition, instantiates
-the form class (if any), and renders the template into the right column. This keeps
-validator-specific UI logic out of the core views.
+### Unified signals card
+
+Every step detail page shows an "Inputs and Outputs" card in the right column. This card
+merges two sources of signals into a unified view:
+
+- **Catalog entries** — defined in the validator's `ValidatorConfig.catalog_entries` and synced
+  to the database. These represent signals the validator produces (outputs) or consumes
+  (inputs). Source badge: "Catalog".
+- **Template variables** — discovered from uploaded template files (e.g. `$U_FACTOR` in an
+  EnergyPlus IDF). Stored in `step.config["template_variables"]`. Source badge: "Template".
+
+The card has two tabs when both input and output signals exist:
+
+- **Input Signals** — catalog INPUT entries + template variables, merged in order.
+  Template-source signals have an Edit button (pencil icon) that opens a per-variable
+  annotation modal (`SingleTemplateVariableForm`).
+- **Output Signals** — catalog OUTPUT entries, each with a "show to user" indicator
+  based on the step's `display_signals` config.
+
+The `build_unified_signals()` helper in `views_helpers.py` builds this merged representation
+at the view layer. No database model changes are needed — it's purely a presentation concern.
 
 ### Concrete example: EnergyPlus config
 
@@ -230,7 +256,6 @@ how all these pieces fit together:
 ```python
 from validibot.validations.validators.base.config import (
     CatalogEntrySpec,
-    StepEditorCardSpec,
     ValidatorConfig,
 )
 
@@ -265,23 +290,14 @@ config = ValidatorConfig(
         ),
         # ... more signals, derivations ...
     ],
-    step_editor_cards=[
-        StepEditorCardSpec(
-            slug="template-variables",
-            label="Template Variables",
-            template_name="workflows/partials/template_variables_card.html",
-            form_class="validibot.workflows.forms.TemplateVariableAnnotationForm",
-            view_class="validibot.workflows.views.WorkflowStepTemplateVariablesView",
-            order=40,
-            condition="validibot.workflows.views_helpers.step_has_template_variables",
-        ),
-    ],
+    # Template variable editing is handled by the unified signals card
+    # (ADR-2026-03-10), not by step_editor_cards.
 )
 ```
 
-The `step_editor_cards` entry here means: when a workflow step uses an EnergyPlus validator
-with a parameterized IDF template, a "Template Variables" card appears in the step detail page,
-letting authors annotate template variables with labels, defaults, types, and constraints.
+When a workflow step uses this validator with a parameterized IDF template, template variables
+appear as input signals in the unified card, alongside any catalog INPUT entries. Authors can
+edit each variable's annotations (label, default, type, constraints) via a per-variable modal.
 
 ## Validator lifecycle
 

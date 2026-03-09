@@ -1,0 +1,86 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Input Signals Table
+
+Shows all input signals for a workflow step: both catalog entries (INPUT
+stage) and template variables.  Each row shows the signal slug, source
+badge, required indicator, and action buttons.
+
+Template-source signals get an Edit button that opens the template
+variable edit modal.  Catalog-source signals get an Info button that
+opens the catalog entry detail modal.
+
+Context:
+  unified_signals.input_signals  - list of input signal dicts
+  step                           - the WorkflowStep
+  workflow                       - the parent Workflow
+{% endcomment %}
+{% if unified_signals.input_signals %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle" data-sortable-table>
+      <thead>
+        <tr>
+          <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
+          <th class="text-muted small" data-sortable="true">{% trans "Source" %}</th>
+          <th class="text-muted small text-center">{% trans "Required" %}</th>
+          <th class="text-muted small text-end"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for signal in unified_signals.input_signals %}
+          <tr>
+            <td>
+              <code class="small">{{ signal.slug }}</code>
+              {% if signal.label and signal.label != signal.slug %}
+                <br />
+                <span class="text-muted small">{{ signal.label }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if signal.source == "template" %}
+                <span class="badge text-bg-info">{% trans "Template" %}</span>
+              {% else %}
+                <span class="badge text-bg-light">{% trans "Catalog" %}</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if signal.required %}
+                <i class="bi bi-check-lg text-success"></i>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if signal.source == "template" and signal.variable_index is not None %}
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#templateVariableEditModal"
+                        hx-get="{% org_url 'workflows:workflow_step_template_variable_edit' workflow.pk step.pk signal.variable_index %}"
+                        hx-target="#template-variable-edit-modal-content"
+                        hx-trigger="click"
+                        title="{% trans 'Edit variable' %}">
+                  <i class="bi bi-pencil"></i>
+                </button>
+              {% elif signal.catalog_entry %}
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#catalogEntryDetailModal"
+                        hx-get="{% org_url 'validations:catalog_entry_detail' entry_pk=signal.catalog_entry.pk %}"
+                        hx-target="#catalog-entry-detail-modal-content"
+                        hx-trigger="click"
+                        title="{% trans 'View details' %}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-muted mb-0">{% trans "No input signals." %}</p>
+{% endif %}

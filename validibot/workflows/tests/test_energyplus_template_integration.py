@@ -37,6 +37,7 @@ Phases: 2-4 of the EnergyPlus Parameterized Templates ADR.
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from unittest.mock import patch
 
 import pytest
@@ -1351,29 +1352,616 @@ class TestAnnotationMerge:
 
 
 class TestDisplaySignals:
-    """Tests for the ``display_signals`` MultipleChoiceField.
+    """Tests for the ``DisplaySignalsForm`` (modal-based signal selection).
 
-    Output signal selection lets the author choose which EnergyPlus output
-    signals to display in submission results.  Choices are populated from
-    the validator's output catalog entries.
+    Output signal selection lets the author choose which output signals
+    to display in submission results.  This is now a cross-validator
+    feature using a standalone form in a modal, not inline in the step
+    config form.
     """
 
-    def test_display_signals_field_exists(self):
-        """The ``display_signals`` field is always present on the form."""
-        validator = _make_energyplus_validator()
-        form = _make_form(validator=validator)
+    def test_display_signals_not_on_step_config_form(self):
+        """The ``display_signals`` field was moved off the step config form.
 
-        assert "display_signals" in form.fields
-
-    def test_display_signals_choices_empty_without_catalog_entries(self):
-        """When the validator has no output catalog entries, choices are empty.
-
-        This is the typical case for a freshly created test validator.
+        It's now edited via a standalone modal (``DisplaySignalsForm``),
+        not inline in the EnergyPlus step config form.
         """
         validator = _make_energyplus_validator()
         form = _make_form(validator=validator)
 
+        assert "display_signals" not in form.fields
+
+    def test_display_signals_form_choices_empty_without_catalog_entries(self):
+        """When the validator has no output catalog entries, choices are empty.
+
+        This is the typical case for a freshly created test validator.
+        """
+        from validibot.workflows.forms import DisplaySignalsForm
+
+        validator = _make_energyplus_validator()
+        form = DisplaySignalsForm(validator=validator)
+
         assert form.fields["display_signals"].choices == []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Unified signals — build_unified_signals() helper
+# ══════════════════════════════════════════════════════════════════════════════
+# ADR-2026-03-10 introduced a unified "Inputs and Outputs" card that merges
+# catalog entries (from the validator config) with template variables (from
+# the step config) into a single view.  ``build_unified_signals()`` is the
+# view-layer helper that builds this merged representation.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestBuildUnifiedSignals:
+    """Tests for ``build_unified_signals()`` — the view helper that merges
+    catalog entries and template variables into unified signal lists.
+
+    The helper produces four keys: ``input_signals``, ``output_signals``,
+    ``has_inputs``, ``has_outputs``.  Input signals come from two sources:
+    catalog INPUT entries (source="catalog") and template variables
+    (source="template").  Output signals come only from catalog OUTPUT
+    entries, each annotated with ``show_to_user`` based on the step's
+    ``display_signals`` config.
+    """
+
+    def test_template_variables_only(self):
+        """Steps with template variables but no catalog entries still show inputs.
+
+        This is the typical case for an EnergyPlus template-mode step
+        before catalog entries have been synced.
+        """
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        step = WorkflowStepFactory(
+            config={
+                "template_variables": [
+                    {"name": "U_FACTOR", "description": "U-Factor", "default": ""},
+                    {"name": "SHGC", "description": "", "default": "0.4"},
+                ],
+            },
+        )
+
+        result = build_unified_signals(catalog_display=None, step=step)
+
+        assert result["has_inputs"] is True
+        assert result["has_outputs"] is False
+        input_signals = result["input_signals"]
+        assert len(input_signals) == len(step.config["template_variables"])
+
+        # First variable: no default → required
+        sig0 = result["input_signals"][0]
+        assert sig0["slug"] == "$U_FACTOR"
+        assert sig0["label"] == "U-Factor"
+        assert sig0["source"] == "template"
+        assert sig0["required"] is True
+        assert sig0["variable_index"] == 0
+
+        # Second variable: has default → not required
+        sig1 = result["input_signals"][1]
+        assert sig1["slug"] == "$SHGC"
+        assert sig1["label"] == "SHGC"  # Falls back to name when no description
+        assert sig1["source"] == "template"
+        assert sig1["required"] is False
+        assert sig1["variable_index"] == 1
+
+    def test_catalog_entries_only(self):
+        """Steps with catalog entries but no template variables.
+
+        This is the typical case for validators like FMU or THERM that
+        define their signals entirely through the catalog.
+        """
+        from validibot.validations.models import CatalogDisplay
+        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        validator = _make_energyplus_validator()
+        input_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="input",
+            entry_type="signal",
+            slug="weather-file",
+            label="Weather File",
+            is_required=True,
+        )
+        output_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="output",
+            entry_type="signal",
+            slug="total-energy",
+            label="Total Energy",
+        )
+        catalog = CatalogDisplay(
+            entries=[input_entry, output_entry],
+            inputs=[input_entry],
+            outputs=[output_entry],
+            input_derivations=[],
+            output_derivations=[],
+            input_total=1,
+            output_total=1,
+            uses_tabs=True,
+        )
+        step = WorkflowStepFactory(config={})
+
+        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        assert result["has_inputs"] is True
+        assert result["has_outputs"] is True
+        assert len(result["input_signals"]) == 1
+        assert len(result["output_signals"]) == 1
+
+        assert result["input_signals"][0]["slug"] == "weather-file"
+        assert result["input_signals"][0]["source"] == "catalog"
+        assert result["output_signals"][0]["slug"] == "total-energy"
+        assert result["output_signals"][0]["show_to_user"] is True
+
+    def test_mixed_catalog_and_template_inputs(self):
+        """Catalog INPUT entries and template variables merge into one input list.
+
+        The merged list has catalog entries first, then template variables.
+        This ensures the UI shows both sources under one "Inputs" tab.
+        """
+        from validibot.validations.models import CatalogDisplay
+        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        validator = _make_energyplus_validator()
+        input_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="input",
+            entry_type="signal",
+            slug="epw-file",
+            label="EPW File",
+            is_required=True,
+        )
+        catalog = CatalogDisplay(
+            entries=[input_entry],
+            inputs=[input_entry],
+            outputs=[],
+            input_derivations=[],
+            output_derivations=[],
+            input_total=1,
+            output_total=0,
+            uses_tabs=True,
+        )
+        step = WorkflowStepFactory(
+            config={
+                "template_variables": [
+                    {"name": "U_FACTOR", "description": "U-Factor", "default": ""},
+                ],
+            },
+        )
+
+        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        expected_count = len(catalog.inputs) + len(step.config["template_variables"])
+        assert len(result["input_signals"]) == expected_count
+        # Catalog entries come first
+        assert result["input_signals"][0]["source"] == "catalog"
+        assert result["input_signals"][0]["slug"] == "epw-file"
+        # Template variables follow
+        assert result["input_signals"][1]["source"] == "template"
+        assert result["input_signals"][1]["slug"] == "$U_FACTOR"
+
+    def test_empty_step_produces_no_signals(self):
+        """A step with no catalog entries and no template variables is empty.
+
+        This happens for newly created steps before any config is set.
+        """
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        step = WorkflowStepFactory(config={})
+
+        result = build_unified_signals(catalog_display=None, step=step)
+
+        assert result["has_inputs"] is False
+        assert result["has_outputs"] is False
+        assert result["input_signals"] == []
+        assert result["output_signals"] == []
+
+    def test_output_display_signals_filtering(self):
+        """Output signals respect the step's ``display_signals`` config.
+
+        When ``display_signals`` is empty, all outputs show (backward
+        compat).  When it lists specific slugs, only those are shown.
+        """
+        from validibot.validations.models import CatalogDisplay
+        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        validator = _make_energyplus_validator()
+        out1 = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="output",
+            entry_type="signal",
+            slug="total-energy",
+            label="Total Energy",
+        )
+        out2 = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="output",
+            entry_type="signal",
+            slug="peak-load",
+            label="Peak Load",
+        )
+        catalog = CatalogDisplay(
+            entries=[out1, out2],
+            inputs=[],
+            outputs=[out1, out2],
+            input_derivations=[],
+            output_derivations=[],
+            input_total=0,
+            output_total=2,
+            uses_tabs=True,
+        )
+
+        # With display_signals filtering to just one
+        step = WorkflowStepFactory(
+            config={"display_signals": ["total-energy"]},
+        )
+        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        shown = [s for s in result["output_signals"] if s["show_to_user"]]
+        hidden = [s for s in result["output_signals"] if not s["show_to_user"]]
+        assert len(shown) == 1
+        assert shown[0]["slug"] == "total-energy"
+        assert len(hidden) == 1
+        assert hidden[0]["slug"] == "peak-load"
+
+    def test_output_all_shown_when_display_signals_empty(self):
+        """When ``display_signals`` is empty, all outputs are shown.
+
+        This is the backward-compatible default — before the author
+        configures signal visibility, everything is visible.
+        """
+        from validibot.validations.models import CatalogDisplay
+        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        validator = _make_energyplus_validator()
+        out1 = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="output",
+            entry_type="signal",
+            slug="total-energy",
+        )
+        catalog = CatalogDisplay(
+            entries=[out1],
+            inputs=[],
+            outputs=[out1],
+            input_derivations=[],
+            output_derivations=[],
+            input_total=0,
+            output_total=1,
+            uses_tabs=True,
+        )
+        step = WorkflowStepFactory(config={})
+
+        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        assert result["output_signals"][0]["show_to_user"] is True
+
+    def test_input_derivations_included(self):
+        """Input derivations from the catalog appear in the input list.
+
+        Derivations are computed values that still need to be shown
+        in the input stage — e.g. a derived ratio from two input signals.
+        """
+        from validibot.validations.models import CatalogDisplay
+        from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        validator = _make_energyplus_validator()
+        derivation = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="input",
+            entry_type="derivation",
+            slug="window-ratio",
+            label="Window-to-Wall Ratio",
+        )
+        catalog = CatalogDisplay(
+            entries=[derivation],
+            inputs=[],
+            outputs=[],
+            input_derivations=[derivation],
+            output_derivations=[],
+            input_total=1,
+            output_total=0,
+            uses_tabs=True,
+        )
+        step = WorkflowStepFactory(config={})
+
+        result = build_unified_signals(catalog_display=catalog, step=step)
+
+        assert len(result["input_signals"]) == 1
+        assert result["input_signals"][0]["slug"] == "window-ratio"
+        assert result["input_signals"][0]["source"] == "catalog"
+        assert result["input_signals"][0]["required"] is False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SingleTemplateVariableForm — per-variable modal editing
+# ══════════════════════════════════════════════════════════════════════════════
+# The per-variable edit form replaces the old "save all at once" annotation
+# form.  Each template variable gets its own modal with this form.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSingleTemplateVariableForm:
+    """Tests for ``SingleTemplateVariableForm`` — the per-variable edit form.
+
+    This form is rendered in a modal when the user clicks "Edit" on a
+    template-source input signal.  It populates initial values from the
+    variable dict stored in ``step.config["template_variables"]``.
+    """
+
+    def test_initial_values_from_variable(self):
+        """The form pre-populates fields from the variable dict.
+
+        This ensures the modal shows the current annotations when opened,
+        not blank fields.
+        """
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        variable = {
+            "name": "U_FACTOR",
+            "description": "U-Factor value",
+            "default": "3.5",
+            "units": "W/m2-K",
+            "variable_type": "number",
+            "min_value": 0.1,
+            "min_exclusive": False,
+            "max_value": 10.0,
+            "max_exclusive": True,
+            "choices": [],
+        }
+
+        form = SingleTemplateVariableForm(variable=variable)
+
+        assert form.fields["description"].initial == "U-Factor value"
+        assert form.fields["default"].initial == "3.5"
+        assert form.fields["units"].initial == "W/m2-K"
+        assert form.fields["variable_type"].initial == "number"
+        assert form.fields["min_value"].initial == "0.1"
+        assert form.fields["min_exclusive"].initial is False
+        assert form.fields["max_value"].initial == "10.0"
+        assert form.fields["max_exclusive"].initial is True
+        assert form.fields["choices"].initial == ""
+
+    def test_default_initial_values_without_variable(self):
+        """Without a variable dict, the form has sensible defaults.
+
+        This covers the edge case where the form is instantiated
+        without context (shouldn't happen in practice but keeps
+        the form robust).
+        """
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        form = SingleTemplateVariableForm()
+
+        assert form.fields["variable_type"].initial == "text"
+        assert form.fields["description"].initial is None
+
+    def test_valid_submission(self):
+        """A complete valid form submission passes validation.
+
+        All fields are optional except ``variable_type`` which defaults
+        to "text", so even minimal data should validate.
+        """
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        form = SingleTemplateVariableForm(
+            data={
+                "description": "Solar heat gain",
+                "default": "0.4",
+                "units": "",
+                "variable_type": "number",
+                "min_value": "0",
+                "min_exclusive": False,
+                "max_value": "1",
+                "max_exclusive": False,
+                "choices": "",
+            },
+        )
+
+        assert form.is_valid()
+
+    def test_minimal_submission_valid(self):
+        """A submission with just the required radio field validates.
+
+        This verifies that all text fields are truly optional — a user
+        can open the modal, leave everything blank, and save.
+        """
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        form = SingleTemplateVariableForm(
+            data={
+                "description": "",
+                "default": "",
+                "units": "",
+                "variable_type": "text",
+                "min_value": "",
+                "max_value": "",
+                "choices": "",
+            },
+        )
+
+        assert form.is_valid()
+
+    def test_choices_initial_from_list(self):
+        """A variable with choices gets them joined as newline-separated text.
+
+        The form stores choices as a textarea, one per line.
+        """
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        variable = {
+            "name": "GLAZING_TYPE",
+            "choices": ["single", "double", "triple"],
+        }
+
+        form = SingleTemplateVariableForm(variable=variable)
+
+        assert form.fields["choices"].initial == "single\ndouble\ntriple"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WorkflowStepTemplateVariableEditView — per-variable edit endpoint
+# ══════════════════════════════════════════════════════════════════════════════
+# The view handles GET (render modal content) and POST (save annotations
+# for a single variable).  It's an HTMx endpoint that returns modal content
+# or a 204 with refresh trigger.
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestTemplateVariableEditView:
+    """Tests for ``WorkflowStepTemplateVariableEditView`` — the per-variable
+    modal edit endpoint.
+
+    GET returns the modal form content for a specific template variable.
+    POST saves the annotations and triggers a page reload.
+    """
+
+    def _make_step_with_variables(self):
+        """Create a workflow step with template variables for testing.
+
+        Returns a (workflow, step) tuple.  Uses ``with_owner=True`` so
+        the factory auto-creates an org membership for the workflow user.
+        """
+        workflow = WorkflowFactory(with_owner=True)
+        step = WorkflowStepFactory(
+            workflow=workflow,
+            config={
+                "template_variables": [
+                    {
+                        "name": "U_FACTOR",
+                        "description": "U-Factor",
+                        "default": "",
+                        "units": "W/m2-K",
+                        "variable_type": "number",
+                    },
+                    {
+                        "name": "SHGC",
+                        "description": "Solar Heat Gain",
+                        "default": "0.4",
+                        "units": "",
+                        "variable_type": "text",
+                    },
+                ],
+            },
+        )
+        return workflow, step
+
+    def _login(self, client, workflow):
+        """Log in as the workflow user with session org set."""
+        client.force_login(workflow.user)
+        session = client.session
+        session["active_org_id"] = workflow.org_id
+        session.save()
+
+    def _url(self, workflow, step, var_index):
+        """Build the template variable edit URL."""
+        return (
+            f"/app/workflows/{workflow.pk}"
+            f"/steps/{step.pk}/template-variable/{var_index}/"
+        )
+
+    def test_get_renders_modal_content(self, client):
+        """GET returns the modal form pre-populated with variable data.
+
+        The response should contain the form fields and the variable's
+        current name (which is immutable and shown as a header).
+        """
+        workflow, step = self._make_step_with_variables()
+        self._login(client, workflow)
+
+        response = client.get(self._url(workflow, step, 0))
+
+        assert response.status_code == HTTPStatus.OK
+        content = response.content.decode()
+        assert "U_FACTOR" in content
+
+    def test_post_saves_single_variable(self, client):
+        """POST updates only the targeted variable, preserving others.
+
+        After saving, the variable at index 0 should have the new
+        description and units, while the variable at index 1 is unchanged.
+        """
+        workflow, step = self._make_step_with_variables()
+        self._login(client, workflow)
+
+        response = client.post(
+            self._url(workflow, step, 0),
+            {
+                "description": "Updated U-Factor Label",
+                "default": "2.5",
+                "units": "BTU/h-ft2-F",
+                "variable_type": "number",
+                "min_value": "0.1",
+                "min_exclusive": "",
+                "max_value": "10",
+                "max_exclusive": "",
+                "choices": "",
+            },
+        )
+
+        assert response.status_code == HTTPStatus.NO_CONTENT
+
+        # Verify the variable was updated
+        step.refresh_from_db()
+        tvars = step.config["template_variables"]
+        assert tvars[0]["name"] == "U_FACTOR"  # Name preserved
+        assert tvars[0]["description"] == "Updated U-Factor Label"
+        assert tvars[0]["default"] == "2.5"
+        assert tvars[0]["units"] == "BTU/h-ft2-F"
+
+        # Second variable untouched
+        assert tvars[1]["name"] == "SHGC"
+        assert tvars[1]["description"] == "Solar Heat Gain"
+
+    def test_invalid_index_returns_404(self, client):
+        """Requesting a variable index beyond the list returns 404.
+
+        This prevents index-out-of-range errors if the template
+        variables change between when the page loaded and when the
+        user clicks edit.
+        """
+        workflow, step = self._make_step_with_variables()
+        self._login(client, workflow)
+
+        response = client.get(self._url(workflow, step, 99))
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_post_preserves_variable_name(self, client):
+        """POST cannot change the variable name — it's immutable.
+
+        The name comes from the IDF template and must remain stable
+        for parameter substitution to work.  Even if a crafted POST
+        tries to change it, the view ignores the form and uses the
+        stored name.
+        """
+        workflow, step = self._make_step_with_variables()
+        self._login(client, workflow)
+
+        response = client.post(
+            self._url(workflow, step, 0),
+            {
+                "description": "Hacked name attempt",
+                "default": "",
+                "units": "",
+                "variable_type": "text",
+                "min_value": "",
+                "max_value": "",
+                "choices": "",
+            },
+        )
+
+        assert response.status_code == HTTPStatus.NO_CONTENT
+        step.refresh_from_db()
+        # Name is preserved from the original, not from form data
+        assert step.config["template_variables"][0]["name"] == "U_FACTOR"
 
 
 # ===========================================================================

@@ -519,7 +519,7 @@ def build_energyplus_config(
         if existing_vars:
             config["template_variables"] = existing_vars
             config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
-            config["display_signals"] = form.cleaned_data.get("display_signals", [])
+            config["display_signals"] = existing_config.get("display_signals", [])
 
     return config
 
@@ -623,6 +623,119 @@ def step_has_template_variables(step: WorkflowStep) -> bool:
     indicating the template variables card should be rendered.
     """
     return bool((step.config or {}).get("template_variables"))
+
+
+def build_unified_signals(
+    catalog_display: Any | None,
+    step: WorkflowStep,
+) -> dict[str, Any]:
+    """Build unified input/output signal lists for the step detail card.
+
+    Merges catalog entries (from the validator's config) with template
+    variables (from the step's config) into a single list per stage.
+    This gives the workflow author one consistent view of "what goes in,
+    what comes out" regardless of whether signals come from the catalog
+    or from an uploaded template.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+
+    Returns a dict with keys:
+        input_signals: List of dicts, each with slug, label, source,
+            required, and either catalog_entry or variable metadata.
+        output_signals: List of dicts, each with slug, label,
+            show_to_user flag, and catalog_entry.
+        has_inputs: Whether any input signals exist.
+        has_outputs: Whether any output signals exist.
+    """
+    step_config = step.config or {}
+    display_signals = step_config.get("display_signals", [])
+
+    # -- Input signals --
+    input_signals: list[dict[str, Any]] = []
+
+    if catalog_display:
+        for entry in catalog_display.inputs:
+            input_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "source": "catalog",
+                    "required": entry.is_required,
+                    "catalog_entry": entry,
+                    "variable_index": None,
+                    "variable": None,
+                },
+            )
+        for entry in catalog_display.input_derivations:
+            input_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "source": "catalog",
+                    "required": False,
+                    "catalog_entry": entry,
+                    "variable_index": None,
+                    "variable": None,
+                },
+            )
+
+    # Template variables (from step config, not the catalog)
+    template_vars = step_config.get("template_variables", [])
+    for i, var in enumerate(template_vars):
+        default_val = var.get("default", "")
+        input_signals.append(
+            {
+                "slug": f"${var.get('name', '')}",
+                "label": var.get("description") or var.get("name", ""),
+                "source": "template",
+                "required": not bool(default_val),
+                "catalog_entry": None,
+                "variable_index": i,
+                "variable": var,
+            },
+        )
+
+    # -- Output signals --
+    output_signals: list[dict[str, Any]] = []
+
+    if catalog_display:
+        for entry in catalog_display.outputs:
+            show = _is_signal_shown(entry.slug, display_signals)
+            output_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "show_to_user": show,
+                    "catalog_entry": entry,
+                },
+            )
+        for entry in catalog_display.output_derivations:
+            show = _is_signal_shown(entry.slug, display_signals)
+            output_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "show_to_user": show,
+                    "catalog_entry": entry,
+                },
+            )
+
+    return {
+        "input_signals": input_signals,
+        "output_signals": output_signals,
+        "has_inputs": bool(input_signals),
+        "has_outputs": bool(output_signals),
+    }
+
+
+def _is_signal_shown(slug: str, display_signals: list[str]) -> bool:
+    """Determine whether an output signal should show a green check.
+
+    Empty display_signals means "show all" (backward-compatible default).
+    """
+    if not display_signals:
+        return True
+    return slug in display_signals
 
 
 def _sync_energyplus_resources(

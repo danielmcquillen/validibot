@@ -1,0 +1,48 @@
+{% load i18n %}
+
+{% comment %}
+Modal content for editing which output signals are shown to users.
+
+Loaded via HTMx into the displaySignalsModal on the step detail page.
+POST submits the form via HTMx and triggers a page reload on success.
+
+Context:
+  form      - DisplaySignalsForm instance
+  step      - the WorkflowStep
+  workflow  - the parent Workflow
+{% endcomment %}
+<form hx-post="{% url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
+      hx-target="#display-signals-modal-content"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h5 class="modal-title">{% trans "Output Signals to Display" %}</h5>
+    <button type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="{% trans 'Close' %}"></button>
+  </div>
+  <div class="modal-body">
+    <p class="text-muted small mb-3">
+      {% trans "Select which output signals appear in submission results shown to the user. If none are selected, all signals are shown." %}
+    </p>
+    {% if form.display_signals.field.choices %}
+      <div class="list-group list-group-flush">
+        {% for checkbox in form.display_signals %}
+          <label class="list-group-item d-flex align-items-center gap-2">
+            {{ checkbox.tag }}
+            <span>{{ checkbox.choice_label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted">{% trans "No output signals available for this validator." %}</p>
+    {% endif %}
+  </div>
+  <div class="modal-footer">
+    <button type="button"
+            class="btn btn-outline-secondary"
+            data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+    <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+  </div>
+</form>

@@ -153,7 +153,8 @@ mismatches at save time rather than at runtime.
 4. Create the validator class implementing `BaseValidator`.
 5. Create a `ValidatorConfig` with `validator_class` pointing to your class
    (in `config.py` for package-based validators, or `builtin_configs.py` for single-file).
-6. Optionally add `step_editor_cards` to declare custom UI on the step detail page.
+6. Add `catalog_entries` to define the validator's input/output signals.
+   These appear automatically in the unified "Inputs and Outputs" card on the step detail page.
 7. Run `python manage.py sync_validators` to sync to the database.
 
 ## File Structure

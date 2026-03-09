@@ -76,14 +76,9 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-xl-4 d-flex flex-column gap-4">
+      <div class="col-12 col-xl-4 d-flex flex-column gap-4 pb-3">
         {% include 'workflows/partials/components/step_details_card.html' %}
-        {% for card in editor_cards %}
-          {% include card.card_spec.template_name with tplvar_form=card.tplvar_form workflow=card.workflow step=card.step catalog_display=card.catalog_display catalog_tab_prefix=card.catalog_tab_prefix %}
-        {% endfor %}
-        {% if not editor_cards and catalog_display %}
-          {% include 'validations/library/partials/catalog_entries_card.html' with catalog_display=catalog_display catalog_tab_prefix=catalog_tab_prefix flat_mode=True %}
-        {% endif %}
+        {% include 'workflows/partials/unified_signals_card.html' %}
       </div>
     </div>
   </div>
@@ -117,6 +112,30 @@
        aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content" id="catalog-entry-detail-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal fade"
+       id="displaySignalsModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content" id="display-signals-modal-content">
+        <div class="modal-body text-center text-muted py-5">
+          <div class="spinner-border" role="status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal fade"
+       id="templateVariableEditModal"
+       tabindex="-1"
+       aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content" id="template-variable-edit-modal-content">
         <div class="modal-body text-center text-muted py-5">
           <div class="spinner-border" role="status"></div>
         </div>

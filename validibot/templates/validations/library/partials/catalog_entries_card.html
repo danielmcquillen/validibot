@@ -4,7 +4,7 @@
      data-sv-catalog
      data-sv-catalog-mode="{% if flat_mode %} flat {% else %} tabs {% endif %}">
   <div class="card-header">
-    <div class="card-title">{% trans "Catalog Entries" %}</div>
+    <div class="card-title">{% trans "Inputs and Outputs" %}</div>
   </div>
   <div class="card-body">
     {% if not catalog_display or not catalog_display.entries %}
@@ -13,6 +13,20 @@
     {% elif flat_mode %}
       {% if catalog_display %}
         {% with prefix=catalog_tab_prefix|default:'catalog' %}
+          {% if step and workflow %}
+            <div class="d-flex justify-content-end mb-2">
+              <button type="button"
+                      class="btn btn-sm btn-secondary"
+                      data-bs-toggle="modal"
+                      data-bs-target="#displaySignalsModal"
+                      hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
+                      hx-target="#display-signals-modal-content"
+                      hx-trigger="click"
+                      title="{% trans 'Edit which output signals are shown to users' %}">
+                <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
+              </button>
+            </div>
+          {% endif %}
           <div class="catalog-filter mb-3 d-flex flex-row align-items-center">
             <div class="me-2">
               <label for="{{ prefix }}-flat-filter" class="small">{% trans "Filter:" %}</label>
@@ -31,6 +45,9 @@
                   <tr>
                     <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
                     <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+                    {% if step %}
+                      <th class="text-muted small text-center">{% trans "Show to User" %}</th>
+                    {% endif %}
                     <th class="text-muted small text-end"></th>
                   </tr>
                 </thead>
@@ -43,6 +60,23 @@
                         <code class="small">{{ entry.slug }}</code>
                       </td>
                       <td class="text-muted small" data-sort-value="{{ entry.run_stage }}">{{ entry.get_run_stage_display }}</td>
+                      {% if step %}
+                        <td class="text-center">
+                          {% if entry.run_stage == "output" or entry.run_stage == "OUTPUT" %}
+                            {% if display_signals %}
+                              {% if entry.slug in display_signals %}
+                                <i class="bi bi-check-lg text-success"></i>
+                              {% else %}
+                                <i class="bi bi-x-lg" style="color: #ccc;"></i>
+                              {% endif %}
+                            {% else %}
+                              <i class="bi bi-check-lg text-success"></i>
+                            {% endif %}
+                          {% else %}
+                            <span class="text-muted">—</span>
+                          {% endif %}
+                        </td>
+                      {% endif %}
                       <td class="text-end">
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary"
@@ -59,7 +93,8 @@
                   {% endfor %}
                   {% if not catalog_display.entries %}
                     <tr data-sv-catalog-entry>
-                      <td colspan="3" class="text-muted small">{% trans "No catalog entries registered yet." %}</td>
+                      <td colspan="{% if step %}4{% else %}3{% endif %}"
+                          class="text-muted small">{% trans "No catalog entries registered yet." %}</td>
                     </tr>
                   {% endif %}
                 </tbody>

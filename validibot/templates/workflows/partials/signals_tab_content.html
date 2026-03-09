@@ -1,0 +1,79 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Signals tab content — shared partial for the "Signals" tab.
+
+Shows output/derived catalog entries with a "Show to User" column.
+An Edit button opens a modal to toggle which output signals appear
+in submission results.
+
+Context:
+  catalog_display    - validator.catalog_display
+  step               - the WorkflowStep
+  workflow           - the parent Workflow
+  display_signals    - list of selected output signal slugs (from step.config)
+{% endcomment %}
+{% if catalog_display and catalog_display.entries %}
+  <div class="d-flex justify-content-end mb-2">
+    <button type="button"
+            class="btn btn-sm btn-secondary"
+            data-bs-toggle="modal"
+            data-bs-target="#displaySignalsModal"
+            hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
+            hx-target="#display-signals-modal-content"
+            hx-trigger="click"
+            title="{% trans 'Edit which output signals are shown to users' %}">
+      <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle" data-sortable-table>
+      <thead>
+        <tr>
+          <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
+          <th class="text-muted small" data-sortable="true">{% trans "Stage" %}</th>
+          <th class="text-muted small text-center">{% trans "Show to User" %}</th>
+          <th class="text-muted small text-end"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in catalog_display.entries %}
+          {% if entry.run_stage == "output" or entry.run_stage == "OUTPUT" %}
+            <tr data-sv-catalog-entry data-sv-catalog-slug="{{ entry.slug|escape }}">
+              <td>
+                <code class="small">{{ entry.slug }}</code>
+              </td>
+              <td class="text-muted small">{{ entry.get_run_stage_display }}</td>
+              <td class="text-center">
+                {% if display_signals %}
+                  {% if entry.slug in display_signals %}
+                    <i class="bi bi-check-lg text-success"></i>
+                  {% else %}
+                    <i class="bi bi-x-lg" style="color: #ccc;"></i>
+                  {% endif %}
+                {% else %}
+                  {# Empty display_signals = show all #}
+                  <i class="bi bi-check-lg text-success"></i>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#catalogEntryDetailModal"
+                        hx-get="{% org_url 'validations:catalog_entry_detail' entry_pk=entry.pk %}"
+                        hx-target="#catalog-entry-detail-modal-content"
+                        hx-trigger="click"
+                        title="{% trans 'View details' %}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+              </td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-muted mb-0">{% trans "No catalog entries registered yet." %}</p>
+{% endif %}

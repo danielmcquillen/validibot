@@ -164,31 +164,23 @@ class TestValidatorClassResolution:
 
 
 class TestStepEditorCards:
-    """Verify that step editor card specs are declared correctly.
+    """Verify step editor card specs on validator configs.
 
-    Step editor cards are a new extension point that lets validators inject
-    custom UI cards into the step detail page.  Currently only EnergyPlus
-    uses this feature (for the template variables card).
+    Since ADR-2026-03-10 (Unified Input/Output Signals UI), template
+    variable editing is handled by the unified signals card rather than
+    custom step_editor_cards.  No validators currently declare custom
+    cards, but the extension point remains available for future use.
     """
 
-    def test_energyplus_has_template_variables_card(self):
-        """EnergyPlus config declares a 'template-variables' step editor card.
+    def test_energyplus_has_no_step_editor_cards(self):
+        """EnergyPlus no longer declares custom step editor cards.
 
-        This card renders the per-variable annotation form on the step
-        detail page's right column.
+        Template variable editing moved to the unified signals card's
+        per-variable edit modal (ADR-2026-03-10).
         """
         cfg = get_config(ValidationType.ENERGYPLUS)
         assert cfg is not None
-        assert len(cfg.step_editor_cards) == 1
-
-        card = cfg.step_editor_cards[0]
-        assert card.slug == "template-variables"
-        assert card.form_class == (
-            "validibot.workflows.forms.TemplateVariableAnnotationForm"
-        )
-        assert card.condition == (
-            "validibot.workflows.views_helpers.step_has_template_variables"
-        )
+        assert cfg.step_editor_cards == []
 
     def test_basic_has_no_step_editor_cards(self):
         """Basic validator has no step editor cards.

@@ -2229,11 +2229,11 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
             else 0
         )
 
-        # Resolve step editor cards from the validator's config.
-        # Each card spec can declare a condition, form class, and
-        # template — we evaluate them generically here so the
-        # template just iterates over the resolved list.
-        editor_cards = self._resolve_editor_cards(validator)
+        # Build unified input/output signals for the right-column card.
+        # Merges catalog entries with template variables into one view.
+        from validibot.workflows.views_helpers import build_unified_signals
+
+        unified_signals = build_unified_signals(catalog_display, self.step)
 
         context.update(
             {
@@ -2251,51 +2251,10 @@ class WorkflowStepEditView(WorkflowObjectMixin, TemplateView):
                 "catalog_display": catalog_display,
                 "catalog_tab_prefix": f"workflow-step-{self.step.pk}-catalog",
                 "validator_default_assertions_count": default_assertions_count,
-                "editor_cards": editor_cards,
+                "unified_signals": unified_signals,
             },
         )
         return context
-
-    def _resolve_editor_cards(self, validator) -> list[dict]:
-        """Resolve step editor card specs from the validator's config.
-
-        Evaluates each card's condition, instantiates its form class
-        (if any), and returns a list of context dicts ready for the
-        template to iterate and render.
-        """
-        from django.utils.module_loading import import_string
-
-        from validibot.validations.validators.base.config import get_config
-
-        if not validator:
-            return []
-
-        validator_config = get_config(validator.validation_type)
-        if not validator_config:
-            return []
-
-        cards = []
-        for card_spec in validator_config.step_editor_cards:
-            if card_spec.condition:
-                check_fn = import_string(card_spec.condition)
-                if not check_fn(self.step):
-                    continue
-
-            card_ctx = {
-                "card_spec": card_spec,
-                "step": self.step,
-                "workflow": self.get_workflow(),
-                "catalog_display": (validator.catalog_display if validator else None),
-                "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
-            }
-            if card_spec.form_class:
-                form_cls = import_string(card_spec.form_class)
-                card_ctx["tplvar_form"] = form_cls(step=self.step)
-
-            cards.append(card_ctx)
-
-        cards.sort(key=lambda c: c["card_spec"].order)
-        return cards
 
     def get_breadcrumbs(self):
         workflow = self.get_workflow()
@@ -2368,6 +2327,7 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
         context = super().get_context_data(**kwargs)
         validator = self.step.validator
         catalog_display = validator.catalog_display if validator else None
+        step_config = self.step.config or {}
         context.update(
             {
                 "workflow": self.get_workflow(),
@@ -2375,6 +2335,7 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
                 "tplvar_form": context.get("form"),
                 "catalog_display": catalog_display,
                 "catalog_tab_prefix": (f"workflow-step-{self.step.pk}-catalog"),
+                "display_signals": step_config.get("display_signals", []),
             },
         )
         return context
@@ -2425,6 +2386,173 @@ class WorkflowStepTemplateVariablesView(WorkflowObjectMixin, FormView):
                 },
             ),
         )
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
+
+
+class WorkflowStepDisplaySignalsView(WorkflowObjectMixin, FormView):
+    """HTMx modal endpoint for editing which output signals are shown to users.
+
+    GET returns the modal form content (loaded into displaySignalsModal).
+    POST validates and saves the selection to ``step.config["display_signals"]``,
+    then triggers a page reload via HX-Trigger.
+    """
+
+    template_name = "workflows/partials/display_signals_modal_content.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import DisplaySignalsForm
+
+        return DisplaySignalsForm(
+            data=self.request.POST or None,
+            step=self.step,
+            validator=self.step.validator,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        selected = form.cleaned_data.get("display_signals", [])
+        config = dict(self.step.config or {})
+        config["display_signals"] = selected
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        response = HttpResponse(status=HTTPStatus.NO_CONTENT)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "close-modal": "displaySignalsModal",
+                "showToast": {
+                    "message": str(_("Display signals updated.")),
+                    "level": "success",
+                },
+            },
+        )
+        response["HX-Refresh"] = "true"
+        return response
+
+    def form_invalid(self, form):
+        context = self.get_context_data(form=form)
+        return render(self.request, self.template_name, context)
+
+
+class WorkflowStepTemplateVariableEditView(WorkflowObjectMixin, FormView):
+    """HTMx modal endpoint for editing a single template variable's annotations.
+
+    Replaces the old "save all at once" template variables form with a
+    per-variable modal pattern.  The variable is identified by its index
+    in the ``step.config["template_variables"]`` list.
+
+    GET returns the modal form content for the specified variable.
+    POST validates and saves annotations for that single variable,
+    then triggers a page reload.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+    """
+
+    template_name = "workflows/partials/template_variable_edit_modal_content.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not self.user_can_manage_workflow():
+            return HttpResponse(status=HTTPStatus.FORBIDDEN)
+        self.step = get_object_or_404(
+            WorkflowStep,
+            workflow=self.get_workflow(),
+            pk=self.kwargs.get("step_id"),
+        )
+        self.var_index = int(self.kwargs.get("var_index", 0))
+        template_vars = (self.step.config or {}).get("template_variables", [])
+        if self.var_index < 0 or self.var_index >= len(template_vars):
+            return HttpResponse(status=HTTPStatus.NOT_FOUND)
+        self.variable = template_vars[self.var_index]
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from validibot.workflows.forms import SingleTemplateVariableForm
+
+        return SingleTemplateVariableForm(
+            data=self.request.POST or None,
+            variable=self.variable,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "workflow": self.get_workflow(),
+                "step": self.step,
+                "variable": self.variable,
+                "var_index": self.var_index,
+            },
+        )
+        return context
+
+    def form_valid(self, form):
+        from validibot.workflows.views_helpers import _parse_choices
+        from validibot.workflows.views_helpers import _parse_optional_float
+
+        config = dict(self.step.config or {})
+        template_vars = list(config.get("template_variables", []))
+
+        # Update only this variable, preserving the immutable name
+        template_vars[self.var_index] = {
+            "name": self.variable["name"],
+            "description": form.cleaned_data.get("description", ""),
+            "default": form.cleaned_data.get("default", ""),
+            "units": form.cleaned_data.get("units", ""),
+            "variable_type": form.cleaned_data.get("variable_type", "text"),
+            "min_value": _parse_optional_float(
+                form.cleaned_data.get("min_value", ""),
+            ),
+            "min_exclusive": form.cleaned_data.get("min_exclusive", False),
+            "max_value": _parse_optional_float(
+                form.cleaned_data.get("max_value", ""),
+            ),
+            "max_exclusive": form.cleaned_data.get("max_exclusive", False),
+            "choices": _parse_choices(
+                form.cleaned_data.get("choices", ""),
+            ),
+        }
+
+        config["template_variables"] = template_vars
+        self.step.config = config
+        self.step.save(update_fields=["config"])
+
+        response = HttpResponse(status=HTTPStatus.NO_CONTENT)
+        response["HX-Trigger"] = json.dumps(
+            {
+                "close-modal": "templateVariableEditModal",
+                "showToast": {
+                    "message": str(
+                        _("Variable %(name)s updated.")
+                        % {"name": f"${self.variable['name']}"},
+                    ),
+                    "level": "success",
+                },
+            },
+        )
+        response["HX-Refresh"] = "true"
+        return response
 
     def form_invalid(self, form):
         context = self.get_context_data(form=form)

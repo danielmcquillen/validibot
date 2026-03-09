@@ -55,6 +55,13 @@ class BaseStepConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    display_signals: list[str] = Field(default_factory=list)
+    """Catalog entry slugs for output signals to display to the submitter.
+
+    Controls which output signals are shown in the results view and
+    returned by the API.  Empty means show all signals (backward-compatible
+    default).  This is cross-validator — any step type can use it."""
+
 
 # ---------------------------------------------------------------------------
 # Validator step configs
@@ -284,12 +291,6 @@ class EnergyPlusStepConfig(BaseStepConfig):
 
     When False, all variable names are normalized to uppercase during
     scanning and matching."""
-
-    display_signals: list[str] = Field(default_factory=list)
-    """Catalog entry slugs for output signals to display to the submitter.
-    After simulation, EnergyPlus extracts many metrics. This list controls
-    which are shown in the results view and returned by the API. Empty means
-    return all signals (backward-compatible default)."""
 
 
 class FmuStepConfig(BaseStepConfig):

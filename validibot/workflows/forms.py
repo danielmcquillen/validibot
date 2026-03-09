@@ -1047,16 +1047,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
         widget=forms.HiddenInput,
     )
-    display_signals = forms.MultipleChoiceField(
-        label=_("Output signals to display"),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text=_(
-            "Select which output signals to show in submission results "
-            "returned to the user. "
-            "If none are selected, all signals are returned."
-        ),
-    )
 
     def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
         super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
@@ -1064,9 +1054,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
         # Populate weather file choices from ValidatorResourceFile
         self._populate_weather_file_choices(org, validator)
-
-        # Populate signal choices from the validator's output catalog entries
-        self._populate_signal_choices(validator, step)
 
         # ── Template state (for template display in the form) ─────
         # These flags tell the template whether to show "upload" or
@@ -1145,7 +1132,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                 "template_file",
                 "case_sensitive",
                 "remove_template",
-                "display_signals",
                 css_class="energyplus-mode-template",
                 data_mode="template",
             ),
@@ -1213,13 +1199,30 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             .first()
         )
 
-    def _populate_signal_choices(self, validator, step):
-        """Populate output signal checkboxes from the validator's catalog.
 
-        Only output-stage signals are shown — when a template is active,
-        input signals are replaced by template variables.  ``display_signals``
-        lets the author select which outputs appear in submission results.
-        """
+# ---------------------------------------------------------------------------
+# Display signals form — used in the modal on the step detail page to
+# select which output signals are shown to users in submission results.
+# Cross-validator: works for any step type with output catalog entries.
+# ---------------------------------------------------------------------------
+
+
+class DisplaySignalsForm(forms.Form):
+    """Form for selecting which output signals appear in submission results.
+
+    Rendered inside a modal on the step detail page.  Populates choices
+    from the validator's output catalog entries.  The selection is stored
+    in ``step.config["display_signals"]``.
+    """
+
+    display_signals = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, step=None, validator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
         from validibot.validations.constants import CatalogEntryType
         from validibot.validations.constants import CatalogRunStage
 
@@ -1235,7 +1238,6 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
 
         self.fields["display_signals"].choices = choices
 
-        # Load initial selection from step config
         if step:
             config = step.config or {}
             selected = config.get("display_signals", [])
@@ -1417,6 +1419,118 @@ class TemplateVariableAnnotationForm(forms.Form):
                 }
             )
         return result
+
+
+class SingleTemplateVariableForm(forms.Form):
+    """Form for editing a single template variable's annotations via modal.
+
+    Unlike ``TemplateVariableAnnotationForm`` which creates dynamic fields
+    for all variables at once, this form handles one variable at a time.
+    Used by the per-variable edit modal in the unified signals card.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+    """
+
+    description = forms.CharField(
+        label=_("Label"),
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("Human-readable label"),
+            },
+        ),
+    )
+    default = forms.CharField(
+        label=_("Default value"),
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("Leave empty = required"),
+            },
+        ),
+    )
+    units = forms.CharField(
+        label=_("Units"),
+        max_length=50,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("e.g. W/m2-K"),
+            },
+        ),
+    )
+    variable_type = forms.ChoiceField(
+        label=_("Type"),
+        choices=TEMPLATE_VARIABLE_TYPE_CHOICES,
+        initial="text",
+        widget=forms.RadioSelect(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    min_value = forms.CharField(
+        label=_("Min value"),
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": _("—")},
+        ),
+    )
+    min_exclusive = forms.BooleanField(
+        label=_("Exclusive"),
+        required=False,
+        widget=forms.CheckboxInput(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    max_value = forms.CharField(
+        label=_("Max value"),
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": _("—")},
+        ),
+    )
+    max_exclusive = forms.BooleanField(
+        label=_("Exclusive"),
+        required=False,
+        widget=forms.CheckboxInput(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    choices = forms.CharField(
+        label=_("Allowed values"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 4,
+                "placeholder": _("Enter one value per line"),
+            },
+        ),
+    )
+
+    def __init__(self, *args: Any, variable: dict | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if variable:
+            self.fields["description"].initial = variable.get("description", "")
+            self.fields["default"].initial = variable.get("default", "")
+            self.fields["units"].initial = variable.get("units", "")
+            self.fields["variable_type"].initial = variable.get("variable_type", "text")
+            min_val = variable.get("min_value")
+            self.fields["min_value"].initial = (
+                str(min_val) if min_val is not None else ""
+            )
+            self.fields["min_exclusive"].initial = variable.get("min_exclusive", False)
+            max_val = variable.get("max_value")
+            self.fields["max_value"].initial = (
+                str(max_val) if max_val is not None else ""
+            )
+            self.fields["max_exclusive"].initial = variable.get("max_exclusive", False)
+            choices_list = variable.get("choices", [])
+            self.fields["choices"].initial = "\n".join(choices_list)
 
 
 class AiAssistStepConfigForm(BaseStepConfigForm):

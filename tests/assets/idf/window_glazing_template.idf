@@ -19,7 +19,7 @@
 ! See ADR 2026-03-04: EnergyPlus Parameterized Model Templates, Section 10.
 
 Version,
-    24.2;                    !- Version Identifier
+    25.2;                    !- Version Identifier
 
 Building,
     Shoebox Demo,            !- Name
@@ -51,7 +51,7 @@ RunPeriod,
     12,                      !- End Month
     31,                      !- End Day of Month
     ,                        !- End Year
-    UseWeatherFile,          !- Day of Week for Start Day
+    Sunday,                  !- Day of Week for Start Day
     Yes,                     !- Use Weather File Holidays and Special Days
     Yes,                     !- Use Weather File Daylight Saving Period
     No,                      !- Apply Weekend Holiday Rule
@@ -94,6 +94,13 @@ Schedule:Compact,
     Through: 12/31,          !- Field 1
     For: AllDays,            !- Field 2
     Until: 24:00, 1.0;      !- Field 3
+
+Schedule:Compact,
+    Dual Setpoint Control Type, !- Name
+    Any Number,              !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 4;        !- Field 3 (4 = DualSetpoint)
 
 Schedule:Compact,
     Heating Setpoint Schedule, !- Name
@@ -432,7 +439,7 @@ ThermostatSetpoint:DualSetpoint,
 ZoneControl:Thermostat,
     Shoebox Zone Thermostat, !- Name
     Shoebox Zone,            !- Zone or ZoneList Name
-    Always On,               !- Control Type Schedule Name
+    Dual Setpoint Control Type, !- Control Type Schedule Name
     ThermostatSetpoint:DualSetpoint, !- Control 1 Object Type
     Dual Setpoint;           !- Control 1 Name
 

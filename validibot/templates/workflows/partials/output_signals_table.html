@@ -1,0 +1,75 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Output Signals Table
+
+Shows all output signals for a workflow step with a "Show to User"
+column indicating which signals appear in submission results.  An Edit
+button opens the display signals modal for configuring visibility.
+
+Context:
+  unified_signals.output_signals  - list of output signal dicts
+  step                            - the WorkflowStep
+  workflow                        - the parent Workflow
+{% endcomment %}
+{% if unified_signals.output_signals %}
+  <div class="d-flex justify-content-end mb-2">
+    <button type="button"
+            class="btn btn-sm btn-secondary"
+            data-bs-toggle="modal"
+            data-bs-target="#displaySignalsModal"
+            hx-get="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
+            hx-target="#display-signals-modal-content"
+            hx-trigger="click"
+            title="{% trans 'Edit which output signals are shown to users' %}">
+      <i class="bi bi-pencil me-1"></i>{% trans "Edit" %}
+    </button>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle" data-sortable-table>
+      <thead>
+        <tr>
+          <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
+          <th class="text-muted small text-center">{% trans "Show to User" %}</th>
+          <th class="text-muted small text-end"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for signal in unified_signals.output_signals %}
+          <tr>
+            <td>
+              <code class="small">{{ signal.slug }}</code>
+              {% if signal.label and signal.label != signal.slug %}
+                <br />
+                <span class="text-muted small">{{ signal.label }}</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if signal.show_to_user %}
+                <i class="bi bi-check-lg text-success"></i>
+              {% else %}
+                <i class="bi bi-x-lg" style="color: #ccc;"></i>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if signal.catalog_entry %}
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#catalogEntryDetailModal"
+                        hx-get="{% org_url 'validations:catalog_entry_detail' entry_pk=signal.catalog_entry.pk %}"
+                        hx-target="#catalog-entry-detail-modal-content"
+                        hx-trigger="click"
+                        title="{% trans 'View details' %}">
+                  <i class="bi bi-info-circle"></i>
+                </button>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-muted mb-0">{% trans "No output signals." %}</p>
+{% endif %}

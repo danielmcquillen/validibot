@@ -219,7 +219,13 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 input_envelope_uri,
             )
 
-            # 5. Get container image
+            # 5. Ensure the run directory is writable by the validator
+            # container. The worker creates this directory as root, but the
+            # container runs as UID 1000 (security hardening) and needs to
+            # write output.json back to it.
+            self._ensure_run_dir_writable(base_path)
+
+            # 6. Get container image
             container_image = self.get_container_image(request.validator_type)
 
             logger.info(
@@ -229,7 +235,7 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 output_envelope_uri,
             )
 
-            # 6. Run container (blocking)
+            # 7. Run container (blocking)
             result = self.runner.run(
                 container_image=container_image,
                 input_uri=input_envelope_uri,
@@ -238,26 +244,39 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 validator_slug=request.validator_type.lower(),
             )
 
-            # 7. Process result
+            # 8. Process result
             if not result.succeeded:
+                # Include truncated container logs in the error message so the
+                # user can see *why* the container failed, not just the exit code.
+                error_parts = [
+                    result.error_message
+                    or f"Container exited with code {result.exit_code}",
+                ]
+                if result.logs:
+                    # Truncate to last 2000 chars to avoid huge findings.
+                    log_tail = result.logs[-2000:].strip()
+                    if log_tail:
+                        error_parts.append(f"Container output:\n{log_tail}")
+
+                error_msg = "\n\n".join(error_parts)
+
                 logger.warning(
                     "Container failed for run %s: exit_code=%d, error=%s",
                     request.run_id,
                     result.exit_code,
-                    result.error_message,
+                    error_msg,
                 )
                 return ExecutionResponse(
                     execution_id=result.execution_id or execution_id,
                     is_complete=True,
-                    error_message=result.error_message
-                    or f"Container exited with code {result.exit_code}",
+                    error_message=error_msg,
                     input_uri=input_envelope_uri,
                     output_uri=output_envelope_uri,
                     execution_bundle_uri=execution_bundle_uri,
                     duration_seconds=result.duration_seconds,
                 )
 
-            # 8. Read output envelope
+            # 9. Read output envelope
             output_envelope = self._read_output_envelope(output_envelope_path)
 
             logger.info(
@@ -290,6 +309,34 @@ class DockerComposeExecutionBackend(ExecutionBackend):
                 execution_id=execution_id,
                 is_complete=True,
                 error_message=f"Execution failed: {e}",
+            )
+
+    def _ensure_run_dir_writable(self, base_path: str) -> None:
+        """Make the run directory writable by the validator container.
+
+        The worker process creates the run directory (and writes input files)
+        as root.  The validator container runs as UID 1000 for security, so
+        it needs write permission to store ``output.json``.  We set the
+        directory to mode 1777 (sticky + world-writable) — the same approach
+        used for ``/tmp``.  This is safe because:
+
+        - Each run gets its own unique directory (UUID-based path).
+        - The directory is cleaned up after the run completes.
+        - The container has no network access and limited capabilities.
+        """
+        if not hasattr(self.storage, "_resolve_path"):
+            return  # Only applies to local filesystem storage
+        try:
+            import stat
+
+            run_dir = self.storage._resolve_path(base_path)
+            if run_dir.is_dir():
+                run_dir.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO | stat.S_ISVTX)
+        except Exception:
+            logger.warning(
+                "Could not set run directory permissions for %s",
+                base_path,
+                exc_info=True,
             )
 
     def _upload_submission(

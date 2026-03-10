@@ -314,6 +314,11 @@ class AdvancedValidator(BaseValidator):
 
         # Extract signals from envelope for downstream steps and assertions
         signals = self.extract_output_signals(output_envelope) or {}
+        logger.debug(
+            "post_execute_validate: extracted %d signals: %s",
+            len(signals),
+            list(signals.keys()),
+        )
 
         # Evaluate output-stage assertions if we have context
         assertion_total = 0
@@ -321,6 +326,11 @@ class AdvancedValidator(BaseValidator):
         if run_context and run_context.step:
             validator = run_context.step.validator
             ruleset = run_context.step.ruleset
+            logger.debug(
+                "post_execute_validate: validator=%s ruleset=%s",
+                validator,
+                ruleset,
+            )
 
             if validator and ruleset:
                 assertion_result = self.evaluate_assertions_for_stage(
@@ -329,9 +339,23 @@ class AdvancedValidator(BaseValidator):
                     payload=signals,
                     stage="output",
                 )
+                logger.debug(
+                    "post_execute_validate: assertions evaluated — "
+                    "total=%d failures=%d issues=%d",
+                    assertion_result.total,
+                    assertion_result.failures,
+                    len(assertion_result.issues),
+                )
                 issues.extend(assertion_result.issues)
                 assertion_total = assertion_result.total
                 assertion_failures = assertion_result.failures
+            else:
+                logger.debug(
+                    "post_execute_validate: skipping assertions — "
+                    "validator=%s ruleset=%s",
+                    validator,
+                    ruleset,
+                )
 
         # Determine pass/fail based on envelope status and assertion failures.
         # Container error messages do not override SUCCESS status.

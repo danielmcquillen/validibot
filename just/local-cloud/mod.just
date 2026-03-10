@@ -20,12 +20,19 @@ cloud_compose := "../validibot-cloud/docker-compose.cloud.yml"
 up *args:
     docker compose -f {{cloud_compose}} up -d {{args}}
 
-# Rebuild and start containers
+# Rebuild and start containers, clearing the venv volume
 #
-# Usage: just local-cloud rebuild              # cached rebuild (fast)
-#        just local-cloud rebuild --no-cache   # clean rebuild (slow, use after dep upgrades)
+# The venv lives in a named Docker volume so it persists across image
+# rebuilds.  This recipe removes the volume first, guaranteeing that
+# `uv sync` repopulates it from the fresh image (critical after
+# dependency upgrades like validibot-shared).
+#
+# Usage: just local-cloud rebuild              # cached rebuild + fresh venv
+#        just local-cloud rebuild --no-cache   # full clean rebuild (slow)
 #        just local-cloud rebuild worker       # rebuild specific service
 [no-cd]
 rebuild *args:
+    docker compose -f {{cloud_compose}} down
+    -docker volume rm validibot_validibot_local_venv
     docker compose -f {{cloud_compose}} build {{args}}
     docker compose -f {{cloud_compose}} up -d

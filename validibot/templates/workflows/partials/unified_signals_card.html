@@ -1,0 +1,81 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Unified Signals Card — "Inputs and Outputs"
+
+Standard card for the step detail page's right column.  Shows all input
+and output signals for a workflow step in a consistent two-tab layout,
+regardless of validator type.
+
+Input signals come from two sources:
+  - Catalog entries (INPUT stage) — defined by the validator author
+  - Template variables — extracted from an uploaded template file
+
+Output signals come from catalog entries (OUTPUT stage) with a
+"Show to User" column controlled by the display_signals config.
+
+See ADR-2026-03-10: Unified Input/Output Signals UI.
+
+Context:
+  unified_signals  - dict from build_unified_signals() with keys:
+                     input_signals, output_signals, has_inputs, has_outputs
+  step             - the WorkflowStep
+  workflow         - the parent Workflow
+  display_signals  - list of selected output signal slugs (from step.config)
+{% endcomment %}
+{% with has_inputs=unified_signals.has_inputs has_outputs=unified_signals.has_outputs %}
+  {% if has_inputs or has_outputs %}
+    <div class="card app-card flex-grow-1" data-sv-catalog>
+      <div class="card-header">
+        <div class="card-title">{% trans "Inputs and Outputs" %}</div>
+      </div>
+      {% if has_inputs and has_outputs %}
+        {# -- Two-tab layout -- #}
+        <div class="card-body p-0 d-flex flex-column flex-grow-1">
+          <div class="nav nav-tabs px-3 pt-2" role="tablist">
+            <button class="nav-link active"
+                    id="signals-input-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#signals-input-panel"
+                    type="button"
+                    role="tab"
+                    aria-controls="signals-input-panel"
+                    aria-selected="true">
+              <span class="fw-semibold">{% trans "Input Signals" %}</span>
+              <span class="badge text-bg-light ms-1">{{ unified_signals.input_signals|length }}</span>
+            </button>
+            <button class="nav-link"
+                    id="signals-output-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#signals-output-panel"
+                    type="button"
+                    role="tab"
+                    aria-controls="signals-output-panel"
+                    aria-selected="false">
+              <span class="fw-semibold">{% trans "Output Signals" %}</span>
+              <span class="badge text-bg-light ms-1">{{ unified_signals.output_signals|length }}</span>
+            </button>
+          </div>
+          <div class="tab-content flex-grow-1 d-flex flex-column">
+            <div class="tab-pane fade show active p-3 flex-grow-1"
+                 id="signals-input-panel"
+                 role="tabpanel"
+                 aria-labelledby="signals-input-tab">{% include "workflows/partials/input_signals_table.html" %}</div>
+            <div class="tab-pane fade p-3 flex-grow-1"
+                 id="signals-output-panel"
+                 role="tabpanel"
+                 aria-labelledby="signals-output-tab">
+              {% include "workflows/partials/output_signals_table.html" %}
+            </div>
+          </div>
+        </div>
+      {% elif has_inputs %}
+        {# -- Single input tab (no tabs needed) -- #}
+        <div class="card-body flex-grow-1">{% include "workflows/partials/input_signals_table.html" %}</div>
+      {% elif has_outputs %}
+        {# -- Single output tab (no tabs needed) -- #}
+        <div class="card-body flex-grow-1">{% include "workflows/partials/output_signals_table.html" %}</div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endwith %}

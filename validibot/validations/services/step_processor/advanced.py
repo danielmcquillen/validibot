@@ -114,7 +114,26 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
         # Sync execution - container completed, call post_execute_validate()
         # We already persisted input-stage findings above, so we must APPEND
         # output-stage findings to preserve them.
+        #
+        # Persist preprocessing metadata (e.g., template_parameters_used,
+        # template_warnings) into step_run.output NOW, before
+        # _complete_with_envelope() rebuilds the output from the envelope.
+        # finalize_step() merges new stats into existing output, so this
+        # metadata will survive the envelope serialization.
+        # (On the async path, _record_pending_state() does the same thing.)
+        if result.stats:
+            self.step_run.output = {
+                **(self.step_run.output or {}),
+                **result.stats,
+            }
+            self.step_run.save(update_fields=["output"])
+
         if result.output_envelope is None:
+            # If the validator already reported a definitive failure (e.g.,
+            # container image not found, execution error), finalize with those
+            # findings instead of adding a generic "missing envelope" message.
+            if result.passed is False and result.issues:
+                return self._handle_execution_failure(severity_counts)
             return self._handle_missing_envelope()
         return self._complete_with_envelope(
             validator_instance,
@@ -351,6 +370,29 @@ class AdvancedValidationProcessor(ValidationStepProcessor):
             step_run=self.step_run,
             severity_counts=severity_counts,
             total_findings=1,
+            assertion_failures=0,
+            assertion_total=0,
+        )
+
+    def _handle_execution_failure(
+        self,
+        severity_counts: Counter,
+    ) -> StepProcessingResult:
+        """Handle case where the validator returned a definitive error.
+
+        Called when the execution backend reports a concrete failure (e.g.,
+        container image not found, container crash) — the error findings
+        were already persisted by ``persist_findings()`` earlier. We just
+        finalize the step without adding a redundant generic message.
+        """
+        error_msg = "Validation execution failed"
+        self.finalize_step(StepStatus.FAILED, {}, error=error_msg)
+
+        return StepProcessingResult(
+            passed=False,
+            step_run=self.step_run,
+            severity_counts=severity_counts,
+            total_findings=sum(severity_counts.values()),
             assertion_failures=0,
             assertion_total=0,
         )

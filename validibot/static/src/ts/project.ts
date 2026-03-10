@@ -311,6 +311,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// Show the shared help drawer after HTMX swaps content into it.
+document.body.addEventListener('htmx:afterSwap', (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (detail?.target?.id === 'helpDrawerBody') {
+        const drawerEl = document.getElementById('helpDrawer');
+        if (drawerEl) {
+            bootstrap.Offcanvas.getOrCreateInstance(drawerEl).show();
+        }
+    }
+});
+
 document.body.addEventListener('htmx:beforeSwap', () => {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
         const tooltip = bootstrap.Tooltip.getInstance(el);

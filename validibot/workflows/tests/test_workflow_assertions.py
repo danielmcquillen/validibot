@@ -355,6 +355,7 @@ class WorkflowStepAssertionsTests(TestCase):
             data={
                 "name": "Energy check",
                 "description": "",
+                "validation_mode": "direct",
                 "weather_file": str(resource_file.id),
                 "run_simulation": True,
                 "idf_checks": [],

@@ -1,0 +1,60 @@
+{% load i18n %}
+
+<h6 class="fw-semibold">{% trans "What is the evidence hash?" %}</h6>
+<p class="small">
+  {% blocktrans trimmed %}
+    The evidence hash is a SHA-256 fingerprint computed when a validation
+    run completes. It covers the key fields of the run record, creating a
+    tamper-evident seal. If any covered field were modified after
+    completion, the hash would no longer match.
+  {% endblocktrans %}
+</p>
+<h6 class="fw-semibold mt-3">{% trans "Fields included" %}</h6>
+<ul class="small">
+  <li>
+    <strong>run_id</strong> — {% trans "Unique identifier of the run" %}
+  </li>
+  <li>
+    <strong>content_hash</strong> — {% trans "SHA-256 of the submitted content" %}
+  </li>
+  <li>
+    <strong>user_id</strong> — {% trans "ID of the user who submitted the run" %}
+  </li>
+  <li>
+    <strong>submission_name</strong> — {% trans "Name of the submission (if provided)" %}
+  </li>
+  <li>
+    <strong>status</strong> — {% trans "Final status (e.g. Succeeded, Failed)" %}
+  </li>
+  <li>
+    <strong>started_at</strong> — {% trans "When the run started (ISO 8601 UTC)" %}
+  </li>
+  <li>
+    <strong>ended_at</strong> — {% trans "When the run completed (ISO 8601 UTC)" %}
+  </li>
+  <li>
+    <strong>duration_ms</strong> — {% trans "Run duration in milliseconds" %}
+  </li>
+  <li>
+    <strong>error_count</strong> — {% trans "Number of error-severity findings" %}
+  </li>
+  <li>
+    <strong>warning_count</strong> — {% trans "Number of warning-severity findings" %}
+  </li>
+  <li>
+    <strong>info_count</strong> — {% trans "Number of info-severity findings" %}
+  </li>
+  <li>
+    <strong>total_findings</strong> — {% trans "Total finding count" %}
+  </li>
+</ul>
+<h6 class="fw-semibold mt-3">{% trans "How it works" %}</h6>
+<p class="small mb-0">
+  {% blocktrans trimmed %}
+    These fields are serialized as canonical JSON (sorted keys, no
+    whitespace), then hashed with SHA-256. The resulting 64-character hex
+    digest is stored on the run record and included in API responses.
+    External systems can recompute the hash from the same fields to verify
+    that the record has not been altered.
+  {% endblocktrans %}
+</p>

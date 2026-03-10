@@ -51,7 +51,7 @@
                     {% if signal.label %}
                       {{ signal.label }}
                     {% else %}
-                      <span class="text-muted">—</span>
+                      <span class="text-muted">--</span>
                     {% endif %}
                   </td>
                   <td>
@@ -64,7 +64,7 @@
                             style="max-width: 250px"
                             title="{{ signal.target_data_path }}">{{ signal.target_data_path }}</code>
                     {% else %}
-                      <span class="text-muted">—</span>
+                      <span class="text-muted">--</span>
                     {% endif %}
                   </td>
                   <td>{{ signal.get_entry_type_display }}</td>
@@ -74,7 +74,7 @@
                             style="max-width: 200px"
                             title="{{ signal.description }}">{{ signal.description }}</span>
                     {% else %}
-                      <span class="text-muted">—</span>
+                      <span class="text-muted">--</span>
                     {% endif %}
                   </td>
                 </tr>

@@ -8,12 +8,10 @@ from django.utils.translation import gettext as _
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import ValidationType
 from validibot.validations.constants import XMLSchemaType
 from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
-from validibot.validations.validators.base.registry import register_validator
 
 if TYPE_CHECKING:
     from validibot.actions.protocols import RunContext
@@ -22,7 +20,6 @@ if TYPE_CHECKING:
     from validibot.validations.models import Validator
 
 
-@register_validator(ValidationType.XML_SCHEMA)
 class XmlSchemaValidator(BaseValidator):
     """
     XML validator that supports XSD (default), Relax NG, and DTD.

@@ -314,7 +314,10 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
         if not run:
             return [], [], False
         step_runs = list(
-            run.step_runs.select_related("workflow_step")
+            run.step_runs.select_related(
+                "workflow_step",
+                "workflow_step__validator",
+            )
             .prefetch_related("findings", "findings__ruleset_assertion")
             .order_by("step_order"),
         )
@@ -371,6 +374,32 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             request=self.request,
             kwargs={"pk": workflow.pk},
         )
+        # Build signal/param display data for completed runs.
+        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_template_params_display,
+        )
+
+        step_signals: dict[int, list] = {}
+        step_params: dict[int, list] = {}
+        step_template_warnings: dict[int, list] = {}
+        if not run_in_progress:
+            for sr in step_runs:
+                signals = build_display_signals(sr)
+                if signals:
+                    step_signals[sr.pk] = signals
+                params = build_template_params_display(sr)
+                if params:
+                    step_params[sr.pk] = params
+                warnings = (sr.output or {}).get("template_warnings")
+                if warnings:
+                    step_template_warnings[sr.pk] = warnings
+
+        # Flatten all signals across steps for the "Workflow Outputs" summary.
+        all_signals = [
+            signal for signals in step_signals.values() for signal in signals
+        ]
+
         return {
             "active_run": active_run,
             "step_runs": step_runs,
@@ -385,6 +414,11 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "cancel_url": cancel_url,
             "launch_url": launch_url,
             "previous_runs_url": previous_runs_url,
+            "step_signals": step_signals,
+            "has_signals": bool(step_signals),
+            "all_signals": all_signals,
+            "step_params": step_params,
+            "step_template_warnings": step_template_warnings,
         }
 
     def get_recent_runs(self, workflow: Workflow, limit: int = 5):
@@ -460,6 +494,14 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             workflow=workflow,
             active_run=run,
         )
+        submission_content = ""
+        if (
+            run.submission
+            and run.submission.input_file
+            and run.submission.is_content_available
+        ):
+            submission_content = run.submission.get_content()
+
         context = {
             "workflow": workflow,
             "run": run,
@@ -469,6 +511,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "has_steps": workflow.steps.exists(),
             "recent_runs": self.get_recent_runs(workflow),
             "is_polling": run.status in self.polling_statuses,
+            "submission_content": submission_content,
         }
         context.update(status_context)
         return context

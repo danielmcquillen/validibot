@@ -1,0 +1,108 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Template Variables Card
+
+Tabbed card for the step detail page's right column.  Rendered by
+the StepEditorCardSpec plugin system when the EnergyPlus validator
+declares a "template-variables" card.
+
+Tab 1 — "Template Variables": per-variable annotation form (HTMx POST)
+Tab 2 — "Signals": flat catalog table (output-stage only) with "Show to User" column
+
+Context:
+  tplvar_form        - TemplateVariableAnnotationForm instance
+  workflow           - the parent Workflow
+  step               - the WorkflowStep
+  catalog_display    - validator.catalog_display (for catalog tab)
+  catalog_tab_prefix - unique prefix for tab IDs
+{% endcomment %}
+{% with tab_prefix=catalog_tab_prefix|default:"step-editor" %}
+  <div class="card app-card" id="template-variables-card">
+    <div class="card-header">
+      <div class="card-title">{% trans "Inputs and Outputs" %}</div>
+    </div>
+    <div class="card-body p-0">
+      {# -- Tab navigation -- #}
+      <div class="nav nav-tabs px-3 pt-2" role="tablist">
+        <button class="nav-link active"
+                id="{{ tab_prefix }}-vars-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#{{ tab_prefix }}-vars-panel"
+                type="button"
+                role="tab"
+                aria-controls="{{ tab_prefix }}-vars-panel"
+                aria-selected="true">
+          <span class="fw-semibold">{% trans "Template Variables" %}</span>
+          <span class="badge text-bg-light ms-1">{{ tplvar_form.template_variable_fields|length }}</span>
+        </button>
+        <button class="nav-link"
+                id="{{ tab_prefix }}-catalog-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#{{ tab_prefix }}-catalog-panel"
+                type="button"
+                role="tab"
+                aria-controls="{{ tab_prefix }}-catalog-panel"
+                aria-selected="false">
+          <span class="fw-semibold">{% trans "Signals" %}</span>
+        </button>
+      </div>
+      {# -- Tab panels -- #}
+      <div class="tab-content">
+        {# == Template Variables tab == #}
+        <div class="tab-pane fade show active p-3"
+             id="{{ tab_prefix }}-vars-panel"
+             role="tabpanel"
+             aria-labelledby="{{ tab_prefix }}-vars-tab">
+          <p class="text-muted small mb-3">{% trans "Configure each variable's type, constraints, and default values." %}</p>
+          <form hx-post="{% org_url 'workflows:workflow_step_template_variables' workflow.pk step.pk %}"
+                hx-target="#template-variables-card"
+                hx-swap="outerHTML"
+                hx-indicator="#tplvar-save-indicator">
+            {% csrf_token %}
+            {% include "workflows/partials/template_variable_editor.html" %}
+            <div class="d-flex justify-content-end mt-3">
+              <button type="submit" class="btn btn-primary btn-sm">
+                <span class="spinner-border spinner-border-sm d-none"
+                      id="tplvar-save-indicator"></span>
+                {% trans "Save" %}
+              </button>
+            </div>
+          </form>
+        </div>
+        {# == Signals tab == #}
+        <div class="tab-pane fade p-3"
+             id="{{ tab_prefix }}-catalog-panel"
+             role="tabpanel"
+             aria-labelledby="{{ tab_prefix }}-catalog-tab">
+          {% include "workflows/partials/signals_tab_content.html" %}
+        </div>
+      </div>
+    </div>
+    {# close card-body #}
+  </div>
+  {# close card app-card #}
+{% endwith %}
+{# -- Toggle type-specific fields per variable card -- #}
+<script>
+  (function() {
+    document.querySelectorAll("[data-tplvar-card]").forEach(function(card) {
+      var radios = card.querySelectorAll("input[type=radio][name$=_variable_type]");
+
+      function toggle() {
+        var selected = card.querySelector("input[type=radio][name$=_variable_type]:checked");
+        var val = selected ? selected.value : "";
+        card.querySelectorAll(".tplvar-number-fields").forEach(function(el) {
+          el.style.display = val === "number" ? "" : "none";
+        });
+        card.querySelectorAll(".tplvar-choice-fields").forEach(function(el) {
+          el.style.display = val === "choice" ? "" : "none";
+        });
+      }
+      radios.forEach(function(r) {
+        r.addEventListener("change", toggle);
+      });
+      toggle();
+    });
+  })();
+</script>

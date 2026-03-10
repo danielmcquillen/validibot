@@ -2,15 +2,21 @@
 Cloud Run Job launcher service.
 
 This module orchestrates the complete flow of triggering Cloud Run Jobs:
-1. Build typed input envelope
-2. Upload submission and envelope to GCS
-3. Trigger Cloud Run Job directly via Jobs API
-4. Return ValidationResult with pending status
+1. Upload submission and envelope to GCS
+2. Trigger Cloud Run Job directly via Jobs API
+3. Return ValidationResult with pending status
 
 Architecture:
     Web -> Cloud Run Job (this module) -> Callback to worker
 
 Design: Simple function-based orchestration. No complex state management.
+
+Note: Template preprocessing (resolving parameterized IDF templates into
+concrete IDF files) happens earlier in the pipeline — in
+``AdvancedValidator.validate()`` via ``preprocess_submission()`` — before
+the submission reaches this module.  By the time the launcher sees the
+submission, ``Submission.get_content()`` already returns a fully resolved
+IDF, regardless of whether the original was a template or a direct upload.
 """
 
 from __future__ import annotations
@@ -25,6 +31,9 @@ from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
 from validibot.validations.services.cloud_run.envelope_builder import (
     build_energyplus_input_envelope,
+)
+from validibot.validations.services.cloud_run.envelope_builder import (
+    resolve_step_resources,
 )
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
@@ -86,6 +95,35 @@ def build_validation_callback_url() -> str:
     return f"{base_url.rstrip('/')}{VALIDATION_CALLBACK_PATH}"
 
 
+def _check_already_launched(step_run) -> ValidationResult | None:
+    """Return a pending result if a job was already launched, else None."""
+    existing_output = step_run.output or {}
+    if existing_output.get("job_name"):
+        logger.info(
+            "Job already launched for step run %s (job=%s), skipping relaunch",
+            step_run.id,
+            existing_output.get("job_name"),
+        )
+        return ValidationResult(
+            passed=None,
+            issues=[],
+            stats=existing_output,
+        )
+    return None
+
+
+def _mark_step_run_running(step_run) -> None:
+    """Mark a step run as RUNNING with the current timestamp."""
+    from datetime import UTC
+    from datetime import datetime
+
+    from validibot.validations.constants import StepStatus
+
+    step_run.status = StepStatus.RUNNING
+    step_run.started_at = datetime.now(UTC)
+    step_run.save(update_fields=["status", "started_at"])
+
+
 def launch_energyplus_validation(
     *,
     run: ValidationRun,
@@ -97,13 +135,17 @@ def launch_energyplus_validation(
     """
     Launch an EnergyPlus validation via Cloud Run Jobs.
 
-    This function orchestrates the complete flow:
-    1. Extract weather file from step config
-    2. Upload submission file to GCS
-    3. Build typed input envelope
-    4. Upload envelope to GCS
-    5. Trigger Cloud Run Job directly via Jobs API
-    6. Return pending ValidationResult
+    Uploads the submission (IDF or epJSON) to GCS, builds an input envelope,
+    triggers the Cloud Run Job, and returns a pending ValidationResult.
+
+    .. note::
+
+       Template preprocessing (resolving ``$VARIABLE`` placeholders) happens
+       earlier in ``AdvancedValidator.validate()`` via
+       ``EnergyPlusValidator.preprocess_submission()``.  By the time this
+       function is called, ``submission.get_content()`` already returns a
+       fully resolved IDF — this function does not need to distinguish
+       between template and direct-upload submissions.
 
     Args:
         run: ValidationRun instance (already created in PENDING status)
@@ -113,91 +155,59 @@ def launch_energyplus_validation(
         step: WorkflowStep instance with config including weather_file
 
     Returns:
-        ValidationResult with passed=None (pending), issues=[], stats with job info
+        ValidationResult with passed=None (pending), issues=[], stats
+        with job info.
 
     Raises:
         ValueError: If required config is missing (e.g., weather_file)
         Exception: If GCS upload or job trigger fails
-
-    Example:
-        >>> result = launch_energyplus_validation(
-        ...     run=validation_run,
-        ...     validator=energyplus_validator,
-        ...     submission=idf_submission,
-        ...     ruleset=energyplus_ruleset,
-        ...     step=workflow_step,
-        ... )
-        >>> assert result.passed is None  # Pending
-        >>> assert "job_name" in result.stats
     """
     try:
-        # 0. Idempotency check: if this step run already has job info in output,
-        # a job was already launched (possibly on a previous retry). Return
-        # pending result to wait for the existing job's callback.
+        # 0. Idempotency check
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run found for ValidationRun {run.id}"
             raise ValueError(msg)  # noqa: TRY301
 
-        existing_output = current_step_run.output or {}
-        if existing_output.get("job_name"):
-            logger.info(
-                "Job already launched for step run %s (job=%s), skipping relaunch",
-                current_step_run.id,
-                existing_output.get("job_name"),
-            )
-            return ValidationResult(
-                passed=None,  # Still pending
-                issues=[],
-                stats=existing_output,
-            )
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
 
-        # 1. Extract weather file from step config
-        step_config = step.config or {}
-        weather_file = step_config.get("weather_file")
-        if not weather_file:
-            msg = (
-                "EnergyPlus step config must include 'weather_file' "
-                "(e.g., 'USA_CA_SF.epw')"
-            )
-            raise ValueError(msg)  # noqa: TRY301
-
-        # 2. Build GCS paths
+        # 1. Build GCS paths
         org_id = str(run.org.id)
         run_id = str(run.id)
         execution_bundle_uri = (
             f"gs://{settings.GCS_VALIDATION_BUCKET}/runs/{org_id}/{run_id}"
         )
-        model_file_uri = f"{execution_bundle_uri}/model.epjson"
-        weather_file_uri = (
-            f"gs://{settings.GCS_VALIDATION_BUCKET}/"
-            f"{settings.GCS_VALIDATOR_ASSETS_PREFIX}/{settings.GCS_WEATHER_DATA_DIR}/{weather_file}"
-        )
         input_envelope_uri = f"{execution_bundle_uri}/input.json"
 
-        # 3. Upload submission file to GCS
-        # NOTE: Currently assumes epJSON. IDF support requires detecting file type
-        # and using the appropriate extension here.
+        # 2. Upload submission file to GCS.
+        # After preprocessing, submission.get_content() returns the resolved
+        # IDF (for template mode) or the original IDF/epJSON (for direct mode).
+        # Determine file extension from the submission's filename.
+        filename = submission.original_filename or "model.epjson"
+        if filename.lower().endswith(".idf"):
+            model_file_uri = f"{execution_bundle_uri}/model.idf"
+            content_type = "text/plain"
+        else:
+            model_file_uri = f"{execution_bundle_uri}/model.epjson"
+            content_type = "application/json"
+
         logger.info("Uploading submission to %s", model_file_uri)
         upload_file(
             content=submission.get_content().encode("utf-8"),
             uri=model_file_uri,
-            content_type="application/json",
+            content_type=content_type,
         )
 
-        # 4. Build callback URL (IAM protected worker service)
+        # 3. Build callback URL and idempotency key
         callback_url = build_validation_callback_url()
-
-        # 4.5. Generate deterministic idempotency key for callback deduplication.
-        # Using the step run ID ensures that retries use the same callback_id,
-        # allowing the callback receipt fencing to correctly identify and handle
-        # duplicate callbacks. Note: Job launch idempotency is handled by the
-        # check at step 0 above (checking step_run.output for existing job_name).
         callback_id = f"step-run-{current_step_run.id}"
 
-        # 5. Build typed input envelope
+        # 4. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
+        resource_files = resolve_step_resources(step, role="WEATHER_FILE")
 
         envelope = build_energyplus_input_envelope(
             run_id=run_id,
@@ -208,18 +218,18 @@ def launch_energyplus_validation(
             step_id=str(step.id),
             step_name=step.name,
             model_file_uri=model_file_uri,
-            weather_file_uri=weather_file_uri,
+            resource_files=resource_files,
             callback_url=callback_url,
             callback_id=callback_id,
             execution_bundle_uri=execution_bundle_uri,
             timestep_per_hour=timestep_per_hour,
         )
 
-        # 6. Upload envelope to GCS
+        # 5. Upload envelope to GCS
         logger.info("Uploading input envelope to %s", input_envelope_uri)
         upload_envelope(envelope, input_envelope_uri)
 
-        # 7. Trigger Cloud Run Job directly via Jobs API
+        # 6. Trigger Cloud Run Job directly via Jobs API
         job_name = settings.GCS_ENERGYPLUS_JOB_NAME
 
         logger.info("Triggering Cloud Run Job: %s", job_name)
@@ -230,28 +240,15 @@ def launch_energyplus_validation(
             input_uri=input_envelope_uri,
         )
 
-        # 7.5. Update step run status to RUNNING
-        # Note: run.status and run.started_at are already set by
-        # execute_workflow_steps() when
-        # the run transitions from PENDING to RUNNING. We only need to mark the
-        # step run as running here.
-        from datetime import UTC
-        from datetime import datetime
-
-        from validibot.validations.constants import StepStatus
-
-        now = datetime.now(UTC)
-        current_step_run.status = StepStatus.RUNNING
-        current_step_run.started_at = now
-        current_step_run.save(update_fields=["status", "started_at"])
-
+        # 6.5. Update step run status to RUNNING
+        _mark_step_run_running(current_step_run)
         logger.info(
             "Marked step run %s as RUNNING for run %s",
             current_step_run.id,
             run.id,
         )
 
-        # 8. Return pending ValidationResult
+        # 7. Return pending ValidationResult
         stats = {
             "job_status": CloudRunJobStatus.PENDING,
             "job_name": job_name,
@@ -266,13 +263,15 @@ def launch_energyplus_validation(
             stats=stats,
         )
 
-    except Exception as e:
-        logger.exception("Failed to launch EnergyPlus Cloud Run Job")
-        # Return failure result
+    except Exception:
+        logger.exception("Failed to launch EnergyPlus Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
                 path="",
-                message=f"Failed to launch EnergyPlus validation: {e!s}",
+                message=(
+                    "Failed to launch EnergyPlus validation. "
+                    "The error has been logged for investigation."
+                ),
                 severity=Severity.ERROR,
             ),
         ]
@@ -295,26 +294,15 @@ def launch_fmu_validation(
     a pending ValidationResult.
     """
     try:
-        # 0. Idempotency check: if this step run already has job info in output,
-        # a job was already launched (possibly on a previous retry). Return
-        # pending result to wait for the existing job's callback.
+        # 0. Idempotency check
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run for run {run.id}"
             raise ValueError(msg)  # noqa: TRY301
 
-        existing_output = current_step_run.output or {}
-        if existing_output.get("job_name"):
-            logger.info(
-                "Job already launched for step run %s (job=%s), skipping relaunch",
-                current_step_run.id,
-                existing_output.get("job_name"),
-            )
-            return ValidationResult(
-                passed=None,  # Still pending
-                issues=[],
-                stats=existing_output,
-            )
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
 
         fmu_model = validator.fmu_model
         if not fmu_model:
@@ -348,12 +336,16 @@ def launch_fmu_validation(
             submission.get_content() if hasattr(submission, "get_content") else ""
         )
         if isinstance(submission_payload, str):
-            # Best effort: parse JSON when possible
             import json
 
             try:
                 submission_payload = json.loads(submission_payload)
-            except Exception:
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    "Could not parse FMU submission as JSON for run %s: %s",
+                    run.id,
+                    exc,
+                )
                 submission_payload = {}
         input_values: dict[str, object] = {}
         for entry in validator.catalog_entries.filter(run_stage="INPUT"):
@@ -438,18 +430,9 @@ def launch_fmu_validation(
 
         # Mark step run as RUNNING
         # Note: run.status and run.started_at are already set by
-        # execute_workflow_steps() when
-        # the run transitions from PENDING to RUNNING. We only need to mark the
-        # step run as running here.
-        from datetime import UTC
-        from datetime import datetime
-
-        from validibot.validations.constants import StepStatus
-
-        now = datetime.now(UTC)
-        current_step_run.status = StepStatus.RUNNING
-        current_step_run.started_at = now
-        current_step_run.save(update_fields=["status", "started_at"])
+        # execute_workflow_steps() when the run transitions from PENDING
+        # to RUNNING. We only need to mark the step run as running here.
+        _mark_step_run_running(current_step_run)
 
         stats = {
             "job_status": CloudRunJobStatus.PENDING,
@@ -461,12 +444,15 @@ def launch_fmu_validation(
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
-    except Exception as e:
-        logger.exception("Failed to launch FMU Cloud Run Job")
+    except Exception:
+        logger.exception("Failed to launch FMU Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
                 path="",
-                message=f"Failed to launch FMU validation: {e!s}",
+                message=(
+                    "Failed to launch FMU validation. "
+                    "The error has been logged for investigation."
+                ),
                 severity=Severity.ERROR,
             ),
         ]

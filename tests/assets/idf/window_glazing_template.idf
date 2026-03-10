@@ -1,0 +1,462 @@
+! Window Glazing Performance Analysis — Parameterized Template
+!
+! Minimal single-zone shoebox model for demonstrating the Validibot
+! parameterized template feature.  Three glazing properties are exposed
+! as template variables via $VARIABLE_NAME syntax.
+!
+! Building:   5m x 5m x 3m (25 m2 floor area, 75 m3 volume)
+! Window:     3m x 1.5m south-facing (4.5 m2, 30% window-to-wall ratio)
+! HVAC:       ZoneHVAC:IdealLoadsAirSystem (infinite capacity)
+! Loads:      Office occupancy (1/10 m2), lighting (10 W/m2), equipment (10 W/m2)
+! Infiltration: 0.5 ACH
+!
+! Glazing model:  WindowMaterial:SimpleGlazingSystem
+!   Based on the LBNL methodology (Arasteh, Kohler, Griffith 2009,
+!   LBNL-2804E).  The same approach used by DOE commercial building
+!   prototypes.  EnergyPlus internally constructs a multi-layer glazing
+!   system from U-factor, SHGC, and visible transmittance inputs.
+!
+! See ADR 2026-03-04: EnergyPlus Parameterized Model Templates, Section 10.
+
+Version,
+    25.2;                    !- Version Identifier
+
+Building,
+    Shoebox Demo,            !- Name
+    0,                       !- North Axis {deg}
+    Suburbs,                 !- Terrain
+    0.04,                    !- Loads Convergence Tolerance Value {W}
+    0.4,                     !- Temperature Convergence Tolerance Value {deltaC}
+    FullInteriorAndExterior, !- Solar Distribution
+    25,                      !- Maximum Number of Warmup Days
+    6;                       !- Minimum Number of Warmup Days
+
+Timestep,
+    4;                       !- Number of Timesteps per Hour
+
+SimulationControl,
+    No,                      !- Do Zone Sizing Calculation
+    No,                      !- Do System Sizing Calculation
+    No,                      !- Do Plant Sizing Calculation
+    Yes,                     !- Run Simulation for Sizing Periods
+    Yes,                     !- Run Simulation for Weather File Run Periods
+    No,                      !- Do HVAC Sizing Simulation for Sizing Periods
+    1;                       !- Maximum Number of HVAC Sizing Simulation Passes
+
+RunPeriod,
+    Annual,                  !- Name
+    1,                       !- Begin Month
+    1,                       !- Begin Day of Month
+    ,                        !- Begin Year
+    12,                      !- End Month
+    31,                      !- End Day of Month
+    ,                        !- End Year
+    Sunday,                  !- Day of Week for Start Day
+    Yes,                     !- Use Weather File Holidays and Special Days
+    Yes,                     !- Use Weather File Daylight Saving Period
+    No,                      !- Apply Weekend Holiday Rule
+    Yes,                     !- Use Weather File Rain Indicators
+    Yes;                     !- Use Weather File Snow Indicators
+
+Site:Location,
+    Denver Centennial CO,    !- Name
+    39.74,                   !- Latitude {deg}
+    -104.99,                 !- Longitude {deg}
+    -7.0,                    !- Time Zone {hr}
+    1793.0;                  !- Elevation {m}
+
+! ── Schedules ─────────────────────────────────────────────────────────
+! Standard office occupancy: weekdays 8am-6pm, off weekends.
+
+ScheduleTypeLimits,
+    Fraction,                !- Name
+    0.0,                     !- Lower Limit Value
+    1.0,                     !- Upper Limit Value
+    Continuous;              !- Numeric Type
+
+ScheduleTypeLimits,
+    Any Number;              !- Name
+
+Schedule:Compact,
+    Office Occupancy,        !- Name
+    Fraction,                !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: Weekdays,           !- Field 2
+    Until: 08:00, 0.0,      !- Field 3
+    Until: 18:00, 1.0,      !- Field 4
+    Until: 24:00, 0.0,      !- Field 5
+    For: AllOtherDays,       !- Field 6
+    Until: 24:00, 0.0;      !- Field 7
+
+Schedule:Compact,
+    Always On,               !- Name
+    Fraction,                !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 1.0;      !- Field 3
+
+Schedule:Compact,
+    Dual Setpoint Control Type, !- Name
+    Any Number,              !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 4;        !- Field 3 (4 = DualSetpoint)
+
+Schedule:Compact,
+    Heating Setpoint Schedule, !- Name
+    Any Number,              !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 21.0;     !- Field 3
+
+Schedule:Compact,
+    Cooling Setpoint Schedule, !- Name
+    Any Number,              !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 24.0;     !- Field 3
+
+! ── Materials ─────────────────────────────────────────────────────────
+
+Material,
+    Concrete Block 200mm,    !- Name
+    MediumRough,             !- Roughness
+    0.2,                     !- Thickness {m}
+    1.13,                    !- Conductivity {W/m-K}
+    2000,                    !- Density {kg/m3}
+    920,                     !- Specific Heat {J/kg-K}
+    0.9,                     !- Thermal Absorptance
+    0.6,                     !- Solar Absorptance
+    0.6;                     !- Visible Absorptance
+
+Material,
+    Roof Insulation 150mm,   !- Name
+    MediumSmooth,            !- Roughness
+    0.15,                    !- Thickness {m}
+    0.04,                    !- Conductivity {W/m-K}
+    30,                      !- Density {kg/m3}
+    1500,                    !- Specific Heat {J/kg-K}
+    0.9,                     !- Thermal Absorptance
+    0.7,                     !- Solar Absorptance
+    0.7;                     !- Visible Absorptance
+
+Material,
+    Concrete Slab 150mm,     !- Name
+    Rough,                   !- Roughness
+    0.15,                    !- Thickness {m}
+    1.95,                    !- Conductivity {W/m-K}
+    2400,                    !- Density {kg/m3}
+    900,                     !- Specific Heat {J/kg-K}
+    0.9,                     !- Thermal Absorptance
+    0.6,                     !- Solar Absorptance
+    0.6;                     !- Visible Absorptance
+
+! ── Window Glazing (PARAMETERIZED) ────────────────────────────────────
+! The three template variables below are the parameters exposed to
+! submitters.  EnergyPlus constructs a multi-layer glazing system from
+! these inputs using the LBNL simplified glazing methodology.
+
+WindowMaterial:SimpleGlazingSystem,
+    Glazing System,          !- Name
+    $U_FACTOR,               !- U-Factor {W/m2-K}
+    $SHGC,                   !- Solar Heat Gain Coefficient
+    $VISIBLE_TRANSMITTANCE;  !- Visible Transmittance
+
+! ── Constructions ─────────────────────────────────────────────────────
+
+Construction,
+    Exterior Wall,           !- Name
+    Concrete Block 200mm;    !- Outside Layer
+
+Construction,
+    Flat Roof,               !- Name
+    Roof Insulation 150mm;   !- Outside Layer
+
+Construction,
+    Slab Floor,              !- Name
+    Concrete Slab 150mm;     !- Outside Layer
+
+Construction,
+    Window Construction,     !- Name
+    Glazing System;          !- Outside Layer
+
+! ── Zone ──────────────────────────────────────────────────────────────
+
+Zone,
+    Shoebox Zone,            !- Name
+    0,                       !- Direction of Relative North {deg}
+    0,                       !- X Origin {m}
+    0,                       !- Y Origin {m}
+    0,                       !- Z Origin {m}
+    1,                       !- Type
+    1,                       !- Multiplier
+    autocalculate,           !- Ceiling Height {m}
+    autocalculate;           !- Volume {m3}
+
+! ── Surfaces ──────────────────────────────────────────────────────────
+! 5m x 5m x 3m shoebox. Origin at (0,0,0), X=East, Y=North, Z=Up.
+! South wall has a 3m x 1.5m window centered horizontally.
+
+BuildingSurface:Detailed,
+    South Wall,              !- Name
+    Wall,                    !- Surface Type
+    Exterior Wall,           !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Outdoors,                !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    SunExposed,              !- Sun Exposure
+    WindExposed,             !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    0.0, 0.0, 3.0,          !- Vertex 1 {m}
+    0.0, 0.0, 0.0,          !- Vertex 2 {m}
+    5.0, 0.0, 0.0,          !- Vertex 3 {m}
+    5.0, 0.0, 3.0;          !- Vertex 4 {m}
+
+FenestrationSurface:Detailed,
+    South Window,            !- Name
+    Window,                  !- Surface Type
+    Window Construction,     !- Construction Name
+    South Wall,              !- Building Surface Name
+    ,                        !- Outside Boundary Condition Object
+    autocalculate,           !- View Factor to Ground
+    ,                        !- Frame and Divider Name
+    1,                       !- Multiplier
+    4,                       !- Number of Vertices
+    1.0, 0.0, 2.25,         !- Vertex 1 {m}
+    1.0, 0.0, 0.75,         !- Vertex 2 {m}
+    4.0, 0.0, 0.75,         !- Vertex 3 {m}
+    4.0, 0.0, 2.25;         !- Vertex 4 {m}
+
+BuildingSurface:Detailed,
+    North Wall,              !- Name
+    Wall,                    !- Surface Type
+    Exterior Wall,           !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Outdoors,                !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    SunExposed,              !- Sun Exposure
+    WindExposed,             !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    5.0, 5.0, 3.0,          !- Vertex 1 {m}
+    5.0, 5.0, 0.0,          !- Vertex 2 {m}
+    0.0, 5.0, 0.0,          !- Vertex 3 {m}
+    0.0, 5.0, 3.0;          !- Vertex 4 {m}
+
+BuildingSurface:Detailed,
+    East Wall,               !- Name
+    Wall,                    !- Surface Type
+    Exterior Wall,           !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Outdoors,                !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    SunExposed,              !- Sun Exposure
+    WindExposed,             !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    5.0, 0.0, 3.0,          !- Vertex 1 {m}
+    5.0, 0.0, 0.0,          !- Vertex 2 {m}
+    5.0, 5.0, 0.0,          !- Vertex 3 {m}
+    5.0, 5.0, 3.0;          !- Vertex 4 {m}
+
+BuildingSurface:Detailed,
+    West Wall,               !- Name
+    Wall,                    !- Surface Type
+    Exterior Wall,           !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Outdoors,                !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    SunExposed,              !- Sun Exposure
+    WindExposed,             !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    0.0, 5.0, 3.0,          !- Vertex 1 {m}
+    0.0, 5.0, 0.0,          !- Vertex 2 {m}
+    0.0, 0.0, 0.0,          !- Vertex 3 {m}
+    0.0, 0.0, 3.0;          !- Vertex 4 {m}
+
+BuildingSurface:Detailed,
+    Roof,                    !- Name
+    Roof,                    !- Surface Type
+    Flat Roof,               !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Outdoors,                !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    SunExposed,              !- Sun Exposure
+    WindExposed,             !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    0.0, 5.0, 3.0,          !- Vertex 1 {m}
+    0.0, 0.0, 3.0,          !- Vertex 2 {m}
+    5.0, 0.0, 3.0,          !- Vertex 3 {m}
+    5.0, 5.0, 3.0;          !- Vertex 4 {m}
+
+BuildingSurface:Detailed,
+    Floor,                   !- Name
+    Floor,                   !- Surface Type
+    Slab Floor,              !- Construction Name
+    Shoebox Zone,            !- Zone Name
+    ,                        !- Space Name
+    Ground,                  !- Outside Boundary Condition
+    ,                        !- Outside Boundary Condition Object
+    NoSun,                   !- Sun Exposure
+    NoWind,                  !- Wind Exposure
+    autocalculate,           !- View Factor to Ground
+    4,                       !- Number of Vertices
+    0.0, 0.0, 0.0,          !- Vertex 1 {m}
+    0.0, 5.0, 0.0,          !- Vertex 2 {m}
+    5.0, 5.0, 0.0,          !- Vertex 3 {m}
+    5.0, 0.0, 0.0;          !- Vertex 4 {m}
+
+! ── Internal Loads ────────────────────────────────────────────────────
+! Office-type loads ensure the model produces realistic results.
+! Without internal loads the heating/cooling balance is unrealistic.
+
+People,
+    Office People,           !- Name
+    Shoebox Zone,            !- Zone or ZoneList or Space or SpaceList Name
+    Office Occupancy,        !- Number of People Schedule Name
+    People/Area,             !- Number of People Calculation Method
+    ,                        !- Zone Floor Area per Person {m2/person}
+    0.1,                     !- People per Floor Area {person/m2}
+    ,                        !- Number of People
+    0.3,                     !- Fraction Radiant
+    autocalculate,           !- Sensible Heat Fraction
+    Activity Schedule;       !- Activity Level Schedule Name
+
+Schedule:Compact,
+    Activity Schedule,       !- Name
+    Any Number,              !- Schedule Type Limits Name
+    Through: 12/31,          !- Field 1
+    For: AllDays,            !- Field 2
+    Until: 24:00, 120.0;    !- Field 3 (W/person, seated office work)
+
+Lights,
+    Office Lights,           !- Name
+    Shoebox Zone,            !- Zone or ZoneList or Space or SpaceList Name
+    Office Occupancy,        !- Schedule Name
+    Watts/Area,              !- Design Level Calculation Method
+    ,                        !- Lighting Level {W}
+    10.0,                    !- Watts per Floor Area {W/m2}
+    ,                        !- Watts per Person {W/person}
+    0.0,                     !- Return Air Fraction
+    0.7,                     !- Fraction Radiant
+    0.2,                     !- Fraction Visible
+    0.0;                     !- Fraction Replaceable
+
+ElectricEquipment,
+    Office Equipment,        !- Name
+    Shoebox Zone,            !- Zone or ZoneList or Space or SpaceList Name
+    Office Occupancy,        !- Schedule Name
+    Watts/Area,              !- Design Level Calculation Method
+    ,                        !- Design Level {W}
+    10.0,                    !- Watts per Floor Area {W/m2}
+    ,                        !- Watts per Person {W/person}
+    0.0,                     !- Fraction Latent
+    0.5,                     !- Fraction Radiant
+    0.0;                     !- Fraction Lost
+
+! ── Infiltration ──────────────────────────────────────────────────────
+
+ZoneInfiltration:DesignFlowRate,
+    Zone Infiltration,       !- Name
+    Shoebox Zone,            !- Zone or ZoneList or Space or SpaceList Name
+    Always On,               !- Schedule Name
+    AirChanges/Hour,         !- Design Flow Rate Calculation Method
+    ,                        !- Design Flow Rate {m3/s}
+    ,                        !- Flow Rate per Floor Area {m3/s-m2}
+    ,                        !- Flow Rate per Exterior Surface Area {m3/s-m2}
+    0.5,                     !- Air Changes per Hour {1/hr}
+    1,                       !- Constant Term Coefficient
+    0,                       !- Temperature Term Coefficient
+    0,                       !- Velocity Term Coefficient
+    0;                       !- Velocity Squared Term Coefficient
+
+! ── HVAC: Ideal Loads ─────────────────────────────────────────────────
+! IdealLoadsAirSystem provides infinite-capacity, perfect-efficiency
+! heating and cooling.  This isolates the glazing effect: all energy
+! differences between parameter scenarios come purely from window
+! thermal properties.
+
+ZoneHVAC:IdealLoadsAirSystem,
+    Ideal Loads,             !- Name
+    ,                        !- Availability Schedule Name
+    Ideal Loads Supply Inlet,  !- Zone Supply Air Node Name
+    ,                        !- Zone Exhaust Air Node Name
+    ,                        !- System Inlet Air Node Name
+    50,                      !- Maximum Heating Supply Air Temperature {C}
+    13,                      !- Minimum Cooling Supply Air Temperature {C}
+    0.0156,                  !- Maximum Heating Supply Air Humidity Ratio {kgWater/kgDryAir}
+    0.0077,                  !- Minimum Cooling Supply Air Humidity Ratio {kgWater/kgDryAir}
+    NoLimit,                 !- Heating Limit
+    ,                        !- Maximum Heating Air Flow Rate {m3/s}
+    ,                        !- Maximum Sensible Heating Capacity {W}
+    NoLimit,                 !- Cooling Limit
+    ,                        !- Maximum Cooling Air Flow Rate {m3/s}
+    ,                        !- Maximum Total Cooling Capacity {W}
+    ,                        !- Heating Availability Schedule Name
+    ,                        !- Cooling Availability Schedule Name
+    ConstantSensibleHeatRatio, !- Dehumidification Control Type
+    0.7,                     !- Cooling Sensible Heat Ratio
+    None,                    !- Humidification Control Type
+    ,                        !- Design Specification Outdoor Air Object Name
+    ,                        !- Outdoor Air Inlet Node Name
+    None,                    !- Demand Controlled Ventilation Type
+    NoEconomizer,            !- Outdoor Air Economizer Type
+    None,                    !- Heat Recovery Type
+    0.7,                     !- Sensible Heat Recovery Effectiveness
+    0.65;                    !- Latent Heat Recovery Effectiveness
+
+ZoneHVAC:EquipmentConnections,
+    Shoebox Zone,            !- Zone Name
+    Shoebox Zone Equipment,  !- Zone Conditioning Equipment List Name
+    Ideal Loads Supply Inlet,  !- Zone Air Inlet Node or NodeList Name
+    ,                        !- Zone Air Exhaust Node or NodeList Name
+    Shoebox Zone Air Node,   !- Zone Air Node Name
+    Shoebox Zone Return Node;  !- Zone Return Air Node or NodeList Name
+
+ZoneHVAC:EquipmentList,
+    Shoebox Zone Equipment,  !- Name
+    SequentialLoad,          !- Load Distribution Scheme
+    ZoneHVAC:IdealLoadsAirSystem, !- Zone Equipment 1 Object Type
+    Ideal Loads,             !- Zone Equipment 1 Name
+    1,                       !- Zone Equipment 1 Cooling Sequence
+    1,                       !- Zone Equipment 1 Heating or No-Load Sequence
+    ,                        !- Zone Equipment 1 Sequential Cooling Fraction Schedule Name
+    ;                        !- Zone Equipment 1 Sequential Heating Fraction Schedule Name
+
+ThermostatSetpoint:DualSetpoint,
+    Dual Setpoint,           !- Name
+    Heating Setpoint Schedule, !- Heating Setpoint Temperature Schedule Name
+    Cooling Setpoint Schedule; !- Cooling Setpoint Temperature Schedule Name
+
+ZoneControl:Thermostat,
+    Shoebox Zone Thermostat, !- Name
+    Shoebox Zone,            !- Zone or ZoneList Name
+    Dual Setpoint Control Type, !- Control Type Schedule Name
+    ThermostatSetpoint:DualSetpoint, !- Control 1 Object Type
+    Dual Setpoint;           !- Control 1 Name
+
+! ── Output Requests ───────────────────────────────────────────────────
+! These output variables map to the catalog entries defined in the
+! EnergyPlus validator config.  The runner extracts these from
+! eplusout.sql and populates step_run.output["signals"].
+
+Output:Variable,*,Zone Ideal Loads Zone Total Heating Energy,RunPeriod;
+Output:Variable,*,Zone Ideal Loads Zone Total Cooling Energy,RunPeriod;
+Output:Variable,*,Surface Window Heat Gain Energy,RunPeriod;
+Output:Variable,*,Surface Window Heat Loss Energy,RunPeriod;
+Output:Variable,*,Surface Window Transmitted Solar Radiation Energy,RunPeriod;
+Output:Table:SummaryReports,AllSummary;
+Output:SQLite,SimpleAndTabular;
+
+GlobalGeometryRules,
+    UpperLeftCorner,         !- Starting Vertex Position
+    CounterClockWise,        !- Vertex Entry Direction
+    Relative;                !- Coordinate System

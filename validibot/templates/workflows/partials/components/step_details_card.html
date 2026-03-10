@@ -23,7 +23,13 @@
       </dd>
       <dt class="col-5">{% trans "Validation type" %}</dt>
       <dd class="col-7">
-        {{ validator.get_validation_type_display }}
+        {% if step.config.validation_mode == "template" %}
+          {% trans "Validate values using EnergyPlus template" %}
+        {% elif step.config.validation_mode == "direct" %}
+          {% trans "Validate submitted EnergyPlus IDF" %}
+        {% else %}
+          {{ validator.get_validation_type_display }}
+        {% endif %}
       </dd>
       <dt class="col-5">{% trans "Order" %}</dt>
       <dd class="col-7">

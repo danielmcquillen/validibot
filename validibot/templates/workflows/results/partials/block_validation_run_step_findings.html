@@ -1,76 +1,133 @@
 {% load i18n core_tags static %}
 
+{% comment %}
+Outputs card for validation run results.
+
+Displays simulation outputs and findings (errors/warnings/info) from each
+validation step. Split into two sections:
+
+1. **Workflow Outputs** — aggregated signal metrics across all steps (only
+   shown when at least one step produced signal data).
+2. **Outputs by Step** — per-step findings table grouped by severity, plus
+   per-step signals and template parameters/warnings.
+
+Context variables (passed via ``{% include ... with %}``):
+  step_runs              — list of ValidationStepRun objects
+  step_signals           — dict mapping step_run.pk → list of DisplaySignal
+  has_signals            — bool, True when step_signals is non-empty
+  all_signals            — flat list of all DisplaySignal objects across steps
+  step_params            — dict mapping step_run.pk → list of param dicts
+  step_template_warnings — dict mapping step_run.pk → list of warning strings
+{% endcomment %}
 <div class="card validation-info-card">
-  <div class="card-header">{% trans "Findings" %}</div>
+  <div class="card-header">{% trans "Outputs" %}</div>
   <div class="card-body">
-    {% if run.user_friendly_error %}
-      <div class="alert alert-danger small w-100 mb-4" role="alert">
-        <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
-      </div>
-    {% endif %}
-    {% if run.status == "SUCCEEDED" %}
-      <div class="alert validation-success-alert alert-success mb-4 d-flex flex-row align-items-center">
-        <div>
-          <img src="{% static 'images/app/green_check.svg' %}"
-               alt="{% trans 'Success' %}"
-               class="green-check" />
-        </div>
-        <div class="w-100 ms-2">
-          {% if run.workflow.success_message %}
-            {{ run.workflow.success_message }}
-          {% else %}
-            {% trans "Validation successful. No errors reported." %}
-          {% endif %}
-        </div>
-        <div>
-          <img src="{% static 'images/robot_head_bw.png' %}"
-               class="robot-image"
-               alt="{% trans 'robot image' %}" />
-        </div>
-      </div>
-    {% endif %}
-    {% for step_run in step_runs %}
-      <div class="{% if not forloop.last %}mb-4{% endif %}">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="badge text-bg-secondary">
-            {% trans "Step" %} {{ step_run.workflow_step.step_number|default:step_run.step_order }}
-          </span>
-          <h4 class="mb-0">{{ step_run.workflow_step.name|default:_("Step") }}</h4>
-        </div>
-        {% with findings=step_run.findings.all %}
-          {% if findings %}
-            {% regroup findings by get_severity_display as grouped %}
-            <table class="table table-sm table-bordered mb-0">
-              <thead>
+    {% comment %}
+    ── Workflow Outputs ───────────────────────────────────────────────
+    Aggregated signal metrics from all steps in a single table. Gives
+    the submitter the headline numbers (site EUI, energy totals, etc.)
+    up front before per-step details.
+    {% endcomment %}
+    {% if has_signals %}
+      <section class="mb-3">
+        <h6 class="fw-semibold mb-2">{% trans "Workflow Outputs" %}</h6>
+        <div class="border border-secondary-subtle rounded p-3"
+             style="border-style: dotted !important">
+          <table class="table table-sm table-bordered mb-0">
+            <thead>
+              <tr>
+                <th>{% trans "Metric" %}</th>
+                <th class="text-end">{% trans "Value" %}</th>
+                <th>{% trans "Units" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for signal in all_signals %}
                 <tr>
-                  <th>{% trans "Severity" %}</th>
-                  <th>{% trans "Path" %}</th>
-                  <th>{% trans "Message" %}</th>
+                  <td>{{ signal.label }}</td>
+                  <td class="text-end font-monospace">{{ signal.formatted_value }}</td>
+                  <td class="text-muted small">{{ signal.units }}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {% for group in grouped %}
-                  <tr>
-                    <td colspan="3" class="fw-semibold">{{ group.grouper }}</td>
-                  </tr>
-                  {% for finding in group.list %}
-                    <tr>
-                      <td class="align-middle">
-                        {% finding_badge_class finding as badge_class %}
-                        <span class="badge text-uppercase {{ badge_class }}">{{ finding.get_severity_display }}</span>
-                      </td>
-                      <td class="align-middle">{{ finding.path|default:"–" }}</td>
-                      <td class="align-middle">{{ finding.message }}</td>
-                    </tr>
-                  {% endfor %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+    {% comment %}
+    ── Outputs by Step ───────────────────────────────────────────────
+    Per-step findings grouped by severity, plus template parameters
+    and template warnings if present. Each step gets its own bordered
+    container.
+    {% endcomment %}
+    <section>
+      <h6 class="fw-semibold mb-2">{% trans "Outputs by Step" %}</h6>
+      {% for step_run in step_runs %}
+        <div class="border border-secondary-subtle rounded p-3 {% if not forloop.last %}mb-3{% endif %}"
+             style="border-style: dotted !important">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge text-bg-secondary">
+              {% trans "Step" %} {{ step_run.workflow_step.step_number|default:step_run.step_order }}
+            </span>
+            <span class="fw-semibold">{{ step_run.workflow_step.name|default:_("Step") }}</span>
+          </div>
+          {% with params=step_params|get_item:step_run.pk warnings=step_template_warnings|get_item:step_run.pk %}
+            {% if params %}
+              <dl class="row small mb-2">
+                {% for param in params %}
+                  <dt class="col-sm-5">{{ param.label }}</dt>
+                  <dd class="col-sm-7">
+                    <span class="font-monospace">{{ param.value }}</span>
+                    {% if param.units %}<span class="text-muted ms-1">{{ param.units }}</span>{% endif %}
+                  </dd>
                 {% endfor %}
-              </tbody>
-            </table>
-          {% else %}
-            <p class="text-muted small mb-0">{% trans "No errors, warnings, or info for this step." %}</p>
-          {% endif %}
-        {% endwith %}
-      </div>
-    {% endfor %}
+              </dl>
+            {% endif %}
+            {% if warnings %}
+              <div class="alert alert-warning small mb-2">
+                <i class="bi-exclamation-triangle me-1"></i>
+                {% for w in warnings %}
+                  {{ w }}
+                  {% if not forloop.last %}<br />{% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
+          {% with findings=step_run.findings.all %}
+            {% if findings %}
+              {% regroup findings by get_severity_display as grouped %}
+              <table class="table table-sm table-bordered mb-0">
+                <thead>
+                  <tr>
+                    <th>{% trans "Severity" %}</th>
+                    <th>{% trans "Path" %}</th>
+                    <th>{% trans "Message" %}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for group in grouped %}
+                    <tr>
+                      <td colspan="3" class="fw-semibold">{{ group.grouper }}</td>
+                    </tr>
+                    {% for finding in group.list %}
+                      <tr>
+                        <td class="align-middle">
+                          {% finding_badge_class finding as badge_class %}
+                          <span class="badge text-uppercase {{ badge_class }}">{{ finding.get_severity_display }}</span>
+                        </td>
+                        <td class="align-middle">{{ finding.path|default:"–" }}</td>
+                        <td class="align-middle">{{ finding.message }}</td>
+                      </tr>
+                    {% endfor %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% else %}
+              <p class="text-muted small mb-0">{% trans "No errors, warnings, or info for this step." %}</p>
+            {% endif %}
+          {% endwith %}
+        </div>
+      {% endfor %}
+    </section>
   </div>
 </div>

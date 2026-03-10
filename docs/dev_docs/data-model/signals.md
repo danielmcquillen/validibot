@@ -280,6 +280,29 @@ The sync process:
 4. For each `CatalogEntrySpec`, calls `ValidatorCatalogEntry.objects.get_or_create(validator, slug, entry_type)`
 5. Updates catalog entry fields (binding_config, metadata, order, etc.)
 
+## Template variables as input signals
+
+Template variables are a special kind of input signal that come from uploaded template files
+rather than from the validator's catalog configuration. When a workflow author uploads a
+parameterized template (e.g. an EnergyPlus IDF file with `$U_FACTOR` placeholders), the
+system scans for variables and stores them in `step.config["template_variables"]`.
+
+In the step detail UI, template variables appear alongside catalog INPUT entries in the unified
+"Inputs and Outputs" card (see [ADR-2026-03-10](../../../../validibot-project/docs/adr/2026-03-10-unified-input-output-signals-ui.md)).
+Each signal has a "source" badge:
+
+- **Catalog** — defined in the validator config, fixed by the validator author
+- **Template** — discovered from the uploaded template, editable by the workflow author
+
+Template-source signals support per-variable annotation via a modal form
+(`SingleTemplateVariableForm`), where authors can set labels, defaults, types, units, and
+constraints. This annotation metadata is used to generate the submission form that end users
+fill out when submitting data to the workflow.
+
+The `build_unified_signals()` helper in `views_helpers.py` merges both sources at the view
+layer. No database model changes are needed — template variables are stored in the step's
+JSON config field, not as `ValidatorCatalogEntry` rows.
+
 ## How signals flow during execution
 
 ### Complete lifecycle
@@ -473,6 +496,26 @@ The signal slugs in this dict must match the `slug` field on the corresponding
 `ValidatorCatalogEntry` rows, and those slugs must match the field names on
 `EnergyPlusSimulationMetrics`. This is how the catalog entries, config specs,
 and shared library models stay in sync.
+
+**Important: not every signal will be populated for every IDF.** The catalog
+defines the full set of metrics that the validator *knows how to extract*, but
+EnergyPlus only produces a value when the IDF is configured to generate it:
+
+- **Whole-building metrics** (electricity, gas, EUI, floor area, zone count)
+  come from EnergyPlus summary tables (`Output:Table:SummaryReports`) and are
+  usually available for any model that includes `Output:SQLite,SimpleAndTabular`.
+- **End-use breakdowns** (heating, cooling, lighting, fans, pumps) depend on the
+  model having the corresponding HVAC/lighting systems defined.
+- **Window envelope metrics** (`window_heat_gain_kwh`, `window_heat_loss_kwh`,
+  `window_transmitted_solar_kwh`) require explicit `Output:Variable` objects in
+  the IDF (e.g., `Output:Variable,*,Surface Window Heat Gain Energy,RunPeriod`).
+  Without these, the metrics are `None` and will be filtered out during extraction.
+
+When a workflow author adds a signal to `display_signals` but the IDF does not
+produce it, the signal will be absent from the extracted dict. The display layer
+reports this as a "Value not found" error finding, alerting the author that the
+IDF needs the corresponding output declaration or that the signal is not
+applicable to this model type.
 
 ### FMU input resolution
 

@@ -1,0 +1,90 @@
+{% load i18n core_tags %}
+
+{% comment %}
+User Inputs card for validation run results.
+
+Displays the submission content (raw JSON for inline submissions, or
+filename with view button for file uploads), submission metadata,
+and the content hash (SHA-256).
+
+Context variables (passed via ``{% include ... with %}``):
+  run — the ValidationRun object (with submission FK)
+{% endcomment %}
+{% if run.submission %}
+  <div class="card validation-info-card mb-3">
+    <div class="card-header">{% trans "User Inputs" %}</div>
+    <div class="card-body">
+      {% if run.submission.content and run.submission.is_content_available %}
+        <section>
+          <pre class="bg-body-tertiary border rounded p-3 small mb-0"
+               style="max-height: 300px;
+                      overflow-y: auto">{{ run.submission.content }}</pre>
+        </section>
+      {% elif run.submission.input_file and run.submission.is_content_available %}
+        <section>
+          <dl class="row small mb-0">
+            <dt class="col-sm-4">{% trans "File" %}</dt>
+            <dd class="col-sm-8">
+              <span class="font-monospace">{{ run.submission.original_filename }}</span>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary ms-2"
+                      data-bs-toggle="modal"
+                      data-bs-target="#submissionContentModal">
+                <i class="bi-eye me-1"></i>{% trans "View" %}
+              </button>
+            </dd>
+          </dl>
+        </section>
+      {% elif not run.submission.is_content_available %}
+        <p class="text-muted small mb-0">
+          <i class="bi-clock-history me-1"></i>
+          {% trans "Submission content has been purged per retention policy." %}
+        </p>
+      {% endif %}
+      {% if run.submission.metadata %}
+        <section class="{% if run.submission.content or run.submission.input_file %}mt-3{% endif %}">
+          <h6 class="fw-semibold">{% trans "Metadata" %}</h6>
+          <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
+        </section>
+      {% endif %}
+      {% if run.submission.checksum_sha256 %}
+        <section class="mt-3">
+          <dl class="row small mb-0">
+            <dt class="col-sm-4">{% trans "Content hash" %}</dt>
+            <dd class="col-sm-8">
+              <span class="font-monospace small text-muted">{{ run.submission.checksum_sha256 }}</span>
+            </dd>
+            {% if run.submission.size_bytes %}
+              <dt class="col-sm-4">{% trans "Size" %}</dt>
+              <dd class="col-sm-8">
+                <span class="small text-muted">{{ run.submission.size_bytes|filesizeformat }}</span>
+              </dd>
+            {% endif %}
+          </dl>
+        </section>
+      {% endif %}
+    </div>
+  </div>
+  {% if run.submission.input_file and run.submission.is_content_available %}
+    <div class="modal fade"
+         id="submissionContentModal"
+         tabindex="-1"
+         aria-labelledby="submissionContentModalLabel"
+         aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="submissionContentModalLabel">{{ run.submission.original_filename }}</h5>
+            <button type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="{% trans 'Close' %}"></button>
+          </div>
+          <div class="modal-body">
+            <pre class="small mb-0">{{ submission_content }}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endif %}

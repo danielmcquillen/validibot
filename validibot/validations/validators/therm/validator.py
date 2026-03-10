@@ -13,9 +13,7 @@ from typing import Any
 
 from validibot.submissions.constants import SubmissionFileType
 from validibot.validations.constants import Severity
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.base import ValidationIssue
-from validibot.validations.validators.base.registry import register_validator
 from validibot.validations.validators.base.simple import SimpleValidator
 from validibot.validations.validators.therm.boundaries import run_boundary_checks
 from validibot.validations.validators.therm.geometry import run_geometry_checks
@@ -30,7 +28,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@register_validator(ValidationType.THERM)
 class ThermValidator(SimpleValidator):
     """
     THERM thermal analysis file validator.

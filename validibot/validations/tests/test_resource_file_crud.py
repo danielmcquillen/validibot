@@ -498,14 +498,21 @@ class TestResourceFileDeleteBlockers:
             filename="in_use.epw",
         )
 
-        # Create active workflow with step referencing this resource
+        # Create active workflow with step referencing this resource via
+        # WorkflowStepResource (relational, not JSON config)
+        from validibot.workflows.models import WorkflowStepResource
+
         workflow = WorkflowFactory(org=org, user=user, is_active=True)
-        WorkflowStep.objects.create(
+        step = WorkflowStep.objects.create(
             workflow=workflow,
             validator=validator,
             name="EP Step",
             order=1,
-            config={"resource_file_ids": [str(resource.id)]},
+        )
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=resource,
         )
 
         url = reverse(
@@ -524,7 +531,13 @@ class TestResourceFileDeleteBlockers:
         assert ValidatorResourceFile.objects.filter(pk=resource.pk).exists()
 
     def test_delete_allowed_when_only_inactive_workflows_reference(self, client):
-        """Resource file referenced only by inactive workflows can be deleted."""
+        """Resource file referenced only by inactive workflows can be deleted.
+
+        When a ValidatorResourceFile is only used by inactive (deactivated)
+        workflows, deletion should succeed — inactive workflows don't block.
+        """
+        from validibot.workflows.models import WorkflowStepResource
+
         org = OrganizationFactory()
         user = _setup_user(client, org, RoleCode.ADMIN)
         validator = ValidatorFactory(
@@ -542,12 +555,16 @@ class TestResourceFileDeleteBlockers:
 
         # Create INACTIVE workflow with step referencing this resource
         workflow = WorkflowFactory(org=org, user=user, is_active=False)
-        WorkflowStep.objects.create(
+        step = WorkflowStep.objects.create(
             workflow=workflow,
             validator=validator,
             name="EP Step",
             order=1,
-            config={"resource_file_ids": [str(resource.id)]},
+        )
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=resource,
         )
 
         url = reverse(
@@ -908,14 +925,21 @@ class TestStepEditorDefaultPreSelection:
             is_default=False,
         )
 
-        # Create a step with the non-default file selected
+        # Create a step with the non-default file selected via
+        # WorkflowStepResource (relational, not JSON config)
+        from validibot.workflows.models import WorkflowStepResource
+
         workflow = WorkflowFactory(org=org, user=user)
         step = WorkflowStep.objects.create(
             workflow=workflow,
             validator=validator,
             name="EP Step",
             order=1,
-            config={"resource_file_ids": [str(chosen_rf.id)]},
+        )
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=chosen_rf,
         )
 
         form = EnergyPlusStepConfigForm(

@@ -15,18 +15,23 @@ All advanced validators follow the same lifecycle:
 
 1. Validate run_context (must have validation_run and step)
 2. Get the configured ExecutionBackend (Docker socket or Cloud Run)
-3. Build an ExecutionRequest and call backend.execute()
-4. For async backends: return pending result (passed=None)
-5. For sync backends: process output envelope immediately
-6. (On callback) Download and parse the output envelope
-7. Extract issues from envelope messages
-8. Extract output signals via ``extract_output_signals()``
-9. Evaluate output-stage assertions against those signals
-10. Return final ValidationResult with signals populated
+3. **Pre-process the submission** via ``preprocess_submission()`` — e.g.,
+   resolve parameterized templates into a concrete model file.  This
+   runs before backend dispatch so all platforms see the same content.
+4. Build an ExecutionRequest and call backend.execute()
+5. For async backends: return pending result (passed=None)
+6. For sync backends: process output envelope immediately
+7. (On callback) Download and parse the output envelope
+8. Extract issues from envelope messages
+9. Extract output signals via ``extract_output_signals()``
+10. Evaluate output-stage assertions against those signals
+11. Return final ValidationResult with signals populated
 
 Subclasses implement ``extract_output_signals()`` to handle their
-validator-specific envelope structure. The base class handles the shared
-orchestration, response conversion, and assertion evaluation.
+validator-specific envelope structure and may override
+``preprocess_submission()`` for domain-specific input transformation.
+The base class handles the shared orchestration, response conversion,
+and assertion evaluation.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.utils.translation import gettext as _
 
 from validibot.validations.constants import Severity
@@ -49,6 +55,7 @@ if TYPE_CHECKING:
     from validibot.submissions.models import Submission
     from validibot.validations.models import Ruleset
     from validibot.validations.models import Validator
+    from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +112,44 @@ class AdvancedValidator(BaseValidator):
 
     # PUBLIC METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    def preprocess_submission(
+        self,
+        *,
+        step: WorkflowStep,
+        submission: Submission,
+    ) -> dict[str, object]:
+        """Pre-process the submission before execution dispatch.
+
+        Called by ``validate()`` after backend availability checks but
+        before building the ``ExecutionRequest``.  Subclasses override
+        this to transform the submission content — for example, resolving
+        parameterized templates into a concrete model file.
+
+        After preprocessing, the submission should look identical to a
+        direct upload.  Execution backends never need to know that
+        preprocessing occurred.
+
+        The default implementation is a no-op that returns an empty dict.
+
+        Args:
+            step: The WorkflowStep containing config and resources.
+            submission: The Submission instance.  May be mutated in-place
+                (e.g., ``submission.content`` overwritten with resolved
+                content).
+
+        Returns:
+            Extra metadata dict to merge into the step run stats (e.g.,
+            ``template_parameters_used``).  Empty dict when no
+            preprocessing was needed.
+
+        Raises:
+            ValidationError: If preprocessing discovers invalid input
+                (e.g., bad template parameters).  The caller converts
+                this into a user-friendly ``ValidationResult``.
+            ValueError: If preprocessing fails unexpectedly.
+        """
+        return {}
 
     def validate(
         self,
@@ -182,6 +227,27 @@ class AdvancedValidator(BaseValidator):
                 stats={"implementation_status": "Backend not available"},
             )
 
+        # Pre-process the submission (e.g., resolve parameterized templates).
+        # This runs before backend dispatch so all platforms see the same
+        # resolved content.
+        preprocessing_metadata: dict[str, object] = {}
+        try:
+            preprocessing_metadata = self.preprocess_submission(
+                step=step,
+                submission=submission,
+            )
+        except ValidationError as exc:
+            messages = exc.messages if hasattr(exc, "messages") else [str(exc)]
+            issues = [
+                ValidationIssue(
+                    path="",
+                    message=msg,
+                    severity=Severity.ERROR,
+                )
+                for msg in messages
+            ]
+            return ValidationResult(passed=False, issues=issues, stats={})
+
         request = ExecutionRequest(
             run=run,
             validator=validator,
@@ -190,7 +256,14 @@ class AdvancedValidator(BaseValidator):
         )
 
         response = backend.execute(request)
-        return self._response_to_result(response, is_async=backend.is_async)
+        result = self._response_to_result(response, is_async=backend.is_async)
+
+        # Merge preprocessing metadata into result stats so it gets
+        # persisted in step_run.output (e.g., template_parameters_used).
+        if preprocessing_metadata:
+            result.stats = {**(result.stats or {}), **preprocessing_metadata}
+
+        return result
 
     def post_execute_validate(
         self,
@@ -217,30 +290,17 @@ class AdvancedValidator(BaseValidator):
             ValidationResult with output-stage issues, assertion_stats,
             and signals populated.
         """
-        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from validibot_shared.validations.envelopes import ValidationStatus
-
         self.run_context = run_context
 
-        issues: list[ValidationIssue] = []
-
-        # Extract messages from envelope
-        for msg in output_envelope.messages:
-            severity_map = {
-                EnvelopeSeverity.ERROR: Severity.ERROR,
-                EnvelopeSeverity.WARNING: Severity.WARNING,
-                EnvelopeSeverity.INFO: Severity.INFO,
-            }
-            issues.append(
-                ValidationIssue(
-                    path=msg.location.path if msg.location else "",
-                    message=msg.text,
-                    severity=severity_map.get(msg.severity, Severity.INFO),
-                )
-            )
+        issues = self._extract_issues_from_envelope(output_envelope)
 
         # Extract signals from envelope for downstream steps and assertions
         signals = self.extract_output_signals(output_envelope) or {}
+        logger.debug(
+            "post_execute_validate: extracted %d signals: %s",
+            len(signals),
+            list(signals.keys()),
+        )
 
         # Evaluate output-stage assertions if we have context
         assertion_total = 0
@@ -248,6 +308,11 @@ class AdvancedValidator(BaseValidator):
         if run_context and run_context.step:
             validator = run_context.step.validator
             ruleset = run_context.step.ruleset
+            logger.debug(
+                "post_execute_validate: validator=%s ruleset=%s",
+                validator,
+                ruleset,
+            )
 
             if validator and ruleset:
                 assertion_result = self.evaluate_assertions_for_stage(
@@ -256,29 +321,32 @@ class AdvancedValidator(BaseValidator):
                     payload=signals,
                     stage="output",
                 )
+                logger.debug(
+                    "post_execute_validate: assertions evaluated — "
+                    "total=%d failures=%d issues=%d",
+                    assertion_result.total,
+                    assertion_result.failures,
+                    len(assertion_result.issues),
+                )
                 issues.extend(assertion_result.issues)
                 assertion_total = assertion_result.total
                 assertion_failures = assertion_result.failures
+            else:
+                logger.debug(
+                    "post_execute_validate: skipping assertions — "
+                    "validator=%s ruleset=%s",
+                    validator,
+                    ruleset,
+                )
 
         # Determine pass/fail based on envelope status and assertion failures.
-        # Container error messages do not override SUCCESS status.
-        if output_envelope.status == ValidationStatus.SUCCESS:
-            passed = assertion_failures == 0
-        elif output_envelope.status in (
-            ValidationStatus.FAILED_VALIDATION,
-            ValidationStatus.FAILED_RUNTIME,
-        ):
-            passed = False
-        else:
-            passed = False
+        passed = self._determine_passed(
+            output_envelope,
+            assertion_failures=assertion_failures,
+        )
 
         # Build stats with outputs if available
-        stats: dict[str, Any] = {}
-        if output_envelope.outputs:
-            if hasattr(output_envelope.outputs, "model_dump"):
-                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
-            elif isinstance(output_envelope.outputs, dict):
-                stats["outputs"] = output_envelope.outputs
+        stats = self._extract_outputs_stats(output_envelope)
 
         return ValidationResult(
             passed=passed,
@@ -293,6 +361,45 @@ class AdvancedValidator(BaseValidator):
 
     # PRIVATE METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @staticmethod
+    def _extract_issues_from_envelope(envelope: Any) -> list[ValidationIssue]:
+        """Convert envelope messages to ValidationIssue objects."""
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+
+        severity_map = {
+            EnvelopeSeverity.ERROR: Severity.ERROR,
+            EnvelopeSeverity.WARNING: Severity.WARNING,
+            EnvelopeSeverity.INFO: Severity.INFO,
+        }
+        return [
+            ValidationIssue(
+                path=msg.location.path if msg.location else "",
+                message=msg.text,
+                severity=severity_map.get(msg.severity, Severity.INFO),
+            )
+            for msg in envelope.messages
+        ]
+
+    @staticmethod
+    def _determine_passed(envelope: Any, *, assertion_failures: int = 0) -> bool:
+        """Determine pass/fail from envelope status and assertion failures."""
+        from validibot_shared.validations.envelopes import ValidationStatus
+
+        if envelope.status == ValidationStatus.SUCCESS:
+            return assertion_failures == 0
+        return False
+
+    @staticmethod
+    def _extract_outputs_stats(envelope: Any) -> dict[str, Any]:
+        """Extract outputs from envelope into a stats dict."""
+        if not envelope.outputs:
+            return {}
+        if hasattr(envelope.outputs, "model_dump"):
+            return {"outputs": envelope.outputs.model_dump(mode="json")}
+        if isinstance(envelope.outputs, dict):
+            return {"outputs": envelope.outputs}
+        return {}
 
     def _response_to_result(
         self,
@@ -364,39 +471,8 @@ class AdvancedValidator(BaseValidator):
 
         Used for sync backends where the output is available immediately.
         """
-        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from validibot_shared.validations.envelopes import ValidationStatus
-
-        issues: list[ValidationIssue] = []
-
-        for msg in envelope.messages:
-            severity_map = {
-                EnvelopeSeverity.ERROR: Severity.ERROR,
-                EnvelopeSeverity.WARNING: Severity.WARNING,
-                EnvelopeSeverity.INFO: Severity.INFO,
-            }
-            issues.append(
-                ValidationIssue(
-                    path=msg.location.path if msg.location else "",
-                    message=msg.text,
-                    severity=severity_map.get(msg.severity, Severity.INFO),
-                )
-            )
-
-        if envelope.outputs:
-            if hasattr(envelope.outputs, "model_dump"):
-                stats["outputs"] = envelope.outputs.model_dump(mode="json")
-            elif isinstance(envelope.outputs, dict):
-                stats["outputs"] = envelope.outputs
-
-        if envelope.status == ValidationStatus.SUCCESS:
-            passed = True
-        elif envelope.status in (
-            ValidationStatus.FAILED_VALIDATION,
-            ValidationStatus.FAILED_RUNTIME,
-        ):
-            passed = False
-        else:
-            passed = False
+        issues = self._extract_issues_from_envelope(envelope)
+        stats.update(self._extract_outputs_stats(envelope))
+        passed = self._determine_passed(envelope)
 
         return ValidationResult(passed=passed, issues=issues, stats=stats)

@@ -41,7 +41,10 @@ EnergyPlus™ output signals include things like:
 - `site_electricity_kwh` -- total electricity consumption
 - `site_eui_kwh_m2` -- energy use intensity per square meter
 - `floor_area_m2` -- the simulated floor area
+- `window_heat_gain_kwh` / `window_heat_loss_kwh` / `window_transmitted_solar_kwh` -- window envelope metrics
 - `unmet_heating_hours` / `unmet_cooling_hours` -- comfort metrics
+
+**Not every signal will be populated for every model.** EnergyPlus only produces a value when the IDF is configured to generate it. Whole-building metrics like electricity consumption are usually available, but window envelope metrics require the corresponding `Output:Variable` objects in the IDF, and end-use breakdowns depend on which systems the model includes. If you select a display signal that the model doesn't produce, Validibot will report it as a "Value not found" error so you know to either add the output declaration to your IDF or remove the signal from your selection.
 
 Output signals are what you typically write assertions against. A rule like `site_eui_kwh_m2 < target_eui_kwh_m2` compares an output signal against an input signal.
 

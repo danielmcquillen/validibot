@@ -301,256 +301,162 @@ class TestValidatorResourceFileStorage:
         assert uri == "gs://validibot-media/resource_files/v123/weather.epw"
 
 
-class TestEnvelopeBuilderIntegration:
-    """Tests for resource file integration with envelope builder."""
+class TestResolveStepResources:
+    """Tests for ``resolve_step_resources()`` — the envelope builder's
+    function that converts a step's relational ``WorkflowStepResource``
+    rows into ``ResourceFileItem`` objects ready for the container envelope.
 
-    def test_resolve_resource_files_returns_resource_items(self):
-        """Envelope builder resolves resource file IDs to ResourceFileItems."""
+    Authorization is enforced at *write time* (when the form saves the
+    step resource), not at resolve time — so these tests focus on correct
+    resolution mechanics rather than org/validator scoping.
+    """
+
+    def test_resolve_catalog_reference_returns_resource_item(self):
+        """A catalog-reference WorkflowStepResource resolves to a
+        ResourceFileItem using the underlying ValidatorResourceFile's
+        UUID, type, and storage URI.
+        """
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
+            resolve_step_resources,
         )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
 
         validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-
-        # Create resource file with actual file (system-wide, no org)
-        file_content = b"LOCATION,Test Location"
-        uploaded_file = SimpleUploadedFile(
-            name="weather.epw",
-            content=file_content,
-            content_type="application/octet-stream",
-        )
-
-        resource = ValidatorResourceFile.objects.create(
+        vrf = ValidatorResourceFile.objects.create(
             validator=validator,
             name="Test Weather",
             filename="weather.epw",
             resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-            file=uploaded_file,
+            file=SimpleUploadedFile("weather.epw", b"LOCATION,Test"),
+        )
+        step = WorkflowStepFactory(validator=validator)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf,
         )
 
-        # Create an org to use for scoping (system resources are visible to all orgs)
-        org = OrganizationFactory()
+        items = resolve_step_resources(step)
 
-        resource_items = _resolve_resource_files(
-            [str(resource.id)],
-            validator_id=str(validator.id),
-            org_id=str(org.id),
-        )
+        assert len(items) == 1
+        assert items[0].id == str(vrf.id)
+        assert items[0].type == ResourceFileType.ENERGYPLUS_WEATHER
+        assert items[0].uri.startswith("file://")
 
-        assert len(resource_items) == 1
-        item = resource_items[0]
-        assert item.id == str(resource.id)
-        assert item.type == ResourceFileType.ENERGYPLUS_WEATHER
-        assert item.uri.startswith("file://")
-
-    def test_resolve_resource_files_empty_list(self):
-        """Empty resource file list returns empty result."""
+    def test_resolve_step_owned_file_returns_resource_item(self):
+        """A step-owned WorkflowStepResource resolves to a ResourceFileItem
+        using the record's own PK, resource_type, and file URL.
+        """
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
+            resolve_step_resources,
+        )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        step = WorkflowStepFactory()
+        sr = WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+            step_resource_file=SimpleUploadedFile("template.idf", b"! IDF data"),
+            filename="template.idf",
+            resource_type="ENERGYPLUS_IDF",
         )
 
-        result = _resolve_resource_files([])
+        items = resolve_step_resources(step)
+
+        assert len(items) == 1
+        assert items[0].id == str(sr.pk)
+        assert items[0].type == "ENERGYPLUS_IDF"
+
+    def test_resolve_with_role_filter(self):
+        """Passing a role to ``resolve_step_resources()`` returns only
+        resources matching that role. This is used by the envelope builder
+        to fetch only weather files, for example.
+        """
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            resolve_step_resources,
+        )
+        from validibot.workflows.models import WorkflowStepResource
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
+        vrf = ValidatorResourceFile.objects.create(
+            validator=validator,
+            name="Weather",
+            filename="weather.epw",
+            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
+            file=SimpleUploadedFile("weather.epw", b"LOCATION,Test"),
+        )
+        step = WorkflowStepFactory(validator=validator)
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.WEATHER_FILE,
+            validator_resource_file=vrf,
+        )
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+            step_resource_file=SimpleUploadedFile("template.idf", b"! IDF"),
+            filename="template.idf",
+        )
+
+        # Filter by WEATHER_FILE only
+        weather_items = resolve_step_resources(
+            step, role=WorkflowStepResource.WEATHER_FILE
+        )
+        assert len(weather_items) == 1
+        assert weather_items[0].id == str(vrf.id)
+
+        # Filter by MODEL_TEMPLATE only
+        template_items = resolve_step_resources(
+            step, role=WorkflowStepResource.MODEL_TEMPLATE
+        )
+        assert len(template_items) == 1
+
+        # No filter returns all
+        all_items = resolve_step_resources(step)
+        assert len(all_items) == 2  # noqa: PLR2004
+
+    def test_resolve_empty_step_returns_empty_list(self):
+        """A step with no WorkflowStepResource rows returns an empty list."""
+        from validibot.validations.services.cloud_run.envelope_builder import (
+            resolve_step_resources,
+        )
+        from validibot.workflows.tests.factories import WorkflowStepFactory
+
+        step = WorkflowStepFactory()
+
+        result = resolve_step_resources(step)
+
         assert result == []
-
-    def test_resolve_resource_files_missing_id_raises_error(self):
-        """Non-existent resource IDs raise ValueError."""
-        import uuid
-
-        from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
-        )
-
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        org = OrganizationFactory()
-
-        # Pass a non-existent UUID
-        fake_id = str(uuid.uuid4())
-
-        with pytest.raises(
-            ValueError, match="Resource files not found or not authorized"
-        ):
-            _resolve_resource_files(
-                [fake_id],
-                validator_id=str(validator.id),
-                org_id=str(org.id),
-            )
-
-    def test_resolve_multiple_resource_files(self):
-        """Multiple resource files are resolved correctly."""
-        from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
-        )
-
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        org = OrganizationFactory()
-
-        resources = []
-        for i in range(3):
-            file_content = f"LOCATION,Test{i}".encode()
-            uploaded_file = SimpleUploadedFile(
-                name=f"weather{i}.epw",
-                content=file_content,
-                content_type="application/octet-stream",
-            )
-            resource = ValidatorResourceFile.objects.create(
-                validator=validator,
-                name=f"Weather {i}",
-                filename=f"weather{i}.epw",
-                resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-                file=uploaded_file,
-            )
-            resources.append(resource)
-
-        resource_ids = [str(r.id) for r in resources]
-        result = _resolve_resource_files(
-            resource_ids,
-            validator_id=str(validator.id),
-            org_id=str(org.id),
-        )
-
-        assert len(result) == 3  # noqa: PLR2004
-        result_ids = {item.id for item in result}
-        expected_ids = {str(r.id) for r in resources}
-        assert result_ids == expected_ids
-
-    def test_resolve_resource_files_wrong_validator_raises_error(self):
-        """Resource files for wrong validator raise ValueError."""
-        from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
-        )
-
-        validator1 = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        validator2 = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        org = OrganizationFactory()
-
-        # Create resource for validator1
-        file_content = b"LOCATION,Test"
-        uploaded_file = SimpleUploadedFile(
-            name="weather.epw",
-            content=file_content,
-            content_type="application/octet-stream",
-        )
-        resource = ValidatorResourceFile.objects.create(
-            validator=validator1,
-            name="Weather",
-            filename="weather.epw",
-            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-            file=uploaded_file,
-        )
-
-        # Try to resolve with validator2 - should fail
-        with pytest.raises(
-            ValueError, match="Resource files not found or not authorized"
-        ):
-            _resolve_resource_files(
-                [str(resource.id)],
-                validator_id=str(validator2.id),
-                org_id=str(org.id),
-            )
-
-    def test_resolve_resource_files_wrong_org_raises_error(self):
-        """Org-specific resource files for wrong org raise ValueError."""
-        from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
-        )
-
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        org1 = OrganizationFactory()
-        org2 = OrganizationFactory()
-
-        # Create org-specific resource for org1
-        file_content = b"LOCATION,Test"
-        uploaded_file = SimpleUploadedFile(
-            name="weather.epw",
-            content=file_content,
-            content_type="application/octet-stream",
-        )
-        resource = ValidatorResourceFile.objects.create(
-            validator=validator,
-            org=org1,  # Org-specific, not system-wide
-            name="Weather",
-            filename="weather.epw",
-            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-            file=uploaded_file,
-        )
-
-        # Try to resolve with org2 - should fail
-        with pytest.raises(
-            ValueError, match="Resource files not found or not authorized"
-        ):
-            _resolve_resource_files(
-                [str(resource.id)],
-                validator_id=str(validator.id),
-                org_id=str(org2.id),
-            )
-
-    def test_resolve_resource_files_system_resource_accessible_to_any_org(self):
-        """System-wide resources (org=NULL) are accessible to any org."""
-        from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_resource_files,
-        )
-
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-        org = OrganizationFactory()
-
-        # Create system-wide resource (no org)
-        file_content = b"LOCATION,Test"
-        uploaded_file = SimpleUploadedFile(
-            name="weather.epw",
-            content=file_content,
-            content_type="application/octet-stream",
-        )
-        resource = ValidatorResourceFile.objects.create(
-            validator=validator,
-            org=None,  # System-wide
-            name="System Weather",
-            filename="weather.epw",
-            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-            file=uploaded_file,
-        )
-
-        # Should succeed for any org
-        result = _resolve_resource_files(
-            [str(resource.id)],
-            validator_id=str(validator.id),
-            org_id=str(org.id),
-        )
-
-        assert len(result) == 1
-        assert result[0].id == str(resource.id)
 
 
 class TestStepConfigIntegration:
     """Tests for resource file integration with step configuration."""
 
-    def test_step_config_stores_resource_file_ids(self):
-        """Step config correctly stores resource_file_ids array."""
+    def test_build_energyplus_config_excludes_resource_file_ids(self):
+        """``build_energyplus_config()`` returns IDF checks and simulation flag
+        only — resource files are stored relationally via WorkflowStepResource,
+        not in the config dict.
+        """
         from validibot.workflows.views_helpers import build_energyplus_config
 
-        validator = ValidatorFactory(validation_type=ValidationType.ENERGYPLUS)
-
-        resource = ValidatorResourceFile.objects.create(
-            validator=validator,
-            name="Config Test Weather",
-            filename="config_test.epw",
-            resource_type=ResourceFileType.ENERGYPLUS_WEATHER,
-        )
-
-        # Create a mock form with cleaned_data
         mock_form = MagicMock()
         mock_form.cleaned_data = {
-            "weather_file": str(resource.id),
+            "weather_file": "some-uuid",
             "idf_checks": ["check_version"],
             "run_simulation": True,
         }
 
         config = build_energyplus_config(mock_form)
 
-        assert "resource_file_ids" in config
-        assert config["resource_file_ids"] == [str(resource.id)]
+        assert "resource_file_ids" not in config
+        assert config["idf_checks"] == ["check_version"]
+        assert config["run_simulation"] is True
 
-    def test_step_config_empty_weather_file(self):
-        """Empty weather file selection results in empty resource_file_ids."""
+    def test_build_energyplus_config_empty_form(self):
+        """Empty form data produces default config without resource_file_ids."""
         from validibot.workflows.views_helpers import build_energyplus_config
 
         mock_form = MagicMock()
@@ -562,7 +468,9 @@ class TestStepConfigIntegration:
 
         config = build_energyplus_config(mock_form)
 
-        assert config["resource_file_ids"] == []
+        assert "resource_file_ids" not in config
+        assert config["idf_checks"] == []
+        assert config["run_simulation"] is False
 
 
 class TestFormIntegration:

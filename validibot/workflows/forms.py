@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Div
 from crispy_forms.layout import Field
 from crispy_forms.layout import Layout
 from django import forms
@@ -42,6 +43,12 @@ ENERGYPLUS_IDF_CHECK_CHOICES = (
     ("duplicate-names", _("Detect duplicate object names")),
     ("hvac-sizing", _("Ensure HVAC autosizing is enabled")),
     ("schedule-coverage", _("Check schedules cover 7 days")),
+)
+
+TEMPLATE_VARIABLE_TYPE_CHOICES = (
+    ("number", _("Number")),
+    ("text", _("Text")),
+    ("choice", _("Choice")),
 )
 
 MIN_NUMBER_RULE_LINE_PARTS = 2
@@ -940,18 +947,60 @@ class XmlSchemaStepConfigForm(BaseStepConfigForm):
 class EnergyPlusStepConfigForm(BaseStepConfigForm):
     """Collects EnergyPlus step configuration options.
 
-    The EnergyPlus validator runs the simulation and returns output values.
-    Validation checks (EUI ranges, etc.) should be defined as assertions
-    against the returned signals.
+    The form presents two validation modes via the ``validation_mode`` field:
+
+    - **direct**: Users submit a complete IDF file.  The form shows
+      IDF-check and simulation options.
+    - **template**: Users submit JSON parameter values.  The form shows
+      template upload, case-sensitivity, and signal-selection options.
+
+    Client-side JavaScript toggles the visibility of mode-specific field
+    groups.  On the server side, ``build_energyplus_config()`` reads the
+    selected mode and only processes the relevant cleaned data.
+
+    The template *file* is stored on ``WorkflowStepResource``
+    (role=MODEL_TEMPLATE); the template *configuration* (variables, case
+    sensitivity) is stored in step config and built by
+    ``build_energyplus_config()`` in ``views_helpers.py``.
 
     Example:
         form = EnergyPlusStepConfigForm(
-            data={"run_simulation": True},
+            data={"validation_mode": "direct", "run_simulation": True},
+            files=request.FILES,
             org=my_org,
             validator=energyplus_validator,
         )
     """
 
+    # ── Mode selector ─────────────────────────────────────────────
+    VALIDATION_MODE_DIRECT = "direct"
+    VALIDATION_MODE_TEMPLATE = "template"
+    VALIDATION_MODE_CHOICES = (
+        (
+            VALIDATION_MODE_DIRECT,
+            _("Validate submitted EnergyPlus IDF"),
+        ),
+        (
+            VALIDATION_MODE_TEMPLATE,
+            _("Validate values using EnergyPlus template"),
+        ),
+    )
+
+    validation_mode = forms.ChoiceField(
+        label=_("What does this step validate?"),
+        choices=VALIDATION_MODE_CHOICES,
+        widget=forms.RadioSelect,
+        initial=VALIDATION_MODE_DIRECT,
+        help_text=_(
+            "Choose 'Validate submitted EnergyPlus IDF' if submitters will "
+            "upload a complete IDF file for validation. Choose 'Validate values "
+            "using EnergyPlus template' if you want to provide a pre-built IDF "
+            "with $VARIABLE placeholders and have submitters supply only the "
+            "parameter values as JSON."
+        ),
+    )
+
+    # ── Shared fields ─────────────────────────────────────────────
     weather_file = forms.ChoiceField(
         label=_("Weather file"),
         choices=[],
@@ -960,6 +1009,19 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "This determines the climate data for the simulation."
         ),
     )
+
+    show_energyplus_warnings = forms.BooleanField(
+        label=_("Show EnergyPlus warnings"),
+        required=False,
+        initial=True,
+        help_text=_(
+            "Include EnergyPlus simulation warnings in the results shown to "
+            "submitters. Uncheck to show only errors. Warnings can be noisy "
+            "for submitters who don't need to debug the model."
+        ),
+    )
+
+    # ── Direct-mode fields ────────────────────────────────────────
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
         required=False,
@@ -974,6 +1036,29 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         required=False,
     )
 
+    # ── Template-mode fields ──────────────────────────────────────
+    template_file = forms.FileField(
+        label=_("Template IDF file"),
+        required=False,
+        help_text=_(
+            "Upload an IDF file with $VARIABLE_NAME placeholders. "
+            "Variables will be auto-detected and shown below."
+        ),
+    )
+    case_sensitive = forms.BooleanField(
+        label=_("Case-sensitive variable matching"),
+        required=False,
+        initial=True,
+        help_text=_(
+            "When checked, only $UPPERCASE_NAMES are detected as variables. "
+            "Uncheck to allow $Mixed_Case names (normalized to uppercase)."
+        ),
+    )
+    remove_template = forms.BooleanField(
+        required=False,
+        widget=forms.HiddenInput,
+    )
+
     def __init__(self, *args, step=None, org=None, validator=None, **kwargs):
         super().__init__(*args, step=step, org=org, validator=validator, **kwargs)
         self.fields.pop("display_schema", None)
@@ -981,26 +1066,93 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         # Populate weather file choices from ValidatorResourceFile
         self._populate_weather_file_choices(org, validator)
 
+        # ── Template state (for template display in the form) ─────
+        # These flags tell the template whether to show "upload" or
+        # "current template" UI, and what filename to display.
+        from validibot.workflows.models import WorkflowStepResource
+
+        self.has_template = False
+        self.template_filename = ""
+        self.template_warnings: list[str] = []
+
         if step:
             config = step.config or {}
-            # Get weather file from resource_file_ids (new format)
-            resource_file_ids = config.get("resource_file_ids", [])
-            weather_file_id = resource_file_ids[0] if resource_file_ids else ""
+
+            # Read weather file from relational WorkflowStepResource (Phase 0)
+            weather_resource = step.step_resources.filter(
+                role=WorkflowStepResource.WEATHER_FILE,
+            ).first()
+            weather_file_id = (
+                str(weather_resource.validator_resource_file_id)
+                if weather_resource and weather_resource.validator_resource_file_id
+                else ""
+            )
             self.initial.update(
                 {
                     "weather_file": weather_file_id,
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
+                    "case_sensitive": config.get("case_sensitive", True),
+                    "show_energyplus_warnings": config.get(
+                        "show_energyplus_warnings",
+                        True,
+                    ),
                 }
             )
             for key, value in self.initial.items():
                 if key in self.fields and value not in (None, ""):
                     self.fields[key].initial = value
+
+            # Check for existing template resource
+            template_resource = step.step_resources.filter(
+                role=WorkflowStepResource.MODEL_TEMPLATE,
+            ).first()
+            if template_resource:
+                self.has_template = True
+                self.template_filename = template_resource.filename or ""
+
+            # Derive initial validation mode from existing step state.
+            # If a template resource exists, the step is in template mode.
+            initial_mode = (
+                self.VALIDATION_MODE_TEMPLATE
+                if self.has_template
+                else self.VALIDATION_MODE_DIRECT
+            )
+            self.fields["validation_mode"].initial = initial_mode
         else:
             # Pre-select the first default resource file for new steps
             default_rf = self._get_default_resource_file(org, validator)
             if default_rf:
                 self.initial["weather_file"] = str(default_rf.id)
+
+        # ── Crispy Layout ─────────────────────────────────────────
+        # Groups fields by validation mode.  Client-side JS toggles
+        # the ``d-none`` class on the mode-specific Div wrappers when
+        # the author changes the radio selection.  Template variable
+        # annotations are now edited via a separate plugin card on
+        # the step detail page (see TemplateVariableAnnotationForm).
+        self.helper.layout = Layout(
+            "name",
+            "description",
+            "show_success_messages",
+            "validation_mode",
+            "weather_file",
+            "show_energyplus_warnings",
+            Div(
+                "idf_checks",
+                "run_simulation",
+                css_class="energyplus-mode-direct",
+                data_mode="direct",
+            ),
+            Div(
+                "template_file",
+                "case_sensitive",
+                "remove_template",
+                css_class="energyplus-mode-template",
+                data_mode="template",
+            ),
+            "notes",
+        )
 
     def _populate_weather_file_choices(self, org, validator):
         """Populate weather file dropdown from ValidatorResourceFile."""
@@ -1062,6 +1214,339 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             .order_by("name")
             .first()
         )
+
+
+# ---------------------------------------------------------------------------
+# Display signals form — used in the modal on the step detail page to
+# select which output signals are shown to users in submission results.
+# Cross-validator: works for any step type with output catalog entries.
+# ---------------------------------------------------------------------------
+
+
+class DisplaySignalsForm(forms.Form):
+    """Form for selecting which output signals appear in submission results.
+
+    Rendered inside a modal on the step detail page.  Populates choices
+    from the validator's output catalog entries.  The selection is stored
+    in ``step.config["display_signals"]``.
+    """
+
+    display_signals = forms.MultipleChoiceField(
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+    def __init__(self, *args, step=None, validator=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        from validibot.validations.constants import CatalogEntryType
+        from validibot.validations.constants import CatalogRunStage
+
+        choices: list[tuple[str, str]] = []
+        if validator:
+            output_entries = validator.catalog_entries.filter(
+                entry_type=CatalogEntryType.SIGNAL,
+                run_stage=CatalogRunStage.OUTPUT,
+            ).order_by("order", "slug")
+            choices = [
+                (entry.slug, entry.label or entry.slug) for entry in output_entries
+            ]
+
+        self.fields["display_signals"].choices = choices
+
+        if step:
+            config = step.config or {}
+            selected = config.get("display_signals", [])
+            if selected:
+                self.fields["display_signals"].initial = selected
+
+
+# ---------------------------------------------------------------------------
+# Standalone form for editing template variable annotations from the step
+# detail page's right-column card.  This form is instantiated by the
+# StepEditorCardSpec plugin system — the EnergyPlus ValidatorConfig
+# declares it as the form_class for its "template-variables" card.
+# ---------------------------------------------------------------------------
+
+
+class TemplateVariableAnnotationForm(forms.Form):
+    """Per-variable annotation form for EnergyPlus parameterized templates.
+
+    Rendered in a dedicated card on the step detail page (not inline in
+    the step config form).  Accepts a ``step`` kwarg, reads existing
+    variable metadata from ``step.config["template_variables"]``, and
+    creates 9 dynamic fields per variable with the ``tplvar_{i}_*``
+    naming convention.
+
+    The ``template_variable_fields`` property groups bound fields for
+    template rendering — the partial iterates over this list to render
+    the per-variable annotation cards.
+    """
+
+    VARIABLE_TYPE_CHOICES = TEMPLATE_VARIABLE_TYPE_CHOICES
+
+    def __init__(self, *args: Any, step: Any = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._template_variable_meta: list[dict[str, Any]] = []
+
+        template_vars: list[dict[str, Any]] = []
+        if step and step.config:
+            template_vars = step.config.get("template_variables", [])
+
+        self._create_template_variable_fields(template_vars)
+
+    def _create_template_variable_fields(
+        self,
+        template_vars: list[dict[str, Any]],
+    ) -> None:
+        """Create dynamic form fields for each template variable.
+
+        For every variable in ``template_vars``, nine fields are added with
+        the naming convention ``tplvar_{index}_{field_name}``.
+        """
+        for i, var in enumerate(template_vars):
+            prefix = f"tplvar_{i}"
+
+            self._template_variable_meta.append(
+                {
+                    "index": i,
+                    "name": var.get("name", ""),
+                    "prefix": prefix,
+                }
+            )
+
+            self.fields[f"{prefix}_description"] = forms.CharField(
+                label=_("Label"),
+                max_length=200,
+                required=False,
+                initial=var.get("description", ""),
+                widget=forms.TextInput(
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("Human-readable label"),
+                    },
+                ),
+            )
+            self.fields[f"{prefix}_default"] = forms.CharField(
+                label=_("Default value"),
+                max_length=200,
+                required=False,
+                initial=var.get("default", ""),
+                widget=forms.TextInput(
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("Leave empty = required"),
+                    },
+                ),
+            )
+            self.fields[f"{prefix}_units"] = forms.CharField(
+                label=_("Units"),
+                max_length=50,
+                required=False,
+                initial=var.get("units", ""),
+                widget=forms.TextInput(
+                    attrs={
+                        "class": "form-control",
+                        "placeholder": _("e.g. W/m2-K"),
+                    },
+                ),
+            )
+            self.fields[f"{prefix}_variable_type"] = forms.ChoiceField(
+                label=_("Type"),
+                choices=self.VARIABLE_TYPE_CHOICES,
+                initial=var.get("variable_type", "text"),
+                widget=forms.RadioSelect(
+                    attrs={"class": "form-check-input"},
+                ),
+            )
+            min_val = var.get("min_value")
+            self.fields[f"{prefix}_min_value"] = forms.CharField(
+                label=_("Min value"),
+                required=False,
+                initial=str(min_val) if min_val is not None else "",
+                widget=forms.TextInput(
+                    attrs={"class": "form-control", "placeholder": _("—")},
+                ),
+            )
+            self.fields[f"{prefix}_min_exclusive"] = forms.BooleanField(
+                label=_("Exclusive"),
+                required=False,
+                initial=var.get("min_exclusive", False),
+                widget=forms.CheckboxInput(
+                    attrs={"class": "form-check-input"},
+                ),
+            )
+            max_val = var.get("max_value")
+            self.fields[f"{prefix}_max_value"] = forms.CharField(
+                label=_("Max value"),
+                required=False,
+                initial=str(max_val) if max_val is not None else "",
+                widget=forms.TextInput(
+                    attrs={"class": "form-control", "placeholder": _("—")},
+                ),
+            )
+            self.fields[f"{prefix}_max_exclusive"] = forms.BooleanField(
+                label=_("Exclusive"),
+                required=False,
+                initial=var.get("max_exclusive", False),
+                widget=forms.CheckboxInput(
+                    attrs={"class": "form-check-input"},
+                ),
+            )
+            choices_list = var.get("choices", [])
+            self.fields[f"{prefix}_choices"] = forms.CharField(
+                label=_("Allowed values"),
+                required=False,
+                initial="\n".join(choices_list),
+                widget=forms.Textarea(
+                    attrs={
+                        "class": "form-control",
+                        "rows": 4,
+                        "placeholder": _("Enter one value per line"),
+                    },
+                ),
+            )
+
+    @property
+    def template_variable_fields(self) -> list[dict[str, Any]]:
+        """Return template variable fields grouped for template rendering.
+
+        Each item contains the variable's name, index, and BoundField
+        objects keyed by field name.
+        """
+        result: list[dict[str, Any]] = []
+        for meta in self._template_variable_meta:
+            prefix = meta["prefix"]
+            default_val = self[f"{prefix}_default"].value() or ""
+            result.append(
+                {
+                    "index": meta["index"],
+                    "name": meta["name"],
+                    "is_required": not bool(default_val),
+                    "description": self[f"{prefix}_description"],
+                    "default": self[f"{prefix}_default"],
+                    "units": self[f"{prefix}_units"],
+                    "variable_type": self[f"{prefix}_variable_type"],
+                    "min_value": self[f"{prefix}_min_value"],
+                    "min_exclusive": self[f"{prefix}_min_exclusive"],
+                    "max_value": self[f"{prefix}_max_value"],
+                    "max_exclusive": self[f"{prefix}_max_exclusive"],
+                    "choices": self[f"{prefix}_choices"],
+                }
+            )
+        return result
+
+
+class SingleTemplateVariableForm(forms.Form):
+    """Form for editing a single template variable's annotations via modal.
+
+    Unlike ``TemplateVariableAnnotationForm`` which creates dynamic fields
+    for all variables at once, this form handles one variable at a time.
+    Used by the per-variable edit modal in the unified signals card.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+    """
+
+    description = forms.CharField(
+        label=_("Label"),
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("Human-readable label"),
+            },
+        ),
+    )
+    default = forms.CharField(
+        label=_("Default value"),
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("Leave empty = required"),
+            },
+        ),
+    )
+    units = forms.CharField(
+        label=_("Units"),
+        max_length=50,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": _("e.g. W/m2-K"),
+            },
+        ),
+    )
+    variable_type = forms.ChoiceField(
+        label=_("Type"),
+        choices=TEMPLATE_VARIABLE_TYPE_CHOICES,
+        initial="text",
+        widget=forms.RadioSelect(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    min_value = forms.CharField(
+        label=_("Min value"),
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": _("—")},
+        ),
+    )
+    min_exclusive = forms.BooleanField(
+        label=_("Exclusive"),
+        required=False,
+        widget=forms.CheckboxInput(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    max_value = forms.CharField(
+        label=_("Max value"),
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": _("—")},
+        ),
+    )
+    max_exclusive = forms.BooleanField(
+        label=_("Exclusive"),
+        required=False,
+        widget=forms.CheckboxInput(
+            attrs={"class": "form-check-input"},
+        ),
+    )
+    choices = forms.CharField(
+        label=_("Allowed values"),
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 4,
+                "placeholder": _("Enter one value per line"),
+            },
+        ),
+    )
+
+    def __init__(self, *args: Any, variable: dict | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if variable:
+            self.fields["description"].initial = variable.get("description", "")
+            self.fields["default"].initial = variable.get("default", "")
+            self.fields["units"].initial = variable.get("units", "")
+            self.fields["variable_type"].initial = variable.get("variable_type", "text")
+            min_val = variable.get("min_value")
+            self.fields["min_value"].initial = (
+                str(min_val) if min_val is not None else ""
+            )
+            self.fields["min_exclusive"].initial = variable.get("min_exclusive", False)
+            max_val = variable.get("max_value")
+            self.fields["max_value"].initial = (
+                str(max_val) if max_val is not None else ""
+            )
+            self.fields["max_exclusive"].initial = variable.get("max_exclusive", False)
+            choices_list = variable.get("choices", [])
+            self.fields["choices"].initial = "\n".join(choices_list)
 
 
 class AiAssistStepConfigForm(BaseStepConfigForm):

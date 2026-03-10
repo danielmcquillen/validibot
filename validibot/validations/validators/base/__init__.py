@@ -11,8 +11,9 @@ This package provides the foundation that all validators build on:
   compute-intensive services (AI via external APIs).
 - **ValidationIssue, ValidationResult, AssertionStats**: Data classes shared
   by all validators.
-- **register_validator, get**: Registry for mapping ValidationType to
-  validator classes.
+- **ValidatorConfig**: Single source of truth for validator metadata,
+  class binding, and step editor UI extensions.
+- **get**: Registry lookup for mapping ValidationType to validator classes.
 
 External callers should import from this package rather than reaching into
 individual modules::
@@ -23,7 +24,6 @@ individual modules::
         AdvancedValidator,
         ValidationIssue,
         ValidationResult,
-        register_validator,
     )
 """
 
@@ -34,13 +34,13 @@ from validibot.validations.validators.base.base import BaseValidator
 from validibot.validations.validators.base.base import ValidationIssue
 from validibot.validations.validators.base.base import ValidationResult
 from validibot.validations.validators.base.config import CatalogEntrySpec
+from validibot.validations.validators.base.config import StepEditorCardSpec
 from validibot.validations.validators.base.config import ValidatorConfig
 from validibot.validations.validators.base.config import discover_configs
 from validibot.validations.validators.base.config import get_all_configs
 from validibot.validations.validators.base.config import get_config
 from validibot.validations.validators.base.config import populate_registry
 from validibot.validations.validators.base.registry import get
-from validibot.validations.validators.base.registry import register_validator
 from validibot.validations.validators.base.simple import SimpleValidator
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "BaseValidator",
     "CatalogEntrySpec",
     "SimpleValidator",
+    "StepEditorCardSpec",
     "ValidationIssue",
     "ValidationResult",
     "ValidatorConfig",
@@ -58,5 +59,4 @@ __all__ = [
     "get_all_configs",
     "get_config",
     "populate_registry",
-    "register_validator",
 ]

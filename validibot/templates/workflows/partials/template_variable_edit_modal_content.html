@@ -1,0 +1,118 @@
+{% load i18n core_tags %}
+
+{% comment %}
+Template Variable Edit Modal Content
+
+Per-variable annotation form loaded via HTMx into the
+templateVariableEditModal shell.  POST saves the single variable's
+annotations and triggers a page reload.
+
+Context:
+  form       - SingleTemplateVariableForm instance
+  variable   - the template variable dict (with name, description, etc.)
+  var_index  - the variable's index in template_variables list
+  step       - the WorkflowStep
+  workflow   - the parent Workflow
+{% endcomment %}
+<form hx-post="{% org_url 'workflows:workflow_step_template_variable_edit' workflow.pk step.pk var_index %}"
+      hx-target="#template-variable-edit-modal-content"
+      hx-swap="innerHTML">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h5 class="modal-title">{% blocktrans with name=variable.name %}Edit {{ name }}{% endblocktrans %}</h5>
+    <button type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="{% trans 'Close' %}"></button>
+  </div>
+  <div class="modal-body">
+    <div class="row g-3">
+      {# Label (description) #}
+      <div class="col-12">
+        <label class="form-label" for="{{ form.description.id_for_label }}">{% trans "Label" %}</label>
+        {{ form.description }}
+        <div class="form-text">{% trans "Human-readable label shown to submitters." %}</div>
+      </div>
+      {# Default value + Units #}
+      <div class="col-sm-6">
+        <label class="form-label" for="{{ form.default.id_for_label }}">{% trans "Default value" %}</label>
+        {{ form.default }}
+        <div class="form-text">{% trans "Leave empty to make this variable required." %}</div>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label" for="{{ form.units.id_for_label }}">{% trans "Units" %}</label>
+        {{ form.units }}
+        <div class="form-text">{% trans "Informational only." %}</div>
+      </div>
+      {# Variable type radio buttons #}
+      <div class="col-12">
+        <label class="form-label d-block">{% trans "Type" %}</label>
+        <div class="d-flex gap-3">
+          {% for radio in form.variable_type %}
+            <div class="form-check">
+              {{ radio.tag }}
+              <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {# -- Number constraints (shown when type=number) -- #}
+      <div class="col-sm-6 tplvar-number-fields">
+        <label class="form-label" for="{{ form.min_value.id_for_label }}">{% trans "Min value" %}</label>
+        {{ form.min_value }}
+        <div class="form-check mt-1">
+          {{ form.min_exclusive }}
+          <label class="form-check-label small"
+                 for="{{ form.min_exclusive.id_for_label }}">
+            {% trans "Exclusive (value must be strictly greater)" %}
+          </label>
+        </div>
+      </div>
+      <div class="col-sm-6 tplvar-number-fields">
+        <label class="form-label" for="{{ form.max_value.id_for_label }}">{% trans "Max value" %}</label>
+        {{ form.max_value }}
+        <div class="form-check mt-1">
+          {{ form.max_exclusive }}
+          <label class="form-check-label small"
+                 for="{{ form.max_exclusive.id_for_label }}">
+            {% trans "Exclusive (value must be strictly less)" %}
+          </label>
+        </div>
+      </div>
+      {# -- Choice values (shown when type=choice) -- #}
+      <div class="col-12 tplvar-choice-fields">
+        <label class="form-label" for="{{ form.choices.id_for_label }}">{% trans "Allowed values" %}</label>
+        {{ form.choices }}
+        <div class="form-text">{% trans "Enter one allowed value per line. Values are case-sensitive." %}</div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button"
+            class="btn btn-outline-secondary"
+            data-bs-dismiss="modal">{% trans "Cancel" %}</button>
+    <button type="submit" class="btn btn-secondary">{% trans "Save" %}</button>
+  </div>
+</form>
+<script>
+  (function() {
+    var form = document.querySelector('#template-variable-edit-modal-content form');
+    if (!form) return;
+    var radios = form.querySelectorAll("input[type=radio][name=variable_type]");
+
+    function toggle() {
+      var selected = form.querySelector("input[type=radio][name=variable_type]:checked");
+      var val = selected ? selected.value : "";
+      form.querySelectorAll(".tplvar-number-fields").forEach(function(el) {
+        el.style.display = val === "number" ? "" : "none";
+      });
+      form.querySelectorAll(".tplvar-choice-fields").forEach(function(el) {
+        el.style.display = val === "choice" ? "" : "none";
+      });
+    }
+    radios.forEach(function(r) {
+      r.addEventListener("change", toggle);
+    });
+    toggle();
+  })();
+</script>

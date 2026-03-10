@@ -10,6 +10,7 @@ from validibot.users.tests.factories import OrganizationFactory
 from validibot.users.tests.factories import UserFactory
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.models import WorkflowStepResource
 
 
 class WorkflowFactory(DjangoModelFactory):
@@ -67,3 +68,21 @@ class WorkflowStepFactory(DjangoModelFactory):
     notes = ""
     display_schema = False
     config = {}
+
+
+class WorkflowStepResourceFactory(DjangoModelFactory):
+    """Factory for WorkflowStepResource — catalog reference mode by default.
+
+    For step-owned files, pass ``validator_resource_file=None`` and provide
+    ``step_resource_file`` and ``filename``.
+    """
+
+    class Meta:
+        model = WorkflowStepResource
+
+    step = factory.SubFactory(WorkflowStepFactory)
+    role = WorkflowStepResource.WEATHER_FILE
+    # Default: catalog reference pointing to a ValidatorResourceFile
+    validator_resource_file = factory.SubFactory(
+        "validibot.validations.tests.factories.ValidatorResourceFileFactory",
+    )

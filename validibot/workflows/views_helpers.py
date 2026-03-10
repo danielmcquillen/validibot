@@ -31,6 +31,7 @@ from validibot.workflows.forms import JsonSchemaStepConfigForm
 from validibot.workflows.forms import XmlSchemaStepConfigForm
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.models import WorkflowStepResource
 
 logger = logging.getLogger(__name__)
 
@@ -400,16 +401,454 @@ def build_xml_schema_config(
     return config, ruleset
 
 
-def build_energyplus_config(form: EnergyPlusStepConfigForm) -> dict[str, Any]:
-    # Store weather file UUID in resource_file_ids list
-    weather_file_id = form.cleaned_data.get("weather_file", "")
-    resource_file_ids = [weather_file_id] if weather_file_id else []
+def _validate_and_scan_template(
+    template_file,
+    *,
+    case_sensitive: bool,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Validate an IDF template and return ``(variable_dicts, warnings)``.
+
+    Reads the file, runs the validation pipeline, and converts the scan
+    result into a list of variable dicts ready for ``step.config``.
+
+    Raises:
+        ValidationError: If the template fails validation checks.
+    """
+    from validibot.validations.utils.idf_template import validate_idf_template
+
+    # Guard against I/O failures (temp file cleaned up, storage error).
+    try:
+        content = template_file.read()
+    except OSError as exc:
+        raise ValidationError(
+            f"Could not read the uploaded template file: {exc}. "
+            "Please try uploading again."
+        ) from exc
+    result = validate_idf_template(
+        filename=template_file.name,
+        content=content,
+        case_sensitive=case_sensitive,
+    )
+
+    if result.errors:
+        raise ValidationError(result.errors)
+
+    template_vars = [
+        {
+            "name": var_ctx.name,
+            "description": var_ctx.label,
+            "default": "",
+            "units": var_ctx.units,
+            "variable_type": "text",
+            "min_value": None,
+            "min_exclusive": False,
+            "max_value": None,
+            "max_exclusive": False,
+            "choices": [],
+        }
+        for var_ctx in result.scan_result.variables
+    ]
+    return template_vars, result.warnings
+
+
+def build_energyplus_config(
+    form: EnergyPlusStepConfigForm,
+    step: WorkflowStep | None = None,
+) -> dict[str, Any]:
+    """Build the JSON config dict for an EnergyPlus step.
+
+    The ``validation_mode`` field determines which config keys are
+    populated:
+
+    - **direct**: ``idf_checks`` and ``run_simulation`` are stored.
+      Template metadata is cleared.
+    - **template**: Template variables, case sensitivity, and display
+      signals are stored.  IDF-check and simulation flags are omitted
+      (the template pipeline always runs the simulation).
+
+    Resource file references (weather files, templates) are stored
+    relationally via ``WorkflowStepResource`` and are synced separately
+    by ``_sync_energyplus_resources()`` after the step is saved.
+
+    Template handling:
+
+    - **Template upload**: Validates the IDF, scans for ``$VARIABLE_NAME``
+      placeholders, and populates ``template_variables`` in the config.
+      Raises ``ValidationError`` if the file fails validation.
+    - **Template removal** (switching to direct mode or explicit remove):
+      Clears ``template_variables`` and resets ``case_sensitive`` to True.
+    - **No change**: Preserves existing ``template_variables`` from the
+      step's current config (if any).
+
+    The template *file* itself is persisted by
+    ``_sync_energyplus_resources()`` after ``step.save()``.
+    """
+    validation_mode = form.cleaned_data.get(
+        "validation_mode",
+        EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
+    )
+
+    config: dict[str, Any] = {
+        "validation_mode": validation_mode,
+        "show_energyplus_warnings": form.cleaned_data.get(
+            "show_energyplus_warnings",
+            True,
+        ),
+    }
+
+    if validation_mode == EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT:
+        # Direct IDF mode — store IDF check/simulation settings,
+        # clear any template metadata.
+        config["idf_checks"] = form.cleaned_data.get("idf_checks", [])
+        config["run_simulation"] = form.cleaned_data.get("run_simulation", False)
+        config["template_variables"] = []
+        config["case_sensitive"] = True
+        config["display_signals"] = []
+        # Signal _sync_energyplus_resources to remove the template file
+        # if one exists from a previous template-mode configuration.
+        form.cleaned_data["remove_template"] = True
+        return config
+
+    # ── Template mode ─────────────────────────────────────────────
+    config["idf_checks"] = []
+    config["run_simulation"] = True
+
+    remove_template = form.cleaned_data.get("remove_template", False)
+    template_file = form.cleaned_data.get("template_file")
+
+    if remove_template:
+        # Author clicked "Remove template" — clear all template metadata.
+        config["template_variables"] = []
+        config["case_sensitive"] = True
+        config["display_signals"] = []
+    elif template_file:
+        # New template uploaded — validate, scan, and populate config.
+        template_vars, template_warnings = _validate_and_scan_template(
+            template_file,
+            case_sensitive=form.cleaned_data.get("case_sensitive", True),
+        )
+
+        config["template_variables"] = template_vars
+        config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
+        config["display_signals"] = []
+
+        # Attach warnings to the form so the view can display them.
+        form.template_warnings = template_warnings
+    elif step:
+        # No upload, no removal — preserve existing template variables
+        # as-is.  Variable annotation editing happens in the dedicated
+        # template variables card on the step detail page (not here).
+        existing_config = step.config or {}
+        existing_vars = existing_config.get("template_variables", [])
+        if existing_vars:
+            config["template_variables"] = existing_vars
+            config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
+            config["display_signals"] = existing_config.get("display_signals", [])
+
+    return config
+
+
+def _parse_optional_float(value: str) -> float | None:
+    """Convert a string to float, returning None for empty values.
+
+    Used by ``merge_template_variable_annotations()`` to parse min/max
+    values from the template variable editor form fields.
+
+    Logs a warning for non-numeric input so the author gets feedback
+    via server logs.  Returns None to avoid crashing the form save,
+    since template variable annotations are advisory rather than
+    critical — a missing constraint is safe (no constraint applied),
+    but a crash would prevent saving other valid annotations.
+    """
+    if not value or not value.strip():
+        return None
+    try:
+        return float(value.strip())
+    except (ValueError, TypeError):
+        logger.warning(
+            "Non-numeric value %r passed for a min/max constraint — "
+            "treating as empty (no constraint).",
+            value,
+        )
+        return None
+
+
+def _parse_choices(value: str) -> list[str]:
+    """Split a newline-separated string into a list of non-empty choices.
+
+    Used by ``build_energyplus_config()`` to parse the "Allowed values"
+    textarea from the template variable editor.
+    """
+    if not value:
+        return []
+    return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def merge_template_variable_annotations(
+    existing_vars: list[dict[str, Any]],
+    form_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Merge author annotations from the template variable editor form.
+
+    Takes the existing template variable dicts (from ``step.config``)
+    and merges in the updated annotations from the form's cleaned_data.
+    Variable **names** are immutable (set during IDF scan); all other
+    fields (description, default, units, type, constraints, choices)
+    can be updated by the author.
+
+    Called by the ``WorkflowStepTemplateVariablesView`` when saving
+    annotations from the step detail page's template variables card.
+
+    Args:
+        existing_vars: List of template variable dicts from step config.
+        form_data: The form's ``cleaned_data`` dict containing
+            ``tplvar_{i}_{field_name}`` keys.
+
+    Returns:
+        New list of template variable dicts with merged annotations.
+    """
+    merged = []
+    for i, var in enumerate(existing_vars):
+        prefix = f"tplvar_{i}"
+        merged.append(
+            {
+                "name": var["name"],
+                "description": form_data.get(
+                    f"{prefix}_description",
+                    var.get("description", ""),
+                ),
+                "default": form_data.get(
+                    f"{prefix}_default",
+                    var.get("default", ""),
+                ),
+                "units": form_data.get(
+                    f"{prefix}_units",
+                    var.get("units", ""),
+                ),
+                "variable_type": form_data.get(
+                    f"{prefix}_variable_type",
+                    var.get("variable_type", "text"),
+                ),
+                "min_value": _parse_optional_float(
+                    form_data.get(f"{prefix}_min_value", ""),
+                ),
+                "min_exclusive": form_data.get(
+                    f"{prefix}_min_exclusive",
+                    False,
+                ),
+                "max_value": _parse_optional_float(
+                    form_data.get(f"{prefix}_max_value", ""),
+                ),
+                "max_exclusive": form_data.get(
+                    f"{prefix}_max_exclusive",
+                    False,
+                ),
+                "choices": _parse_choices(
+                    form_data.get(f"{prefix}_choices", ""),
+                ),
+            }
+        )
+    return merged
+
+
+def step_has_template_variables(step: WorkflowStep) -> bool:
+    """Condition function for the template variables step editor card.
+
+    Returns True when the step has template variables configured,
+    indicating the template variables card should be rendered.
+    """
+    return bool((step.config or {}).get("template_variables"))
+
+
+def build_unified_signals(
+    catalog_display: Any | None,
+    step: WorkflowStep,
+) -> dict[str, Any]:
+    """Build unified input/output signal lists for the step detail card.
+
+    Merges catalog entries (from the validator's config) with template
+    variables (from the step's config) into a single list per stage.
+    This gives the workflow author one consistent view of "what goes in,
+    what comes out" regardless of whether signals come from the catalog
+    or from an uploaded template.
+
+    See ADR-2026-03-10: Unified Input/Output Signals UI.
+
+    Returns a dict with keys:
+        input_signals: List of dicts, each with slug, label, source,
+            required, and either catalog_entry or variable metadata.
+        output_signals: List of dicts, each with slug, label,
+            show_to_user flag, and catalog_entry.
+        has_inputs: Whether any input signals exist.
+        has_outputs: Whether any output signals exist.
+    """
+    step_config = step.config or {}
+    display_signals = step_config.get("display_signals", [])
+    template_vars = step_config.get("template_variables", [])
+
+    # -- Input signals --
+    input_signals: list[dict[str, Any]] = []
+
+    # When template variables exist, they *are* the inputs — the submitter
+    # provides parameter values, not a full file.  Catalog INPUT entries
+    # (e.g. submission metadata fields) are irrelevant in template mode
+    # because the submission shape is entirely defined by the template.
+    if catalog_display and not template_vars:
+        for entry in catalog_display.inputs:
+            default_val = (
+                str(entry.default_value) if entry.default_value is not None else ""
+            )
+            input_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "source": "catalog",
+                    "required": entry.is_required,
+                    "default_value": default_val,
+                    "catalog_entry": entry,
+                    "variable_index": None,
+                    "variable": None,
+                },
+            )
+        for entry in catalog_display.input_derivations:
+            input_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "source": "catalog",
+                    "required": False,
+                    "default_value": "",
+                    "catalog_entry": entry,
+                    "variable_index": None,
+                    "variable": None,
+                },
+            )
+    for i, var in enumerate(template_vars):
+        default_val = var.get("default", "")
+        input_signals.append(
+            {
+                "slug": var.get("name", ""),
+                "label": var.get("description") or var.get("name", ""),
+                "source": "template",
+                "required": not bool(default_val),
+                "default_value": default_val,
+                "catalog_entry": None,
+                "variable_index": i,
+                "variable": var,
+            },
+        )
+
+    # -- Output signals --
+    output_signals: list[dict[str, Any]] = []
+
+    if catalog_display:
+        for entry in catalog_display.outputs:
+            show = _is_signal_shown(entry.slug, display_signals)
+            output_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "show_to_user": show,
+                    "catalog_entry": entry,
+                },
+            )
+        for entry in catalog_display.output_derivations:
+            show = _is_signal_shown(entry.slug, display_signals)
+            output_signals.append(
+                {
+                    "slug": entry.slug,
+                    "label": entry.label or entry.slug,
+                    "show_to_user": show,
+                    "catalog_entry": entry,
+                },
+            )
 
     return {
-        "resource_file_ids": resource_file_ids,
-        "idf_checks": form.cleaned_data.get("idf_checks", []),
-        "run_simulation": form.cleaned_data.get("run_simulation", False),
+        "input_signals": input_signals,
+        "output_signals": output_signals,
+        "has_inputs": bool(input_signals),
+        "has_outputs": bool(output_signals),
     }
+
+
+def _is_signal_shown(slug: str, display_signals: list[str]) -> bool:
+    """Determine whether an output signal should show a green check.
+
+    Empty display_signals means "show all" (backward-compatible default).
+    """
+    if not display_signals:
+        return True
+    return slug in display_signals
+
+
+def _sync_energyplus_resources(
+    step: WorkflowStep,
+    form: EnergyPlusStepConfigForm,
+) -> None:
+    """Sync the relational ``WorkflowStepResource`` rows for an EnergyPlus step.
+
+    Called *after* ``step.save()`` so the step has a PK. Replaces the old
+    approach of storing UUID strings in ``config["resource_file_ids"]``.
+
+    Handles two resource roles:
+
+    - **WEATHER_FILE** — catalog reference to a shared ``ValidatorResourceFile``.
+    - **MODEL_TEMPLATE** — step-owned file uploaded for parameterized templates
+      (Phase 2).  The template file is stored directly on the
+      ``WorkflowStepResource`` via ``step_resource_file``.
+    """
+    from validibot.validations.constants import ENERGYPLUS_MODEL_TEMPLATE
+    from validibot.validations.models import ValidatorResourceFile
+
+    # ── Weather file ────────────────────────────────────────────────
+    weather_file_id = form.cleaned_data.get("weather_file", "")
+
+    # Remove existing weather file resources for this step
+    step.step_resources.filter(role=WorkflowStepResource.WEATHER_FILE).delete()
+
+    # Create new one if a weather file was selected
+    if weather_file_id:
+        try:
+            vrf = ValidatorResourceFile.objects.get(pk=weather_file_id)
+            WorkflowStepResource.objects.create(
+                step=step,
+                role=WorkflowStepResource.WEATHER_FILE,
+                validator_resource_file=vrf,
+            )
+        except ValidatorResourceFile.DoesNotExist:
+            logger.warning(
+                "Weather file UUID %s not found when saving step %s.",
+                weather_file_id,
+                step.pk,
+            )
+
+    # ── Model template (Phase 2) ──────────────────────────────────
+    remove_template = form.cleaned_data.get("remove_template", False)
+    template_file = form.cleaned_data.get("template_file")
+
+    if remove_template:
+        # Author chose to remove the template — delete the resource row
+        # (and the step-owned file via Django storage cleanup).
+        step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).delete()
+    elif template_file:
+        # New template uploaded — replace any existing template resource.
+        step.step_resources.filter(
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+        ).delete()
+
+        # Reset the file pointer — build_energyplus_config() already
+        # called .read() for validation.
+        template_file.seek(0)
+
+        WorkflowStepResource.objects.create(
+            step=step,
+            role=WorkflowStepResource.MODEL_TEMPLATE,
+            step_resource_file=template_file,
+            filename=template_file.name,
+            resource_type=ENERGYPLUS_MODEL_TEMPLATE,
+        )
 
 
 def build_ai_config(form: AiAssistStepConfigForm) -> dict[str, Any]:
@@ -458,7 +897,24 @@ def save_workflow_step(
     elif vtype == ValidationType.XML_SCHEMA:
         config, ruleset = build_xml_schema_config(workflow, form, step)
     elif vtype == ValidationType.ENERGYPLUS:
-        config = build_energyplus_config(form)
+        config = build_energyplus_config(form, step)
+        # File type enforcement: parameterized templates require JSON-only
+        # submissions (the submitter sends variable values as a flat JSON
+        # object, not an IDF or epJSON file).  Allowing other file types
+        # alongside JSON would let users upload IDF files that the launcher
+        # would attempt to parse as JSON parameters — causing a confusing
+        # error downstream instead of a clear rejection at upload time.
+        if config.get("template_variables"):
+            allowed = [ft.lower() for ft in (workflow.allowed_file_types or [])]
+            if allowed != [SubmissionFileType.JSON.lower()]:
+                raise ValidationError(
+                    _(
+                        "This step uses a parameterized template, which "
+                        "requires JSON-only submissions. Please set the "
+                        "workflow's allowed file types to JSON only before "
+                        "activating a template."
+                    )
+                )
     elif vtype == ValidationType.FMU:
         config = {}
     elif vtype == ValidationType.AI_ASSIST:
@@ -480,6 +936,12 @@ def save_workflow_step(
         step.order = (max_order or 0) + 10
 
     step.save()
+
+    # Sync relational resource bindings (weather files, templates) after
+    # step.save() gives us a PK for new steps.
+    if vtype == ValidationType.ENERGYPLUS:
+        _sync_energyplus_resources(step, form)
+
     return step
 
 

@@ -29,14 +29,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from validibot.validations.constants import ValidationType
 from validibot.validations.validators.base.advanced import AdvancedValidator
-from validibot.validations.validators.base.registry import register_validator
 
 logger = logging.getLogger(__name__)
 
 
-@register_validator(ValidationType.FMU)
 class FMUValidator(AdvancedValidator):
     """
     FMU (Functional Mock-up Unit) validator.

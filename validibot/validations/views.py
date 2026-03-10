@@ -416,13 +416,60 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         run: ValidationRun = context["run"]
-        step_runs = list(run.step_runs.all())
+        step_runs = list(
+            run.step_runs.select_related(
+                "workflow_step",
+                "workflow_step__validator",
+            ).prefetch_related("findings"),
+        )
         findings = list(run.findings.all())
+
+        # Build display signals and template params for each step run.
+        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_template_params_display,
+        )
+
+        step_signals: dict[int, list] = {}
+        step_params: dict[int, list] = {}
+        step_template_warnings: dict[int, list] = {}
+        for sr in step_runs:
+            signals = build_display_signals(sr)
+            if signals:
+                step_signals[sr.pk] = signals
+            params = build_template_params_display(sr)
+            if params:
+                step_params[sr.pk] = params
+            warnings = (sr.output or {}).get("template_warnings")
+            if warnings:
+                step_template_warnings[sr.pk] = warnings
+
+        # Submission content for the "View" modal (file uploads only).
+        # For inline content the template reads run.submission.content directly.
+        submission_content = ""
+        if (
+            run.submission
+            and run.submission.input_file
+            and run.submission.is_content_available
+        ):
+            submission_content = run.submission.get_content()
+
+        # Flatten all signals across steps for the "Workflow Outputs" summary.
+        all_signals = [
+            signal for signals in step_signals.values() for signal in signals
+        ]
+
         context.update(
             {
                 "step_runs": step_runs,
                 "all_findings": findings,
                 "summary_record": getattr(run, "summary_record", None),
+                "step_signals": step_signals,
+                "has_signals": bool(step_signals),
+                "all_signals": all_signals,
+                "step_params": step_params,
+                "step_template_warnings": step_template_warnings,
+                "submission_content": submission_content,
             },
         )
         return context
@@ -1976,6 +2023,28 @@ class ValidatorRuleListView(ValidatorRuleMixin, TemplateView):
         )
 
 
+class ValidationRunJsonView(ValidationRunAccessMixin, DetailView):
+    """Renders the full DRF serializer output as pretty-printed JSON.
+
+    Opens in a new browser tab with syntax-highlighted JSON, using the
+    same ``ValidationRunSerializer`` that the REST API returns.
+    """
+
+    template_name = "validations/validation_json.html"
+    context_object_name = "run"
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from validibot.validations.serializers import ValidationRunSerializer
+
+        serializer = ValidationRunSerializer(context["run"])
+        context["json_content"] = json.dumps(serializer.data, indent=2, default=str)
+        return context
+
+
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):
     template_name = "validations/partials/validation_confirm_delete.html"
 
@@ -2487,7 +2556,7 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
     Delete a resource file with active-workflow blocker checks.
 
     Deletion is blocked if any active workflow step references this file
-    via resource_file_ids in its JSONField config.
+    via a ``WorkflowStepResource`` foreign-key relationship.
     """
 
     def post(self, request, *args, **kwargs):
@@ -2514,6 +2583,17 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
             messages.error(request, message)
             return self._redirect_to_resource_files()
 
+        # Clean up WorkflowStepResource references from *inactive* workflows
+        # before deleting.  The blocker check above already confirmed there are
+        # no active-workflow references, but Django's PROTECT FK constraint
+        # fires for all references regardless of workflow state.
+        from validibot.workflows.models import WorkflowStepResource
+
+        WorkflowStepResource.objects.filter(
+            validator_resource_file=resource_file,
+            step__workflow__is_active=False,
+        ).delete()
+
         name = resource_file.name
         resource_file.delete()
         messages.success(
@@ -2525,23 +2605,20 @@ class ResourceFileDeleteView(ResourceFileMixin, TemplateView):
         return self._redirect_to_resource_files()
 
     def _get_delete_blockers(self, resource_file):
+        """Return list of active workflow names that reference this resource file.
+
+        Queries the ``WorkflowStepResource`` through table via the
+        ``step_usages`` reverse relation (FK-backed, no JSON scanning).
+        Only considers resources in active workflows.
         """
-        Return list of active workflow names that reference this resource file.
+        from validibot.workflows.models import WorkflowStepResource
 
-        Uses PostgreSQL's JSONField containment lookup to find steps whose
-        config.resource_file_ids contains this file's UUID.
+        usages = WorkflowStepResource.objects.filter(
+            validator_resource_file=resource_file,
+            step__workflow__is_active=True,
+        ).select_related("step__workflow")
 
-        Note: This performs a sequential scan because the JSONField has no GIN
-        index. Acceptable at current scale (user-initiated delete action only).
-        If WorkflowStep row count grows significantly, add a GIN index on
-        ``config`` via migration.
-        """
-        steps = WorkflowStep.objects.filter(
-            workflow__is_active=True,
-            config__resource_file_ids__contains=[str(resource_file.id)],
-        ).select_related("workflow")
-
-        return list({step.workflow.name for step in steps})
+        return list({usage.step.workflow.name for usage in usages})
 
 
 class CatalogEntryDetailView(LoginRequiredMixin, View):

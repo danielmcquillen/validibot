@@ -473,3 +473,106 @@ class AdvancedValidatorPostExecuteTests(TestCase):
         # passed=True because status is SUCCESS and there are no assertion failures
         self.assertTrue(result.passed)
         self.assertEqual(len(result.issues), 1)
+
+
+class AdvancedValidatorHelperTests(TestCase):
+    """Tests for the extracted static helper methods on AdvancedValidator.
+
+    These helpers were extracted from duplicated logic in
+    ``post_execute_validate()`` and ``_process_output_envelope()`` to
+    ensure both code paths share the same behavior.  Testing them
+    independently verifies the extraction preserved correctness and
+    allows each method to be tested in isolation without constructing
+    a full envelope workflow.
+    """
+
+    # ── _extract_issues_from_envelope ─────────────────────────────
+
+    def test_extract_issues_maps_severities_correctly(self):
+        """Each envelope severity maps to the correct local Severity."""
+        messages = [
+            _make_envelope_message(text="err", severity="ERROR", path="a.idf"),
+            _make_envelope_message(text="warn", severity="WARNING"),
+            _make_envelope_message(text="info", severity="INFO"),
+        ]
+        envelope = _make_output_envelope(status="success", messages=messages)
+
+        issues = _StubAdvancedValidator._extract_issues_from_envelope(envelope)
+
+        self.assertEqual(len(issues), 3)
+        self.assertEqual(issues[0].severity, Severity.ERROR)
+        self.assertEqual(issues[0].path, "a.idf")
+        self.assertEqual(issues[0].message, "err")
+        self.assertEqual(issues[1].severity, Severity.WARNING)
+        self.assertEqual(issues[1].path, "")
+        self.assertEqual(issues[2].severity, Severity.INFO)
+
+    def test_extract_issues_empty_messages(self):
+        """An envelope with no messages yields an empty issue list."""
+        envelope = _make_output_envelope(status="success", messages=[])
+        issues = _StubAdvancedValidator._extract_issues_from_envelope(envelope)
+        self.assertEqual(issues, [])
+
+    # ── _determine_passed ─────────────────────────────────────────
+
+    def test_determine_passed_success_no_failures(self):
+        """SUCCESS with zero assertion failures returns True."""
+        envelope = _make_output_envelope(status="success")
+        self.assertTrue(
+            _StubAdvancedValidator._determine_passed(envelope, assertion_failures=0)
+        )
+
+    def test_determine_passed_success_with_failures(self):
+        """SUCCESS with assertion failures returns False."""
+        envelope = _make_output_envelope(status="success")
+        self.assertFalse(
+            _StubAdvancedValidator._determine_passed(envelope, assertion_failures=1)
+        )
+
+    def test_determine_passed_failed_validation(self):
+        """FAILED_VALIDATION always returns False regardless of assertions."""
+        envelope = _make_output_envelope(status="failed_validation")
+        self.assertFalse(
+            _StubAdvancedValidator._determine_passed(envelope, assertion_failures=0)
+        )
+
+    def test_determine_passed_failed_runtime(self):
+        """FAILED_RUNTIME always returns False."""
+        envelope = _make_output_envelope(status="failed_runtime")
+        self.assertFalse(
+            _StubAdvancedValidator._determine_passed(envelope, assertion_failures=0)
+        )
+
+    def test_determine_passed_default_zero_failures(self):
+        """When assertion_failures is omitted, it defaults to 0."""
+        envelope = _make_output_envelope(status="success")
+        self.assertTrue(_StubAdvancedValidator._determine_passed(envelope))
+
+    # ── _extract_outputs_stats ────────────────────────────────────
+
+    def test_extract_outputs_stats_with_pydantic_model(self):
+        """Pydantic-like outputs (with model_dump) are serialized to stats."""
+        outputs_mock = MagicMock()
+        outputs_mock.model_dump.return_value = {"metric": 42}
+        envelope = _make_output_envelope(status="success", outputs=outputs_mock)
+
+        stats = _StubAdvancedValidator._extract_outputs_stats(envelope)
+
+        self.assertEqual(stats, {"outputs": {"metric": 42}})
+
+    def test_extract_outputs_stats_with_dict(self):
+        """Dict outputs are passed through directly."""
+        envelope = _make_output_envelope(status="success")
+        envelope.outputs = {"raw": "data"}
+
+        stats = _StubAdvancedValidator._extract_outputs_stats(envelope)
+
+        self.assertEqual(stats, {"outputs": {"raw": "data"}})
+
+    def test_extract_outputs_stats_none(self):
+        """None outputs return an empty dict."""
+        envelope = _make_output_envelope(status="success", outputs=None)
+
+        stats = _StubAdvancedValidator._extract_outputs_stats(envelope)
+
+        self.assertEqual(stats, {})

@@ -396,14 +396,92 @@ def run_validation(input_envelope):
 
 ### 3. Register in Validibot
 
-Update the Django code to recognize your validator type:
+Create a `ValidatorConfig` to register your validator with the system. This is the
+single source of truth for all validator metadata, class binding, and UI extensions.
+
+**For package-based validators**, create `config.py` in your validator package:
 
 ```python
-# In the validator factory/registry
-if validator.type == "myvalidator":
-    from validibot_shared.myvalidator import MyValidatorInputEnvelope
-    envelope_class = MyValidatorInputEnvelope
+# validibot/validations/validators/myvalidator/config.py
+from validibot.validations.validators.base.config import (
+    CatalogEntrySpec,
+    ValidatorConfig,
+)
+
+config = ValidatorConfig(
+    slug="myvalidator",
+    name="My Validator",
+    description="Validates things using my custom logic.",
+    validation_type="MY_VALIDATOR",
+    validator_class="validibot.validations.validators.myvalidator.validator.MyValidator",
+    has_processor=True,
+    supported_file_types=["application/json"],
+    catalog_entries=[
+        CatalogEntrySpec(
+            slug="result-metric",
+            label="Result Metric",
+            entry_type="signal",
+            run_stage="output",
+            data_type="number",
+        ),
+    ],
+)
 ```
+
+**For single-file validators**, add to `builtin_configs.py`:
+
+```python
+# validibot/validations/validators/base/builtin_configs.py
+ValidatorConfig(
+    slug="my-simple-validator",
+    name="My Simple Validator",
+    validation_type="MY_SIMPLE",
+    validator_class="validibot.validations.validators.my_simple.MySimpleValidator",
+)
+```
+
+Then add your `ValidationType` to the enum and run `python manage.py sync_validators`
+to sync to the database. The validator class is automatically resolved at startup by
+`populate_registry()`.
+
+## Django-Side Orchestration (`AdvancedValidator`)
+
+Before a container is started, the Django-side `AdvancedValidator` base class orchestrates the full validation lifecycle. This is the Template Method pattern — the base class handles shared orchestration while subclasses override hooks for domain-specific behavior.
+
+### Lifecycle
+
+```
+AdvancedValidator.validate()
+  1. Validate run_context (must have validation_run and step)
+  2. Get the configured ExecutionBackend (Docker or Cloud Run)
+  3. ★ preprocess_submission() — domain-specific input transformation
+  4. Build ExecutionRequest and call backend.execute()
+  5. Convert ExecutionResponse to ValidationResult
+```
+
+### Preprocessing Hook
+
+`preprocess_submission()` is called **before** backend dispatch. This is where domain-specific input transformations happen — for example, EnergyPlus resolves parameterized IDF templates into concrete model files:
+
+```python
+# In EnergyPlusValidator
+def preprocess_submission(self, *, step, submission):
+    from .preprocessing import preprocess_energyplus_submission
+    result = preprocess_energyplus_submission(step=step, submission=submission)
+    return result.template_metadata
+```
+
+Key design principle: **preprocessing happens in Django, not in containers.** After preprocessing, the submission looks identical to a direct upload — execution backends never need to know that preprocessing occurred. This ensures all platforms (Docker Compose, Cloud Run, future backends) see identical input.
+
+The default implementation is a no-op (returns empty dict). Subclasses override when needed.
+
+### Subclass Hooks
+
+| Method | Required | Purpose |
+|--------|----------|---------|
+| `validator_display_name` | Yes | Human-readable name for error messages |
+| `extract_output_signals()` | Yes | Extract metrics from output envelope for assertions |
+| `preprocess_submission()` | No | Transform submission before backend dispatch |
 
 ## Container Lifecycle
 

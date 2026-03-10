@@ -29,10 +29,16 @@ h4 {
   color: #fff;
 }
 
-// Ensure modal header and footer stay visible by constraining the body height.
-// Bootstrap's modal-dialog-scrollable adds overflow-y: auto to .modal-body,
-// but without a max-height the body can push the footer off-screen.
-// Use a viewport-relative height so modals scale with the screen.
-.modal-dialog-scrollable .modal-body {
-  max-height: 80vh;
+// Bootstrap 5's modal-dialog-scrollable expects .modal-header / .modal-body /
+// .modal-footer to be direct flex children of .modal-content.  Our HTMx
+// two-template pattern wraps them in a <form> (the content partial injects
+// <form> > header + body + footer into modal-content).  That <form> breaks
+// the flex chain — it becomes the sole flex child and grows unconstrained,
+// pushing the footer off-screen.  Fix: make the form a flex column container
+// with overflow hidden so the body scrolls and footer stays pinned.
+.modal-dialog-scrollable .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 100%;
 }

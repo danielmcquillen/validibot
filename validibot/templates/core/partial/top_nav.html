@@ -15,7 +15,7 @@
       <span class="navbar-toggler-icon"></span>
     </button>
     <a class="navbar-brand brand-with-mark" href="{% url 'home:home' %}">
-      <img src="{% static 'images/robot_head_bw.png' %}"
+      <img src="{% static 'images/robot_head_forward.png' %}"
            alt="{% trans 'Validibot logo' %}"
            class="brand-mark" />
       <span class="brand-name">Validibot</span>
@@ -32,7 +32,7 @@
               <a class="nav-link {% active_link 'app' %} btn btn-secondary text-dark"
                  href="{% org_url 'dashboard:my_dashboard' %}">
                 <img class="robot-head-icon"
-                     src="{% static 'images/robot_head_bw.png' %}"
+                     src="{% static 'images/robot_head_forward.png' %}"
                      alt="Robot icon" />
                 {% translate "App" %}
               </a>

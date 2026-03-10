@@ -276,6 +276,27 @@ def shared_version() -> str:
         return "?"
 
 
+@register.inclusion_tag("core/partial/help_button.html")
+def help_button(slug: str, sr_label: str = "") -> dict:
+    """Render a small info-circle button that opens the help drawer.
+
+    Usage::
+
+        {% help_button "evidence_hash" %}
+        {% help_button "evidence_hash" sr_label="What is the evidence hash?" %}
+
+    The button uses HTMX to fetch the help drawer content partial into the
+    shared offcanvas container, then shows it via Bootstrap's JS API.
+    """
+    from django.urls import reverse
+
+    return {
+        "slug": slug,
+        "sr_label": sr_label or f"Help: {slug}",
+        "help_url": reverse("core:help_drawer", kwargs={"slug": slug}),
+    }
+
+
 def _cloud_tos_url() -> str:
     """Resolve the cloud TOS URL, or return empty string if cloud not installed."""
     try:

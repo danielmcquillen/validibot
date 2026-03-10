@@ -106,4 +106,37 @@
       </div>
     </div>
   </div>
+  {% comment %}
+    Toggle EnergyPlus validation mode field groups.
+
+    When the author selects "Validate submitted EnergyPlus IDF" (direct)
+    or "Validate values using EnergyPlus template" (template), the
+    corresponding field groups are shown and the other is hidden.
+    Crispy renders the groups with data-mode="direct" or data-mode="template"
+    CSS classes; this script toggles Bootstrap's d-none on each.
+  {% endcomment %}
+  <script>
+    (function initModeToggle() {
+      const radios = document.querySelectorAll('input[name="validation_mode"]');
+      if (!radios.length) return;
+
+      function applyMode() {
+        const selected = document.querySelector(
+          'input[name="validation_mode"]:checked'
+        );
+        if (!selected) return;
+        const mode = selected.value;
+
+        document.querySelectorAll('[data-mode]').forEach(function(el) {
+          el.classList.toggle('d-none', el.dataset.mode !== mode);
+        });
+      }
+
+      radios.forEach(function(radio) {
+        radio.addEventListener('change', applyMode);
+      });
+
+      applyMode();
+    })();
+  </script>
 {% endblock app_content %}

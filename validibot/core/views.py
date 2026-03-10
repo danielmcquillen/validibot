@@ -129,3 +129,28 @@ def data_download(request: HttpRequest) -> HttpResponse:
         as_attachment=True,
         filename=filename,
     )
+
+
+@login_required
+@require_GET
+def help_drawer_content(request: HttpRequest, slug: str) -> HttpResponse:
+    """Serve help drawer content for the offcanvas panel.
+
+    Renders ``help/drawers/{slug}.html`` as an HTML fragment (no base
+    template).  The slug is restricted to alphanumeric + hyphens/underscores
+    by the URL pattern (``<slug:slug>``), preventing path traversal.
+
+    Returns a 404 if the template does not exist.
+    """
+    from django.template import TemplateDoesNotExist
+    from django.template.loader import get_template
+
+    template_name = f"help/drawers/{slug}.html"
+    try:
+        tpl = get_template(template_name)
+    except TemplateDoesNotExist as exc:
+        from django.http import Http404
+
+        raise Http404(f"Help topic '{slug}' not found.") from exc
+
+    return HttpResponse(tpl.render({}, request))

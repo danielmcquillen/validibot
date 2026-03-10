@@ -100,6 +100,11 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         return ValidationRunResult.UNKNOWN
 
     def get_steps(self, obj: ValidationRun) -> list[dict]:
+        from validibot.validations.services.signal_display import build_display_signals
+        from validibot.validations.services.signal_display import (
+            build_template_params_display,
+        )
+
         step_runs = list(obj.step_runs.all())
         if not step_runs:
             return []
@@ -108,6 +113,12 @@ class ValidationRunSerializer(serializers.ModelSerializer):
         for step_run in step_runs:
             workflow_step = getattr(step_run, "workflow_step", None)
             findings = list(step_run.findings.all())
+            output = step_run.output or {}
+
+            # Enrich with output signals and template parameters.
+            signals = build_display_signals(step_run)
+            params = build_template_params_display(step_run)
+
             payload.append(
                 {
                     "step_id": step_run.workflow_step_id or step_run.pk,
@@ -125,6 +136,29 @@ class ValidationRunSerializer(serializers.ModelSerializer):
                         for finding in findings
                     ],
                     "error": step_run.error,
+                    "output_signals": [
+                        {
+                            "slug": s.slug,
+                            "label": s.label,
+                            "value": s.value,
+                            "formatted_value": s.formatted_value,
+                            "units": s.units,
+                        }
+                        for s in signals
+                    ],
+                    "template_parameters_used": (
+                        [
+                            {
+                                "name": p["name"],
+                                "label": p["label"],
+                                "value": p["value"],
+                                "units": p["units"],
+                            }
+                            for p in params
+                        ]
+                        or None
+                    ),
+                    "template_warnings": output.get("template_warnings"),
                 },
             )
         return payload
@@ -151,6 +185,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "steps",
             "error",
             "user_friendly_error",
+            "evidence_hash",
         ]
         read_only_fields = fields
 

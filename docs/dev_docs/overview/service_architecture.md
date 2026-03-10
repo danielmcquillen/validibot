@@ -114,7 +114,7 @@ from validibot.workflows.step_configs import get_step_config
 
 typed = get_step_config(step)
 if isinstance(typed, EnergyPlusStepConfig):
-    file_ids = typed.resource_file_ids  # list[str], type-checked
+    checks = typed.idf_checks  # list[str], type-checked
 ```
 
 All models use `extra="allow"` so runtime-injected keys (like
@@ -136,7 +136,7 @@ mismatches at save time rather than at runtime.
 |--------------------|-------|------------|
 | JSON_SCHEMA | `JsonSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
 | XML_SCHEMA | `XmlSchemaStepConfig` | `schema_source`, `schema_type`, `schema_text_preview` |
-| ENERGYPLUS | `EnergyPlusStepConfig` | `resource_file_ids`, `idf_checks`, `run_simulation`, `timestep_per_hour` |
+| ENERGYPLUS | `EnergyPlusStepConfig` | `idf_checks`, `run_simulation`, `timestep_per_hour` (resource files stored via `WorkflowStepResource`) |
 | AI_ASSIST | `AiAssistStepConfig` | `template`, `mode`, `cost_cap_cents`, `selectors`, `policy_rules` |
 | BASIC | `BasicStepConfig` | (empty) |
 | FMU | `FmuStepConfig` | (empty) |
@@ -151,7 +151,11 @@ mismatches at save time rather than at runtime.
    `BaseStepConfig`.
 3. Register it in the `STEP_CONFIG_MODELS` dict.
 4. Create the validator class implementing `BaseValidator`.
-5. Register the validator with `@register_validator`.
+5. Create a `ValidatorConfig` with `validator_class` pointing to your class
+   (in `config.py` for package-based validators, or `builtin_configs.py` for single-file).
+6. Add `catalog_entries` to define the validator's input/output signals.
+   These appear automatically in the unified "Inputs and Outputs" card on the step detail page.
+7. Run `python manage.py sync_validators` to sync to the database.
 
 ## File Structure
 

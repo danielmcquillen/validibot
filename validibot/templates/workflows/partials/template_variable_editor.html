@@ -1,0 +1,101 @@
+{% load i18n %}
+
+{% comment %}
+Template Variable Editor
+
+Renders per-variable annotation cards so the workflow author can
+refine each auto-detected $VARIABLE_NAME placeholder.  Fields map
+to IDFTemplateVariable fields on the step config.
+
+Context:
+  tplvar_form  - a TemplateVariableAnnotationForm instance with
+                 template_variable_fields property
+{% endcomment %}
+{% for var in tplvar_form.template_variable_fields %}
+  <div class="card mb-3"
+       data-tplvar-card
+       data-tplvar-index="{{ var.index }}">
+    {# -- Card header: variable name + required/optional badge -- #}
+    <div class="card-header d-flex justify-content-between align-items-center py-2"
+         data-bs-toggle="collapse"
+         data-bs-target="#tplvar-{{ var.index }}-body"
+         role="button"
+         aria-expanded="true"
+         aria-controls="tplvar-{{ var.index }}-body">
+      <div class="d-flex align-items-center gap-2">
+        <code class="fw-bold text-dark">${{ var.name }}</code>
+        {% if var.is_required %}
+          <span class="badge text-bg-warning">{% trans "required" %}</span>
+        {% else %}
+          <span class="badge text-bg-light">{% trans "optional" %}</span>
+        {% endif %}
+      </div>
+      <i class="bi bi-chevron-down"></i>
+    </div>
+    {# -- Card body: annotation fields -- #}
+    <div class="collapse show" id="tplvar-{{ var.index }}-body">
+      <div class="card-body">
+        <div class="row g-3">
+          {# Label (description) #}
+          <div class="col-12">
+            <label class="form-label" for="{{ var.description.id_for_label }}">{% trans "Label" %}</label>
+            {{ var.description }}
+            <div class="form-text">{% trans "Human-readable label shown to submitters." %}</div>
+          </div>
+          {# Default value + Units #}
+          <div class="col-sm-6">
+            <label class="form-label" for="{{ var.default.id_for_label }}">{% trans "Default value" %}</label>
+            {{ var.default }}
+            <div class="form-text">{% trans "Leave empty to make this variable required." %}</div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="{{ var.units.id_for_label }}">{% trans "Units" %}</label>
+            {{ var.units }}
+            <div class="form-text">{% trans "Informational only." %}</div>
+          </div>
+          {# Variable type radio buttons #}
+          <div class="col-12">
+            <label class="form-label d-block">{% trans "Type" %}</label>
+            <div class="d-flex gap-3">
+              {% for radio in var.variable_type %}
+                <div class="form-check">
+                  {{ radio.tag }}
+                  <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+          {# -- Number constraints (shown when type=number) -- #}
+          <div class="col-sm-6 tplvar-number-fields">
+            <label class="form-label" for="{{ var.min_value.id_for_label }}">{% trans "Min value" %}</label>
+            {{ var.min_value }}
+            <div class="form-check mt-1">
+              {{ var.min_exclusive }}
+              <label class="form-check-label small"
+                     for="{{ var.min_exclusive.id_for_label }}">
+                {% trans "Exclusive (value must be strictly greater)" %}
+              </label>
+            </div>
+          </div>
+          <div class="col-sm-6 tplvar-number-fields">
+            <label class="form-label" for="{{ var.max_value.id_for_label }}">{% trans "Max value" %}</label>
+            {{ var.max_value }}
+            <div class="form-check mt-1">
+              {{ var.max_exclusive }}
+              <label class="form-check-label small"
+                     for="{{ var.max_exclusive.id_for_label }}">
+                {% trans "Exclusive (value must be strictly less)" %}
+              </label>
+            </div>
+          </div>
+          {# -- Choice values (shown when type=choice) -- #}
+          <div class="col-12 tplvar-choice-fields">
+            <label class="form-label" for="{{ var.choices.id_for_label }}">{% trans "Allowed values" %}</label>
+            {{ var.choices }}
+            <div class="form-text">{% trans "Enter one allowed value per line. Values are case-sensitive." %}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endfor %}

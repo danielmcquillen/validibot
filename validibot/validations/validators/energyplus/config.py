@@ -22,6 +22,9 @@ config = ValidatorConfig(
     name="EnergyPlus™ Validator",
     description="Validate EnergyPlus™ IDF models and run simulations.",
     validation_type=ValidationType.ENERGYPLUS,
+    validator_class=(
+        "validibot.validations.validators.energyplus.validator.EnergyPlusValidator"
+    ),
     version="1.0",
     order=10,
     has_processor=True,
@@ -38,7 +41,7 @@ config = ValidatorConfig(
     resource_types=[ResourceFileType.ENERGYPLUS_WEATHER],
     icon="bi-lightning-charge-fill",
     card_image="ENERGYPLUS_card_img_small.png",
-    # Note: These signals are all prototypes and subject to changg. I need
+    # Note: These signals are all prototypes and subject to change. I need
     # to do more work to determine exactly which input and output signals
     # would make sense for a generic EnergyPlus simulation.
     catalog_entries=[
@@ -307,6 +310,58 @@ config = ValidatorConfig(
             order=141,
         ),
         # ==================================================================
+        # OUTPUT SIGNALS - Window Envelope
+        # ==================================================================
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_heat_gain_kwh",
+            label="Window Heat Gain (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual heat gain through windows. Extracted from "
+                "Surface Window Heat Gain Energy output variable."
+            ),
+            binding_config={"source": "metric", "key": "window_heat_gain_kwh"},
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=150,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_heat_loss_kwh",
+            label="Window Heat Loss (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual heat loss through windows. Extracted from "
+                "Surface Window Heat Loss Energy output variable."
+            ),
+            binding_config={"source": "metric", "key": "window_heat_loss_kwh"},
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=151,
+        ),
+        CatalogEntrySpec(
+            entry_type=CatalogEntryType.SIGNAL,
+            run_stage=CatalogRunStage.OUTPUT,
+            slug="window_transmitted_solar_kwh",
+            label="Transmitted Solar (kWh)",
+            data_type=CatalogValueType.NUMBER,
+            description=(
+                "Total annual solar radiation transmitted through windows. "
+                "Direct expression of SHGC effect. Extracted from Surface "
+                "Window Transmitted Solar Radiation Energy output variable."
+            ),
+            binding_config={
+                "source": "metric",
+                "key": "window_transmitted_solar_kwh",
+            },
+            metadata={"units": "kWh", "precision": 1},
+            is_required=False,
+            order=152,
+        ),
+        # ==================================================================
         # DERIVATIONS (computed from other signals)
         # ==================================================================
         CatalogEntrySpec(
@@ -348,4 +403,6 @@ config = ValidatorConfig(
             order=201,
         ),
     ],
+    # Template variable editing is handled by the unified signals card
+    # (ADR-2026-03-10) — no custom step_editor_cards needed.
 )

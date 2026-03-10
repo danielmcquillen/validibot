@@ -1061,8 +1061,9 @@ class RulesetAssertionForm(CelHelpLabelMixin, forms.Form):
             "success_message": assertion.success_message,
         }
         if assertion.target_catalog_entry_id:
-            initial["target_catalog_entry"] = assertion.target_catalog_entry.slug
-            initial["target_data_path"] = ""
+            entry = assertion.target_catalog_entry
+            initial["target_catalog_entry"] = f"{entry.run_stage}:{entry.slug}"
+            initial["target_data_path"] = entry.slug
         else:
             initial["target_data_path"] = assertion.target_data_path
         if assertion.assertion_type == AssertionType.BASIC:

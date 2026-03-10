@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from validibot.workflows.models import Workflow
 from validibot.workflows.models import WorkflowStep
+from validibot.workflows.models import WorkflowStepResource
 
 
 @admin.register(Workflow)
@@ -29,6 +30,19 @@ class WorkflowAdmin(admin.ModelAdmin):
     ordering = ("name",)
 
 
+class WorkflowStepResourceInline(admin.TabularInline):
+    model = WorkflowStepResource
+    extra = 0
+    fields = (
+        "role",
+        "validator_resource_file",
+        "step_resource_file",
+        "filename",
+        "resource_type",
+    )
+    readonly_fields = ()
+
+
 @admin.register(WorkflowStep)
 class WorkflowStepAdmin(admin.ModelAdmin):
     list_display = (
@@ -45,3 +59,4 @@ class WorkflowStepAdmin(admin.ModelAdmin):
         "workflow__name",
     )
     ordering = ("workflow", "order")
+    inlines = [WorkflowStepResourceInline]

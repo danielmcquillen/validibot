@@ -146,6 +146,11 @@ urlpatterns = [
         name="validation_delete",
     ),
     path(
+        "<uuid:pk>/json/",
+        views.ValidationRunJsonView.as_view(),
+        name="validation_json",
+    ),
+    path(
         "catalog-entry/<int:entry_pk>/",
         views.CatalogEntryDetailView.as_view(),
         name="catalog_entry_detail",

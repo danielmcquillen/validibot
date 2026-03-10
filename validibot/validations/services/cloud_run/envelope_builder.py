@@ -71,12 +71,22 @@ def build_energyplus_input_envelope(
         workflow_id: Workflow UUID
         step_id: Workflow step UUID
         step_name: Human-readable step name
-        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local)
+        model_file_uri: URI to IDF/epJSON file (gs:// for GCS, file:// for local).
+            The file extension determines the envelope metadata: ``.idf`` URIs
+            produce ``name="model.idf"`` with ``mime_type=ENERGYPLUS_IDF``;
+            ``.epjson`` URIs produce ``name="model.epjson"`` with
+            ``mime_type=ENERGYPLUS_EPJSON``.  The runner uses the ``name`` field
+            to determine the local filename when downloading, and EnergyPlus
+            uses the extension to decide IDF vs epJSON parsing mode.
         resource_files: List of ResourceFileItem objects (weather files, etc.)
         callback_url: Django endpoint to POST results
         callback_id: Unique identifier for idempotent callback processing
         execution_bundle_uri: Directory URI for this run's files
-        timestep_per_hour: EnergyPlus timesteps (default: 4)
+        timestep_per_hour: EnergyPlus timesteps (default: 4).
+            NOTE: This value reaches the container envelope but the runner
+            does not yet use it to configure the EnergyPlus CLI.  See
+            ``idf_checks`` and ``run_simulation`` in EnergyPlusStepConfig
+            for other settings that are stored but not yet forwarded.
         skip_callback: If True, container won't POST callback after completion
 
     Returns:
@@ -119,11 +129,21 @@ def build_energyplus_input_envelope(
         step_name=step_name,
     )
 
-    # Build input files list (only the model file; weather comes via resource_files)
+    # Build input files list (only the model file; weather comes via resource_files).
+    # The file extension determines the envelope metadata — the runner uses
+    # file_item.name as the local filename, and EnergyPlus uses the extension
+    # to decide IDF vs epJSON parsing mode.
+    if model_file_uri.lower().endswith(".epjson"):
+        model_name = "model.epjson"
+        model_mime = SupportedMimeType.ENERGYPLUS_EPJSON
+    else:
+        model_name = "model.idf"
+        model_mime = SupportedMimeType.ENERGYPLUS_IDF
+
     input_files = [
         InputFileItem(
-            name="model.idf",
-            mime_type=SupportedMimeType.ENERGYPLUS_IDF,
+            name=model_name,
+            mime_type=model_mime,
             role="primary-model",
             uri=model_file_uri,
         ),
@@ -157,69 +177,54 @@ def build_energyplus_input_envelope(
     return envelope
 
 
-def _resolve_resource_files(
-    resource_file_ids: list[str],
+def resolve_step_resources(
+    step,
     *,
-    validator_id: str | None = None,
-    org_id: str | None = None,
+    role: str | None = None,
 ) -> list[ResourceFileItem]:
-    """
-    Resolve resource file IDs to ResourceFileItem objects with storage URIs.
+    """Resolve a step's ``WorkflowStepResource`` rows to ``ResourceFileItem`` objects.
 
-    Enforces runtime authorization: only returns resource files that:
-    - Belong to the specified validator (if validator_id provided)
-    - Are system-wide (org=NULL) OR belong to the specified org (if org_id provided)
+    Queries the relational ``step.step_resources`` reverse relation (FK-backed)
+    rather than parsing UUID strings from the JSON config. This provides
+    referential integrity: stale or unauthorized references are impossible
+    because the FK is PROTECT on ``ValidatorResourceFile``.
+
+    For catalog-reference resources, the ``ResourceFileItem.id`` and ``type``
+    come from the underlying ``ValidatorResourceFile``. For step-owned files,
+    the ``id`` is the ``WorkflowStepResource.pk`` and ``type`` is the
+    ``resource_type`` field on the record itself.
 
     Args:
-        resource_file_ids: List of ValidatorResourceFile UUIDs from step config
-        validator_id: Validator ID to scope resources to (optional but recommended)
-        org_id: Organization ID - resources must be system-wide or match this org
+        step: WorkflowStep instance with ``step_resources`` relation.
+        role: If provided, only return resources matching this role
+              (e.g., ``WorkflowStepResource.WEATHER_FILE``).
 
     Returns:
-        List of ResourceFileItem objects with resolved URIs
-
-    Raises:
-        ValueError: If any requested resource file is not accessible
+        List of ``ResourceFileItem`` objects with resolved storage URIs.
     """
-    if not resource_file_ids:
-        return []
 
-    from django.db.models import Q
+    queryset = step.step_resources.select_related("validator_resource_file")
+    if role:
+        queryset = queryset.filter(role=role)
 
-    from validibot.validations.models import ValidatorResourceFile
+    items: list[ResourceFileItem] = []
+    for sr in queryset:
+        if sr.is_catalog_reference:
+            vrf = sr.validator_resource_file
+            resource_id = str(vrf.id)
+            resource_type = vrf.resource_type
+        else:
+            resource_id = str(sr.pk)
+            resource_type = sr.resource_type
 
-    # Build query with authorization scoping
-    queryset = ValidatorResourceFile.objects.filter(id__in=resource_file_ids)
-
-    # Scope to validator if provided
-    if validator_id:
-        queryset = queryset.filter(validator_id=validator_id)
-
-    # Scope to org: must be system-wide (org=NULL) OR match the run's org
-    if org_id:
-        queryset = queryset.filter(Q(org__isnull=True) | Q(org_id=org_id))
-
-    resource_files = list(queryset)
-
-    # Verify all requested IDs were found and authorized
-    found_ids = {str(rf.id) for rf in resource_files}
-    requested_ids = set(resource_file_ids)
-    missing_ids = requested_ids - found_ids
-    if missing_ids:
-        msg = (
-            f"Resource files not found or not authorized: {missing_ids}. "
-            f"validator_id={validator_id}, org_id={org_id}"
+        items.append(
+            ResourceFileItem(
+                id=resource_id,
+                type=resource_type,
+                uri=sr.get_storage_uri(),
+            )
         )
-        raise ValueError(msg)
-
-    return [
-        ResourceFileItem(
-            id=str(rf.id),
-            type=rf.resource_type,
-            uri=rf.get_storage_uri(),
-        )
-        for rf in resource_files
-    ]
+    return items
 
 
 def build_input_envelope(
@@ -286,13 +291,16 @@ def build_input_envelope(
             msg = f"Step {step.id} has no primary_file_uri in config"
             raise ValueError(msg)
 
-        # Resolve resource files from IDs stored in step config
-        # Pass validator and org for runtime authorization scoping
-        resource_file_ids = step_config.get("resource_file_ids", [])
-        resource_files = _resolve_resource_files(
-            resource_file_ids,
-            validator_id=str(validator.id),
-            org_id=str(run.org.id),
+        # Resolve resource files from relational WorkflowStepResource rows.
+        # Exclude MODEL_TEMPLATE resources — the template is consumed during
+        # preprocessing (in Django) and the resolved IDF is uploaded as the
+        # primary model file.  Including the template in resource_files would
+        # cause the runner to download it unnecessarily, and if the template
+        # filename matches the resolved model filename it could overwrite it.
+        from validibot.workflows.models import WorkflowStepResource
+
+        resource_files = resolve_step_resources(
+            step, role=WorkflowStepResource.WEATHER_FILE
         )
 
         # Validate that we have a weather file for EnergyPlus
@@ -300,10 +308,17 @@ def build_input_envelope(
             rf.type == ResourceFileType.ENERGYPLUS_WEATHER for rf in resource_files
         )
         if not has_weather:
-            msg = f"Step {step.id} has no weather file configured in resource_file_ids"
+            msg = (
+                f"Step {step.id} has no weather file configured"
+                " (no WEATHER_FILE step resource)"
+            )
             raise ValueError(msg)
 
-        # Get EnergyPlus-specific settings from step config
+        # Get EnergyPlus-specific settings from step config.
+        # TODO: Also forward ``idf_checks`` and ``run_simulation`` to the
+        #       container once the envelope schema and runner support them.
+        #       Currently only ``timestep_per_hour`` reaches the envelope
+        #       (and even that is ignored by the runner).
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
 
         return build_energyplus_input_envelope(

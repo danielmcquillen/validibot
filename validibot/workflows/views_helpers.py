@@ -442,6 +442,10 @@ def build_energyplus_config(
 
     config: dict[str, Any] = {
         "validation_mode": validation_mode,
+        "show_energyplus_warnings": form.cleaned_data.get(
+            "show_energyplus_warnings",
+            True,
+        ),
     }
 
     if validation_mode == EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT:
@@ -649,18 +653,27 @@ def build_unified_signals(
     """
     step_config = step.config or {}
     display_signals = step_config.get("display_signals", [])
+    template_vars = step_config.get("template_variables", [])
 
     # -- Input signals --
     input_signals: list[dict[str, Any]] = []
 
-    if catalog_display:
+    # When template variables exist, they *are* the inputs — the submitter
+    # provides parameter values, not a full file.  Catalog INPUT entries
+    # (e.g. submission metadata fields) are irrelevant in template mode
+    # because the submission shape is entirely defined by the template.
+    if catalog_display and not template_vars:
         for entry in catalog_display.inputs:
+            default_val = (
+                str(entry.default_value) if entry.default_value is not None else ""
+            )
             input_signals.append(
                 {
                     "slug": entry.slug,
                     "label": entry.label or entry.slug,
                     "source": "catalog",
                     "required": entry.is_required,
+                    "default_value": default_val,
                     "catalog_entry": entry,
                     "variable_index": None,
                     "variable": None,
@@ -673,22 +686,21 @@ def build_unified_signals(
                     "label": entry.label or entry.slug,
                     "source": "catalog",
                     "required": False,
+                    "default_value": "",
                     "catalog_entry": entry,
                     "variable_index": None,
                     "variable": None,
                 },
             )
-
-    # Template variables (from step config, not the catalog)
-    template_vars = step_config.get("template_variables", [])
     for i, var in enumerate(template_vars):
         default_val = var.get("default", "")
         input_signals.append(
             {
-                "slug": f"${var.get('name', '')}",
+                "slug": var.get("name", ""),
                 "label": var.get("description") or var.get("name", ""),
                 "source": "template",
                 "required": not bool(default_val),
+                "default_value": default_val,
                 "catalog_entry": None,
                 "variable_index": i,
                 "variable": var,

@@ -23,6 +23,7 @@ Context:
         <tr>
           <th class="text-muted small" data-sortable="true">{% trans "Slug" %}</th>
           <th class="text-muted small" data-sortable="true">{% trans "Source" %}</th>
+          <th class="text-muted small">{% trans "Default" %}</th>
           <th class="text-muted small text-center">{% trans "Required" %}</th>
           <th class="text-muted small text-end"></th>
         </tr>
@@ -37,18 +38,29 @@ Context:
                 <span class="text-muted small">{{ signal.label }}</span>
               {% endif %}
             </td>
-            <td>
+            <td class="text-muted small">
               {% if signal.source == "template" %}
-                <span class="badge text-bg-info">{% trans "Template" %}</span>
+                {% trans "Template" %}
               {% else %}
-                <span class="badge text-bg-light">{% trans "Catalog" %}</span>
+                {% trans "Catalog" %}
+              {% endif %}
+            </td>
+            <td>
+              {% if signal.default_value %}
+                <span class="d-inline-block text-truncate small"
+                      style="max-width: 10rem"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="{{ signal.default_value }}">{{ signal.default_value }}</span>
+              {% else %}
+                <span class="text-muted">--</span>
               {% endif %}
             </td>
             <td class="text-center">
               {% if signal.required %}
                 <i class="bi bi-check-lg text-success"></i>
               {% else %}
-                <span class="text-muted">—</span>
+                <span class="text-muted">--</span>
               {% endif %}
             </td>
             <td class="text-end">

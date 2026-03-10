@@ -1639,6 +1639,17 @@ class ValidationRun(TimeStampedModel):
         help_text=_("When outputs were purged (for audit trail)."),
     )
 
+    evidence_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=_(
+            "SHA-256 hash of the canonical run evidence record, computed at "
+            "run completion. Covers: content hash, run ID, user, status, "
+            "timestamps, finding counts, and submission name."
+        ),
+    )
+
     def clean(self):
         super().clean()
         # Optional but helpful: ensure org consistency with submission

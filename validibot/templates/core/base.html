@@ -81,6 +81,20 @@
     {# modal block #}
     {% block modal %}
     {% endblock modal %}
+    {% comment %} Shared help drawer (offcanvas, right-aligned). Content loaded via HTMX. {% endcomment %}
+    <div class="offcanvas offcanvas-end"
+         tabindex="-1"
+         id="helpDrawer"
+         aria-labelledby="helpDrawerLabel">
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="helpDrawerLabel">{% trans "Help" %}</h5>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                aria-label="{% trans 'Close' %}"></button>
+      </div>
+      <div class="offcanvas-body" id="helpDrawerBody"></div>
+    </div>
     {% block inline_javascript %}
       {% comment %}
           Script tags with only code, no src (defer by default). To run

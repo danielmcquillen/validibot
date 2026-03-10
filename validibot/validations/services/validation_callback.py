@@ -434,6 +434,10 @@ class ValidationCallbackService:
                 validation_run=run,
             )
 
+            from validibot.validations.services.evidence_hash import stamp_evidence_hash
+
+            stamp_evidence_hash(run)
+
             logger.info(
                 "Finalized run %s with status %s",
                 run.id,

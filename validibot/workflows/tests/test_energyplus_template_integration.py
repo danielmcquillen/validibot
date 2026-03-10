@@ -1432,7 +1432,7 @@ class TestBuildUnifiedSignals:
 
         # First variable: no default → required
         sig0 = result["input_signals"][0]
-        assert sig0["slug"] == "$U_FACTOR"
+        assert sig0["slug"] == "U_FACTOR"
         assert sig0["label"] == "U-Factor"
         assert sig0["source"] == "template"
         assert sig0["required"] is True
@@ -1440,7 +1440,7 @@ class TestBuildUnifiedSignals:
 
         # Second variable: has default → not required
         sig1 = result["input_signals"][1]
-        assert sig1["slug"] == "$SHGC"
+        assert sig1["slug"] == "SHGC"
         assert sig1["label"] == "SHGC"  # Falls back to name when no description
         assert sig1["source"] == "template"
         assert sig1["required"] is False
@@ -1496,11 +1496,13 @@ class TestBuildUnifiedSignals:
         assert result["output_signals"][0]["slug"] == "total-energy"
         assert result["output_signals"][0]["show_to_user"] is True
 
-    def test_mixed_catalog_and_template_inputs(self):
-        """Catalog INPUT entries and template variables merge into one input list.
+    def test_template_vars_exclude_catalog_inputs(self):
+        """When template variables exist, catalog INPUT entries are excluded.
 
-        The merged list has catalog entries first, then template variables.
-        This ensures the UI shows both sources under one "Inputs" tab.
+        In template mode the submitter provides parameter values, not a
+        full file.  Catalog INPUT entries (e.g. submission metadata fields)
+        are irrelevant because the submission shape is defined entirely by
+        the template variables.  Output signals are still shown.
         """
         from validibot.validations.models import CatalogDisplay
         from validibot.validations.tests.factories import ValidatorCatalogEntryFactory
@@ -1515,14 +1517,21 @@ class TestBuildUnifiedSignals:
             label="EPW File",
             is_required=True,
         )
+        output_entry = ValidatorCatalogEntryFactory(
+            validator=validator,
+            run_stage="output",
+            entry_type="signal",
+            slug="total-energy",
+            label="Total Energy",
+        )
         catalog = CatalogDisplay(
-            entries=[input_entry],
+            entries=[input_entry, output_entry],
             inputs=[input_entry],
-            outputs=[],
+            outputs=[output_entry],
             input_derivations=[],
             output_derivations=[],
             input_total=1,
-            output_total=0,
+            output_total=1,
             uses_tabs=True,
         )
         step = WorkflowStepFactory(
@@ -1535,14 +1544,13 @@ class TestBuildUnifiedSignals:
 
         result = build_unified_signals(catalog_display=catalog, step=step)
 
-        expected_count = len(catalog.inputs) + len(step.config["template_variables"])
-        assert len(result["input_signals"]) == expected_count
-        # Catalog entries come first
-        assert result["input_signals"][0]["source"] == "catalog"
-        assert result["input_signals"][0]["slug"] == "epw-file"
-        # Template variables follow
-        assert result["input_signals"][1]["source"] == "template"
-        assert result["input_signals"][1]["slug"] == "$U_FACTOR"
+        # Only template variables appear as inputs — catalog inputs excluded
+        assert len(result["input_signals"]) == len(step.config["template_variables"])
+        assert result["input_signals"][0]["source"] == "template"
+        assert result["input_signals"][0]["slug"] == "U_FACTOR"
+        # Output signals still present
+        assert result["has_outputs"] is True
+        assert result["output_signals"][0]["slug"] == "total-energy"
 
     def test_empty_step_produces_no_signals(self):
         """A step with no catalog entries and no template variables is empty.
@@ -1881,6 +1889,38 @@ class TestTemplateVariableEditView:
         assert response.status_code == HTTPStatus.OK
         content = response.content.decode()
         assert "U_FACTOR" in content
+
+    def test_get_response_renders_complete_modal(self, client):
+        """The modal response includes the full form structure and JS toggle.
+
+        This test verifies the template renders correctly end-to-end:
+        the form with all expected fields, the modal footer with
+        buttons, and the type-toggle script.  This catches template
+        rendering errors (e.g. malformed Django comments leaking into
+        ``<script>`` blocks) that would silently break the modal in
+        the browser.
+        """
+        workflow, step = self._make_step_with_variables()
+        self._login(client, workflow)
+
+        response = client.get(self._url(workflow, step, 0))
+        content = response.content.decode()
+
+        # Modal structure
+        assert "modal-header" in content
+        assert "modal-body" in content
+        assert "modal-footer" in content
+
+        # Form fields present
+        assert 'name="description"' in content
+        assert 'name="default"' in content
+        assert 'name="variable_type"' in content
+
+        # Type-toggle JS renders cleanly (no Django template syntax leaks)
+        assert "tplvar-number-fields" in content
+        assert "tplvar-choice-fields" in content
+        # The IIFE that toggles type-specific fields
+        assert "addEventListener" in content
 
     def test_post_saves_single_variable(self, client):
         """POST updates only the targeted variable, preserving others.

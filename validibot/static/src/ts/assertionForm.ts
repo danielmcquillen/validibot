@@ -80,6 +80,8 @@ class AssertionFormController {
   private operatorField: HTMLSelectElement | null;
   private targetField: HTMLElement | null;
   private targetCatalogField: HTMLElement | null;
+  private targetPathInput: HTMLInputElement | null;
+  private targetCatalogInput: HTMLInputElement | null;
   private celField: HTMLElement | null;
   private typeWrapper: HTMLElement | null;
   private focusApplied = false;
@@ -87,8 +89,10 @@ class AssertionFormController {
   constructor(private form: HTMLFormElement) {
     this.typeField = this.form.querySelector<HTMLSelectElement>('#id_assertion_type');
     this.operatorField = this.form.querySelector<HTMLSelectElement>('#id_operator');
-    this.targetField = this.form.querySelector<HTMLElement>('[name="target_data_path"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
-    this.targetCatalogField = this.form.querySelector<HTMLElement>('[name="target_catalog_entry"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.targetPathInput = this.form.querySelector<HTMLInputElement>('[name="target_data_path"]');
+    this.targetCatalogInput = this.form.querySelector<HTMLInputElement>('[name="target_catalog_entry"]');
+    this.targetField = this.targetPathInput?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
+    this.targetCatalogField = this.targetCatalogInput?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.celField = this.form.querySelector<HTMLElement>('[name="cel_expression"]')?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
     this.typeWrapper = this.typeField?.closest<HTMLElement>(FIELD_WRAPPER_SELECTORS) ?? null;
   }
@@ -121,6 +125,17 @@ class AssertionFormController {
       this.updateVisibility();
     });
     this.operatorField.addEventListener('change', () => this.updateVisibility());
+
+    // When the user modifies the visible target field, clear the hidden
+    // catalog entry field so the backend resolves from the new text value
+    // instead of the stale pre-populated hidden value.
+    if (this.targetPathInput && this.targetCatalogInput) {
+      this.targetPathInput.addEventListener('input', () => {
+        if (this.targetCatalogInput) {
+          this.targetCatalogInput.value = '';
+        }
+      });
+    }
   }
 
   private collectWrappers(): void {

@@ -444,14 +444,32 @@ class ValidationRunDetailView(ValidationRunAccessMixin, DetailView):
             if warnings:
                 step_template_warnings[sr.pk] = warnings
 
+        # Submission content for the "View" modal (file uploads only).
+        # For inline content the template reads run.submission.content directly.
+        submission_content = ""
+        if (
+            run.submission
+            and run.submission.input_file
+            and run.submission.is_content_available
+        ):
+            submission_content = run.submission.get_content()
+
+        # Flatten all signals across steps for the "Workflow Outputs" summary.
+        all_signals = [
+            signal for signals in step_signals.values() for signal in signals
+        ]
+
         context.update(
             {
                 "step_runs": step_runs,
                 "all_findings": findings,
                 "summary_record": getattr(run, "summary_record", None),
                 "step_signals": step_signals,
+                "has_signals": bool(step_signals),
+                "all_signals": all_signals,
                 "step_params": step_params,
                 "step_template_warnings": step_template_warnings,
+                "submission_content": submission_content,
             },
         )
         return context
@@ -2003,6 +2021,28 @@ class ValidatorRuleListView(ValidatorRuleMixin, TemplateView):
                 kwargs={"pk": self.validator.pk},
             ),
         )
+
+
+class ValidationRunJsonView(ValidationRunAccessMixin, DetailView):
+    """Renders the full DRF serializer output as pretty-printed JSON.
+
+    Opens in a new browser tab with syntax-highlighted JSON, using the
+    same ``ValidationRunSerializer`` that the REST API returns.
+    """
+
+    template_name = "validations/validation_json.html"
+    context_object_name = "run"
+
+    def get_queryset(self):
+        return self.get_base_queryset()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from validibot.validations.serializers import ValidationRunSerializer
+
+        serializer = ValidationRunSerializer(context["run"])
+        context["json_content"] = json.dumps(serializer.data, indent=2, default=str)
+        return context
 
 
 class ValidationRunDeleteView(ValidationRunAccessMixin, DeleteView):

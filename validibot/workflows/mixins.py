@@ -395,6 +395,11 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
                 if warnings:
                     step_template_warnings[sr.pk] = warnings
 
+        # Flatten all signals across steps for the "Workflow Outputs" summary.
+        all_signals = [
+            signal for signals in step_signals.values() for signal in signals
+        ]
+
         return {
             "active_run": active_run,
             "step_runs": step_runs,
@@ -410,6 +415,8 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "launch_url": launch_url,
             "previous_runs_url": previous_runs_url,
             "step_signals": step_signals,
+            "has_signals": bool(step_signals),
+            "all_signals": all_signals,
             "step_params": step_params,
             "step_template_warnings": step_template_warnings,
         }
@@ -487,6 +494,14 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             workflow=workflow,
             active_run=run,
         )
+        submission_content = ""
+        if (
+            run.submission
+            and run.submission.input_file
+            and run.submission.is_content_available
+        ):
+            submission_content = run.submission.get_content()
+
         context = {
             "workflow": workflow,
             "run": run,
@@ -496,6 +511,7 @@ class WorkflowLaunchContextMixin(WorkflowObjectMixin):
             "has_steps": workflow.steps.exists(),
             "recent_runs": self.get_recent_runs(workflow),
             "is_polling": run.status in self.polling_statuses,
+            "submission_content": submission_content,
         }
         context.update(status_context)
         return context

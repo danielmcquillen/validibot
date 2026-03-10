@@ -292,6 +292,18 @@ class EnergyPlusStepConfig(BaseStepConfig):
     When False, all variable names are normalized to uppercase during
     scanning and matching."""
 
+    # ── Output display ────────────────────────────────────────────
+
+    show_energyplus_warnings: bool = True
+    """Whether to include EnergyPlus simulation warnings in the findings
+    shown to submitters.
+
+    EnergyPlus often emits dozens of warnings (e.g., unused objects,
+    default assumptions) that are useful for modelers debugging an IDF
+    but confusing for submitters who only care about pass/fail results.
+    When False, only ERROR-severity messages from the simulation are
+    shown as findings; WARNING and INFO messages are suppressed."""
+
 
 class FmuStepConfig(BaseStepConfig):
     """Config for FMU validator steps.

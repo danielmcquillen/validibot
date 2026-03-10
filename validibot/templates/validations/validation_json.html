@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+
+{% load i18n static %}
+
+{% block title %}
+  {% trans "Validation Run" %} #{{ run.pk }} · JSON · Validibot
+{% endblock title %}
+{% block css %}
+  {{ block.super }}
+  <style>
+    body {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+      font-size: 13px;
+      padding: 1rem;
+      margin: 0;
+    }
+
+    .json-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      margin-bottom: 0.5rem;
+      border-bottom: 1px solid #333;
+      color: #888;
+      font-size: 12px;
+    }
+
+    .json-header a {
+      color: #569cd6;
+      text-decoration: none;
+    }
+
+    .json-header a:hover {
+      text-decoration: underline;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin: 0;
+      line-height: 1.5;
+    }
+  </style>
+{% endblock css %}
+{% block body %}
+  <div class="json-header">
+    <span>{% trans "Validation Run" %} {{ run.pk }} · {{ run.get_status_display }}</span>
+    <a href="{% url 'validations:validation_detail' run.pk %}">{% trans "Back to run detail" %} →</a>
+  </div>
+  <pre id="json-output">{{ json_content }}</pre>
+{% endblock body %}

@@ -19,7 +19,7 @@ Context:
       hx-swap="innerHTML">
   {% csrf_token %}
   <div class="modal-header">
-    <h5 class="modal-title">{% blocktrans with name=variable.name %}Edit ${{ name }}{% endblocktrans %}</h5>
+    <h5 class="modal-title">{% blocktrans with name=variable.name %}Edit {{ name }}{% endblocktrans %}</h5>
     <button type="button"
             class="btn-close"
             data-bs-dismiss="modal"
@@ -95,9 +95,6 @@ Context:
   </div>
 </form>
 <script>
-  {
-    # Toggle type - specific fields based on selected variable type #
-  }
   (function() {
     var form = document.querySelector('#template-variable-edit-modal-content form');
     if (!form) return;

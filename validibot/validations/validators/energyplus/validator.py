@@ -39,10 +39,15 @@ import logging
 from typing import TYPE_CHECKING
 from typing import Any
 
+from validibot.validations.constants import Severity
 from validibot.validations.validators.base.advanced import AdvancedValidator
 
 if TYPE_CHECKING:
+    from validibot.actions.protocols import RunContext
     from validibot.submissions.models import Submission
+    from validibot.validations.models import Ruleset
+    from validibot.validations.models import Validator
+    from validibot.validations.validators.base.base import ValidationResult
     from validibot.workflows.models import WorkflowStep
 
 logger = logging.getLogger(__name__)
@@ -70,6 +75,49 @@ class EnergyPlusValidator(AdvancedValidator):
     @property
     def validator_display_name(self) -> str:
         return "EnergyPlus"
+
+    def _should_filter_warnings(self, run_context: RunContext | None) -> bool:
+        """Check whether simulation warnings should be suppressed.
+
+        Reads ``show_energyplus_warnings`` from the step config. When False,
+        non-ERROR issues from the EnergyPlus ``.err`` file should be stripped
+        before they are persisted as findings.
+        """
+        step = run_context.step if run_context else None
+        if not step:
+            return False
+        config = step.config or {}
+        return not config.get("show_energyplus_warnings", True)
+
+    def _filter_issues(
+        self,
+        result: ValidationResult,
+        run_context: RunContext | None,
+    ) -> ValidationResult:
+        """Remove non-ERROR issues from result when warnings are suppressed."""
+        if self._should_filter_warnings(run_context):
+            result.issues = [
+                issue for issue in result.issues if issue.severity == Severity.ERROR
+            ]
+        return result
+
+    def validate(
+        self,
+        validator: Validator,
+        submission: Submission,
+        ruleset: Ruleset | None,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """Dispatch to container, filtering warnings from sync results.
+
+        For sync backends (Docker Compose), ``validate()`` returns with
+        envelope messages already extracted into ``result.issues``. These
+        issues are persisted by the processor *before* ``post_execute_validate()``
+        runs.  We must filter here to prevent warnings from being saved as
+        findings when ``show_energyplus_warnings`` is disabled.
+        """
+        result = super().validate(validator, submission, ruleset, run_context)
+        return self._filter_issues(result, run_context)
 
     def preprocess_submission(
         self,
@@ -99,6 +147,25 @@ class EnergyPlusValidator(AdvancedValidator):
 
         result = preprocess_energyplus_submission(step=step, submission=submission)
         return result.template_metadata
+
+    def post_execute_validate(
+        self,
+        output_envelope: Any,
+        run_context: RunContext | None = None,
+    ) -> ValidationResult:
+        """Process container output, optionally filtering simulation warnings.
+
+        Delegates to the base ``AdvancedValidator.post_execute_validate()``
+        for envelope processing, signal extraction, and assertion evaluation.
+        Then applies warning filtering if ``show_energyplus_warnings`` is
+        disabled in the step config.
+
+        This method handles the async callback path and the output-stage
+        extraction.  The sync path's initial extraction is filtered in
+        ``validate()`` above.
+        """
+        result = super().post_execute_validate(output_envelope, run_context)
+        return self._filter_issues(result, run_context)
 
     @classmethod
     def extract_output_signals(cls, output_envelope: Any) -> dict[str, Any] | None:

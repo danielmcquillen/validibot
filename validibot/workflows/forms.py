@@ -1010,6 +1010,17 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
         ),
     )
 
+    show_energyplus_warnings = forms.BooleanField(
+        label=_("Show EnergyPlus warnings"),
+        required=False,
+        initial=True,
+        help_text=_(
+            "Include EnergyPlus simulation warnings in the results shown to "
+            "submitters. Uncheck to show only errors. Warnings can be noisy "
+            "for submitters who don't need to debug the model."
+        ),
+    )
+
     # ── Direct-mode fields ────────────────────────────────────────
     idf_checks = forms.MultipleChoiceField(
         label=_("Initial IDF checks"),
@@ -1082,6 +1093,10 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
                     "idf_checks": config.get("idf_checks", []),
                     "run_simulation": config.get("run_simulation", False),
                     "case_sensitive": config.get("case_sensitive", True),
+                    "show_energyplus_warnings": config.get(
+                        "show_energyplus_warnings",
+                        True,
+                    ),
                 }
             )
             for key, value in self.initial.items():
@@ -1122,6 +1137,7 @@ class EnergyPlusStepConfigForm(BaseStepConfigForm):
             "show_success_messages",
             "validation_mode",
             "weather_file",
+            "show_energyplus_warnings",
             Div(
                 "idf_checks",
                 "run_simulation",

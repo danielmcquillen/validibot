@@ -1,8 +1,11 @@
 {% load i18n core_tags %}
 
 {% comment %}
-This template lists out the summary results of the validation workflow run.
-(It doesn't show step-by-step findings; those are in a different block.)
+Run Summary sidebar card.
+
+Displays run metadata: status, submission name, finding counts,
+source, timestamps, and duration. Submission content and metadata
+are shown in the User Inputs card instead.
 {% endcomment %}
 <div class="card validation-info-card">
   <div class="card-header">{% trans "Run Summary" %}</div>
@@ -55,11 +58,11 @@ This template lists out the summary results of the validation workflow run.
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-danger">{{ summary_record.error_count|default:"0" }}</span>
             </dd>
-            <dt class="col-5 col-lg-4">{% trans "warnings" %}</dt>
+            <dt class="col-5 col-lg-4">{% trans "Warnings" %}</dt>
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-warning text-dark">{{ summary_record.warning_count|default:"0" }}</span>
             </dd>
-            <dt class="col-5 col-lg-4">{% trans "info" %}</dt>
+            <dt class="col-5 col-lg-4">{% trans "Info" %}</dt>
             <dd class="col-7 col-lg-8">
               <span class="badge text-bg-info text-dark">{{ summary_record.info_count|default:"0" }}</span>
             </dd>
@@ -81,6 +84,13 @@ This template lists out the summary results of the validation workflow run.
         <dd class="col-sm-8">
           {{ run.org.name }}
         </dd>
+        {% if run.user %}
+          <dt class="col-5 col-lg-4">{% trans "Submitter" %}</dt>
+          <dd class="col-7 col-lg-8">
+            {{ run.user.username }}
+            {% if run.user.get_full_name %}({{ run.user.get_full_name }}){% endif %}
+          </dd>
+        {% endif %}
         <dt class="col-5 col-lg-4 ">{% trans "Started" %}</dt>
         <dd class="col-7 col-lg-8">
           {{ run.started_at|date:"M j, Y g:i a"|default:_("Pending") }}
@@ -103,11 +113,26 @@ This template lists out the summary results of the validation workflow run.
         </dd>
       </dl>
     </section>
-    {% if run.submission and run.submission.metadata %}
+    {% if run.evidence_hash %}
       <section>
-        <h6 class="fw-semibold">{% trans "Submission metadata" %}</h6>
-        <pre class="bg-body-tertiary border rounded p-3 small mb-0">{{ run.submission.metadata|pretty_json }}</pre>
+        <dl class="row small mb-0">
+          <dt class="col-5 col-lg-4">
+            {% trans "Evidence hash" %}
+            {% help_button "evidence-hash" %}
+          </dt>
+          <dd class="col-7 col-lg-8">
+            <span class="font-monospace small text-muted text-break">{{ run.evidence_hash }}</span>
+          </dd>
+        </dl>
       </section>
     {% endif %}
+    <section>
+      <a class="btn btn-sm btn-outline-secondary w-100"
+         href="{% url 'validations:validation_json' run.pk %}"
+         target="_blank"
+         rel="noopener">
+        <i class="bi-code-slash me-1"></i>{% trans "View JSON" %}
+      </a>
+    </section>
   </div>
 </div>

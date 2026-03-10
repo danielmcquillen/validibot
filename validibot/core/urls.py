@@ -15,4 +15,9 @@ urlpatterns = [
         views.data_download,
         name="data_download",
     ),
+    path(
+        "help-drawer/<slug:slug>/",
+        views.help_drawer_content,
+        name="help_drawer",
+    ),
 ]

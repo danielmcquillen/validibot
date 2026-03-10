@@ -41,7 +41,7 @@ config = ValidatorConfig(
     resource_types=[ResourceFileType.ENERGYPLUS_WEATHER],
     icon="bi-lightning-charge-fill",
     card_image="ENERGYPLUS_card_img_small.png",
-    # Note: These signals are all prototypes and subject to changg. I need
+    # Note: These signals are all prototypes and subject to change. I need
     # to do more work to determine exactly which input and output signals
     # would make sense for a generic EnergyPlus simulation.
     catalog_entries=[

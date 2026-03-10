@@ -1,0 +1,38 @@
+{% load i18n static %}
+
+{% comment %}
+Status alert shown at the top of the main content column.
+
+Displays a success banner when the run succeeded, or an error alert when
+the run has a user-friendly error message. Extracted from the former
+"Findings" card so it sits above all output cards.
+
+Context variables:
+  run — the ValidationRun object
+{% endcomment %}
+{% if run.user_friendly_error %}
+  <div class="alert alert-danger small w-100 mb-3" role="alert">
+    <i class="bi-exclamation-octagon me-2"></i>{{ run.user_friendly_error }}
+  </div>
+{% endif %}
+{% if run.status == "SUCCEEDED" %}
+  <div class="alert validation-success-alert alert-success mb-3 d-flex flex-row align-items-center">
+    <div>
+      <img src="{% static 'images/app/green_check.svg' %}"
+           alt="{% trans 'Success' %}"
+           class="green-check" />
+    </div>
+    <div class="w-100 ms-2">
+      {% if run.workflow.success_message %}
+        {{ run.workflow.success_message }}
+      {% else %}
+        {% trans "Validation successful. No errors reported." %}
+      {% endif %}
+    </div>
+    <div>
+      <img src="{% static 'images/robot_head_forward.png' %}"
+           class="robot-image"
+           alt="{% trans 'robot image' %}" />
+    </div>
+  </div>
+{% endif %}

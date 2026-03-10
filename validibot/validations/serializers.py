@@ -185,6 +185,7 @@ class ValidationRunSerializer(serializers.ModelSerializer):
             "steps",
             "error",
             "user_friendly_error",
+            "evidence_hash",
         ]
         read_only_fields = fields
 

@@ -302,7 +302,7 @@ class TestValidatorResourceFileStorage:
 
 
 class TestResolveStepResources:
-    """Tests for ``_resolve_step_resources()`` — the envelope builder's
+    """Tests for ``resolve_step_resources()`` — the envelope builder's
     function that converts a step's relational ``WorkflowStepResource``
     rows into ``ResourceFileItem`` objects ready for the container envelope.
 
@@ -317,7 +317,7 @@ class TestResolveStepResources:
         UUID, type, and storage URI.
         """
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_step_resources,
+            resolve_step_resources,
         )
         from validibot.workflows.models import WorkflowStepResource
         from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -337,7 +337,7 @@ class TestResolveStepResources:
             validator_resource_file=vrf,
         )
 
-        items = _resolve_step_resources(step)
+        items = resolve_step_resources(step)
 
         assert len(items) == 1
         assert items[0].id == str(vrf.id)
@@ -349,7 +349,7 @@ class TestResolveStepResources:
         using the record's own PK, resource_type, and file URL.
         """
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_step_resources,
+            resolve_step_resources,
         )
         from validibot.workflows.models import WorkflowStepResource
         from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -363,19 +363,19 @@ class TestResolveStepResources:
             resource_type="ENERGYPLUS_IDF",
         )
 
-        items = _resolve_step_resources(step)
+        items = resolve_step_resources(step)
 
         assert len(items) == 1
         assert items[0].id == str(sr.pk)
         assert items[0].type == "ENERGYPLUS_IDF"
 
     def test_resolve_with_role_filter(self):
-        """Passing a role to ``_resolve_step_resources()`` returns only
+        """Passing a role to ``resolve_step_resources()`` returns only
         resources matching that role. This is used by the envelope builder
         to fetch only weather files, for example.
         """
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_step_resources,
+            resolve_step_resources,
         )
         from validibot.workflows.models import WorkflowStepResource
         from validibot.workflows.tests.factories import WorkflowStepFactory
@@ -402,32 +402,32 @@ class TestResolveStepResources:
         )
 
         # Filter by WEATHER_FILE only
-        weather_items = _resolve_step_resources(
+        weather_items = resolve_step_resources(
             step, role=WorkflowStepResource.WEATHER_FILE
         )
         assert len(weather_items) == 1
         assert weather_items[0].id == str(vrf.id)
 
         # Filter by MODEL_TEMPLATE only
-        template_items = _resolve_step_resources(
+        template_items = resolve_step_resources(
             step, role=WorkflowStepResource.MODEL_TEMPLATE
         )
         assert len(template_items) == 1
 
         # No filter returns all
-        all_items = _resolve_step_resources(step)
+        all_items = resolve_step_resources(step)
         assert len(all_items) == 2  # noqa: PLR2004
 
     def test_resolve_empty_step_returns_empty_list(self):
         """A step with no WorkflowStepResource rows returns an empty list."""
         from validibot.validations.services.cloud_run.envelope_builder import (
-            _resolve_step_resources,
+            resolve_step_resources,
         )
         from validibot.workflows.tests.factories import WorkflowStepFactory
 
         step = WorkflowStepFactory()
 
-        result = _resolve_step_resources(step)
+        result = resolve_step_resources(step)
 
         assert result == []
 

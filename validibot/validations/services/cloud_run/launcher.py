@@ -30,10 +30,10 @@ from validibot_shared.fmu.envelopes import FMUInputEnvelope
 from validibot.validations.constants import CloudRunJobStatus
 from validibot.validations.constants import Severity
 from validibot.validations.services.cloud_run.envelope_builder import (
-    _resolve_step_resources,
+    build_energyplus_input_envelope,
 )
 from validibot.validations.services.cloud_run.envelope_builder import (
-    build_energyplus_input_envelope,
+    resolve_step_resources,
 )
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope
 from validibot.validations.services.cloud_run.gcs_client import upload_envelope_local
@@ -95,6 +95,35 @@ def build_validation_callback_url() -> str:
     return f"{base_url.rstrip('/')}{VALIDATION_CALLBACK_PATH}"
 
 
+def _check_already_launched(step_run) -> ValidationResult | None:
+    """Return a pending result if a job was already launched, else None."""
+    existing_output = step_run.output or {}
+    if existing_output.get("job_name"):
+        logger.info(
+            "Job already launched for step run %s (job=%s), skipping relaunch",
+            step_run.id,
+            existing_output.get("job_name"),
+        )
+        return ValidationResult(
+            passed=None,
+            issues=[],
+            stats=existing_output,
+        )
+    return None
+
+
+def _mark_step_run_running(step_run) -> None:
+    """Mark a step run as RUNNING with the current timestamp."""
+    from datetime import UTC
+    from datetime import datetime
+
+    from validibot.validations.constants import StepStatus
+
+    step_run.status = StepStatus.RUNNING
+    step_run.started_at = datetime.now(UTC)
+    step_run.save(update_fields=["status", "started_at"])
+
+
 def launch_energyplus_validation(
     *,
     run: ValidationRun,
@@ -134,26 +163,15 @@ def launch_energyplus_validation(
         Exception: If GCS upload or job trigger fails
     """
     try:
-        # 0. Idempotency check: if this step run already has job info in output,
-        # a job was already launched (possibly on a previous retry). Return
-        # pending result to wait for the existing job's callback.
+        # 0. Idempotency check
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run found for ValidationRun {run.id}"
             raise ValueError(msg)  # noqa: TRY301
 
-        existing_output = current_step_run.output or {}
-        if existing_output.get("job_name"):
-            logger.info(
-                "Job already launched for step run %s (job=%s), skipping relaunch",
-                current_step_run.id,
-                existing_output.get("job_name"),
-            )
-            return ValidationResult(
-                passed=None,  # Still pending
-                issues=[],
-                stats=existing_output,
-            )
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
 
         # 1. Build GCS paths
         org_id = str(run.org.id)
@@ -189,7 +207,7 @@ def launch_energyplus_validation(
         # 4. Build typed input envelope
         step_config = step.config or {}
         timestep_per_hour = step_config.get("timestep_per_hour", 4)
-        resource_files = _resolve_step_resources(step, role="WEATHER_FILE")
+        resource_files = resolve_step_resources(step, role="WEATHER_FILE")
 
         envelope = build_energyplus_input_envelope(
             run_id=run_id,
@@ -223,16 +241,7 @@ def launch_energyplus_validation(
         )
 
         # 6.5. Update step run status to RUNNING
-        from datetime import UTC
-        from datetime import datetime
-
-        from validibot.validations.constants import StepStatus
-
-        now = datetime.now(UTC)
-        current_step_run.status = StepStatus.RUNNING
-        current_step_run.started_at = now
-        current_step_run.save(update_fields=["status", "started_at"])
-
+        _mark_step_run_running(current_step_run)
         logger.info(
             "Marked step run %s as RUNNING for run %s",
             current_step_run.id,
@@ -254,12 +263,15 @@ def launch_energyplus_validation(
             stats=stats,
         )
 
-    except Exception as e:
-        logger.exception("Failed to launch EnergyPlus Cloud Run Job")
+    except Exception:
+        logger.exception("Failed to launch EnergyPlus Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
                 path="",
-                message=f"Failed to launch EnergyPlus validation: {e!s}",
+                message=(
+                    "Failed to launch EnergyPlus validation. "
+                    "The error has been logged for investigation."
+                ),
                 severity=Severity.ERROR,
             ),
         ]
@@ -282,26 +294,15 @@ def launch_fmu_validation(
     a pending ValidationResult.
     """
     try:
-        # 0. Idempotency check: if this step run already has job info in output,
-        # a job was already launched (possibly on a previous retry). Return
-        # pending result to wait for the existing job's callback.
+        # 0. Idempotency check
         current_step_run = run.current_step_run
         if not current_step_run:
             msg = f"No active step run for run {run.id}"
             raise ValueError(msg)  # noqa: TRY301
 
-        existing_output = current_step_run.output or {}
-        if existing_output.get("job_name"):
-            logger.info(
-                "Job already launched for step run %s (job=%s), skipping relaunch",
-                current_step_run.id,
-                existing_output.get("job_name"),
-            )
-            return ValidationResult(
-                passed=None,  # Still pending
-                issues=[],
-                stats=existing_output,
-            )
+        already_launched = _check_already_launched(current_step_run)
+        if already_launched:
+            return already_launched
 
         fmu_model = validator.fmu_model
         if not fmu_model:
@@ -335,12 +336,16 @@ def launch_fmu_validation(
             submission.get_content() if hasattr(submission, "get_content") else ""
         )
         if isinstance(submission_payload, str):
-            # Best effort: parse JSON when possible
             import json
 
             try:
                 submission_payload = json.loads(submission_payload)
-            except Exception:
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    "Could not parse FMU submission as JSON for run %s: %s",
+                    run.id,
+                    exc,
+                )
                 submission_payload = {}
         input_values: dict[str, object] = {}
         for entry in validator.catalog_entries.filter(run_stage="INPUT"):
@@ -425,18 +430,9 @@ def launch_fmu_validation(
 
         # Mark step run as RUNNING
         # Note: run.status and run.started_at are already set by
-        # execute_workflow_steps() when
-        # the run transitions from PENDING to RUNNING. We only need to mark the
-        # step run as running here.
-        from datetime import UTC
-        from datetime import datetime
-
-        from validibot.validations.constants import StepStatus
-
-        now = datetime.now(UTC)
-        current_step_run.status = StepStatus.RUNNING
-        current_step_run.started_at = now
-        current_step_run.save(update_fields=["status", "started_at"])
+        # execute_workflow_steps() when the run transitions from PENDING
+        # to RUNNING. We only need to mark the step run as running here.
+        _mark_step_run_running(current_step_run)
 
         stats = {
             "job_status": CloudRunJobStatus.PENDING,
@@ -448,12 +444,15 @@ def launch_fmu_validation(
         }
         return ValidationResult(passed=None, issues=[], stats=stats)
 
-    except Exception as e:
-        logger.exception("Failed to launch FMU Cloud Run Job")
+    except Exception:
+        logger.exception("Failed to launch FMU Cloud Run Job for run %s", run.id)
         issues = [
             ValidationIssue(
                 path="",
-                message=f"Failed to launch FMU validation: {e!s}",
+                message=(
+                    "Failed to launch FMU validation. "
+                    "The error has been logged for investigation."
+                ),
                 severity=Severity.ERROR,
             ),
         ]

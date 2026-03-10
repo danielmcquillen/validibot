@@ -290,27 +290,9 @@ class AdvancedValidator(BaseValidator):
             ValidationResult with output-stage issues, assertion_stats,
             and signals populated.
         """
-        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from validibot_shared.validations.envelopes import ValidationStatus
-
         self.run_context = run_context
 
-        issues: list[ValidationIssue] = []
-
-        # Extract messages from envelope
-        for msg in output_envelope.messages:
-            severity_map = {
-                EnvelopeSeverity.ERROR: Severity.ERROR,
-                EnvelopeSeverity.WARNING: Severity.WARNING,
-                EnvelopeSeverity.INFO: Severity.INFO,
-            }
-            issues.append(
-                ValidationIssue(
-                    path=msg.location.path if msg.location else "",
-                    message=msg.text,
-                    severity=severity_map.get(msg.severity, Severity.INFO),
-                )
-            )
+        issues = self._extract_issues_from_envelope(output_envelope)
 
         # Extract signals from envelope for downstream steps and assertions
         signals = self.extract_output_signals(output_envelope) or {}
@@ -358,24 +340,13 @@ class AdvancedValidator(BaseValidator):
                 )
 
         # Determine pass/fail based on envelope status and assertion failures.
-        # Container error messages do not override SUCCESS status.
-        if output_envelope.status == ValidationStatus.SUCCESS:
-            passed = assertion_failures == 0
-        elif output_envelope.status in (
-            ValidationStatus.FAILED_VALIDATION,
-            ValidationStatus.FAILED_RUNTIME,
-        ):
-            passed = False
-        else:
-            passed = False
+        passed = self._determine_passed(
+            output_envelope,
+            assertion_failures=assertion_failures,
+        )
 
         # Build stats with outputs if available
-        stats: dict[str, Any] = {}
-        if output_envelope.outputs:
-            if hasattr(output_envelope.outputs, "model_dump"):
-                stats["outputs"] = output_envelope.outputs.model_dump(mode="json")
-            elif isinstance(output_envelope.outputs, dict):
-                stats["outputs"] = output_envelope.outputs
+        stats = self._extract_outputs_stats(output_envelope)
 
         return ValidationResult(
             passed=passed,
@@ -390,6 +361,45 @@ class AdvancedValidator(BaseValidator):
 
     # PRIVATE METHODS
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    @staticmethod
+    def _extract_issues_from_envelope(envelope: Any) -> list[ValidationIssue]:
+        """Convert envelope messages to ValidationIssue objects."""
+        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
+
+        severity_map = {
+            EnvelopeSeverity.ERROR: Severity.ERROR,
+            EnvelopeSeverity.WARNING: Severity.WARNING,
+            EnvelopeSeverity.INFO: Severity.INFO,
+        }
+        return [
+            ValidationIssue(
+                path=msg.location.path if msg.location else "",
+                message=msg.text,
+                severity=severity_map.get(msg.severity, Severity.INFO),
+            )
+            for msg in envelope.messages
+        ]
+
+    @staticmethod
+    def _determine_passed(envelope: Any, *, assertion_failures: int = 0) -> bool:
+        """Determine pass/fail from envelope status and assertion failures."""
+        from validibot_shared.validations.envelopes import ValidationStatus
+
+        if envelope.status == ValidationStatus.SUCCESS:
+            return assertion_failures == 0
+        return False
+
+    @staticmethod
+    def _extract_outputs_stats(envelope: Any) -> dict[str, Any]:
+        """Extract outputs from envelope into a stats dict."""
+        if not envelope.outputs:
+            return {}
+        if hasattr(envelope.outputs, "model_dump"):
+            return {"outputs": envelope.outputs.model_dump(mode="json")}
+        if isinstance(envelope.outputs, dict):
+            return {"outputs": envelope.outputs}
+        return {}
 
     def _response_to_result(
         self,
@@ -461,39 +471,8 @@ class AdvancedValidator(BaseValidator):
 
         Used for sync backends where the output is available immediately.
         """
-        from validibot_shared.validations.envelopes import Severity as EnvelopeSeverity
-        from validibot_shared.validations.envelopes import ValidationStatus
-
-        issues: list[ValidationIssue] = []
-
-        for msg in envelope.messages:
-            severity_map = {
-                EnvelopeSeverity.ERROR: Severity.ERROR,
-                EnvelopeSeverity.WARNING: Severity.WARNING,
-                EnvelopeSeverity.INFO: Severity.INFO,
-            }
-            issues.append(
-                ValidationIssue(
-                    path=msg.location.path if msg.location else "",
-                    message=msg.text,
-                    severity=severity_map.get(msg.severity, Severity.INFO),
-                )
-            )
-
-        if envelope.outputs:
-            if hasattr(envelope.outputs, "model_dump"):
-                stats["outputs"] = envelope.outputs.model_dump(mode="json")
-            elif isinstance(envelope.outputs, dict):
-                stats["outputs"] = envelope.outputs
-
-        if envelope.status == ValidationStatus.SUCCESS:
-            passed = True
-        elif envelope.status in (
-            ValidationStatus.FAILED_VALIDATION,
-            ValidationStatus.FAILED_RUNTIME,
-        ):
-            passed = False
-        else:
-            passed = False
+        issues = self._extract_issues_from_envelope(envelope)
+        stats.update(self._extract_outputs_stats(envelope))
+        passed = self._determine_passed(envelope)
 
         return ValidationResult(passed=passed, issues=issues, stats=stats)

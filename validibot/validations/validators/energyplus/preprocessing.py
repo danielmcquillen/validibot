@@ -23,15 +23,16 @@ See Also:
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
+from typing import Any
 
 from django.core.exceptions import ValidationError
 
+from validibot.validations.utils.idf_template import decode_idf_bytes
 from validibot.validations.utils.idf_template import (
     merge_and_validate_template_parameters,
 )
@@ -179,12 +180,7 @@ def _read_template_content(template_resource) -> str:
     raw_bytes = template_resource.step_resource_file.read()
     template_resource.step_resource_file.seek(0)
 
-    text: str | None = None
-    try:
-        text = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        with contextlib.suppress(UnicodeDecodeError):
-            text = raw_bytes.decode("latin-1")
+    text, _ = decode_idf_bytes(raw_bytes)
 
     if text is None:
         msg = (
@@ -196,7 +192,7 @@ def _read_template_content(template_resource) -> str:
     return text
 
 
-def _parse_submission_params(submission) -> dict[str, str]:
+def _parse_submission_params(submission) -> dict[str, Any]:
     """Parse submission content as a flat JSON parameter dict.
 
     Validates that the content is a JSON object (not array/scalar)

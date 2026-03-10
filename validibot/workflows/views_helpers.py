@@ -401,6 +401,49 @@ def build_xml_schema_config(
     return config, ruleset
 
 
+def _validate_and_scan_template(
+    template_file,
+    *,
+    case_sensitive: bool,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Validate an IDF template and return ``(variable_dicts, warnings)``.
+
+    Reads the file, runs the validation pipeline, and converts the scan
+    result into a list of variable dicts ready for ``step.config``.
+
+    Raises:
+        ValidationError: If the template fails validation checks.
+    """
+    from validibot.validations.utils.idf_template import validate_idf_template
+
+    content = template_file.read()
+    result = validate_idf_template(
+        filename=template_file.name,
+        content=content,
+        case_sensitive=case_sensitive,
+    )
+
+    if result.errors:
+        raise ValidationError(result.errors)
+
+    template_vars = [
+        {
+            "name": var_ctx.name,
+            "description": var_ctx.label,
+            "default": "",
+            "units": var_ctx.units,
+            "variable_type": "text",
+            "min_value": None,
+            "min_exclusive": False,
+            "max_value": None,
+            "max_exclusive": False,
+            "choices": [],
+        }
+        for var_ctx in result.scan_result.variables
+    ]
+    return template_vars, result.warnings
+
+
 def build_energyplus_config(
     form: EnergyPlusStepConfigForm,
     step: WorkflowStep | None = None,
@@ -433,8 +476,6 @@ def build_energyplus_config(
     The template *file* itself is persisted by
     ``_sync_energyplus_resources()`` after ``step.save()``.
     """
-    from validibot.validations.utils.idf_template import validate_idf_template
-
     validation_mode = form.cleaned_data.get(
         "validation_mode",
         EnergyPlusStepConfigForm.VALIDATION_MODE_DIRECT,
@@ -475,45 +516,17 @@ def build_energyplus_config(
         config["display_signals"] = []
     elif template_file:
         # New template uploaded — validate, scan, and populate config.
-        content = template_file.read()
-        case_sensitive = form.cleaned_data.get("case_sensitive", True)
-
-        result = validate_idf_template(
-            filename=template_file.name,
-            content=content,
-            case_sensitive=case_sensitive,
+        template_vars, template_warnings = _validate_and_scan_template(
+            template_file,
+            case_sensitive=form.cleaned_data.get("case_sensitive", True),
         )
 
-        if result.errors:
-            raise ValidationError(result.errors)
-
-        # Convert TemplateVariableContext → IDFTemplateVariable dicts.
-        # At this point, only auto-detected metadata is populated.
-        # The author will refine descriptions, defaults, and constraints
-        # in the Template Variable Editor.
-        template_vars = []
-        for var_ctx in result.scan_result.variables:
-            template_vars.append(
-                {
-                    "name": var_ctx.name,
-                    "description": var_ctx.label,
-                    "default": "",
-                    "units": var_ctx.units,
-                    "variable_type": "text",
-                    "min_value": None,
-                    "min_exclusive": False,
-                    "max_value": None,
-                    "max_exclusive": False,
-                    "choices": [],
-                }
-            )
-
         config["template_variables"] = template_vars
-        config["case_sensitive"] = case_sensitive
+        config["case_sensitive"] = form.cleaned_data.get("case_sensitive", True)
         config["display_signals"] = []
 
         # Attach warnings to the form so the view can display them.
-        form.template_warnings = result.warnings
+        form.template_warnings = template_warnings
     elif step:
         # No upload, no removal — preserve existing template variables
         # as-is.  Variable annotation editing happens in the dedicated

@@ -51,6 +51,7 @@ from __future__ import annotations
 import pytest
 from django.core.exceptions import ValidationError
 
+from validibot.validations.utils.idf_template import decode_idf_bytes
 from validibot.validations.utils.idf_template import (
     merge_and_validate_template_parameters,
 )
@@ -2009,3 +2010,84 @@ Object:Type,
             parameters={"PATTERN": "value.with*special+chars"},
         )
         assert "value.with*special+chars;" in result
+
+    def test_backreference_in_value_literal(self):
+        r"""Values containing regex backreference sequences (``\1``,
+        ``\g<0>``) must be treated as literal text, not interpreted as
+        regex group references.
+
+        Without the ``lambda m: value`` fix in ``substitute_template_parameters``,
+        ``\1`` would raise ``re.error: invalid group reference`` and ``\g<0>``
+        would silently inject the matched pattern text instead of the literal
+        string.  This test verifies both cases are handled safely.
+        """
+        idf = """\
+Object:Type,
+    $PARAM;              !- Value
+"""
+        # \g<0> would inject the matched text ($PARAM) if backrefs were active
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"PARAM": r"value\g<0>more"},
+        )
+        assert r"value\g<0>more;" in result
+        assert "$PARAM" not in result
+
+    def test_backslash_digit_in_value_literal(self):
+        r"""Values containing ``\1`` through ``\9`` must not crash with
+        ``re.error: invalid group reference``.
+
+        This is the most common failure mode for the backreference bug:
+        submitters with file paths like ``C:\1_project\file`` would crash
+        the substitution.
+        """
+        idf = """\
+Object:Type,
+    $PATH;               !- File path
+"""
+        result = substitute_template_parameters(
+            idf_text=idf,
+            parameters={"PATH": r"C:\1_project\2_data"},
+        )
+        assert r"C:\1_project\2_data;" in result
+
+
+# ── decode_idf_bytes ─────────────────────────────────────────────────
+# The decode_idf_bytes utility tries UTF-8 first then falls back to
+# Latin-1.  This is shared between the upload validator and the
+# preprocessing module to eliminate duplicated encoding logic.
+
+
+class TestDecodeIdfBytes:
+    """Tests for ``decode_idf_bytes()`` — the shared UTF-8/Latin-1 decoder."""
+
+    def test_utf8_content_decoded(self):
+        """Standard UTF-8 content is decoded correctly with used_latin1=False."""
+        text, used_latin1 = decode_idf_bytes(b"Hello, world!")
+        assert text == "Hello, world!"
+        assert used_latin1 is False
+
+    def test_latin1_fallback(self):
+        """Content with Latin-1 characters (not valid UTF-8) falls back
+        to Latin-1 decoding with used_latin1=True.
+        """
+        # \xe9 is 'é' in Latin-1 but is invalid as a standalone UTF-8 byte
+        content = b"Fen\xe9tre"  # "Fenêtre" in Latin-1
+        text, used_latin1 = decode_idf_bytes(content)
+        assert text is not None
+        assert "Fen" in text
+        assert used_latin1 is True
+
+    def test_empty_bytes(self):
+        """Empty bytes decode to empty string via UTF-8."""
+        text, used_latin1 = decode_idf_bytes(b"")
+        assert text == ""
+        assert used_latin1 is False
+
+    def test_utf8_with_bom(self):
+        """UTF-8 content with BOM is decoded correctly."""
+        content = b"\xef\xbb\xbfVersion,9.0;"
+        text, used_latin1 = decode_idf_bytes(content)
+        assert text is not None
+        assert "Version" in text
+        assert used_latin1 is False

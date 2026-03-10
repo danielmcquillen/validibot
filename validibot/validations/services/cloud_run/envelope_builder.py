@@ -177,7 +177,7 @@ def build_energyplus_input_envelope(
     return envelope
 
 
-def _resolve_step_resources(
+def resolve_step_resources(
     step,
     *,
     role: str | None = None,
@@ -211,22 +211,19 @@ def _resolve_step_resources(
     for sr in queryset:
         if sr.is_catalog_reference:
             vrf = sr.validator_resource_file
-            items.append(
-                ResourceFileItem(
-                    id=str(vrf.id),
-                    type=vrf.resource_type,
-                    uri=sr.get_storage_uri(),
-                )
-            )
+            resource_id = str(vrf.id)
+            resource_type = vrf.resource_type
         else:
-            # Step-owned file
-            items.append(
-                ResourceFileItem(
-                    id=str(sr.pk),
-                    type=sr.resource_type,
-                    uri=sr.get_storage_uri(),
-                )
+            resource_id = str(sr.pk)
+            resource_type = sr.resource_type
+
+        items.append(
+            ResourceFileItem(
+                id=resource_id,
+                type=resource_type,
+                uri=sr.get_storage_uri(),
             )
+        )
     return items
 
 
@@ -302,7 +299,7 @@ def build_input_envelope(
         # filename matches the resolved model filename it could overwrite it.
         from validibot.workflows.models import WorkflowStepResource
 
-        resource_files = _resolve_step_resources(
+        resource_files = resolve_step_resources(
             step, role=WorkflowStepResource.WEATHER_FILE
         )
 

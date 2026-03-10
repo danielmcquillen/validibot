@@ -27,7 +27,6 @@ References:
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import re
 from dataclasses import dataclass
@@ -61,6 +60,12 @@ ANNOTATION_PATTERN = re.compile(r"!-\s*(.+)")
 
 #: Extract units from an annotation, e.g. ``{W/m2-K}`` → ``W/m2-K``.
 UNITS_PATTERN = re.compile(r"\{([^}]+)\}")
+
+#: Detect ``$`` followed by non-delimiter characters (for invalid-dollar warnings).
+_DOLLAR_PATTERN = re.compile(r"\$([^\s,;!]*)")
+
+#: Valid variable name pattern (any case).
+_VALID_VAR_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 #: Bytes per kilobyte — used for human-readable file size formatting.
 _KB = 1024
@@ -171,6 +176,26 @@ class MergeResult:
     warnings: list[str] = field(default_factory=list)
     """Non-blocking warnings (e.g., unrecognized parameter names).
     Stored on step run output and shown to the submitter."""
+
+
+def decode_idf_bytes(content: bytes) -> tuple[str | None, bool]:
+    """Decode IDF file bytes as UTF-8, falling back to Latin-1.
+
+    EnergyPlus IDF files are typically UTF-8 but some legacy files use
+    Latin-1 encoding.  This function tries UTF-8 first, then Latin-1.
+
+    Returns:
+        ``(decoded_text, used_latin1)`` — ``decoded_text`` is ``None``
+        if both encodings fail.
+    """
+    try:
+        return content.decode("utf-8"), False
+    except UnicodeDecodeError:
+        pass
+    try:
+        return content.decode("latin-1"), True
+    except UnicodeDecodeError:
+        return None, False
 
 
 #: IDF structural characters that would corrupt the file if substituted
@@ -431,24 +456,18 @@ def _emit_mixed_case_warnings(
             warned_names.add(var_name)
 
             upper_name = var_name.upper()
-            if upper_name in detected_names:
-                # The uppercase version was detected — warn about the alias.
-                warnings.append(
-                    f"Line {line_number}: '${var_name}' looks like a "
-                    f"template variable but uses non-uppercase characters. "
-                    f"In case-sensitive mode, only $UPPERCASE_NAMES are "
-                    f"detected. The uppercase form ${upper_name} was "
-                    f"already detected. Rename to '${upper_name}' or "
-                    f"set case_sensitive=False."
-                )
-            else:
-                warnings.append(
-                    f"Line {line_number}: '${var_name}' looks like a "
-                    f"template variable but uses non-uppercase characters. "
-                    f"In case-sensitive mode, only $UPPERCASE_NAMES are "
-                    f"detected. Rename to '${upper_name}' or set "
-                    f"case_sensitive=False."
-                )
+            alias_note = (
+                f" The uppercase form ${upper_name} was already detected."
+                if upper_name in detected_names
+                else ""
+            )
+            warnings.append(
+                f"Line {line_number}: '${var_name}' looks like a "
+                f"template variable but uses non-uppercase characters. "
+                f"In case-sensitive mode, only $UPPERCASE_NAMES are "
+                f"detected.{alias_note} Rename to '${upper_name}' or "
+                f"set case_sensitive=False."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -500,14 +519,7 @@ def validate_idf_template(
         )
         return ValidationResult(errors=errors, warnings=warnings)
 
-    text: str | None = None
-    used_latin1 = False
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        with contextlib.suppress(UnicodeDecodeError):
-            text = content.decode("latin-1")
-            used_latin1 = True
+    text, used_latin1 = decode_idf_bytes(content)
 
     if text is None:
         errors.append(
@@ -663,12 +675,6 @@ def _emit_invalid_dollar_warnings(
     Catches common mistakes like ``$3_ZONES`` (starts with digit),
     ``$my-var`` (contains hyphen), or bare ``$`` characters.
     """
-    # Pattern to find $ followed by something that is NOT a valid variable.
-    # We stop at IDF delimiters (comma, semicolon, comment marker) so that
-    # valid usages like ``$U_FACTOR,`` or ``$SHGC;`` are not over-matched.
-    dollar_pattern = re.compile(r"\$([^\s,;!]*)")
-    valid_pattern = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-
     warned: set[str] = set()
 
     for line_number, raw_line in enumerate(idf_text.splitlines(), start=1):
@@ -676,10 +682,10 @@ def _emit_invalid_dollar_warnings(
         if not stripped or stripped.startswith("!"):
             continue
         data, _ = _split_data_and_comment(raw_line)
-        for m in dollar_pattern.finditer(data):
+        for m in _DOLLAR_PATTERN.finditer(data):
             following = m.group(1)
             # If it's a valid variable name, skip (the scanner handles it).
-            if following and valid_pattern.match(following):
+            if following and _VALID_VAR_PATTERN.match(following):
                 continue
             # It's invalid — emit a warning.
             if following and following not in warned:
@@ -991,7 +997,7 @@ def substitute_template_parameters(
             rf"\${safe_name}(?![A-Z0-9_])",
             re_flags,
         )
-        content = pattern.sub(value, content)
+        content = pattern.sub(lambda m, v=value: v, content)
 
     logger.info(
         "Template substitution complete: %d variables resolved.",

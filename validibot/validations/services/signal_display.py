@@ -175,8 +175,10 @@ def build_template_params_display(
                     "units": v.units,
                 }
         except Exception:
-            logger.debug(
-                "Could not parse step config for template param display",
+            logger.warning(
+                "Could not parse step config for template param display "
+                "on step_run %s — falling back to raw variable names",
+                step_run.id,
                 exc_info=True,
             )
 
@@ -214,6 +216,11 @@ def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
         typed_config = workflow_step.typed_config
         return getattr(typed_config, "display_signals", [])
     except Exception:
+        logger.warning(
+            "Could not read display_signals from step config for step_run %s",
+            step_run.id,
+            exc_info=True,
+        )
         return []
 
 

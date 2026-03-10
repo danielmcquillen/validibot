@@ -122,8 +122,15 @@ class DockerComposeExecutionBackend(ExecutionBackend):
 
         try:
             info = self.runner.get_execution_status(execution_id)
-        except (ValueError, Exception):
-            # Container not found or Docker not available
+        except ValueError:
+            # Container not found — expected for expired/unknown container IDs
+            return None
+        except Exception:
+            logger.warning(
+                "Failed to check Docker container status for %s",
+                execution_id,
+                exc_info=True,
+            )
             return None
 
         return ExecutionResponse(

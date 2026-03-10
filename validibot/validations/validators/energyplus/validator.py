@@ -201,7 +201,11 @@ class EnergyPlusValidator(AdvancedValidator):
             # Fallback if metrics is already a dict
             if isinstance(metrics, dict):
                 return {k: v for k, v in metrics.items() if v is not None}
-        except Exception:
-            logger.debug("Could not extract assertion signals from EnergyPlus envelope")
+        except (AttributeError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Could not extract signals from EnergyPlus envelope: %s",
+                exc,
+                exc_info=True,
+            )
 
         return None

@@ -69,6 +69,15 @@ down:
 build *args:
     docker compose -f {{local_compose}} up {{ if args == "--attach" { "" } else { "-d" } }} --build
 
+# Rebuild and start containers
+#
+# Usage: just rebuild              # cached rebuild (fast)
+#        just rebuild --no-cache   # clean rebuild (slow, use after dep upgrades)
+#        just rebuild worker       # rebuild specific service
+rebuild *args:
+    docker compose -f {{local_compose}} build {{args}}
+    docker compose -f {{local_compose}} up -d
+
 # Follow logs from all containers (Ctrl+C to exit)
 # Shows interleaved logs from all services
 logs:

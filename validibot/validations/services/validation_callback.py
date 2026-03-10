@@ -436,7 +436,17 @@ class ValidationCallbackService:
 
             from validibot.validations.services.evidence_hash import stamp_evidence_hash
 
-            stamp_evidence_hash(run)
+            # Evidence hash is a tamper-evident seal — valuable but never
+            # worth blocking callback finalization.  Log and continue on
+            # failure so receipt update and submission purge still happen.
+            try:
+                stamp_evidence_hash(run)
+            except Exception:
+                logger.exception(
+                    "Failed to stamp evidence hash for run %s — "
+                    "callback finalization will continue without it.",
+                    run.id,
+                )
 
             logger.info(
                 "Finalized run %s with status %s",

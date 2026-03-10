@@ -564,9 +564,10 @@ class Workflow(FeaturedImageMixin, TimeStampedModel):
                         validator_resource_file=old_res.validator_resource_file,
                     )
                 else:
-                    old_res.step_resource_file.open("rb")
-                    file_content = old_res.step_resource_file.read()
-                    old_res.step_resource_file.close()
+                    # Use a context manager to prevent file handle leaks
+                    # if read() or the subsequent create() raises.
+                    with old_res.step_resource_file.open("rb") as f:
+                        file_content = f.read()
                     WorkflowStepResource.objects.create(
                         step=new_step,
                         role=old_res.role,
@@ -992,6 +993,34 @@ class WorkflowStepResource(models.Model):
 
         # Local filesystem storage
         return f"file://{self.step_resource_file.path}"
+
+
+# ── Storage cleanup for step-owned files ──────────────────────────────
+#
+# Django's FileField does NOT auto-delete files from storage when a model
+# instance is deleted.  For step-owned files, the WorkflowStepResource
+# row is the *only* reference to the file — without this signal, deleting
+# the row (via cascade, template replacement, or explicit delete) leaves
+# orphaned files in storage (local filesystem or GCS bucket).
+
+
+def _cleanup_step_resource_file(sender, instance, **kwargs):
+    """Delete the physical file from storage when a WorkflowStepResource is removed."""
+    if instance.step_resource_file:
+        try:
+            instance.step_resource_file.delete(save=False)
+        except Exception:
+            logger.warning(
+                "Failed to delete step-owned file for WorkflowStepResource %s",
+                instance.pk,
+                exc_info=True,
+            )
+
+
+models.signals.post_delete.connect(
+    _cleanup_step_resource_file,
+    sender=WorkflowStepResource,
+)
 
 
 class WorkflowRoleAccess(models.Model):

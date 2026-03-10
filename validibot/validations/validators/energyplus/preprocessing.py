@@ -101,11 +101,10 @@ def preprocess_energyplus_submission(
         PreprocessingResult with ``was_template`` flag and metadata.
 
     Raises:
-        ValidationError: If JSON parsing, parameter validation, or
-            constraint checking fails.  The caller
-            (``AdvancedValidator.validate()``) converts this into a
-            user-friendly ``ValidationResult``.
-        ValueError: If template substitution fails (unresolved variables).
+        ValidationError: If JSON parsing, parameter validation,
+            constraint checking, or template file I/O/decoding fails.
+            The caller (``AdvancedValidator.validate()``) converts this
+            into a user-friendly ``ValidationResult``.
     """
     # ── 1. Detect template mode ─────────────────────────────────
     template_resource = step.step_resources.filter(
@@ -176,18 +175,32 @@ def _read_template_content(template_resource) -> str:
 
     Falls back to Latin-1 if UTF-8 decoding fails — this matches the
     upload validator's acceptance of Latin-1 encoded IDF files.
+
+    Raises:
+        ValidationError: If the file cannot be read from storage or
+            cannot be decoded.  This propagates cleanly through
+            ``AdvancedValidator.validate()``'s existing ``except
+            ValidationError`` handler.
     """
-    raw_bytes = template_resource.step_resource_file.read()
-    template_resource.step_resource_file.seek(0)
+    # I/O errors (deleted file, storage backend down) should surface as
+    # ValidationError so the caller's existing handler catches them
+    # instead of producing an unhandled 500.
+    try:
+        raw_bytes = template_resource.step_resource_file.read()
+        template_resource.step_resource_file.seek(0)
+    except OSError as exc:
+        raise ValidationError(
+            "Could not read template file from storage. "
+            "The file may have been deleted. Please re-upload the template."
+        ) from exc
 
     text, _ = decode_idf_bytes(raw_bytes)
 
     if text is None:
-        msg = (
+        raise ValidationError(
             "Template file could not be decoded as UTF-8 or Latin-1. "
             "Please re-upload the template with valid encoding."
         )
-        raise ValueError(msg)
 
     return text
 

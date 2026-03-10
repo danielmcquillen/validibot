@@ -79,27 +79,30 @@ Context:
         </div>
       </div>
     </div>
-  {% endwith %}
-  {# -- Toggle type-specific fields per variable card -- #}
-  <script>
-    (function() {
-      document.querySelectorAll("[data-tplvar-card]").forEach(function(card) {
-        var radios = card.querySelectorAll("input[type=radio][name$=_variable_type]");
+    {# close card-body #}
+  </div>
+  {# close card app-card #}
+{% endwith %}
+{# -- Toggle type-specific fields per variable card -- #}
+<script>
+  (function() {
+    document.querySelectorAll("[data-tplvar-card]").forEach(function(card) {
+      var radios = card.querySelectorAll("input[type=radio][name$=_variable_type]");
 
-        function toggle() {
-          var selected = card.querySelector("input[type=radio][name$=_variable_type]:checked");
-          var val = selected ? selected.value : "";
-          card.querySelectorAll(".tplvar-number-fields").forEach(function(el) {
-            el.style.display = val === "number" ? "" : "none";
-          });
-          card.querySelectorAll(".tplvar-choice-fields").forEach(function(el) {
-            el.style.display = val === "choice" ? "" : "none";
-          });
-        }
-        radios.forEach(function(r) {
-          r.addEventListener("change", toggle);
+      function toggle() {
+        var selected = card.querySelector("input[type=radio][name$=_variable_type]:checked");
+        var val = selected ? selected.value : "";
+        card.querySelectorAll(".tplvar-number-fields").forEach(function(el) {
+          el.style.display = val === "number" ? "" : "none";
         });
-        toggle();
+        card.querySelectorAll(".tplvar-choice-fields").forEach(function(el) {
+          el.style.display = val === "choice" ? "" : "none";
+        });
+      }
+      radios.forEach(function(r) {
+        r.addEventListener("change", toggle);
       });
-    })();
-  </script>
+      toggle();
+    });
+  })();
+</script>

@@ -174,7 +174,11 @@ def build_template_params_display(
                     "label": v.description or v.name,
                     "units": v.units,
                 }
-        except Exception:
+        except (AttributeError, TypeError, KeyError, ValueError):
+            # Expected failures: malformed JSON config, missing attrs,
+            # Pydantic validation errors.  Fall back to raw variable
+            # names.  Infrastructure errors (DatabaseError, etc.) are
+            # intentionally NOT caught — they should propagate.
             logger.warning(
                 "Could not parse step config for template param display "
                 "on step_run %s — falling back to raw variable names",
@@ -215,7 +219,10 @@ def _get_display_signals_filter(step_run: ValidationStepRun) -> list[str]:
     try:
         typed_config = workflow_step.typed_config
         return getattr(typed_config, "display_signals", [])
-    except Exception:
+    except (AttributeError, TypeError, KeyError, ValueError):
+        # Parsing/attribute failures are safe to degrade (show all
+        # signals).  Infrastructure errors (DatabaseError, etc.) are
+        # intentionally NOT caught — they should propagate.
         logger.warning(
             "Could not read display_signals from step config for step_run %s",
             step_run.id,

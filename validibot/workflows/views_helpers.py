@@ -416,7 +416,14 @@ def _validate_and_scan_template(
     """
     from validibot.validations.utils.idf_template import validate_idf_template
 
-    content = template_file.read()
+    # Guard against I/O failures (temp file cleaned up, storage error).
+    try:
+        content = template_file.read()
+    except OSError as exc:
+        raise ValidationError(
+            f"Could not read the uploaded template file: {exc}. "
+            "Please try uploading again."
+        ) from exc
     result = validate_idf_template(
         filename=template_file.name,
         content=content,
@@ -542,16 +549,27 @@ def build_energyplus_config(
 
 
 def _parse_optional_float(value: str) -> float | None:
-    """Convert a string to float, returning None for empty or invalid values.
+    """Convert a string to float, returning None for empty values.
 
-    Used by ``build_energyplus_config()`` to parse min/max values from
-    the template variable editor form fields.
+    Used by ``merge_template_variable_annotations()`` to parse min/max
+    values from the template variable editor form fields.
+
+    Logs a warning for non-numeric input so the author gets feedback
+    via server logs.  Returns None to avoid crashing the form save,
+    since template variable annotations are advisory rather than
+    critical — a missing constraint is safe (no constraint applied),
+    but a crash would prevent saving other valid annotations.
     """
     if not value or not value.strip():
         return None
     try:
         return float(value.strip())
     except (ValueError, TypeError):
+        logger.warning(
+            "Non-numeric value %r passed for a min/max constraint — "
+            "treating as empty (no constraint).",
+            value,
+        )
         return None
 
 

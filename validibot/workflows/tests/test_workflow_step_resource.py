@@ -385,3 +385,84 @@ def test_clone_preserves_multiple_resources_per_step():
     assert cloned_step.step_resources.filter(
         role=WorkflowStepResource.MODEL_TEMPLATE,
     ).exists()
+
+
+# ── Storage cleanup on deletion ──────────────────────────────────────
+#
+# Django's FileField does NOT auto-delete files from storage when a
+# model instance is deleted.  A ``post_delete`` signal on
+# ``WorkflowStepResource`` handles cleanup for step-owned files.
+# Without this, deleting step resources (via CASCADE, template
+# replacement, or explicit delete) would leave orphaned files in
+# storage.
+
+
+@pytest.mark.django_db
+def test_step_owned_file_deleted_from_storage_on_instance_delete():
+    """When a step-owned ``WorkflowStepResource`` is deleted, the
+    physical file should be removed from the storage backend.
+
+    This verifies that the ``post_delete`` signal correctly calls
+    ``FileField.delete(save=False)`` for step-owned files.
+    """
+    step = WorkflowStepFactory()
+    resource = WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.MODEL_TEMPLATE,
+        step_resource_file=SimpleUploadedFile("cleanup_test.idf", b"! IDF content"),
+        filename="cleanup_test.idf",
+    )
+    # Capture the file path before deletion
+    file_name = resource.step_resource_file.name
+    storage = resource.step_resource_file.storage
+
+    assert storage.exists(file_name), "File should exist before deletion"
+
+    resource.delete()
+
+    assert not storage.exists(file_name), (
+        "File should be removed from storage after WorkflowStepResource deletion"
+    )
+
+
+@pytest.mark.django_db
+def test_catalog_reference_deletion_does_not_crash():
+    """Deleting a catalog-reference resource (no step-owned file)
+    should not crash the ``post_delete`` signal handler.
+
+    Catalog references have ``step_resource_file=""`` — the signal
+    handler must handle this gracefully (no file to delete).
+    """
+    resource = WorkflowStepResourceFactory()
+    assert resource.is_catalog_reference
+
+    # Should not raise
+    resource.delete()
+    assert not WorkflowStepResource.objects.filter(pk=resource.pk).exists()
+
+
+@pytest.mark.django_db
+def test_cascade_delete_cleans_up_step_owned_files():
+    """When a WorkflowStep is deleted (CASCADE), its step-owned
+    resource files should also be cleaned from storage.
+
+    This is the most common deletion path — steps are deleted when
+    workflows are deleted or when steps are removed by the author.
+    """
+    step = WorkflowStepFactory()
+    resource = WorkflowStepResource.objects.create(
+        step=step,
+        role=WorkflowStepResource.MODEL_TEMPLATE,
+        step_resource_file=SimpleUploadedFile("cascade_test.idf", b"! IDF"),
+        filename="cascade_test.idf",
+    )
+    file_name = resource.step_resource_file.name
+    storage = resource.step_resource_file.storage
+
+    assert storage.exists(file_name)
+
+    step.delete()  # CASCADE deletes the resource
+
+    assert not storage.exists(file_name), (
+        "Step-owned file should be cleaned up when the parent step is deleted"
+    )

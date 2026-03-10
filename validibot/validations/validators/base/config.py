@@ -266,7 +266,17 @@ def populate_registry() -> None:
         _CONFIG_REGISTRY[cfg.validation_type] = cfg
 
         if cfg.validator_class:
-            cls = import_string(cfg.validator_class)
+            # Wrap import_string() with context so a typo in any of the
+            # 7+ validator configs produces an error message that names
+            # the offending config — not just the missing module/attribute.
+            try:
+                cls = import_string(cfg.validator_class)
+            except (ImportError, AttributeError) as exc:
+                raise ImportError(
+                    f"Cannot import validator class '{cfg.validator_class}' "
+                    f"declared in config '{cfg.slug}' "
+                    f"(validation_type='{cfg.validation_type}'): {exc}"
+                ) from exc
             _VALIDATOR_REGISTRY[cfg.validation_type] = cls
             cls.validation_type = cfg.validation_type
 

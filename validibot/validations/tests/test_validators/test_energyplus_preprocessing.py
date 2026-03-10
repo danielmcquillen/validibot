@@ -25,6 +25,8 @@ and in-memory mutation of the submission.
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -414,3 +416,71 @@ class TestTemplateModeEncoding:
         resolved = submission.get_content()
         assert "2.5" in resolved
         assert "0.4" in resolved
+
+
+# ===========================================================================
+# Template mode — error type contract
+# ===========================================================================
+# _read_template_content() must raise ValidationError (not ValueError)
+# because the caller (AdvancedValidator.validate()) only catches
+# ValidationError.  A ValueError would escape as an unhandled 500.
+# ===========================================================================
+
+
+class TestReadTemplateContentErrorType:
+    """Verify that template I/O errors raise ValidationError."""
+
+    def test_undecoded_template_raises_validation_error_not_value_error(self):
+        """When a template file contains bytes that cannot be decoded
+        as either UTF-8 or Latin-1, ``_read_template_content()`` must
+        raise ``ValidationError`` (not ``ValueError``).
+
+        This is important because the caller's exception handler
+        (``AdvancedValidator.validate()``) only catches
+        ``ValidationError``.  A ``ValueError`` would propagate as an
+        unhandled 500 error to the user.
+        """
+        from validibot.validations.validators.energyplus.preprocessing import (
+            _read_template_content,
+        )
+
+        # Create a mock resource whose file returns bytes that
+        # decode_idf_bytes() cannot decode (returns None).
+        mock_resource = MagicMock()
+        # Pure-null bytes that can't be valid UTF-8 or Latin-1 text
+        # (decode_idf_bytes returns None when both decoders fail).
+        # In practice, Latin-1 decodes everything, so we mock at
+        # a higher level.
+        mock_resource.step_resource_file.read.return_value = b"\x00content"
+        mock_resource.step_resource_file.seek = MagicMock()
+
+        # Patch decode_idf_bytes to simulate decode failure
+        with (
+            patch(
+                "validibot.validations.validators.energyplus.preprocessing.decode_idf_bytes",
+                return_value=(None, False),
+            ),
+            pytest.raises(ValidationError, match="could not be decoded"),
+        ):
+            _read_template_content(mock_resource)
+
+    def test_io_error_raises_validation_error(self):
+        """When the storage backend fails to read the template file
+        (e.g., file deleted, GCS unavailable), ``_read_template_content()``
+        must raise ``ValidationError`` with a user-friendly message.
+
+        This catches IOError/OSError from the storage backend and
+        wraps it so the caller's ``except ValidationError`` handler
+        can produce a clean user-facing error message.
+        """
+        from validibot.validations.validators.energyplus.preprocessing import (
+            _read_template_content,
+        )
+
+        mock_resource = MagicMock()
+        mock_resource.step_resource_file.read.side_effect = OSError(
+            "File not found in storage"
+        )
+
+        with pytest.raises(ValidationError, match="Could not read template file"):
+            _read_template_content(mock_resource)

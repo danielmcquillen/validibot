@@ -339,11 +339,15 @@ class DockerComposeExecutionBackend(ExecutionBackend):
             run_dir = self.storage._resolve_path(base_path)
             if run_dir.is_dir():
                 run_dir.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO | stat.S_ISVTX)
-        except Exception:
-            logger.warning(
-                "Could not set run directory permissions for %s",
+        except OSError:
+            # Log at ERROR because a chmod failure here directly causes the
+            # downstream container to fail with a permission denied error.
+            # Using OSError (not Exception) so unrelated bugs like
+            # AttributeError in the storage backend propagate immediately.
+            logger.exception(
+                "Could not set run directory permissions for %s — "
+                "the container will likely fail with a permission error.",
                 base_path,
-                exc_info=True,
             )
 
     def _upload_submission(

@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n core_tags %}
 
 {% comment %}
 Modal content for editing which output signals are shown to users.
@@ -11,7 +11,7 @@ Context:
   step      - the WorkflowStep
   workflow  - the parent Workflow
 {% endcomment %}
-<form hx-post="{% url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
+<form hx-post="{% org_url 'workflows:workflow_step_display_signals' workflow.pk step.pk %}"
       hx-target="#display-signals-modal-content"
       hx-swap="innerHTML">
   {% csrf_token %}

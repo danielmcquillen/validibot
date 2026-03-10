@@ -37,7 +37,7 @@ dependencies = [
   "cryptography==46.0.5",
   "defusedxml==0.7.1",
   "django==6.0.3",
-  "django-allauth[mfa]==65.14.3",
+  "django-allauth[mfa]==65.15.0",
   "django-anymail[postmark]==14.0",
   "django-cloud-tasks>=0.0.4",
   "django-cors-headers==4.9.0",

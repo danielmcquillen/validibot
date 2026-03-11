@@ -3291,15 +3291,11 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-<<<<<<< HEAD
-sdist = { url = "https://files.pythonhosted.org/packages/a7/2a/62d6eca426c753bcd911af97289da00846c9d1a4fab517399ac6067c21ba/validibot_shared-0.3.1.tar.gz", hash = "sha256:e5b6bcd64ac8319fe958c2fb23fbb5050b36812d26ab10a5f5117c5580799159", size = 21556 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/13/94f62bb430e22fa52b6b51e453284a4e098870133d3f528ca0201daf85d3/validibot_shared-0.3.1-py3-none-any.whl", hash = "sha256:9a1bf92d50572f261cd9516d718c1e81bedc8862303be673e1f33e2e770c39ee", size = 22616 },
-=======
+
 sdist = { url = "https://files.pythonhosted.org/packages/a7/2a/62d6eca426c753bcd911af97289da00846c9d1a4fab517399ac6067c21ba/validibot_shared-0.3.1.tar.gz", hash = "sha256:e5b6bcd64ac8319fe958c2fb23fbb5050b36812d26ab10a5f5117c5580799159", size = 21556, upload-time = "2026-03-09T23:44:28.729Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/13/94f62bb430e22fa52b6b51e453284a4e098870133d3f528ca0201daf85d3/validibot_shared-0.3.1-py3-none-any.whl", hash = "sha256:9a1bf92d50572f261cd9516d718c1e81bedc8862303be673e1f33e2e770c39ee", size = 22616, upload-time = "2026-03-09T23:44:27.224Z" },
->>>>>>> main
+
 ]
 
 [[package]]

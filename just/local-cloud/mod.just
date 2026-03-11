@@ -70,7 +70,7 @@ e2e-tests *args:
     fi
 
     # --- 2. Check EnergyPlus validator image exists ---
-    if ! docker image inspect validibot/validator-energyplus:latest >/dev/null 2>&1; then
+    if ! docker image inspect validibot-validator-energyplus:latest >/dev/null 2>&1; then
         echo ""
         echo "Error: EnergyPlus validator image not found."
         echo "Build it first: (in ../validibot-validators) just build energyplus"

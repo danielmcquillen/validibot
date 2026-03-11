@@ -1,15 +1,16 @@
 """
-Pytest fixtures for E2E stress tests.
+Pytest fixtures for E2E tests (stress tests and advanced validator workflows).
 
 These tests run against a live Validibot environment (Docker Compose or deployed).
-When run via ``just test-e2e``, environment variables are auto-provisioned
-by the ``setup_fullstack_test_data`` management command. They can also be set
+When run via ``just test-e2e`` or ``just test-e2e-energyplus``, environment
+variables are auto-provisioned by management commands.  They can also be set
 manually:
 
 - FULLSTACK_API_URL: Base API URL (default: http://localhost:8000/api/v1)
 - FULLSTACK_API_TOKEN: Valid API bearer token
 - FULLSTACK_ORG_SLUG: Organization slug
-- FULLSTACK_WORKFLOW_ID: Workflow UUID with at least one validation step
+- FULLSTACK_WORKFLOW_ID: Workflow UUID for stress tests (JSON Schema step)
+- E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID: Workflow UUID for EnergyPlus template tests
 
 See docs/dev_docs/how-to/run-e2e-tests.md for details.
 """
@@ -54,6 +55,12 @@ def org_slug() -> str:
 def workflow_id() -> str:
     """Workflow UUID to run validations against."""
     return _require_env("FULLSTACK_WORKFLOW_ID")
+
+
+@pytest.fixture(scope="session")
+def energyplus_template_workflow_id() -> str:
+    """Workflow UUID for the EnergyPlus parameterized template E2E test."""
+    return _require_env("E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID")
 
 
 @pytest.fixture(scope="session")

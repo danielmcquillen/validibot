@@ -202,7 +202,50 @@ test-e2e *args:
     fi
 
     echo "Running E2E stress tests against: ${FULLSTACK_API_URL:-http://localhost:8000/api/v1}"
-    uv run --group dev pytest tests/tests_e2e/ {{args}} -v --log-cli-level=INFO
+    uv run --group dev pytest tests/tests_e2e/test_stress.py {{args}} -v --log-cli-level=INFO
+
+# Run EnergyPlus E2E tests against a running Docker Compose environment
+# Requires: Docker Compose stack running (`just up` or `just local-cloud up --build`)
+# AND the EnergyPlus Docker image available.
+# The EnergyPlus simulation takes ~2-5 minutes per test case.
+#
+# Usage: just test-e2e-energyplus
+test-e2e-energyplus *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check EnergyPlus validator image exists
+    if ! docker image inspect validibot/validator-energyplus:latest >/dev/null 2>&1; then
+        echo ""
+        echo "Error: EnergyPlus validator image not found."
+        echo "Build it first: (in ../validibot-validators) just build energyplus"
+        echo ""
+        exit 1
+    fi
+
+    # Auto-provision E2E workflow data if env vars aren't already set
+    if [ -z "${E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID:-}" ]; then
+        echo "Provisioning E2E workflow data via management command..."
+        env_output=$(docker compose -f {{local_compose}} exec -T web \
+            bash -c '{{_db_url}} python manage.py setup_e2e_workflows --export-env' 2>/dev/null)
+        if [ -z "$env_output" ]; then
+            echo ""
+            echo "Error: Could not provision E2E workflow data."
+            echo "Make sure Docker Compose is running ('just up' or 'just local-cloud up --build')"
+            echo "and the app has been set up"
+            echo "(run 'just manage setup_validibot' and 'just manage seed_weather_files')."
+            echo ""
+            exit 1
+        fi
+        eval "$(echo "$env_output")"
+        export FULLSTACK_API_TOKEN FULLSTACK_ORG_SLUG E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID
+    fi
+
+    echo "Running EnergyPlus E2E tests against: ${FULLSTACK_API_URL:-http://localhost:8000/api/v1}"
+    echo "Workflow ID: ${E2E_ENERGYPLUS_TEMPLATE_WORKFLOW_ID}"
+    echo "Note: Each test runs a real EnergyPlus simulation (~2-5 min per test)"
+    echo ""
+    uv run --group dev pytest tests/tests_e2e/test_energyplus_template.py {{args}} -v --log-cli-level=INFO
 
 # =============================================================================
 # Documentation
